@@ -74,6 +74,9 @@ pub mod qobject {
         fn set_directory(self: Pin<&mut SettingsModel>, field: QString, url: QUrl);
 
         #[qinvokable]
+        fn choose_native_directory(self: Pin<&mut SettingsModel>, field: QString);
+
+        #[qinvokable]
         fn export_profile(self: Pin<&mut SettingsModel>, destination: QUrl);
 
         #[qinvokable]
@@ -1568,6 +1571,42 @@ impl qobject::SettingsModel {
                 .as_mut()
                 .set_message(qstring("Unknown settings directory field.")),
         }
+    }
+
+    pub fn choose_native_directory(mut self: Pin<&mut Self>, field: QString) {
+        let field = field.to_string();
+        let current = match field.as_str() {
+            "rom" => self.as_ref().rom_directory().to_string(),
+            "torrent" => self.as_ref().torrent_library_directory().to_string(),
+            _ => {
+                self.as_mut()
+                    .set_message(qstring("Unknown settings directory field."));
+                return;
+            }
+        };
+        let mut dialog = rfd::FileDialog::new().set_title(match field.as_str() {
+            "rom" => "Choose ROM library",
+            _ => "Choose torrent library",
+        });
+        if !current.trim().is_empty() {
+            dialog = dialog.set_directory(&current);
+        }
+        let Some(path) = dialog.pick_folder() else {
+            return;
+        };
+        match field.as_str() {
+            "rom" => self
+                .as_mut()
+                .set_rom_directory(qstring(path.to_string_lossy())),
+            "torrent" => self
+                .as_mut()
+                .set_torrent_library_directory(qstring(path.to_string_lossy())),
+            _ => unreachable!(),
+        }
+        self.as_mut().set_connection_ok(false);
+        self.as_mut().set_message(qstring(
+            "Directory selected. Save settings to keep this native path.",
+        ));
     }
 
     pub fn export_profile(mut self: Pin<&mut Self>, destination: QUrl) {

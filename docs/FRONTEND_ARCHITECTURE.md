@@ -72,6 +72,13 @@ The initial implementation enforces this shape:
   from optional SteamGridDB, IGDB, and EmuMovies accounts. Every missing-account
   action routes to the exact Settings section; secrets remain in the operating
   system credential store. Existing profiles migrate as already configured.
+- Settings is a full-window application section with a persistent navigation
+  rail and a bounded, centered content column. Directory selection crosses the
+  CXX-Qt boundary into the Rust native-dialog backend, so Windows, macOS, KDE,
+  and other Linux desktops receive their host picker instead of an application
+  imitation. Header and navigation controls clip and elide labels at constrained
+  widths. Deterministic overview and provider-section probes verify the complete
+  window geometry and direct-section scrolling.
 - Paths cross the Rust boundary as native paths. `--database PATH` and the
   `LUNCHBOX_DATABASE` environment variable are supported on Linux, macOS, and
   Windows without assuming `/bin/sh`, drive letters, or a path separator.

@@ -56,6 +56,9 @@ pub mod qobject {
         fn choose_directory(self: Pin<&mut LocalImportModel>, url: QUrl);
 
         #[qinvokable]
+        fn choose_native_directory(self: Pin<&mut LocalImportModel>);
+
+        #[qinvokable]
         fn apply_profile(self: Pin<&mut LocalImportModel>, index: i32) -> bool;
 
         #[qinvokable]
@@ -470,6 +473,20 @@ impl qobject::LocalImportModel {
         self.as_mut().rust_mut().profile_root_override = None;
         self.as_mut().set_active_profile_index(-1);
         self.as_mut().set_directory(path);
+    }
+
+    pub fn choose_native_directory(mut self: Pin<&mut Self>) {
+        let current = self.as_ref().directory().to_string();
+        let mut dialog = rfd::FileDialog::new().set_title("Choose a ROM collection to scan");
+        if !current.trim().is_empty() {
+            dialog = dialog.set_directory(&current);
+        }
+        let Some(path) = dialog.pick_folder() else {
+            return;
+        };
+        self.as_mut().rust_mut().profile_root_override = None;
+        self.as_mut().set_active_profile_index(-1);
+        self.as_mut().set_directory(qstring(path.to_string_lossy()));
     }
 
     pub fn apply_profile(mut self: Pin<&mut Self>, index: i32) -> bool {

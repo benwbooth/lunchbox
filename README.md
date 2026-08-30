@@ -334,12 +334,16 @@ MAME, 86Box, PCem, and other reviewed runtime layouts on Linux, Windows, and
 macOS. Manual-only firmware opens a dedicated native folder with instructions;
 Lunchbox never bundles firmware or silently substitutes a different package.
 
-Configure qBittorrent and both sides of its filesystem mapping in the native
-Settings dialog. Native paths are chosen with the operating system folder
-picker; qBittorrent/container paths are deliberately retained as verbatim
-client strings. Passwords use the operating system credential store and never
-the SQLite state database. Empty credentials remain valid for qBittorrent
-instances whose Web UI authentication bypass is intentionally enabled.
+Configure qBittorrent and both sides of its filesystem mapping in the native,
+full-window Settings section. Its persistent section rail links directly to
+downloads, paths, media accounts, controllers, shaders, profiles, and emulators.
+Native paths are chosen with the operating system folder picker;
+qBittorrent/container paths are deliberately retained as verbatim client
+strings. A prominent connection test verifies the values currently shown,
+including a previously saved password when the password field is blank.
+Passwords use the operating system credential store and never the SQLite state
+database. Empty credentials remain valid for qBittorrent instances whose Web UI
+authentication bypass is intentionally enabled.
 
 On completion, Lunchbox verifies and materializes the reviewed file using the
 selected symbolic-link, hard-link, reflink, copy, or leave-in-place policy. It
@@ -478,8 +482,10 @@ and an explicit Web source. Provider credentials live only in the operating-syst
 credential store. Search results are always review candidates: the user chooses
 the exact provider game before Lunchbox persists its stable provider ID, then
 chooses one individual artwork file. SteamGridDB supplies backgrounds, covers,
-and logos; IGDB supplies covers, artwork, and screenshots through Twitch
-client-credentials authentication. Web artwork uses a focused system-browser
+and logos; IGDB supplies covers, artwork, and screenshots through a Confidential
+Twitch Developer application's Client ID and newest Client Secret. IGDB account
+credentials and IGDB MCP credentials are not API application credentials. Web
+artwork uses a focused system-browser
 search rather than scraping: the user supplies one exact HTTPS image URL or
 local file, Lunchbox validates it off-thread in a unique quarantine, previews
 only that local validated copy, and publishes those exact bytes only after

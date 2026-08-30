@@ -102,7 +102,6 @@ ApplicationWindow {
         library.favorite_pending_count
         return selectedGameId.length > 0 && library.favorite_pending(selectedGameId)
     }
-    property string directoryTarget: ""
     property string requestedSettingsSection: ""
     property bool onboardingSavePending: false
     property bool favoriteProbeArmed: false
@@ -261,7 +260,9 @@ ApplicationWindow {
     readonly property bool sidebarRestoreUiProbe: Qt.application.arguments.indexOf("--sidebar-restored-ui-probe") >= 0
     readonly property bool sidebarUiProbe: library.sidebar_probe
     readonly property bool downloadHistoryProbe: Qt.application.arguments.indexOf("--download-history-probe") >= 0
+    readonly property string settingsSectionUiProbe: root.argumentValue("--settings-section-ui-probe")
     readonly property bool settingsUiProbe: Qt.application.arguments.indexOf("--settings-ui-probe") >= 0
+                                            || settingsSectionUiProbe.length > 0
     readonly property bool settingsSeedingProbe: Qt.application.arguments.indexOf("--settings-seeding-probe") >= 0
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
     readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
@@ -393,17 +394,24 @@ ApplicationWindow {
         const item = requestedSettingsItem()
         if (!item || !settingsDialog.visible)
             return
-        const point = item.mapToItem(settingsScroll.contentItem, 0, 0)
-        const maximum = Math.max(0, settingsScroll.contentItem.contentHeight
-                                    - settingsScroll.availableHeight)
-        settingsScroll.contentItem.contentY = Math.max(
-                    0, Math.min(maximum, point.y - 18))
+        root.positionSettingsItem(item)
         if (requestedSettingsSection === "steamgriddb")
             steamGridDbApiKey.forceActiveFocus()
         else if (requestedSettingsSection === "igdb")
             igdbClientId.forceActiveFocus()
         else if (requestedSettingsSection === "emumovies")
             emuMoviesUsername.forceActiveFocus()
+    }
+
+    function positionSettingsItem(item) {
+        if (!item || !settingsDialog.visible)
+            return
+        const flickable = settingsScroll.contentItem
+        const point = item.mapToItem(flickable.contentItem, 0, 0)
+        const maximum = Math.max(0, flickable.contentHeight
+                                    - settingsScroll.availableHeight)
+        flickable.contentY = Math.max(
+                    0, Math.min(maximum, point.y - 18))
     }
 
     function openSettingsFor(section) {
@@ -4651,7 +4659,10 @@ ApplicationWindow {
                      || root.couchAttractSettingsUiProbe
                      || root.controllerUiProbe || root.controllerProfileUiProbe
                      || root.retroarchShaderUiProbe) {
-                settingsDialog.open()
+                if (root.settingsUiProbe)
+                    root.openSettingsFor(root.settingsSectionUiProbe)
+                else
+                    settingsDialog.open()
                 if (root.controllerUiProbe)
                     console.log("LUNCHBOX_CONTROLLER_UI_OPENED")
             }
@@ -6072,6 +6083,56 @@ ApplicationWindow {
                 font.pixelSize: 9
                 elide: Text.ElideMiddle
             }
+        }
+    }
+
+    Timer {
+        id: settingsUiPositionTimer
+        interval: 700
+        running: root.settingsUiProbe && settingsDialog.visible
+                 && library.ready && appSettings.initialized
+        repeat: false
+        onTriggered: {
+            root.positionRequestedSettingsSection()
+            settingsUiScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: settingsUiScreenshotTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            if (!settingsDialog.visible
+                    || settingsDialog.width !== root.width
+                    || settingsDialog.height !== root.height) {
+                console.error("LUNCHBOX_SETTINGS_UI_FAILED visible="
+                              + settingsDialog.visible + " size="
+                              + settingsDialog.width + "x" + settingsDialog.height
+                              + " window=" + root.width + "x" + root.height)
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                console.log("LUNCHBOX_SETTINGS_UI_READY section="
+                            + (root.settingsSectionUiProbe.length > 0
+                               ? root.settingsSectionUiProbe : "overview"))
+                Qt.quit()
+                return
+            }
+            settingsDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_SETTINGS_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_SETTINGS_UI_READY section="
+                            + (root.settingsSectionUiProbe.length > 0
+                               ? root.settingsSectionUiProbe : "overview")
+                            + " screenshot=" + root.screenshotOutput)
+                Qt.quit()
+            })
         }
     }
 
@@ -14344,18 +14405,6 @@ ApplicationWindow {
         }
     }
 
-    FolderDialog {
-        id: directoryDialog
-        title: root.directoryTarget === "rom" ? "Choose ROM library" : "Choose torrent library"
-        onAccepted: appSettings.set_directory(root.directoryTarget, selectedFolder)
-    }
-
-    FolderDialog {
-        id: importDirectoryDialog
-        title: "Choose a ROM collection to scan"
-        onAccepted: localImport.choose_directory(selectedFolder)
-    }
-
     FileDialog {
         id: firmwarePackageDialog
         title: "Choose the exact firmware package shown in Game Details"
@@ -14649,7 +14698,7 @@ ApplicationWindow {
                     Button {
                         text: "Choose…"
                         enabled: !localImport.busy && !localImport.profile_busy
-                        onClicked: importDirectoryDialog.open()
+                        onClicked: localImport.choose_native_directory()
                     }
                     ComboBox {
                         id: importPlatform
@@ -16434,10 +16483,7 @@ ApplicationWindow {
         accentCool: root.accentCool
         uiProbe: root.onboardingUiProbe
         screenshotOutput: root.screenshotOutput
-        onChooseDirectory: field => {
-            root.directoryTarget = field
-            directoryDialog.open()
-        }
+        onChooseDirectory: field => appSettings.choose_native_directory(field)
         onOpenSettings: section => root.openSettingsFor(section)
         onFinishRequested: {
             root.onboardingSavePending = true
@@ -16448,20 +16494,13 @@ ApplicationWindow {
 
     Dialog {
         id: settingsDialog
+        parent: Overlay.overlay
         modal: true
-        anchors.centerIn: parent
-        width: Math.min(root.controllerProfileUiProbe
-                        || root.settingsMediaPriorityUiProbe
-                        || root.couchAttractSettingsUiProbe
-                        || root.profileBackupUiProbe
-                        || root.retroarchShaderUiProbe ? 1120 : 760,
-                        root.width - 60)
-        height: Math.min(root.controllerProfileUiProbe
-                         || root.settingsMediaPriorityUiProbe
-                         || root.couchAttractSettingsUiProbe
-                         || root.profileBackupUiProbe
-                         || root.retroarchShaderUiProbe ? 1080 : 760,
-                         root.height - 60)
+        dim: false
+        x: 0
+        y: 0
+        width: root.width
+        height: root.height
         padding: 0
         closePolicy: Popup.CloseOnEscape
         onOpened: {
@@ -16478,55 +16517,144 @@ ApplicationWindow {
 
         background: Rectangle {
             color: root.panel
-            radius: 14
-            border.color: root.line
-            border.width: 1
+            radius: 0
         }
 
         header: Rectangle {
             width: parent.width
-            height: 62
+            height: 72
             color: root.panelRaised
-            radius: 14
-            Text {
-                anchors.left: parent.left
-                anchors.leftMargin: 22
-                anchors.verticalCenter: parent.verticalCenter
-                text: "SETTINGS"
-                color: root.ink
-                font.pixelSize: 17
-                font.weight: Font.Bold
-                font.letterSpacing: 0.8
-            }
-            Button {
-                anchors.right: parent.right
-                anchors.rightMargin: 58
-                anchors.verticalCenter: parent.verticalCenter
-                text: "SETUP GUIDE"
-                flat: true
-                font.pixelSize: 9
-                font.weight: Font.Bold
-                onClicked: onboardingPage.open()
-            }
-            RoundButton {
-                anchors.right: parent.right
-                anchors.rightMargin: 14
-                anchors.verticalCenter: parent.verticalCenter
-                text: "×"
-                flat: true
-                font.pixelSize: 20
-                onClicked: settingsDialog.close()
+            border.color: root.line
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 24
+                anchors.rightMargin: 16
+                spacing: 10
+                ColumnLayout {
+                    spacing: 1
+                    Text {
+                        text: "SETTINGS"
+                        color: root.ink
+                        font.pixelSize: 18
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
+                    }
+                    Text {
+                        text: "Library, downloads, accounts, emulators, and presentation"
+                        color: root.muted
+                        font.pixelSize: 10
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "SETUP GUIDE"
+                    flat: true
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    onClicked: onboardingPage.open()
+                }
+                HeaderButton {
+                    text: appSettings.busy ? "SAVING…" : "SAVE SETTINGS"
+                    active: true
+                    enabled: !appSettings.busy
+                    onClicked: appSettings.save()
+                }
+                RoundButton {
+                    text: "×"
+                    flat: true
+                    font.pixelSize: 20
+                    onClicked: settingsDialog.close()
+                    Accessible.name: "Close settings"
+                }
             }
         }
 
-        contentItem: ScrollView {
-            id: settingsScroll
-            clip: true
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            ColumnLayout {
-                x: 24
-                width: settingsDialog.availableWidth - 48
-                spacing: 11
+        contentItem: RowLayout {
+            spacing: 0
+
+            Rectangle {
+                Layout.preferredWidth: 238
+                Layout.fillHeight: true
+                color: "#0f151f"
+                border.color: root.line
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 4
+
+                    Text {
+                        Layout.leftMargin: 10
+                        Layout.bottomMargin: 6
+                        text: "SECTIONS"
+                        color: root.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.1
+                    }
+                    SettingsNavButton {
+                        text: "Couch Mode & appearance"
+                        onClicked: root.positionSettingsItem(couchAttractSettingsSection)
+                    }
+                    SettingsNavButton {
+                        text: "qBittorrent & library paths"
+                        active: root.requestedSettingsSection === "qbittorrent"
+                        onClicked: {
+                            root.requestedSettingsSection = "qbittorrent"
+                            root.positionSettingsItem(qbittorrentSettingsSection)
+                        }
+                    }
+                    SettingsNavButton {
+                        text: "Discovery & downloads"
+                        onClicked: root.positionSettingsItem(regionPrioritySection)
+                    }
+                    SettingsNavButton {
+                        text: "Media accounts"
+                        active: root.requestedSettingsSection === "steamgriddb"
+                                || root.requestedSettingsSection === "igdb"
+                                || root.requestedSettingsSection === "emumovies"
+                        onClicked: root.positionSettingsItem(steamGridDbSettingsSection)
+                    }
+                    SettingsNavButton {
+                        text: "Controllers"
+                        onClicked: root.positionSettingsItem(controllerSection)
+                    }
+                    SettingsNavButton {
+                        text: "RetroArch shaders"
+                        onClicked: root.positionSettingsItem(retroarchShaderSection)
+                    }
+                    SettingsNavButton {
+                        text: "Profile backup"
+                        onClicked: root.positionSettingsItem(profileBackupSection)
+                    }
+                    SettingsNavButton {
+                        text: "Emulators & cores"
+                        onClicked: root.positionSettingsItem(emulatorSettingsSection)
+                    }
+                    Item { Layout.fillHeight: true }
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.margins: 10
+                        text: appSettings.state_database_path
+                        color: "#566175"
+                        font.pixelSize: 8
+                        wrapMode: Text.WrapAnywhere
+                        maximumLineCount: 3
+                        elide: Text.ElideMiddle
+                    }
+                }
+            }
+
+            ScrollView {
+                id: settingsScroll
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ColumnLayout {
+                    x: Math.max(32, (settingsScroll.availableWidth - width) / 2)
+                    width: Math.min(1120, settingsScroll.availableWidth - 64)
+                    spacing: 11
 
                 ColumnLayout {
                     id: couchAttractSettingsSection
@@ -16802,7 +16930,6 @@ ApplicationWindow {
                         }
                     }
                 }
-
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
 
                 Text {
@@ -16866,6 +16993,31 @@ ApplicationWindow {
                         onClicked: appSettings.clear_password()
                     }
                 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    BusyIndicator {
+                        visible: appSettings.busy
+                        running: visible
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: appSettings.connection_ok
+                              ? appSettings.message
+                              : "Verify these Web API settings before enabling downloads. The test uses the values shown above and a saved password when the password field is blank."
+                        color: appSettings.connection_ok ? root.accentCool : root.muted
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                    }
+                    HeaderButton {
+                        text: appSettings.busy ? "TESTING…" : "TEST QBITTORRENT"
+                        active: true
+                        enabled: appSettings.initialized && !appSettings.busy
+                        onClicked: appSettings.test_connection()
+                    }
+                }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
                 Text {
@@ -16892,10 +17044,7 @@ ApplicationWindow {
                     }
                     Button {
                         text: "Choose…"
-                        onClicked: {
-                            root.directoryTarget = "rom"
-                            directoryDialog.open()
-                        }
+                        onClicked: appSettings.choose_native_directory("rom")
                     }
                 }
                 TextField {
@@ -16914,10 +17063,7 @@ ApplicationWindow {
                     }
                     Button {
                         text: "Choose…"
-                        onClicked: {
-                            root.directoryTarget = "torrent"
-                            directoryDialog.open()
-                        }
+                        onClicked: appSettings.choose_native_directory("torrent")
                     }
                 }
                 TextField {
@@ -17356,9 +17502,16 @@ ApplicationWindow {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Search IGDB covers, artwork, and screenshots through a Twitch application. Credentials stay in the operating system credential store, and every game match still requires explicit review."
+                        text: "Search IGDB covers, artwork, and screenshots through a Confidential Twitch Developer application. Credentials stay in the operating-system credential store, and every game match still requires explicit review."
                         color: root.muted
                         font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "In the Twitch console, enable two-factor authentication, register a Confidential application, use localhost for the unused OAuth redirect URL, then generate a Client Secret. Use that Client ID and newest secret here—not an IGDB login or IGDB MCP credential."
+                        color: root.ink
+                        font.pixelSize: 10
                         wrapMode: Text.WordWrap
                     }
                     RowLayout {
@@ -17381,8 +17534,13 @@ ApplicationWindow {
                             echoMode: TextInput.Password
                             enabled: !igdb.busy
                         }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Item { Layout.fillWidth: true }
                         Button {
-                            text: "Test"
+                            text: "Test connection"
                             enabled: !igdb.busy
                                      && (igdb.credentials_saved
                                          || (igdbClientId.text.length > 0
@@ -17391,7 +17549,7 @@ ApplicationWindow {
                                                            igdbClientSecret.text)
                         }
                         HeaderButton {
-                            text: igdb.busy ? "Testing…" : "Save & test"
+                            text: igdb.busy ? "Testing…" : "Save & test credentials"
                             active: true
                             enabled: !igdb.busy && igdbClientId.text.length > 0
                                      && igdbClientSecret.text.length > 0
@@ -17425,8 +17583,13 @@ ApplicationWindow {
                             font.pixelSize: 10
                             wrapMode: Text.WordWrap
                         }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Item { Layout.fillWidth: true }
                         Button {
-                            text: "Register Twitch app ↗"
+                            text: "Register confidential Twitch app ↗"
                             flat: true
                             onClicked: Qt.openUrlExternally(
                                            "https://dev.twitch.tv/console/apps")
@@ -17485,8 +17648,13 @@ ApplicationWindow {
                             echoMode: TextInput.Password
                             enabled: !emuMovies.busy
                         }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Item { Layout.fillWidth: true }
                         Button {
-                            text: "Test"
+                            text: "Test connection"
                             enabled: !emuMovies.busy
                                      && (emuMovies.credentials_saved
                                          || (emuMoviesUsername.text.length > 0
@@ -17496,7 +17664,7 @@ ApplicationWindow {
                                            emuMoviesPassword.text)
                         }
                         HeaderButton {
-                            text: emuMovies.busy ? "Testing…" : "Save & test"
+                            text: emuMovies.busy ? "Testing…" : "Save & test credentials"
                             active: true
                             enabled: !emuMovies.busy
                                      && emuMoviesUsername.text.length > 0
@@ -18767,6 +18935,7 @@ ApplicationWindow {
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
                 Text {
+                    id: emulatorSettingsSection
                     text: "EMULATORS & CORES"
                     color: root.accent
                     font.pixelSize: 10
@@ -18846,11 +19015,6 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     Item { Layout.fillWidth: true }
-                    Button {
-                        text: "Test connection"
-                        enabled: !appSettings.busy
-                        onClicked: appSettings.test_connection()
-                    }
                     HeaderButton {
                         text: "Save settings"
                         enabled: !appSettings.busy
@@ -18858,13 +19022,7 @@ ApplicationWindow {
                         onClicked: appSettings.save()
                     }
                 }
-                Text {
-                    Layout.fillWidth: true
-                    text: appSettings.state_database_path
-                    color: "#566175"
-                    font.pixelSize: 9
-                    elide: Text.ElideMiddle
-                    horizontalAlignment: Text.AlignRight
+                    Item { Layout.preferredHeight: 24 }
                 }
             }
         }

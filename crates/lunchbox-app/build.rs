@@ -67,6 +67,7 @@ fn main() {
                 "qml/HeaderButton.qml",
                 "qml/MetadataField.qml",
                 "qml/SidebarNavButton.qml",
+                "qml/SettingsNavButton.qml",
                 "qml/StatusPill.qml",
                 "qml/Main.qml",
             ]),

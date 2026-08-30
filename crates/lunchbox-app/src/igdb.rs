@@ -293,16 +293,19 @@ impl Client {
         {
             return Ok(cached.access_token.clone());
         }
+        let mut token_url =
+            url::Url::parse(&self.token_url).context("parsing the configured IGDB token URL")?;
+        token_url.query_pairs_mut().clear().extend_pairs([
+            ("client_id", self.client_id.as_str()),
+            ("client_secret", self.client_secret.as_str()),
+            ("grant_type", "client_credentials"),
+        ]);
         let mut response = self
             .agent
-            .post(&self.token_url)
+            .post(token_url.as_str())
             .header("Accept", "application/json")
             .header("User-Agent", "Lunchbox/0.1 IGDB authentication client")
-            .send_form([
-                ("client_id", self.client_id.as_str()),
-                ("client_secret", self.client_secret.as_str()),
-                ("grant_type", "client_credentials"),
-            ])
+            .send_empty()
             .context("requesting an IGDB application access token from Twitch")?;
         let status = response.status().as_u16();
         let body = response
@@ -310,10 +313,7 @@ impl Client {
             .read_to_string()
             .context("reading the Twitch access-token response")?;
         if !(200..300).contains(&status) {
-            bail!(
-                "Twitch rejected the IGDB credentials with HTTP {status}: {}",
-                concise_body(&body)
-            );
+            bail!("{}", token_error_message(status, &body));
         }
         let token: TokenResponse =
             serde_json::from_str(&body).context("parsing the Twitch access-token response")?;
@@ -374,6 +374,24 @@ fn concise_body(body: &str) -> String {
     } else {
         body.chars().take(240).collect()
     }
+}
+
+fn token_error_message(status: u16, body: &str) -> String {
+    let provider_message = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| value.get("message")?.as_str().map(str::to_owned))
+        .unwrap_or_else(|| concise_body(body));
+    if provider_message
+        .to_ascii_lowercase()
+        .contains("invalid client")
+    {
+        return format!(
+            "Twitch rejected the application credentials (HTTP {status}). Use the Client ID and newest Client Secret from a Confidential Twitch Developer application. An IGDB login, Twitch password, or IGDB MCP credential will not work; generating a new secret invalidates the previous one."
+        );
+    }
+    format!(
+        "Twitch rejected the IGDB application credentials with HTTP {status}: {provider_message}"
+    )
 }
 
 #[cfg(test)]
@@ -492,7 +510,7 @@ mod tests {
         assert!(artwork[0].url.ends_with("/t_1080p/ar1abc.jpg"));
 
         let token_request = requests.recv().unwrap();
-        assert!(token_request.starts_with("POST /oauth2/token "));
+        assert!(token_request.starts_with("POST /oauth2/token?"));
         assert!(token_request.contains("client_id=client-id"));
         assert!(token_request.contains("client_secret=client-secret"));
         assert!(token_request.contains("grant_type=client_credentials"));
@@ -551,5 +569,13 @@ mod tests {
             escape_apicalypse_string("Line \"one\"\nnext"),
             "Line \\\"one\\\" next"
         );
+    }
+
+    #[test]
+    fn invalid_client_error_explains_the_required_twitch_application_credentials() {
+        let message = token_error_message(400, r#"{"status":400,"message":"invalid client"}"#);
+        assert!(message.contains("Confidential Twitch Developer application"));
+        assert!(message.contains("newest Client Secret"));
+        assert!(!message.contains("client-secret"));
     }
 }
