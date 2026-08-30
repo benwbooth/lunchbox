@@ -227,6 +227,17 @@ pub struct PortableGameReference {
     pub launchbox_db_id: i64,
     pub title: String,
     pub platform: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub playlist_title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub playlist_notes: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedPortableGameReference {
+    pub game_uid: String,
+    pub playlist_title: String,
+    pub playlist_notes: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -284,6 +295,8 @@ impl PortableCollection {
         for game in &self.games {
             validate_portable_text("game title", &game.title, 500, false)?;
             validate_portable_text("game platform", &game.platform, 300, true)?;
+            validate_portable_text("playlist title", &game.playlist_title, 500, true)?;
+            validate_portable_text("playlist notes", &game.playlist_notes, 4_000, true)?;
             if game.game_uid.trim().is_empty() && game.launchbox_db_id <= 0 {
                 bail!("portable games require a stable game or LaunchBox database ID");
             }
@@ -355,10 +368,10 @@ pub fn load_portable_collection(path: &Path) -> Result<PortableCollection> {
     Ok(portable)
 }
 
-pub fn resolve_portable_game_references(
+pub fn resolve_portable_game_presentations(
     references: &[PortableGameReference],
     catalog_games: &[Game],
-) -> (Vec<String>, usize) {
+) -> (Vec<ResolvedPortableGameReference>, usize) {
     let by_uid = catalog_games
         .iter()
         .map(|game| (game.id.as_str(), game.id.clone()))
@@ -385,7 +398,11 @@ pub fn resolve_portable_game_references(
             });
         if let Some(game_uid) = matched {
             if seen.insert(game_uid.clone()) {
-                resolved.push(game_uid);
+                resolved.push(ResolvedPortableGameReference {
+                    game_uid,
+                    playlist_title: reference.playlist_title.clone(),
+                    playlist_notes: reference.playlist_notes.clone(),
+                });
             }
         } else {
             unavailable = unavailable.saturating_add(1);
@@ -533,6 +550,8 @@ mod tests {
                 launchbox_db_id: 42,
                 title: "Exact Game".to_owned(),
                 platform: "Arcade".to_owned(),
+                playlist_title: "Friday-night edition".to_owned(),
+                playlist_notes: "Use the two-player cabinet.".to_owned(),
             }],
         )
         .unwrap();
@@ -554,23 +573,83 @@ mod tests {
                 launchbox_db_id: 999,
                 title: "A different display title".to_owned(),
                 platform: "A different display platform".to_owned(),
+                playlist_title: "Collection alias".to_owned(),
+                playlist_notes: "Collection notes".to_owned(),
             },
             PortableGameReference {
                 game_uid: "old-metroid-id".to_owned(),
                 launchbox_db_id: 42,
                 title: "Metroid".to_owned(),
                 platform: "NES".to_owned(),
+                playlist_title: String::new(),
+                playlist_notes: String::new(),
             },
             PortableGameReference {
                 game_uid: "missing".to_owned(),
                 launchbox_db_id: 99,
                 title: "Same".to_owned(),
                 platform: "Arcade".to_owned(),
+                playlist_title: String::new(),
+                playlist_notes: String::new(),
             },
         ];
         let (resolved, unavailable) =
-            resolve_portable_game_references(&references, &[metroid, ambiguous_a, ambiguous_b]);
-        assert_eq!(resolved, vec!["metroid"]);
+            resolve_portable_game_presentations(&references, &[metroid, ambiguous_a, ambiguous_b]);
+        assert_eq!(
+            resolved
+                .iter()
+                .map(|reference| reference.game_uid.as_str())
+                .collect::<Vec<_>>(),
+            vec!["metroid"]
+        );
         assert_eq!(unavailable, 1);
+    }
+
+    #[test]
+    fn portable_collection_accepts_legacy_entries_without_playlist_fields() {
+        let portable: PortableCollection = serde_json::from_str(
+            r#"{
+                "format":"lunchbox-collection",
+                "version":1,
+                "name":"Legacy",
+                "description":"",
+                "kind":"manual",
+                "rules":null,
+                "games":[{
+                    "game_uid":"stable-game",
+                    "launchbox_db_id":42,
+                    "title":"Exact Game",
+                    "platform":"Arcade"
+                }]
+            }"#,
+        )
+        .unwrap();
+        portable.validate().unwrap();
+        assert!(portable.games[0].playlist_title.is_empty());
+        assert!(portable.games[0].playlist_notes.is_empty());
+    }
+
+    #[test]
+    fn portable_resolution_preserves_playlist_presentation_by_exact_identity() {
+        let mut exact = game("metroid", "Metroid", "NES");
+        exact.launchbox_db_id = 42;
+        let references = [PortableGameReference {
+            game_uid: "metroid".to_owned(),
+            launchbox_db_id: 42,
+            title: "Metroid".to_owned(),
+            platform: "NES".to_owned(),
+            playlist_title: "Metroid night".to_owned(),
+            playlist_notes: "Continue the shared save.".to_owned(),
+        }];
+        let (resolved, unavailable) = resolve_portable_game_presentations(&references, &[exact]);
+        assert_eq!(unavailable, 0);
+        assert_eq!(
+            resolved,
+            vec![ResolvedPortableGameReference {
+                game_uid: "metroid".to_owned(),
+                playlist_title: "Metroid night".to_owned(),
+                playlist_notes: "Continue the shared save.".to_owned(),
+            }]
+        );
     }
 }

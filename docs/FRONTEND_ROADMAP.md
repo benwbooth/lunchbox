@@ -132,6 +132,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   collection overview reports exact full-shelf and visible totals, platforms,
   installed and Minerva-ready games, favorites, activity, completion, and play
   time from the catalog worker, with direct Edit, Export, and Manage actions.
+  Manual entries also support collection-specific display titles and notes in a
+  dedicated native editor. These exact-ID child records survive reordering,
+  cascade on removal, apply only in the active manual shelf, and round-trip in
+  backwards-compatible portable collection files without changing canonical
+  metadata, matching, downloads, or launch behavior.
 - Native local Library Audit with one prepared catalog index, cancellable
   off-thread scans, exact healthy/changed/duplicate/new/missing/unreadable/root-
   offline states, review-first filtering and sorting, and confirmed stale-row
@@ -211,8 +216,6 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   case-insensitively unique names, keyboard/pointer reordering, details-pane
   presentation, name/value search, and cold-start recovery all preserve the
   exact stable game UUID.
-- Extend the implemented stable-UUID game metadata overlay editor and collection
-  overview with playlist-entry-specific presentation overrides.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.
 - Extend the native collection-wide summary with bulk metadata editing and

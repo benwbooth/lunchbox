@@ -1220,14 +1220,22 @@ mod tests {
         store.save(&settings).unwrap();
         let connection = store.connection().unwrap();
         connection
-            .execute(
+            .execute_batch(
                 "INSERT INTO user_collections (
                      id, name, description, kind, rules_json, created_at, updated_at
                  ) VALUES (
                      'backup-collection', 'Favorites to preserve',
                      'A portable profile fixture', 'manual', '', 1, 1
-                 )",
-                [],
+                 );
+                 INSERT INTO user_collection_games (
+                     collection_id, game_uid, sort_order, added_at
+                 ) VALUES ('backup-collection', 'stable-game', 0, 1);
+                 INSERT INTO user_collection_game_presentations (
+                     collection_id, game_uid, display_title, notes, updated_at
+                 ) VALUES (
+                     'backup-collection', 'stable-game',
+                     'Portable playlist title', 'Portable playlist notes', 1
+                 );",
             )
             .unwrap();
         path
@@ -1267,6 +1275,17 @@ mod tests {
                 .unwrap()
                 .qbittorrent_host,
             "backup.example.test"
+        );
+        let restored_collections = SettingsStore::at(&state)
+            .unwrap()
+            .user_collections()
+            .unwrap();
+        assert_eq!(
+            restored_collections.presentations["backup-collection"]["stable-game"],
+            crate::settings::CollectionMemberPresentation {
+                display_title: "Portable playlist title".to_owned(),
+                notes: "Portable playlist notes".to_owned(),
+            }
         );
         assert_eq!(take_applied_notice(&state).unwrap(), Some(exported));
         assert_eq!(take_applied_notice(&state).unwrap(), None);

@@ -496,6 +496,20 @@ its count from the real catalog, and exits only after the Qt bridge observes the
 expected result. `--smart-collection-ui-probe` opens the same durable rules in
 the native editor and can capture it with `--screenshot-output`.
 
+Manual collection members can carry an optional collection-specific display
+title and notes. The presentation is stored in a child row keyed by the exact
+collection ID and stable game UUID; it never changes canonical metadata,
+matching, downloads, or launch identity. Reordering updates membership rows in
+place so retained overrides survive, while member or collection deletion
+cascades them. The two-pane manager marks customized rows and opens a dedicated
+native editor from the pencil action or a double click. Portable version-1
+collection files add optional `playlist_title` and `playlist_notes` fields, so
+older exports remain readable and exact-ID import/export preserves the new
+presentation. `--collection-presentation-ui-probe --state-database EMPTY_PATH
+--screenshot-output ABSOLUTE_PATH` creates the exact Super Mario Bros. member,
+saves its scoped title and notes through the CXX-Qt worker, validates the
+effective manager title, opens the populated editor, captures it, and exits.
+
 The desktop collection overview is published with the generation-guarded
 catalog result rather than scanned on the Qt thread. Its seed contains the exact
 collection ID, ordered member IDs or smart-rule result, favorites, and durable

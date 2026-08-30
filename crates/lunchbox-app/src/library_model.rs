@@ -263,6 +263,14 @@ pub mod qobject {
         fn report_hover_preview_ui_failure(self: &LibraryModel, detail: QString);
 
         #[qinvokable]
+        fn report_collection_presentation_ui_probe(
+            self: &LibraryModel,
+            playlist_title: QString,
+            notes_length: i32,
+            screenshot: QString,
+        );
+
+        #[qinvokable]
         fn artwork_url(self: &LibraryModel, launchbox_db_id: i32, artwork_type: QString) -> QUrl;
 
         #[qinvokable]
@@ -386,6 +394,34 @@ pub mod qobject {
         ) -> QString;
 
         #[qinvokable]
+        fn collection_member_library_title_at(
+            self: &LibraryModel,
+            collection_index: i32,
+            member_index: i32,
+        ) -> QString;
+
+        #[qinvokable]
+        fn collection_member_playlist_title_at(
+            self: &LibraryModel,
+            collection_index: i32,
+            member_index: i32,
+        ) -> QString;
+
+        #[qinvokable]
+        fn collection_member_notes_at(
+            self: &LibraryModel,
+            collection_index: i32,
+            member_index: i32,
+        ) -> QString;
+
+        #[qinvokable]
+        fn collection_member_has_presentation_at(
+            self: &LibraryModel,
+            collection_index: i32,
+            member_index: i32,
+        ) -> bool;
+
+        #[qinvokable]
         fn collection_member_platform_at(
             self: &LibraryModel,
             collection_index: i32,
@@ -450,6 +486,15 @@ pub mod qobject {
             collection_id: QString,
             game_uid: QString,
             member: bool,
+        );
+
+        #[qinvokable]
+        fn set_collection_member_presentation(
+            self: Pin<&mut LibraryModel>,
+            collection_id: QString,
+            game_uid: QString,
+            display_title: QString,
+            notes: QString,
         );
 
         #[qinvokable]
@@ -597,16 +642,16 @@ use cxx_qt_lib::{QByteArray, QHash, QModelIndex, QString, QUrl, QVariant};
 use crate::catalog::{self, Catalog, Filter};
 use crate::collections::{
     PortableCollection, PortableGameReference, SmartCollectionRules, load_portable_collection,
-    resolve_portable_game_references, save_portable_collection,
+    resolve_portable_game_presentations, save_portable_collection,
 };
 use crate::couch_theme::{CouchTheme, ThemeCatalog};
 use crate::media::{
     ArtworkKind, MediaAsset, MediaFetchOutcome, MediaFetchQueue, MediaFetchRequest, MediaIndex,
 };
 use crate::settings::{
-    CouchModePreferences, GameCustomField, GameMetadataOverride, LibraryPreferences, PlayActivity,
-    SettingsStore, SidebarPreferences, UserCollection, UserCollections, UserTag, UserTags,
-    couch_collection_id,
+    CollectionMemberPresentation, CouchModePreferences, GameCustomField, GameMetadataOverride,
+    LibraryPreferences, PlayActivity, SettingsStore, SidebarPreferences, UserCollection,
+    UserCollections, UserTag, UserTags, couch_collection_id,
 };
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
@@ -909,6 +954,8 @@ pub struct LibraryModelRust {
     collections: Arc<Vec<UserCollection>>,
     collection_members: Arc<HashMap<String, Arc<HashSet<String>>>>,
     collection_order: Arc<HashMap<String, Arc<Vec<String>>>>,
+    collection_presentations: Arc<HashMap<String, HashMap<String, CollectionMemberPresentation>>>,
+    active_presentation_collection_id: String,
     completion_states: Arc<HashMap<String, String>>,
     play_activity: Arc<HashMap<String, PlayActivity>>,
     metadata_titles: Arc<HashMap<String, String>>,
@@ -1106,6 +1153,8 @@ impl Default for LibraryModelRust {
             collections: Arc::new(Vec::new()),
             collection_members: Arc::new(HashMap::new()),
             collection_order: Arc::new(HashMap::new()),
+            collection_presentations: Arc::new(HashMap::new()),
+            active_presentation_collection_id: String::new(),
             completion_states: Arc::new(HashMap::new()),
             play_activity: Arc::new(HashMap::new()),
             metadata_titles: Arc::new(HashMap::new()),
@@ -1148,6 +1197,20 @@ fn metadata_display_title<'a>(
         .get(&game.id)
         .map(String::as_str)
         .unwrap_or(&game.title)
+}
+
+fn collection_scoped_display_title<'a>(
+    game: &'a catalog::Game,
+    metadata_titles: &'a HashMap<String, String>,
+    collection_presentations: &'a HashMap<String, HashMap<String, CollectionMemberPresentation>>,
+    active_presentation_collection_id: &str,
+) -> &'a str {
+    collection_presentations
+        .get(active_presentation_collection_id)
+        .and_then(|presentations| presentations.get(&game.id))
+        .map(|presentation| presentation.display_title.as_str())
+        .filter(|title| !title.is_empty())
+        .unwrap_or_else(|| metadata_display_title(game, metadata_titles))
 }
 
 fn effective_cooperative<'a>(
@@ -1325,6 +1388,28 @@ fn collection_member_game(
         .get(member_index)?;
     let game_index = *model.rust().game_index_by_id.get(game_uid)?;
     model.rust().catalog.games.get(game_index)
+}
+
+fn collection_member_presentation(
+    model: &qobject::LibraryModel,
+    collection_index: i32,
+    member_index: i32,
+) -> Option<&CollectionMemberPresentation> {
+    let collection = collection_at(model, collection_index)?;
+    if collection.kind != "manual" {
+        return None;
+    }
+    let member_index = usize::try_from(member_index).ok()?;
+    let game_uid = model
+        .rust()
+        .collection_order
+        .get(&collection.id)?
+        .get(member_index)?;
+    model
+        .rust()
+        .collection_presentations
+        .get(&collection.id)?
+        .get(game_uid)
 }
 
 fn smart_rules_from_fields(
@@ -1633,6 +1718,10 @@ impl qobject::LibraryModel {
         self.as_mut().set_ready(false);
         self.as_mut().set_filtering(false);
         self.as_mut().set_loading(true);
+        self.as_mut()
+            .rust_mut()
+            .active_presentation_collection_id
+            .clear();
         self.as_mut().apply_active_collection_summary(None);
         self.as_mut()
             .set_status_message(qstring("Loading the catalog…"));
@@ -1953,17 +2042,23 @@ impl qobject::LibraryModel {
                     .iter()
                     .filter(|game| favorite_game_ids.contains(&game.id))
                     .count();
-                let (collections, collection_order, collection_warning) = match collections {
-                    Ok(collections) => {
-                        let members = collections
-                            .members
-                            .into_iter()
-                            .map(|(id, games)| (id, Arc::new(games)))
-                            .collect::<HashMap<_, _>>();
-                        (collections.collections, members, None)
-                    }
-                    Err(error) => (Vec::new(), HashMap::new(), Some(error)),
-                };
+                let (collections, collection_order, collection_presentations, collection_warning) =
+                    match collections {
+                        Ok(collections) => {
+                            let members = collections
+                                .members
+                                .into_iter()
+                                .map(|(id, games)| (id, Arc::new(games)))
+                                .collect::<HashMap<_, _>>();
+                            (
+                                collections.collections,
+                                members,
+                                collections.presentations,
+                                None,
+                            )
+                        }
+                        Err(error) => (Vec::new(), HashMap::new(), HashMap::new(), Some(error)),
+                    };
                 let collection_count = collections.len();
                 let (recent_game_order, completion_states, play_activity, activity_warning) =
                     match activity {
@@ -2083,6 +2178,7 @@ impl qobject::LibraryModel {
                     rust.game_index_by_id = Arc::new(game_index_by_id);
                     rust.collections = Arc::new(collections);
                     rust.collection_order = Arc::new(collection_order);
+                    rust.collection_presentations = Arc::new(collection_presentations);
                 }
                 self.as_mut().rebuild_smart_collections();
                 self.as_mut().end_reset_model();
@@ -2321,10 +2417,17 @@ impl qobject::LibraryModel {
             .as_ref()
             .map(|seed| seed.id.as_str())
             .unwrap_or_default();
+        let next_presentation_collection_id = summary_seed
+            .as_ref()
+            .filter(|seed| seed.kind == "manual")
+            .map(|seed| seed.id.clone())
+            .unwrap_or_default();
         if self.as_ref().active_collection_id().to_string() != next_collection_id {
             self.as_mut().apply_active_collection_summary(None);
         }
         self.as_mut().rust_mut().current_search = search.to_string();
+        self.as_mut().rust_mut().active_presentation_collection_id =
+            next_presentation_collection_id;
         self.as_mut().set_current_platform(platform);
         self.as_mut().set_availability_filter(availability);
         self.as_mut().rust_mut().filter_generation =
@@ -2931,6 +3034,20 @@ impl qobject::LibraryModel {
         if *self.hover_preview_probe() {
             eprintln!("LUNCHBOX_HOVER_PREVIEW_UI_FAILED {}", detail.to_string());
         }
+    }
+
+    pub fn report_collection_presentation_ui_probe(
+        &self,
+        playlist_title: QString,
+        notes_length: i32,
+        screenshot: QString,
+    ) {
+        println!(
+            "LUNCHBOX_COLLECTION_PRESENTATION_UI_READY title={:?} notes={} screenshot={:?}",
+            playlist_title.to_string(),
+            notes_length,
+            screenshot.to_string()
+        );
     }
 
     pub fn artwork_url(&self, launchbox_db_id: i32, artwork_type: QString) -> QUrl {
@@ -3715,6 +3832,20 @@ impl qobject::LibraryModel {
     }
 
     pub fn collection_member_name_at(&self, collection_index: i32, member_index: i32) -> QString {
+        if let Some(title) = collection_member_presentation(self, collection_index, member_index)
+            .map(|presentation| presentation.display_title.as_str())
+            .filter(|title| !title.is_empty())
+        {
+            return qstring(title);
+        }
+        self.collection_member_library_title_at(collection_index, member_index)
+    }
+
+    pub fn collection_member_library_title_at(
+        &self,
+        collection_index: i32,
+        member_index: i32,
+    ) -> QString {
         collection_member_game(self, collection_index, member_index)
             .map(|game| {
                 qstring(
@@ -3725,6 +3856,30 @@ impl qobject::LibraryModel {
                 )
             })
             .unwrap_or_default()
+    }
+
+    pub fn collection_member_playlist_title_at(
+        &self,
+        collection_index: i32,
+        member_index: i32,
+    ) -> QString {
+        collection_member_presentation(self, collection_index, member_index)
+            .map(|presentation| qstring(&presentation.display_title))
+            .unwrap_or_default()
+    }
+
+    pub fn collection_member_notes_at(&self, collection_index: i32, member_index: i32) -> QString {
+        collection_member_presentation(self, collection_index, member_index)
+            .map(|presentation| qstring(&presentation.notes))
+            .unwrap_or_default()
+    }
+
+    pub fn collection_member_has_presentation_at(
+        &self,
+        collection_index: i32,
+        member_index: i32,
+    ) -> bool {
+        collection_member_presentation(self, collection_index, member_index).is_some()
     }
 
     pub fn collection_member_platform_at(
@@ -4016,6 +4171,65 @@ impl qobject::LibraryModel {
         );
     }
 
+    pub fn set_collection_member_presentation(
+        mut self: Pin<&mut Self>,
+        collection_id: QString,
+        game_uid: QString,
+        display_title: QString,
+        notes: QString,
+    ) {
+        if !self.as_ref().can_change_collections() {
+            return;
+        }
+        let collection_id = collection_id.to_string();
+        let game_uid = game_uid.to_string();
+        let is_manual_member = self
+            .as_ref()
+            .rust()
+            .collections
+            .iter()
+            .any(|collection| collection.id == collection_id && collection.kind == "manual")
+            && self
+                .as_ref()
+                .rust()
+                .collection_members
+                .get(&collection_id)
+                .is_some_and(|members| members.contains(&game_uid));
+        if !is_manual_member {
+            self.as_mut().set_collection_message(qstring(
+                "Presentation was not changed because the manual collection entry is unavailable.",
+            ));
+            return;
+        }
+        let display_title = display_title.to_string();
+        let notes = notes.to_string();
+        self.as_mut()
+            .start_collection_task("lunchbox-collection-presentation", None, move || {
+                let store = SettingsStore::open_default().map_err(|error| error.to_string())?;
+                let presentation = store
+                    .set_collection_member_presentation(
+                        &collection_id,
+                        &game_uid,
+                        &display_title,
+                        &notes,
+                    )
+                    .map_err(|error| error.to_string())?;
+                let collections = store
+                    .user_collections()
+                    .map_err(|error| error.to_string())?;
+                Ok(CollectionMutation::Reloaded {
+                    collections,
+                    message: if presentation.display_title.is_empty()
+                        && presentation.notes.is_empty()
+                    {
+                        "Restored the library presentation for this collection entry.".to_owned()
+                    } else {
+                        "Saved this collection entry's title and notes.".to_owned()
+                    },
+                })
+            });
+    }
+
     pub fn move_collection_game(
         mut self: Pin<&mut Self>,
         collection_id: QString,
@@ -4144,6 +4358,7 @@ impl qobject::LibraryModel {
         };
         let catalog = Arc::clone(&self.as_ref().rust().catalog);
         let collection_order = Arc::clone(&self.as_ref().rust().collection_order);
+        let collection_presentations = Arc::clone(&self.as_ref().rust().collection_presentations);
         let game_index_by_id = Arc::clone(&self.as_ref().rust().game_index_by_id);
         let games = if collection.kind == "smart" {
             Vec::new()
@@ -4154,13 +4369,24 @@ impl qobject::LibraryModel {
                 .flat_map(|order| order.iter())
                 .filter_map(|game_uid| {
                     let index = *game_index_by_id.get(game_uid)?;
-                    catalog.games.get(index)
+                    Some((game_uid, catalog.games.get(index)?))
                 })
-                .map(|game| PortableGameReference {
-                    game_uid: game.id.clone(),
-                    launchbox_db_id: game.launchbox_db_id,
-                    title: game.title.clone(),
-                    platform: game.platform.clone(),
+                .map(|(game_uid, game)| {
+                    let presentation = collection_presentations
+                        .get(&collection_id)
+                        .and_then(|presentations| presentations.get(game_uid));
+                    PortableGameReference {
+                        game_uid: game.id.clone(),
+                        launchbox_db_id: game.launchbox_db_id,
+                        title: game.title.clone(),
+                        platform: game.platform.clone(),
+                        playlist_title: presentation
+                            .map(|presentation| presentation.display_title.clone())
+                            .unwrap_or_default(),
+                        playlist_notes: presentation
+                            .map(|presentation| presentation.notes.clone())
+                            .unwrap_or_default(),
+                    }
                 })
                 .collect::<Vec<_>>()
         };
@@ -4222,14 +4448,32 @@ impl qobject::LibraryModel {
                     let name = collection.name.clone();
                     (collection, format!("Imported smart collection {name}."))
                 } else {
-                    let (members, unavailable) =
-                        resolve_portable_game_references(&portable.games, &catalog.games);
+                    let (entries, unavailable) =
+                        resolve_portable_game_presentations(&portable.games, &catalog.games);
+                    let members = entries
+                        .iter()
+                        .map(|entry| entry.game_uid.clone())
+                        .collect::<Vec<_>>();
                     let collection = store
                         .create_collection(&portable.name, &portable.description)
                         .map_err(|error| error.to_string())?;
                     if let Err(error) = store.replace_collection_members(&collection.id, &members) {
                         let _ = store.delete_collection(&collection.id);
                         return Err(error.to_string());
+                    }
+                    for entry in &entries {
+                        if entry.playlist_title.is_empty() && entry.playlist_notes.is_empty() {
+                            continue;
+                        }
+                        if let Err(error) = store.set_collection_member_presentation(
+                            &collection.id,
+                            &entry.game_uid,
+                            &entry.playlist_title,
+                            &entry.playlist_notes,
+                        ) {
+                            let _ = store.delete_collection(&collection.id);
+                            return Err(error.to_string());
+                        }
                     }
                     let name = collection.name.clone();
                     (
@@ -4330,16 +4574,21 @@ impl qobject::LibraryModel {
         collections: UserCollections,
         message: String,
     ) {
-        let order = collections
-            .members
+        let UserCollections {
+            collections,
+            members,
+            presentations,
+        } = collections;
+        let order = members
             .into_iter()
             .map(|(collection_id, game_uids)| (collection_id, Arc::new(game_uids)))
             .collect::<HashMap<_, _>>();
         {
             let mut this = self.as_mut();
             let mut rust = this.as_mut().rust_mut();
-            rust.collections = Arc::new(collections.collections);
+            rust.collections = Arc::new(collections);
             rust.collection_order = Arc::new(order);
+            rust.collection_presentations = Arc::new(presentations);
         }
         self.as_mut().rebuild_smart_collections();
         let count = self.as_ref().rust().collections.len();
@@ -4527,6 +4776,7 @@ impl qobject::LibraryModel {
                         .retain(|collection| collection.id != collection_id);
                     Arc::make_mut(&mut rust.collection_members).remove(&collection_id);
                     Arc::make_mut(&mut rust.collection_order).remove(&collection_id);
+                    Arc::make_mut(&mut rust.collection_presentations).remove(&collection_id);
                     rust.collections.len()
                 };
                 self.as_mut()
@@ -4548,6 +4798,13 @@ impl qobject::LibraryModel {
                 }
             }
             Ok(CollectionMutation::Membership(membership)) => {
+                if !membership.member
+                    && let Some(presentations) =
+                        Arc::make_mut(&mut self.as_mut().rust_mut().collection_presentations)
+                            .get_mut(&membership.collection_id)
+                {
+                    presentations.remove(&membership.game_uid);
+                }
                 self.as_mut()
                     .set_collection_message(qstring(if membership.member {
                         "Added game to collection."
@@ -5557,12 +5814,15 @@ impl qobject::LibraryModel {
         };
 
         match role {
-            DISPLAY_ROLE | GAME_TITLE_ROLE => QVariant::from(&qstring(
-                self.rust()
-                    .metadata_titles
-                    .get(&game.id)
-                    .unwrap_or(&game.title),
-            )),
+            DISPLAY_ROLE | GAME_TITLE_ROLE => {
+                let title = collection_scoped_display_title(
+                    game,
+                    &self.rust().metadata_titles,
+                    &self.rust().collection_presentations,
+                    &self.rust().active_presentation_collection_id,
+                );
+                QVariant::from(&qstring(title))
+            }
             GAME_ID_ROLE => QVariant::from(&qstring(&game.id)),
             GAME_PLATFORM_ROLE => QVariant::from(&qstring(&game.platform)),
             GAME_STATUS_ROLE => QVariant::from(&qstring(&game.status)),
@@ -5631,6 +5891,48 @@ mod tests {
             cooperative: String::new(),
             search_key: format!("{id}\n{platform}"),
         }
+    }
+
+    #[test]
+    fn playlist_titles_are_visible_only_in_their_active_manual_collection() {
+        let game = game("stable-game", "Arcade", false, true);
+        let metadata_titles = HashMap::from([(
+            "stable-game".to_owned(),
+            "Library metadata title".to_owned(),
+        )]);
+        let presentations = HashMap::from([(
+            "family-night".to_owned(),
+            HashMap::from([(
+                "stable-game".to_owned(),
+                CollectionMemberPresentation {
+                    display_title: "Family-night title".to_owned(),
+                    notes: "Shared-save notes".to_owned(),
+                },
+            )]),
+        )]);
+
+        assert_eq!(
+            collection_scoped_display_title(
+                &game,
+                &metadata_titles,
+                &presentations,
+                "family-night",
+            ),
+            "Family-night title"
+        );
+        assert_eq!(
+            collection_scoped_display_title(&game, &metadata_titles, &presentations, ""),
+            "Library metadata title"
+        );
+        assert_eq!(
+            collection_scoped_display_title(
+                &game,
+                &metadata_titles,
+                &presentations,
+                "another-collection",
+            ),
+            "Library metadata title"
+        );
     }
 
     fn activity(game_uid: &str, play_count: i64, seconds: i64, completion: &str) -> PlayActivity {

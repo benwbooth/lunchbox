@@ -13,7 +13,8 @@ ApplicationWindow {
     width: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || webArtworkUiProbe || onboardingUiProbe
-           || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
+           || collectionUiProbe || smartCollectionUiProbe
+           || collectionPresentationUiProbe || libraryAuditUiProbe
            || mediaAuditUiProbe
            || installManagementUiProbe
            || downloadRecoveryUiProbe
@@ -26,7 +27,8 @@ ApplicationWindow {
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || webArtworkUiProbe || onboardingUiProbe
-            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
+            || collectionUiProbe || smartCollectionUiProbe
+            || collectionPresentationUiProbe || libraryAuditUiProbe
             || mediaAuditUiProbe
             || installManagementUiProbe
             || downloadRecoveryUiProbe
@@ -54,6 +56,8 @@ ApplicationWindow {
     property string selectedCollectionName: ""
     property string editingCollectionId: ""
     property string editingCollectionKind: "manual"
+    property string editingCollectionMemberCollectionId: ""
+    property string editingCollectionMemberGameUid: ""
     property string deletingCollectionId: ""
     property string deletingCollectionName: ""
     property string bulkCollectionId: ""
@@ -116,6 +120,7 @@ ApplicationWindow {
     property bool collectionSummaryProbeCaptured: false
     property bool smartCollectionSummaryProbeArmed: false
     property bool smartCollectionSummaryProbeCaptured: false
+    property int collectionPresentationProbeStage: 0
     property bool libraryViewProbeArmed: false
     property int listFilterProbeStage: 0
     property string listFilterProbeValue: ""
@@ -244,6 +249,7 @@ ApplicationWindow {
     readonly property bool smartCollectionSummaryUiProbe: Qt.application.arguments.indexOf("--smart-collection-summary-ui-probe") >= 0
     readonly property bool smartCollectionUiProbe: smartCollectionSummaryUiProbe
                                                      || Qt.application.arguments.indexOf("--smart-collection-ui-probe") >= 0
+    readonly property bool collectionPresentationUiProbe: Qt.application.arguments.indexOf("--collection-presentation-ui-probe") >= 0
     readonly property bool libraryViewRestoreUiProbe: Qt.application.arguments.indexOf("--library-view-restored-ui-probe") >= 0
     readonly property bool libraryViewUiProbe: libraryViewRestoreUiProbe
                                                 || Qt.application.arguments.indexOf("--library-view-ui-probe") >= 0
@@ -715,6 +721,37 @@ ApplicationWindow {
         collectionEditorDialog.close()
     }
 
+    function openCollectionMemberPresentationDialog(collectionIndex, memberIndex) {
+        if (collectionIndex < 0 || memberIndex < 0
+                || library.collection_kind_at(collectionIndex) !== "manual")
+            return
+        root.editingCollectionMemberCollectionId =
+                library.collection_id_at(collectionIndex)
+        root.editingCollectionMemberGameUid =
+                library.collection_member_game_uid_at(collectionIndex, memberIndex)
+        collectionMemberPresentationDialog.prepare(
+                    library.collection_name_at(collectionIndex),
+                    library.collection_member_library_title_at(collectionIndex, memberIndex),
+                    library.collection_member_platform_at(collectionIndex, memberIndex),
+                    root.editingCollectionMemberGameUid,
+                    library.collection_member_playlist_title_at(collectionIndex, memberIndex),
+                    library.collection_member_notes_at(collectionIndex, memberIndex))
+        collectionMemberPresentationDialog.open()
+    }
+
+    function saveCollectionMemberPresentation(playlistTitle, entryNotes) {
+        if (root.editingCollectionMemberCollectionId.length === 0
+                || root.editingCollectionMemberGameUid.length === 0
+                || library.collection_busy)
+            return
+        library.set_collection_member_presentation(
+                    root.editingCollectionMemberCollectionId,
+                    root.editingCollectionMemberGameUid,
+                    playlistTitle,
+                    entryNotes)
+        collectionMemberPresentationDialog.close()
+    }
+
     function collectionIndex(collectionId) {
         for (let index = 0; index < library.collection_count; ++index) {
             if (library.collection_id_at(index) === collectionId)
@@ -729,6 +766,70 @@ ApplicationWindow {
                 return index
         }
         return -1
+    }
+
+    function collectionMemberIndex(collectionIndex, gameUid) {
+        const count = library.collection_game_count_at(collectionIndex)
+        for (let index = 0; index < count; ++index) {
+            if (library.collection_member_game_uid_at(collectionIndex, index) === gameUid)
+                return index
+        }
+        return -1
+    }
+
+    function advanceCollectionPresentationProbe() {
+        if (!root.collectionPresentationUiProbe
+                || root.collectionPresentationProbeStage >= 5
+                || !library.ready || library.collection_busy)
+            return
+        const collectionName = "Presentation Probe"
+        const gameUid = "9697a5eb-e0b4-4f24-8d43-672701414ee7"
+        const playlistTitle = "Super Mario Bros. · Family night"
+        const notes = "Use the shared controller profile and continue the family save."
+        const collectionIndex = root.collectionIndexByName(collectionName)
+        if (collectionIndex < 0) {
+            root.collectionPresentationProbeStage = 1
+            library.create_collection(collectionName,
+                                      "A hand-curated shelf with entry-specific presentation.")
+            return
+        }
+        if (library.collection_kind_at(collectionIndex) !== "manual") {
+            console.error("LUNCHBOX_COLLECTION_PRESENTATION_UI_FAILED reason=not-manual")
+            Qt.exit(2)
+            return
+        }
+        const collectionId = library.collection_id_at(collectionIndex)
+        if (!library.collection_contains(collectionId, gameUid)) {
+            root.collectionPresentationProbeStage = 2
+            library.set_collection_membership(collectionId, gameUid, true)
+            return
+        }
+        const memberIndex = root.collectionMemberIndex(collectionIndex, gameUid)
+        if (memberIndex < 0) {
+            console.error("LUNCHBOX_COLLECTION_PRESENTATION_UI_FAILED reason=missing-member")
+            Qt.exit(2)
+            return
+        }
+        if (library.collection_member_playlist_title_at(collectionIndex, memberIndex)
+                !== playlistTitle
+                || library.collection_member_notes_at(collectionIndex, memberIndex) !== notes) {
+            root.collectionPresentationProbeStage = 3
+            library.set_collection_member_presentation(collectionId, gameUid,
+                                                        playlistTitle, notes)
+            return
+        }
+        if (library.collection_member_name_at(collectionIndex, memberIndex)
+                !== playlistTitle
+                || !library.collection_member_has_presentation_at(collectionIndex, memberIndex)) {
+            console.error("LUNCHBOX_COLLECTION_PRESENTATION_UI_FAILED reason=effective-title")
+            Qt.exit(2)
+            return
+        }
+        root.collectionPresentationProbeStage = 5
+        managedCollectionList.currentIndex = collectionIndex
+        manageCollectionsDialog.open()
+        root.openCollectionMemberPresentationDialog(collectionIndex, memberIndex)
+        collectionPresentationCaptureTimer.restart()
     }
 
     function prepareCouchCollectionProbe() {
@@ -1223,6 +1324,58 @@ ApplicationWindow {
     }
 
     Timer {
+        interval: 100
+        running: root.collectionPresentationUiProbe
+                 && root.collectionPresentationProbeStage < 5
+        repeat: true
+        onTriggered: root.advanceCollectionPresentationProbe()
+    }
+
+    Timer {
+        id: collectionPresentationCaptureTimer
+        interval: 360
+        repeat: false
+        onTriggered: {
+            const expectedTitle = "Super Mario Bros. · Family night"
+            const expectedNotes = "Use the shared controller profile and continue the family save."
+            if (!collectionMemberPresentationDialog.opened
+                    || collectionMemberPresentationDialog.playlistTitle !== expectedTitle
+                    || collectionMemberPresentationDialog.entryNotes !== expectedNotes
+                    || collectionMemberPresentationDialog.libraryTitle.length === 0
+                    || collectionMemberPresentationDialog.gameUid
+                       !== "9697a5eb-e0b4-4f24-8d43-672701414ee7") {
+                console.error("LUNCHBOX_COLLECTION_PRESENTATION_UI_FAILED reason=dialog-state")
+                Qt.exit(2)
+                return
+            }
+            const report = function(screenshot) {
+                library.report_collection_presentation_ui_probe(
+                            collectionMemberPresentationDialog.playlistTitle,
+                            collectionMemberPresentationDialog.entryNotes.length,
+                            screenshot)
+                console.error("LUNCHBOX_COLLECTION_PRESENTATION_UI_READY title=\""
+                             + collectionMemberPresentationDialog.playlistTitle
+                             + "\" notes="
+                             + collectionMemberPresentationDialog.entryNotes.length
+                             + " screenshot=" + screenshot)
+                Qt.callLater(Qt.quit)
+            }
+            if (root.screenshotOutput.length === 0) {
+                report("")
+                return
+            }
+            collectionMemberPresentationDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_COLLECTION_PRESENTATION_UI_FAILED reason=screenshot")
+                    Qt.exit(2)
+                    return
+                }
+                report(root.screenshotOutput)
+            })
+        }
+    }
+
+    Timer {
         id: hoverPreviewDelay
         interval: 220
         repeat: false
@@ -1342,8 +1495,25 @@ ApplicationWindow {
                 Qt.exit(2)
                 return
             }
-            library.report_hover_preview_ui_probe()
-            Qt.quit()
+            const reportReady = function() {
+                library.report_hover_preview_ui_probe()
+                Qt.quit()
+            }
+            if (root.screenshotOutput.length === 0) {
+                reportReady()
+                return
+            }
+            root.hoverPreviewTile.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    const detail = "could not save hover screenshot="
+                                   + root.screenshotOutput
+                    console.error("LUNCHBOX_HOVER_PREVIEW_UI_FAILED " + detail)
+                    library.report_hover_preview_ui_failure(detail)
+                    Qt.exit(2)
+                    return
+                }
+                reportReady()
+            })
         }
     }
 
@@ -12237,6 +12407,27 @@ ApplicationWindow {
         }
     }
 
+    CollectionMemberPresentationDialog {
+        id: collectionMemberPresentationDialog
+        anchors.centerIn: parent
+        ink: root.ink
+        muted: root.muted
+        panel: root.panel
+        panelRaised: root.panelRaised
+        line: root.line
+        accent: root.accent
+        accentCool: root.accentCool
+        busy: library.collection_busy
+        statusMessage: library.collection_message
+        onSaveRequested: (playlistTitle, entryNotes) => {
+            root.saveCollectionMemberPresentation(playlistTitle, entryNotes)
+        }
+        onClosed: {
+            root.editingCollectionMemberCollectionId = ""
+            root.editingCollectionMemberGameUid = ""
+        }
+    }
+
     Dialog {
         id: manageCollectionsDialog
         modal: true
@@ -12285,7 +12476,7 @@ ApplicationWindow {
             spacing: 12
             Text {
                 Layout.fillWidth: true
-                text: "Organize exact local identities into hand-curated shelves or automatic views. Collections never rename, merge, or delete games."
+                text: "Organize exact local identities into hand-curated shelves or automatic views. Manual entries may have shelf-specific titles and notes without changing library metadata."
                 color: root.muted
                 font.pixelSize: 11
                 wrapMode: Text.WordWrap
@@ -12528,11 +12719,22 @@ ApplicationWindow {
                                 id: memberRow
                                 required property int index
                                 property int revision: library.collection_revision
+                                readonly property bool customPresentation: {
+                                    memberRow.revision
+                                    return library.collection_member_has_presentation_at(
+                                                collectionInspector.selectedIndex,
+                                                memberRow.index)
+                                }
                                 width: ListView.view.width
-                                height: 48
+                                height: 52
                                 radius: 7
                                 color: memberHover.hovered ? "#1a2432" : "transparent"
                                 HoverHandler { id: memberHover }
+                                TapHandler {
+                                    onDoubleTapped: root.openCollectionMemberPresentationDialog(
+                                                        collectionInspector.selectedIndex,
+                                                        memberRow.index)
+                                }
                                 Column {
                                     anchors.left: parent.left
                                     anchors.right: memberActions.left
@@ -12552,14 +12754,29 @@ ApplicationWindow {
                                         font.pixelSize: 12
                                         elide: Text.ElideRight
                                     }
-                                    Text {
+                                    Row {
                                         width: parent.width
-                                        text: library.collection_member_platform_at(
-                                                  collectionInspector.selectedIndex,
-                                                  memberRow.index)
-                                        color: root.muted
-                                        font.pixelSize: 9
-                                        elide: Text.ElideRight
+                                        spacing: 7
+                                        Text {
+                                            width: Math.max(0, parent.width
+                                                   - (memberRow.customPresentation
+                                                      ? playlistBadge.implicitWidth + 7 : 0))
+                                            text: library.collection_member_platform_at(
+                                                      collectionInspector.selectedIndex,
+                                                      memberRow.index)
+                                            color: root.muted
+                                            font.pixelSize: 9
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            id: playlistBadge
+                                            visible: memberRow.customPresentation
+                                            text: "PLAYLIST"
+                                            color: root.accentCool
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 0.8
+                                        }
                                     }
                                 }
                                 Row {
@@ -12569,6 +12786,15 @@ ApplicationWindow {
                                     anchors.rightMargin: 6
                                     anchors.verticalCenter: parent.verticalCenter
                                     spacing: 2
+                                    ToolButton {
+                                        text: "✎"
+                                        enabled: !library.collection_busy
+                                        onClicked: root.openCollectionMemberPresentationDialog(
+                                                       collectionInspector.selectedIndex,
+                                                       memberRow.index)
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Edit title and notes for this collection"
+                                    }
                                     ToolButton {
                                         text: "↑"
                                         enabled: memberRow.index > 0 && !library.collection_busy

@@ -60,6 +60,7 @@ fn main() {
                 "qml/AuditMetric.qml",
                 "qml/CatalogLinkButton.qml",
                 "qml/CollectionMetric.qml",
+                "qml/CollectionMemberPresentationDialog.qml",
                 "qml/CouchModeView.qml",
                 "qml/Box3DViewer.qml",
                 "qml/EmuMoviesTransferStatus.qml",

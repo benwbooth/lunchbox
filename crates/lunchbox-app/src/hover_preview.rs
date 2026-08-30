@@ -20,13 +20,15 @@ pub fn requested_cached_video(
     }))
 }
 
-pub fn seed_ui_probe() -> Result<PathBuf> {
-    let fixture =
-        crate::catalog::requested_path("--preview-video-fixture", "LUNCHBOX_PREVIEW_VIDEO_FIXTURE")
-            .context("the hover-preview UI probe requires --preview-video-fixture")?;
+pub fn prepare_ui_probe() -> Result<Option<PathBuf>> {
     let media_root =
         crate::catalog::requested_path("--media-directory", "LUNCHBOX_MEDIA_DIRECTORY")
             .context("the hover-preview UI probe requires an explicit --media-directory")?;
+    let Some(fixture) =
+        crate::catalog::requested_path("--preview-video-fixture", "LUNCHBOX_PREVIEW_VIDEO_FIXTURE")
+    else {
+        return Ok(None);
+    };
     let metadata = fixture
         .metadata()
         .with_context(|| format!("inspecting preview fixture {}", fixture.display()))?;
@@ -57,7 +59,7 @@ pub fn seed_ui_probe() -> Result<PathBuf> {
     })?;
     let target = target_directory.join(format!("video.{extension}"));
     publish_probe_fixture(&fixture, &target)?;
-    Ok(target)
+    Ok(Some(target))
 }
 
 fn publish_probe_fixture(source: &Path, target: &Path) -> Result<()> {

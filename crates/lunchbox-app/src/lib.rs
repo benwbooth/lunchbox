@@ -120,8 +120,9 @@ pub fn run() -> i32 {
     }
 
     if std::env::args().any(|argument| argument == "--hover-preview-ui-probe") {
-        match hover_preview::seed_ui_probe() {
-            Ok(path) => println!("LUNCHBOX_HOVER_PREVIEW_SEEDED path={path:?}"),
+        match hover_preview::prepare_ui_probe() {
+            Ok(Some(path)) => println!("LUNCHBOX_HOVER_PREVIEW_SEEDED path={path:?}"),
+            Ok(None) => println!("LUNCHBOX_HOVER_PREVIEW_DOWNLOAD_PROBE clean_cache=true"),
             Err(error) => {
                 eprintln!("LUNCHBOX_HOVER_PREVIEW_UI_FAILED seed error={error:#}");
                 return 1;
