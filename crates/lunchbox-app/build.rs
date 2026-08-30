@@ -57,6 +57,7 @@ fn main() {
             .depend("QtMultimedia")
             .qml_files([
                 "qml/AcceleratedWheelHandler.qml",
+                "qml/AlphabetRail.qml",
                 "qml/AuditMetric.qml",
                 "qml/CatalogLinkButton.qml",
                 "qml/CollectionMetric.qml",

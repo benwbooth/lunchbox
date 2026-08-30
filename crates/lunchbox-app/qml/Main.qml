@@ -21,7 +21,7 @@ ApplicationWindow {
            || variantUiProbe || relatedGamesUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
            || profileBackupUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
-           || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
+           || libraryViewUiProbe || listFilterUiProbe || alphabetUiProbe || hoverPreviewUiProbe
            || soundtrackUiProbe || settingsUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
@@ -35,7 +35,7 @@ ApplicationWindow {
             || variantUiProbe || relatedGamesUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
             || profileBackupUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
-            || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
+            || libraryViewUiProbe || listFilterUiProbe || alphabetUiProbe || hoverPreviewUiProbe
             || soundtrackUiProbe || settingsUiProbe
             ? 1200 : 900
     minimumWidth: 1040
@@ -128,6 +128,10 @@ ApplicationWindow {
     property int listFilterProbeStage: 0
     property string listFilterProbeValue: ""
     property int listFilterProbeExpectedCount: 0
+    property int alphabetProbeStage: 0
+    property int alphabetProbeMRow: -1
+    property int alphabetProbeZRow: -1
+    property string alphabetProbeMTitle: ""
     property var hoverPreviewTile: null
     property string hoverPreviewPendingGameId: ""
     property bool hoverPreviewPlaying: false
@@ -265,6 +269,7 @@ ApplicationWindow {
     readonly property bool libraryViewUiProbe: libraryViewRestoreUiProbe
                                                 || Qt.application.arguments.indexOf("--library-view-ui-probe") >= 0
     readonly property bool listFilterUiProbe: Qt.application.arguments.indexOf("--list-filter-ui-probe") >= 0
+    readonly property bool alphabetUiProbe: Qt.application.arguments.indexOf("--alphabet-ui-probe") >= 0
     readonly property bool emuMoviesAutoUiProbe: Qt.application.arguments.indexOf("--emumovies-auto-ui-probe") >= 0
     readonly property bool hoverPreviewUiProbe: Qt.application.arguments.indexOf("--hover-preview-ui-probe") >= 0
                                                 || emuMoviesAutoUiProbe
@@ -5798,6 +5803,139 @@ ApplicationWindow {
     }
 
     Timer {
+        id: alphabetProbeTimer
+        interval: 80
+        running: root.alphabetUiProbe
+        repeat: true
+        property int settledCycles: 0
+
+        function fail(detail) {
+            console.error("LUNCHBOX_ALPHABET_UI_FAILED " + detail)
+            Qt.exit(2)
+        }
+
+        onTriggered: {
+            settledCycles += 1
+            if (settledCycles > 250) {
+                fail("timeout stage=" + root.alphabetProbeStage
+                     + " loading=" + library.loading
+                     + " filtering=" + library.filtering
+                     + " mode=" + library.view_mode
+                     + " sort=" + library.sort_field)
+                return
+            }
+            if (!library.ready || library.loading || library.filtering
+                    || !gameViewLoader.item)
+                return
+
+            if (root.alphabetProbeStage === 0) {
+                if (library.view_mode !== "grid") {
+                    library.choose_view_mode("grid")
+                    return
+                }
+                if (library.sort_field !== "title"
+                        || library.sort_descending) {
+                    library.set_sort_preferences("title", false)
+                    return
+                }
+                const numberRow = library.alphabet_target_row("#")
+                const aRow = library.alphabet_target_row("A")
+                root.alphabetProbeMRow = library.alphabet_target_row("M")
+                root.alphabetProbeZRow = library.alphabet_target_row("Z")
+                if (!library.alphabet_navigation_available
+                        || numberRow < 0 || aRow < 0
+                        || root.alphabetProbeMRow < 0
+                        || root.alphabetProbeZRow < 0
+                        || numberRow >= aRow
+                        || aRow >= root.alphabetProbeMRow
+                        || root.alphabetProbeMRow >= root.alphabetProbeZRow) {
+                    fail("index available="
+                         + library.alphabet_navigation_available
+                         + " #=" + numberRow + " A=" + aRow
+                         + " M=" + root.alphabetProbeMRow
+                         + " Z=" + root.alphabetProbeZRow)
+                    return
+                }
+                if (!gameViewLoader.item.jumpToAlphabet("M")) {
+                    fail("grid rail rejected M")
+                    return
+                }
+                root.alphabetProbeStage = 1
+                return
+            }
+
+            if (root.alphabetProbeStage === 1) {
+                if (gameViewLoader.item.currentIndex
+                        !== root.alphabetProbeMRow
+                        || !gameViewLoader.item.currentItem)
+                    return
+                if (library.alphabet_label_for_row(
+                            gameViewLoader.item.currentIndex) !== "M") {
+                    fail("grid landed outside M row="
+                         + gameViewLoader.item.currentIndex)
+                    return
+                }
+                root.alphabetProbeMTitle =
+                        gameViewLoader.item.currentItem.gameTitle
+                library.choose_view_mode("list")
+                root.alphabetProbeStage = 2
+                return
+            }
+
+            if (root.alphabetProbeStage === 2) {
+                if (library.view_mode !== "list")
+                    return
+                if (!gameViewLoader.item.jumpToAlphabet("Z")) {
+                    fail("list rail rejected Z")
+                    return
+                }
+                root.alphabetProbeStage = 3
+                return
+            }
+
+            if (gameViewLoader.item.currentIndex !== root.alphabetProbeZRow
+                    || !gameViewLoader.item.currentItem)
+                return
+            if (library.alphabet_label_for_row(
+                        gameViewLoader.item.currentIndex) !== "Z") {
+                fail("list landed outside Z row="
+                     + gameViewLoader.item.currentIndex)
+                return
+            }
+
+            stop()
+            const zTitle = gameViewLoader.item.currentItem.gameTitle
+            const report = function(screenshot) {
+                library.report_alphabet_ui_probe(
+                            root.alphabetProbeMRow,
+                            root.alphabetProbeMTitle,
+                            root.alphabetProbeZRow,
+                            zTitle)
+                console.log("LUNCHBOX_ALPHABET_UI_READY grid_m_row="
+                            + root.alphabetProbeMRow
+                            + " grid_m_title=" + root.alphabetProbeMTitle
+                            + " list_z_row=" + root.alphabetProbeZRow
+                            + " list_z_title=" + zTitle
+                            + " games=" + library.filtered_count
+                            + (screenshot.length > 0
+                               ? " screenshot=" + screenshot : ""))
+                Qt.quit()
+            }
+            if (root.screenshotOutput.length === 0) {
+                report("")
+                return
+            }
+            content.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    fail("screenshot=" + root.screenshotOutput)
+                    return
+                }
+                report(root.screenshotOutput)
+            })
+        }
+    }
+
+    Timer {
         id: listFilterProbeTimer
         interval: 80
         running: root.listFilterUiProbe
@@ -7546,7 +7684,7 @@ ApplicationWindow {
         cellWidth: Math.floor(availableGridWidth / columnCount)
         cellHeight: Math.round(cellWidth * 1.36)
         model: library
-        rightMargin: gridScrollBar.width + 8
+        rightMargin: gridScrollBar.width + gridAlphabetRail.width + 16
         ScrollBar.vertical: ScrollBar {
             id: gridScrollBar
             policy: ScrollBar.AlwaysOn
@@ -7571,6 +7709,28 @@ ApplicationWindow {
         }
         AcceleratedWheelHandler { scroller: grid }
 
+        AlphabetRail {
+            id: gridAlphabetRail
+            parent: grid
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            anchors.topMargin: 8
+            anchors.bottomMargin: 8
+            anchors.rightMargin: gridScrollBar.width + 7
+            width: 34
+            z: 1100
+            libraryModel: library
+            currentRow: grid.currentIndex
+            ink: root.ink
+            muted: root.muted
+            accent: root.accent
+            accentCool: root.accentCool
+            panel: root.panel
+            line: root.line
+            onJumpRequested: row => grid.focusIndex(row, GridView.Beginning)
+        }
+
         function focusIndex(targetIndex, positioningMode) {
             if (count <= 0)
                 return
@@ -7583,10 +7743,24 @@ ApplicationWindow {
             })
         }
 
+        function jumpToAlphabet(label) {
+            return gridAlphabetRail.activateLabel(label)
+        }
+
         function handleNavigationKey(event) {
             const firstIndex = currentIndex >= 0 ? currentIndex : 0
             const pageSize = Math.max(1, columnCount * rowsPerPage)
-            if (event.key === Qt.Key_PageDown) {
+            if ((event.modifiers & Qt.ControlModifier)
+                    && event.key === Qt.Key_PageDown) {
+                const row = library.adjacent_alphabet_row(firstIndex, 1)
+                if (row >= 0)
+                    focusIndex(row, GridView.Beginning)
+            } else if ((event.modifiers & Qt.ControlModifier)
+                       && event.key === Qt.Key_PageUp) {
+                const row = library.adjacent_alphabet_row(firstIndex, -1)
+                if (row >= 0)
+                    focusIndex(row, GridView.Beginning)
+            } else if (event.key === Qt.Key_PageDown) {
                 focusIndex(firstIndex + pageSize, GridView.Beginning)
             } else if (event.key === Qt.Key_PageUp) {
                 focusIndex(firstIndex - pageSize, GridView.Beginning)
@@ -8079,10 +8253,14 @@ ApplicationWindow {
         cacheBuffer: height
         spacing: 0
         model: library
+        keyNavigationEnabled: true
+        keyNavigationWraps: false
+        activeFocusOnTab: true
         boundsBehavior: Flickable.StopAtBounds
         headerPositioning: ListView.OverlayHeader
         property var activeColumnKeys: library.list_columns.split(",")
         readonly property real tableWidth: calculateTableWidth()
+        readonly property int rowsPerPage: Math.max(1, Math.floor((height - 46) / 54))
 
         function columnWidth(key) {
             return root.listColumnDefinition(key).width
@@ -8102,13 +8280,91 @@ ApplicationWindow {
             return total
         }
 
-        contentWidth: Math.max(width, tableWidth)
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        rightMargin: listVerticalScrollBar.width + listAlphabetRail.width + 16
+        contentWidth: Math.max(width - rightMargin, tableWidth)
+        ScrollBar.vertical: ScrollBar {
+            id: listVerticalScrollBar
+            policy: ScrollBar.AlwaysOn
+            active: true
+            interactive: true
+            hoverEnabled: true
+            width: 15
+            z: 1000
+        }
         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
         AcceleratedWheelHandler { scroller: list }
 
+        AlphabetRail {
+            id: listAlphabetRail
+            parent: list
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            anchors.topMargin: 54
+            anchors.bottomMargin: 8
+            anchors.rightMargin: listVerticalScrollBar.width + 7
+            width: 34
+            z: 1100
+            libraryModel: library
+            currentRow: list.currentIndex
+            ink: root.ink
+            muted: root.muted
+            accent: root.accent
+            accentCool: root.accentCool
+            panel: root.panel
+            line: root.line
+            onJumpRequested: row => list.focusIndex(row, ListView.Beginning)
+        }
+
+        function focusIndex(targetIndex, positioningMode) {
+            if (count <= 0)
+                return
+            const boundedIndex = Math.max(0, Math.min(count - 1, targetIndex))
+            currentIndex = boundedIndex
+            positionViewAtIndex(boundedIndex, positioningMode)
+            Qt.callLater(function() {
+                if (list.currentItem)
+                    list.currentItem.forceActiveFocus()
+            })
+        }
+
+        function jumpToAlphabet(label) {
+            return listAlphabetRail.activateLabel(label)
+        }
+
+        function handleNavigationKey(event) {
+            const firstIndex = currentIndex >= 0 ? currentIndex : 0
+            if ((event.modifiers & Qt.ControlModifier)
+                    && event.key === Qt.Key_PageDown) {
+                const row = library.adjacent_alphabet_row(firstIndex, 1)
+                if (row >= 0)
+                    focusIndex(row, ListView.Beginning)
+            } else if ((event.modifiers & Qt.ControlModifier)
+                       && event.key === Qt.Key_PageUp) {
+                const row = library.adjacent_alphabet_row(firstIndex, -1)
+                if (row >= 0)
+                    focusIndex(row, ListView.Beginning)
+            } else if (event.key === Qt.Key_PageDown) {
+                focusIndex(firstIndex + rowsPerPage, ListView.Beginning)
+            } else if (event.key === Qt.Key_PageUp) {
+                focusIndex(firstIndex - rowsPerPage, ListView.Beginning)
+            } else if (event.key === Qt.Key_Home) {
+                focusIndex(0, ListView.Beginning)
+            } else if (event.key === Qt.Key_End) {
+                focusIndex(count - 1, ListView.End)
+            } else {
+                return false
+            }
+            return true
+        }
+
+        Keys.onPressed: event => {
+            if (handleNavigationKey(event))
+                event.accepted = true
+        }
+
         header: Rectangle {
-            width: Math.max(list.width - 8, list.tableWidth)
+            width: Math.max(list.width - list.rightMargin - 8, list.tableWidth)
             height: 46
             z: 3
             color: "#171f2b"
@@ -8287,7 +8543,7 @@ ApplicationWindow {
             onGamePlatformChanged: requestVisibleArtwork()
             onMediaRevisionChanged: requestVisibleArtwork()
             onRequestedArtworkTypeChanged: requestVisibleArtwork()
-            width: Math.max(list.width - 8, list.tableWidth)
+            width: Math.max(list.width - list.rightMargin - 8, list.tableWidth)
             height: 54
             radius: 0
             activeFocusOnTab: true
@@ -8300,6 +8556,7 @@ ApplicationWindow {
             HoverHandler { id: rowHover }
             TapHandler {
                 onTapped: {
+                    list.currentIndex = row.index
                     row.forceActiveFocus()
                     root.openGame(row.gameId, row.gameDatabaseId,
                                   row.gameTitle, row.gamePlatform,
@@ -8307,7 +8564,9 @@ ApplicationWindow {
                 }
             }
             Keys.onPressed: event => {
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                if (list.handleNavigationKey(event)) {
+                    event.accepted = true
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                         || event.key === Qt.Key_Space) {
                     root.openGame(row.gameId, row.gameDatabaseId,
                                   row.gameTitle, row.gamePlatform,

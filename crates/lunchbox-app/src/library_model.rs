@@ -44,6 +44,8 @@ pub mod qobject {
         #[qproperty(i32, list_filter_value_count)]
         #[qproperty(i32, list_filter_total_distinct)]
         #[qproperty(i32, list_filter_revision)]
+        #[qproperty(bool, alphabet_navigation_available)]
+        #[qproperty(i32, alphabet_revision)]
         #[qproperty(QString, hover_preview_game_id)]
         #[qproperty(QUrl, hover_preview_url)]
         #[qproperty(QString, hover_preview_source)]
@@ -264,6 +266,15 @@ pub mod qobject {
         fn report_hover_preview_ui_failure(self: &LibraryModel, detail: QString);
 
         #[qinvokable]
+        fn report_alphabet_ui_probe(
+            self: &LibraryModel,
+            grid_row: i32,
+            grid_title: QString,
+            list_row: i32,
+            list_title: QString,
+        );
+
+        #[qinvokable]
         fn report_collection_presentation_ui_probe(
             self: &LibraryModel,
             playlist_title: QString,
@@ -352,6 +363,15 @@ pub mod qobject {
 
         #[qinvokable]
         fn row_for_game(self: &LibraryModel, game_uid: QString) -> i32;
+
+        #[qinvokable]
+        fn alphabet_target_row(self: &LibraryModel, label: QString) -> i32;
+
+        #[qinvokable]
+        fn alphabet_label_for_row(self: &LibraryModel, row: i32) -> QString;
+
+        #[qinvokable]
+        fn adjacent_alphabet_row(self: &LibraryModel, current_row: i32, direction: i32) -> i32;
 
         #[qinvokable]
         fn canonical_title_for_game(self: &LibraryModel, game_uid: QString) -> QString;
@@ -833,6 +853,8 @@ pub struct LibraryModelRust {
     list_filter_value_count: i32,
     list_filter_total_distinct: i32,
     list_filter_revision: i32,
+    alphabet_navigation_available: bool,
+    alphabet_revision: i32,
     hover_preview_game_id: QString,
     hover_preview_url: QUrl,
     hover_preview_source: QString,
@@ -933,6 +955,7 @@ pub struct LibraryModelRust {
     media: Arc<MediaIndex>,
     artwork_kind: ArtworkKind,
     filtered_indices: Vec<usize>,
+    alphabet_index: AlphabetIndex,
     filtered_platform_indices: Vec<usize>,
     load_generation: u64,
     filter_generation: u64,
@@ -1019,6 +1042,8 @@ impl Default for LibraryModelRust {
             list_filter_value_count: 0,
             list_filter_total_distinct: 0,
             list_filter_revision: 0,
+            alphabet_navigation_available: false,
+            alphabet_revision: 0,
             hover_preview_game_id: QString::default(),
             hover_preview_url: QUrl::default(),
             hover_preview_source: QString::default(),
@@ -1134,6 +1159,7 @@ impl Default for LibraryModelRust {
             media: Arc::new(MediaIndex::default()),
             artwork_kind: ArtworkKind::default(),
             filtered_indices: Vec::new(),
+            alphabet_index: AlphabetIndex::default(),
             filtered_platform_indices: Vec::new(),
             load_generation: 0,
             filter_generation: 0,
@@ -1219,6 +1245,112 @@ fn collection_scoped_display_title<'a>(
         .map(|presentation| presentation.display_title.as_str())
         .filter(|title| !title.is_empty())
         .unwrap_or_else(|| metadata_display_title(game, metadata_titles))
+}
+
+fn display_titles_for_filter(
+    metadata_titles: &Arc<HashMap<String, String>>,
+    collection_presentations: &HashMap<String, HashMap<String, CollectionMemberPresentation>>,
+    availability: &str,
+) -> Arc<HashMap<String, String>> {
+    let Some(presentations) = availability
+        .strip_prefix("collection:")
+        .and_then(|collection_id| collection_presentations.get(collection_id))
+    else {
+        return Arc::clone(metadata_titles);
+    };
+    let mut titles = metadata_titles.as_ref().clone();
+    for (game_uid, presentation) in presentations {
+        if !presentation.display_title.is_empty() {
+            titles.insert(game_uid.clone(), presentation.display_title.clone());
+        }
+    }
+    Arc::new(titles)
+}
+
+const ALPHABET_LABELS: [&str; 27] = [
+    "#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R",
+    "S", "T", "U", "V", "W", "X", "Y", "Z",
+];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AlphabetIndex {
+    first_rows: [i32; ALPHABET_LABELS.len()],
+}
+
+impl Default for AlphabetIndex {
+    fn default() -> Self {
+        Self {
+            first_rows: [-1; ALPHABET_LABELS.len()],
+        }
+    }
+}
+
+impl AlphabetIndex {
+    fn first_row(&self, rank: usize) -> i32 {
+        self.first_rows.get(rank).copied().unwrap_or(-1)
+    }
+
+    fn has_entries(&self) -> bool {
+        self.first_rows.iter().any(|row| *row >= 0)
+    }
+}
+
+fn title_alphabet_rank(title: &str) -> Option<usize> {
+    let first = title.chars().next()?;
+    if first.is_ascii_digit() {
+        Some(0)
+    } else if first.is_ascii_alphabetic() {
+        Some(usize::from(first.to_ascii_uppercase() as u8 - b'A') + 1)
+    } else {
+        None
+    }
+}
+
+fn alphabet_rank_for_label(label: &str) -> Option<usize> {
+    if label == "#" {
+        return Some(0);
+    }
+    let mut characters = label.chars();
+    let first = characters.next()?;
+    if characters.next().is_some() || !first.is_ascii_alphabetic() {
+        return None;
+    }
+    Some(usize::from(first.to_ascii_uppercase() as u8 - b'A') + 1)
+}
+
+fn build_alphabet_index(
+    catalog: &Catalog,
+    filtered_indices: &[usize],
+    metadata_titles: &HashMap<String, String>,
+    collection_presentations: &HashMap<String, HashMap<String, CollectionMemberPresentation>>,
+    active_presentation_collection_id: &str,
+) -> AlphabetIndex {
+    let mut index = AlphabetIndex::default();
+    for (row, catalog_index) in filtered_indices.iter().copied().enumerate() {
+        let Some(game) = catalog.games.get(catalog_index) else {
+            continue;
+        };
+        let title = collection_scoped_display_title(
+            game,
+            metadata_titles,
+            collection_presentations,
+            active_presentation_collection_id,
+        );
+        let Some(rank) = title_alphabet_rank(title) else {
+            continue;
+        };
+        if index.first_rows[rank] < 0 {
+            index.first_rows[rank] = saturating_i32(row);
+        }
+    }
+    index
+}
+
+fn title_sort_supports_alphabet(sort_field: &str, availability: &str) -> bool {
+    sort_field == "title"
+        || (sort_field == "default"
+            && availability != "recent"
+            && !availability.starts_with("collection:"))
 }
 
 fn effective_cooperative<'a>(
@@ -1880,6 +2012,18 @@ impl qobject::LibraryModel {
         let emulator_count = catalog.emulator_count;
         let source_label = catalog.source_label.clone();
         let platform_query = self.as_ref().platform_search().to_string().to_lowercase();
+        let filtered_indices = (0..preview_game_count).collect::<Vec<_>>();
+        let alphabet_index = build_alphabet_index(
+            &catalog,
+            &filtered_indices,
+            &self.as_ref().rust().metadata_titles,
+            &self.as_ref().rust().collection_presentations,
+            &self.as_ref().rust().active_presentation_collection_id,
+        );
+        let alphabet_navigation_available = title_sort_supports_alphabet(
+            &self.as_ref().sort_field().to_string(),
+            &self.as_ref().availability_filter().to_string(),
+        );
 
         self.as_mut().begin_reset_model();
         {
@@ -1893,7 +2037,7 @@ impl qobject::LibraryModel {
                     .map(|(index, game)| (game.id.clone(), index))
                     .collect(),
             );
-            rust.filtered_indices = (0..preview_game_count).collect();
+            rust.filtered_indices = filtered_indices;
             rust.filtered_platform_indices = catalog
                 .platforms
                 .iter()
@@ -1906,6 +2050,8 @@ impl qobject::LibraryModel {
             rust.catalog = Arc::new(catalog);
         }
         self.as_mut().end_reset_model();
+        self.as_mut()
+            .publish_alphabet_index(alphabet_index, alphabet_navigation_available);
 
         let filtered_platform_count = self.as_ref().rust().filtered_platform_indices.len();
 
@@ -2177,6 +2323,17 @@ impl qobject::LibraryModel {
                         ..Filter::default()
                     },
                 );
+                let alphabet_index = build_alphabet_index(
+                    &catalog,
+                    &indices,
+                    &metadata_titles,
+                    &collection_presentations,
+                    &self.as_ref().rust().active_presentation_collection_id,
+                );
+                let alphabet_navigation_available = title_sort_supports_alphabet(
+                    &self.as_ref().sort_field().to_string(),
+                    &self.as_ref().availability_filter().to_string(),
+                );
                 let filtered_count = indices.len();
                 let platform_query = self.as_ref().platform_search().to_string().to_lowercase();
                 self.as_mut().begin_reset_model();
@@ -2219,6 +2376,8 @@ impl qobject::LibraryModel {
                 }
                 self.as_mut().rebuild_smart_collections();
                 self.as_mut().end_reset_model();
+                self.as_mut()
+                    .publish_alphabet_index(alphabet_index, alphabet_navigation_available);
 
                 let game_count = self.as_ref().rust().catalog.games.len();
                 let platform_count = self.as_ref().rust().catalog.platforms.len();
@@ -2378,6 +2537,11 @@ impl qobject::LibraryModel {
                 .map(|(index, game_uid)| (game_uid.clone(), index))
                 .collect(),
         );
+        let display_titles = display_titles_for_filter(
+            &self.rust().metadata_titles,
+            &self.rust().collection_presentations,
+            &availability,
+        );
         Filter {
             search,
             platform,
@@ -2389,7 +2553,7 @@ impl qobject::LibraryModel {
             collection_game_ids,
             collection_game_order,
             recent_game_order: Arc::clone(&self.rust().recent_game_order),
-            display_titles: Arc::clone(&self.rust().metadata_titles),
+            display_titles,
             game_tags: Arc::clone(&self.rust().game_tags),
             game_custom_fields: Arc::clone(&self.rust().game_custom_fields),
             metadata_overrides: Arc::clone(&self.rust().metadata_overrides),
@@ -2472,6 +2636,13 @@ impl qobject::LibraryModel {
         self.as_mut().rust_mut().filter_started = Some(std::time::Instant::now());
         let generation = self.as_ref().rust().filter_generation;
         let catalog = Arc::clone(&self.as_ref().rust().catalog);
+        let metadata_titles = Arc::clone(&self.as_ref().rust().metadata_titles);
+        let collection_presentations = Arc::clone(&self.as_ref().rust().collection_presentations);
+        let active_presentation_collection_id = self
+            .as_ref()
+            .rust()
+            .active_presentation_collection_id
+            .clone();
         self.as_mut().set_filtering(true);
 
         let qt_thread = self.as_ref().qt_thread();
@@ -2479,10 +2650,25 @@ impl qobject::LibraryModel {
             .name("lunchbox-catalog-filter".into())
             .spawn(move || {
                 let indices = catalog::filter_indices(&catalog, &filter);
+                let alphabet_index = build_alphabet_index(
+                    &catalog,
+                    &indices,
+                    &metadata_titles,
+                    &collection_presentations,
+                    &active_presentation_collection_id,
+                );
+                let alphabet_navigation_available =
+                    title_sort_supports_alphabet(&filter.sort_field, &filter.availability);
                 let summary = summary_seed
                     .map(|seed| build_active_collection_summary(&catalog, seed, indices.len()));
                 if let Err(error) = qt_thread.queue(move |mut model| {
-                    model.as_mut().finish_filter(generation, indices, summary);
+                    model.as_mut().finish_filter(
+                        generation,
+                        indices,
+                        alphabet_index,
+                        alphabet_navigation_available,
+                        summary,
+                    );
                 }) {
                     eprintln!("Could not publish the filtered catalog to Qt: {error:?}");
                 }
@@ -3697,6 +3883,72 @@ impl qobject::LibraryModel {
             .iter()
             .position(|index| index == catalog_index)
             .map(saturating_i32)
+            .unwrap_or(-1)
+    }
+
+    pub fn alphabet_target_row(&self, label: QString) -> i32 {
+        if !*self.alphabet_navigation_available() {
+            return -1;
+        }
+        alphabet_rank_for_label(&label.to_string())
+            .map(|rank| self.rust().alphabet_index.first_row(rank))
+            .unwrap_or(-1)
+    }
+
+    pub fn report_alphabet_ui_probe(
+        &self,
+        grid_row: i32,
+        grid_title: QString,
+        list_row: i32,
+        list_title: QString,
+    ) {
+        println!(
+            "LUNCHBOX_ALPHABET_UI_READY grid_m_row={grid_row} grid_m_title={:?} list_z_row={list_row} list_z_title={:?} games={}",
+            grid_title.to_string(),
+            list_title.to_string(),
+            self.filtered_count()
+        );
+        let mut stdout = std::io::stdout();
+        let _ = std::io::Write::flush(&mut stdout);
+    }
+
+    pub fn alphabet_label_for_row(&self, row: i32) -> QString {
+        if !*self.alphabet_navigation_available() {
+            return QString::default();
+        }
+        usize::try_from(row)
+            .ok()
+            .and_then(|row| self.rust().filtered_indices.get(row))
+            .and_then(|catalog_index| self.rust().catalog.games.get(*catalog_index))
+            .map(|game| {
+                collection_scoped_display_title(
+                    game,
+                    &self.rust().metadata_titles,
+                    &self.rust().collection_presentations,
+                    &self.rust().active_presentation_collection_id,
+                )
+            })
+            .and_then(title_alphabet_rank)
+            .and_then(|rank| ALPHABET_LABELS.get(rank))
+            .map(|label| qstring(label))
+            .unwrap_or_default()
+    }
+
+    pub fn adjacent_alphabet_row(&self, current_row: i32, direction: i32) -> i32 {
+        if !*self.alphabet_navigation_available() || direction == 0 {
+            return -1;
+        }
+        let current_rank = self.alphabet_label_for_row(current_row);
+        let current_rank = alphabet_rank_for_label(&current_rank.to_string());
+        let ranks: Box<dyn Iterator<Item = usize>> = if direction > 0 {
+            Box::new(current_rank.map_or(0, |rank| rank.saturating_add(1))..ALPHABET_LABELS.len())
+        } else {
+            let end = current_rank.unwrap_or(ALPHABET_LABELS.len());
+            Box::new((0..end).rev())
+        };
+        ranks
+            .map(|rank| self.rust().alphabet_index.first_row(rank))
+            .find(|row| *row >= 0)
             .unwrap_or(-1)
     }
 
@@ -5193,6 +5445,8 @@ impl qobject::LibraryModel {
         mut self: Pin<&mut Self>,
         generation: u64,
         indices: Vec<usize>,
+        alphabet_index: AlphabetIndex,
+        alphabet_navigation_available: bool,
         summary: Option<ActiveCollectionSummary>,
     ) {
         if generation != self.as_ref().rust().filter_generation {
@@ -5202,6 +5456,8 @@ impl qobject::LibraryModel {
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().filtered_indices = indices;
         self.as_mut().end_reset_model();
+        self.as_mut()
+            .publish_alphabet_index(alphabet_index, alphabet_navigation_available);
         self.as_mut().set_filtered_count(saturating_i32(count));
         self.as_mut().apply_active_collection_summary(summary);
         self.as_mut().set_filtering(false);
@@ -5212,6 +5468,18 @@ impl qobject::LibraryModel {
             .map(|started| started.elapsed().as_millis())
             .unwrap_or_default();
         println!("LUNCHBOX_FILTER_READY_MS={filter_ms} results={count}");
+    }
+
+    fn publish_alphabet_index(
+        mut self: Pin<&mut Self>,
+        alphabet_index: AlphabetIndex,
+        navigation_supported: bool,
+    ) {
+        let available = navigation_supported && alphabet_index.has_entries();
+        self.as_mut().rust_mut().alphabet_index = alphabet_index;
+        self.as_mut().set_alphabet_navigation_available(available);
+        let revision = self.as_ref().alphabet_revision().wrapping_add(1);
+        self.as_mut().set_alphabet_revision(revision);
     }
 
     fn apply_active_collection_summary(
@@ -6064,6 +6332,85 @@ mod tests {
             ),
             "Library metadata title"
         );
+    }
+
+    #[test]
+    fn manual_collection_filter_sorts_and_searches_by_its_visible_titles() {
+        let metadata_titles = Arc::new(HashMap::from([(
+            "stable-game".to_owned(),
+            "Library metadata title".to_owned(),
+        )]));
+        let presentations = HashMap::from([(
+            "family-night".to_owned(),
+            HashMap::from([(
+                "stable-game".to_owned(),
+                CollectionMemberPresentation {
+                    display_title: "Family-night title".to_owned(),
+                    notes: String::new(),
+                },
+            )]),
+        )]);
+
+        let scoped =
+            display_titles_for_filter(&metadata_titles, &presentations, "collection:family-night");
+        assert_eq!(scoped["stable-game"], "Family-night title");
+
+        let global = display_titles_for_filter(&metadata_titles, &presentations, "downloadable");
+        assert!(Arc::ptr_eq(&global, &metadata_titles));
+        assert_eq!(global["stable-game"], "Library metadata title");
+    }
+
+    #[test]
+    fn alphabet_index_uses_exact_visible_titles_and_filtered_rows() {
+        let mut numeric = game("numeric", "Arcade", false, true);
+        numeric.title = "3 Count Bout".to_owned();
+        let mut metadata = game("metadata", "Arcade", false, true);
+        metadata.title = "Alpha".to_owned();
+        let mut collection = game("collection", "Arcade", false, true);
+        collection.title = "Zool".to_owned();
+        let mut symbol = game("symbol", "Arcade", false, true);
+        symbol.title = "!Bang".to_owned();
+        let catalog = Catalog {
+            games: vec![numeric, metadata, collection, symbol],
+            ..Catalog::default()
+        };
+        let metadata_titles = HashMap::from([("metadata".to_owned(), "Beta".to_owned())]);
+        let collection_presentations = HashMap::from([(
+            "cabinet".to_owned(),
+            HashMap::from([(
+                "collection".to_owned(),
+                CollectionMemberPresentation {
+                    display_title: "Camera".to_owned(),
+                    notes: String::new(),
+                },
+            )]),
+        )]);
+
+        let index = build_alphabet_index(
+            &catalog,
+            &[3, 0, 2, 1],
+            &metadata_titles,
+            &collection_presentations,
+            "cabinet",
+        );
+
+        assert_eq!(index.first_row(0), 1);
+        assert_eq!(index.first_row(alphabet_rank_for_label("B").unwrap()), 3);
+        assert_eq!(index.first_row(alphabet_rank_for_label("C").unwrap()), 2);
+        assert_eq!(index.first_row(alphabet_rank_for_label("A").unwrap()), -1);
+        assert_eq!(index.first_row(alphabet_rank_for_label("Z").unwrap()), -1);
+    }
+
+    #[test]
+    fn alphabet_navigation_only_claims_title_ordered_libraries() {
+        assert!(title_sort_supports_alphabet("title", "recent"));
+        assert!(title_sort_supports_alphabet("default", "downloadable"));
+        assert!(!title_sort_supports_alphabet("default", "recent"));
+        assert!(!title_sort_supports_alphabet(
+            "default",
+            "collection:family-night"
+        ));
+        assert!(!title_sort_supports_alphabet("publisher", ""));
     }
 
     fn activity(game_uid: &str, play_count: i64, seconds: i64, completion: &str) -> PlayActivity {
