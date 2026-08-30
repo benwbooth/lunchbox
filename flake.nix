@@ -60,6 +60,13 @@
           doCheck = true;
           checkPhase = ''
             runHook preCheck
+            export QML2_IMPORT_PATH="${qtEnv}/lib/qt-6/qml"
+            export QML_IMPORT_PATH="${qtEnv}/lib/qt-6/qml"
+            export QT_PLUGIN_PATH="${qtEnv}/lib/qt-6/plugins"
+            export XDG_CACHE_HOME="$TMPDIR/lunchbox-test-cache"
+            mkdir -p "$XDG_CACHE_HOME"
+            QT_QPA_PLATFORM=offscreen qmltestrunner \
+              -input crates/lunchbox-app/tests/qml
             cargo test --package lunchbox-app --lib --release \
               --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget}
             runHook postCheck

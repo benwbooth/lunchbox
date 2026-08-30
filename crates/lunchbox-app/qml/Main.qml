@@ -7311,6 +7311,8 @@ ApplicationWindow {
         keyNavigationWraps: false
         activeFocusOnTab: true
         boundsBehavior: Flickable.StopAtBounds
+        maximumFlickVelocity: 72000
+        flickDeceleration: 2800
         property real preferredWidth: (root.width >= 1500 ? 230 : 205)
                                       * library.grid_zoom / 100
         readonly property real availableGridWidth: Math.max(1, width - rightMargin)

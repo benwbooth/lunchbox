@@ -1,14 +1,28 @@
 import QtQuick
 
 WheelHandler {
+    id: handler
+
     required property Flickable scroller
     target: null
+
+    // A mouse-wheel notch should cover meaningful ground in a large library.
+    // The velocity model lets quick successive notches accumulate naturally,
+    // while the friction value keeps a single notch predictable.
+    property real wheelPageFactor: 1.85
+    property real frictionPerSecond: 4.6
+    property real maximumVelocity: 72000
+    property real minimumVelocity: 70
+    property real pixelVelocityGain: 72
+    readonly property bool momentumRunning: momentumTimer.running
+    readonly property real momentumVelocity: velocityY
+
+    property real velocityY: 0
+    property double lastFrameAt: 0
     property double lastNotchAt: 0
-    property double lastPixelAt: 0
     property int burstCount: 0
-    property int pixelBurstCount: 0
     property int lastDirection: 0
-    property real projectedY: 0
+    property bool advancing: false
 
     function lowerBound() {
         return scroller.originY
@@ -23,63 +37,103 @@ WheelHandler {
         return Math.max(lowerBound(), Math.min(upperBound(), value))
     }
 
-    function startMomentum(distance, duration) {
-        if (distance === 0)
+    function stopMomentum() {
+        momentumTimer.stop()
+        velocityY = 0
+        lastFrameAt = 0
+    }
+
+    function addVelocity(impulse) {
+        if (!isFinite(impulse) || impulse === 0)
             return
-        const direction = distance < 0 ? -1 : 1
-        const base = wheelMomentum.running && direction === lastDirection
-                   ? projectedY : scroller.contentY
-        projectedY = clampContentY(base + distance)
-        wheelMomentum.stop()
-        wheelMomentum.from = scroller.contentY
-        wheelMomentum.to = projectedY
-        wheelMomentum.duration = duration
+
+        const direction = impulse < 0 ? -1 : 1
+        if (lastDirection !== 0 && direction !== lastDirection)
+            velocityY = 0
+
+        velocityY = Math.max(-maximumVelocity,
+                             Math.min(maximumVelocity, velocityY + impulse))
         lastDirection = direction
-        wheelMomentum.start()
+        lastFrameAt = Date.now()
+        if (!momentumTimer.running)
+            momentumTimer.start()
     }
 
     function scrollPixels(distance) {
-        const now = Date.now()
-        const direction = distance < 0 ? -1 : 1
-        pixelBurstCount = now - lastPixelAt <= 90 && direction === lastDirection
-                        ? Math.min(12, pixelBurstCount + 1) : 0
-        lastPixelAt = now
-        const acceleration = Math.min(4.2, 1 + pixelBurstCount * 0.28)
-        startMomentum(distance * 9.5 * acceleration,
-                      Math.min(420, 240 + pixelBurstCount * 15))
+        // Pixel deltas come from touchpads and high-resolution wheels. Treat
+        // them as velocity samples so a gesture keeps its momentum after the
+        // last event instead of stopping at the final packet.
+        addVelocity(distance * pixelVelocityGain)
     }
 
     function scrollNotches(steps) {
         const now = Date.now()
         const direction = steps < 0 ? -1 : 1
-        burstCount = now - lastNotchAt <= 210 && direction === lastDirection
-                   ? Math.min(8, burstCount + 1) : 0
+        burstCount = now - lastNotchAt <= 230 && direction === lastDirection
+                   ? Math.min(10, burstCount + 1) : 0
         lastNotchAt = now
 
-        const acceleration = Math.min(8.2, 1 + burstCount * 0.9)
-        const baseDistance = Math.max(900,
-                                      Math.min(1800, scroller.height * 1.25))
-        startMomentum(steps * baseDistance * acceleration,
-                      Math.min(460, 260 + burstCount * 22))
+        const acceleration = Math.min(6.5, 1 + burstCount * 0.55)
+        const pageDistance = Math.max(1400,
+                                      Math.min(2800,
+                                               scroller.height * wheelPageFactor))
+        // Under exponential friction the remaining distance is velocity / k.
+        // Multiplying by k therefore makes pageDistance the travel of one
+        // isolated notch, independent of monitor refresh rate.
+        addVelocity(steps * pageDistance * frictionPerSecond * acceleration)
     }
 
-    property NumberAnimation wheelMomentum: NumberAnimation {
-        id: wheelMomentum
-        target: scroller
-        property: "contentY"
-        easing.type: Easing.OutQuart
+    function advanceMomentum() {
+        if (velocityY === 0) {
+            stopMomentum()
+            return
+        }
+
+        const now = Date.now()
+        const elapsed = lastFrameAt > 0 ? (now - lastFrameAt) / 1000 : 0.016
+        const deltaSeconds = Math.max(0.001, Math.min(0.05, elapsed))
+        lastFrameAt = now
+
+        const decay = Math.exp(-frictionPerSecond * deltaSeconds)
+        const distance = velocityY * (1 - decay) / frictionPerSecond
+        const current = scroller.contentY
+        const next = clampContentY(current + distance)
+        advancing = true
+        scroller.contentY = next
+        advancing = false
+        velocityY *= decay
+
+        const atBound = Math.abs(next - current) < 0.01
+                        && ((velocityY < 0 && next <= lowerBound())
+                            || (velocityY > 0 && next >= upperBound()))
+        if (atBound || Math.abs(velocityY) < minimumVelocity)
+            stopMomentum()
     }
 
-    property Connections dragConnections: Connections {
+    property Timer momentumTimer: Timer {
+        id: momentumTimer
+        interval: 16
+        repeat: true
+        onTriggered: handler.advanceMomentum()
+    }
+
+    property Connections scrollerConnections: Connections {
         target: scroller
+
         function onDraggingChanged() {
             if (scroller.dragging) {
-                wheelMomentum.stop()
-                projectedY = scroller.contentY
-                lastDirection = 0
-                burstCount = 0
-                pixelBurstCount = 0
+                handler.stopMomentum()
+                handler.lastDirection = 0
+                handler.burstCount = 0
             }
+        }
+
+        function onContentYChanged() {
+            // Scrollbar drags and programmatic navigation take ownership from
+            // wheel momentum immediately. Changes made by our frame timer are
+            // marked so they do not cancel themselves.
+            if (!handler.advancing && handler.momentumRunning)
+                handler.stopMomentum()
         }
     }
 
