@@ -3215,16 +3215,16 @@ impl qobject::LibraryModel {
         let progress: crate::emumovies::ProgressCallback = Box::new(move |value| {
             let percent = (value * 100.0).round().clamp(0.0, 100.0) as i32;
             let Ok(mut state) = progress_state_for_worker.lock() else {
-                return;
+                return true;
             };
             if percent != 100
                 && percent == state.1
                 && state.0.elapsed() < std::time::Duration::from_millis(120)
             {
-                return;
+                return true;
             }
             if percent != 100 && state.0.elapsed() < std::time::Duration::from_millis(120) {
-                return;
+                return true;
             }
             state.0 = std::time::Instant::now();
             state.1 = percent;
@@ -3234,6 +3234,7 @@ impl qobject::LibraryModel {
                     .as_mut()
                     .update_automatic_video_progress(game_uid, percent);
             });
+            true
         });
         let request_for_worker = request.clone();
         let request_for_completion = request.clone();

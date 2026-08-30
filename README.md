@@ -511,7 +511,11 @@ backend contract. Existing members can save and test their forum credentials in
 Settings; Lunchbox keeps the combined secret in the operating-system credential
 store. Artwork archive matching, direct video/manual lookup, platform aliases,
 title normalization, cache naming, and the generated arcade parent/clone set
-resolver remain Rust services and execute off the Qt thread. A developer can set
+resolver remain Rust services and execute off the Qt thread. Direct artwork,
+video, and manual actions expose throttled byte progress through CXX-Qt and can
+cooperatively abort the FTP data connection. Archive packs stream to guarded
+temporary files instead of buffering in memory; cancellation and failures remove
+the partial file before the worker reports completion. A developer can set
 `LUNCHBOX_ARCADE_XML` to a user-owned `Arcade.xml`; otherwise the build checks the
 ignored local `launchbox-data/Arcade.xml` migration input and falls back to title
 matching when that licensed lookup source is unavailable. No LaunchBox provider

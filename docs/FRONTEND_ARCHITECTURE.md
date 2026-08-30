@@ -1053,7 +1053,15 @@ EmuMovies preserves the legacy Rust backend rather than routing through a new
 web API. `EmuMoviesModel` is only the CXX-Qt boundary: it loads forum credentials
 from the native keyring, starts the existing blocking FTP archive/video/manual
 operations on named Rust workers, and generation-guards every completion before
-refreshing the shared media index. The port retains legacy platform aliases,
+refreshing the shared media index. Its progress callback is also a cooperative
+cancellation contract: the worker checks it at discovery boundaries and every
+64-KiB data chunk, sends FTP `ABOR` for an active transfer, and keeps the Qt model
+busy until the transport acknowledges completion. Artwork archives, videos, and
+manuals stream into same-directory guarded temporary files; only a completed
+transfer is atomically renamed, while every cancelled or failed partial is
+removed. `EmuMoviesTransferStatus.qml` presents this state, determinate progress,
+and cancellation consistently in Settings and Find Artwork without expanding
+`Main.qml` with another inline status surface. The port retains legacy platform aliases,
 title normalization, archive matching, direct-file matching, cache indices,
 timeouts, and the LaunchBox-ID-to-MAME parent/clone resolver. That resolver is
 generated only from a user-owned `Arcade.xml` supplied by

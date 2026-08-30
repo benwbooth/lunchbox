@@ -1046,8 +1046,97 @@ impl ArchiveIndex {
     }
 }
 
-/// Progress callback type for downloads
-pub type ProgressCallback = Box<dyn Fn(f32) + Send + Sync>;
+const TRANSFER_CANCELLED_MESSAGE: &str = "EmuMovies transfer cancelled";
+
+/// Progress callback type for downloads. Returning `false` requests cooperative
+/// cancellation of the active FTP transfer.
+pub type ProgressCallback = Box<dyn Fn(f32) -> bool + Send + Sync>;
+
+fn report_progress(progress: Option<&ProgressCallback>, value: f32) -> Result<()> {
+    if progress.is_some_and(|callback| !callback(value.clamp(0.0, 1.0))) {
+        anyhow::bail!(TRANSFER_CANCELLED_MESSAGE);
+    }
+    Ok(())
+}
+
+fn stream_download<R, W, F>(
+    reader: &mut R,
+    writer: &mut W,
+    total_bytes: Option<u64>,
+    progress: Option<&ProgressCallback>,
+    label: &str,
+    mut on_chunk: F,
+) -> Result<u64>
+where
+    R: Read,
+    W: Write,
+    F: FnMut(u64),
+{
+    let mut buffer = [0u8; 64 * 1024];
+    let mut downloaded_bytes = 0u64;
+    loop {
+        let bytes_read = reader
+            .read(&mut buffer)
+            .with_context(|| format!("Failed while reading {label}"))?;
+        if bytes_read == 0 {
+            break;
+        }
+
+        writer
+            .write_all(&buffer[..bytes_read])
+            .with_context(|| format!("Failed while writing {label}"))?;
+        downloaded_bytes += bytes_read as u64;
+        on_chunk(downloaded_bytes);
+
+        let value = total_bytes
+            .filter(|size| *size > 0)
+            .map_or(0.0, |size| downloaded_bytes as f32 / size as f32);
+        report_progress(progress, value)?;
+    }
+    Ok(downloaded_bytes)
+}
+
+pub fn transfer_was_cancelled(error: &str) -> bool {
+    error.contains(TRANSFER_CANCELLED_MESSAGE)
+}
+
+struct PartialDownload {
+    path: PathBuf,
+    published: bool,
+}
+
+impl PartialDownload {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            published: false,
+        }
+    }
+
+    fn publish(&mut self, output_path: &Path) -> Result<()> {
+        std::fs::rename(&self.path, output_path)?;
+        self.published = true;
+        Ok(())
+    }
+}
+
+impl Drop for PartialDownload {
+    fn drop(&mut self) {
+        if !self.published {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+struct VideoDownloadProgressGuard<'a> {
+    game_cache_dir: &'a Path,
+}
+
+impl Drop for VideoDownloadProgressGuard<'_> {
+    fn drop(&mut self) {
+        clear_video_download_progress(self.game_cache_dir);
+    }
+}
 
 /// EmuMovies FTP client
 #[derive(Clone)]
@@ -1268,35 +1357,7 @@ impl EmuMoviesClient {
             local_path.display()
         );
 
-        let mut ftp = self.connect()?;
-        ftp.transfer_type(suppaftp::types::FileType::Binary)?;
-
-        // Get file size for progress reporting
-        let _file_size = ftp.size(remote_path).ok();
-
-        // Create a temp file path
-        let temp_path = local_path.with_extension("tmp");
-
-        // Download with progress tracking
-        let data = ftp
-            .retr_as_buffer(remote_path)
-            .context(format!("Failed to download: {}", remote_path))?;
-
-        let _ = ftp.quit();
-
-        let bytes = data.into_inner();
-
-        if let Some(progress_fn) = progress {
-            progress_fn(1.0);
-        }
-
-        tracing::info!("Downloaded {} bytes", bytes.len());
-
-        // Write to temp file then rename
-        std::fs::write(&temp_path, &bytes)?;
-        std::fs::rename(&temp_path, local_path)?;
-
-        Ok(())
+        self.download_direct_file(remote_path, local_path, progress, "Artwork archive")
     }
 
     /// Build or load an archive index
@@ -1395,6 +1456,8 @@ impl EmuMoviesClient {
         game_cache_dir: &Path,
         progress: Option<&ProgressCallback>,
     ) -> Result<PathBuf> {
+        report_progress(progress, 0.0)?;
+
         // Don't use archives for video
         if media_type.is_video() {
             anyhow::bail!("Use get_video() for video content");
@@ -1430,11 +1493,14 @@ impl EmuMoviesClient {
                     )
                 })?;
 
+                report_progress(progress, 0.0)?;
+
                 // Download it
                 self.download_archive(&remote_path, &archive_path, progress)?;
             }
 
             // Build/load index once while holding archive setup lock
+            report_progress(progress, 1.0)?;
             self.get_or_build_index(&archive_path)?
         };
 
@@ -1456,6 +1522,7 @@ impl EmuMoviesClient {
         ));
 
         // Extract the file
+        report_progress(progress, 1.0)?;
         self.extract_from_archive(&archive_path, entry_path, &output_path)?;
 
         Ok(output_path)
@@ -1551,6 +1618,8 @@ impl EmuMoviesClient {
         progress: Option<&ProgressCallback>,
         label: &str,
     ) -> Result<()> {
+        report_progress(progress, 0.0)?;
+
         if let Some(parent) = output_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -1562,6 +1631,7 @@ impl EmuMoviesClient {
         tracing::info!("{} size: {:?} bytes", label, file_size);
 
         let temp_path = output_path.with_extension("tmp");
+        let mut partial_download = PartialDownload::new(temp_path.clone());
         let temp_file = File::create(&temp_path)?;
         let mut writer = BufWriter::new(temp_file);
 
@@ -1577,26 +1647,12 @@ impl EmuMoviesClient {
             .set_write_timeout(Some(FTP_DATA_STALL_TIMEOUT))
             .context("Failed to configure EmuMovies data write timeout")?;
 
-        let mut buffer = [0u8; 64 * 1024];
-        let mut downloaded_bytes = 0u64;
-        loop {
-            let bytes_read = stream
-                .read(&mut buffer)
-                .with_context(|| format!("Failed while reading: {remote_path}"))?;
-            if bytes_read == 0 {
-                break;
-            }
-
-            writer.write_all(&buffer[..bytes_read])?;
-            downloaded_bytes += bytes_read as u64;
-
-            if let Some(progress_fn) = progress {
-                if let Some(total_bytes) = file_size {
-                    if total_bytes > 0 {
-                        progress_fn((downloaded_bytes as f32 / total_bytes as f32).clamp(0.0, 1.0));
-                    }
-                }
-            }
+        let transfer =
+            stream_download(&mut stream, &mut writer, file_size, progress, label, |_| {});
+        if let Err(error) = transfer {
+            drop(writer);
+            let _ = ftp.abort(stream);
+            return Err(error);
         }
 
         writer.flush()?;
@@ -1604,11 +1660,8 @@ impl EmuMoviesClient {
             .with_context(|| format!("Failed to finalize download: {remote_path}"))?;
         let _ = ftp.quit();
 
-        if let Some(progress_fn) = progress {
-            progress_fn(1.0);
-        }
-
-        std::fs::rename(&temp_path, output_path)?;
+        report_progress(progress, 1.0)?;
+        partial_download.publish(output_path)?;
         Ok(())
     }
 
@@ -1620,17 +1673,20 @@ impl EmuMoviesClient {
         game_cache_dir: &Path,
         progress: Option<&ProgressCallback>,
     ) -> Result<PathBuf> {
+        report_progress(progress, 0.0)?;
         if let Some(cached) = Self::find_existing_manual(game_cache_dir) {
             return Ok(cached);
         }
 
         let manual_folders = self.find_manual_folders(platform)?;
+        report_progress(progress, 0.0)?;
         if manual_folders.is_empty() {
             anyhow::bail!("No manual folder found for platform {}", platform);
         }
 
         let mut selected_manual: Option<(String, String, VideoMatchKind, f32, u8, usize)> = None;
         for (source_order, manual_folder) in manual_folders.iter().enumerate() {
+            report_progress(progress, 0.0)?;
             let index = match self.build_manual_index(manual_folder) {
                 Ok(index) => index,
                 Err(e) => {
@@ -1953,12 +2009,15 @@ impl EmuMoviesClient {
         game_cache_dir: &Path,
         progress: Option<&ProgressCallback>,
     ) -> Result<PathBuf> {
+        report_progress(progress, 0.0)?;
         let output_path = video_output_path(game_cache_dir);
 
         // Check cache first
         if let Some(cached_path) = get_cached_video_path(game_cache_dir) {
             return Ok(cached_path);
         }
+
+        let _progress_guard = VideoDownloadProgressGuard { game_cache_dir };
 
         let download_lock = get_video_download_lock(game_cache_dir);
         let _download_guard = download_lock.lock().map_err(|_| {
@@ -1968,6 +2027,7 @@ impl EmuMoviesClient {
             )
         })?;
 
+        report_progress(progress, 0.0)?;
         if let Some(cached_path) = get_cached_video_path(game_cache_dir) {
             return Ok(cached_path);
         }
@@ -1979,6 +2039,7 @@ impl EmuMoviesClient {
             "Finding matching video folder...",
         );
         let video_folders = self.find_video_folders(platform, Some(game_cache_dir))?;
+        report_progress(progress, 0.0)?;
         if video_folders.is_empty() {
             anyhow::bail!("No video folder found for platform {}", platform);
         }
@@ -1987,6 +2048,7 @@ impl EmuMoviesClient {
         let mut selected_video: Option<(String, String, VideoMatchKind, f32, u8, usize)> = None;
 
         for (source_order, video_folder) in video_folders.iter().enumerate() {
+            report_progress(progress, 0.0)?;
             let index = match self.get_video_index(video_folder, Some(game_cache_dir)) {
                 Ok(v) => v,
                 Err(e) => {
@@ -2056,6 +2118,7 @@ impl EmuMoviesClient {
 
         // Write to file
         let temp_path = output_path.with_extension("tmp");
+        let mut partial_download = PartialDownload::new(temp_path.clone());
         let temp_file = File::create(&temp_path)?;
         let mut writer = BufWriter::new(temp_file);
 
@@ -2072,27 +2135,20 @@ impl EmuMoviesClient {
             .get_ref()
             .set_write_timeout(Some(FTP_DATA_STALL_TIMEOUT))
             .context("Failed to configure EmuMovies video data write timeout")?;
-        let mut buffer = [0u8; 64 * 1024];
-        let mut downloaded_bytes = 0u64;
-        loop {
-            let bytes_read = stream
-                .read(&mut buffer)
-                .context(format!("Failed while reading: {}", video_path))?;
-            if bytes_read == 0 {
-                break;
-            }
-
-            writer.write_all(&buffer[..bytes_read])?;
-            downloaded_bytes += bytes_read as u64;
-            update_video_download_progress(game_cache_dir, downloaded_bytes, file_size);
-
-            if let Some(progress_fn) = progress {
-                if let Some(total_bytes) = file_size {
-                    if total_bytes > 0 {
-                        progress_fn((downloaded_bytes as f32 / total_bytes as f32).clamp(0.0, 1.0));
-                    }
-                }
-            }
+        let transfer = stream_download(
+            &mut stream,
+            &mut writer,
+            file_size,
+            progress,
+            "gameplay video",
+            |downloaded_bytes| {
+                update_video_download_progress(game_cache_dir, downloaded_bytes, file_size);
+            },
+        );
+        if let Err(error) = transfer {
+            drop(writer);
+            let _ = ftp.abort(stream);
+            return Err(error);
         }
 
         writer.flush()?;
@@ -2100,13 +2156,9 @@ impl EmuMoviesClient {
             .context(format!("Failed to finalize download: {}", video_path))?;
         let _ = ftp.quit();
 
-        if let Some(progress_fn) = progress {
-            progress_fn(1.0);
-        }
-
-        std::fs::rename(&temp_path, &output_path)?;
+        report_progress(progress, 1.0)?;
+        partial_download.publish(&output_path)?;
         write_video_cache_version(game_cache_dir)?;
-        clear_video_download_progress(game_cache_dir);
 
         tracing::info!("Downloaded video to {}", output_path.display());
 
@@ -2648,5 +2700,55 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn stream_download_stops_when_progress_requests_cancellation() {
+        let input = vec![0x5a; 192 * 1024];
+        let mut reader = std::io::Cursor::new(input);
+        let mut output = Vec::new();
+        let callback: ProgressCallback = Box::new(|_| false);
+
+        let error = stream_download(
+            &mut reader,
+            &mut output,
+            Some(192 * 1024),
+            Some(&callback),
+            "test payload",
+            |_| {},
+        )
+        .expect_err("the callback should cancel after the first chunk");
+
+        assert!(transfer_was_cancelled(&error.to_string()));
+        assert_eq!(output.len(), 64 * 1024);
+    }
+
+    #[test]
+    fn partial_download_removes_unpublished_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let partial_path = temp.path().join("video.tmp");
+        std::fs::write(&partial_path, b"partial").unwrap();
+
+        {
+            let _partial = PartialDownload::new(partial_path.clone());
+        }
+
+        assert!(!partial_path.exists());
+    }
+
+    #[test]
+    fn partial_download_preserves_only_published_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let partial_path = temp.path().join("manual.tmp");
+        let output_path = temp.path().join("manual.pdf");
+        std::fs::write(&partial_path, b"complete").unwrap();
+
+        {
+            let mut partial = PartialDownload::new(partial_path.clone());
+            partial.publish(&output_path).unwrap();
+        }
+
+        assert!(!partial_path.exists());
+        assert_eq!(std::fs::read(output_path).unwrap(), b"complete");
     }
 }

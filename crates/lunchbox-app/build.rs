@@ -62,6 +62,7 @@ fn main() {
                 "qml/CollectionMetric.qml",
                 "qml/CouchModeView.qml",
                 "qml/Box3DViewer.qml",
+                "qml/EmuMoviesTransferStatus.qml",
                 "qml/FilterToggle.qml",
                 "qml/FirstRunSetup.qml",
                 "qml/HeaderButton.qml",

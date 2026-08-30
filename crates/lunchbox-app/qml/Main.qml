@@ -16651,6 +16651,14 @@ ApplicationWindow {
                                     root.openSettingsFor("emumovies")
                             }
                         }
+                        EmuMoviesTransferStatus {
+                            Layout.fillWidth: true
+                            providerModel: emuMovies
+                            ink: root.ink
+                            muted: root.muted
+                            accent: root.accent
+                            line: root.line
+                        }
                     }
                 }
             }
@@ -17932,22 +17940,17 @@ ApplicationWindow {
                             }
                         }
                     }
+                    EmuMoviesTransferStatus {
+                        Layout.fillWidth: true
+                        providerModel: emuMovies
+                        ink: root.ink
+                        muted: root.muted
+                        accent: root.accent
+                        line: root.line
+                    }
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 8
-                        BusyIndicator {
-                            visible: emuMovies.busy
-                            running: visible
-                            Layout.preferredWidth: 18
-                            Layout.preferredHeight: 18
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: emuMovies.message
-                            color: root.muted
-                            font.pixelSize: 10
-                            wrapMode: Text.WordWrap
-                        }
+                        Item { Layout.fillWidth: true }
                         Button {
                             text: "EmuMovies account ↗"
                             flat: true

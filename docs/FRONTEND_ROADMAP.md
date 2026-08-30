@@ -251,9 +251,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Extend the implemented exact Minerva manual acquisition, durable visible
   progress/cancellation, validated atomic cache publication, native cached
   manual/video bundle, cached grid preview, and ported legacy EmuMovies FTP
-  artwork/video/manual client with transfer progress, cooperative transport
-  cancellation, soundtrack browsing, and an unattended member-account runtime
-  gate. Hovering never silently starts provider traffic.
+  artwork/video/manual client. Direct EmuMovies transfers now expose throttled
+  progress, cooperatively abort FTP, and remove unpublished partial files.
+  Remaining work includes soundtrack browsing and an unattended member-account
+  cancellation gate. With saved credentials, visible games intentionally enter
+  the bounded automatic video queue so hover playback can become ready without
+  a separate manual download action.
 - Extend the implemented whole-library missing-media audit and bounded bulk
   LibRetro repair queue with durable pending-batch restart recovery, multi-
   provider bulk review, supplemental video/manual categories, and scheduled

@@ -17,6 +17,8 @@ pub mod qobject {
         #[qproperty(QString, last_media_kind)]
         #[qproperty(i32, database_id)]
         #[qproperty(i32, published_revision)]
+        #[qproperty(i32, transfer_progress)]
+        #[qproperty(bool, cancel_requested)]
         type EmuMoviesModel = super::EmuMoviesModelRust;
 
         #[qinvokable]
@@ -77,12 +79,17 @@ pub mod qobject {
 
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 
-use crate::emumovies::{EmuMoviesClient, EmuMoviesConfig, EmuMoviesMediaType};
+use crate::emumovies::{
+    EmuMoviesClient, EmuMoviesConfig, EmuMoviesMediaType, ProgressCallback, transfer_was_cancelled,
+};
 
 pub struct EmuMoviesModelRust {
     initialized: bool,
@@ -94,9 +101,12 @@ pub struct EmuMoviesModelRust {
     last_media_kind: QString,
     database_id: i32,
     published_revision: i32,
+    transfer_progress: i32,
+    cancel_requested: bool,
     title: String,
     platform: String,
     generation: u64,
+    cancel_token: Option<Arc<AtomicBool>>,
 }
 
 impl Default for EmuMoviesModelRust {
@@ -113,9 +123,12 @@ impl Default for EmuMoviesModelRust {
             last_media_kind: QString::default(),
             database_id: 0,
             published_revision: 0,
+            transfer_progress: -1,
+            cancel_requested: false,
             title: String::new(),
             platform: String::new(),
             generation: 0,
+            cancel_token: None,
         }
     }
 }
@@ -204,7 +217,10 @@ fn artwork_media_type(value: &str) -> Option<EmuMoviesMediaType> {
     }
 }
 
-fn execute_download(request: DownloadRequest) -> Result<(PathBuf, &'static str)> {
+fn execute_download(
+    request: DownloadRequest,
+    progress: Option<&ProgressCallback>,
+) -> Result<(PathBuf, &'static str)> {
     let (username, password) = effective_credentials(String::new(), String::new())?;
     let client = client(username, password);
     match request {
@@ -224,7 +240,7 @@ fn execute_download(request: DownloadRequest) -> Result<(PathBuf, &'static str)>
                 media_type,
                 &title,
                 &game_directory,
-                None,
+                progress,
             )?;
             Ok((path, "artwork"))
         }
@@ -237,9 +253,9 @@ fn execute_download(request: DownloadRequest) -> Result<(PathBuf, &'static str)>
         } => {
             let game_directory = crate::media::game_media_directory(&game_id, database_id)?;
             let path = if media_type == EmuMoviesMediaType::Video {
-                client.get_video(&platform, &title, &game_directory, None)?
+                client.get_video(&platform, &title, &game_directory, progress)?
             } else {
-                client.get_manual(&platform, &title, &game_directory, None)?
+                client.get_manual(&platform, &title, &game_directory, progress)?
             };
             let kind = if media_type == EmuMoviesMediaType::Video {
                 "video"
@@ -331,6 +347,8 @@ impl qobject::EmuMoviesModel {
             return;
         }
         self.as_mut().set_busy(true);
+        self.as_mut().set_transfer_progress(-1);
+        self.as_mut().set_cancel_requested(false);
         self.as_mut()
             .set_message(qstring("Connecting to the EmuMovies FTP library…"));
         let qt_thread = self.as_ref().qt_thread();
@@ -401,6 +419,14 @@ impl qobject::EmuMoviesModel {
         platform: QString,
         artwork_type: QString,
     ) {
+        if let Some(cancel_token) = self.as_ref().rust().cancel_token.clone() {
+            cancel_token.store(true, Ordering::Release);
+            self.as_mut().set_cancel_requested(true);
+            self.as_mut().set_message(qstring(
+                "Cancelling the active EmuMovies transfer before changing games…",
+            ));
+            return;
+        }
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         self.as_mut().set_database_id(database_id);
         self.as_mut().rust_mut().title = title.to_string();
@@ -479,15 +505,46 @@ impl qobject::EmuMoviesModel {
         self.as_mut().set_last_media_kind(qstring(request.kind()));
         let generation = self.as_ref().rust().generation.wrapping_add(1);
         self.as_mut().rust_mut().generation = generation;
+        let cancel_token = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().cancel_token = Some(Arc::clone(&cancel_token));
         self.as_mut().set_busy(true);
+        self.as_mut().set_cancel_requested(false);
+        self.as_mut().set_transfer_progress(0);
         self.as_mut().set_message(qstring(
             "Searching and downloading from the EmuMovies FTP library…",
         ));
         let qt_thread = self.as_ref().qt_thread();
+        let progress_thread = qt_thread.clone();
+        let progress_state = Arc::new(Mutex::new((
+            Instant::now() - Duration::from_secs(1),
+            -1_i32,
+        )));
+        let progress_state_for_worker = Arc::clone(&progress_state);
+        let cancel_token_for_worker = Arc::clone(&cancel_token);
+        let progress: ProgressCallback = Box::new(move |value| {
+            if cancel_token_for_worker.load(Ordering::Acquire) {
+                return false;
+            }
+
+            let percent = (value * 100.0).round().clamp(0.0, 100.0) as i32;
+            let Ok(mut state) = progress_state_for_worker.lock() else {
+                return !cancel_token_for_worker.load(Ordering::Acquire);
+            };
+            let elapsed = state.0.elapsed();
+            if percent != 100 && (percent == state.1 || elapsed < Duration::from_millis(120)) {
+                return !cancel_token_for_worker.load(Ordering::Acquire);
+            }
+            state.0 = Instant::now();
+            state.1 = percent;
+            let _ = progress_thread.queue(move |mut model| {
+                model.as_mut().update_transfer_progress(generation, percent);
+            });
+            !cancel_token_for_worker.load(Ordering::Acquire)
+        });
         let spawn = std::thread::Builder::new()
             .name("lunchbox-emumovies-download".into())
             .spawn(move || {
-                let result = execute_download(request)
+                let result = execute_download(request, Some(&progress))
                     .map(|(path, kind)| (path.to_string_lossy().into_owned(), kind))
                     .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
@@ -495,10 +552,22 @@ impl qobject::EmuMoviesModel {
                 });
             });
         if let Err(error) = spawn {
+            self.as_mut().rust_mut().cancel_token = None;
             self.as_mut().set_busy(false);
+            self.as_mut().set_cancel_requested(false);
+            self.as_mut().set_transfer_progress(-1);
             self.as_mut().set_message(qstring(format!(
                 "Could not start the EmuMovies download: {error}"
             )));
+        }
+    }
+
+    fn update_transfer_progress(mut self: Pin<&mut Self>, generation: u64, percent: i32) {
+        if generation == self.as_ref().rust().generation
+            && *self.as_ref().busy()
+            && !*self.as_ref().cancel_requested()
+        {
+            self.as_mut().set_transfer_progress(percent.clamp(0, 100));
         }
     }
 
@@ -510,29 +579,42 @@ impl qobject::EmuMoviesModel {
         if generation != self.as_ref().rust().generation {
             return;
         }
+        self.as_mut().rust_mut().cancel_token = None;
         self.as_mut().set_busy(false);
+        self.as_mut().set_cancel_requested(false);
         match result {
             Ok((path, kind)) => {
+                self.as_mut().set_transfer_progress(100);
                 self.as_mut().set_last_media_kind(qstring(kind));
                 let revision = self.as_ref().published_revision().wrapping_add(1);
                 self.as_mut().set_published_revision(revision);
                 self.as_mut()
                     .set_message(qstring(format!("Downloaded EmuMovies {kind} to {path}.")));
             }
-            Err(error) => self
-                .as_mut()
-                .set_message(qstring(format!("EmuMovies download failed: {error}"))),
+            Err(error) if transfer_was_cancelled(&error) => {
+                self.as_mut().set_transfer_progress(-1);
+                self.as_mut().set_message(qstring(
+                    "EmuMovies transfer cancelled. No partial media was kept.",
+                ));
+            }
+            Err(error) => {
+                self.as_mut().set_transfer_progress(-1);
+                self.as_mut()
+                    .set_message(qstring(format!("EmuMovies download failed: {error}")));
+            }
         }
     }
 
     pub fn cancel(mut self: Pin<&mut Self>) {
-        self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
-        if *self.as_ref().busy() {
-            self.as_mut().set_message(qstring(
-                "The current FTP operation will finish in the background; its result will be ignored.",
-            ));
+        let cancel_token = self.as_ref().rust().cancel_token.clone();
+        if *self.as_ref().busy()
+            && let Some(cancel_token) = cancel_token
+        {
+            cancel_token.store(true, Ordering::Release);
+            self.as_mut().set_cancel_requested(true);
+            self.as_mut()
+                .set_message(qstring("Cancelling the EmuMovies FTP transfer…"));
         }
-        self.as_mut().set_busy(false);
     }
 }
 
