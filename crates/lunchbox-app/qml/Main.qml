@@ -248,7 +248,9 @@ ApplicationWindow {
     readonly property bool libraryViewUiProbe: libraryViewRestoreUiProbe
                                                 || Qt.application.arguments.indexOf("--library-view-ui-probe") >= 0
     readonly property bool listFilterUiProbe: Qt.application.arguments.indexOf("--list-filter-ui-probe") >= 0
+    readonly property bool emuMoviesAutoUiProbe: Qt.application.arguments.indexOf("--emumovies-auto-ui-probe") >= 0
     readonly property bool hoverPreviewUiProbe: Qt.application.arguments.indexOf("--hover-preview-ui-probe") >= 0
+                                                || emuMoviesAutoUiProbe
     readonly property bool libraryAuditCleanupUiProbe: Qt.application.arguments.indexOf("--library-audit-cleanup-ui-probe") >= 0
     readonly property bool libraryAuditUiProbe: Qt.application.arguments.indexOf("--library-audit-ui-probe") >= 0
                                                   || libraryAuditCleanupUiProbe
@@ -5058,6 +5060,10 @@ ApplicationWindow {
         onTriggered: {
             library.initialize()
             appSettings.initialize()
+            // Credential discovery is independent of AppSettings. Starting it
+            // here keeps the automatic-video queue independent of a later
+            // settings signal that may already have fired.
+            emuMovies.initialize()
             downloadQueue.initialize()
             localImport.initialize()
         }
@@ -17906,7 +17912,7 @@ ApplicationWindow {
                                            emuMoviesPassword.text)
                         }
                         HeaderButton {
-                            text: emuMovies.busy ? "Testing…" : "Save & test credentials"
+                            text: emuMovies.busy ? "Testing…" : "Save & enable automatic media"
                             active: true
                             enabled: !emuMovies.busy
                                      && emuMoviesUsername.text.length > 0

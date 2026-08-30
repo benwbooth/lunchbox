@@ -970,11 +970,12 @@ impl Default for LibraryModelRust {
             hover_preview_url: QUrl::default(),
             hover_preview_source: QString::default(),
             hover_preview_message: QString::from(
-                "Pause over a game to preview a cached gameplay video.",
+                "Pause over a game to play its preview. Missing videos download automatically from EmuMovies.",
             ),
             hover_preview_loading: false,
-            hover_preview_probe: std::env::args()
-                .any(|argument| argument == "--hover-preview-ui-probe"),
+            hover_preview_probe: std::env::args().any(|argument| {
+                argument == "--hover-preview-ui-probe" || argument == "--emumovies-auto-ui-probe"
+            }),
             media_directory: QString::default(),
             media_loading: false,
             media_retrieval_enabled: crate::media::media_retrieval_enabled(),
@@ -2794,8 +2795,9 @@ impl qobject::LibraryModel {
         self.as_mut().set_hover_preview_game_id(qstring(&game_uid));
         self.as_mut().set_hover_preview_url(QUrl::default());
         self.as_mut().set_hover_preview_source(QString::default());
-        self.as_mut()
-            .set_hover_preview_message(qstring("Looking for a cached gameplay preview…"));
+        self.as_mut().set_hover_preview_message(qstring(
+            "Preparing gameplay preview and checking automatic EmuMovies download…",
+        ));
         self.as_mut().set_hover_preview_loading(true);
 
         let qt_thread = self.as_ref().qt_thread();
@@ -2816,7 +2818,7 @@ impl qobject::LibraryModel {
         if let Err(error) = spawn_result {
             self.as_mut().set_hover_preview_loading(false);
             self.as_mut().set_hover_preview_message(qstring(format!(
-                "Could not inspect cached gameplay media: {error}"
+                "Could not inspect gameplay media: {error}"
             )));
         }
     }
@@ -2853,7 +2855,7 @@ impl qobject::LibraryModel {
                 self.as_mut()
                     .set_hover_preview_source(qstring(&preview.source));
                 self.as_mut().set_hover_preview_message(qstring(format!(
-                    "Cached gameplay preview from {}.",
+                    "Gameplay preview ready from {}.",
                     preview.source
                 )));
             }
@@ -2893,7 +2895,7 @@ impl qobject::LibraryModel {
                 self.as_mut().set_hover_preview_url(QUrl::default());
                 self.as_mut().set_hover_preview_source(QString::default());
                 self.as_mut().set_hover_preview_message(qstring(format!(
-                    "Could not inspect cached gameplay media: {error}"
+                    "Could not inspect gameplay media: {error}"
                 )));
             }
         }
@@ -2910,7 +2912,7 @@ impl qobject::LibraryModel {
         self.as_mut().set_hover_preview_source(QString::default());
         self.as_mut().set_hover_preview_loading(false);
         self.as_mut().set_hover_preview_message(qstring(
-            "Pause over a game to preview a cached gameplay video.",
+            "Pause over a game to play its preview. Missing videos download automatically from EmuMovies.",
         ));
     }
 

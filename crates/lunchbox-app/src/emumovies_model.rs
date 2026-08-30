@@ -366,9 +366,9 @@ impl qobject::EmuMoviesModel {
                     self.as_mut().set_credentials_saved(true);
                 }
                 self.as_mut().set_message(qstring(if saved {
-                    "EmuMovies FTP connection succeeded. The credentials are saved securely."
+                    "EmuMovies FTP connection succeeded. Automatic gameplay-video downloads are enabled."
                 } else {
-                    "EmuMovies FTP connection succeeded."
+                    "EmuMovies FTP connection succeeded, but these credentials were not saved. Choose Save & enable automatic media to use automatic gameplay videos."
                 }));
             }
             Err(error) => self

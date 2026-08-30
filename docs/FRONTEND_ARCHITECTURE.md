@@ -753,6 +753,12 @@ the fixture duration, and `PlayingState`. The probe deliberately does not use
 Qt Quick's item grab: an Xvfb clock can remain at zero without a working
 hardware backend, and a grab cannot prove that a video texture itself rendered.
 Visual acceptance of the live texture remains a release-host check.
+`--emumovies-auto-ui-probe --media-directory EMPTY_PATH` runs the same complete
+grid-hover and playback gate without seeding a fixture. It loads the saved
+operating-system credential, queues the visible Super Mario Bros. tile through
+the production EmuMovies FTP worker, downloads into the empty media root, and
+exits only after Qt plays the newly published video. This is an opt-in live
+service probe and never prints credential values.
 `--manual-candidate-probe --minerva-database PATH` reads the live Minerva
 catalog and its bounded cached torrent metadata without starting Qt or
 downloading game content. It exits successfully only when the fixed Cooking
