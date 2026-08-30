@@ -62,7 +62,8 @@ The initial implementation enforces this shape:
 - Pointer-wheel input uses one reusable QML physics component in both grid and
   list views. It amplifies high-resolution trackpad deltas, accelerates repeated
   wheel notches, accumulates momentum, and eases to rest without blocking the
-  GUI thread.
+  GUI thread. Enlarged hover cards remain clipped to the game viewport, so they
+  cannot cover the page heading or global navigation while the grid moves.
 - The desktop shell is split into reusable QML controls for header actions,
   sidebar navigation, links, metrics, filters, metadata, status, wheel physics,
   and first-run setup. `Main.qml` remains the composition root instead of
@@ -692,8 +693,14 @@ Minerva bundle, and scrolls the details pane to the ranked native candidate
 cards for deterministic visual review against the preserved discovery catalog.
 `--multidisc-ui-probe` opens the preserved Sony PlayStation Final Fantasy VII
 record, inspects its live Minerva sources, and opens the exact multi-disc review
-dialog when a plan is found. This route verifies real provider filenames,
-aggregate size, playlist naming and dialog layout without starting a download.
+dialog when a plan is found. The reusable review component runs the same native
+free-space, destination-collision, and existing-download preflight as every
+ordinary single-file GET action. Queue remains disabled until it succeeds, and
+enqueue repeats the complete gate immediately before qBittorrent mutation.
+With `--screenshot-output`, the probe waits for that asynchronous result,
+captures the rendered ready or actionable blocked state, and exits without
+starting a download. This route verifies real provider filenames, aggregate
+size, playlist naming, storage disclosure, and dialog layout.
 `--laserdisc-ui-probe` opens the preserved Arcade Laserdisc Dragon's Lair
 record, resolves the live MAME/Hypseus/Daphne source views, and opens the first
 strict machine-layout review dialog. It exercises the real canonical MAME

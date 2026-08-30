@@ -16,6 +16,7 @@ cxx-qt-lib.workspace = true
 crc32fast.workspace = true
 directories.workspace = true
 flate2.workspace = true
+fs2.workspace = true
 gilrs.workspace = true
 hex.workspace = true
 keyring.workspace = true

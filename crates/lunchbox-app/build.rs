@@ -63,6 +63,7 @@ fn main() {
                 "qml/CollectionMemberPresentationDialog.qml",
                 "qml/CouchModeView.qml",
                 "qml/Box3DViewer.qml",
+                "qml/DownloadReviewDialog.qml",
                 "qml/EmuMoviesTransferStatus.qml",
                 "qml/FilterToggle.qml",
                 "qml/FirmwareAuditView.qml",

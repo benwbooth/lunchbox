@@ -3151,7 +3151,7 @@ mod tests {
     #[ignore = "requires local discovery/Minerva databases and network access"]
     fn live_minerva_metadata_builds_final_fantasy_multidisc_plan() {
         let details = load(
-            "6119074e-d813-446d-a7ff-556f75e52320",
+            "293ced29-4167-474a-8cef-91cae446cfb8",
             "Final Fantasy VII",
             "Sony Playstation",
             false,
@@ -3182,7 +3182,7 @@ mod tests {
     #[ignore = "requires local discovery/Minerva databases and network access"]
     fn live_minerva_metadata_builds_prince_of_persia_exodos_plan() {
         let details = load(
-            "0faf424e-bb45-4d5f-b88d-771936a35f8a",
+            "7b3df553-7426-475a-9818-c4589e1e9480",
             "Prince of Persia",
             "MS-DOS",
             false,
@@ -3221,7 +3221,7 @@ mod tests {
         let details = load(
             "ffecdc12-bc0f-459c-a0b7-4ee856e14f9e",
             "Dragon's Lair",
-            "Arcade Laserdisc",
+            "Arcade",
             false,
             true,
         )

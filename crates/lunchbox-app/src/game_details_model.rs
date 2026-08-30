@@ -14,6 +14,13 @@ pub mod qobject {
         #[qproperty(bool, loading)]
         #[qproperty(bool, torrent_loading)]
         #[qproperty(bool, download_busy)]
+        #[qproperty(bool, download_preflight_busy)]
+        #[qproperty(bool, download_preflight_ready)]
+        #[qproperty(i32, download_review_index)]
+        #[qproperty(QString, download_preflight_status)]
+        #[qproperty(QString, download_preflight_storage)]
+        #[qproperty(QString, download_preflight_destination)]
+        #[qproperty(QString, download_preflight_mode)]
         #[qproperty(bool, prepare_busy)]
         #[qproperty(bool, launch_discovery_busy)]
         #[qproperty(bool, launch_busy)]
@@ -244,6 +251,9 @@ pub mod qobject {
         fn queue_file(self: Pin<&mut GameDetailsModel>, index: i32);
 
         #[qinvokable]
+        fn inspect_download(self: Pin<&mut GameDetailsModel>, index: i32);
+
+        #[qinvokable]
         fn prepare_game(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
@@ -449,6 +459,13 @@ pub struct GameDetailsModelRust {
     loading: bool,
     torrent_loading: bool,
     download_busy: bool,
+    download_preflight_busy: bool,
+    download_preflight_ready: bool,
+    download_review_index: i32,
+    download_preflight_status: QString,
+    download_preflight_storage: QString,
+    download_preflight_destination: QString,
+    download_preflight_mode: QString,
     prepare_busy: bool,
     launch_discovery_busy: bool,
     launch_busy: bool,
@@ -612,6 +629,7 @@ pub struct GameDetailsModelRust {
     details_generation: u64,
     media_refresh_generation: u64,
     torrent_generation: u64,
+    download_preflight_generation: u64,
     preparation_generation: u64,
     launch_generation: u64,
     activity_load_generation: u64,
@@ -634,6 +652,13 @@ impl Default for GameDetailsModelRust {
             loading: false,
             torrent_loading: false,
             download_busy: false,
+            download_preflight_busy: false,
+            download_preflight_ready: false,
+            download_review_index: -1,
+            download_preflight_status: QString::default(),
+            download_preflight_storage: QString::default(),
+            download_preflight_destination: QString::default(),
+            download_preflight_mode: QString::default(),
             prepare_busy: false,
             launch_discovery_busy: false,
             launch_busy: false,
@@ -799,6 +824,7 @@ impl Default for GameDetailsModelRust {
             details_generation: 0,
             media_refresh_generation: 0,
             torrent_generation: 0,
+            download_preflight_generation: 0,
             preparation_generation: 0,
             launch_generation: 0,
             activity_load_generation: 0,
@@ -1159,12 +1185,20 @@ impl qobject::GameDetailsModel {
         local: bool,
         downloadable: bool,
     ) {
+        let download_review_probe = has_cli_flag("--multidisc-ui-probe")
+            || has_cli_flag("--exo-archive-ui-probe")
+            || has_cli_flag("--laserdisc-ui-probe");
         if has_cli_flag("--metadata-ui-probe") {
             println!("LUNCHBOX_METADATA_MODEL_SELECT id={}", game_id.to_string());
         }
         let game_id_string = game_id.to_string();
         let title_string = title.to_string();
         let platform_string = platform.to_string();
+        if download_review_probe {
+            println!(
+                "LUNCHBOX_DOWNLOAD_REVIEW_MODEL_SELECT id={game_id_string:?} title={title_string:?} platform={platform_string:?}"
+            );
+        }
         self.as_mut().invalidate_preparation();
         self.as_mut().invalidate_launch_state();
         self.as_mut().rust_mut().details_generation =
@@ -1207,9 +1241,30 @@ impl qobject::GameDetailsModel {
                     downloadable,
                 )
                 .map_err(|error| error.to_string());
-                let _ = qt_thread.queue(move |mut model| {
+                if download_review_probe {
+                    match &loaded {
+                        Ok(details) => println!(
+                            "LUNCHBOX_DOWNLOAD_REVIEW_MODEL_LOADED id={game_id_string:?} bundles={}",
+                            details.bundles.len()
+                        ),
+                        Err(error) => eprintln!(
+                            "LUNCHBOX_DOWNLOAD_REVIEW_MODEL_FAILED id={game_id_string:?} error={error}"
+                        ),
+                    }
+                }
+                let queued = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_game_details(generation, loaded);
                 });
+                if download_review_probe {
+                    match queued {
+                        Ok(()) => println!(
+                            "LUNCHBOX_DOWNLOAD_REVIEW_MODEL_QUEUED id={game_id_string:?}"
+                        ),
+                        Err(error) => eprintln!(
+                            "LUNCHBOX_DOWNLOAD_REVIEW_MODEL_QUEUE_FAILED id={game_id_string:?} error={error}"
+                        ),
+                    }
+                }
             });
         if let Err(error) = spawn_result {
             self.as_mut().set_loading(false);
@@ -1876,6 +1931,22 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_bundle_count(0);
         self.as_mut().set_file_count(0);
         self.as_mut().set_selected_bundle(-1);
+        self.as_mut().rust_mut().download_preflight_generation = self
+            .as_ref()
+            .rust()
+            .download_preflight_generation
+            .wrapping_add(1);
+        self.as_mut().set_download_preflight_busy(false);
+        self.as_mut().set_download_preflight_ready(false);
+        self.as_mut().set_download_review_index(-1);
+        self.as_mut()
+            .set_download_preflight_status(QString::default());
+        self.as_mut()
+            .set_download_preflight_storage(QString::default());
+        self.as_mut()
+            .set_download_preflight_destination(QString::default());
+        self.as_mut()
+            .set_download_preflight_mode(QString::default());
         self.as_mut().set_local_file_count(0);
         self.as_mut().set_selected_local_file(-1);
         self.as_mut()
@@ -2875,6 +2946,133 @@ impl qobject::GameDetailsModel {
             Err(error) => self.as_mut().set_message(qstring(format!(
                 "Could not inspect torrent contents: {error}"
             ))),
+        }
+    }
+
+    pub fn inspect_download(mut self: Pin<&mut Self>, index: i32) {
+        if *self.as_ref().download_busy() || *self.as_ref().download_preflight_busy() {
+            return;
+        }
+        let Some(file) = self.as_ref().file(index).cloned() else {
+            self.as_mut().set_download_preflight_ready(false);
+            self.as_mut().set_download_preflight_status(qstring(
+                "The selected torrent file is no longer available. Inspect the source again.",
+            ));
+            return;
+        };
+        let selected_bundle = *self.as_ref().selected_bundle();
+        let Some(bundle) = self.as_ref().bundle(selected_bundle).cloned() else {
+            self.as_mut().set_download_preflight_ready(false);
+            self.as_mut().set_download_preflight_status(qstring(
+                "The selected Minerva source is no longer available.",
+            ));
+            return;
+        };
+        let game_id = self.as_ref().game_id().to_string();
+        let launchbox_db_id = self.as_ref().rust().database_id;
+        let title = self.as_ref().rust().canonical_title.clone();
+        let platform = self.as_ref().platform().to_string();
+        self.as_mut().rust_mut().download_preflight_generation = self
+            .as_ref()
+            .rust()
+            .download_preflight_generation
+            .wrapping_add(1);
+        let generation = self.as_ref().rust().download_preflight_generation;
+        self.as_mut().set_download_review_index(index);
+        self.as_mut().set_download_preflight_busy(true);
+        self.as_mut().set_download_preflight_ready(false);
+        self.as_mut()
+            .set_download_preflight_status(qstring("Checking storage and existing downloads…"));
+        self.as_mut()
+            .set_download_preflight_storage(QString::default());
+        self.as_mut()
+            .set_download_preflight_destination(QString::default());
+        self.as_mut()
+            .set_download_preflight_mode(QString::default());
+
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-download-preflight".into())
+            .spawn(move || {
+                let inspected = (|| {
+                    let store = crate::settings::SettingsStore::open_default()?;
+                    let settings = store.load()?;
+                    let torrent_bytes = game_details::torrent_bytes(&bundle)?;
+                    let request = minerva_enqueue_request(
+                        game_id.clone(),
+                        launchbox_db_id,
+                        title,
+                        platform,
+                        bundle,
+                        file,
+                        torrent_bytes,
+                    )?;
+                    crate::qbittorrent::inspect_enqueue(&settings, &store, &request)
+                })()
+                .map_err(|error: anyhow::Error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_download_preflight(generation, game_id, index, inspected);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().set_download_preflight_busy(false);
+            self.as_mut().set_download_preflight_status(qstring(format!(
+                "Could not start the download preflight worker: {error}"
+            )));
+        }
+    }
+
+    fn finish_download_preflight(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        game_id: String,
+        index: i32,
+        inspected: Result<crate::qbittorrent::DownloadPreflight, String>,
+    ) {
+        if generation != self.as_ref().rust().download_preflight_generation
+            || self.as_ref().game_id().to_string() != game_id
+            || *self.as_ref().download_review_index() != index
+        {
+            return;
+        }
+        self.as_mut().set_download_preflight_busy(false);
+        match inspected {
+            Ok(preflight) => {
+                self.as_mut()
+                    .set_download_preflight_ready(preflight.can_queue);
+                self.as_mut()
+                    .set_download_preflight_mode(qstring(preflight_mode_label(&preflight)));
+                self.as_mut()
+                    .set_download_preflight_storage(qstring(preflight_storage_summary(&preflight)));
+                let destination = if preflight.uses_install_destination {
+                    format!(
+                        "{} · {}",
+                        preflight.file_link_mode.replace('_', " "),
+                        preflight.install_path.display()
+                    )
+                } else {
+                    format!(
+                        "leave in torrent library · {}",
+                        preflight.download_path.display()
+                    )
+                };
+                self.as_mut()
+                    .set_download_preflight_destination(qstring(destination));
+                self.as_mut()
+                    .set_download_preflight_status(qstring(if preflight.can_queue {
+                        "Ready to add this reviewed selection to Downloads.".to_owned()
+                    } else {
+                        preflight.blocked_reason
+                    }));
+            }
+            Err(error) => {
+                self.as_mut().set_download_preflight_ready(false);
+                self.as_mut().set_download_preflight_status(qstring(format!(
+                    "Download readiness could not be verified: {error}"
+                )));
+            }
         }
     }
 
@@ -4893,27 +5091,86 @@ fn queue_download(
     let settings = store.load()?;
     let password = crate::settings::load_password()?.unwrap_or_default();
     let torrent_bytes = game_details::torrent_bytes(&bundle)?;
-    let file_index = u32::try_from(file.index)
-        .map_err(|_| anyhow::anyhow!("torrent file index is too large"))?;
-    let job = crate::qbittorrent::enqueue(
-        &settings,
-        &password,
-        &store,
-        crate::qbittorrent::EnqueueRequest {
-            game_id,
-            launchbox_db_id,
-            title: title.clone(),
-            platform,
-            source_kind: "minerva".to_owned(),
-            torrent_url: bundle.torrent_url,
-            torrent_bytes,
-            selected_file_index: file_index,
-            selected_file_path: file.filename,
-            download_plan: file.download_plan,
-        },
+    let request = minerva_enqueue_request(
+        game_id,
+        launchbox_db_id,
+        title.clone(),
+        platform,
+        bundle,
+        file,
+        torrent_bytes,
     )?;
+    let job = crate::qbittorrent::enqueue(&settings, &password, &store, request)?;
     store.upsert_job(&job)?;
     Ok(title)
+}
+
+fn minerva_enqueue_request(
+    game_id: String,
+    launchbox_db_id: i64,
+    title: String,
+    platform: String,
+    bundle: MinervaBundle,
+    file: TorrentFileCandidate,
+    torrent_bytes: Vec<u8>,
+) -> anyhow::Result<crate::qbittorrent::EnqueueRequest> {
+    let file_index = u32::try_from(file.index)
+        .map_err(|_| anyhow::anyhow!("torrent file index is too large"))?;
+    Ok(crate::qbittorrent::EnqueueRequest {
+        game_id,
+        launchbox_db_id,
+        title,
+        platform,
+        source_kind: "minerva".to_owned(),
+        torrent_url: bundle.torrent_url,
+        torrent_bytes,
+        selected_file_index: file_index,
+        selected_file_path: file.filename,
+        download_plan: file.download_plan,
+    })
+}
+
+fn preflight_mode_label(preflight: &crate::qbittorrent::DownloadPreflight) -> String {
+    let selected = game_details::format_bytes(preflight.selected_bytes);
+    let additional = game_details::format_bytes(preflight.required_download_bytes);
+    if preflight.required_download_bytes == preflight.selected_bytes {
+        format!("{} · {selected}", preflight.selection_kind)
+    } else if preflight.required_download_bytes == 0 {
+        format!(
+            "{} · {selected} · already present in the shared transfer",
+            preflight.selection_kind
+        )
+    } else {
+        format!(
+            "{} · {selected} selected · {additional} additional transfer",
+            preflight.selection_kind
+        )
+    }
+}
+
+fn preflight_storage_summary(preflight: &crate::qbittorrent::DownloadPreflight) -> String {
+    let download = game_details::format_bytes(preflight.required_download_bytes);
+    let available = game_details::format_bytes(preflight.download_available_bytes);
+    if preflight.required_install_bytes == 0 {
+        return format!(
+            "{download} additional download · {available} free · {}",
+            preflight.download_path.display()
+        );
+    }
+    let install = game_details::format_bytes(preflight.required_install_bytes);
+    if preflight.shared_filesystem {
+        format!(
+            "{download} download + {install} copy · {available} shared free space · {}",
+            preflight.download_path.display()
+        )
+    } else {
+        format!(
+            "{download} download · {available} free at {}\n{install} copy · {} free at {}",
+            preflight.download_path.display(),
+            game_details::format_bytes(preflight.install_available_bytes),
+            preflight.install_path.display()
+        )
+    }
 }
 
 #[cfg(test)]

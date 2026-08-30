@@ -40,7 +40,7 @@ ApplicationWindow {
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
-    title: "Lunchbox"
+    title: downloadPlanUiProbe ? "Lunchbox - Download Review Probe" : "Lunchbox"
     color: palette.window
 
     readonly property color ink: "#f4f7fb"
@@ -69,7 +69,6 @@ ApplicationWindow {
     property string pendingRecoveryJobId: ""
     property string pendingRecoveryJobTitle: ""
     property int pendingThemeRemovalIndex: -1
-    property int pendingDownloadPlanIndex: -1
     readonly property bool gridMode: library.view_mode !== "list"
     property bool couchModeActive: false
     property int couchModePreviousVisibility: Window.Windowed
@@ -150,6 +149,8 @@ ApplicationWindow {
     property int pendingControllerProfileDeleteIndex: -1
     property string pendingControllerProfileDeleteName: ""
     property int downloadPlanProbeBundleIndex: 0
+    property bool downloadPlanProbeStarted: false
+    property bool downloadReviewProbeCaptured: false
     property bool launchProbeTriggered: false
     property bool launchProbeObservedRunning: false
     property bool launchProbeAwaitingActivity: false
@@ -1059,12 +1060,85 @@ ApplicationWindow {
         selectedDatabaseId = databaseId
         selectedBox3d = false
         selectedHeroArtworkIndex = 0
-        library.request_artwork(databaseId, identityTitle, platform, library.artwork_type)
-        library.request_artwork(databaseId, identityTitle, platform, "fanart")
-        library.request_artwork(databaseId, identityTitle, platform, "box-front")
-        library.request_game_video(gameId)
-        refreshSelectedArtwork()
+        if (!root.downloadPlanUiProbe) {
+            library.request_artwork(databaseId, identityTitle, platform, library.artwork_type)
+            library.request_artwork(databaseId, identityTitle, platform, "fanart")
+            library.request_artwork(databaseId, identityTitle, platform, "box-front")
+            library.request_game_video(gameId)
+            refreshSelectedArtwork()
+        }
         gameDetails.select_game(gameId, identityTitle, platform, local, downloadable)
+    }
+
+    function startDownloadPlanProbe() {
+        if (!root.downloadPlanUiProbe || root.downloadPlanProbeStarted
+                || !library.ready || library.loading)
+            return
+        root.downloadPlanProbeStarted = true
+        if (root.multidiscUiProbe)
+            root.openGame("293ced29-4167-474a-8cef-91cae446cfb8", 525,
+                          "Final Fantasy VII", "Sony Playstation", false, true)
+        else if (root.exoArchiveUiProbe)
+            root.openGame("7b3df553-7426-475a-9818-c4589e1e9480", 14329,
+                          "Prince of Persia", "MS-DOS", false, true)
+        else
+            root.openGame("ffecdc12-bc0f-459c-a0b7-4ee856e14f9e", 33536,
+                          "Dragon's Lair", "Arcade", false, true)
+    }
+
+    function loadDownloadPlanProbeBundle() {
+        if (!root.downloadPlanUiProbe || gameDetails.loading
+                || gameDetails.bundle_count === 0
+                || gameDetails.selected_bundle >= 0)
+            return
+        if (root.laserdiscUiProbe) {
+            for (let i = 0; i < gameDetails.bundle_count; ++i) {
+                if (gameDetails.bundle_title_at(i).indexOf(
+                            "Laserdisc Collection · MAME") === 0) {
+                    root.downloadPlanProbeBundleIndex = i
+                    gameDetails.load_bundle_files(i)
+                    return
+                }
+            }
+        }
+        root.downloadPlanProbeBundleIndex = 0
+        gameDetails.load_bundle_files(0)
+    }
+
+    function openDownloadPlanProbeReview() {
+        if (!root.downloadPlanUiProbe || gameDetails.file_count === 0
+                || downloadReviewDialog.reviewIndex >= 0)
+            return
+        for (let i = 0; i < gameDetails.file_count; ++i) {
+            if (gameDetails.file_has_download_plan(i)) {
+                downloadReviewDialog.openFor(i)
+                return
+            }
+        }
+        if (!gameDetails.torrent_loading
+                && root.downloadPlanProbeBundleIndex + 1 < gameDetails.bundle_count) {
+            ++root.downloadPlanProbeBundleIndex
+            gameDetails.load_bundle_files(root.downloadPlanProbeBundleIndex)
+        }
+    }
+
+    function completeDownloadReviewProbe() {
+        if (!root.downloadPlanUiProbe
+                || gameDetails.download_preflight_busy
+                || gameDetails.download_review_index < 0
+                || gameDetails.download_preflight_status.length === 0
+                || root.downloadReviewProbeCaptured)
+            return
+        root.downloadReviewProbeCaptured = true
+        console.log("LUNCHBOX_DOWNLOAD_REVIEW_READY ready="
+                    + gameDetails.download_preflight_ready
+                    + " status=" + gameDetails.download_preflight_status
+                    + " storage=" + gameDetails.download_preflight_storage
+                    + " destination=" + gameDetails.download_preflight_destination)
+        if (root.screenshotOutput.length > 0)
+            downloadReviewProbeScreenshotTimer.restart()
+        else
+            Qt.quit()
     }
 
     function openVariant(index) {
@@ -1294,7 +1368,8 @@ ApplicationWindow {
     MediaPlayer {
         id: gameVideoPlayer
         property bool resumeApplied: false
-        source: !root.couchModeActive && gameDetails.video_available
+        source: !root.couchModeActive && !root.downloadPlanUiProbe
+                && gameDetails.video_available
                 ? gameDetails.video_url : ""
         audioOutput: gameVideoAudio
         videoOutput: mediaFullscreen.opened ? fullscreenVideoOutput : detailVideoOutput
@@ -4051,6 +4126,41 @@ ApplicationWindow {
         }
     }
 
+    Timer {
+        id: downloadReviewProbeScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            downloadReviewDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_DOWNLOAD_REVIEW_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_DOWNLOAD_REVIEW_UI_READY ready="
+                            + gameDetails.download_preflight_ready
+                            + " status=" + gameDetails.download_preflight_status
+                            + " screenshot=" + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 60000
+        running: root.downloadPlanUiProbe && !root.downloadReviewProbeCaptured
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_DOWNLOAD_REVIEW_UI_FAILED timeout game="
+                          + gameDetails.game_id + " loading=" + gameDetails.loading
+                          + " bundles=" + gameDetails.bundle_count
+                          + " files=" + gameDetails.file_count
+                          + " message=" + gameDetails.message)
+            Qt.exit(2)
+        }
+    }
+
     Connections {
         target: gameDetails
         function onInstallation_revisionChanged() {
@@ -4083,25 +4193,29 @@ ApplicationWindow {
             if (!gameDetails.download_busy)
                 downloadQueue.refresh()
         }
+        function onLoadingChanged() {
+            if (!root.downloadPlanUiProbe || gameDetails.loading)
+                return
+            console.log("LUNCHBOX_DOWNLOAD_REVIEW_GAME_READY game="
+                        + gameDetails.game_id + " bundles="
+                        + gameDetails.bundle_count + " message="
+                        + gameDetails.message)
+            if (gameDetails.bundle_count === 0) {
+                console.error("LUNCHBOX_DOWNLOAD_REVIEW_UI_FAILED no_bundles message="
+                              + gameDetails.message)
+                Qt.exit(2)
+                return
+            }
+            root.loadDownloadPlanProbeBundle()
+        }
+        function onDownload_preflight_busyChanged() {
+            root.completeDownloadReviewProbe()
+        }
         function onBundle_countChanged() {
             if (root.releaseCandidateUiProbe && gameDetails.bundle_count > 0
                     && gameDetails.selected_bundle < 0)
                 gameDetails.load_bundle_files(0)
-            if (root.downloadPlanUiProbe && gameDetails.bundle_count > 0
-                    && gameDetails.selected_bundle < 0) {
-                if (root.laserdiscUiProbe) {
-                    for (let i = 0; i < gameDetails.bundle_count; ++i) {
-                        if (gameDetails.bundle_title_at(i).indexOf(
-                                    "Laserdisc Collection · MAME") === 0) {
-                            root.downloadPlanProbeBundleIndex = i
-                            gameDetails.load_bundle_files(i)
-                            return
-                        }
-                    }
-                }
-                root.downloadPlanProbeBundleIndex = 0
-                gameDetails.load_bundle_files(0)
-            }
+            root.loadDownloadPlanProbeBundle()
         }
         function onAlternate_title_countChanged() {
             if (root.alternateTitleUiProbe
@@ -4191,19 +4305,7 @@ ApplicationWindow {
         function onFile_countChanged() {
             if (root.releaseCandidateUiProbe && gameDetails.file_count > 0)
                 detailsProbeScrollTimer.restart()
-            if (root.downloadPlanUiProbe && gameDetails.file_count > 0) {
-                for (let i = 0; i < gameDetails.file_count; ++i) {
-                    if (gameDetails.file_has_download_plan(i)) {
-                        root.pendingDownloadPlanIndex = i
-                        downloadPlanDialog.open()
-                        return
-                    }
-                }
-                if (root.downloadPlanProbeBundleIndex + 1 < gameDetails.bundle_count) {
-                    ++root.downloadPlanProbeBundleIndex
-                    gameDetails.load_bundle_files(root.downloadPlanProbeBundleIndex)
-                }
-            }
+            root.openDownloadPlanProbeReview()
         }
         function onTorrent_loadingChanged() {
             if (root.downloadPlanUiProbe && !gameDetails.torrent_loading
@@ -5028,15 +5130,8 @@ ApplicationWindow {
             else if (root.releaseCandidateUiProbe)
                 root.openGame("52f67472-bddb-4e5b-951b-43364f996573", 1726,
                               "Super Mario Land", "Nintendo Game Boy", false, true)
-            else if (root.multidiscUiProbe)
-                root.openGame("6119074e-d813-446d-a7ff-556f75e52320", 525,
-                              "Final Fantasy VII", "Sony Playstation", false, true)
-            else if (root.exoArchiveUiProbe)
-                root.openGame("0faf424e-bb45-4d5f-b88d-771936a35f8a", 14329,
-                              "Prince of Persia", "MS-DOS", false, true)
-            else if (root.laserdiscUiProbe)
-                root.openGame("ffecdc12-bc0f-459c-a0b7-4ee856e14f9e", 33536,
-                              "Dragon's Lair", "Arcade Laserdisc", false, true)
+            else if (root.downloadPlanUiProbe)
+                root.startDownloadPlanProbe()
             else if (root.exoPrepareProbe || root.exoPrepareUiProbe
                      || root.exoLaunchProbe)
                 root.openGame("exo-prepare-probe", 0,
@@ -5085,6 +5180,25 @@ ApplicationWindow {
                 root.openGame("ffb0ddd4-d5e1-4f78-90c8-068db5022cd5", 0,
                               "Cooking Pico - Minna to Issho ni Hajimete Cooking! (Japan)",
                               "Sega - PICO", false, false)
+        }
+    }
+
+    Timer {
+        interval: 50
+        running: root.downloadPlanUiProbe && !root.downloadPlanProbeStarted
+        repeat: true
+        onTriggered: root.startDownloadPlanProbe()
+    }
+
+    Timer {
+        interval: 50
+        running: root.downloadPlanUiProbe && root.downloadPlanProbeStarted
+                 && !root.downloadReviewProbeCaptured
+        repeat: true
+        onTriggered: {
+            root.loadDownloadPlanProbeBundle()
+            root.openDownloadPlanProbeReview()
+            root.completeDownloadReviewProbe()
         }
     }
 
@@ -7191,7 +7305,7 @@ ApplicationWindow {
     component GameGrid: GridView {
         id: grid
         reuseItems: true
-        clip: false
+        clip: true
         cacheBuffer: height
         keyNavigationEnabled: true
         keyNavigationWraps: false
@@ -12194,22 +12308,13 @@ ApplicationWindow {
                                 anchors.right: parent.right
                                 anchors.rightMargin: 9
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: gameDetails.download_busy ? "…"
-                                      : gameDetails.file_has_download_plan(fileRow.index)
-                                        ? "GET SET" : "GET"
+                                text: gameDetails.download_busy ? "…" : "GET"
                                 enabled: !gameDetails.download_busy && !gameDetails.torrent_loading
                                 implicitWidth: 62
                                 implicitHeight: 34
                                 leftPadding: 8
                                 rightPadding: 8
-                                onClicked: {
-                                    if (gameDetails.file_has_download_plan(fileRow.index)) {
-                                        root.pendingDownloadPlanIndex = fileRow.index
-                                        downloadPlanDialog.open()
-                                    } else {
-                                        gameDetails.queue_file(fileRow.index)
-                                    }
-                                }
+                                onClicked: downloadReviewDialog.openFor(fileRow.index)
                             }
                         }
                     }
@@ -12254,132 +12359,21 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
-        id: downloadPlanDialog
-        readonly property string planKind: root.pendingDownloadPlanIndex >= 0
-                                           ? gameDetails.file_plan_kind_at(root.pendingDownloadPlanIndex)
-                                           : ""
-        modal: true
+    DownloadReviewDialog {
+        id: downloadReviewDialog
         anchors.centerIn: parent
-        width: Math.min(760, root.width - 48)
-        height: Math.min(planKind === "arcade_mame_laserdisc" ? 430 : 620,
-                         root.height - 48)
-        padding: 20
-        closePolicy: Popup.CloseOnEscape
-        onClosed: root.pendingDownloadPlanIndex = -1
-
-        background: Rectangle {
-            color: root.panel
-            radius: 14
-            border.color: root.accentCool
-        }
-        header: Rectangle {
-            width: parent.width
-            height: 68
-            color: "#17272a"
-            radius: 14
-            Column {
-                anchors.left: parent.left
-                anchors.leftMargin: 22
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 3
-                Text {
-                    text: downloadPlanDialog.planKind === "optical_multidisc"
-                          ? "REVIEW MULTI-DISC DOWNLOAD"
-                          : downloadPlanDialog.planKind.indexOf("arcade_") === 0
-                            ? "REVIEW ARCADE MACHINE DOWNLOAD"
-                            : "REVIEW RELATED DOWNLOAD"
-                    color: root.ink
-                    font.pixelSize: 17
-                    font.weight: Font.Bold
-                    font.letterSpacing: 0.8
-                }
-                Text {
-                    text: root.pendingDownloadPlanIndex >= 0
-                          ? gameDetails.file_plan_summary_at(root.pendingDownloadPlanIndex) : ""
-                    color: root.accentCool
-                    font.pixelSize: 10
-                }
-            }
-        }
-        contentItem: ColumnLayout {
-            spacing: 12
-            Text {
-                Layout.fillWidth: true
-                text: appSettings.download_entire_torrent
-                      ? "Whole-torrent mode is enabled. Lunchbox will download the complete source bundle; switch it off in Settings to select only the required set below."
-                      : downloadPlanDialog.planKind === "optical_multidisc"
-                        ? "Lunchbox will select every required disc and companion file as one queue item, preserve their relative layout, and publish the M3U playlist only after the complete set is safely imported."
-                        : downloadPlanDialog.planKind === "arcade_mame_laserdisc"
-                          ? "Lunchbox will select the exact MAME ROM set and laserdisc CHD listed below. After both arrive, it stages the native set-name layout and then marks the game installed."
-                          : downloadPlanDialog.planKind.indexOf("arcade_") === 0
-                          ? "Lunchbox will select only the exact ROM, framefile, machine data, video, and audio members listed below. After every member arrives, it stages the native MAME or Hypseus-compatible layout and then marks the game installed."
-                          : "Lunchbox will select the exact eXo game, metadata, game-data, and utility archives available for this title as one queue item. Shared dependencies are retained in a per-source cache for later prepared installation."
-                color: appSettings.download_entire_torrent ? root.accent : root.muted
-                font.pixelSize: 11
-                wrapMode: Text.WordWrap
-            }
-            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
-            Text {
-                text: "EXACT TORRENT MEMBERS"
-                color: root.accent
-                font.pixelSize: 10
-                font.weight: Font.Bold
-                font.letterSpacing: 1.2
-            }
-            ScrollView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                Text {
-                    width: downloadPlanDialog.availableWidth - 40
-                    text: root.pendingDownloadPlanIndex >= 0
-                          ? gameDetails.file_plan_members_at(root.pendingDownloadPlanIndex) : ""
-                    color: root.ink
-                    font.family: "monospace"
-                    font.pixelSize: 10
-                    lineHeight: 1.35
-                    wrapMode: Text.WrapAnywhere
-                }
-            }
-            Text {
-                Layout.fillWidth: true
-                text: "No filename match is treated as identity. The exact selection above remains visible for review before qBittorrent is changed."
-                color: root.muted
-                font.pixelSize: 10
-                wrapMode: Text.WordWrap
-            }
-        }
-        footer: Rectangle {
-            width: parent.width
-            height: 66
-            color: root.panelRaised
-            radius: 14
-            Row {
-                anchors.right: parent.right
-                anchors.rightMargin: 18
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 9
-                HeaderButton {
-                    text: "Cancel"
-                    enabled: !gameDetails.download_busy
-                    onClicked: downloadPlanDialog.close()
-                }
-                Button {
-                    text: appSettings.download_entire_torrent
-                          ? "Download whole torrent"
-                          : downloadPlanDialog.planKind.indexOf("arcade_") === 0
-                            ? "Download layout" : "Download set"
-                    highlighted: true
-                    enabled: root.pendingDownloadPlanIndex >= 0
-                             && !gameDetails.download_busy
-                    onClicked: {
-                        const index = root.pendingDownloadPlanIndex
-                        downloadPlanDialog.close()
-                        gameDetails.queue_file(index)
-                    }
-                }
-            }
+        detailsModel: gameDetails
+        settingsModel: appSettings
+        ink: root.ink
+        muted: root.muted
+        panel: root.panel
+        panelRaised: root.panelRaised
+        line: root.line
+        accent: root.accent
+        accentCool: root.accentCool
+        onQueueRequested: function(index) {
+            close()
+            gameDetails.queue_file(index)
         }
     }
 

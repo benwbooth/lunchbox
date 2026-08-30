@@ -4,7 +4,10 @@ WheelHandler {
     required property Flickable scroller
     target: null
     property double lastNotchAt: 0
+    property double lastPixelAt: 0
     property int burstCount: 0
+    property int pixelBurstCount: 0
+    property int lastDirection: 0
     property real projectedY: 0
 
     function lowerBound() {
@@ -20,38 +23,51 @@ WheelHandler {
         return Math.max(lowerBound(), Math.min(upperBound(), value))
     }
 
-    function scrollPixels(distance) {
-        // Precision touchpads already emit a smooth stream with their own
-        // momentum. Applying a fresh easing animation to every event makes
-        // that stream feel sticky, so move it immediately instead.
+    function startMomentum(distance, duration) {
+        if (distance === 0)
+            return
+        const direction = distance < 0 ? -1 : 1
+        const base = wheelMomentum.running && direction === lastDirection
+                   ? projectedY : scroller.contentY
+        projectedY = clampContentY(base + distance)
         wheelMomentum.stop()
-        projectedY = clampContentY(scroller.contentY + distance)
-        scroller.contentY = projectedY
+        wheelMomentum.from = scroller.contentY
+        wheelMomentum.to = projectedY
+        wheelMomentum.duration = duration
+        lastDirection = direction
+        wheelMomentum.start()
+    }
+
+    function scrollPixels(distance) {
+        const now = Date.now()
+        const direction = distance < 0 ? -1 : 1
+        pixelBurstCount = now - lastPixelAt <= 90 && direction === lastDirection
+                        ? Math.min(12, pixelBurstCount + 1) : 0
+        lastPixelAt = now
+        const acceleration = Math.min(4.2, 1 + pixelBurstCount * 0.28)
+        startMomentum(distance * 9.5 * acceleration,
+                      Math.min(420, 240 + pixelBurstCount * 15))
     }
 
     function scrollNotches(steps) {
         const now = Date.now()
-        burstCount = now - lastNotchAt <= 190
-                   ? Math.min(10, burstCount + 1) : 0
+        const direction = steps < 0 ? -1 : 1
+        burstCount = now - lastNotchAt <= 210 && direction === lastDirection
+                   ? Math.min(8, burstCount + 1) : 0
         lastNotchAt = now
 
-        const acceleration = Math.min(12.0, 1 + burstCount * 1.05)
-        const baseDistance = Math.max(620,
-                                      Math.min(1050, scroller.height * 0.78))
-        const base = wheelMomentum.running ? projectedY : scroller.contentY
-        projectedY = clampContentY(base + steps * baseDistance * acceleration)
-        wheelMomentum.stop()
-        wheelMomentum.from = scroller.contentY
-        wheelMomentum.to = projectedY
-        wheelMomentum.duration = Math.max(90, 150 - burstCount * 6)
-        wheelMomentum.start()
+        const acceleration = Math.min(8.2, 1 + burstCount * 0.9)
+        const baseDistance = Math.max(900,
+                                      Math.min(1800, scroller.height * 1.25))
+        startMomentum(steps * baseDistance * acceleration,
+                      Math.min(460, 260 + burstCount * 22))
     }
 
     property NumberAnimation wheelMomentum: NumberAnimation {
         id: wheelMomentum
         target: scroller
         property: "contentY"
-        easing.type: Easing.OutCubic
+        easing.type: Easing.OutQuart
     }
 
     property Connections dragConnections: Connections {
@@ -60,6 +76,9 @@ WheelHandler {
             if (scroller.dragging) {
                 wheelMomentum.stop()
                 projectedY = scroller.contentY
+                lastDirection = 0
+                burstCount = 0
+                pixelBurstCount = 0
             }
         }
     }
@@ -69,12 +88,14 @@ WheelHandler {
         // delta represents real wheel notches; preferring the tiny synthetic
         // pixel delta was the reason scrolling barely moved on Linux.
         const notchSteps = event.angleDelta.y / 120
-        if (notchSteps !== 0) {
+        if (Math.abs(event.angleDelta.y) >= 120) {
             scrollNotches(-notchSteps)
         } else if (event.pixelDelta.y !== 0) {
-            scrollPixels(-event.pixelDelta.y * 5.5)
+            scrollPixels(-event.pixelDelta.y)
             burstCount = 0
             lastNotchAt = 0
+        } else if (event.angleDelta.y !== 0) {
+            scrollNotches(-notchSteps)
         } else {
             return
         }

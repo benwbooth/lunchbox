@@ -93,8 +93,13 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   while one decoded file index is reused across the active source views.
 - Native qBittorrent settings and connection testing, operating-system
   credential storage, exact reviewed-file priority, optional whole-torrent
-  mode, a restart-safe queue with pause/resume/cancel, and verified completed
-  file ingestion through configurable link/copy policies. The native seeding
+  mode, and a mandatory native download preflight. The review surface resolves
+  the exact selected and whole-torrent byte counts, checks host-native free
+  space plus a bounded reserve, distinguishes copy/link/leave-in-place storage,
+  rejects existing destination files, and detects the same reviewed member set
+  in Lunchbox jobs or qBittorrent before mutation. The same gate runs again at
+  enqueue time. A restart-safe queue provides pause/resume/cancel and verified
+  completed file ingestion through configurable link/copy policies. The native seeding
   policy can follow qBittorrent or durably pause a Lunchbox-owned torrent after
   all selected bundle members import, with automatic retry and no data removal.
   Failed jobs expose exact stable-ID recovery and newest-first durable event
@@ -250,10 +255,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   unless its operators provide documented rights, terms, and an authorized API;
   Lunchbox will not bundle a Telegram account session, scrape bots, or automate
   blocking/proxy evasion. See `EXTERNAL_TORRENT_PROVIDERS.md`.
-- Complete game-level offer selection beyond the implemented exact-file,
+- Extend game-level offer selection beyond the implemented exact-file,
   whole-torrent, generic optical-set, eXo archive-set, and arcade-laserdisc
-  paths: free-space enforcement and broader duplicate avoidance. Reuse the
-  implemented full region-order editor when variant-rich catalog browsing lands.
+  paths with authorized multi-provider offer comparison. Native free-space,
+  destination-collision, and broader duplicate checks are already mandatory
+  before queueing and are repeated immediately before qBittorrent mutation.
 - Extend the implemented persistent qBittorrent queue, aggregate speed, safe
   record/history cleanup, durable post-import pause policy, exact owned-torrent
   retry, and per-job event history with opt-in automatic retry schedules and an

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
 use std::thread;
@@ -12,6 +13,8 @@ use crate::download_plan::DownloadPlan;
 use crate::settings::{AppSettings, DownloadJob, NewDownloadJob};
 
 const LUNCHBOX_CATEGORY: &str = "lunchbox";
+const MINIMUM_STORAGE_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
+const MAXIMUM_STORAGE_RESERVE_BYTES: u64 = 1024 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub struct EnqueueRequest {
@@ -25,6 +28,30 @@ pub struct EnqueueRequest {
     pub selected_file_index: u32,
     pub selected_file_path: String,
     pub download_plan: Option<DownloadPlan>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DownloadPreflight {
+    pub can_queue: bool,
+    pub blocked_reason: String,
+    pub selection_kind: String,
+    pub selected_bytes: u64,
+    pub required_download_bytes: u64,
+    pub required_install_bytes: u64,
+    pub download_available_bytes: u64,
+    pub install_available_bytes: u64,
+    pub shared_filesystem: bool,
+    pub uses_install_destination: bool,
+    pub download_path: PathBuf,
+    pub install_path: PathBuf,
+    pub file_link_mode: String,
+}
+
+#[derive(Clone, Debug)]
+struct ReviewedTorrentFile {
+    index: u32,
+    path: String,
+    byte_size: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -456,16 +483,211 @@ pub fn test_connection(settings: &AppSettings, password: &str) -> Result<String>
     QbittorrentClient::authenticated(settings, password)?.version()
 }
 
-pub fn enqueue(
+pub fn inspect_enqueue(
     settings: &AppSettings,
-    password: &str,
     store: &crate::settings::SettingsStore,
-    request: EnqueueRequest,
-) -> Result<DownloadJob> {
+    request: &EnqueueRequest,
+) -> Result<DownloadPreflight> {
     settings.validate()?;
-    if !matches!(request.source_kind.as_str(), "minerva" | "manual_torrent") {
-        bail!("unsupported download source kind {}", request.source_kind);
+    validate_download_directories(settings)?;
+
+    let torrent = Torrent::read_from_bytes(&request.torrent_bytes)
+        .map_err(|error| anyhow::anyhow!("could not parse selected torrent: {error}"))?;
+    let info_hash = torrent.info_hash();
+    let inventory = reviewed_torrent_inventory(torrent)?;
+    let inventory_by_index = inventory
+        .iter()
+        .map(|file| (file.index, file))
+        .collect::<HashMap<_, _>>();
+
+    let download_plan = if settings.download_entire_torrent {
+        None
+    } else {
+        request.download_plan.clone()
+    };
+    if let Some(plan) = &download_plan {
+        plan.validate()?;
+        if plan.representative_index
+            != usize::try_from(request.selected_file_index)
+                .context("torrent file index is too large")?
+        {
+            bail!("download plan representative does not match the reviewed file");
+        }
     }
+    let requested_files = requested_files(request, download_plan.as_ref())?;
+    let selected_bytes = reviewed_selection_bytes(&inventory_by_index, &requested_files)?;
+    let total_bytes = inventory.iter().try_fold(0_u64, |total, file| {
+        total
+            .checked_add(file.byte_size)
+            .context("torrent payload byte size overflows")
+    })?;
+    if total_bytes == 0 || selected_bytes == 0 {
+        bail!("the reviewed download contains no payload bytes");
+    }
+
+    let existing_jobs = store.jobs_for_info_hash(&info_hash)?;
+    let duplicate = duplicate_download_reason(settings, &existing_jobs, request, &requested_files)?;
+    let already_selected = existing_selected_paths(&existing_jobs)?;
+    let required_download_bytes = if settings.download_entire_torrent {
+        if existing_jobs
+            .iter()
+            .any(|job| is_managed_download(&job.state) && job.torrent_file_index.is_none())
+        {
+            0
+        } else {
+            inventory.iter().try_fold(0_u64, |total, file| {
+                if already_selected
+                    .iter()
+                    .any(|selected| same_reviewed_file_path(selected, &file.path))
+                {
+                    Ok(total)
+                } else {
+                    total
+                        .checked_add(file.byte_size)
+                        .context("torrent payload byte size overflows")
+                }
+            })?
+        }
+    } else {
+        requested_files
+            .iter()
+            .try_fold(0_u64, |total, (index, path)| {
+                if already_selected
+                    .iter()
+                    .any(|selected| same_reviewed_file_path(selected, path))
+                {
+                    Ok(total)
+                } else {
+                    let file = inventory_by_index
+                        .get(index)
+                        .context("reviewed torrent selection is no longer available")?;
+                    total
+                        .checked_add(file.byte_size)
+                        .context("reviewed selection byte size overflows")
+                }
+            })?
+    };
+
+    let reviewed_relative_file = safe_torrent_relative_path(&request.selected_file_path)?;
+    let file_name = reviewed_relative_file
+        .file_name()
+        .context("selected torrent file has no filename")?;
+    let planned_install_path = planned_local_target_path(
+        &settings.rom_directory,
+        &request.platform,
+        &info_hash,
+        file_name,
+        download_plan.as_ref(),
+    )?;
+    let download_path = settings.torrent_library_directory.join("lunchbox");
+    let download_anchor = existing_ancestor(&download_path)?;
+    let uses_install_destination = settings.file_link_mode != "leave_in_place"
+        || download_plan
+            .as_ref()
+            .is_some_and(DownloadPlan::is_arcade_machine_layout);
+    let install_path = if uses_install_destination {
+        planned_install_path
+    } else {
+        download_path.join(&reviewed_relative_file)
+    };
+    let install_anchor = if uses_install_destination {
+        existing_ancestor(&install_path)?
+    } else {
+        download_anchor.clone()
+    };
+    let download_available_bytes = fs2::available_space(&download_anchor).with_context(|| {
+        format!(
+            "checking available space for {}",
+            settings.torrent_library_directory.display()
+        )
+    })?;
+    let install_available_bytes = if uses_install_destination {
+        fs2::available_space(&install_anchor)
+            .with_context(|| format!("checking available space for {}", install_path.display()))?
+    } else {
+        download_available_bytes
+    };
+    let shared_filesystem = same_filesystem(&download_anchor, &install_anchor)?;
+    let required_install_bytes = if settings.file_link_mode == "copy" {
+        selected_bytes
+    } else {
+        0
+    };
+
+    let download_storage_required = if shared_filesystem {
+        storage_with_reserve(
+            required_download_bytes
+                .checked_add(required_install_bytes)
+                .context("combined storage requirement overflows")?,
+        )
+    } else {
+        storage_with_reserve(required_download_bytes)
+    };
+    let install_storage_required = if shared_filesystem {
+        0
+    } else {
+        storage_with_reserve(required_install_bytes)
+    };
+    let storage_problem = if download_available_bytes < download_storage_required {
+        Some(format!(
+            "Not enough free space in the torrent library. The reviewed download and safety reserve need {}, but only {} is available.",
+            crate::game_details::format_bytes(download_storage_required),
+            crate::game_details::format_bytes(download_available_bytes)
+        ))
+    } else if install_available_bytes < install_storage_required {
+        Some(format!(
+            "Not enough free space in the ROM library for copy-on-import. The install and safety reserve need {}, but only {} is available.",
+            crate::game_details::format_bytes(install_storage_required),
+            crate::game_details::format_bytes(install_available_bytes)
+        ))
+    } else {
+        None
+    };
+    let destination_problem = if uses_install_destination {
+        match std::fs::symlink_metadata(&install_path) {
+            Ok(_) => Some(format!(
+                "The exact destination already exists at {}. Lunchbox will not replace it; use Library Audit or choose the existing game instead.",
+                install_path.display()
+            )),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("checking destination {}", install_path.display()));
+            }
+        }
+    } else {
+        None
+    };
+    let blocked_reason = duplicate
+        .or(destination_problem)
+        .or(storage_problem)
+        .unwrap_or_default();
+    let selection_kind = if settings.download_entire_torrent {
+        "whole torrent"
+    } else if download_plan.is_some() {
+        "reviewed set"
+    } else {
+        "exact file"
+    };
+
+    Ok(DownloadPreflight {
+        can_queue: blocked_reason.is_empty(),
+        blocked_reason,
+        selection_kind: selection_kind.to_owned(),
+        selected_bytes,
+        required_download_bytes,
+        required_install_bytes,
+        download_available_bytes,
+        install_available_bytes,
+        shared_filesystem,
+        uses_install_destination,
+        download_path,
+        install_path,
+        file_link_mode: settings.file_link_mode.clone(),
+    })
+}
+
+fn validate_download_directories(settings: &AppSettings) -> Result<()> {
     if settings.torrent_library_directory.as_os_str().is_empty() {
         bail!("choose a native torrent library directory in Settings");
     }
@@ -479,26 +701,14 @@ pub fn enqueue(
     if settings.rom_directory.as_os_str().is_empty() {
         bail!("choose a native ROM directory in Settings");
     }
+    Ok(())
+}
 
-    let torrent = Torrent::read_from_bytes(&request.torrent_bytes)
-        .map_err(|error| anyhow::anyhow!("could not parse selected torrent: {error}"))?;
-    let info_hash = torrent.info_hash();
-    let existing_jobs = store.jobs_for_info_hash(&info_hash)?;
-    let mut download_plan = if settings.download_entire_torrent {
-        None
-    } else {
-        request.download_plan
-    };
-    if let Some(plan) = &download_plan {
-        plan.validate()?;
-        if plan.representative_index
-            != usize::try_from(request.selected_file_index)
-                .context("torrent file index is too large")?
-        {
-            bail!("download plan representative does not match the reviewed file");
-        }
-    }
-    let requested_files = if let Some(plan) = &download_plan {
+fn requested_files(
+    request: &EnqueueRequest,
+    download_plan: Option<&DownloadPlan>,
+) -> Result<Vec<(u32, String)>> {
+    if let Some(plan) = download_plan {
         plan.selection()
             .into_iter()
             .map(|(index, path)| {
@@ -507,14 +717,73 @@ pub fn enqueue(
                     path,
                 ))
             })
-            .collect::<Result<Vec<_>>>()?
+            .collect()
     } else {
-        vec![(
+        Ok(vec![(
             request.selected_file_index,
             request.selected_file_path.clone(),
-        )]
-    };
-    for job in &existing_jobs {
+        )])
+    }
+}
+
+fn reviewed_torrent_inventory(torrent: Torrent) -> Result<Vec<ReviewedTorrentFile>> {
+    if let Some(files) = torrent.files {
+        files
+            .into_iter()
+            .enumerate()
+            .map(|(index, file)| {
+                Ok(ReviewedTorrentFile {
+                    index: u32::try_from(index).context("torrent file index is too large")?,
+                    path: file
+                        .path
+                        .components()
+                        .map(|component| component.as_os_str().to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join("/"),
+                    byte_size: u64::try_from(file.length)
+                        .context("torrent file has a negative byte length")?,
+                })
+            })
+            .collect()
+    } else {
+        Ok(vec![ReviewedTorrentFile {
+            index: 0,
+            path: torrent.name,
+            byte_size: u64::try_from(torrent.length)
+                .context("torrent payload has a negative byte length")?,
+        }])
+    }
+}
+
+fn reviewed_selection_bytes(
+    inventory: &HashMap<u32, &ReviewedTorrentFile>,
+    requested_files: &[(u32, String)],
+) -> Result<u64> {
+    requested_files
+        .iter()
+        .try_fold(0_u64, |total, (index, path)| {
+            let file = inventory
+                .get(index)
+                .with_context(|| format!("torrent file index {index} is no longer available"))?;
+            if !reviewed_path_matches(&file.path, path) {
+                bail!(
+                    "torrent file index {index} is {}, not the reviewed file {path}",
+                    file.path
+                );
+            }
+            total
+                .checked_add(file.byte_size)
+                .context("reviewed selection byte size overflows")
+        })
+}
+
+fn duplicate_download_reason(
+    settings: &AppSettings,
+    existing_jobs: &[DownloadJob],
+    request: &EnqueueRequest,
+    requested_files: &[(u32, String)],
+) -> Result<Option<String>> {
+    for job in existing_jobs {
         let present = is_managed_download(&job.state)
             || (job.state == "imported"
                 && if settings.file_link_mode == "leave_in_place" {
@@ -527,13 +796,134 @@ pub fn enqueue(
         }
         let existing_files = job_exact_files(job)?.unwrap_or_default();
         if requested_files.iter().any(|(_, requested_path)| {
-            existing_files.iter().any(|(_, existing_path)| {
-                normalized_torrent_path(existing_path) == normalized_torrent_path(requested_path)
-            })
+            existing_files
+                .iter()
+                .any(|(_, existing_path)| same_reviewed_file_path(existing_path, requested_path))
         }) {
-            bail!("this exact game download is already present in the download history");
+            return Ok(Some(
+                "This exact game download is already queued, downloaded, or installed. Open Downloads or My Collection instead of creating a duplicate."
+                    .to_owned(),
+            ));
         }
     }
+    Ok(None)
+}
+
+fn existing_selected_paths(existing_jobs: &[DownloadJob]) -> Result<Vec<String>> {
+    let mut selected = Vec::new();
+    for job in existing_jobs
+        .iter()
+        .filter(|job| is_managed_download(&job.state))
+    {
+        if let Some(files) = job_exact_files(job)? {
+            selected.extend(files.into_iter().map(|(_, path)| path));
+        }
+    }
+    selected
+        .sort_by(|left, right| normalized_torrent_path(left).cmp(&normalized_torrent_path(right)));
+    selected.dedup_by(|left, right| same_reviewed_file_path(left, right));
+    Ok(selected)
+}
+
+fn existing_ancestor(path: &Path) -> Result<PathBuf> {
+    let mut candidate = path.to_path_buf();
+    loop {
+        match candidate.metadata() {
+            Ok(_) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("inspecting storage path {}", candidate.display()));
+            }
+        }
+        let Some(parent) = candidate.parent() else {
+            bail!("no existing filesystem contains {}", path.display());
+        };
+        candidate = parent.to_path_buf();
+    }
+}
+
+fn storage_with_reserve(bytes: u64) -> u64 {
+    if bytes == 0 {
+        return 0;
+    }
+    let reserve = (bytes / 20)
+        .max(MINIMUM_STORAGE_RESERVE_BYTES)
+        .min(MAXIMUM_STORAGE_RESERVE_BYTES);
+    bytes.saturating_add(reserve)
+}
+
+#[cfg(unix)]
+fn same_filesystem(left: &Path, right: &Path) -> Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+
+    Ok(left.metadata()?.dev() == right.metadata()?.dev())
+}
+
+#[cfg(windows)]
+fn same_filesystem(left: &Path, right: &Path) -> Result<bool> {
+    use std::path::Prefix;
+
+    fn volume(path: &Path) -> Option<String> {
+        match path.components().next()? {
+            Component::Prefix(prefix) => match prefix.kind() {
+                Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => {
+                    Some((letter as char).to_ascii_uppercase().to_string())
+                }
+                Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => Some(format!(
+                    "{}\\{}",
+                    server.to_string_lossy().to_ascii_lowercase(),
+                    share.to_string_lossy().to_ascii_lowercase()
+                )),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    Ok(volume(left).is_some_and(|left| Some(left) == volume(right)))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn same_filesystem(_left: &Path, _right: &Path) -> Result<bool> {
+    Ok(false)
+}
+
+pub fn enqueue(
+    settings: &AppSettings,
+    password: &str,
+    store: &crate::settings::SettingsStore,
+    request: EnqueueRequest,
+) -> Result<DownloadJob> {
+    settings.validate()?;
+    if !matches!(request.source_kind.as_str(), "minerva" | "manual_torrent") {
+        bail!("unsupported download source kind {}", request.source_kind);
+    }
+    validate_download_directories(settings)?;
+    let preflight = inspect_enqueue(settings, store, &request)?;
+    if !preflight.can_queue {
+        bail!("{}", preflight.blocked_reason);
+    }
+
+    let torrent = Torrent::read_from_bytes(&request.torrent_bytes)
+        .map_err(|error| anyhow::anyhow!("could not parse selected torrent: {error}"))?;
+    let info_hash = torrent.info_hash();
+    let existing_jobs = store.jobs_for_info_hash(&info_hash)?;
+    let mut download_plan = if settings.download_entire_torrent {
+        None
+    } else {
+        request.download_plan.clone()
+    };
+    if let Some(plan) = &download_plan {
+        plan.validate()?;
+        if plan.representative_index
+            != usize::try_from(request.selected_file_index)
+                .context("torrent file index is too large")?
+        {
+            bail!("download plan representative does not match the reviewed file");
+        }
+    }
+    let requested_files = requested_files(&request, download_plan.as_ref())?;
     let native_download_path = settings.torrent_library_directory.join("lunchbox");
     std::fs::create_dir_all(&native_download_path).with_context(|| {
         format!(
@@ -876,6 +1266,10 @@ fn reviewed_path_matches(actual_path: &str, expected_path: &str) -> bool {
         return false;
     };
     !root.is_empty() && !root.contains('/')
+}
+
+fn same_reviewed_file_path(left: &str, right: &str) -> bool {
+    reviewed_path_matches(left, right) || reviewed_path_matches(right, left)
 }
 
 #[cfg(test)]
@@ -1299,6 +1693,91 @@ mod tests {
             "Minerva Bundle/Game Boy/Other.zip",
             "Game Boy/Game.zip"
         ));
+    }
+
+    #[test]
+    fn reviewed_file_identity_accepts_one_qbittorrent_root_in_either_direction() {
+        assert!(same_reviewed_file_path(
+            "Sample Pack/Game/Sample Game.rom",
+            "Game/Sample Game.rom"
+        ));
+        assert!(same_reviewed_file_path(
+            "Game/Sample Game.rom",
+            "Sample Pack/Game/Sample Game.rom"
+        ));
+        assert!(!same_reviewed_file_path(
+            "Other Pack/Game/Sample Game.rom",
+            "Sample Pack/Game/Sample Game.rom"
+        ));
+    }
+
+    #[test]
+    fn storage_reserve_is_bounded_and_zero_cost_stays_zero() {
+        assert_eq!(storage_with_reserve(0), 0);
+        assert_eq!(storage_with_reserve(1), 1 + MINIMUM_STORAGE_RESERVE_BYTES);
+        assert_eq!(
+            storage_with_reserve(100 * 1024 * 1024 * 1024),
+            100 * 1024 * 1024 * 1024 + MAXIMUM_STORAGE_RESERVE_BYTES
+        );
+    }
+
+    #[test]
+    fn enqueue_preflight_checks_native_destination_but_leave_in_place_does_not() {
+        let directory = tempfile::tempdir().unwrap();
+        let downloads = directory.path().join("downloads");
+        let roms = directory.path().join("roms");
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::create_dir_all(roms.join("Test Platform")).unwrap();
+        let store = crate::settings::SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let request = EnqueueRequest {
+            game_id: "sample-game".to_owned(),
+            launchbox_db_id: 42,
+            title: "Sample Game".to_owned(),
+            platform: "Test Platform".to_owned(),
+            source_kind: "minerva".to_owned(),
+            torrent_url: "https://example.invalid/sample.torrent".to_owned(),
+            torrent_bytes: crate::external_torrent::probe_fixture_torrent_bytes(),
+            selected_file_index: 0,
+            selected_file_path: "Game/Sample Game.rom".to_owned(),
+            download_plan: None,
+        };
+        let mut settings = AppSettings {
+            rom_directory: roms.clone(),
+            torrent_library_directory: downloads.clone(),
+            qbittorrent_container_torrent_library_directory: "/downloads".to_owned(),
+            file_link_mode: "copy".to_owned(),
+            ..AppSettings::default()
+        };
+
+        let ready = inspect_enqueue(&settings, &store, &request).unwrap();
+        assert!(ready.can_queue, "{}", ready.blocked_reason);
+        assert!(ready.uses_install_destination);
+        assert_eq!(ready.required_download_bytes, 4);
+        assert_eq!(ready.required_install_bytes, 4);
+        assert_eq!(
+            ready.install_path,
+            roms.join("Test Platform/Sample Game.rom")
+        );
+
+        std::fs::write(&ready.install_path, b"existing").unwrap();
+        let blocked = inspect_enqueue(&settings, &store, &request).unwrap();
+        assert!(!blocked.can_queue);
+        assert!(
+            blocked
+                .blocked_reason
+                .contains("destination already exists")
+        );
+
+        settings.file_link_mode = "leave_in_place".to_owned();
+        let leave_in_place = inspect_enqueue(&settings, &store, &request).unwrap();
+        assert!(
+            leave_in_place.can_queue,
+            "{}",
+            leave_in_place.blocked_reason
+        );
+        assert!(!leave_in_place.uses_install_destination);
+        assert_eq!(leave_in_place.required_install_bytes, 0);
+        assert!(leave_in_place.install_path.starts_with(downloads));
     }
 
     #[test]
