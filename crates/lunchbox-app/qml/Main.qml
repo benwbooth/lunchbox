@@ -14,7 +14,7 @@ ApplicationWindow {
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || webArtworkUiProbe || onboardingUiProbe
            || collectionUiProbe || smartCollectionUiProbe
-           || collectionPresentationUiProbe || libraryAuditUiProbe
+           || collectionPresentationUiProbe || libraryAuditUiProbe || firmwareAuditUiProbe
            || mediaAuditUiProbe
            || installManagementUiProbe
            || downloadRecoveryUiProbe
@@ -28,7 +28,7 @@ ApplicationWindow {
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
             || webArtworkUiProbe || onboardingUiProbe
             || collectionUiProbe || smartCollectionUiProbe
-            || collectionPresentationUiProbe || libraryAuditUiProbe
+            || collectionPresentationUiProbe || libraryAuditUiProbe || firmwareAuditUiProbe
             || mediaAuditUiProbe
             || installManagementUiProbe
             || downloadRecoveryUiProbe
@@ -115,6 +115,7 @@ ApplicationWindow {
     property int collectionProbeStage: 0
     property int libraryAuditProbeStage: 0
     property bool libraryAuditProbeArmed: false
+    property bool firmwareAuditProbeArmed: false
     property bool mediaAuditProbeArmed: false
     property bool collectionProbeArmed: false
     property bool collectionSummaryProbeCaptured: false
@@ -261,6 +262,7 @@ ApplicationWindow {
     readonly property bool libraryAuditCleanupUiProbe: Qt.application.arguments.indexOf("--library-audit-cleanup-ui-probe") >= 0
     readonly property bool libraryAuditUiProbe: Qt.application.arguments.indexOf("--library-audit-ui-probe") >= 0
                                                   || libraryAuditCleanupUiProbe
+    readonly property bool firmwareAuditUiProbe: Qt.application.arguments.indexOf("--firmware-audit-ui-probe") >= 0
     readonly property bool mediaAuditUiProbe: Qt.application.arguments.indexOf("--media-audit-ui-probe") >= 0
     readonly property bool downloadUiProbe: Qt.application.arguments.indexOf("--download-ui-probe") >= 0
     readonly property bool manualTorrentUiProbe: Qt.application.arguments.indexOf("--manual-torrent-ui-probe") >= 0
@@ -1846,8 +1848,26 @@ ApplicationWindow {
         id: libraryAudit
     }
 
+    FirmwareAuditModel {
+        id: firmwareAudit
+    }
+
     MediaAuditModel {
         id: mediaAudit
+    }
+
+    FirmwareAuditView {
+        id: firmwareAuditDialog
+        auditModel: firmwareAudit
+        ink: root.ink
+        muted: root.muted
+        panelRaised: root.panelRaised
+        line: root.line
+        accent: root.accent
+        accentCool: root.accentCool
+        onReviewGame: function(gameUid, databaseId, title, platform) {
+            root.openGame(gameUid, databaseId, title, platform, true, false)
+        }
     }
 
     SteamGridDbModel {
@@ -2226,6 +2246,12 @@ ApplicationWindow {
                         mediaAuditKind.currentIndex = 0
                         mediaAuditDialog.open()
                         mediaAudit.start_audit("catalog", "box-front")
+                    }
+                }
+                else if (root.firmwareAuditUiProbe) {
+                    if (!root.firmwareAuditProbeArmed) {
+                        root.firmwareAuditProbeArmed = true
+                        firmwareAuditDialog.openAndScan()
                     }
                 }
                 else if (root.libraryAuditUiProbe) {
@@ -4457,6 +4483,68 @@ ApplicationWindow {
                     && !localImport.busy
                     && importDialogLoader.item)
                 importDialogLoader.item.finishProfileBatchProbe()
+        }
+    }
+
+    Connections {
+        target: firmwareAudit
+        function onBusyChanged() {
+            Qt.callLater(function() {
+                if (!root.firmwareAuditUiProbe || firmwareAudit.busy
+                        || !root.firmwareAuditProbeArmed)
+                    return
+                firmwareAudit.apply_filter("", "all", "status")
+                const valid = firmwareAudit.game_count === 1
+                              && firmwareAudit.platform_count === 1
+                              && firmwareAudit.unavailable_game_count === 0
+                              && firmwareAudit.entry_count > 0
+                if (!valid) {
+                    console.error("LUNCHBOX_FIRMWARE_AUDIT_UI_FAILED games="
+                                  + firmwareAudit.game_count + " platforms="
+                                  + firmwareAudit.platform_count + " entries="
+                                  + firmwareAudit.entry_count + " unavailable="
+                                  + firmwareAudit.unavailable_game_count + " message="
+                                  + firmwareAudit.message)
+                    Qt.exit(2)
+                    return
+                }
+                firmwareAuditScreenshotTimer.restart()
+            })
+        }
+    }
+
+    Timer {
+        id: firmwareAuditScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            firmwareAudit.report_ui_probe()
+            if (root.screenshotOutput.length === 0) {
+                Qt.quit()
+                return
+            }
+            firmwareAuditDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_FIRMWARE_AUDIT_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_FIRMWARE_AUDIT_UI_SCREENSHOT path="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 60000
+        running: root.firmwareAuditUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_FIRMWARE_AUDIT_UI_FAILED timeout message="
+                          + firmwareAudit.message)
+            Qt.exit(2)
         }
     }
 
@@ -8166,6 +8254,15 @@ ApplicationWindow {
                     libraryAuditDialog.open()
                     libraryAudit.start_audit()
                 }
+            }
+            SidebarNavButton {
+                label: "BIOS & Firmware"
+                glyph: "◆"
+                count: firmwareAudit.game_count > 0
+                       ? (firmwareAudit.missing_count + firmwareAudit.manual_count
+                          + firmwareAudit.no_runtime_count + firmwareAudit.error_count).toString()
+                       : ""
+                onClicked: firmwareAuditDialog.openAndScan()
             }
             SidebarNavButton {
                 label: "Media Audit"

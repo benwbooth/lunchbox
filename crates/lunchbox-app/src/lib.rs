@@ -16,6 +16,8 @@ mod exo_install;
 mod external_torrent;
 pub mod external_torrent_model;
 mod firmware;
+mod firmware_audit;
+pub mod firmware_audit_model;
 mod game_details;
 pub mod game_details_model;
 pub mod gamepad_input;
@@ -138,6 +140,15 @@ pub fn run() -> i32 {
     {
         eprintln!("LUNCHBOX_WEB_ARTWORK_UI_FAILED seed error={error:#}");
         return 1;
+    }
+    if std::env::args().any(|argument| argument == "--firmware-audit-ui-probe") {
+        match firmware_audit::seed_ui_probe() {
+            Ok(path) => println!("LUNCHBOX_FIRMWARE_AUDIT_SEEDED path={path:?}"),
+            Err(error) => {
+                eprintln!("LUNCHBOX_FIRMWARE_AUDIT_UI_FAILED seed error={error:#}");
+                return 1;
+            }
+        }
     }
     match settings::state_database_path()
         .and_then(|path| profile_backup::apply_pending_restore(&path))

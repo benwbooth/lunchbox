@@ -65,6 +65,7 @@ fn main() {
                 "qml/Box3DViewer.qml",
                 "qml/EmuMoviesTransferStatus.qml",
                 "qml/FilterToggle.qml",
+                "qml/FirmwareAuditView.qml",
                 "qml/FirstRunSetup.qml",
                 "qml/GameSoundtrackCard.qml",
                 "qml/HeaderButton.qml",
@@ -90,6 +91,7 @@ fn main() {
     .file("src/emulator_manager_model.rs")
     .file("src/emulator_update_model.rs")
     .file("src/external_torrent_model.rs")
+    .file("src/firmware_audit_model.rs")
     .file("src/game_details_model.rs")
     .file("src/gamepad_input.rs")
     .file("src/igdb_model.rs")

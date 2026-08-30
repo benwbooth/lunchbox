@@ -153,6 +153,13 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   cleanup. Availability is synchronized only for roots that completed a full
   scan; cleanup cannot delete files and offline roots are never treated as
   missing.
+- Native whole-library BIOS & Firmware Readiness audit. It inspects present
+  local games off the Qt thread, preserves game-level emulator overrides over
+  normalized platform defaults, deduplicates only identical
+  platform/emulator/core choices, and keeps required, manual-dump, optional,
+  ready, missing-runtime, and inspection-error states distinct. Its full-window
+  virtualized surface filters and sorts exact packages and routes each row back
+  to the existing reviewed per-game acquire/import/sync workflow.
 - Portable whole-profile backup and review-first restore for the complete
   writable SQLite state plus receipt-owned Couch Mode themes. Online snapshots,
   bounded versioned ZIP manifests, exact SHA-256 receipts, database/migration/
@@ -253,9 +260,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   authorized retained-metadata workflow for re-adding a torrent that the user
   removed from qBittorrent.
 - Extend the implemented runtime-scoped firmware inventory, exact Minerva and
-  official-source acquisition, local import, per-file integrity manifests, and
-  repair workflow with a whole-library missing-firmware audit and native
-  Windows/macOS release-host verification.
+  official-source acquisition, local import, per-file integrity manifests,
+  repair workflow, and whole-library readiness audit with scheduled optional
+  maintenance and native Windows/macOS release-host verification.
 
 ## Metadata and media
 

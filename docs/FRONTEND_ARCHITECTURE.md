@@ -114,6 +114,16 @@ The initial implementation enforces this shape:
   bounded PNG responses, and atomically publish only LibRetro-owned files.
   Local-only or unsupported records remain reviewable and route back to Game
   Details rather than receiving guessed identity or media.
+- `FirmwareAuditModel` reads only present native local paths and resolves the
+  same exact game-then-platform emulator preference used by Play. A named Rust
+  worker groups only identical normalized platform/emulator/runtime/core
+  choices before invoking ordinary emulator discovery and the canonical
+  firmware rule service. Required packages, user-supplied dumps, HLE-capable
+  optional packages, ready packages, missing runtimes, and inspection failures
+  remain separate model states. The dedicated `FirmwareAuditView.qml` is a
+  full-window, virtualized management surface with accelerated wheel and
+  keyboard paging; it never mutates firmware directly and instead opens the
+  representative exact game in the existing reviewed acquire/import/sync card.
 - The writable state database is selected with `--state-database` or
   `LUNCHBOX_STATE_DATABASE`, otherwise an OS-native application-data directory
   is used. Its WAL setup and schema migration are serialized before concurrent
@@ -996,6 +1006,14 @@ discovery, prints the exact resolved rule counts and runtime path, and exits
 only after firmware state reaches Qt. `--firmware-ui-probe` leaves that state
 open so the selected installed MAME runtime's five required packages, Minerva
 source, native target, and acquisition controls can be reviewed visually.
+`--firmware-audit-ui-probe --state-database EMPTY_PATH --screenshot-output
+PATH` seeds an isolated present Coleco ADAM game plus the exact standalone MAME
+preference, then runs the production whole-library audit. It exits only after
+the real installed Flatpak MAME runtime resolves all five canonical missing
+Minerva packages through Rust, those rows reach the virtualized Qt view, and
+the complete 1920x1200 management surface is captured. The seed is idempotent,
+refuses a non-fixture directory or non-isolated writable state, and never
+creates firmware receipts.
 `--download-history-probe --state-database FIXTURE_PATH` loads real terminal
 queue records, clears them through the asynchronous Qt action, and exits only
 after the refreshed model reports zero finished records. The store refuses to
