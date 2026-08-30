@@ -738,14 +738,16 @@ the owned Faxanadu NES file, created a real Wayland/OpenGL session, and persiste
 one terminated session with measured elapsed time. `--rom-launch-ui-probe`
 leaves the same `Play Locally` controls open for visual inspection;
 `--launch-profile-ui-probe` waits for that exact runtime/core discovery, opens
-the native launch-command editor, and scrolls it into view. Supplying
+the native launch-command editor, verifies its selected runtime and compiled
+argument vector, and scrolls it into view. Supplying
 `--screenshot-output ABSOLUTE_PATH` captures the rendered details pane through
 Qt itself and prints `LUNCHBOX_SCREENSHOT_READY`, avoiding host-specific
 window-manager screenshot tooling.
 `--launch-profile-manager-ui-probe` loads all exact catalog rows on the native
 worker, filters to the platform-scoped standalone MAME arcade template, opens
-its focused editor, and uses the same absolute screenshot argument to capture
-the virtualized manager body before exiting.
+its focused editor, rejects an unavailable placeholder, restores the valid
+inherited draft, and uses the same absolute screenshot argument to capture the
+virtualized manager body before exiting.
 `--activity-ui-probe` opens that persisted identity in the native Recently
 Played view with its statistics and completion picker visible.
 `--activity-history-ui-probe --state-database EMPTY_PATH` refuses the default

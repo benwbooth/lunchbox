@@ -139,6 +139,11 @@ pub mod qobject {
         #[qproperty(QString, launch_profile_inheritance)]
         #[qproperty(QString, launch_profile_status)]
         #[qproperty(i32, launch_profile_revision)]
+        #[qproperty(bool, launch_profile_preview_valid)]
+        #[qproperty(QString, launch_profile_preview_runtime)]
+        #[qproperty(QString, launch_profile_preview_message)]
+        #[qproperty(i32, launch_profile_preview_argument_count)]
+        #[qproperty(i32, launch_profile_preview_revision)]
         #[qproperty(bool, firmware_busy)]
         #[qproperty(bool, firmware_needs_import)]
         #[qproperty(bool, firmware_can_download)]
@@ -307,6 +312,16 @@ pub mod qobject {
 
         #[qinvokable]
         fn clear_launch_profile(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn update_launch_profile_preview(
+            self: Pin<&mut GameDetailsModel>,
+            extra_arguments: QString,
+            command_template: QString,
+        );
+
+        #[qinvokable]
+        fn launch_profile_preview_argument_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
         fn open_firmware_directory(self: Pin<&mut GameDetailsModel>);
@@ -584,6 +599,11 @@ pub struct GameDetailsModelRust {
     launch_profile_inheritance: QString,
     launch_profile_status: QString,
     launch_profile_revision: i32,
+    launch_profile_preview_valid: bool,
+    launch_profile_preview_runtime: QString,
+    launch_profile_preview_message: QString,
+    launch_profile_preview_argument_count: i32,
+    launch_profile_preview_revision: i32,
     firmware_busy: bool,
     firmware_needs_import: bool,
     firmware_can_download: bool,
@@ -639,6 +659,9 @@ pub struct GameDetailsModelRust {
     local_file_paths: Vec<PathBuf>,
     rom_emulator_options: Vec<crate::emulator::RomEmulatorOption>,
     rom_firmware_statuses: Vec<Vec<crate::firmware::FirmwareStatus>>,
+    launch_profile_preview_arguments: Vec<String>,
+    launch_profile_preview_fallback_extra_arguments: String,
+    launch_profile_preview_fallback_command_template: String,
     prepared_emulator: Option<crate::emulator::EmulatorChoice>,
     pending_firmware_message: Option<String>,
     prepared_install: Option<crate::exo_install::PreparedInstall>,
@@ -779,6 +802,11 @@ impl Default for GameDetailsModelRust {
             launch_profile_inheritance: QString::default(),
             launch_profile_status: QString::default(),
             launch_profile_revision: 0,
+            launch_profile_preview_valid: false,
+            launch_profile_preview_runtime: QString::default(),
+            launch_profile_preview_message: QString::default(),
+            launch_profile_preview_argument_count: 0,
+            launch_profile_preview_revision: 0,
             firmware_busy: false,
             firmware_needs_import: false,
             firmware_can_download: false,
@@ -834,6 +862,9 @@ impl Default for GameDetailsModelRust {
             local_file_paths: Vec::new(),
             rom_emulator_options: Vec::new(),
             rom_firmware_statuses: Vec::new(),
+            launch_profile_preview_arguments: Vec::new(),
+            launch_profile_preview_fallback_extra_arguments: String::new(),
+            launch_profile_preview_fallback_command_template: String::new(),
             prepared_emulator: None,
             pending_firmware_message: None,
             prepared_install: None,
@@ -876,6 +907,48 @@ fn validate_launch_profile_template(
         );
     }
     Ok(())
+}
+
+fn preview_for_launch_profile_target(
+    target: &LaunchProfileTarget,
+    extra_arguments: &str,
+    command_template: &str,
+) -> anyhow::Result<crate::emulator::LaunchCommandPreview> {
+    validate_launch_profile_template(target, command_template)?;
+    crate::emulator::preview_launch_command(
+        &target.emulator_label,
+        &target.default_template,
+        extra_arguments,
+        command_template,
+        &target.available_placeholders,
+        target.preview_extra_insert_index,
+    )
+}
+
+fn launch_profile_preview_fallback(
+    store: &SettingsStore,
+    scope: &str,
+    platform: &str,
+    target: &LaunchProfileTarget,
+) -> anyhow::Result<crate::settings::ResolvedLaunchCustomization> {
+    match scope {
+        "game" => store.resolve_launch_customization(
+            "",
+            platform,
+            &target.emulator_id,
+            target.runtime_kind,
+            &target.core_name,
+        ),
+        "platform" => store.resolve_launch_customization(
+            "",
+            "",
+            &target.emulator_id,
+            target.runtime_kind,
+            &target.core_name,
+        ),
+        "global" => Ok(crate::settings::ResolvedLaunchCustomization::default()),
+        _ => anyhow::bail!("unsupported launch profile preview scope {scope}"),
+    }
 }
 
 fn local_file_url(path: &std::path::Path) -> QUrl {
@@ -1133,6 +1206,7 @@ struct LaunchProfileTarget {
     core_name: String,
     default_template: String,
     available_placeholders: Vec<String>,
+    preview_extra_insert_index: usize,
 }
 
 struct LaunchStarted {
@@ -3687,6 +3761,7 @@ impl qobject::GameDetailsModel {
     pub fn close_launch_profile_editor(mut self: Pin<&mut Self>) {
         self.as_mut().set_launch_profile_open(false);
         self.as_mut().set_launch_profile_status(QString::default());
+        self.as_mut().clear_launch_profile_preview();
     }
 
     pub fn select_launch_profile_scope(mut self: Pin<&mut Self>, scope: QString) {
@@ -3785,6 +3860,114 @@ impl qobject::GameDetailsModel {
         }
     }
 
+    pub fn update_launch_profile_preview(
+        mut self: Pin<&mut Self>,
+        extra_arguments: QString,
+        command_template: QString,
+    ) {
+        let fallback_extra_arguments = self
+            .as_ref()
+            .rust()
+            .launch_profile_preview_fallback_extra_arguments
+            .clone();
+        let fallback_command_template = self
+            .as_ref()
+            .rust()
+            .launch_profile_preview_fallback_command_template
+            .clone();
+        let (effective_extra_arguments, effective_command_template) =
+            crate::emulator::effective_launch_preview_values(
+                &extra_arguments.to_string(),
+                &command_template.to_string(),
+                &fallback_extra_arguments,
+                &fallback_command_template,
+            );
+        let result = self.launch_profile_target().and_then(|target| {
+            preview_for_launch_profile_target(
+                &target,
+                &effective_extra_arguments,
+                &effective_command_template,
+            )
+        });
+        self.as_mut().publish_launch_profile_preview(result);
+    }
+
+    pub fn launch_profile_preview_argument_at(&self, index: i32) -> QString {
+        qstring(
+            usize::try_from(index)
+                .ok()
+                .and_then(|index| self.rust().launch_profile_preview_arguments.get(index))
+                .map(String::as_str)
+                .unwrap_or(""),
+        )
+    }
+
+    fn publish_launch_profile_preview(
+        mut self: Pin<&mut Self>,
+        result: anyhow::Result<crate::emulator::LaunchCommandPreview>,
+    ) {
+        match result {
+            Ok(preview) => {
+                let argument_count = preview.arguments.len();
+                let message = preview.summary();
+                self.as_mut().set_launch_profile_preview_valid(true);
+                self.as_mut()
+                    .set_launch_profile_preview_runtime(qstring(preview.runtime));
+                self.as_mut()
+                    .set_launch_profile_preview_message(qstring(message));
+                self.as_mut().rust_mut().launch_profile_preview_arguments = preview.arguments;
+                self.as_mut().set_launch_profile_preview_argument_count(
+                    i32::try_from(argument_count).unwrap_or(i32::MAX),
+                );
+            }
+            Err(error) => {
+                self.as_mut().set_launch_profile_preview_valid(false);
+                self.as_mut()
+                    .set_launch_profile_preview_runtime(QString::default());
+                self.as_mut()
+                    .set_launch_profile_preview_message(qstring(format!(
+                        "Check this command: {error}"
+                    )));
+                self.as_mut()
+                    .rust_mut()
+                    .launch_profile_preview_arguments
+                    .clear();
+                self.as_mut().set_launch_profile_preview_argument_count(0);
+            }
+        }
+        let revision = self
+            .as_ref()
+            .launch_profile_preview_revision()
+            .wrapping_add(1);
+        self.as_mut().set_launch_profile_preview_revision(revision);
+    }
+
+    fn clear_launch_profile_preview(mut self: Pin<&mut Self>) {
+        self.as_mut().set_launch_profile_preview_valid(false);
+        self.as_mut()
+            .set_launch_profile_preview_runtime(QString::default());
+        self.as_mut()
+            .set_launch_profile_preview_message(QString::default());
+        self.as_mut()
+            .rust_mut()
+            .launch_profile_preview_arguments
+            .clear();
+        self.as_mut()
+            .rust_mut()
+            .launch_profile_preview_fallback_extra_arguments
+            .clear();
+        self.as_mut()
+            .rust_mut()
+            .launch_profile_preview_fallback_command_template
+            .clear();
+        self.as_mut().set_launch_profile_preview_argument_count(0);
+        let revision = self
+            .as_ref()
+            .launch_profile_preview_revision()
+            .wrapping_add(1);
+        self.as_mut().set_launch_profile_preview_revision(revision);
+    }
+
     fn load_launch_profile_scope(mut self: Pin<&mut Self>, scope: &str) {
         if !matches!(scope, "game" | "platform" | "global") {
             self.as_mut()
@@ -3820,11 +4003,12 @@ impl qobject::GameDetailsModel {
                 target.runtime_kind,
                 &target.core_name,
             )?;
-            Ok((exact, resolved))
+            let fallback = launch_profile_preview_fallback(&store, scope, &platform, &target)?;
+            Ok((exact, resolved, fallback))
         })();
         match loaded {
-            Ok((exact, resolved)) => {
-                let default_template = target.default_template;
+            Ok((exact, resolved, fallback)) => {
+                let default_template = target.default_template.clone();
                 let effective_template = if resolved.command_template.is_empty() {
                     default_template.clone()
                 } else {
@@ -3841,6 +4025,19 @@ impl qobject::GameDetailsModel {
                 } else {
                     launch_scope_label(&resolved.template_scope)
                 };
+                let (preview_extra_arguments, preview_command_template) =
+                    crate::emulator::effective_launch_preview_values(
+                        &exact.extra_arguments,
+                        &exact.command_template,
+                        &fallback.extra_arguments,
+                        &fallback.command_template,
+                    );
+                self.as_mut()
+                    .rust_mut()
+                    .launch_profile_preview_fallback_extra_arguments = fallback.extra_arguments;
+                self.as_mut()
+                    .rust_mut()
+                    .launch_profile_preview_fallback_command_template = fallback.command_template;
                 self.as_mut().set_launch_profile_scope(qstring(scope));
                 self.as_mut()
                     .set_launch_profile_default_template(qstring(default_template));
@@ -3854,6 +4051,12 @@ impl qobject::GameDetailsModel {
                     "Effective extra arguments: {argument_source} · command template: {template_source}"
                 )));
                 self.as_mut().set_launch_profile_status(QString::default());
+                let preview = preview_for_launch_profile_target(
+                    &target,
+                    &preview_extra_arguments,
+                    &preview_command_template,
+                );
+                self.as_mut().publish_launch_profile_preview(preview);
                 let revision = self.as_ref().launch_profile_revision().wrapping_add(1);
                 self.as_mut().set_launch_profile_revision(revision);
             }
@@ -3887,6 +4090,12 @@ impl qobject::GameDetailsModel {
         if let Some(option) = self.selected_rom_emulator_option() {
             let default_template =
                 crate::emulator::default_rom_launch_template(&option, &self.platform().to_string());
+            let preview_extra_insert_index =
+                crate::emulator::default_rom_extra_argument_insert_index(
+                    &option.emulator_name,
+                    option.runtime_kind,
+                    &self.platform().to_string(),
+                );
             let mut available_placeholders =
                 crate::emulator::launch_template_placeholders(&default_template)?;
             if !available_placeholders.iter().any(|name| name == "file") {
@@ -3899,6 +4108,7 @@ impl qobject::GameDetailsModel {
                 core_name: option.core_name.clone(),
                 default_template,
                 available_placeholders,
+                preview_extra_insert_index,
             });
         }
         let prepared = self
@@ -3911,6 +4121,8 @@ impl qobject::GameDetailsModel {
         )?;
         let default_template =
             crate::emulator::default_prepared_launch_template(prepared, &emulator.name)?;
+        let preview_extra_insert_index =
+            crate::emulator::default_prepared_extra_argument_insert_index(&default_template)?;
         let available_placeholders =
             crate::emulator::launch_template_placeholders(&default_template)?;
         Ok(LaunchProfileTarget {
@@ -3920,6 +4132,7 @@ impl qobject::GameDetailsModel {
             core_name: String::new(),
             default_template,
             available_placeholders,
+            preview_extra_insert_index,
         })
     }
 
@@ -4693,6 +4906,7 @@ impl qobject::GameDetailsModel {
         self.as_mut()
             .set_launch_profile_inheritance(QString::default());
         self.as_mut().set_launch_profile_status(QString::default());
+        self.as_mut().clear_launch_profile_preview();
     }
 
     fn finish_queue(
@@ -5177,9 +5391,10 @@ fn preflight_storage_summary(preflight: &crate::qbittorrent::DownloadPreflight) 
 mod tests {
     use super::{
         LaunchProfileTarget, format_last_played, format_play_time, format_release_date,
-        format_session_duration, metadata_save_messages, session_outcome_label,
-        steam_store_url_string, validate_launch_profile_template,
+        format_session_duration, metadata_save_messages, preview_for_launch_profile_target,
+        session_outcome_label, steam_store_url_string, validate_launch_profile_template,
     };
+    use crate::emulator::effective_launch_preview_values;
 
     #[test]
     fn activity_labels_stay_compact_in_the_details_card() {
@@ -5212,10 +5427,27 @@ mod tests {
             core_name: "fceumm".to_owned(),
             default_template: "--verbose -L %{core} %f".to_owned(),
             available_placeholders: vec!["core".to_owned(), "file".to_owned()],
+            preview_extra_insert_index: 3,
         };
         validate_launch_profile_template(&target, "-L %{core} %f").unwrap();
         let error = validate_launch_profile_template(&target, "%{config}").unwrap_err();
         assert!(error.to_string().contains("unavailable"));
+
+        let preview = preview_for_launch_profile_target(&target, "--latency 1", "").unwrap();
+        assert_eq!(
+            preview.arguments,
+            [
+                "--verbose",
+                "-L",
+                "<retroarch-core>",
+                "--latency",
+                "1",
+                "<selected-file>",
+            ]
+        );
+        let effective = effective_launch_preview_values("", "-L %{core} %f", "--inherited", "%f");
+        assert_eq!(effective.0, "--inherited");
+        assert_eq!(effective.1, "-L %{core} %f");
     }
 
     #[test]

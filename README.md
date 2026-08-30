@@ -293,7 +293,11 @@ Settings also opens a native Launch Commands manager over the complete catalog.
 Its virtualized, searchable matrix keeps standalone and exact RetroArch-core
 runtimes separate, filters all-platform/per-platform and built-in/customized
 rows, previews inherited behavior, and edits one stable-emulator-ID profile in
-a focused side panel without blocking the GUI.
+a focused side panel without blocking the GUI. Both editors continuously show
+the selected runtime and numbered argument vector produced by the shared Rust
+parser; executable paths and host wrappers resolve at Play. Invalid quoting or
+unavailable placeholders are reported inline and disable saving, and the
+preview never renders a shell command.
 
 The native Emulator Manager restores the legacy host-aware lifecycle instead
 of delegating it to Electron. It discovers installations off the GUI thread,

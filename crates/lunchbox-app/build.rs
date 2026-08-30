@@ -73,6 +73,7 @@ fn main() {
                 "qml/GameSoundtrackCard.qml",
                 "qml/HeaderButton.qml",
                 "qml/InlineProgressBar.qml",
+                "qml/LaunchCommandPreview.qml",
                 "qml/MetadataField.qml",
                 "qml/MediaDownloadStatus.qml",
                 "qml/NativeTextArea.qml",

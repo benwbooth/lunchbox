@@ -26,6 +26,11 @@ pub mod qobject {
         #[qproperty(QString, editor_effective_summary)]
         #[qproperty(QString, editor_status)]
         #[qproperty(i32, editor_revision)]
+        #[qproperty(bool, launch_profile_preview_valid)]
+        #[qproperty(QString, launch_profile_preview_runtime)]
+        #[qproperty(QString, launch_profile_preview_message)]
+        #[qproperty(i32, launch_profile_preview_argument_count)]
+        #[qproperty(i32, launch_profile_preview_revision)]
         type LaunchProfileManagerModel = super::LaunchProfileManagerModelRust;
 
         #[qinvokable]
@@ -75,6 +80,19 @@ pub mod qobject {
 
         #[qinvokable]
         fn clear_editor(self: Pin<&mut LaunchProfileManagerModel>);
+
+        #[qinvokable]
+        fn update_launch_profile_preview(
+            self: Pin<&mut LaunchProfileManagerModel>,
+            extra_arguments: QString,
+            command_template: QString,
+        );
+
+        #[qinvokable]
+        fn launch_profile_preview_argument_at(
+            self: &LaunchProfileManagerModel,
+            index: i32,
+        ) -> QString;
     }
 
     impl cxx_qt::Threading for LaunchProfileManagerModel {}
@@ -88,7 +106,9 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 
 use crate::emulator::{
-    EmulatorRuntimeKind, default_rom_launch_template_for, launch_template_placeholders,
+    EmulatorRuntimeKind, LaunchCommandPreview, default_rom_extra_argument_insert_index,
+    default_rom_launch_template_for, effective_launch_preview_values, launch_template_placeholders,
+    preview_launch_command,
 };
 use crate::settings::{EmulatorLaunchProfile, ResolvedLaunchCustomization, SettingsStore};
 
@@ -120,6 +140,7 @@ struct LaunchProfileRow {
     platform_name: String,
     emulator_name: String,
     default_template: String,
+    preview_extra_insert_index: usize,
     profile: Option<EmulatorLaunchProfile>,
 }
 
@@ -192,9 +213,17 @@ pub struct LaunchProfileManagerModelRust {
     editor_effective_summary: QString,
     editor_status: QString,
     editor_revision: i32,
+    launch_profile_preview_valid: bool,
+    launch_profile_preview_runtime: QString,
+    launch_profile_preview_message: QString,
+    launch_profile_preview_argument_count: i32,
+    launch_profile_preview_revision: i32,
     all_rows: Vec<LaunchProfileRow>,
     rows: Vec<LaunchProfileRow>,
     selected_key: Option<LaunchProfileKey>,
+    launch_profile_preview_arguments: Vec<String>,
+    launch_profile_preview_fallback_extra_arguments: String,
+    launch_profile_preview_fallback_command_template: String,
 }
 
 impl Default for LaunchProfileManagerModelRust {
@@ -218,9 +247,17 @@ impl Default for LaunchProfileManagerModelRust {
             editor_effective_summary: QString::default(),
             editor_status: QString::default(),
             editor_revision: 0,
+            launch_profile_preview_valid: false,
+            launch_profile_preview_runtime: QString::default(),
+            launch_profile_preview_message: QString::default(),
+            launch_profile_preview_argument_count: 0,
+            launch_profile_preview_revision: 0,
             all_rows: Vec::new(),
             rows: Vec::new(),
             selected_key: None,
+            launch_profile_preview_arguments: Vec::new(),
+            launch_profile_preview_fallback_extra_arguments: String::new(),
+            launch_profile_preview_fallback_command_template: String::new(),
         }
     }
 }
@@ -415,13 +452,52 @@ impl qobject::LaunchProfileManagerModel {
             ))),
         }
         self.as_mut().set_editor_status(QString::default());
+        let exact_extra_arguments = row
+            .profile
+            .as_ref()
+            .map(|profile| profile.extra_arguments.as_str())
+            .unwrap_or("");
+        let exact_command_template = row
+            .profile
+            .as_ref()
+            .map(|profile| profile.command_template.as_str())
+            .unwrap_or("");
+        let fallback = preview_fallback_for_row(&row, &self.as_ref().rust().all_rows);
+        self.as_mut()
+            .rust_mut()
+            .launch_profile_preview_fallback_extra_arguments = fallback.extra_arguments.clone();
+        self.as_mut()
+            .rust_mut()
+            .launch_profile_preview_fallback_command_template = fallback.command_template.clone();
+        let (effective_extra_arguments, effective_command_template) =
+            effective_launch_preview_values(
+                exact_extra_arguments,
+                exact_command_template,
+                &fallback.extra_arguments,
+                &fallback.command_template,
+            );
+        let preview = preview_for_row(
+            &row,
+            &effective_extra_arguments,
+            &effective_command_template,
+        );
+        self.as_mut().publish_launch_profile_preview(preview);
         self.as_mut().bump_editor_revision();
     }
 
     pub fn close_editor(mut self: Pin<&mut Self>) {
         self.as_mut().rust_mut().selected_key = None;
+        self.as_mut()
+            .rust_mut()
+            .launch_profile_preview_fallback_extra_arguments
+            .clear();
+        self.as_mut()
+            .rust_mut()
+            .launch_profile_preview_fallback_command_template
+            .clear();
         self.as_mut().set_editor_open(false);
         self.as_mut().set_editor_status(QString::default());
+        self.as_mut().clear_launch_profile_preview();
         self.as_mut().bump_editor_revision();
     }
 
@@ -513,6 +589,109 @@ impl qobject::LaunchProfileManagerModel {
                 "Could not clear the launch profile: {error:#}"
             ))),
         }
+    }
+
+    pub fn update_launch_profile_preview(
+        mut self: Pin<&mut Self>,
+        extra_arguments: QString,
+        command_template: QString,
+    ) {
+        let fallback_extra_arguments = self
+            .as_ref()
+            .rust()
+            .launch_profile_preview_fallback_extra_arguments
+            .clone();
+        let fallback_command_template = self
+            .as_ref()
+            .rust()
+            .launch_profile_preview_fallback_command_template
+            .clone();
+        let (effective_extra_arguments, effective_command_template) =
+            effective_launch_preview_values(
+                &extra_arguments.to_string(),
+                &command_template.to_string(),
+                &fallback_extra_arguments,
+                &fallback_command_template,
+            );
+        let result = self
+            .selected_row()
+            .cloned()
+            .context("Choose a launch profile row first.")
+            .and_then(|row| {
+                preview_for_row(
+                    &row,
+                    &effective_extra_arguments,
+                    &effective_command_template,
+                )
+            });
+        self.as_mut().publish_launch_profile_preview(result);
+    }
+
+    pub fn launch_profile_preview_argument_at(&self, index: i32) -> QString {
+        qstring(
+            usize::try_from(index)
+                .ok()
+                .and_then(|index| self.rust().launch_profile_preview_arguments.get(index))
+                .map(String::as_str)
+                .unwrap_or(""),
+        )
+    }
+
+    fn publish_launch_profile_preview(
+        mut self: Pin<&mut Self>,
+        result: Result<LaunchCommandPreview>,
+    ) {
+        match result {
+            Ok(preview) => {
+                let argument_count = preview.arguments.len();
+                let message = preview.summary();
+                self.as_mut().set_launch_profile_preview_valid(true);
+                self.as_mut()
+                    .set_launch_profile_preview_runtime(qstring(preview.runtime));
+                self.as_mut()
+                    .set_launch_profile_preview_message(qstring(message));
+                self.as_mut().rust_mut().launch_profile_preview_arguments = preview.arguments;
+                self.as_mut()
+                    .set_launch_profile_preview_argument_count(saturating_i32(argument_count));
+            }
+            Err(error) => {
+                self.as_mut().set_launch_profile_preview_valid(false);
+                self.as_mut()
+                    .set_launch_profile_preview_runtime(QString::default());
+                self.as_mut()
+                    .set_launch_profile_preview_message(qstring(format!(
+                        "Check this command: {error}"
+                    )));
+                self.as_mut()
+                    .rust_mut()
+                    .launch_profile_preview_arguments
+                    .clear();
+                self.as_mut().set_launch_profile_preview_argument_count(0);
+            }
+        }
+        let revision = self
+            .as_ref()
+            .launch_profile_preview_revision()
+            .wrapping_add(1);
+        self.as_mut().set_launch_profile_preview_revision(revision);
+    }
+
+    fn clear_launch_profile_preview(mut self: Pin<&mut Self>) {
+        self.as_mut().set_launch_profile_preview_valid(false);
+        self.as_mut()
+            .set_launch_profile_preview_runtime(QString::default());
+        self.as_mut()
+            .set_launch_profile_preview_message(QString::default());
+        self.as_mut()
+            .rust_mut()
+            .launch_profile_preview_arguments
+            .clear();
+        self.as_mut().set_launch_profile_preview_argument_count(0);
+        let revision = self
+            .as_ref()
+            .launch_profile_preview_revision()
+            .wrapping_add(1);
+        self.as_mut().set_launch_profile_preview_revision(revision);
     }
 
     fn update_profile_row(
@@ -729,6 +908,8 @@ fn make_row(
     runtime_kind: EmulatorRuntimeKind,
     profiles: &HashMap<LaunchProfileKey, EmulatorLaunchProfile>,
 ) -> LaunchProfileRow {
+    let preview_extra_insert_index =
+        default_rom_extra_argument_insert_index(emulator_name, runtime_kind, platform_name);
     LaunchProfileRow {
         profile: profiles.get(&key).cloned(),
         default_template: default_rom_launch_template_for(
@@ -736,10 +917,56 @@ fn make_row(
             runtime_kind,
             platform_name,
         ),
+        preview_extra_insert_index,
         key,
         scope_label: scope_label.to_owned(),
         platform_name: platform_name.to_owned(),
         emulator_name: emulator_name.to_owned(),
+    }
+}
+
+fn preview_for_row(
+    row: &LaunchProfileRow,
+    extra_arguments: &str,
+    command_template: &str,
+) -> Result<LaunchCommandPreview> {
+    validate_template_for_row(row, command_template)?;
+    let available_placeholders = launch_template_placeholders(&row.default_template)?;
+    preview_launch_command(
+        &row.emulator_name,
+        &row.default_template,
+        extra_arguments,
+        command_template,
+        &available_placeholders,
+        row.preview_extra_insert_index,
+    )
+}
+
+fn preview_fallback_for_row(
+    row: &LaunchProfileRow,
+    rows: &[LaunchProfileRow],
+) -> ResolvedLaunchCustomization {
+    if row.key.scope_kind != "platform" {
+        return ResolvedLaunchCustomization::default();
+    }
+    let global = rows.iter().find(|candidate| {
+        candidate.key.scope_kind == "global"
+            && candidate.key.emulator_id == row.key.emulator_id
+            && candidate.key.runtime_kind == row.key.runtime_kind
+            && candidate.key.core_name == row.key.core_name
+    });
+    let Some(profile) = global.and_then(|candidate| candidate.profile.as_ref()) else {
+        return ResolvedLaunchCustomization::default();
+    };
+    ResolvedLaunchCustomization {
+        extra_arguments: profile.extra_arguments.clone(),
+        argument_scope: (!profile.extra_arguments.is_empty())
+            .then_some("global".to_owned())
+            .unwrap_or_default(),
+        command_template: profile.command_template.clone(),
+        template_scope: (!profile.command_template.is_empty())
+            .then_some("global".to_owned())
+            .unwrap_or_default(),
     }
 }
 
@@ -858,6 +1085,7 @@ mod tests {
             } else {
                 "%f".into()
             },
+            preview_extra_insert_index: 0,
             profile: customized.then(|| EmulatorLaunchProfile {
                 scope_kind: key.scope_kind,
                 scope_key: key.scope_key,
@@ -891,5 +1119,42 @@ mod tests {
         let global = row("global", "", false);
         validate_template_for_row(&global, "%f").unwrap();
         assert!(validate_template_for_row(&global, "%{mame_romset}").is_err());
+    }
+
+    #[test]
+    fn platform_preview_applies_independent_global_field_inheritance() {
+        let global = row("global", "", true);
+        let platform = row("platform", "Arcade", false);
+        let fallback = preview_fallback_for_row(&platform, &[global.clone(), platform.clone()]);
+        assert_eq!(fallback.extra_arguments, "-video bgfx");
+        assert!(fallback.command_template.is_empty());
+
+        let (extra_arguments, command_template) = effective_launch_preview_values(
+            "",
+            "",
+            &fallback.extra_arguments,
+            &fallback.command_template,
+        );
+        let preview = preview_for_row(&platform, &extra_arguments, &command_template).unwrap();
+        assert_eq!(
+            preview.arguments,
+            [
+                "-video",
+                "bgfx",
+                "-rompath",
+                "<rom-directory>",
+                "<machine-set>",
+            ]
+        );
+
+        let (extra_arguments, command_template) = effective_launch_preview_values(
+            "--window",
+            "%{mame_romset}",
+            &fallback.extra_arguments,
+            &fallback.command_template,
+        );
+        let preview = preview_for_row(&platform, &extra_arguments, &command_template).unwrap();
+        assert_eq!(preview.arguments, ["<machine-set>"]);
+        assert!(preview.extra_arguments_ignored);
     }
 }

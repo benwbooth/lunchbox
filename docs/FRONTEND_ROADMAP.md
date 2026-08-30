@@ -310,16 +310,18 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   preserves native/Flatpak/Wine paths and never invokes a shell. The native
   Launch Commands manager adds a worker-loaded, virtualized, searchable matrix
   for exact global/platform standalone and RetroArch-core rows with
-  built-in/customized filtering and focused save/clear. Complete Windows/macOS
-  runtime-host certification.
+  built-in/customized filtering and focused save/clear. Both surfaces now show
+  a live, numbered direct-process argv preview from the runtime compiler,
+  including independent per-field inheritance and contextual validation.
+  Complete Windows/macOS runtime-host certification.
 - Standalone MAME set-name/ROM-path and Hypseus framefile/support/bundle
   profiles are native. Derived Arcade Laserdisc and Arcade Pinball labels map
   to the canonical Arcade emulator catalog without being collapsed in the UI.
   Linux Flatpak MAME launch is runtime-verified with the ROM-free Pong driver.
   Known archive-oriented FinalBurn Neo, Flycast, and Supermodel executables
   retain the legacy bounded direct-file contract.
-- Add explicit version pinning, lifecycle cancellation/recovery, and command
-  preview to the native manager. Available-version-only presentation is native:
+- Add explicit version pinning and lifecycle cancellation/recovery to the
+  native manager. Available-version-only presentation is native:
   it checks every exact installed backend, presents current-to-available
   versions, and applies explicitly selected rows sequentially with per-row
   outcomes. Firmware/BIOS validation before game launch is also native.

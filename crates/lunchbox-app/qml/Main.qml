@@ -361,6 +361,7 @@ ApplicationWindow {
     property bool activityHistoryProbeOpened: false
     property bool importProfileProbeStarted: false
     property bool importProfileBatchProbeStarted: false
+    property bool launchProfileManagerProbeCaptured: false
     readonly property string metadataProbeTitle: "Super Mario Bros. — Living Room Edition"
     readonly property string metadataProbeCustomSearch: "8BitDo Ultimate"
 
@@ -1799,8 +1800,45 @@ ApplicationWindow {
             launchProfileSearch.text = "mame_rompath"
             launchProfileScopeFilter.currentIndex = 2
             launchProfileManager.apply_filter("mame_rompath", "platform", "all")
-            if (launchProfileManager.row_count > 0)
-                launchProfileManager.edit_at(0)
+            if (launchProfileManager.row_count <= 0) {
+                console.error("LUNCHBOX_LAUNCH_PROFILE_MANAGER_UI_FAILED no_rows")
+                Qt.exit(2)
+                return
+            }
+            launchProfileManager.edit_at(0)
+            if (!launchProfileManager.launch_profile_preview_valid
+                    || launchProfileManager.launch_profile_preview_runtime.length === 0
+                    || launchProfileManager.launch_profile_preview_argument_count <= 0) {
+                console.error("LUNCHBOX_LAUNCH_PROFILE_MANAGER_UI_FAILED initial_preview_valid="
+                              + launchProfileManager.launch_profile_preview_valid
+                              + " runtime="
+                              + launchProfileManager.launch_profile_preview_runtime
+                              + " arguments="
+                              + launchProfileManager.launch_profile_preview_argument_count
+                              + " message="
+                              + launchProfileManager.launch_profile_preview_message)
+                Qt.exit(2)
+                return
+            }
+            launchProfileManager.update_launch_profile_preview("", "%{core}")
+            if (launchProfileManager.launch_profile_preview_valid) {
+                console.error("LUNCHBOX_LAUNCH_PROFILE_MANAGER_UI_FAILED unavailable_placeholder_accepted")
+                Qt.exit(2)
+                return
+            }
+            launchProfileManager.update_launch_profile_preview(
+                        launchProfileManager.editor_extra_arguments,
+                        launchProfileManager.editor_command_template)
+            if (!launchProfileManager.launch_profile_preview_valid) {
+                console.error("LUNCHBOX_LAUNCH_PROFILE_MANAGER_UI_FAILED restored_preview="
+                              + launchProfileManager.launch_profile_preview_message)
+                Qt.exit(2)
+                return
+            }
+            console.log("LUNCHBOX_LAUNCH_PROFILE_MANAGER_PREVIEW_READY runtime="
+                        + launchProfileManager.launch_profile_preview_runtime
+                        + " arguments="
+                        + launchProfileManager.launch_profile_preview_argument_count)
             launchProfileManagerScreenshotTimer.restart()
         }
         function onEditor_revisionChanged() {
@@ -6229,6 +6267,20 @@ ApplicationWindow {
         interval: 350
         repeat: false
         onTriggered: {
+            if (!gameDetails.launch_profile_preview_valid
+                    || gameDetails.launch_profile_preview_runtime.length === 0
+                    || gameDetails.launch_profile_preview_argument_count <= 0) {
+                console.error("LUNCHBOX_LAUNCH_PROFILE_UI_FAILED preview_valid="
+                              + gameDetails.launch_profile_preview_valid
+                              + " runtime="
+                              + gameDetails.launch_profile_preview_runtime
+                              + " arguments="
+                              + gameDetails.launch_profile_preview_argument_count
+                              + " message="
+                              + gameDetails.launch_profile_preview_message)
+                Qt.exit(2)
+                return
+            }
             if (root.screenshotOutput.length === 0)
                 return
             detailsPane.grabToImage(function(result) {
@@ -6239,7 +6291,10 @@ ApplicationWindow {
                     return
                 }
                 console.log("LUNCHBOX_SCREENSHOT_READY path="
-                            + root.screenshotOutput)
+                            + root.screenshotOutput + " preview_runtime="
+                            + gameDetails.launch_profile_preview_runtime
+                            + " preview_arguments="
+                            + gameDetails.launch_profile_preview_argument_count)
                 Qt.quit()
             })
         }
@@ -12046,6 +12101,12 @@ ApplicationWindow {
                                             selectByMouse: true
                                             font.family: "monospace"
                                             font.pixelSize: 9
+                                            onTextChanged: {
+                                                if (gameDetails.launch_profile_open)
+                                                    gameDetails.update_launch_profile_preview(
+                                                                text,
+                                                                launchCommandTemplate.text)
+                                            }
                                             background: Rectangle {
                                                 radius: 7
                                                 color: "#0b121b"
@@ -12079,12 +12140,32 @@ ApplicationWindow {
                                             line: root.line
                                             accent: root.accentCool
                                             radius: 7
+                                            onTextChanged: {
+                                                if (gameDetails.launch_profile_open)
+                                                    gameDetails.update_launch_profile_preview(
+                                                                launchExtraArguments.text,
+                                                                text)
+                                            }
                                         }
+                                    }
+
+                                    LaunchCommandPreview {
+                                        id: gameLaunchCommandPreview
+                                        width: parent.width
+                                        height: implicitHeight
+                                        previewModel: gameDetails
+                                        compact: true
+                                        ink: root.ink
+                                        muted: root.muted
+                                        accent: root.accent
+                                        accentCool: root.accentCool
+                                        panel: "#0b121b"
+                                        line: root.line
                                     }
 
                                     Text {
                                         width: parent.width
-                                        text: "Use the placeholders shown by the built-in template; %f is the selected file and %% is a literal percent. Prepared PC games may expose %{config}, %{shared_config}, %{game_path}, %{game_id}, or %{vm_root}. Quotes only group arguments; Lunchbox never invokes a shell. A template replaces the built-in argv, while extra arguments augment it when the template is blank."
+                                        text: "Use the placeholders shown by the built-in template; %f is the selected file and %% is a literal percent. Prepared PC games may expose %{config}, %{shared_config}, %{game_path}, %{game_id}, or %{vm_root}."
                                         color: root.muted
                                         font.pixelSize: 8
                                         lineHeight: 1.2
@@ -12108,6 +12189,7 @@ ApplicationWindow {
                                             width: (parent.width - 7) * 0.62
                                             height: 32
                                             text: "SAVE PROFILE"
+                                            enabled: gameDetails.launch_profile_preview_valid
                                             font.pixelSize: 8
                                             font.weight: Font.Bold
                                             onClicked: gameDetails.save_launch_profile(
@@ -21591,6 +21673,12 @@ ApplicationWindow {
                             placeholderTextColor: root.muted
                             selectionColor: root.accent
                             selectedTextColor: "#101318"
+                            onTextChanged: {
+                                if (launchProfileManager.editor_open)
+                                    launchProfileManager.update_launch_profile_preview(
+                                                text,
+                                                launchProfileManagerCommandTemplate.text)
+                            }
                             background: Rectangle {
                                 radius: 7
                                 color: "#0b121b"
@@ -21619,10 +21707,29 @@ ApplicationWindow {
                             line: root.line
                             accent: root.accent
                             radius: 7
+                            onTextChanged: {
+                                if (launchProfileManager.editor_open)
+                                    launchProfileManager.update_launch_profile_preview(
+                                                launchProfileManagerExtraArguments.text,
+                                                text)
+                            }
+                        }
+                        LaunchCommandPreview {
+                            id: launchProfileManagerPreview
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            previewModel: launchProfileManager
+                            compact: true
+                            ink: root.ink
+                            muted: root.muted
+                            accent: root.accent
+                            accentCool: root.accentCool
+                            panel: "#0b121b"
+                            line: root.line
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: "Quotes group arguments. Lunchbox parses directly to argv; it never invokes a shell. A saved template replaces the built-in command, while extra arguments augment it only when the template is blank."
+                            text: "A saved template replaces the built-in argv. Extra arguments augment inherited or built-in argv only when no template is active."
                             color: root.muted
                             font.pixelSize: 9
                             wrapMode: Text.WordWrap
@@ -21661,6 +21768,7 @@ ApplicationWindow {
                             HeaderButton {
                                 text: "Save profile"
                                 active: true
+                                enabled: launchProfileManager.launch_profile_preview_valid
                                 onClicked: launchProfileManager.save_editor(
                                                launchProfileManagerExtraArguments.text,
                                                launchProfileManagerCommandTemplate.text)
@@ -21728,23 +21836,66 @@ ApplicationWindow {
     }
 
     Timer {
+        interval: 30000
+        running: root.launchProfileManagerUiProbe
+                 && !root.launchProfileManagerProbeCaptured
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_LAUNCH_PROFILE_MANAGER_UI_FAILED timeout initialized="
+                          + launchProfileManager.initialized + " rows="
+                          + launchProfileManager.row_count + " editor="
+                          + launchProfileManager.editor_open + " preview="
+                          + launchProfileManager.launch_profile_preview_valid)
+            Qt.exit(2)
+        }
+    }
+
+    Timer {
         id: launchProfileManagerScreenshotTimer
         interval: 450
         repeat: false
         onTriggered: {
-            if (root.screenshotOutput.length === 0)
+            if (!launchProfileManager.launch_profile_preview_valid
+                    || launchProfileManager.launch_profile_preview_runtime.length === 0
+                    || launchProfileManager.launch_profile_preview_argument_count <= 0) {
+                console.error("LUNCHBOX_LAUNCH_PROFILE_MANAGER_UI_FAILED preview_valid="
+                              + launchProfileManager.launch_profile_preview_valid
+                              + " runtime="
+                              + launchProfileManager.launch_profile_preview_runtime
+                              + " arguments="
+                              + launchProfileManager.launch_profile_preview_argument_count
+                              + " message="
+                              + launchProfileManager.launch_profile_preview_message)
+                Qt.exit(2)
                 return
-            launchProfileManagerPanel.grabToImage(function(result) {
+            }
+            if (root.screenshotOutput.length === 0) {
+                root.launchProfileManagerProbeCaptured = true
+                Qt.quit()
+                return
+            }
+            const accepted = launchProfileManagerPanel.grabToImage(function(result) {
                 if (!result.saveToFile(root.screenshotOutput)) {
                     console.error("LUNCHBOX_LAUNCH_PROFILE_MANAGER_SCREENSHOT_FAILED path="
                                   + root.screenshotOutput)
                     Qt.exit(2)
                     return
                 }
+                root.launchProfileManagerProbeCaptured = true
                 console.log("LUNCHBOX_LAUNCH_PROFILE_MANAGER_SCREENSHOT_READY path="
-                            + root.screenshotOutput)
+                            + root.screenshotOutput + " preview_runtime="
+                            + launchProfileManager.launch_profile_preview_runtime
+                            + " preview_arguments="
+                            + launchProfileManager.launch_profile_preview_argument_count)
                 Qt.quit()
             })
+            if (!accepted) {
+                console.error("LUNCHBOX_LAUNCH_PROFILE_MANAGER_SCREENSHOT_FAILED request_rejected width="
+                              + launchProfileManagerPanel.width + " height="
+                              + launchProfileManagerPanel.height + " visible="
+                              + launchProfileManagerDialog.visible)
+                Qt.exit(2)
+            }
         }
     }
 

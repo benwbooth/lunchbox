@@ -316,6 +316,36 @@ enum LaunchTemplateValue {
     Path(PathBuf),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LaunchCommandPreview {
+    pub runtime: String,
+    pub arguments: Vec<String>,
+    pub uses_custom_template: bool,
+    pub extra_arguments_ignored: bool,
+}
+
+impl LaunchCommandPreview {
+    pub fn summary(&self) -> String {
+        let argument_count = self.arguments.len();
+        if self.extra_arguments_ignored {
+            format!(
+                "Custom template · {argument_count} argv token{} · extra arguments are valid but ignored",
+                if argument_count == 1 { "" } else { "s" }
+            )
+        } else if self.uses_custom_template {
+            format!(
+                "Custom template · {argument_count} direct argv token{}",
+                if argument_count == 1 { "" } else { "s" }
+            )
+        } else {
+            format!(
+                "Built-in template · {argument_count} direct argv token{}",
+                if argument_count == 1 { "" } else { "s" }
+            )
+        }
+    }
+}
+
 pub fn validate_launch_extra_arguments(arguments: &str) -> Result<()> {
     parse_portable_arguments(arguments).map(|_| ())
 }
@@ -423,6 +453,22 @@ pub fn default_rom_launch_template_for(
         return "%{altirra_media_switch} %f".to_owned();
     }
     "%f".to_owned()
+}
+
+pub fn default_rom_extra_argument_insert_index(
+    emulator_name: &str,
+    runtime_kind: EmulatorRuntimeKind,
+    platform: &str,
+) -> usize {
+    if runtime_kind == EmulatorRuntimeKind::RetroArch {
+        3
+    } else if emulator_name.eq_ignore_ascii_case("Hypseus Singe")
+        && is_arcade_family_platform(platform)
+    {
+        3
+    } else {
+        0
+    }
 }
 
 pub fn default_prepared_launch_template(
@@ -589,6 +635,122 @@ fn materialize_template_value(
     match value {
         LaunchTemplateValue::Literal(value) => value.clone(),
         LaunchTemplateValue::Path(path) => path_argument_for_executable(path, executable),
+    }
+}
+
+pub fn default_prepared_extra_argument_insert_index(default_template: &str) -> Result<usize> {
+    let arguments = parse_portable_arguments(default_template)?;
+    Ok(arguments
+        .iter()
+        .position(|argument| argument == "-p")
+        .unwrap_or(arguments.len()))
+}
+
+pub fn effective_launch_preview_values(
+    exact_extra_arguments: &str,
+    exact_command_template: &str,
+    fallback_extra_arguments: &str,
+    fallback_command_template: &str,
+) -> (String, String) {
+    (
+        if exact_extra_arguments.trim().is_empty() {
+            fallback_extra_arguments.to_owned()
+        } else {
+            exact_extra_arguments.to_owned()
+        },
+        if exact_command_template.trim().is_empty() {
+            fallback_command_template.to_owned()
+        } else {
+            exact_command_template.to_owned()
+        },
+    )
+}
+
+pub fn preview_launch_command(
+    runtime: &str,
+    default_template: &str,
+    extra_arguments: &str,
+    command_template: &str,
+    available_placeholders: &[String],
+    extra_insert_index: usize,
+) -> Result<LaunchCommandPreview> {
+    let parsed_extra_arguments = parse_portable_arguments(extra_arguments)?;
+    let command_template = command_template.trim();
+    let uses_custom_template = !command_template.is_empty();
+    let extra_arguments_ignored = uses_custom_template && !parsed_extra_arguments.is_empty();
+    let effective_template = if uses_custom_template {
+        command_template
+    } else {
+        default_template
+    };
+    let requested_placeholders = launch_template_placeholders(effective_template)?;
+    for placeholder in &requested_placeholders {
+        if !available_placeholders
+            .iter()
+            .any(|available| available == placeholder)
+        {
+            bail!("placeholder %{{{placeholder}}} is unavailable for this exact runtime");
+        }
+    }
+
+    let values = requested_placeholders
+        .iter()
+        .map(|placeholder| {
+            (
+                placeholder.clone(),
+                LaunchTemplateValue::Literal(OsString::from(preview_placeholder_value(
+                    placeholder,
+                ))),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let preview_executable = EmulatorExecutable::Native(PathBuf::from("lunchbox-preview"));
+    let mut arguments = compile_launch_template(effective_template, &values, &preview_executable)?
+        .into_iter()
+        .map(|argument| {
+            argument
+                .into_string()
+                .map_err(|_| anyhow!("the launch preview contains non-Unicode data"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    if !uses_custom_template {
+        if extra_insert_index > arguments.len() {
+            bail!(
+                "the built-in launch profile expected argument position {extra_insert_index}, but produced only {} arguments",
+                arguments.len()
+            );
+        }
+        arguments.splice(
+            extra_insert_index..extra_insert_index,
+            parsed_extra_arguments,
+        );
+    }
+
+    Ok(LaunchCommandPreview {
+        runtime: runtime.trim().to_owned(),
+        arguments,
+        uses_custom_template,
+        extra_arguments_ignored,
+    })
+}
+
+fn preview_placeholder_value(placeholder: &str) -> &'static str {
+    match placeholder {
+        "file" => "<selected-file>",
+        "core" => "<retroarch-core>",
+        "mame_rompath" | "hypseus_romdir" => "<rom-directory>",
+        "mame_romset" => "<machine-set>",
+        "hypseus_game" => "<game-name>",
+        "hypseus_framefile" => "<framefile>",
+        "hypseus_support_root" => "<support-directory>",
+        "altirra_media_switch" => "<media-switch>",
+        "config" => "<game-config>",
+        "shared_config" => "<shared-config>",
+        "vm_root" => "<virtual-machine>",
+        "game_path" => "<game-directory>",
+        "game_id" => "<game-id>",
+        _ => "<runtime-value>",
     }
 }
 
@@ -2643,6 +2805,62 @@ del *.rom
         assert!(parse_portable_arguments("'unterminated").is_err());
         assert!(validate_launch_template("%{unknown} %f").is_err());
         validate_launch_template("--file=%f %% %{core}").unwrap();
+    }
+
+    #[test]
+    fn launch_preview_uses_runtime_argv_semantics_without_shell_rendering() {
+        let available = vec!["core".to_owned(), "file".to_owned()];
+        let built_in = preview_launch_command(
+            "RetroArch",
+            "--verbose -L %{core} %f",
+            r#"--label "Living Room""#,
+            "",
+            &available,
+            3,
+        )
+        .unwrap();
+        assert_eq!(built_in.runtime, "RetroArch");
+        assert_eq!(
+            built_in.arguments,
+            [
+                "--verbose",
+                "-L",
+                "<retroarch-core>",
+                "--label",
+                "Living Room",
+                "<selected-file>",
+            ]
+        );
+        assert!(!built_in.uses_custom_template);
+        assert!(!built_in.extra_arguments_ignored);
+
+        let custom = preview_launch_command(
+            "RetroArch",
+            "--verbose -L %{core} %f",
+            "--ignored",
+            r#"--file %f "$(never-executed)""#,
+            &available,
+            3,
+        )
+        .unwrap();
+        assert_eq!(
+            custom.arguments,
+            ["--file", "<selected-file>", "$(never-executed)"]
+        );
+        assert!(custom.uses_custom_template);
+        assert!(custom.extra_arguments_ignored);
+        assert!(custom.summary().contains("ignored"));
+    }
+
+    #[test]
+    fn launch_preview_rejects_invalid_or_contextually_unavailable_drafts() {
+        let available = vec!["file".to_owned()];
+        assert!(
+            preview_launch_command("Emulator", "%f", "'unterminated", "", &available, 0).is_err()
+        );
+        let error =
+            preview_launch_command("Emulator", "%f", "", "%{core} %f", &available, 0).unwrap_err();
+        assert!(error.to_string().contains("unavailable"));
     }
 
     #[test]
