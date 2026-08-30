@@ -19,6 +19,9 @@ pub mod qobject {
         #[qproperty(i32, published_revision)]
         #[qproperty(i32, transfer_progress)]
         #[qproperty(bool, cancel_requested)]
+        #[qproperty(i32, soundtrack_count)]
+        #[qproperty(i32, soundtrack_revision)]
+        #[qproperty(QString, soundtrack_game_id)]
         type EmuMoviesModel = super::EmuMoviesModelRust;
 
         #[qinvokable]
@@ -71,6 +74,24 @@ pub mod qobject {
         );
 
         #[qinvokable]
+        fn discover_soundtrack(
+            self: Pin<&mut EmuMoviesModel>,
+            game_id: QString,
+            database_id: i32,
+            title: QString,
+            platform: QString,
+        );
+
+        #[qinvokable]
+        fn soundtrack_title_at(self: &EmuMoviesModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn soundtrack_cached_at(self: &EmuMoviesModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn download_soundtrack(self: Pin<&mut EmuMoviesModel>, index: i32);
+
+        #[qinvokable]
         fn cancel(self: Pin<&mut EmuMoviesModel>);
     }
 
@@ -83,7 +104,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 
@@ -103,10 +124,15 @@ pub struct EmuMoviesModelRust {
     published_revision: i32,
     transfer_progress: i32,
     cancel_requested: bool,
+    soundtrack_count: i32,
+    soundtrack_revision: i32,
     title: String,
     platform: String,
     generation: u64,
     cancel_token: Option<Arc<AtomicBool>>,
+    soundtrack_game_id: QString,
+    soundtrack_database_id: i64,
+    soundtrack_tracks: Vec<crate::emumovies::EmuMoviesSoundtrackTrack>,
 }
 
 impl Default for EmuMoviesModelRust {
@@ -125,10 +151,15 @@ impl Default for EmuMoviesModelRust {
             published_revision: 0,
             transfer_progress: -1,
             cancel_requested: false,
+            soundtrack_count: 0,
+            soundtrack_revision: 0,
             title: String::new(),
             platform: String::new(),
             generation: 0,
             cancel_token: None,
+            soundtrack_game_id: QString::default(),
+            soundtrack_database_id: 0,
+            soundtrack_tracks: Vec::new(),
         }
     }
 }
@@ -147,6 +178,11 @@ enum DownloadRequest {
         platform: String,
         media_type: EmuMoviesMediaType,
     },
+    Soundtrack {
+        game_id: String,
+        database_id: i64,
+        track: crate::emumovies::EmuMoviesSoundtrackTrack,
+    },
 }
 
 impl DownloadRequest {
@@ -157,6 +193,7 @@ impl DownloadRequest {
                 "video"
             }
             Self::Supplemental { .. } => "manual",
+            Self::Soundtrack { .. } => "soundtrack",
         }
     }
 }
@@ -202,6 +239,51 @@ fn client(username: String, password: String) -> EmuMoviesClient {
         EmuMoviesConfig { username, password },
         crate::media::requested_media_directory(),
     )
+}
+
+pub(crate) fn list_saved_library_path(path: &str) -> Result<Vec<String>> {
+    let path = path.trim();
+    if path.is_empty() || !path.starts_with('/') || path.contains("..") {
+        bail!("the EmuMovies library probe requires one absolute contained FTP path");
+    }
+    let (username, password) = effective_credentials(String::new(), String::new())?;
+    client(username, password).list_files(path)
+}
+
+pub(crate) fn soundtrack_saved_probe() -> Result<String> {
+    const GAME_UID: &str = "9697a5eb-e0b4-4f24-8d43-672701414ee7";
+    const DATABASE_ID: i64 = 140;
+    const TITLE: &str = "Super Mario Bros.";
+    const PLATFORM: &str = "Nintendo Entertainment System";
+
+    crate::catalog::requested_path("--media-directory", "LUNCHBOX_MEDIA_DIRECTORY")
+        .context("the soundtrack probe requires an explicit --media-directory")?;
+    let (username, password) = effective_credentials(String::new(), String::new())?;
+    let client = client(username, password);
+    let tracks = client.find_soundtrack_tracks(PLATFORM, TITLE, None)?;
+    let track = tracks
+        .first()
+        .cloned()
+        .context("EmuMovies returned no individually downloadable tracks")?;
+    let game_directory = crate::media::game_media_directory(GAME_UID, DATABASE_ID)?;
+    let path = client.download_soundtrack_track(&track, &game_directory, None)?;
+    let metadata = path
+        .metadata()
+        .with_context(|| format!("inspecting downloaded soundtrack {}", path.display()))?;
+    if !metadata.is_file() || metadata.len() == 0 {
+        bail!("the downloaded EmuMovies soundtrack is not a non-empty regular file");
+    }
+    let indexed = crate::media::supplemental_media(GAME_UID, DATABASE_ID)?;
+    if !indexed.soundtrack.iter().any(|asset| asset.path == path) {
+        bail!("the downloaded EmuMovies soundtrack was not indexed by Game Details");
+    }
+    Ok(format!(
+        "tracks={} title={:?} bytes={} path={:?}",
+        tracks.len(),
+        track.title,
+        metadata.len(),
+        path
+    ))
 }
 
 fn artwork_media_type(value: &str) -> Option<EmuMoviesMediaType> {
@@ -263,6 +345,15 @@ fn execute_download(
                 "manual"
             };
             Ok((path, kind))
+        }
+        DownloadRequest::Soundtrack {
+            game_id,
+            database_id,
+            track,
+        } => {
+            let game_directory = crate::media::game_media_directory(&game_id, database_id)?;
+            let path = client.download_soundtrack_track(&track, &game_directory, progress)?;
+            Ok((path, "soundtrack"))
         }
     }
 }
@@ -498,6 +589,165 @@ impl qobject::EmuMoviesModel {
         });
     }
 
+    pub fn discover_soundtrack(
+        mut self: Pin<&mut Self>,
+        game_id: QString,
+        database_id: i32,
+        title: QString,
+        platform: QString,
+    ) {
+        if *self.as_ref().busy() {
+            return;
+        }
+        let game_id = game_id.to_string();
+        let database_id = i64::from(database_id);
+        let title = title.to_string();
+        let platform = platform.to_string();
+        if let Err(error) = crate::media::game_media_directory(&game_id, database_id) {
+            self.as_mut()
+                .set_message(qstring(format!("Could not prepare game music: {error}")));
+            return;
+        }
+
+        self.as_mut().set_soundtrack_game_id(qstring(&game_id));
+        self.as_mut().rust_mut().soundtrack_database_id = database_id;
+        self.as_mut().rust_mut().soundtrack_tracks.clear();
+        self.as_mut().set_soundtrack_count(0);
+        self.as_mut().set_last_media_kind(qstring("soundtrack"));
+        let generation = self.as_ref().rust().generation.wrapping_add(1);
+        self.as_mut().rust_mut().generation = generation;
+        let cancel_token = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().cancel_token = Some(Arc::clone(&cancel_token));
+        self.as_mut().set_busy(true);
+        self.as_mut().set_cancel_requested(false);
+        self.as_mut().set_transfer_progress(0);
+        self.as_mut().set_message(qstring(
+            "Looking for individually downloadable EmuMovies game music…",
+        ));
+
+        let qt_thread = self.as_ref().qt_thread();
+        let progress_thread = qt_thread.clone();
+        let progress_token = Arc::clone(&cancel_token);
+        let progress: ProgressCallback = Box::new(move |value| {
+            if progress_token.load(Ordering::Acquire) {
+                return false;
+            }
+            let percent = (value * 100.0).round().clamp(0.0, 100.0) as i32;
+            let _ = progress_thread.queue(move |mut model| {
+                model.as_mut().update_transfer_progress(generation, percent);
+            });
+            !progress_token.load(Ordering::Acquire)
+        });
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-emumovies-soundtrack-discovery".into())
+            .spawn(move || {
+                let result = effective_credentials(String::new(), String::new())
+                    .and_then(|(username, password)| {
+                        client(username, password).find_soundtrack_tracks(
+                            &platform,
+                            &title,
+                            Some(&progress),
+                        )
+                    })
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_soundtrack_discovery(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().rust_mut().cancel_token = None;
+            self.as_mut().set_busy(false);
+            self.as_mut().set_transfer_progress(-1);
+            self.as_mut().set_message(qstring(format!(
+                "Could not start EmuMovies music discovery: {error}"
+            )));
+        }
+    }
+
+    fn finish_soundtrack_discovery(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<Vec<crate::emumovies::EmuMoviesSoundtrackTrack>, String>,
+    ) {
+        if generation != self.as_ref().rust().generation {
+            return;
+        }
+        self.as_mut().rust_mut().cancel_token = None;
+        self.as_mut().set_busy(false);
+        self.as_mut().set_cancel_requested(false);
+        self.as_mut().set_transfer_progress(-1);
+        match result {
+            Ok(tracks) => {
+                let count = i32::try_from(tracks.len()).unwrap_or(i32::MAX);
+                self.as_mut().rust_mut().soundtrack_tracks = tracks;
+                self.as_mut().set_soundtrack_count(count);
+                let revision = self.as_ref().soundtrack_revision().wrapping_add(1);
+                self.as_mut().set_soundtrack_revision(revision);
+                self.as_mut().set_message(qstring(if count == 1 {
+                    "Found one individually downloadable EmuMovies music track.".to_owned()
+                } else {
+                    format!("Found {count} individually downloadable EmuMovies music tracks.")
+                }));
+            }
+            Err(error) if transfer_was_cancelled(&error) => self.as_mut().set_message(qstring(
+                "EmuMovies music discovery cancelled. Nothing was downloaded.",
+            )),
+            Err(error) => self.as_mut().set_message(qstring(format!(
+                "EmuMovies music discovery failed: {error}"
+            ))),
+        }
+    }
+
+    pub fn soundtrack_title_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().soundtrack_tracks.get(index))
+            .map(|track| qstring(&track.title))
+            .unwrap_or_default()
+    }
+
+    pub fn soundtrack_cached_at(&self, index: i32) -> bool {
+        let Some(track) = usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().soundtrack_tracks.get(index))
+        else {
+            return false;
+        };
+        let Ok(game_directory) = crate::media::game_media_directory(
+            &self.rust().soundtrack_game_id.to_string(),
+            self.rust().soundtrack_database_id,
+        ) else {
+            return false;
+        };
+        EmuMoviesClient::cached_soundtrack_path(&game_directory, track).is_some()
+    }
+
+    pub fn download_soundtrack(mut self: Pin<&mut Self>, index: i32) {
+        let track = {
+            let model = self.as_ref();
+            let rust = model.rust();
+            usize::try_from(index)
+                .ok()
+                .and_then(|index| rust.soundtrack_tracks.get(index))
+                .cloned()
+        };
+        let Some(track) = track else {
+            self.as_mut().set_message(qstring(
+                "Choose a discovered EmuMovies music track before downloading.",
+            ));
+            return;
+        };
+        let game_id = self.as_ref().rust().soundtrack_game_id.to_string();
+        let database_id = self.as_ref().rust().soundtrack_database_id;
+        self.as_mut().start_download(DownloadRequest::Soundtrack {
+            game_id,
+            database_id,
+            track,
+        });
+    }
+
     fn start_download(mut self: Pin<&mut Self>, request: DownloadRequest) {
         if *self.as_ref().busy() {
             return;
@@ -636,5 +886,20 @@ mod tests {
             assert!(artwork_media_type(kind).is_some(), "missing {kind}");
         }
         assert!(artwork_media_type("video").is_none());
+    }
+
+    #[test]
+    fn soundtrack_download_has_a_distinct_status_kind() {
+        let request = DownloadRequest::Soundtrack {
+            game_id: "game-id".to_owned(),
+            database_id: 140,
+            track: crate::emumovies::EmuMoviesSoundtrackTrack {
+                remote_path: "/Official/Music/_HyperAudio/Nintendo Entertainment System/Super Mario Bros/Theme.mp3".to_owned(),
+                title: "Theme".to_owned(),
+                extension: "mp3".to_owned(),
+            },
+        };
+
+        assert_eq!(request.kind(), "soundtrack");
     }
 }

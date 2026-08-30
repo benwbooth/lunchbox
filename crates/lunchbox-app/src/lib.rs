@@ -98,6 +98,41 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|argument| argument == "--emumovies-soundtrack-probe") {
+        return match emumovies_model::soundtrack_saved_probe() {
+            Ok(evidence) => {
+                println!("LUNCHBOX_EMUMOVIES_SOUNDTRACK_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_EMUMOVIES_SOUNDTRACK_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
+    if let Some(path) = std::env::args()
+        .skip_while(|argument| argument != "--emumovies-list-library-path")
+        .nth(1)
+    {
+        return match emumovies_model::list_saved_library_path(&path) {
+            Ok(entries) => {
+                println!(
+                    "LUNCHBOX_EMUMOVIES_LIBRARY_PATH path={path:?} entries={}",
+                    entries.len()
+                );
+                for entry in entries {
+                    println!("LUNCHBOX_EMUMOVIES_LIBRARY_ENTRY path={entry:?}");
+                }
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_EMUMOVIES_LIBRARY_FAILED path={path:?} error={error:#}");
+                1
+            }
+        };
+    }
+
     if std::env::args().any(|argument| argument == "--web-artwork-ui-probe")
         && let Err(error) = seed_web_artwork_ui_probe()
     {

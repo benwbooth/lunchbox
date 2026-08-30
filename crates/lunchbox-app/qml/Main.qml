@@ -22,7 +22,7 @@ ApplicationWindow {
            || profileBackupUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
            || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
-           || settingsUiProbe
+           || soundtrackUiProbe || settingsUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
@@ -36,7 +36,7 @@ ApplicationWindow {
             || profileBackupUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
             || libraryViewUiProbe || listFilterUiProbe || hoverPreviewUiProbe
-            || settingsUiProbe
+            || soundtrackUiProbe || settingsUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -131,6 +131,7 @@ ApplicationWindow {
     property bool hoverPreviewAudioMuted: true
     property string hoverPreviewPlaybackError: ""
     property int hoverPreviewProbeStage: 0
+    property bool soundtrackProbeStarted: false
     property bool downloadHistoryTriggered: false
     property bool downloadRecoveryProbeTriggered: false
     property bool manualTorrentProbeTriggered: false
@@ -323,6 +324,7 @@ ApplicationWindow {
     readonly property bool downloadRecoveryUiProbe: Qt.application.arguments.indexOf("--download-recovery-ui-probe") >= 0
     readonly property bool mediaBundleProbe: Qt.application.arguments.indexOf("--media-bundle-probe") >= 0
     readonly property bool mediaBundleUiProbe: Qt.application.arguments.indexOf("--media-bundle-ui-probe") >= 0
+    readonly property bool soundtrackUiProbe: Qt.application.arguments.indexOf("--soundtrack-ui-probe") >= 0
     readonly property bool manualDownloadUiProbe: Qt.application.arguments.indexOf("--manual-download-ui-probe") >= 0
     readonly property bool box3dUiProbe: Qt.application.arguments.indexOf("--box-3d-ui-probe") >= 0
     readonly property bool mediaRotationUiProbe: Qt.application.arguments.indexOf("--media-rotation-ui-probe") >= 0
@@ -1015,6 +1017,10 @@ ApplicationWindow {
         root.hoverPreviewPlaying = false
         root.hoverPreviewAudioMuted = true
         root.hoverPreviewPlaybackError = ""
+        // Promote the hovered title immediately. Playback keeps its short
+        // intent delay, but a missing EmuMovies video no longer waits for it
+        // before moving to the front of the visible-media queue.
+        library.request_game_video(tile.gameId)
         hoverPreviewDelay.restart()
     }
 
@@ -1311,6 +1317,9 @@ ApplicationWindow {
             root.mediaPlaybackMessage = "Video playback failed: " + errorString
         }
         onPlaybackStateChanged: {
+            if (playbackState === MediaPlayer.PlayingState
+                    && gameSoundtrackPlayer.playbackState === MediaPlayer.PlayingState)
+                gameSoundtrackPlayer.pause()
             if (playbackState === MediaPlayer.PausedState
                     && !gameDetails.video_progress_busy)
                 gameDetails.save_video_progress(position, duration)
@@ -1320,6 +1329,38 @@ ApplicationWindow {
                 root.mediaBundleProbeStage = 1
                 mediaProbePersistTimer.restart()
             }
+        }
+    }
+
+    AudioOutput {
+        id: gameSoundtrackAudio
+        muted: false
+        volume: 0.55
+    }
+
+    MediaPlayer {
+        id: gameSoundtrackPlayer
+        source: !root.couchModeActive
+                && gameDetails.panel_open
+                && !gameDetails.game_running
+                && gameDetails.soundtrack_available
+                ? gameDetails.soundtrack_url : ""
+        audioOutput: gameSoundtrackAudio
+        loops: MediaPlayer.Infinite
+        onSourceChanged: {
+            root.mediaPlaybackMessage = ""
+            stop()
+        }
+        onPlaybackStateChanged: {
+            if (playbackState === MediaPlayer.PlayingState
+                    && gameVideoPlayer.playbackState === MediaPlayer.PlayingState)
+                gameVideoPlayer.pause()
+            if (root.soundtrackUiProbe
+                    && playbackState === MediaPlayer.PlayingState)
+                soundtrackProbeScreenshotTimer.restart()
+        }
+        onErrorOccurred: function(error, errorString) {
+            root.mediaPlaybackMessage = "Game music playback failed: " + errorString
         }
     }
 
@@ -4214,11 +4255,17 @@ ApplicationWindow {
             if (root.mediaBundleUiProbe && gameDetails.media_visible) {
                 mediaProbeScrollTimer.restart()
             }
+            if (root.soundtrackUiProbe && gameDetails.soundtrack_available)
+                soundtrackProbeStartTimer.restart()
         }
         function onMedia_visibleChanged() {
             if (root.mediaBundleUiProbe && gameDetails.media_visible) {
                 mediaProbeScrollTimer.restart()
             }
+        }
+        function onSoundtrack_availableChanged() {
+            if (root.soundtrackUiProbe && gameDetails.soundtrack_available)
+                soundtrackProbeStartTimer.restart()
         }
         function onVideo_progress_busyChanged() {
             if (root.mediaBundleProbe && root.mediaBundleProbeStage === 2
@@ -4920,6 +4967,10 @@ ApplicationWindow {
             else if (root.activityUiProbe)
                 root.openGame("local-file:rom-launch-probe", 0,
                               "Faxanadu", "Nintendo Entertainment System", true, false)
+            else if (root.soundtrackUiProbe)
+                root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
+                              "Super Mario Bros.", "Nintendo Entertainment System",
+                              false, true)
             else if (root.mediaBundleProbe || root.mediaBundleUiProbe)
                 root.openGame("9697a5eb-e0b4-4f24-8d43-672701414ee7", 140,
                               "Super Mario Bros.", "Nintendo Entertainment System",
@@ -5743,6 +5794,76 @@ ApplicationWindow {
         onTriggered: detailScroll.contentItem.contentY = Math.max(
                          0, mediaCard.mapToItem(
                              detailScroll.contentItem, 0, 0).y - 12)
+    }
+
+    Timer {
+        id: soundtrackProbeStartTimer
+        interval: 300
+        repeat: false
+        onTriggered: {
+            if (!root.soundtrackUiProbe || root.soundtrackProbeStarted
+                    || !gameDetails.soundtrack_available)
+                return
+            root.soundtrackProbeStarted = true
+            detailScroll.contentItem.contentY = Math.max(
+                        0, gameSoundtrackCard.mapToItem(
+                            detailScroll.contentItem, 0, 0).y - 12)
+            gameSoundtrackPlayer.play()
+        }
+    }
+
+    Timer {
+        id: soundtrackProbeScreenshotTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            if (!root.soundtrackUiProbe
+                    || gameSoundtrackPlayer.playbackState
+                       !== MediaPlayer.PlayingState
+                    || !gameSoundtrackPlayer.hasAudio
+                    || gameDetails.soundtrack_count < 1
+                    || gameDetails.soundtrack_title.length === 0) {
+                console.error("LUNCHBOX_SOUNDTRACK_UI_FAILED state="
+                              + gameSoundtrackPlayer.playbackState + " hasAudio="
+                              + gameSoundtrackPlayer.hasAudio + " count="
+                              + gameDetails.soundtrack_count + " title="
+                              + gameDetails.soundtrack_title + " error="
+                              + root.mediaPlaybackMessage)
+                Qt.exit(2)
+                return
+            }
+            const ready = function(screenshot) {
+                gameDetails.report_soundtrack_ui_probe(screenshot)
+                Qt.quit()
+            }
+            if (root.screenshotOutput.length === 0) {
+                ready("")
+                return
+            }
+            detailsPane.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_SOUNDTRACK_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                ready(root.screenshotOutput)
+            })
+        }
+    }
+
+    Timer {
+        interval: 20000
+        running: root.soundtrackUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_SOUNDTRACK_UI_FAILED timeout available="
+                          + gameDetails.soundtrack_available + " count="
+                          + gameDetails.soundtrack_count + " title="
+                          + gameDetails.soundtrack_title + " message="
+                          + gameDetails.media_message)
+            Qt.exit(2)
+        }
     }
 
     Timer {
@@ -7075,6 +7196,14 @@ ApplicationWindow {
             readonly property bool previewActive: previewRequested
                                                   && root.hoverPreviewPlaying
                                                   && library.hover_preview_game_id === gameId
+            readonly property string previewQueueState: {
+                library.media_pending_count
+                library.media_active_title
+                library.media_active_progress
+                library.media_setup_required
+                library.media_revision
+                return library.automatic_video_state(gameId)
+            }
             property int mediaRevision: library.media_revision
             property int favoriteRevision: library.favorite_revision
             property int favoritePendingRevision: library.favorite_pending_count
@@ -7292,7 +7421,18 @@ ApplicationWindow {
                         Text {
                             anchors.fill: parent
                             anchors.margins: 9
-                            text: library.hover_preview_message
+                            text: tile.previewQueueState === "downloading"
+                                  ? "Downloading this gameplay video from EmuMovies"
+                                    + (library.media_active_progress >= 0
+                                       ? " · " + library.media_active_progress + "%"
+                                       : "…")
+                                  : tile.previewQueueState === "queued"
+                                    ? "Gameplay video queued · hovered titles download next."
+                                  : tile.previewQueueState === "checking-setup"
+                                    ? "Checking EmuMovies setup…"
+                                  : tile.previewQueueState === "setup-required"
+                                    ? "Add your EmuMovies account in Settings to enable automatic videos."
+                                  : library.hover_preview_message
                             color: library.media_setup_required ? root.accent : root.muted
                             font.pixelSize: 9
                             font.weight: Font.DemiBold
@@ -9810,6 +9950,23 @@ ApplicationWindow {
                                         verticalAlignment: Text.AlignVCenter
                                     }
                                 }
+                            }
+
+                            GameSoundtrackCard {
+                                id: gameSoundtrackCard
+                                detailsModel: gameDetails
+                                emuMoviesModel: emuMovies
+                                mediaPlayer: gameSoundtrackPlayer
+                                gameId: root.selectedGameId
+                                databaseId: root.selectedDatabaseId
+                                gameTitle: gameDetails.title
+                                platform: gameDetails.platform
+                                accent: root.accent
+                                accentCool: root.accentCool
+                                ink: root.ink
+                                muted: root.muted
+                                line: root.line
+                                onSettingsRequested: root.openSettingsFor("emumovies")
                             }
 
                             Rectangle {

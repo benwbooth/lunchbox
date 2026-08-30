@@ -17,6 +17,7 @@
 use crate::tags;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
@@ -50,6 +51,7 @@ pub enum EmuMoviesMediaType {
     CartBack,
     Video,
     Manual,
+    Music,
     Fanart,
     ClearLogo,
     Banner,
@@ -68,6 +70,7 @@ impl EmuMoviesMediaType {
             EmuMoviesMediaType::CartBack => "Carts-Back",
             EmuMoviesMediaType::Video => "Video",
             EmuMoviesMediaType::Manual => "Manuals",
+            EmuMoviesMediaType::Music => "Music",
             EmuMoviesMediaType::Fanart => "Fanart",
             EmuMoviesMediaType::ClearLogo => "Logos",
             EmuMoviesMediaType::Banner => "Banners",
@@ -86,6 +89,7 @@ impl EmuMoviesMediaType {
             EmuMoviesMediaType::CartBack => "cart-back",
             EmuMoviesMediaType::Video => "video",
             EmuMoviesMediaType::Manual => "manual",
+            EmuMoviesMediaType::Music => "music",
             EmuMoviesMediaType::Fanart => "fanart-background",
             EmuMoviesMediaType::ClearLogo => "clear-logo",
             EmuMoviesMediaType::Banner => "banner",
@@ -106,6 +110,7 @@ impl EmuMoviesMediaType {
             "Clear Logo" => Some(EmuMoviesMediaType::ClearLogo),
             "Banner" => Some(EmuMoviesMediaType::Banner),
             "Manual" => Some(EmuMoviesMediaType::Manual),
+            "Music" => Some(EmuMoviesMediaType::Music),
             _ => None,
         }
     }
@@ -374,11 +379,16 @@ fn canonicalize_emumovies_platform_name(name: &str) -> &str {
 // Prevent multiple threads from downloading/building the same archive at once.
 static ARCHIVE_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
 static VIDEO_DOWNLOAD_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+static SOUNDTRACK_DOWNLOAD_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
+    OnceLock::new();
 static ARTWORK_FOLDER_CACHE: OnceLock<Mutex<Option<Vec<String>>>> = OnceLock::new();
 // Cache discovered video folders per normalized EmuMovies platform folder.
 static VIDEO_FOLDER_CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
 // Cache video indices per remote FTP folder path.
 static VIDEO_INDEX_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<VideoIndexEntry>>>>> =
+    OnceLock::new();
+static MUSIC_PLATFORM_FOLDER_CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
+static MUSIC_GAME_INDEX_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<VideoIndexEntry>>>>> =
     OnceLock::new();
 static VIDEO_DOWNLOAD_PROGRESS: OnceLock<
     std::sync::RwLock<HashMap<String, VideoDownloadProgressState>>,
@@ -623,6 +633,13 @@ struct VideoIndexCache {
     entries: Vec<VideoIndexEntry>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct EmuMoviesSoundtrackTrack {
+    pub remote_path: String,
+    pub title: String,
+    pub extension: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VideoMatchKind {
     Exact,
@@ -767,6 +784,63 @@ fn manual_folder_match_rank_for_platform(folder_path: &str, platform: &str) -> O
                 }
             })
         })
+}
+
+fn soundtrack_extension(path: &str) -> Option<String> {
+    let extension = path.rsplit('.').next()?.to_ascii_lowercase();
+    matches!(
+        extension.as_str(),
+        "mp3" | "flac" | "ogg" | "opus" | "m4a" | "aac" | "wav"
+    )
+    .then_some(extension)
+}
+
+fn soundtrack_title(path: &str) -> Option<String> {
+    let filename = path.rsplit('/').next()?;
+    let title = std::path::Path::new(filename).file_stem()?.to_str()?.trim();
+    (!title.is_empty()).then(|| title.to_owned())
+}
+
+fn soundtrack_cache_stem(remote_path: &str) -> String {
+    let digest = Sha256::digest(remote_path.as_bytes());
+    let suffix = digest[..12]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("soundtrack-{suffix}")
+}
+
+fn soundtrack_cache_path(game_cache_dir: &Path, track: &EmuMoviesSoundtrackTrack) -> PathBuf {
+    game_cache_dir.join("emumovies").join(format!(
+        "{}.{}",
+        soundtrack_cache_stem(&track.remote_path),
+        track.extension
+    ))
+}
+
+fn soundtrack_title_path(audio_path: &Path) -> PathBuf {
+    audio_path.with_extension("title")
+}
+
+fn write_soundtrack_title(audio_path: &Path, title: &str) -> Result<()> {
+    let title = title.trim();
+    if title.is_empty() || title.len() > 1024 || title.chars().any(char::is_control) {
+        anyhow::bail!("EmuMovies soundtrack title is not a bounded display value");
+    }
+    let path = soundtrack_title_path(audio_path);
+    if std::fs::read_to_string(&path)
+        .ok()
+        .is_some_and(|current| current == title)
+    {
+        return Ok(());
+    }
+    let temporary = path.with_extension("title.tmp");
+    std::fs::write(&temporary, title.as_bytes())?;
+    if path.is_file() {
+        std::fs::remove_file(&path)?;
+    }
+    std::fs::rename(&temporary, &path)?;
+    Ok(())
 }
 
 fn manual_folder_format_rank(folder_path: &str) -> u8 {
@@ -991,6 +1065,15 @@ fn get_video_download_lock(game_cache_dir: &Path) -> Arc<Mutex<()>> {
     let key = game_cache_dir.to_string_lossy().to_string();
     let locks = VIDEO_DOWNLOAD_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut map = locks.lock().expect("video download lock map poisoned");
+    map.entry(key)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+fn get_soundtrack_download_lock(path: &Path) -> Arc<Mutex<()>> {
+    let key = path.to_string_lossy().to_string();
+    let locks = SOUNDTRACK_DOWNLOAD_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = locks.lock().expect("soundtrack lock map poisoned");
     map.entry(key)
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone()
@@ -1752,6 +1835,219 @@ impl EmuMoviesClient {
         self.download_direct_file(&manual_path, &output_path, progress, "Manual")?;
         tracing::info!("Downloaded manual to {}", output_path.display());
 
+        Ok(output_path)
+    }
+
+    fn find_soundtrack_platform_folders(&self, platform: &str) -> Result<Vec<String>> {
+        const MUSIC_BASE: &str = "/Official/Music/_HyperAudio";
+        let search_candidates = emumovies_platform_search_candidates(platform);
+        let cache_key = search_candidates
+            .iter()
+            .map(|candidate| normalize_emumovies_platform_key(candidate))
+            .collect::<Vec<_>>()
+            .join("|");
+        if let Some(cached) = MUSIC_PLATFORM_FOLDER_CACHE
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .expect("music platform folder cache lock poisoned")
+            .get(&cache_key)
+            .cloned()
+        {
+            return Ok(cached);
+        }
+
+        let folders = self.list_files(MUSIC_BASE)?;
+        let mut matches = folders
+            .into_iter()
+            .enumerate()
+            .filter_map(|(source_order, folder)| {
+                manual_folder_match_rank_for_platform(&folder, platform)
+                    .map(|match_rank| (match_rank, source_order, folder))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by(|a, b| a.cmp(b));
+        let mut paths = matches
+            .into_iter()
+            .map(|(_, _, folder)| folder)
+            .collect::<Vec<_>>();
+        paths.dedup();
+        if !paths.is_empty() {
+            MUSIC_PLATFORM_FOLDER_CACHE
+                .get_or_init(|| Mutex::new(HashMap::new()))
+                .lock()
+                .expect("music platform folder cache lock poisoned")
+                .insert(cache_key, paths.clone());
+        }
+        Ok(paths)
+    }
+
+    fn soundtrack_game_index(&self, platform_folder: &str) -> Result<Arc<Vec<VideoIndexEntry>>> {
+        if let Some(cached) = MUSIC_GAME_INDEX_CACHE
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .expect("music game index cache lock poisoned")
+            .get(platform_folder)
+            .cloned()
+        {
+            return Ok(cached);
+        }
+
+        let entries = self
+            .list_files(platform_folder)?
+            .into_iter()
+            .filter_map(|path| {
+                let game_name = path.rsplit('/').next()?.trim();
+                if game_name.is_empty() || soundtrack_extension(game_name).is_some() {
+                    return None;
+                }
+                let normalized = normalize_game_name(game_name);
+                let no_region = remove_region_codes(&normalized);
+                Some(VideoIndexEntry {
+                    path,
+                    tokens: tokenize_for_match(&no_region),
+                    normalized,
+                    no_region,
+                })
+            })
+            .collect::<Vec<_>>();
+        let entries = Arc::new(entries);
+        MUSIC_GAME_INDEX_CACHE
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .expect("music game index cache lock poisoned")
+            .insert(platform_folder.to_owned(), Arc::clone(&entries));
+        Ok(entries)
+    }
+
+    /// Discover individually downloadable HyperAudio tracks for one exact game.
+    /// Large multipart platform packs are deliberately excluded from this path.
+    pub fn find_soundtrack_tracks(
+        &self,
+        platform: &str,
+        game_name: &str,
+        progress: Option<&ProgressCallback>,
+    ) -> Result<Vec<EmuMoviesSoundtrackTrack>> {
+        report_progress(progress, 0.0)?;
+        let platform_folders = self.find_soundtrack_platform_folders(platform)?;
+        report_progress(progress, 0.2)?;
+        if platform_folders.is_empty() {
+            anyhow::bail!("No individually downloadable music folder found for {platform}");
+        }
+
+        let mut selected: Option<(String, VideoMatchKind, f32, u8, usize)> = None;
+        for (source_order, platform_folder) in platform_folders.iter().enumerate() {
+            report_progress(progress, 0.25 + (source_order as f32 * 0.1).min(0.3))?;
+            let index = self.soundtrack_game_index(platform_folder)?;
+            let Some((path, kind, score)) = find_best_video_match(index.as_slice(), game_name)
+            else {
+                continue;
+            };
+            let folder_rank =
+                manual_folder_match_rank_for_platform(platform_folder, platform).unwrap_or(255);
+            let replace = selected.as_ref().is_none_or(
+                |(_, current_kind, current_score, current_rank, current_order)| {
+                    compare_video_candidates(
+                        kind,
+                        folder_rank,
+                        score,
+                        source_order,
+                        *current_kind,
+                        *current_rank,
+                        *current_score,
+                        *current_order,
+                    ) == Ordering::Greater
+                },
+            );
+            if replace {
+                selected = Some((path, kind, score, folder_rank, source_order));
+            }
+        }
+
+        let (game_folder, match_kind, match_score, folder_rank, _) = selected
+            .ok_or_else(|| anyhow::anyhow!("No EmuMovies music found for game '{game_name}'"))?;
+        tracing::info!(
+            "Selected music folder for '{}' at {} using {:?} match (score {:.2}, folder_rank={})",
+            game_name,
+            game_folder,
+            match_kind,
+            match_score,
+            folder_rank
+        );
+        report_progress(progress, 0.7)?;
+
+        let mut tracks = self
+            .list_files(&game_folder)?
+            .into_iter()
+            .filter_map(|remote_path| {
+                let extension = soundtrack_extension(&remote_path)?;
+                let title = soundtrack_title(&remote_path)?;
+                Some(EmuMoviesSoundtrackTrack {
+                    remote_path,
+                    title,
+                    extension,
+                })
+            })
+            .collect::<Vec<_>>();
+        tracks.sort_by(|a, b| {
+            a.title
+                .to_ascii_lowercase()
+                .cmp(&b.title.to_ascii_lowercase())
+                .then_with(|| a.remote_path.cmp(&b.remote_path))
+        });
+        tracks.dedup_by(|a, b| a.remote_path == b.remote_path);
+        if tracks.is_empty() {
+            anyhow::bail!(
+                "The EmuMovies music folder for '{game_name}' contains no supported audio files"
+            );
+        }
+        report_progress(progress, 1.0)?;
+        Ok(tracks)
+    }
+
+    pub fn cached_soundtrack_path(
+        game_cache_dir: &Path,
+        track: &EmuMoviesSoundtrackTrack,
+    ) -> Option<PathBuf> {
+        let path = soundtrack_cache_path(game_cache_dir, track);
+        is_nonempty_file(&path).then_some(path)
+    }
+
+    pub fn download_soundtrack_track(
+        &self,
+        track: &EmuMoviesSoundtrackTrack,
+        game_cache_dir: &Path,
+        progress: Option<&ProgressCallback>,
+    ) -> Result<PathBuf> {
+        const MUSIC_PREFIX: &str = "/Official/Music/_HyperAudio/";
+        if !track.remote_path.starts_with(MUSIC_PREFIX)
+            || soundtrack_extension(&track.remote_path).as_deref() != Some(track.extension.as_str())
+            || soundtrack_title(&track.remote_path).as_deref() != Some(track.title.as_str())
+        {
+            anyhow::bail!(
+                "the selected EmuMovies soundtrack track is not a validated HyperAudio file"
+            );
+        }
+
+        let output_path = soundtrack_cache_path(game_cache_dir, track);
+        let lock = get_soundtrack_download_lock(&output_path);
+        let _guard = lock
+            .lock()
+            .map_err(|_| anyhow::anyhow!("EmuMovies soundtrack transfer lock is unavailable"))?;
+        if is_nonempty_file(&output_path) {
+            write_soundtrack_title(&output_path, &track.title)?;
+            return Ok(output_path);
+        }
+
+        self.download_direct_file(
+            &track.remote_path,
+            &output_path,
+            progress,
+            "soundtrack track",
+        )?;
+        if let Err(error) = write_soundtrack_title(&output_path, &track.title) {
+            let _ = std::fs::remove_file(&output_path);
+            return Err(error).context("publishing the EmuMovies soundtrack title");
+        }
         Ok(output_path)
     }
 
@@ -2750,5 +3046,80 @@ mod tests {
 
         assert!(!partial_path.exists());
         assert_eq!(std::fs::read(output_path).unwrap(), b"complete");
+    }
+
+    #[test]
+    fn soundtrack_files_are_individual_audio_not_archive_packs() {
+        assert_eq!(soundtrack_extension("Theme.MP3").as_deref(), Some("mp3"));
+        assert_eq!(soundtrack_extension("Theme.flac").as_deref(), Some("flac"));
+        assert!(soundtrack_extension("Nintendo Music.part01.rar").is_none());
+        assert!(soundtrack_extension("Nintendo Music.zip").is_none());
+        assert!(soundtrack_extension("README").is_none());
+    }
+
+    #[test]
+    fn soundtrack_match_prefers_the_exact_hyperaudio_game_folder() {
+        let entry = |name: &str| {
+            let normalized = normalize_game_name(name);
+            let no_region = remove_region_codes(&normalized);
+            VideoIndexEntry {
+                path: format!("/Official/Music/_HyperAudio/Nintendo Entertainment System/{name}"),
+                tokens: tokenize_for_match(&no_region),
+                normalized,
+                no_region,
+            }
+        };
+        let entries = vec![entry("Super Mario Bros"), entry("Super Mario Bros. 2")];
+
+        let (path, kind, score) =
+            find_best_video_match(&entries, "Super Mario Bros.").expect("exact music folder");
+
+        assert_eq!(kind, VideoMatchKind::Exact);
+        assert_eq!(score, 1.0);
+        assert!(path.ends_with("/Super Mario Bros"));
+    }
+
+    #[test]
+    fn soundtrack_cache_path_is_stable_and_provider_scoped() {
+        let track = EmuMoviesSoundtrackTrack {
+            remote_path: "/Official/Music/_HyperAudio/Nintendo Entertainment System/Super Mario Bros/Theme Song.mp3".to_owned(),
+            title: "Theme Song".to_owned(),
+            extension: "mp3".to_owned(),
+        };
+        let root = Path::new("/media/lb-140");
+
+        let first = soundtrack_cache_path(root, &track);
+        let second = soundtrack_cache_path(root, &track);
+
+        assert_eq!(first, second);
+        assert_eq!(first.parent(), Some(Path::new("/media/lb-140/emumovies")));
+        assert_eq!(
+            first.extension().and_then(|value| value.to_str()),
+            Some("mp3")
+        );
+        assert!(
+            first
+                .file_stem()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("soundtrack-")
+        );
+    }
+
+    #[test]
+    fn soundtrack_title_sidecar_is_bounded_and_replaceable() {
+        let temp = tempfile::tempdir().unwrap();
+        let audio = temp.path().join("soundtrack-test.mp3");
+
+        write_soundtrack_title(&audio, "Theme Song").unwrap();
+        write_soundtrack_title(&audio, "Theme Song").unwrap();
+        write_soundtrack_title(&audio, "Overworld").unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(soundtrack_title_path(&audio)).unwrap(),
+            "Overworld"
+        );
+        assert!(write_soundtrack_title(&audio, "bad\nvalue").is_err());
+        assert!(write_soundtrack_title(&audio, &"x".repeat(1025)).is_err());
     }
 }

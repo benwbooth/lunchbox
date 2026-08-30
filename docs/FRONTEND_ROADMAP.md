@@ -34,6 +34,16 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   game's video. Visible games automatically queue missing EmuMovies videos;
   hover and selected-game interest take priority, and completion refreshes the
   exact card and selected supplemental-media state without reloading details.
+  Pointer entry promotes the exact stable identity before the playback delay,
+  and the enlarged card shows the live queue state and transfer percentage
+  instead of presenting an inert cache-miss message.
+- Native EmuMovies game-music discovery and playback. The Rust FTP service
+  searches only individually downloadable HyperAudio trees, applies the same
+  guarded platform/title matching as videos, rejects multipart archive packs,
+  and atomically publishes supported audio plus a bounded title sidecar under
+  the exact game cache. Game Details indexes provider-aware tracks and exposes
+  previous/play/pause/next, seeking, title/source/count, cancellation, download
+  progress, and direct EmuMovies setup routing through a dedicated QML card.
 - Asynchronous, read-only schema-v3 catalog loading.
 - Asynchronous search, platform, local, and downloadable filtering with stale
   result rejection.
@@ -256,8 +266,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   manual/video bundle, cached grid preview, and ported legacy EmuMovies FTP
   artwork/video/manual client. Direct EmuMovies transfers now expose throttled
   progress, cooperatively abort FTP, and remove unpublished partial files.
-  Remaining work includes soundtrack browsing and an unattended member-account
-  cancellation gate. With saved credentials, visible games intentionally enter
+  Remaining work includes an unattended member-account cancellation gate. With
+  saved credentials, visible games intentionally enter
   the bounded automatic video queue so hover playback can become ready without
   a separate manual download action.
 - Extend the implemented whole-library missing-media audit and bounded bulk
@@ -267,7 +277,7 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   rotation, immediate off-thread reindexing, and safe explicit LibRetro
   replacement are native.
 - Extend the responsive game details and native video/fullscreen/manual/3D-box/
-  related-game surface with richer franchise curation and soundtrack playback.
+  related-game/game-music surface with richer franchise curation.
 
 ## Emulators and launching
 

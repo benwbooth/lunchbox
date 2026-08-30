@@ -66,6 +66,7 @@ fn main() {
                 "qml/EmuMoviesTransferStatus.qml",
                 "qml/FilterToggle.qml",
                 "qml/FirstRunSetup.qml",
+                "qml/GameSoundtrackCard.qml",
                 "qml/HeaderButton.qml",
                 "qml/InlineProgressBar.qml",
                 "qml/MetadataField.qml",

@@ -361,6 +361,16 @@ pub struct MediaAsset {
 pub struct SupplementalMedia {
     pub video: Option<MediaAsset>,
     pub manual: Option<MediaAsset>,
+    pub soundtrack: Vec<SoundtrackAsset>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SoundtrackAsset {
+    pub path: PathBuf,
+    pub source: String,
+    pub title: String,
+    source_rank: usize,
+    format_rank: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -606,7 +616,9 @@ pub fn supplemental_media(game_id: &str, database_id: i64) -> Result<Supplementa
         let candidate = scan_supplemental_directory(&root, &directory, &provider_priority)?;
         select_supplemental_asset(&mut selected.video, candidate.video);
         select_supplemental_asset(&mut selected.manual, candidate.manual);
+        selected.soundtrack.extend(candidate.soundtrack);
     }
+    sort_soundtrack_assets(&mut selected.soundtrack);
     Ok(selected)
 }
 
@@ -775,6 +787,19 @@ fn scan_supplemental_directory(
                     continue;
                 };
                 (&mut result.manual, rank)
+            } else if stem.starts_with("soundtrack-") {
+                let Some(format_rank) = soundtrack_format_rank(&extension) else {
+                    continue;
+                };
+                let title = read_soundtrack_title(&path).unwrap_or_else(|| "Game music".to_owned());
+                result.soundtrack.push(SoundtrackAsset {
+                    path,
+                    source: source_name.to_string(),
+                    title,
+                    source_rank,
+                    format_rank,
+                });
+                continue;
             } else {
                 continue;
             };
@@ -789,7 +814,36 @@ fn scan_supplemental_directory(
             );
         }
     }
+    sort_soundtrack_assets(&mut result.soundtrack);
     Ok(result)
+}
+
+fn read_soundtrack_title(path: &Path) -> Option<String> {
+    let sidecar = path.with_extension("title");
+    let metadata = sidecar.metadata().ok()?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > 1024 {
+        return None;
+    }
+    let title = fs::read_to_string(sidecar).ok()?;
+    let title = title.trim();
+    if title.is_empty() || title.chars().any(char::is_control) {
+        return None;
+    }
+    Some(title.to_owned())
+}
+
+fn sort_soundtrack_assets(tracks: &mut Vec<SoundtrackAsset>) {
+    tracks.sort_by(|a, b| {
+        (a.source_rank, a.format_rank)
+            .cmp(&(b.source_rank, b.format_rank))
+            .then_with(|| {
+                a.title
+                    .to_ascii_lowercase()
+                    .cmp(&b.title.to_ascii_lowercase())
+            })
+            .then_with(|| a.path.cmp(&b.path))
+    });
+    tracks.dedup_by(|a, b| a.path == b.path);
 }
 
 fn select_supplemental_asset(target: &mut Option<MediaAsset>, candidate: Option<MediaAsset>) {
@@ -821,6 +875,12 @@ fn video_format_rank(extension: &str) -> Option<usize> {
 
 fn manual_format_rank(extension: &str) -> Option<usize> {
     ["pdf", "cbz", "cbr", "epub", "html", "htm", "txt", "zip"]
+        .iter()
+        .position(|candidate| *candidate == extension)
+}
+
+fn soundtrack_format_rank(extension: &str) -> Option<usize> {
+    ["mp3", "flac", "ogg", "opus", "m4a", "aac", "wav"]
         .iter()
         .position(|candidate| *candidate == extension)
 }
@@ -1841,6 +1901,28 @@ mod tests {
         let video = media.video.unwrap();
         assert_eq!(video.source, "emumovies");
         assert!(video.path.ends_with("emumovies/video.mp4"));
+    }
+
+    #[test]
+    fn supplemental_media_indexes_emumovies_soundtrack_sidecars() {
+        let directory = tempfile::tempdir().unwrap();
+        let audio = directory
+            .path()
+            .join("lb-140/emumovies/soundtrack-0123456789abcdef.mp3");
+        touch(&audio);
+        fs::write(audio.with_extension("title"), "Overworld Theme").unwrap();
+
+        let media = scan_supplemental_directory(
+            directory.path(),
+            &directory.path().join("lb-140"),
+            &default_provider_priority(),
+        )
+        .unwrap();
+
+        assert_eq!(media.soundtrack.len(), 1);
+        assert_eq!(media.soundtrack[0].source, "emumovies");
+        assert_eq!(media.soundtrack[0].title, "Overworld Theme");
+        assert_eq!(media.soundtrack[0].path, audio);
     }
 
     #[test]

@@ -456,8 +456,9 @@ the game, or recycling the virtualized card cancels that request without
 publishing stale media. One shared Qt Multimedia player serves the active card,
 loops silently by default, exposes an explicit sound toggle, and labels the
 chosen cache provider. Visible games enter a bounded automatic EmuMovies queue;
-hovering or opening a game moves its stable identity to the front. The card
-shows setup, queued, downloading, unavailable, and retryable-error states, then
+hovering or opening a game moves its stable identity to the front immediately.
+The card shows setup, queued, live transfer percentage, unavailable, and
+retryable-error states, then
 re-runs the exact cache lookup and starts playback as soon as publication
 finishes.
 
@@ -520,6 +521,14 @@ the partial file before the worker reports completion. A developer can set
 ignored local `launchbox-data/Arcade.xml` migration input and falls back to title
 matching when that licensed lookup source is unavailable. No LaunchBox provider
 data is embedded in the public package.
+
+EmuMovies game music is available from the same account without downloading
+whole platform packs. The native client searches only individually downloadable
+HyperAudio game folders, applies the guarded platform/title matcher, and caches
+supported audio under the exact game identity with deterministic hashed names
+and bounded title sidecars. Game Details presents cached tracks in a dedicated
+card with previous/play/pause/next, seek, title/source/count, discovery,
+download progress, cancellation, and a direct route to EmuMovies setup.
 
 The details hero can switch from flat artwork to an interactive native 3D box
 whenever an exact cached front cover exists. Qt Quick 3D renders separate front,

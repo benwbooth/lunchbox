@@ -773,6 +773,25 @@ operating-system credential, queues the visible Super Mario Bros. tile through
 the production EmuMovies FTP worker, downloads into the empty media root, and
 exits only after Qt plays the newly published video. This is an opt-in live
 service probe and never prints credential values.
+
+Game music is a separate provider-aware supplemental-media path. The Rust
+client deliberately searches only `/Official/Music/_HyperAudio`, where tracks
+are individually downloadable, and never exposes the large multipart platform
+packs as per-game actions. Platform aliases and the guarded exact/regionless/
+bounded-fuzzy title matcher select one game folder; only MP3, FLAC, Ogg, Opus,
+M4A, AAC, and WAV entries survive enumeration. Each selected remote path maps
+to a deterministic SHA-256-derived filename below the exact game's
+`emumovies/` directory, and a bounded control-character-free `.title` sidecar
+preserves the display title. Downloads use the existing cancellable FTP stream,
+per-file lock, guarded partial cleanup, and atomic publication. `GameDetailsModel`
+indexes all cached tracks by provider/format priority, while
+`GameSoundtrackCard.qml` owns discovery, setup routing, progress, track choice,
+seek, and Qt Multimedia playback without adding another presentation block to
+`Main.qml`. `--emumovies-soundtrack-probe --media-directory EMPTY_PATH` uses
+saved credentials to discover and download the exact Super Mario Bros. track,
+then requires the ordinary supplemental-media scanner to index it.
+`--soundtrack-ui-probe` opens that same exact catalog identity and exits only
+after Qt reports playable audio through the native Game Music card.
 `--manual-candidate-probe --minerva-database PATH` reads the live Minerva
 catalog and its bounded cached torrent metadata without starting Qt or
 downloading game content. It exits successfully only when the fixed Cooking

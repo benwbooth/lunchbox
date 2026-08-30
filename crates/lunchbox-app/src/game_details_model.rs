@@ -83,6 +83,12 @@ pub mod qobject {
         #[qproperty(bool, media_visible)]
         #[qproperty(bool, video_available)]
         #[qproperty(bool, manual_available)]
+        #[qproperty(bool, soundtrack_available)]
+        #[qproperty(i32, soundtrack_count)]
+        #[qproperty(i32, soundtrack_index)]
+        #[qproperty(QUrl, soundtrack_url)]
+        #[qproperty(QString, soundtrack_title)]
+        #[qproperty(QString, soundtrack_source)]
         #[qproperty(bool, manual_transfer_active)]
         #[qproperty(bool, manual_action_busy)]
         #[qproperty(QString, manual_download_state)]
@@ -318,6 +324,12 @@ pub mod qobject {
         fn reset_video_progress(self: Pin<&mut GameDetailsModel>, duration_ms: i32);
 
         #[qinvokable]
+        fn select_soundtrack(self: Pin<&mut GameDetailsModel>, index: i32);
+
+        #[qinvokable]
+        fn report_soundtrack_ui_probe(self: &GameDetailsModel, screenshot: QString);
+
+        #[qinvokable]
         fn refresh_media(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
@@ -506,6 +518,12 @@ pub struct GameDetailsModelRust {
     media_visible: bool,
     video_available: bool,
     manual_available: bool,
+    soundtrack_available: bool,
+    soundtrack_count: i32,
+    soundtrack_index: i32,
+    soundtrack_url: QUrl,
+    soundtrack_title: QString,
+    soundtrack_source: QString,
     manual_transfer_active: bool,
     manual_action_busy: bool,
     manual_download_state: QString,
@@ -585,6 +603,7 @@ pub struct GameDetailsModelRust {
     current_custom_fields: Vec<GameCustomField>,
     metadata_custom_fields: Vec<GameCustomField>,
     sessions: Vec<PlaySession>,
+    soundtrack_tracks: Vec<crate::media::SoundtrackAsset>,
     bundles: Vec<MinervaBundle>,
     variants: Vec<GameVariant>,
     alternate_titles: Vec<AlternateTitle>,
@@ -686,6 +705,12 @@ impl Default for GameDetailsModelRust {
             media_visible: false,
             video_available: false,
             manual_available: false,
+            soundtrack_available: false,
+            soundtrack_count: 0,
+            soundtrack_index: -1,
+            soundtrack_url: QUrl::default(),
+            soundtrack_title: QString::default(),
+            soundtrack_source: QString::default(),
             manual_transfer_active: false,
             manual_action_busy: false,
             manual_download_state: QString::default(),
@@ -765,6 +790,7 @@ impl Default for GameDetailsModelRust {
             current_custom_fields: Vec::new(),
             metadata_custom_fields: Vec::new(),
             sessions: Vec::new(),
+            soundtrack_tracks: Vec::new(),
             bundles: Vec::new(),
             variants: Vec::new(),
             alternate_titles: Vec::new(),
@@ -1786,6 +1812,13 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_media_visible(false);
         self.as_mut().set_video_available(false);
         self.as_mut().set_manual_available(false);
+        self.as_mut().set_soundtrack_available(false);
+        self.as_mut().set_soundtrack_count(0);
+        self.as_mut().set_soundtrack_index(-1);
+        self.as_mut().set_soundtrack_url(QUrl::default());
+        self.as_mut().set_soundtrack_title(QString::default());
+        self.as_mut().set_soundtrack_source(QString::default());
+        self.as_mut().rust_mut().soundtrack_tracks.clear();
         self.as_mut().set_manual_transfer_active(false);
         self.as_mut().set_manual_action_busy(false);
         self.as_mut().set_manual_download_state(QString::default());
@@ -2123,9 +2156,11 @@ impl qobject::GameDetailsModel {
     ) {
         let video_available = media.video.is_some();
         let manual_available = media.manual.is_some();
+        let soundtrack_available = !media.soundtrack.is_empty();
         self.as_mut().set_media_visible(true);
         self.as_mut().set_video_available(video_available);
         self.as_mut().set_manual_available(manual_available);
+        self.as_mut().set_soundtrack_available(soundtrack_available);
         self.as_mut().set_video_url(
             media
                 .video
@@ -2154,6 +2189,17 @@ impl qobject::GameDetailsModel {
                 .map(|asset| asset.source.as_str())
                 .unwrap_or_default(),
         ));
+        let soundtrack_count = count_i32(media.soundtrack.len());
+        self.as_mut().rust_mut().soundtrack_tracks = media.soundtrack;
+        self.as_mut().set_soundtrack_count(soundtrack_count);
+        if soundtrack_count > 0 {
+            self.as_mut().select_soundtrack(0);
+        } else {
+            self.as_mut().set_soundtrack_index(-1);
+            self.as_mut().set_soundtrack_url(QUrl::default());
+            self.as_mut().set_soundtrack_title(QString::default());
+            self.as_mut().set_soundtrack_source(QString::default());
+        }
         self.as_mut().rust_mut().video_media_key = video_media_key;
         let resume_position = video_progress
             .filter(|progress| {
@@ -2165,15 +2211,62 @@ impl qobject::GameDetailsModel {
             .unwrap_or_default();
         self.as_mut().set_video_resume_position(resume_position);
         self.as_mut().apply_manual_transfer(manual_transfer);
-        let message = match (video_available, manual_available) {
-            (true, true) => "Gameplay video and manual are ready.",
-            (true, false) => "Gameplay video is ready.",
-            (false, true) => "Game manual is ready.",
-            (false, false) => "Cached media is not available yet.",
-        };
-        self.as_mut().set_media_message(qstring(message));
+        let mut ready = Vec::with_capacity(3);
+        if video_available {
+            ready.push("gameplay video");
+        }
+        if manual_available {
+            ready.push("manual");
+        }
+        if soundtrack_available {
+            ready.push("game music");
+        }
+        self.as_mut()
+            .set_media_message(qstring(if ready.is_empty() {
+                "Cached media is not available yet.".to_owned()
+            } else {
+                format!("{} ready.", ready.join(", "))
+            }));
         let media_revision = self.as_ref().media_revision().wrapping_add(1);
         self.as_mut().set_media_revision(media_revision);
+    }
+
+    pub fn select_soundtrack(mut self: Pin<&mut Self>, index: i32) {
+        let track = {
+            let model = self.as_ref();
+            let rust = model.rust();
+            usize::try_from(index)
+                .ok()
+                .and_then(|index| rust.soundtrack_tracks.get(index))
+                .cloned()
+        };
+        let Some(track) = track else {
+            self.as_mut()
+                .set_media_message(qstring("That soundtrack track is no longer cached."));
+            return;
+        };
+        self.as_mut().set_soundtrack_index(index);
+        self.as_mut()
+            .set_soundtrack_url(local_file_url(&track.path));
+        self.as_mut().set_soundtrack_title(qstring(track.title));
+        self.as_mut().set_soundtrack_source(qstring(track.source));
+    }
+
+    pub fn report_soundtrack_ui_probe(&self, screenshot: QString) {
+        if std::env::args().any(|argument| argument == "--soundtrack-ui-probe")
+            && *self.soundtrack_available()
+            && *self.soundtrack_count() > 0
+            && !self.soundtrack_url().is_empty()
+        {
+            println!(
+                "LUNCHBOX_SOUNDTRACK_UI_READY title={:?} source={:?} count={} url={:?} screenshot={:?}",
+                self.soundtrack_title().to_string(),
+                self.soundtrack_source().to_string(),
+                self.soundtrack_count(),
+                self.soundtrack_url().to_string(),
+                screenshot.to_string()
+            );
+        }
     }
 
     fn apply_manual_transfer(
