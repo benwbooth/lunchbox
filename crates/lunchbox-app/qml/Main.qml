@@ -13059,7 +13059,7 @@ ApplicationWindow {
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: gameDetails.download_busy ? "…" : "GET"
                                             enabled: !gameDetails.download_busy
-                                                     && !gameDetails.torrent_loading
+                                                     && sourceSection.candidateCount > 0
                                             implicitWidth: 62
                                             implicitHeight: 34
                                             leftPadding: 8
@@ -13130,6 +13130,7 @@ ApplicationWindow {
         line: root.line
         accent: root.accent
         accentCool: root.accentCool
+        onConfigureRequested: root.openSettingsFor("qbittorrent")
         onQueueRequested: function(index) {
             close()
             gameDetails.queue_file(index)
@@ -18004,6 +18005,11 @@ ApplicationWindow {
         height: root.height
         padding: 0
         closePolicy: Popup.CloseOnEscape
+        onClosed: {
+            if (downloadReviewDialog.visible
+                    && downloadReviewDialog.reviewIndex >= 0)
+                gameDetails.inspect_download(downloadReviewDialog.reviewIndex)
+        }
         onOpened: {
             appSettings.refresh_controllers()
             appSettings.refresh_retroarch_shaders()
@@ -18639,7 +18645,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     TextField {
                         Layout.fillWidth: true
-                        placeholderText: "Native torrent library"
+                        placeholderText: "Download folder on this computer"
                         text: appSettings.torrent_library_directory
                         readOnly: true
                     }
@@ -18650,9 +18656,30 @@ ApplicationWindow {
                 }
                 TextField {
                     Layout.fillWidth: true
-                    placeholderText: "qBittorrent/container torrent library path"
+                    placeholderText: "Path qBittorrent sees (detected when tested)"
                     text: appSettings.qbittorrent_container_torrent_library_directory
                     onTextEdited: appSettings.qbittorrent_container_torrent_library_directory = text
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: appSettings.torrent_library_directory.length > 0
+                             || appSettings.qbittorrent_container_torrent_library_directory.length > 0
+                    text: "Lunchbox appends lunchbox/roms to both base folders automatically, keeping its downloads isolated from the rest of your qBittorrent library."
+                    color: root.muted
+                    font.pixelSize: 10
+                    wrapMode: Text.WordWrap
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: appSettings.torrent_library_directory.length === 0
+                             && appSettings.qbittorrent_container_torrent_library_directory.length > 0
+                    text: "qBittorrent reports “"
+                          + appSettings.qbittorrent_container_torrent_library_directory
+                          + "”. Choose the folder on this computer that is mounted at that path. This is the only remaining download setup step."
+                    color: root.accent
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                    wrapMode: Text.WordWrap
                 }
                 RowLayout {
                     Layout.fillWidth: true

@@ -151,6 +151,12 @@ The initial implementation enforces this shape:
   host paths use Rust `PathBuf` and native folder dialogs, while remote or
   container paths remain literal strings. The app never rewrites a Windows
   path as a POSIX path or assumes the client runs on the GUI host.
+- A successful qBittorrent test reads the client's configured default save
+  path. When that path is also a real local directory it becomes the native
+  base automatically; container or remote clients retain an explicit host-side
+  base mapping. Lunchbox appends `lunchbox/roms` to both bases for every managed
+  game download, so the default is isolated and identical on Linux, Windows,
+  and macOS without exposing the internal suffix as another setting.
 - The persisted seeding policy either leaves qBittorrent's existing rules alone
   or records a durable `pause_pending` action after successful ingestion. A
   shared torrent is stopped only after none of its selected jobs remains in a
@@ -165,6 +171,13 @@ The initial implementation enforces this shape:
   latest/original-revision choice only order equally strong candidates; aliases
   and duplicates are normalized before persistence. The native picker shows the
   parsed region and revision and visually identifies the resulting best match.
+- Torrent sources are inspected by a bounded four-worker pool and each source's
+  exact candidates are published to Qt as soon as that source finishes; a slow
+  derivative set cannot hold back a ready primary result. Standard No-Intro or
+  Redump preservation sets sort before headerless, RetroAchievements,
+  FinalBurn Neo, aftermarket, private, and source-code variants. The GET action
+  is enabled per ready source while the remaining sources continue in the
+  background.
 - Bounded torrent bytes are retained in a validated, URL-keyed OS cache for 24
   hours. The currently inspected torrent also has one decoded file index shared
   by its source views, so a large multi-platform torrent is not downloaded or

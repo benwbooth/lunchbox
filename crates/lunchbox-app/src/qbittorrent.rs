@@ -89,6 +89,18 @@ struct TorrentFileInfo {
     progress: f64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QbittorrentConnectionDetails {
+    pub version: String,
+    pub default_save_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct QbittorrentPreferences {
+    #[serde(default)]
+    save_path: String,
+}
+
 pub struct QbittorrentClient {
     base_url: String,
     agent: ureq::Agent,
@@ -147,6 +159,22 @@ impl QbittorrentClient {
             bail!("qBittorrent returned an empty version");
         }
         Ok(version.to_owned())
+    }
+
+    fn default_save_path(&self) -> Result<String> {
+        let response = self
+            .agent
+            .get(self.endpoint("app/preferences"))
+            .header("Referer", &self.base_url)
+            .call()
+            .context("requesting qBittorrent download preferences")?;
+        let (status, body) = response_text(response)?;
+        require_success(status, &body, "qBittorrent preferences request")?;
+        let preferences =
+            serde_json::from_str::<QbittorrentPreferences>(&body).with_context(|| {
+                format!("decoding qBittorrent preferences: {}", concise_body(&body))
+            })?;
+        Ok(preferences.save_path.trim().to_owned())
     }
 
     pub fn add(
@@ -479,8 +507,22 @@ impl QbittorrentClient {
     }
 }
 
+#[cfg(test)]
 pub fn test_connection(settings: &AppSettings, password: &str) -> Result<String> {
     QbittorrentClient::authenticated(settings, password)?.version()
+}
+
+pub fn test_connection_details(
+    settings: &AppSettings,
+    password: &str,
+) -> Result<QbittorrentConnectionDetails> {
+    let client = QbittorrentClient::authenticated(settings, password)?;
+    let version = client.version()?;
+    let default_save_path = client.default_save_path().unwrap_or_default();
+    Ok(QbittorrentConnectionDetails {
+        version,
+        default_save_path,
+    })
 }
 
 pub fn inspect_enqueue(
@@ -579,7 +621,7 @@ pub fn inspect_enqueue(
         file_name,
         download_plan.as_ref(),
     )?;
-    let download_path = settings.torrent_library_directory.join("lunchbox");
+    let download_path = managed_native_download_path(&settings.torrent_library_directory);
     let download_anchor = existing_ancestor(&download_path)?;
     let uses_install_destination = settings.file_link_mode != "leave_in_place"
         || download_plan
@@ -924,17 +966,15 @@ pub fn enqueue(
         }
     }
     let requested_files = requested_files(&request, download_plan.as_ref())?;
-    let native_download_path = settings.torrent_library_directory.join("lunchbox");
+    let native_download_path = managed_native_download_path(&settings.torrent_library_directory);
     std::fs::create_dir_all(&native_download_path).with_context(|| {
         format!(
             "creating native download directory {}",
             native_download_path.display()
         )
     })?;
-    let client_save_path = client_path_join(
-        &settings.qbittorrent_container_torrent_library_directory,
-        "lunchbox",
-    );
+    let client_save_path =
+        managed_client_save_path(&settings.qbittorrent_container_torrent_library_directory);
 
     let progress_file_index = if settings.download_entire_torrent {
         None
@@ -1170,6 +1210,14 @@ pub(crate) fn client_path_join(root: &str, child: &str) -> String {
     format!("{root}{separator}{child}")
 }
 
+fn managed_native_download_path(root: &Path) -> PathBuf {
+    root.join("lunchbox").join("roms")
+}
+
+fn managed_client_save_path(root: &str) -> String {
+    client_path_join(&client_path_join(root, "lunchbox"), "roms")
+}
+
 fn safe_path_component(value: &str) -> String {
     let cleaned = value
         .chars()
@@ -1391,6 +1439,48 @@ mod tests {
             version_request
                 .to_ascii_lowercase()
                 .contains("cookie: sid=lunchbox-test")
+        );
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn connection_details_include_the_clients_default_download_path() {
+        let (address, requests, worker) = mock_server(vec![
+            MockResponse {
+                body: "Ok.",
+                cookie: true,
+            },
+            MockResponse {
+                body: "v5.1.2",
+                cookie: false,
+            },
+            MockResponse {
+                body: r#"{"save_path":"/downloads/"}"#,
+                cookie: false,
+            },
+        ]);
+
+        let details = test_connection_details(&settings_for(address), "secret").unwrap();
+
+        assert_eq!(details.version, "v5.1.2");
+        assert_eq!(details.default_save_path, "/downloads/");
+        assert!(
+            requests
+                .recv()
+                .unwrap()
+                .starts_with("POST /api/v2/auth/login HTTP/1.1")
+        );
+        assert!(
+            requests
+                .recv()
+                .unwrap()
+                .starts_with("GET /api/v2/app/version HTTP/1.1")
+        );
+        assert!(
+            requests
+                .recv()
+                .unwrap()
+                .starts_with("GET /api/v2/app/preferences HTTP/1.1")
         );
         worker.join().unwrap();
     }
@@ -1626,6 +1716,7 @@ mod tests {
         assert!(captured[3].contains("category=lunchbox&savePath="));
         assert!(captured[4].starts_with("POST /api/v2/torrents/add HTTP/1.1"));
         assert!(captured[4].contains("name=\"category\"\r\n\r\nlunchbox"));
+        assert!(captured[4].contains("name=\"savepath\"\r\n\r\nD:\\Downloads\\lunchbox"));
         assert!(captured[4].contains("name=\"autoTMM\"\r\n\r\nfalse"));
         assert!(captured[4].contains("name=\"stopped\"\r\n\r\ntrue"));
         assert!(captured[4].contains("name=\"paused\"\r\n\r\ntrue"));
@@ -1662,6 +1753,14 @@ mod tests {
         assert_eq!(
             client_path_join(r"D:\Downloads\", "lunchbox"),
             r"D:\Downloads\lunchbox"
+        );
+        assert_eq!(
+            managed_client_save_path("/downloads/"),
+            "/downloads/lunchbox/roms"
+        );
+        assert_eq!(
+            managed_client_save_path(r"D:\Downloads\"),
+            r"D:\Downloads\lunchbox\roms"
         );
     }
 

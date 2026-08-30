@@ -54,7 +54,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   coverage, and legacy installed-game state. The Minerva filter contains only
   covered games that are not installed and composes with platform selection.
 - Responsive game selection and details with real catalog metadata, exact-name
-  Minerva bundle resolution, bounded off-thread torrent inspection, and
+  Minerva bundle resolution, four-way bounded progressive torrent inspection,
+  immediate per-source publication, primary-preservation-set ordering, and
   explicitly review-only title candidates. A durable Release Profile covers
   sort title, series, region, play mode, version,
   and release status. These values are searchable, sortable, available as list
@@ -102,6 +103,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   completed file ingestion through configurable link/copy policies. The native seeding
   policy can follow qBittorrent or durably pause a Lunchbox-owned torrent after
   all selected bundle members import, with automatic retry and no data removal.
+  Connection testing detects qBittorrent's default save path, local clients use
+  that base automatically, and all managed payloads live beneath the portable
+  `lunchbox/roms` suffix; only container or remote clients need a host mapping.
   Failed jobs expose exact stable-ID recovery and newest-first durable event
   history. Recovery verifies the existing torrent's isolated Lunchbox ownership,
   rechecks its data, and resumes it without changing reviewed file selection,

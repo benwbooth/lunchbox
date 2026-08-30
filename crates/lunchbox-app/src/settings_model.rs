@@ -677,13 +677,44 @@ impl qobject::SettingsModel {
         }
     }
 
-    fn finish_test(mut self: Pin<&mut Self>, tested: Result<String, String>) {
+    fn finish_test(
+        mut self: Pin<&mut Self>,
+        tested: Result<qbittorrent::QbittorrentConnectionDetails, String>,
+    ) {
         self.as_mut().set_busy(false);
         match tested {
-            Ok(version) => {
+            Ok(details) => {
                 self.as_mut().set_connection_ok(true);
-                self.as_mut()
-                    .set_message(qstring(format!("Connected to qBittorrent {version}.")));
+                let detected_path = details.default_save_path.trim();
+                if self
+                    .as_ref()
+                    .qbittorrent_container_torrent_library_directory()
+                    .is_empty()
+                    && !detected_path.is_empty()
+                {
+                    self.as_mut()
+                        .set_qbittorrent_container_torrent_library_directory(qstring(
+                            detected_path,
+                        ));
+                }
+                if self.as_ref().torrent_library_directory().is_empty()
+                    && !detected_path.is_empty()
+                    && std::path::Path::new(detected_path).is_dir()
+                {
+                    self.as_mut()
+                        .set_torrent_library_directory(qstring(detected_path));
+                }
+                let message = if !detected_path.is_empty()
+                    && self.as_ref().torrent_library_directory().is_empty()
+                {
+                    format!(
+                        "Connected to qBittorrent {}. Its download path is {detected_path}; choose the matching folder on this computer below, then save.",
+                        details.version,
+                    )
+                } else {
+                    format!("Connected to qBittorrent {}.", details.version)
+                };
+                self.as_mut().set_message(qstring(message));
             }
             Err(error) => {
                 self.as_mut().set_connection_ok(false);
@@ -2220,15 +2251,18 @@ fn save_settings(
     Ok(store.path().to_owned())
 }
 
-fn test_and_record_connection(settings: &AppSettings, password: &str) -> anyhow::Result<String> {
-    match qbittorrent::test_connection(settings, password) {
-        Ok(version) => {
+fn test_and_record_connection(
+    settings: &AppSettings,
+    password: &str,
+) -> anyhow::Result<qbittorrent::QbittorrentConnectionDetails> {
+    match qbittorrent::test_connection_details(settings, password) {
+        Ok(details) => {
             SettingsStore::open_default()?.save_qbittorrent_connection_test(
                 settings,
-                &version,
+                &details.version,
                 !settings.qbittorrent_username.trim().is_empty() || !password.is_empty(),
             )?;
-            Ok(version)
+            Ok(details)
         }
         Err(error) => {
             if let Ok(store) = SettingsStore::open_default() {

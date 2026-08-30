@@ -1382,13 +1382,42 @@ fn resolve_minerva_bundles_from_path(
         });
     }
     bundles.sort_by(|left, right| {
-        left.match_kind
-            .cmp(&right.match_kind)
+        bundle_source_priority(left)
+            .cmp(&bundle_source_priority(right))
+            .then_with(|| left.match_kind.cmp(&right.match_kind))
             .then_with(|| right.rom_count.cmp(&left.rom_count))
             .then_with(|| left.collection.cmp(&right.collection))
             .then_with(|| left.provider_platform.cmp(&right.provider_platform))
     });
     Ok(bundles)
+}
+
+fn bundle_source_priority(bundle: &MinervaBundle) -> u8 {
+    let collection = bundle.collection.trim().to_ascii_lowercase();
+    let platform = bundle.provider_platform.trim().to_ascii_lowercase();
+
+    if collection == "no-intro" {
+        if platform.contains("source code") {
+            return 70;
+        }
+        if platform.contains("private") {
+            return 60;
+        }
+        if platform.contains("aftermarket") {
+            return 50;
+        }
+        if platform.contains("headerless") {
+            return 5;
+        }
+        return 0;
+    }
+    match collection.as_str() {
+        "redump" => 0,
+        "tosec" => 10,
+        "retroachievements" => 20,
+        "finalburn neo" => 30,
+        _ => 15,
+    }
 }
 
 fn explicit_fallback_matches(platform_key: &str, provider_key: &str, collection: &str) -> bool {
@@ -1562,6 +1591,91 @@ pub(crate) fn variant_probe() -> Result<String> {
         ID,
         target.id,
         target.title
+    ))
+}
+
+pub(crate) fn faxanadu_candidate_probe() -> Result<String> {
+    const ID: &str = "2d6cb4b2-a219-4c40-9b31-ac466a77e88c";
+    const TITLE: &str = "Faxanadu";
+    const PLATFORM: &str = "Nintendo Entertainment System";
+
+    let started = std::time::Instant::now();
+    let details = load(ID, TITLE, PLATFORM, false, true)?;
+    let bundle = details
+        .bundles
+        .first()
+        .context("Faxanadu has no Minerva source")?;
+    if !bundle.collection.eq_ignore_ascii_case("No-Intro")
+        || bundle
+            .provider_platform
+            .to_ascii_lowercase()
+            .contains("private")
+        || bundle
+            .provider_platform
+            .to_ascii_lowercase()
+            .contains("aftermarket")
+        || bundle
+            .provider_platform
+            .to_ascii_lowercase()
+            .contains("source code")
+    {
+        bail!(
+            "Faxanadu's primary source is not the standard No-Intro set: {} · {}",
+            bundle.collection,
+            bundle.provider_platform
+        );
+    }
+
+    let settings = crate::settings::SettingsStore::open_default()?.load()?;
+    let candidates = load_torrent_files(
+        bundle,
+        &details.title,
+        &details.alternate_titles,
+        &ReleasePreferences {
+            region_priority: settings.region_priority.clone(),
+            version_preference: settings.version_preference.clone(),
+        },
+    )?;
+    let candidate = candidates
+        .first()
+        .context("the standard No-Intro source did not contain Faxanadu")?;
+    if !candidate.filename.to_ascii_lowercase().contains("faxanadu") {
+        bail!(
+            "the first ranked file is not Faxanadu: {}",
+            candidate.filename
+        );
+    }
+    let store = crate::settings::SettingsStore::open_default()?;
+    let preflight = crate::qbittorrent::inspect_enqueue(
+        &settings,
+        &store,
+        &crate::qbittorrent::EnqueueRequest {
+            game_id: ID.to_owned(),
+            launchbox_db_id: details.database_id,
+            title: TITLE.to_owned(),
+            platform: PLATFORM.to_owned(),
+            source_kind: "minerva".to_owned(),
+            torrent_url: bundle.torrent_url.clone(),
+            torrent_bytes: torrent_bytes(bundle)?,
+            selected_file_index: u32::try_from(candidate.index)
+                .context("Faxanadu torrent file index is too large")?,
+            selected_file_path: candidate.filename.clone(),
+            download_plan: candidate.download_plan.clone(),
+        },
+    )?;
+    if !preflight.can_queue {
+        bail!("Faxanadu download is blocked: {}", preflight.blocked_reason);
+    }
+
+    Ok(format!(
+        "elapsed_ms={} source={:?} platform={:?} score={:.2} file={:?} download_path={:?} install_path={:?}",
+        started.elapsed().as_millis(),
+        bundle.collection,
+        bundle.provider_platform,
+        candidate.match_score,
+        candidate.filename,
+        preflight.download_path,
+        preflight.install_path
     ))
 }
 
@@ -3027,6 +3141,38 @@ mod tests {
         assert_eq!(atari.len(), 1);
         assert_eq!(atari[0].torrent_id, 2);
         assert_eq!(atari[0].match_kind, BundleMatchKind::ExplicitFallback);
+    }
+
+    #[test]
+    fn minerva_resolution_prefers_primary_preservation_sets() {
+        let bundle = |id, collection: &str, platform: &str| MinervaBundle {
+            torrent_id: id,
+            torrent_url: format!("https://example.test/{id}.torrent"),
+            collection: collection.to_owned(),
+            provider_platform: platform.to_owned(),
+            rom_count: 1,
+            total_size: 10,
+            match_kind: BundleMatchKind::MappedName,
+        };
+
+        assert!(
+            bundle_source_priority(&bundle(
+                1,
+                "No-Intro",
+                "Nintendo - Nintendo Entertainment System (Headered)",
+            )) < bundle_source_priority(&bundle(2, "FinalBurn Neo", "nes"))
+        );
+        assert!(
+            bundle_source_priority(&bundle(
+                1,
+                "No-Intro",
+                "Nintendo - Nintendo Entertainment System (Headered)",
+            )) < bundle_source_priority(&bundle(
+                3,
+                "No-Intro",
+                "Nintendo - Nintendo Entertainment System (Headered) (Private)",
+            ))
+        );
     }
 
     #[test]

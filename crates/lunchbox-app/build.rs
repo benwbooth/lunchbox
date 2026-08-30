@@ -67,6 +67,7 @@ fn main() {
                 "qml/CouchAudioSettings.qml",
                 "qml/CouchBackgroundMusic.qml",
                 "qml/CouchGameShelf.qml",
+                "qml/CouchLaunchScreen.qml",
                 "qml/CouchModeView.qml",
                 "qml/Box3DViewer.qml",
                 "qml/DownloadReviewDialog.qml",

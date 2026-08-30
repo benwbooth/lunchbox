@@ -21,6 +21,7 @@ pub mod qobject {
         #[qproperty(QString, download_preflight_storage)]
         #[qproperty(QString, download_preflight_destination)]
         #[qproperty(QString, download_preflight_mode)]
+        #[qproperty(QString, download_preflight_action)]
         #[qproperty(bool, prepare_busy)]
         #[qproperty(bool, launch_discovery_busy)]
         #[qproperty(bool, launch_busy)]
@@ -481,7 +482,7 @@ pub mod qobject {
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
@@ -515,6 +516,7 @@ pub struct GameDetailsModelRust {
     download_preflight_storage: QString,
     download_preflight_destination: QString,
     download_preflight_mode: QString,
+    download_preflight_action: QString,
     prepare_busy: bool,
     launch_discovery_busy: bool,
     launch_busy: bool,
@@ -717,6 +719,7 @@ impl Default for GameDetailsModelRust {
             download_preflight_storage: QString::default(),
             download_preflight_destination: QString::default(),
             download_preflight_mode: QString::default(),
+            download_preflight_action: QString::default(),
             prepare_busy: false,
             launch_discovery_busy: false,
             launch_busy: false,
@@ -2058,6 +2061,8 @@ impl qobject::GameDetailsModel {
             .set_download_preflight_destination(QString::default());
         self.as_mut()
             .set_download_preflight_mode(QString::default());
+        self.as_mut()
+            .set_download_preflight_action(QString::default());
         self.as_mut().set_local_file_count(0);
         self.as_mut().set_selected_local_file(-1);
         self.as_mut()
@@ -3120,7 +3125,7 @@ impl qobject::GameDetailsModel {
         let alternate_titles = self.as_ref().rust().alternate_titles.clone();
         self.as_mut().set_torrent_loading(true);
         self.as_mut().set_message(qstring(format!(
-            "Inspecting {} torrent source{} and ranking their files…",
+            "Finding the best download across {} torrent source{}…",
             bundles.len(),
             if bundles.len() == 1 { "" } else { "s" }
         )));
@@ -3137,39 +3142,59 @@ impl qobject::GameDetailsModel {
                         version_preference: settings.version_preference,
                     })
                     .map_err(|error| error.to_string());
-                let mut groups =
-                    bundles
-                        .into_iter()
-                        .map(|bundle| {
-                            let loaded = preferences.as_ref().map_err(Clone::clone).and_then(
-                                |preferences| {
-                                    game_details::load_torrent_files(
-                                        &bundle,
+                let bundles = Arc::new(bundles);
+                let title = Arc::new(title);
+                let alternate_titles = Arc::new(alternate_titles);
+                let preferences = Arc::new(preferences);
+                let next_bundle = AtomicUsize::new(0);
+                let bundle_count = bundles.len();
+                let worker_count = bundle_count.min(4);
+                let (sender, receiver) = std::sync::mpsc::channel();
+                std::thread::scope(|scope| {
+                    for _ in 0..worker_count {
+                        let sender = sender.clone();
+                        let bundles = Arc::clone(&bundles);
+                        let title = Arc::clone(&title);
+                        let alternate_titles = Arc::clone(&alternate_titles);
+                        let preferences = Arc::clone(&preferences);
+                        let next_bundle = &next_bundle;
+                        scope.spawn(move || {
+                            loop {
+                                let bundle_index =
+                                    next_bundle.fetch_add(1, AtomicOrdering::Relaxed);
+                                let Some(bundle) = bundles.get(bundle_index) else {
+                                    break;
+                                };
+                                let loaded = match preferences.as_ref() {
+                                    Ok(preferences) => game_details::load_torrent_files(
+                                        bundle,
                                         &title,
                                         &alternate_titles,
                                         preferences,
                                     )
-                                    .map_err(|error| error.to_string())
-                                },
+                                    .map_err(|error| error.to_string()),
+                                    Err(error) => Err(error.clone()),
+                                };
+                                if sender.send((bundle_index, loaded)).is_err() {
+                                    break;
+                                }
+                            }
+                        });
+                    }
+                    drop(sender);
+                    let mut completed = 0;
+                    for (bundle_index, loaded) in receiver {
+                        completed += 1;
+                        let _ = qt_thread.queue(move |mut model| {
+                            model.as_mut().finish_bundle_files(
+                                generation,
+                                bundle_index,
+                                loaded,
+                                completed,
+                                bundle_count,
                             );
-                            let group = match loaded {
-                                Ok(files) => BundleCandidateGroup {
-                                    loaded: true,
-                                    files,
-                                    error: String::new(),
-                                },
-                                Err(error) => BundleCandidateGroup {
-                                    loaded: true,
-                                    files: Vec::new(),
-                                    error,
-                                },
-                            };
-                            (bundle, group)
-                        })
-                        .collect::<Vec<_>>();
-                rank_bundle_candidate_groups(&mut groups);
-                let _ = qt_thread.queue(move |mut model| {
-                    model.as_mut().finish_all_bundle_files(generation, groups);
+                        });
+                    }
                 });
             });
         if let Err(error) = spawn_result {
@@ -3180,30 +3205,82 @@ impl qobject::GameDetailsModel {
         }
     }
 
-    fn finish_all_bundle_files(
+    fn finish_bundle_files(
         mut self: Pin<&mut Self>,
         generation: u64,
-        groups: Vec<(MinervaBundle, BundleCandidateGroup)>,
+        bundle_index: usize,
+        loaded: Result<Vec<TorrentFileCandidate>, String>,
+        completed: usize,
+        bundle_count: usize,
     ) {
         if generation != self.as_ref().rust().torrent_generation {
             return;
         }
-        let candidate_count = groups
+        let group = match loaded {
+            Ok(files) => BundleCandidateGroup {
+                loaded: true,
+                files,
+                error: String::new(),
+            },
+            Err(error) => BundleCandidateGroup {
+                loaded: true,
+                files: Vec::new(),
+                error,
+            },
+        };
+        if let Some(target) = self
+            .as_mut()
+            .rust_mut()
+            .bundle_candidates
+            .get_mut(bundle_index)
+        {
+            *target = group;
+        }
+        let preferred_group = (*self.as_ref().selected_bundle() < 0)
+            .then(|| {
+                preferred_loaded_group_index(&self.as_ref().rust().bundle_candidates).map(|index| {
+                    (
+                        index,
+                        self.as_ref().rust().bundle_candidates[index].files.clone(),
+                    )
+                })
+            })
+            .flatten();
+        if let Some((preferred_index, files)) = preferred_group {
+            let file_count = files.len();
+            self.as_mut().rust_mut().files = files;
+            self.as_mut().set_file_count(count_i32(file_count));
+            self.as_mut()
+                .set_selected_bundle(i32::try_from(preferred_index).unwrap_or(-1));
+        }
+
+        let candidate_count = self
+            .as_ref()
+            .rust()
+            .bundle_candidates
             .iter()
-            .map(|(_, group)| group.files.len())
+            .map(|group| group.files.len())
             .sum::<usize>();
-        let error_count = groups
+        let error_count = self
+            .as_ref()
+            .rust()
+            .bundle_candidates
             .iter()
-            .filter(|(_, group)| !group.error.is_empty())
+            .filter(|group| !group.error.is_empty())
             .count();
-        let (bundles, candidates): (Vec<_>, Vec<_>) = groups.into_iter().unzip();
-        let bundle_count = bundles.len();
-        let first_files = candidates
-            .first()
-            .map(|group| group.files.clone())
-            .unwrap_or_default();
-        let first_file_count = first_files.len();
-        let message = if candidate_count == 0 {
+        let pending = bundle_count.saturating_sub(completed);
+        let message = if pending > 0 && candidate_count > 0 {
+            format!(
+                "{candidate_count} download candidate{} ready now · checking {pending} more source{} in the background…",
+                if candidate_count == 1 { "" } else { "s" },
+                if pending == 1 { "" } else { "s" },
+            )
+        } else if pending > 0 {
+            format!(
+                "Checking {pending} more torrent source{} for an exact match…",
+                if pending == 1 { "" } else { "s" },
+            )
+        } else if candidate_count == 0 {
             if error_count > 0 {
                 format!(
                     "No torrent files could be ranked; {error_count} source{} could not be inspected.",
@@ -3227,14 +3304,7 @@ impl qobject::GameDetailsModel {
                 }
             )
         };
-        self.as_mut().rust_mut().bundles = bundles;
-        self.as_mut().rust_mut().bundle_candidates = candidates;
-        self.as_mut().rust_mut().files = first_files;
-        self.as_mut().set_bundle_count(count_i32(bundle_count));
-        self.as_mut().set_file_count(count_i32(first_file_count));
-        self.as_mut()
-            .set_selected_bundle(if bundle_count == 0 { -1 } else { 0 });
-        self.as_mut().set_torrent_loading(false);
+        self.as_mut().set_torrent_loading(pending > 0);
         self.as_mut().bump_revision();
         self.as_mut().set_message(qstring(message));
     }
@@ -3279,6 +3349,8 @@ impl qobject::GameDetailsModel {
             .set_download_preflight_destination(QString::default());
         self.as_mut()
             .set_download_preflight_mode(QString::default());
+        self.as_mut()
+            .set_download_preflight_action(QString::default());
 
         let qt_thread = self.as_ref().qt_thread();
         let spawn_result = std::thread::Builder::new()
@@ -3328,6 +3400,8 @@ impl qobject::GameDetailsModel {
             return;
         }
         self.as_mut().set_download_preflight_busy(false);
+        self.as_mut()
+            .set_download_preflight_action(QString::default());
         match inspected {
             Ok(preflight) => {
                 self.as_mut()
@@ -3359,15 +3433,26 @@ impl qobject::GameDetailsModel {
             }
             Err(error) => {
                 self.as_mut().set_download_preflight_ready(false);
-                self.as_mut().set_download_preflight_status(qstring(format!(
-                    "Download readiness could not be verified: {error}"
-                )));
+                let needs_setup = error.contains("native torrent library directory")
+                    || error.contains("qBittorrent torrent-library path")
+                    || error.contains("native ROM directory");
+                if needs_setup {
+                    self.as_mut()
+                        .set_download_preflight_action(qstring("configure_qbittorrent"));
+                    self.as_mut().set_download_preflight_status(qstring(
+                        "One-time setup: choose the download folder shared by Lunchbox and qBittorrent. Your game and exact file choice are already ready.",
+                    ));
+                } else {
+                    self.as_mut().set_download_preflight_status(qstring(format!(
+                        "Lunchbox could not check this download yet: {error}"
+                    )));
+                }
             }
         }
     }
 
     pub fn queue_file(mut self: Pin<&mut Self>, index: i32) {
-        if *self.as_ref().download_busy() || *self.as_ref().torrent_loading() {
+        if *self.as_ref().download_busy() {
             return;
         }
         let Some(file) = self.as_ref().file(index).cloned() else {
@@ -5544,34 +5629,6 @@ impl qobject::GameDetailsModel {
     }
 }
 
-fn rank_bundle_candidate_groups(groups: &mut [(MinervaBundle, BundleCandidateGroup)]) {
-    groups.sort_by(|(left_bundle, left_group), (right_bundle, right_group)| {
-        let left_has_candidates = !left_group.files.is_empty();
-        let right_has_candidates = !right_group.files.is_empty();
-        let left_score = left_group
-            .files
-            .first()
-            .map(|file| file.match_score)
-            .unwrap_or(f64::NEG_INFINITY);
-        let right_score = right_group
-            .files
-            .first()
-            .map(|file| file.match_score)
-            .unwrap_or(f64::NEG_INFINITY);
-        right_has_candidates
-            .cmp(&left_has_candidates)
-            .then_with(|| right_score.total_cmp(&left_score))
-            .then_with(|| left_bundle.match_kind.cmp(&right_bundle.match_kind))
-            .then_with(|| left_bundle.collection.cmp(&right_bundle.collection))
-            .then_with(|| {
-                left_bundle
-                    .provider_platform
-                    .cmp(&right_bundle.provider_platform)
-            })
-            .then_with(|| left_bundle.torrent_id.cmp(&right_bundle.torrent_id))
-    });
-}
-
 fn bundle_group_message(group: &BundleCandidateGroup, source: &str) -> String {
     if !group.loaded {
         return "Inspecting torrent contents…".to_owned();
@@ -5587,6 +5644,18 @@ fn bundle_group_message(group: &BundleCandidateGroup, source: &str) -> String {
         group.files.len(),
         if group.files.len() == 1 { "" } else { "s" }
     )
+}
+
+fn preferred_loaded_group_index(groups: &[BundleCandidateGroup]) -> Option<usize> {
+    groups.iter().enumerate().find_map(|(index, group)| {
+        if group.files.is_empty() {
+            return None;
+        }
+        groups[..index]
+            .iter()
+            .all(|earlier| earlier.loaded && earlier.files.is_empty())
+            .then_some(index)
+    })
 }
 
 fn file_name_label(file: &TorrentFileCandidate) -> String {
@@ -5743,71 +5812,42 @@ mod tests {
     use super::{
         BundleCandidateGroup, LaunchProfileTarget, format_last_played, format_play_time,
         format_release_date, format_session_duration, metadata_save_messages,
-        preview_for_launch_profile_target, rank_bundle_candidate_groups, session_outcome_label,
+        preferred_loaded_group_index, preview_for_launch_profile_target, session_outcome_label,
         steam_store_url_string, validate_launch_profile_template,
     };
     use crate::emulator::effective_launch_preview_values;
-    use crate::game_details::{BundleMatchKind, MinervaBundle, TorrentFileCandidate};
+    use crate::game_details::TorrentFileCandidate;
 
-    fn bundle(id: i64, source: &str) -> MinervaBundle {
-        MinervaBundle {
-            torrent_id: id,
-            torrent_url: format!("https://example.invalid/{id}.torrent"),
-            collection: source.to_owned(),
-            provider_platform: "Nintendo Entertainment System".to_owned(),
-            rom_count: 1,
-            total_size: 1024,
-            match_kind: BundleMatchKind::MappedName,
-        }
-    }
-
-    fn candidate(score: f64) -> TorrentFileCandidate {
-        TorrentFileCandidate {
-            index: 0,
-            filename: "Game (USA).zip".to_owned(),
-            byte_size: 1024,
-            match_score: score,
-            matched_title: "Game".to_owned(),
-            region: "USA".to_owned(),
-            version: String::new(),
-            download_plan: None,
+    fn candidate_group(loaded: bool, has_candidate: bool) -> BundleCandidateGroup {
+        BundleCandidateGroup {
+            loaded,
+            files: has_candidate
+                .then(|| TorrentFileCandidate {
+                    index: 0,
+                    filename: "Faxanadu (USA).zip".to_owned(),
+                    byte_size: 1,
+                    match_score: 1.0,
+                    matched_title: "Faxanadu".to_owned(),
+                    region: "USA".to_owned(),
+                    version: String::new(),
+                    download_plan: None,
+                })
+                .into_iter()
+                .collect(),
+            error: String::new(),
         }
     }
 
     #[test]
-    fn torrent_sources_put_the_strongest_available_candidate_first() {
-        let mut groups = vec![
-            (
-                bundle(1, "empty"),
-                BundleCandidateGroup {
-                    loaded: true,
-                    files: Vec::new(),
-                    error: String::new(),
-                },
-            ),
-            (
-                bundle(2, "lower"),
-                BundleCandidateGroup {
-                    loaded: true,
-                    files: vec![candidate(0.78)],
-                    error: String::new(),
-                },
-            ),
-            (
-                bundle(3, "best"),
-                BundleCandidateGroup {
-                    loaded: true,
-                    files: vec![candidate(0.96)],
-                    error: String::new(),
-                },
-            ),
-        ];
+    fn progressive_candidates_wait_for_higher_priority_sources_before_defaulting() {
+        let groups = vec![candidate_group(false, false), candidate_group(true, true)];
+        assert_eq!(preferred_loaded_group_index(&groups), None);
 
-        rank_bundle_candidate_groups(&mut groups);
+        let groups = vec![candidate_group(true, false), candidate_group(true, true)];
+        assert_eq!(preferred_loaded_group_index(&groups), Some(1));
 
-        assert_eq!(groups[0].0.collection, "best");
-        assert_eq!(groups[1].0.collection, "lower");
-        assert_eq!(groups[2].0.collection, "empty");
+        let groups = vec![candidate_group(true, true), candidate_group(true, true)];
+        assert_eq!(preferred_loaded_group_index(&groups), Some(0));
     }
 
     #[test]

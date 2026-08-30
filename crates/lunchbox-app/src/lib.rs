@@ -299,6 +299,19 @@ pub fn run() -> i32 {
         };
     }
 
+    if std::env::args().any(|argument| argument == "--faxanadu-candidate-probe") {
+        return match game_details::faxanadu_candidate_probe() {
+            Ok(evidence) => {
+                println!("LUNCHBOX_FAXANADU_CANDIDATE_READY {evidence}");
+                0
+            }
+            Err(error) => {
+                eprintln!("LUNCHBOX_FAXANADU_CANDIDATE_FAILED error={error:#}");
+                1
+            }
+        };
+    }
+
     if std::env::args().any(|argument| argument == "--emulator-update-probe") {
         return match emulator_manager::load_available_emulator_updates() {
             Ok(inventory) => {

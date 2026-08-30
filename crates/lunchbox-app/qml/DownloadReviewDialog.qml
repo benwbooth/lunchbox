@@ -20,20 +20,18 @@ Dialog {
                                     && detailsModel.file_has_download_plan(reviewIndex)
     readonly property string planKind: hasPlan
                                                ? detailsModel.file_plan_kind_at(reviewIndex) : ""
-    readonly property string reviewTitle: planKind === "optical_multidisc"
-                                                   ? "REVIEW MULTI-DISC DOWNLOAD"
-                                                   : planKind.indexOf("arcade_") === 0
-                                                     ? "REVIEW ARCADE DOWNLOAD"
-                                                     : planKind.length > 0
-                                                       ? "REVIEW RELATED DOWNLOAD"
-                                                       : "REVIEW DOWNLOAD"
+    readonly property string reviewTitle: "DOWNLOAD "
+                                          + detailsModel.title.toUpperCase()
     readonly property string readinessLabel: detailsModel.download_preflight_busy
                                                      ? "CHECKING"
                                                      : detailsModel.download_preflight_ready
                                                        ? "READY"
-                                                       : "NEEDS ATTENTION"
+                                                       : detailsModel.download_preflight_action.length > 0
+                                                         ? "SETUP NEEDED"
+                                                         : "NOT READY"
 
     signal queueRequested(int index)
+    signal configureRequested()
 
     function openFor(index) {
         if (index < 0 || index >= detailsModel.file_count)
@@ -166,7 +164,9 @@ Dialog {
                         Layout.fillWidth: true
                         text: detailsModel.download_preflight_status
                         color: detailsModel.download_preflight_ready
-                               ? dialog.ink : dialog.accent
+                               ? dialog.ink
+                               : detailsModel.download_preflight_action.length > 0
+                                 ? dialog.ink : dialog.accent
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
                         wrapMode: Text.WordWrap
@@ -220,7 +220,7 @@ Dialog {
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: dialog.line }
 
         Text {
-            text: dialog.hasPlan ? "EXACT TORRENT MEMBERS" : "EXACT TORRENT MEMBER"
+            text: dialog.hasPlan ? "FILES INCLUDED" : "FILE SELECTED"
             color: dialog.accent
             font.pixelSize: 9
             font.weight: Font.Bold
@@ -250,7 +250,7 @@ Dialog {
 
         Text {
             Layout.fillWidth: true
-            text: "Filename similarity never establishes identity. Lunchbox will send only the reviewed selection above, and the same storage and duplicate checks run again immediately before qBittorrent is changed."
+            text: "Lunchbox matched this file to the selected catalog game and will download only the file set shown above. It checks storage and duplicate downloads again before changing qBittorrent."
             color: dialog.muted
             font.pixelSize: 9
             wrapMode: Text.WordWrap
@@ -275,7 +275,15 @@ Dialog {
                 onClicked: dialog.close()
             }
             HeaderButton {
-                text: detailsModel.download_preflight_busy ? "Checking…" : "Recheck"
+                visible: detailsModel.download_preflight_action === "configure_qbittorrent"
+                text: "SET UP DOWNLOAD FOLDER"
+                active: true
+                enabled: !detailsModel.download_preflight_busy
+                         && !detailsModel.download_busy
+                onClicked: dialog.configureRequested()
+            }
+            HeaderButton {
+                text: detailsModel.download_preflight_busy ? "CHECKING…" : "TRY AGAIN"
                 enabled: dialog.reviewIndex >= 0
                          && !detailsModel.download_preflight_busy
                          && !detailsModel.download_busy
@@ -284,8 +292,8 @@ Dialog {
             Button {
                 width: 158
                 height: 40
-                text: settingsModel.download_entire_torrent ? "QUEUE TORRENT"
-                                                             : "QUEUE DOWNLOAD"
+                text: settingsModel.download_entire_torrent ? "DOWNLOAD ALL"
+                                                             : "DOWNLOAD"
                 enabled: dialog.reviewIndex >= 0
                          && detailsModel.download_preflight_ready
                          && !detailsModel.download_preflight_busy
