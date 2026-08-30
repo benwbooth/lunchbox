@@ -274,6 +274,27 @@ pub mod qobject {
         fn bundle_load_message_at(self: &GameDetailsModel, bundle_index: i32) -> QString;
 
         #[qinvokable]
+        fn download_source_count(self: &GameDetailsModel) -> i32;
+
+        #[qinvokable]
+        fn download_source_bundle_at(self: &GameDetailsModel, index: i32) -> i32;
+
+        #[qinvokable]
+        fn download_candidate_count(self: &GameDetailsModel) -> i32;
+
+        #[qinvokable]
+        fn download_candidate_source_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn download_candidate_name_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn download_candidate_detail_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn select_download_candidate(self: Pin<&mut GameDetailsModel>, index: i32) -> i32;
+
+        #[qinvokable]
         fn select_bundle_file(
             self: Pin<&mut GameDetailsModel>,
             bundle_index: i32,
@@ -5284,7 +5305,9 @@ impl qobject::GameDetailsModel {
     pub fn bundle_file_detail_at(&self, bundle_index: i32, file_index: i32) -> QString {
         self.bundle_file(bundle_index, file_index)
             .map(|file| {
-                let badge = if bundle_index == 0 && file_index == 0 {
+                let first_source = download_source_location(&self.rust().bundle_candidates, 0)
+                    .and_then(|index| i32::try_from(index).ok());
+                let badge = if first_source == Some(bundle_index) && file_index == 0 {
                     Some("BEST MATCH")
                 } else if file_index == 0 {
                     Some("BEST IN SOURCE")
@@ -5307,6 +5330,94 @@ impl qobject::GameDetailsModel {
                 qstring(bundle_group_message(group, source))
             })
             .unwrap_or_else(|| qstring("This torrent source is no longer available."))
+    }
+
+    pub fn download_source_count(&self) -> i32 {
+        count_i32(
+            self.rust()
+                .bundle_candidates
+                .iter()
+                .filter(|group| !group.files.is_empty())
+                .count(),
+        )
+    }
+
+    pub fn download_source_bundle_at(&self, index: i32) -> i32 {
+        download_source_location(&self.rust().bundle_candidates, index)
+            .and_then(|index| i32::try_from(index).ok())
+            .unwrap_or(-1)
+    }
+
+    pub fn download_candidate_count(&self) -> i32 {
+        count_i32(
+            self.rust()
+                .bundle_candidates
+                .iter()
+                .map(|group| group.files.len())
+                .sum(),
+        )
+    }
+
+    pub fn download_candidate_source_at(&self, index: i32) -> QString {
+        download_candidate_location(&self.rust().bundle_candidates, index)
+            .and_then(|(bundle_index, _)| {
+                i32::try_from(bundle_index)
+                    .ok()
+                    .map(|bundle_index| self.bundle_title_at(bundle_index))
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn download_candidate_name_at(&self, index: i32) -> QString {
+        download_candidate_location(&self.rust().bundle_candidates, index)
+            .and_then(|(bundle_index, file_index)| {
+                self.rust()
+                    .bundle_candidates
+                    .get(bundle_index)
+                    .and_then(|group| group.files.get(file_index))
+            })
+            .map(file_name_label)
+            .map(qstring)
+            .unwrap_or_default()
+    }
+
+    pub fn download_candidate_detail_at(&self, index: i32) -> QString {
+        download_candidate_location(&self.rust().bundle_candidates, index)
+            .and_then(|(bundle_index, file_index)| {
+                self.rust()
+                    .bundle_candidates
+                    .get(bundle_index)
+                    .and_then(|group| group.files.get(file_index))
+                    .map(|file| {
+                        let badge = if index == 0 {
+                            Some("BEST MATCH")
+                        } else if file_index == 0 {
+                            Some("BEST IN SOURCE")
+                        } else {
+                            None
+                        };
+                        file_detail_label(file, badge, &self.rust().canonical_title)
+                    })
+            })
+            .map(qstring)
+            .unwrap_or_default()
+    }
+
+    pub fn select_download_candidate(mut self: Pin<&mut Self>, index: i32) -> i32 {
+        let Some((bundle_index, file_index)) =
+            download_candidate_location(&self.as_ref().rust().bundle_candidates, index)
+        else {
+            self.as_mut().set_message(qstring(
+                "That download candidate is no longer available. Wait for the list to refresh and try again.",
+            ));
+            return -1;
+        };
+        let (Ok(bundle_index), Ok(file_index)) =
+            (i32::try_from(bundle_index), i32::try_from(file_index))
+        else {
+            return -1;
+        };
+        self.as_mut().select_bundle_file(bundle_index, file_index)
     }
 
     pub fn select_bundle_file(mut self: Pin<&mut Self>, bundle_index: i32, file_index: i32) -> i32 {
@@ -5646,6 +5757,35 @@ fn bundle_group_message(group: &BundleCandidateGroup, source: &str) -> String {
     )
 }
 
+fn download_candidate_location(
+    groups: &[BundleCandidateGroup],
+    index: i32,
+) -> Option<(usize, usize)> {
+    let mut remaining = usize::try_from(index).ok()?;
+    for (bundle_index, group) in groups.iter().enumerate() {
+        if remaining < group.files.len() {
+            return Some((bundle_index, remaining));
+        }
+        remaining = remaining.checked_sub(group.files.len())?;
+    }
+    None
+}
+
+fn download_source_location(groups: &[BundleCandidateGroup], index: i32) -> Option<usize> {
+    let mut remaining = usize::try_from(index).ok()?;
+    groups.iter().enumerate().find_map(|(bundle_index, group)| {
+        if group.files.is_empty() {
+            return None;
+        }
+        if remaining == 0 {
+            Some(bundle_index)
+        } else {
+            remaining -= 1;
+            None
+        }
+    })
+}
+
 fn preferred_loaded_group_index(groups: &[BundleCandidateGroup]) -> Option<usize> {
     groups.iter().enumerate().find_map(|(index, group)| {
         if group.files.is_empty() {
@@ -5810,10 +5950,11 @@ fn preflight_storage_summary(preflight: &crate::qbittorrent::DownloadPreflight) 
 #[cfg(test)]
 mod tests {
     use super::{
-        BundleCandidateGroup, LaunchProfileTarget, format_last_played, format_play_time,
-        format_release_date, format_session_duration, metadata_save_messages,
-        preferred_loaded_group_index, preview_for_launch_profile_target, session_outcome_label,
-        steam_store_url_string, validate_launch_profile_template,
+        BundleCandidateGroup, LaunchProfileTarget, download_candidate_location,
+        download_source_location, format_last_played, format_play_time, format_release_date,
+        format_session_duration, metadata_save_messages, preferred_loaded_group_index,
+        preview_for_launch_profile_target, session_outcome_label, steam_store_url_string,
+        validate_launch_profile_template,
     };
     use crate::emulator::effective_launch_preview_values;
     use crate::game_details::TorrentFileCandidate;
@@ -5848,6 +5989,33 @@ mod tests {
 
         let groups = vec![candidate_group(true, true), candidate_group(true, true)];
         assert_eq!(preferred_loaded_group_index(&groups), Some(0));
+    }
+
+    #[test]
+    fn couch_download_candidates_flatten_sources_without_losing_exact_indices() {
+        let mut first = candidate_group(true, true);
+        first.files.push(TorrentFileCandidate {
+            index: 1,
+            filename: "Faxanadu (Europe).zip".to_owned(),
+            byte_size: 2,
+            match_score: 0.9,
+            matched_title: "Faxanadu".to_owned(),
+            region: "Europe".to_owned(),
+            version: String::new(),
+            download_plan: None,
+        });
+        let second = candidate_group(true, true);
+        let groups = vec![first, BundleCandidateGroup::default(), second];
+
+        assert_eq!(download_candidate_location(&groups, 0), Some((0, 0)));
+        assert_eq!(download_candidate_location(&groups, 1), Some((0, 1)));
+        assert_eq!(download_candidate_location(&groups, 2), Some((2, 0)));
+        assert_eq!(download_candidate_location(&groups, 3), None);
+        assert_eq!(download_candidate_location(&groups, -1), None);
+        assert_eq!(download_source_location(&groups, 0), Some(0));
+        assert_eq!(download_source_location(&groups, 1), Some(2));
+        assert_eq!(download_source_location(&groups, 2), None);
+        assert_eq!(download_source_location(&groups, -1), None);
     }
 
     #[test]

@@ -22,7 +22,7 @@ ApplicationWindow {
            || profileBackupUiProbe
            || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
            || libraryViewUiProbe || listFilterUiProbe || alphabetUiProbe || hoverPreviewUiProbe
-           || soundtrackUiProbe || settingsUiProbe
+           || soundtrackUiProbe || settingsUiProbe || downloadStatusUiProbe
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
@@ -36,7 +36,7 @@ ApplicationWindow {
             || profileBackupUiProbe
             || manualTorrentUiProbe || sidebarUiProbe || activityHistoryUiProbe
             || libraryViewUiProbe || listFilterUiProbe || alphabetUiProbe || hoverPreviewUiProbe
-            || soundtrackUiProbe || settingsUiProbe
+            || soundtrackUiProbe || settingsUiProbe || downloadStatusUiProbe
             ? 1200 : 900
     minimumWidth: 1040
     minimumHeight: 680
@@ -121,6 +121,8 @@ ApplicationWindow {
     property bool favoriteProbeArmed: false
     property bool favoriteProbeTriggered: false
     property bool closeAfterFavoriteSave: false
+    property bool downloadJobWasBusy: false
+    property bool downloadStatusProbeCaptured: false
     property int collectionProbeStage: 0
     property int libraryAuditProbeStage: 0
     property bool libraryAuditProbeArmed: false
@@ -245,6 +247,7 @@ ApplicationWindow {
                                                  || Qt.application.arguments.indexOf("--couch-attract-ui-probe") >= 0
     readonly property bool couchThemeUiProbe: Qt.application.arguments.indexOf("--couch-theme-ui-probe") >= 0
     readonly property bool couchLaunchUiProbe: Qt.application.arguments.indexOf("--couch-launch-ui-probe") >= 0
+    readonly property bool couchDownloadUiProbe: Qt.application.arguments.indexOf("--couch-download-ui-probe") >= 0
     readonly property bool couchViewStyleRestoreUiProbe: Qt.application.arguments.indexOf("--couch-view-style-restored-ui-probe") >= 0
     readonly property bool couchViewStyleUiProbe: couchViewStyleRestoreUiProbe
                                                   || Qt.application.arguments.indexOf("--couch-view-style-ui-probe") >= 0
@@ -255,6 +258,7 @@ ApplicationWindow {
                                              || couchThemeUiProbe
                                              || couchViewStyleUiProbe
                                              || couchLaunchUiProbe
+                                             || couchDownloadUiProbe
                                              || Qt.application.arguments.indexOf("--couch-mode-ui-probe") >= 0
     readonly property bool metadataRestoreUiProbe: Qt.application.arguments.indexOf("--metadata-restored-ui-probe") >= 0
     readonly property bool metadataUiProbe: metadataRestoreUiProbe
@@ -286,6 +290,7 @@ ApplicationWindow {
     readonly property bool firmwareAuditUiProbe: Qt.application.arguments.indexOf("--firmware-audit-ui-probe") >= 0
     readonly property bool mediaAuditUiProbe: Qt.application.arguments.indexOf("--media-audit-ui-probe") >= 0
     readonly property bool downloadUiProbe: Qt.application.arguments.indexOf("--download-ui-probe") >= 0
+    readonly property bool downloadStatusUiProbe: Qt.application.arguments.indexOf("--download-status-ui-probe") >= 0
     readonly property bool manualTorrentUiProbe: Qt.application.arguments.indexOf("--manual-torrent-ui-probe") >= 0
     readonly property bool installManagementRestoreUiProbe: Qt.application.arguments.indexOf("--install-management-restored-ui-probe") >= 0
     readonly property bool installManagementUiProbe: installManagementRestoreUiProbe
@@ -369,6 +374,9 @@ ApplicationWindow {
     property bool importProfileProbeStarted: false
     property bool importProfileBatchProbeStarted: false
     property bool launchProfileManagerProbeCaptured: false
+    property int couchDownloadProbeStage: 0
+    property double couchDownloadProbeStartedMs: Date.now()
+    property bool couchDownloadProbeArmed: false
     readonly property string metadataProbeTitle: "Super Mario Bros. — Living Room Edition"
     readonly property string metadataProbeCustomSearch: "8BitDo Ultimate"
 
@@ -574,6 +582,21 @@ ApplicationWindow {
             root.couchLaunchProbeWaits = 0
             couchLaunchTriggerTimer.restart()
         }
+    }
+
+    function beginCouchDownloadProbe() {
+        if (!root.couchDownloadUiProbe || root.couchDownloadProbeArmed
+                || !library.ready || library.loading)
+            return
+        root.couchDownloadProbeArmed = true
+        root.couchDownloadProbeStage = 0
+        root.couchDownloadProbeStartedMs = Date.now()
+        root.selectedGameId = "2d6cb4b2-a219-4c40-9b31-ac466a77e88c"
+        root.selectedPlatform = "Nintendo Entertainment System"
+        root.availability = "downloadable"
+        searchField.text = "Faxanadu"
+        library.apply_filter(searchField.text, root.selectedPlatform,
+                             root.availability)
     }
 
     function advanceCouchGamepadMenuProbe() {
@@ -1966,7 +1989,7 @@ ApplicationWindow {
                 return
             downloadQueue.refresh()
             externalTorrentDialog.close()
-            downloadsDrawer.open()
+            romDownloadStatus.expanded = true
         }
         function onReadyChanged() {
             if (!root.manualTorrentUiProbe || !externalTorrent.ready)
@@ -2354,7 +2377,9 @@ ApplicationWindow {
                     root.beginHoverPreviewProbe()
                 }
                 else if (root.couchModeUiProbe) {
-                    if (root.couchViewStyleUiProbe) {
+                    if (root.couchDownloadUiProbe) {
+                        root.beginCouchDownloadProbe()
+                    } else if (root.couchViewStyleUiProbe) {
                         root.couchViewStyleProbeStage = root.couchViewStyleRestoreUiProbe
                                                        ? 50 : 0
                         if (root.couchViewStyleRestoreUiProbe) {
@@ -2530,6 +2555,10 @@ ApplicationWindow {
                         downloadsDrawer.open()
                 }
             }
+        }
+        function onLoadingChanged() {
+            if (!library.loading)
+                root.beginCouchDownloadProbe()
         }
         function onFilteringChanged() {
             if (library.filter_probe && library.ready && !library.filtering)
@@ -3161,6 +3190,57 @@ ApplicationWindow {
     }
 
     Timer {
+        id: couchDownloadUiProbeTimer
+        interval: 80
+        repeat: true
+        running: root.couchDownloadUiProbe && !root.couchModeProbeCaptured
+        onTriggered: {
+            if (!root.couchModeActive || !couchModeView.detailsCurrent
+                    || gameDetails.loading)
+                return
+            const count = gameDetails.download_candidate_count()
+            if (root.couchDownloadProbeStage === 0) {
+                if (count <= 0)
+                    return
+                couchModeView.openDownloadOverlay()
+                root.couchDownloadProbeStage = 1
+                return
+            }
+            if (!couchModeView.downloadOverlayOpen || count <= 0)
+                return
+            const elapsed = Math.max(0, Math.round(
+                                         Date.now()
+                                         - root.couchDownloadProbeStartedMs))
+            const report = function(screenshot) {
+                console.warn("LUNCHBOX_COUCH_DOWNLOAD_UI_READY elapsed_ms="
+                             + elapsed + " candidates=" + count
+                             + " first_source=\""
+                             + gameDetails.download_candidate_source_at(0)
+                             + "\" first_file=\""
+                             + gameDetails.download_candidate_name_at(0)
+                             + "\"" + (screenshot.length > 0
+                                        ? " screenshot=" + screenshot : ""))
+                Qt.quit()
+            }
+            root.couchModeProbeCaptured = true
+            if (root.screenshotOutput.length === 0) {
+                report("")
+                return
+            }
+            couchModeView.captureDownload(root.screenshotOutput,
+                                          function(saved) {
+                if (!saved) {
+                    console.error("LUNCHBOX_COUCH_DOWNLOAD_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                report(root.screenshotOutput)
+            })
+        }
+    }
+
+    Timer {
         id: couchLaunchStatusScreenshotTimer
         interval: 120
         repeat: false
@@ -3211,7 +3291,7 @@ ApplicationWindow {
         interval: 650
         repeat: false
         onTriggered: {
-            if (root.couchLaunchUiProbe)
+            if (root.couchLaunchUiProbe || root.couchDownloadUiProbe)
                 return
             if (!root.couchGamepadUiProbe && !root.couchPlatformUiProbe
                     && !root.couchCollectionUiProbe
@@ -4467,8 +4547,15 @@ ApplicationWindow {
                 Qt.quit()
         }
         function onDownload_busyChanged() {
-            if (!gameDetails.download_busy)
-                downloadQueue.refresh()
+            if (gameDetails.download_busy) {
+                root.downloadJobWasBusy = true
+                return
+            }
+            downloadQueue.refresh()
+            if (root.downloadJobWasBusy) {
+                root.downloadJobWasBusy = false
+                romDownloadStatus.expanded = true
+            }
         }
         function onLoadingChanged() {
             if (!root.downloadPlanUiProbe || gameDetails.loading)
@@ -4706,6 +4793,13 @@ ApplicationWindow {
         function onRevisionChanged() {
             if (downloadQueue.busy)
                 return
+            if (root.downloadStatusUiProbe
+                    && !root.downloadStatusProbeCaptured
+                    && downloadQueue.job_count > 0) {
+                root.downloadStatusProbeCaptured = true
+                romDownloadStatus.expanded = true
+                downloadStatusProbeScreenshotTimer.restart()
+            }
             if (root.downloadHistoryProbe) {
                 if (!root.downloadHistoryTriggered
                         && downloadQueue.finished_count > 0) {
@@ -4757,6 +4851,49 @@ ApplicationWindow {
                 return
             }
             downloadRecoveryScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: downloadStatusProbeScreenshotTimer
+        interval: 450
+        repeat: false
+        onTriggered: {
+            const report = function(screenshot) {
+                console.log("LUNCHBOX_DOWNLOAD_STATUS_UI_READY jobs="
+                            + downloadQueue.job_count + " active="
+                            + downloadQueue.active_count + " finished="
+                            + downloadQueue.finished_count
+                            + (screenshot.length > 0
+                               ? " screenshot=" + screenshot : ""))
+                Qt.quit()
+            }
+            if (root.screenshotOutput.length === 0) {
+                report("")
+                return
+            }
+            romDownloadStatus.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_DOWNLOAD_STATUS_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                report(root.screenshotOutput)
+            })
+        }
+    }
+
+    Timer {
+        interval: 20000
+        running: root.downloadStatusUiProbe
+                 && !root.downloadStatusProbeCaptured
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_DOWNLOAD_STATUS_UI_FAILED timeout jobs="
+                          + downloadQueue.job_count + " message="
+                          + downloadQueue.message)
+            Qt.exit(2)
         }
     }
 
@@ -6149,6 +6286,7 @@ ApplicationWindow {
     Timer {
         interval: 2000
         running: downloadQueue.active_count > 0 || downloadsDrawer.opened
+                 || romDownloadStatus.expanded
         repeat: true
         onTriggered: downloadQueue.refresh()
     }
@@ -8782,6 +8920,10 @@ ApplicationWindow {
             root.openGame(gameId, databaseId, title, platform,
                           local, downloadable)
         }
+        onSettingsRequested: function(section) {
+            root.exitCouchMode()
+            root.openSettingsFor(section)
+        }
         onLaunchRequested: gameDetails.launch_game()
     }
 
@@ -8885,8 +9027,10 @@ ApplicationWindow {
             }
             HeaderButton {
                 text: "↓  " + downloadQueue.active_count
-                active: downloadsDrawer.opened
-                onClicked: downloadsDrawer.open()
+                active: downloadsDrawer.opened || romDownloadStatus.expanded
+                onClicked: romDownloadStatus.toggle()
+                ToolTip.visible: hovered
+                ToolTip.text: "ROM download queue"
             }
             HeaderButton {
                 text: "⚙"
@@ -12891,14 +13035,28 @@ ApplicationWindow {
                         }
                     }
 
+                    Item {
+                        id: minervaSourceState
+                        width: 1
+                        height: 0
+                        property int revision: gameDetails.detail_revision
+                        readonly property int count: {
+                            revision
+                            return gameDetails.download_source_count()
+                        }
+                    }
                     Rectangle {
-                        visible: !gameDetails.loading && gameDetails.bundle_count > 0
+                        visible: !gameDetails.loading
+                                 && (gameDetails.torrent_loading
+                                     || minervaSourceState.count > 0)
                         width: parent.width
                         height: 1
                         color: root.line
                     }
                     Text {
-                        visible: !gameDetails.loading && gameDetails.bundle_count > 0
+                        visible: !gameDetails.loading
+                                 && (gameDetails.torrent_loading
+                                     || minervaSourceState.count > 0)
                         width: parent.width
                         text: "MINERVA SOURCES"
                         color: "#687488"
@@ -12907,9 +13065,13 @@ ApplicationWindow {
                         font.letterSpacing: 1.2
                     }
                     Text {
-                        visible: !gameDetails.loading && gameDetails.bundle_count > 0
+                        visible: !gameDetails.loading
+                                 && (gameDetails.torrent_loading
+                                     || minervaSourceState.count > 0)
                         width: parent.width
-                        text: "Every verified torrent is shown with its matching downloads underneath. The strongest title, region, and release match is first; review the exact filename before adding it to the queue."
+                        text: minervaSourceState.count > 0
+                              ? "Only torrents containing a matching game file are shown. The strongest title, region, and release match is first; review the exact filename before adding it to the queue."
+                              : "Checking available torrents for matching game files…"
                         color: root.muted
                         font.pixelSize: 11
                         lineHeight: 1.25
@@ -12917,15 +13079,20 @@ ApplicationWindow {
                     }
 
                     Repeater {
-                        model: gameDetails.bundle_count
+                        model: minervaSourceState.count
                         delegate: Rectangle {
                             id: sourceSection
                             required property int index
                             property int revision: gameDetails.detail_revision
+                            readonly property int bundleIndex: {
+                                sourceSection.revision
+                                return gameDetails.download_source_bundle_at(
+                                            sourceSection.index)
+                            }
                             readonly property int candidateCount: {
                                 sourceSection.revision
                                 return gameDetails.bundle_file_count_at(
-                                            sourceSection.index)
+                                            sourceSection.bundleIndex)
                             }
                             width: detailsPane.width - 40
                             height: sourceContents.implicitHeight + 24
@@ -12951,7 +13118,7 @@ ApplicationWindow {
                                         text: {
                                             sourceSection.revision
                                             return gameDetails.bundle_title_at(
-                                                        sourceSection.index)
+                                                        sourceSection.bundleIndex)
                                         }
                                         color: root.ink
                                         font.pixelSize: 12
@@ -12982,24 +13149,11 @@ ApplicationWindow {
                                     text: {
                                         sourceSection.revision
                                         return gameDetails.bundle_detail_at(
-                                                    sourceSection.index)
+                                                    sourceSection.bundleIndex)
                                     }
                                     color: root.muted
                                     font.pixelSize: 10
                                     elide: Text.ElideRight
-                                }
-                                Text {
-                                    visible: sourceSection.candidateCount === 0
-                                    width: parent.width
-                                    text: {
-                                        sourceSection.revision
-                                        return gameDetails.bundle_load_message_at(
-                                                    sourceSection.index)
-                                    }
-                                    color: gameDetails.torrent_loading
-                                           ? root.accent : root.muted
-                                    font.pixelSize: 10
-                                    wrapMode: Text.WordWrap
                                 }
 
                                 Repeater {
@@ -13031,7 +13185,7 @@ ApplicationWindow {
                                                 text: {
                                                     fileRow.revision
                                                     return gameDetails.bundle_file_name_at(
-                                                                sourceSection.index,
+                                                                sourceSection.bundleIndex,
                                                                 fileRow.index)
                                                 }
                                                 color: root.ink
@@ -13044,7 +13198,7 @@ ApplicationWindow {
                                                 text: {
                                                     fileRow.revision
                                                     return gameDetails.bundle_file_detail_at(
-                                                                sourceSection.index,
+                                                                sourceSection.bundleIndex,
                                                                 fileRow.index)
                                                 }
                                                 color: root.muted
@@ -13066,7 +13220,7 @@ ApplicationWindow {
                                             rightPadding: 8
                                             onClicked: {
                                                 const selected = gameDetails.select_bundle_file(
-                                                                   sourceSection.index,
+                                                                   sourceSection.bundleIndex,
                                                                    fileRow.index)
                                                 if (selected >= 0)
                                                     downloadReviewDialog.openFor(selected)
@@ -18617,7 +18771,7 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "Native paths are interpreted by this operating system. Client paths are passed verbatim to qBittorrent, which supports containers and remote clients without Linux-specific path assumptions."
+                    text: "The default mapping uses qBittorrent's normal save folder plus lunchbox/roms. Native paths are interpreted by this operating system; client paths are passed verbatim so containers and remote clients remain portable."
                     color: root.muted
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
@@ -18656,18 +18810,59 @@ ApplicationWindow {
                 }
                 TextField {
                     Layout.fillWidth: true
-                    placeholderText: "Path qBittorrent sees (detected when tested)"
+                    placeholderText: "qBittorrent default save folder (detected when tested)"
                     text: appSettings.qbittorrent_container_torrent_library_directory
                     onTextEdited: appSettings.qbittorrent_container_torrent_library_directory = text
                 }
-                Text {
+                Rectangle {
                     Layout.fillWidth: true
+                    Layout.preferredHeight: mappingColumn.implicitHeight + 24
                     visible: appSettings.torrent_library_directory.length > 0
                              || appSettings.qbittorrent_container_torrent_library_directory.length > 0
-                    text: "Lunchbox appends lunchbox/roms to both base folders automatically, keeping its downloads isolated from the rest of your qBittorrent library."
-                    color: root.muted
-                    font.pixelSize: 10
-                    wrapMode: Text.WordWrap
+                    radius: 8
+                    color: Qt.rgba(1, 1, 1, 0.025)
+                    border.color: root.line
+                    border.width: 1
+
+                    ColumnLayout {
+                        id: mappingColumn
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 5
+                        Text {
+                            text: "DEFAULT MANAGED MAPPING"
+                            color: root.accentCool
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                            font.letterSpacing: 1.1
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: appSettings.qbittorrent_container_torrent_library_directory.length > 0
+                                  ? "qBittorrent  " + appSettings.managed_client_download_directory(appSettings.qbittorrent_container_torrent_library_directory)
+                                  : "qBittorrent  Test the connection to detect its default save folder"
+                            color: root.ink
+                            font.pixelSize: 11
+                            wrapMode: Text.WrapAnywhere
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: appSettings.torrent_library_directory.length > 0
+                                  ? "This computer  " + appSettings.managed_native_download_directory(appSettings.torrent_library_directory)
+                                  : "This computer  Choose the host folder mapped to qBittorrent's save folder"
+                            color: appSettings.torrent_library_directory.length > 0
+                                   ? root.ink : root.accent
+                            font.pixelSize: 11
+                            wrapMode: Text.WrapAnywhere
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Lunchbox creates this isolated subdirectory automatically; the base folders above stay unchanged."
+                            color: root.muted
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                    }
                 }
                 Text {
                     Layout.fillWidth: true
@@ -22127,6 +22322,28 @@ ApplicationWindow {
             color: root.ink
             wrapMode: Text.WordWrap
             font.pixelSize: 12
+        }
+    }
+
+    RomDownloadStatus {
+        id: romDownloadStatus
+        anchors.right: parent.right
+        anchors.rightMargin: 18
+        anchors.bottom: statusBar.top
+        anchors.bottomMargin: 16
+        z: 900
+        visible: !root.couchModeActive
+        queue: downloadQueue
+        ink: root.ink
+        muted: root.muted
+        panel: root.panel
+        panelRaised: root.panelRaised
+        line: root.line
+        accent: root.accent
+        accentCool: root.accentCool
+        onManageRequested: {
+            expanded = false
+            downloadsDrawer.open()
         }
     }
 

@@ -25,6 +25,7 @@ Item {
     property bool launchStatusOverlayOpen: false
     property bool launchSessionObserved: false
     property bool launchCompletionPending: false
+    property bool downloadOverlayOpen: false
     property bool overlayOpen: false
     property string overlayMode: "details"
     property int menuActionIndex: 0
@@ -101,6 +102,7 @@ Item {
     readonly property string primaryAction: !detailsCurrent || details.loading ? "LOADING…"
             : details.launch_busy ? "STARTING…"
             : details.game_running ? "GAME IS RUNNING"
+            : details.download_busy ? "ADDING DOWNLOAD…"
             : details.can_launch ? "PLAY"
             : selectedLocal ? "SET UP PLAY"
             : selectedDownloadable ? "DOWNLOAD OPTIONS"
@@ -116,6 +118,7 @@ Item {
                         string platform, bool local, bool downloadable)
     signal detailsRequested(string gameId, int databaseId, string title,
                             string platform, bool local, bool downloadable)
+    signal settingsRequested(string section)
     signal launchRequested()
 
     visible: active
@@ -504,6 +507,25 @@ Item {
                          selectedPlatform, selectedLocal, selectedDownloadable)
     }
 
+    function openDownloadOverlay() {
+        if (!detailsCurrent || details.loading || !selectedDownloadable)
+            return
+        attractOpen = false
+        platformWheelOpen = false
+        collectionWheelOpen = false
+        variantWheelOpen = false
+        overlayOpen = false
+        downloadOverlayOpen = true
+        downloadScreen.resetForGame()
+        forceActiveFocus()
+    }
+
+    function closeDownloadOverlay() {
+        downloadOverlayOpen = false
+        if (active)
+            forceActiveFocus()
+    }
+
     function activateAction(index) {
         if (selectedGameId.length === 0)
             return
@@ -514,9 +536,11 @@ Item {
                     && !details.game_running) {
                 launchStatusOverlayOpen = true
                 launchRequested()
-            }
-            else
+            } else if (selectedDownloadable) {
+                openDownloadOverlay()
+            } else {
                 requestDetails()
+            }
         } else if (index === 1) {
             requestDetails()
         } else if (!favoriteBusy) {
@@ -580,6 +604,12 @@ Item {
 
     function captureLaunchStatus(path, callback) {
         launchStatusOverlay.capture(path, callback)
+    }
+
+    function captureDownload(path, callback) {
+        downloadScreen.grabToImage(function(result) {
+            callback(result.saveToFile(path))
+        })
     }
 
     function closeLaunchStatus() {
@@ -733,6 +763,8 @@ Item {
             }
             return true
         }
+        if (downloadOverlayOpen)
+            return downloadScreen.handleNavigation(action)
         if (platformWheelOpen) {
             if (action === "back") {
                 closePlatformWheel()
@@ -913,6 +945,7 @@ Item {
             collectionWheelOpen = false
             variantWheelOpen = false
             attractOpen = false
+            downloadOverlayOpen = false
             launchStatusOverlayOpen = details.game_running || details.launch_busy
                                       || launchCompletionPending
             if (details.game_running)
@@ -933,12 +966,14 @@ Item {
             collectionWheelOpen = false
             variantWheelOpen = false
             attractOpen = false
+            downloadOverlayOpen = false
             launchStatusOverlayOpen = false
         }
     }
 
     onSelectedGameIdChanged: {
         if (selectedGameId.length === 0 || !detailsCurrent) {
+            downloadOverlayOpen = false
             launchStatusOverlayOpen = false
             launchSessionObserved = false
             launchCompletionPending = false
@@ -1670,6 +1705,7 @@ Item {
         selectedGameId: view.selectedGameId
         active: view.active
         blocked: view.launchStatusOverlayOpen
+                 || view.downloadOverlayOpen
                  || view.platformWheelOpen
                  || view.collectionWheelOpen
                  || view.variantWheelOpen
@@ -2007,6 +2043,36 @@ Item {
                 view.stopAttractMode()
                 view.openOverlay("menu")
             }
+        }
+    }
+
+    CouchDownloadScreen {
+        id: downloadScreen
+        anchors.fill: parent
+        z: 58
+        active: view.downloadOverlayOpen && view.detailsCurrent
+        details: view.details
+        gameTitle: view.selectedTitle
+        platformName: view.selectedPlatform
+        coverUrl: view.coverUrl
+        heroUrl: view.heroUrl
+        backgroundColor: view.background
+        panelColor: view.panel
+        panelRaisedColor: view.panelRaised
+        inkColor: view.ink
+        mutedColor: view.muted
+        accentColor: view.accent
+        accentCoolColor: view.accentCool
+        dangerColor: view.danger
+        cardRadius: view.cardRadius
+        inputHint: view.gamepad.connected_count > 0
+                   ? view.gamepad.button_label("accept") + "  SELECT   ·   "
+                     + view.gamepad.button_label("back") + "  RETURN"
+                   : "ENTER  SELECT   ·   ESC  RETURN"
+        onCloseRequested: view.closeDownloadOverlay()
+        onConfigureRequested: {
+            view.downloadOverlayOpen = false
+            view.settingsRequested("qbittorrent")
         }
     }
 

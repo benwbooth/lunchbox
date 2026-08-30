@@ -71,6 +71,18 @@ pub mod qobject {
         fn invalidate_qbittorrent_test(self: Pin<&mut SettingsModel>);
 
         #[qinvokable]
+        fn managed_native_download_directory(
+            self: &SettingsModel,
+            base_directory: QString,
+        ) -> QString;
+
+        #[qinvokable]
+        fn managed_client_download_directory(
+            self: &SettingsModel,
+            base_directory: QString,
+        ) -> QString;
+
+        #[qinvokable]
         fn clear_password(self: Pin<&mut SettingsModel>);
 
         #[qinvokable]
@@ -731,6 +743,25 @@ impl qobject::SettingsModel {
                 "qBittorrent connection details changed. Test the new values before downloading.",
             ));
         }
+    }
+
+    pub fn managed_native_download_directory(&self, base_directory: QString) -> QString {
+        let base_directory = base_directory.to_string();
+        if base_directory.trim().is_empty() {
+            return QString::default();
+        }
+        qstring(
+            qbittorrent::managed_native_download_path(std::path::Path::new(&base_directory))
+                .to_string_lossy(),
+        )
+    }
+
+    pub fn managed_client_download_directory(&self, base_directory: QString) -> QString {
+        let base_directory = base_directory.to_string();
+        if base_directory.trim().is_empty() {
+            return QString::default();
+        }
+        qstring(qbittorrent::managed_client_save_path(&base_directory))
     }
 
     pub fn clear_password(mut self: Pin<&mut Self>) {

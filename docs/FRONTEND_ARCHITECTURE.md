@@ -156,7 +156,9 @@ The initial implementation enforces this shape:
   base automatically; container or remote clients retain an explicit host-side
   base mapping. Lunchbox appends `lunchbox/roms` to both bases for every managed
   game download, so the default is isolated and identical on Linux, Windows,
-  and macOS without exposing the internal suffix as another setting.
+  and macOS without exposing the internal suffix as another setting. Settings
+  renders both resulting paths as one default managed mapping so the exact
+  qBittorrent and host destinations are visible before a download is queued.
 - The persisted seeding policy either leaves qBittorrent's existing rules alone
   or records a durable `pause_pending` action after successful ingestion. A
   shared torrent is stopped only after none of its selected jobs remains in a
@@ -177,7 +179,16 @@ The initial implementation enforces this shape:
   Redump preservation sets sort before headerless, RetroAchievements,
   FinalBurn Neo, aftermarket, private, and source-code variants. The GET action
   is enabled per ready source while the remaining sources continue in the
-  background.
+  background. A source enters either download UI only after inspection finds at
+  least one matching game member; empty torrents remain model-internal and are
+  never rendered as choices. Desktop groups candidates by preservation source, while Couch
+  Mode exposes one controller-first ranked list. The Couch projection uses
+  Rust-provided flat indices that map back to the exact source and torrent-
+  member index; it never copies candidate identity into QML or re-ranks by
+  display text. Selecting a row runs the same native storage/duplicate
+  preflight and the same guarded queue operation as Desktop Mode. Setup errors
+  route to the qBittorrent settings section, and returning from review preserves
+  the exact Couch selection.
 - Bounded torrent bytes are retained in a validated, URL-keyed OS cache for 24
   hours. The currently inspected torrent also has one decoded file index shared
   by its source views, so a large multi-platform torrent is not downloaded or

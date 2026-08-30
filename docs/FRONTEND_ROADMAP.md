@@ -360,9 +360,13 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   installed/Minerva/catalog-only state, cached-media context, and stable-ID
   routing. The launch action now presents a controller-safe startup/now-playing/
   session-complete surface from the shared launch supervisor, including the
-  exact emulator and actionable Desktop Details/browsing handoffs. Continue
-  with deeper media acquisition controls inside the implemented Details and
-  Game Menu overlays. Cached per-game background music is now native with a
+  exact emulator and actionable Desktop Details/browsing handoffs. Exact
+  Minerva acquisition is now Couch-native: progressively available candidates
+  stay in preservation-source order with the best candidate first, controller
+  review exposes storage/install results, one-time setup routes explicitly, and
+  confirmation queues through the shared Rust service without leaving Couch
+  Mode. Continue with deeper video, manual, and artwork acquisition controls
+  inside the implemented Details and Game Menu overlays. Cached per-game background music is now native with a
   stable-selection delay, launch/picker blocking, now-playing controls, and
   durable enable/volume settings. Continue with startup/shutdown/pause screens, sound packs,
   marquee monitor support, parental lock, and richer couch-safe settings.

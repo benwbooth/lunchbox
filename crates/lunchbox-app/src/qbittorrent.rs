@@ -1210,11 +1210,11 @@ pub(crate) fn client_path_join(root: &str, child: &str) -> String {
     format!("{root}{separator}{child}")
 }
 
-fn managed_native_download_path(root: &Path) -> PathBuf {
+pub(crate) fn managed_native_download_path(root: &Path) -> PathBuf {
     root.join("lunchbox").join("roms")
 }
 
-fn managed_client_save_path(root: &str) -> String {
+pub(crate) fn managed_client_save_path(root: &str) -> String {
     client_path_join(&client_path_join(root, "lunchbox"), "roms")
 }
 
@@ -1761,6 +1761,10 @@ mod tests {
         assert_eq!(
             managed_client_save_path(r"D:\Downloads\"),
             r"D:\Downloads\lunchbox\roms"
+        );
+        assert_eq!(
+            managed_native_download_path(Path::new("/native/downloads")),
+            PathBuf::from("/native/downloads/lunchbox/roms")
         );
     }
 
