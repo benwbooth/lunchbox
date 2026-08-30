@@ -66,6 +66,7 @@ fn main() {
                 "qml/FirstRunSetup.qml",
                 "qml/HeaderButton.qml",
                 "qml/MetadataField.qml",
+                "qml/MediaDownloadStatus.qml",
                 "qml/SidebarNavButton.qml",
                 "qml/SettingsNavButton.qml",
                 "qml/StatusPill.qml",

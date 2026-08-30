@@ -78,6 +78,23 @@ pub struct AppSettings {
     pub controller_mapping: ControllerMappingSettings,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QbittorrentConnectionTest {
+    pub endpoint: String,
+    pub username: String,
+    pub version: String,
+    pub credentials_required: bool,
+    pub tested_at: i64,
+}
+
+impl QbittorrentConnectionTest {
+    pub fn matches(&self, settings: &AppSettings, password_saved: bool) -> bool {
+        self.endpoint == settings.qbittorrent_base_url()
+            && self.username == settings.qbittorrent_username.trim()
+            && (!self.credentials_required || password_saved)
+    }
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -1159,6 +1176,66 @@ impl SettingsStore {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn qbittorrent_connection_test(&self) -> Result<Option<QbittorrentConnectionTest>> {
+        self.connection()?
+            .query_row(
+                "SELECT endpoint, username, version, credentials_required, tested_at
+                 FROM service_connection_tests WHERE service_id='qbittorrent'",
+                [],
+                |row| {
+                    Ok(QbittorrentConnectionTest {
+                        endpoint: row.get(0)?,
+                        username: row.get(1)?,
+                        version: row.get(2)?,
+                        credentials_required: row.get(3)?,
+                        tested_at: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+            .context("loading the last successful qBittorrent connection test")
+    }
+
+    pub fn save_qbittorrent_connection_test(
+        &self,
+        settings: &AppSettings,
+        version: &str,
+        credentials_required: bool,
+    ) -> Result<()> {
+        let version = version.trim();
+        if version.is_empty() || version.chars().count() > 128 {
+            bail!("qBittorrent returned an invalid version string");
+        }
+        self.connection()?.execute(
+            "INSERT INTO service_connection_tests (
+                 service_id, endpoint, username, version,
+                 credentials_required, tested_at
+             ) VALUES ('qbittorrent', ?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(service_id) DO UPDATE SET
+                 endpoint=excluded.endpoint,
+                 username=excluded.username,
+                 version=excluded.version,
+                 credentials_required=excluded.credentials_required,
+                 tested_at=excluded.tested_at",
+            params![
+                settings.qbittorrent_base_url(),
+                settings.qbittorrent_username.trim(),
+                version,
+                credentials_required,
+                unix_timestamp(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_qbittorrent_connection_test(&self) -> Result<()> {
+        self.connection()?.execute(
+            "DELETE FROM service_connection_tests WHERE service_id='qbittorrent'",
+            [],
+        )?;
+        Ok(())
     }
 
     pub fn media_provider_game_link(
@@ -4212,6 +4289,14 @@ fn migrate(connection: &Connection) -> Result<()> {
              ON media_transfers(provider, remote_job_id, state);
          CREATE INDEX IF NOT EXISTS media_transfers_updated
              ON media_transfers(updated_at DESC, game_uid);
+         CREATE TABLE IF NOT EXISTS service_connection_tests (
+             service_id TEXT PRIMARY KEY CHECK (service_id IN ('qbittorrent')),
+             endpoint TEXT NOT NULL CHECK (length(endpoint) BETWEEN 1 AND 2048),
+             username TEXT NOT NULL CHECK (length(username) <= 512),
+             version TEXT NOT NULL CHECK (length(version) BETWEEN 1 AND 128),
+             credentials_required INTEGER NOT NULL CHECK (credentials_required IN (0, 1)),
+             tested_at INTEGER NOT NULL CHECK (tested_at >= 0)
+         );
          CREATE TABLE IF NOT EXISTS user_collections (
              id TEXT PRIMARY KEY,
              name TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -5596,6 +5681,36 @@ mod tests {
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
         assert!(!columns.iter().any(|column| column.contains("password")));
+    }
+
+    #[test]
+    fn qbittorrent_test_is_durable_and_scoped_to_the_exact_connection() {
+        let (_directory, store) = store();
+        let settings = AppSettings {
+            qbittorrent_host: "downloads.local".into(),
+            qbittorrent_port: 9443,
+            qbittorrent_use_https: true,
+            qbittorrent_username: "lunchbox".into(),
+            ..AppSettings::default()
+        };
+
+        assert!(store.qbittorrent_connection_test().unwrap().is_none());
+        store
+            .save_qbittorrent_connection_test(&settings, "5.0.4", true)
+            .unwrap();
+        let tested = store.qbittorrent_connection_test().unwrap().unwrap();
+        assert_eq!(tested.version, "5.0.4");
+        assert!(tested.matches(&settings, true));
+        assert!(!tested.matches(&settings, false));
+
+        let changed_endpoint = AppSettings {
+            qbittorrent_port: 8080,
+            ..settings.clone()
+        };
+        assert!(!tested.matches(&changed_endpoint, true));
+
+        store.clear_qbittorrent_connection_test().unwrap();
+        assert!(store.qbittorrent_connection_test().unwrap().is_none());
     }
 
     #[test]

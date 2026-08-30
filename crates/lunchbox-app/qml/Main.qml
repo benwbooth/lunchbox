@@ -1212,7 +1212,7 @@ ApplicationWindow {
 
     Timer {
         id: hoverPreviewDelay
-        interval: 520
+        interval: 220
         repeat: false
         onTriggered: {
             if (!root.hoverPreviewTile
@@ -1660,6 +1660,17 @@ ApplicationWindow {
         function onArtwork_countChanged() {
             if (root.steamGridDbUiProbe && steamGridDb.artwork_count > 0)
                 steamGridDbScreenshotTimer.restart()
+        }
+    }
+
+    Connections {
+        target: emuMovies
+        function onCredentials_savedChanged() {
+            library.set_emumovies_configured(emuMovies.credentials_saved)
+        }
+        function onInitializedChanged() {
+            if (emuMovies.initialized)
+                library.set_emumovies_configured(emuMovies.credentials_saved)
         }
     }
 
@@ -6721,7 +6732,7 @@ ApplicationWindow {
     component GameGrid: GridView {
         id: grid
         reuseItems: true
-        clip: true
+        clip: false
         cacheBuffer: height
         keyNavigationEnabled: true
         activeFocusOnTab: true
@@ -6744,6 +6755,7 @@ ApplicationWindow {
             required property bool gameLocal
             required property bool gameDownloadable
             required property int gameDatabaseId
+            required property string gameVariants
             property var previewVideoOutput: tileVideoOutput
             readonly property bool previewRequested: root.hoverPreviewTile === tile
                                                      && root.hoverPreviewPendingGameId === gameId
@@ -6772,9 +6784,10 @@ ApplicationWindow {
                 mediaRevision
                 return library.artwork_source(gameDatabaseId, library.artwork_type)
             }
-            function requestVisibleArtwork() {
+            function requestVisibleMedia() {
                 library.request_artwork(gameDatabaseId, gameCanonicalTitle,
                                         gamePlatform, requestedArtworkType)
+                library.request_visible_media(gameId)
             }
             function updatePreviewInterest() {
                 if (cardHover.hovered || activeFocus) {
@@ -6809,27 +6822,27 @@ ApplicationWindow {
                                                   gameId, true)
             }
             Component.onCompleted: {
-                requestVisibleArtwork()
+                requestVisibleMedia()
                 runFavoriteProbe()
                 runCollectionProbe()
             }
             Component.onDestruction: root.disarmGridPreview(tile)
             onGameIdChanged: {
                 root.disarmGridPreview(tile)
-                requestVisibleArtwork()
+                requestVisibleMedia()
             }
-            onGameDatabaseIdChanged: requestVisibleArtwork()
-            onGameTitleChanged: requestVisibleArtwork()
-            onGameCanonicalTitleChanged: requestVisibleArtwork()
-            onGamePlatformChanged: requestVisibleArtwork()
-            onMediaRevisionChanged: requestVisibleArtwork()
-            onRequestedArtworkTypeChanged: requestVisibleArtwork()
+            onGameDatabaseIdChanged: requestVisibleMedia()
+            onGameTitleChanged: requestVisibleMedia()
+            onGameCanonicalTitleChanged: requestVisibleMedia()
+            onGamePlatformChanged: requestVisibleMedia()
+            onMediaRevisionChanged: requestVisibleMedia()
+            onRequestedArtworkTypeChanged: requestVisibleMedia()
             onFavoriteProbeReadyChanged: runFavoriteProbe()
             onCollectionProbeReadyChanged: runCollectionProbe()
             onActiveFocusChanged: updatePreviewInterest()
             width: grid.cellWidth
             height: grid.cellHeight
-            z: previewActive ? 20 : 0
+            z: cardHover.hovered || previewRequested ? 100 : 0
             activeFocusOnTab: true
 
             TapHandler {
@@ -6865,8 +6878,9 @@ ApplicationWindow {
                               : cardHover.hovered ? "#3a485d" : root.line
                 border.width: tile.previewActive || tile.activeFocus
                               || root.selectedGameId === tile.gameId ? 2 : 1
-                scale: tile.previewActive ? 1.045 : cardHover.hovered ? 1.012 : 1
-                Behavior on scale { NumberAnimation { duration: 120 } }
+                transformOrigin: Item.Center
+                scale: cardHover.hovered || tile.previewRequested ? 2 : 1
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
                 Rectangle {
                     id: artwork
@@ -7096,16 +7110,43 @@ ApplicationWindow {
                     elide: Text.ElideRight
                 }
                 Text {
+                    id: gridPlatformLabel
                     anchors.left: parent.left
-                    anchors.right: parent.right
+                    anchors.right: editionBadge.left
                     anchors.leftMargin: 12
-                    anchors.rightMargin: 12
+                    anchors.rightMargin: 6
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 9
                     text: tile.gamePlatform.length > 0 ? tile.gamePlatform : "Unassigned platform"
                     color: root.muted
                     font.pixelSize: 11
                     elide: Text.ElideRight
+                    ToolTip.visible: cardHover.hovered
+                    ToolTip.text: text
+                }
+                Rectangle {
+                    id: editionBadge
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 7
+                    width: editionBadgeText.implicitWidth + 10
+                    height: 19
+                    radius: 6
+                    visible: Number(tile.gameVariants) > 1
+                    color: "#253243"
+                    border.color: root.line
+                    Text {
+                        id: editionBadgeText
+                        anchors.centerIn: parent
+                        text: tile.gameVariants + " editions"
+                        color: root.accentCool
+                        font.pixelSize: 8
+                        font.weight: Font.DemiBold
+                    }
+                    HoverHandler { id: editionBadgeHover }
+                    ToolTip.visible: editionBadgeHover.hovered
+                    ToolTip.text: "Open details to choose a regional or revision edition"
                 }
             }
             HoverHandler {
@@ -7285,9 +7326,10 @@ ApplicationWindow {
                 mediaRevision
                 return library.artwork_url(gameDatabaseId, library.artwork_type)
             }
-            function requestVisibleArtwork() {
+            function requestVisibleMedia() {
                 library.request_artwork(gameDatabaseId, gameCanonicalTitle,
                                         gamePlatform, requestedArtworkType)
+                library.request_visible_media(gameId)
             }
             function columnValue(key) {
                 switch (key) {
@@ -7322,13 +7364,14 @@ ApplicationWindow {
                 return gameLocal ? root.accentCool
                        : gameDownloadable ? root.accent : root.muted
             }
-            Component.onCompleted: requestVisibleArtwork()
-            onGameDatabaseIdChanged: requestVisibleArtwork()
-            onGameTitleChanged: requestVisibleArtwork()
-            onGameCanonicalTitleChanged: requestVisibleArtwork()
-            onGamePlatformChanged: requestVisibleArtwork()
-            onMediaRevisionChanged: requestVisibleArtwork()
-            onRequestedArtworkTypeChanged: requestVisibleArtwork()
+            Component.onCompleted: requestVisibleMedia()
+            onGameIdChanged: requestVisibleMedia()
+            onGameDatabaseIdChanged: requestVisibleMedia()
+            onGameTitleChanged: requestVisibleMedia()
+            onGameCanonicalTitleChanged: requestVisibleMedia()
+            onGamePlatformChanged: requestVisibleMedia()
+            onMediaRevisionChanged: requestVisibleMedia()
+            onRequestedArtworkTypeChanged: requestVisibleMedia()
             width: Math.max(list.width - 8, list.tableWidth)
             height: 54
             radius: 0
@@ -7867,7 +7910,7 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: platformSearchBox.bottom
-            anchors.bottom: parent.bottom
+            anchors.bottom: mediaDownloadStatus.top
             anchors.margins: 13
             anchors.topMargin: 8
             clip: true
@@ -7891,6 +7934,21 @@ ApplicationWindow {
                     root.scheduleFilter()
                 }
             }
+        }
+
+        MediaDownloadStatus {
+            id: mediaDownloadStatus
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 13
+            libraryModel: library
+            ink: root.ink
+            muted: root.muted
+            accent: root.accent
+            accentCool: root.accentCool
+            line: root.line
+            onConfigureRequested: root.openSettingsFor("emumovies")
         }
 
         Column {
@@ -7968,6 +8026,7 @@ ApplicationWindow {
         anchors.right: detailsPane.left
         anchors.top: header.bottom
         anchors.bottom: statusBar.top
+        clip: true
 
         ColumnLayout {
             anchors.fill: parent
@@ -16954,7 +17013,10 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         placeholderText: "Host"
                         text: appSettings.qbittorrent_host
-                        onTextEdited: appSettings.qbittorrent_host = text
+                        onTextEdited: {
+                            appSettings.qbittorrent_host = text
+                            appSettings.invalidate_qbittorrent_test()
+                        }
                     }
                     SpinBox {
                         Layout.preferredWidth: 125
@@ -16962,12 +17024,18 @@ ApplicationWindow {
                         to: 65535
                         editable: true
                         value: appSettings.qbittorrent_port
-                        onValueModified: appSettings.qbittorrent_port = value
+                        onValueModified: {
+                            appSettings.qbittorrent_port = value
+                            appSettings.invalidate_qbittorrent_test()
+                        }
                     }
                     Switch {
                         text: "HTTPS"
                         checked: appSettings.qbittorrent_use_https
-                        onToggled: appSettings.qbittorrent_use_https = checked
+                        onToggled: {
+                            appSettings.qbittorrent_use_https = checked
+                            appSettings.invalidate_qbittorrent_test()
+                        }
                     }
                 }
                 RowLayout {
@@ -16977,14 +17045,20 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         placeholderText: "Username"
                         text: appSettings.qbittorrent_username
-                        onTextEdited: appSettings.qbittorrent_username = text
+                        onTextEdited: {
+                            appSettings.qbittorrent_username = text
+                            appSettings.invalidate_qbittorrent_test()
+                        }
                     }
                     TextField {
                         Layout.fillWidth: true
                         placeholderText: appSettings.password_saved ? "Saved password (leave blank to keep)" : "Password"
                         echoMode: TextInput.Password
                         text: appSettings.qbittorrent_password
-                        onTextEdited: appSettings.qbittorrent_password = text
+                        onTextEdited: {
+                            appSettings.qbittorrent_password = text
+                            appSettings.invalidate_qbittorrent_test()
+                        }
                     }
                     Button {
                         visible: appSettings.password_saved

@@ -251,6 +251,19 @@ fn execute_download(request: DownloadRequest) -> Result<(PathBuf, &'static str)>
     }
 }
 
+pub(crate) fn download_saved_video(
+    game_id: &str,
+    database_id: i64,
+    title: &str,
+    platform: &str,
+    progress: Option<crate::emumovies::ProgressCallback>,
+) -> Result<PathBuf> {
+    let (username, password) = effective_credentials(String::new(), String::new())?;
+    let client = client(username, password);
+    let game_directory = crate::media::game_media_directory(game_id, database_id)?;
+    client.get_video(platform, title, &game_directory, progress.as_ref())
+}
+
 impl qobject::EmuMoviesModel {
     pub fn initialize(mut self: Pin<&mut Self>) {
         if *self.as_ref().initialized() || *self.as_ref().busy() {

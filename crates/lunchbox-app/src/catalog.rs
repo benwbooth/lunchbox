@@ -273,6 +273,9 @@ pub fn load_preview(path: &Path) -> Result<Option<CatalogPreview>> {
         games.push(game.clone());
         list_metadata.push_empty();
     }
+    let mut list_metadata = list_metadata.finish();
+    apply_variant_counts(&games, &mut list_metadata);
+    collapse_release_families(&mut games, &mut list_metadata);
 
     let canonical_aliases = canonical_platform_aliases(&canonical)?;
     let mut platform_statement = discovery.prepare(
@@ -315,12 +318,13 @@ pub fn load_preview(path: &Path) -> Result<Option<CatalogPreview>> {
             .cmp(&right.name.to_lowercase())
             .then_with(|| left.name.cmp(&right.name))
     });
+    apply_grouped_platform_counts(&games, &mut platforms);
 
     Ok(Some(CatalogPreview {
         catalog: Catalog {
             games,
             platforms,
-            list_metadata: list_metadata.finish(),
+            list_metadata,
             local_file_count: installed.file_count,
             offer_count: minerva.offer_count,
             emulator_count: count(&canonical, "emulators", "1")?,
@@ -411,7 +415,7 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
             cooperative: "unknown".to_owned(),
         })
     })?;
-    let games = game_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut games = game_rows.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut list_metadata = ListMetadataBuilder::with_capacity(games.len());
     for _ in &games {
         list_metadata.push_empty();
@@ -450,12 +454,16 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
             game_count: row.get(1)?,
         })
     })?;
-    let platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut list_metadata = list_metadata.finish();
+    apply_variant_counts(&games, &mut list_metadata);
+    collapse_release_families(&mut games, &mut list_metadata);
+    apply_grouped_platform_counts(&games, &mut platforms);
 
     Ok(Catalog {
         games,
         platforms,
-        list_metadata: list_metadata.finish(),
+        list_metadata,
         local_file_count: count(connection, "local_files", "availability = 'present'")?,
         offer_count: count(
             connection,
@@ -601,6 +609,7 @@ fn load_discovery_catalog(
     }
     let mut list_metadata = list_metadata.finish();
     apply_variant_counts(&games, &mut list_metadata);
+    collapse_release_families(&mut games, &mut list_metadata);
 
     let canonical_aliases = canonical_platform_aliases(canonical)?;
     let mut platform_statement = discovery.prepare(
@@ -643,6 +652,7 @@ fn load_discovery_catalog(
             .cmp(&right.name.to_lowercase())
             .then_with(|| left.name.cmp(&right.name))
     });
+    apply_grouped_platform_counts(&games, &mut platforms);
 
     Ok(Catalog {
         games,
@@ -790,18 +800,97 @@ fn optional_game_column(connection: &Connection, column: &str) -> Result<&'stati
 }
 
 fn apply_variant_counts(games: &[Game], metadata: &mut ListMetadata) {
-    let mut counts = HashMap::<String, usize>::new();
+    let mut titles = HashMap::<String, HashSet<String>>::new();
     for game in games {
         let base = crate::game_details::catalog_release_base(&game.title)
             .unwrap_or_else(|| game.title.trim().to_owned());
         let key = format!("{}\0{}", game.platform.to_lowercase(), base.to_lowercase());
-        *counts.entry(key).or_default() += 1;
+        titles
+            .entry(key)
+            .or_default()
+            .insert(game.title.trim().to_lowercase());
     }
     for (index, game) in games.iter().enumerate() {
         let base = crate::game_details::catalog_release_base(&game.title)
             .unwrap_or_else(|| game.title.trim().to_owned());
         let key = format!("{}\0{}", game.platform.to_lowercase(), base.to_lowercase());
-        metadata.set_variant_count(index, counts.get(&key).copied().unwrap_or(1));
+        metadata.set_variant_count(index, titles.get(&key).map(HashSet::len).unwrap_or(1));
+    }
+}
+
+fn collapse_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata) {
+    let mut family_order = Vec::<String>::new();
+    let mut family_members = HashMap::<String, Vec<usize>>::new();
+    for (index, game) in games.iter().enumerate() {
+        let base = crate::game_details::catalog_release_base(&game.title)
+            .unwrap_or_else(|| game.title.trim().to_owned());
+        let key = format!("{}\0{}", game.platform.to_lowercase(), base.to_lowercase());
+        if !family_members.contains_key(&key) {
+            family_order.push(key.clone());
+        }
+        family_members.entry(key).or_default().push(index);
+    }
+
+    let mut retained = Vec::with_capacity(family_order.len());
+    let mut collapsed = Vec::with_capacity(family_order.len());
+    for key in family_order {
+        let Some(members) = family_members.get(&key) else {
+            continue;
+        };
+        let representative = members
+            .iter()
+            .copied()
+            .min_by(|left, right| {
+                representative_rank(&games[*left]).cmp(&representative_rank(&games[*right]))
+            })
+            .unwrap_or(members[0]);
+        let mut game = games[representative].clone();
+        game.local = members.iter().any(|index| games[*index].local);
+        game.downloadable = members.iter().any(|index| games[*index].downloadable);
+        game.non_retail = members.iter().all(|index| games[*index].non_retail);
+        game.adult = members.iter().any(|index| games[*index].adult);
+        if members
+            .iter()
+            .any(|index| games[*index].cooperative == "yes")
+        {
+            game.cooperative = "yes".to_owned();
+        }
+        for index in members {
+            let title = games[*index].title.to_lowercase();
+            if !game.search_key.contains(&title) {
+                game.search_key.push('\n');
+                game.search_key.push_str(&title);
+            }
+        }
+        retained.push(representative);
+        collapsed.push(game);
+    }
+    metadata.retain_rows(&retained);
+    *games = collapsed;
+}
+
+fn representative_rank(game: &Game) -> (u8, u8, u8, String, String) {
+    let base = crate::game_details::catalog_release_base(&game.title)
+        .unwrap_or_else(|| game.title.trim().to_owned());
+    (
+        u8::from(!game.local),
+        u8::from(!game.title.trim().eq_ignore_ascii_case(base.trim())),
+        u8::from(game.launchbox_db_id <= 0),
+        game.title.to_lowercase(),
+        game.id.clone(),
+    )
+}
+
+fn apply_grouped_platform_counts(games: &[Game], platforms: &mut [Platform]) {
+    let mut counts = HashMap::<String, usize>::new();
+    for game in games {
+        *counts.entry(game.platform.to_lowercase()).or_default() += 1;
+    }
+    for platform in platforms {
+        platform.game_count = counts
+            .get(&platform.name.to_lowercase())
+            .copied()
+            .unwrap_or_default();
     }
 }
 
@@ -1956,5 +2045,99 @@ mod tests {
         assert_eq!(installed.local_only_games.len(), 1);
         assert_eq!(installed.local_only_games[0].title, "Unknown");
         assert_eq!(installed.local_only_games[0].status, "local-only");
+    }
+
+    #[test]
+    fn regional_and_revision_records_collapse_to_one_exact_release_family_card() {
+        fn game(id: &str, title: &str, platform: &str, database_id: i64, local: bool) -> Game {
+            Game {
+                id: id.into(),
+                launchbox_db_id: database_id,
+                title: title.into(),
+                platform: platform.into(),
+                status: "Released".into(),
+                local,
+                downloadable: !local,
+                non_retail: false,
+                adult: false,
+                cooperative: "unknown".into(),
+                search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+            }
+        }
+
+        let mut games = vec![
+            game(
+                "canonical",
+                "Faxanadu",
+                "Nintendo Entertainment System",
+                1283,
+                false,
+            ),
+            game(
+                "europe-a",
+                "Faxanadu (Europe)",
+                "Nintendo Entertainment System",
+                0,
+                false,
+            ),
+            game(
+                "europe-b",
+                "Faxanadu (Europe)",
+                "Nintendo Entertainment System",
+                0,
+                false,
+            ),
+            game(
+                "usa-rev",
+                "Faxanadu (USA) (Rev 1)",
+                "Nintendo Entertainment System",
+                0,
+                false,
+            ),
+            game(
+                "different",
+                "Faxanadu: Revisioned",
+                "Nintendo Entertainment System",
+                462550,
+                false,
+            ),
+            game(
+                "wii",
+                "Faxanadu (Europe) (NES) (Virtual Console)",
+                "Nintendo Wii",
+                0,
+                false,
+            ),
+        ];
+        let mut builder = ListMetadataBuilder::with_capacity(games.len());
+        for _ in &games {
+            builder.push_empty();
+        }
+        let mut metadata = builder.finish();
+        apply_variant_counts(&games, &mut metadata);
+        collapse_release_families(&mut games, &mut metadata);
+
+        assert_eq!(games.len(), 3);
+        let faxanadu = games
+            .iter()
+            .position(|game| game.title == "Faxanadu")
+            .expect("canonical Faxanadu family card");
+        assert_eq!(games[faxanadu].launchbox_db_id, 1283);
+        assert!(games[faxanadu].search_key.contains("faxanadu (europe)"));
+        assert_eq!(
+            metadata.display_value(
+                faxanadu,
+                &games[faxanadu],
+                ListColumn::Variants,
+                &HashMap::new(),
+            ),
+            "3"
+        );
+        assert!(
+            games
+                .iter()
+                .any(|game| game.title == "Faxanadu: Revisioned")
+        );
+        assert!(games.iter().any(|game| game.platform == "Nintendo Wii"));
     }
 }

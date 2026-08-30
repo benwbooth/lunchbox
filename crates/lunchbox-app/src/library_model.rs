@@ -54,6 +54,10 @@ pub mod qobject {
         #[qproperty(bool, media_loading)]
         #[qproperty(bool, media_retrieval_enabled)]
         #[qproperty(QString, media_fetch_message)]
+        #[qproperty(QString, media_active_title)]
+        #[qproperty(QString, media_active_kind)]
+        #[qproperty(i32, media_active_progress)]
+        #[qproperty(bool, media_setup_required)]
         #[qproperty(QString, favorite_message)]
         #[qproperty(QString, collection_message)]
         #[qproperty(bool, startup_probe)]
@@ -306,6 +310,12 @@ pub mod qobject {
             platform: QString,
             artwork_type: QString,
         );
+
+        #[qinvokable]
+        fn request_visible_media(self: Pin<&mut LibraryModel>, game_uid: QString);
+
+        #[qinvokable]
+        fn set_emumovies_configured(self: Pin<&mut LibraryModel>, configured: bool);
 
         #[qinvokable]
         fn redownload_artwork(
@@ -567,7 +577,7 @@ pub mod qobject {
     impl cxx_qt::Threading for LibraryModel {}
 }
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -625,6 +635,19 @@ enum CollectionMutation {
         message: String,
     },
     Message(String),
+}
+
+#[derive(Clone, Debug)]
+struct AutomaticVideoRequest {
+    game_uid: String,
+    database_id: i64,
+    title: String,
+    platform: String,
+}
+
+enum AutomaticVideoOutcome {
+    Ready { path: PathBuf, downloaded: bool },
+    Missing(String),
 }
 
 struct CouchThemeUpdate {
@@ -760,6 +783,10 @@ pub struct LibraryModelRust {
     media_loading: bool,
     media_retrieval_enabled: bool,
     media_fetch_message: QString,
+    media_active_title: QString,
+    media_active_kind: QString,
+    media_active_progress: i32,
+    media_setup_required: bool,
     favorite_message: QString,
     collection_message: QString,
     startup_probe: bool,
@@ -856,6 +883,11 @@ pub struct LibraryModelRust {
     media_fetch_started: Option<std::time::Instant>,
     media_fetch_queue: Option<MediaFetchQueue>,
     media_requests: HashSet<(i64, ArtworkKind)>,
+    emumovies_configured: bool,
+    automatic_video_queue: VecDeque<AutomaticVideoRequest>,
+    automatic_video_pending: HashSet<String>,
+    automatic_video_terminal: HashSet<String>,
+    automatic_video_active: Option<AutomaticVideoRequest>,
     favorite_game_ids: Arc<HashSet<String>>,
     favorite_requests: HashSet<String>,
     favorite_started: Option<std::time::Instant>,
@@ -936,6 +968,10 @@ impl Default for LibraryModelRust {
             media_fetch_message: QString::from(
                 "Artwork is cached on demand as games enter the visible library.",
             ),
+            media_active_title: QString::default(),
+            media_active_kind: QString::default(),
+            media_active_progress: -1,
+            media_setup_required: false,
             favorite_message: QString::from("Favorites are stored in your local profile."),
             collection_message: QString::from(
                 "Create playlists and collections without changing game identity.",
@@ -1041,6 +1077,11 @@ impl Default for LibraryModelRust {
             media_fetch_started: None,
             media_fetch_queue: None,
             media_requests: HashSet::new(),
+            emumovies_configured: false,
+            automatic_video_queue: VecDeque::new(),
+            automatic_video_pending: HashSet::new(),
+            automatic_video_terminal: HashSet::new(),
+            automatic_video_active: None,
             favorite_game_ids: Arc::new(HashSet::new()),
             favorite_requests: HashSet::new(),
             favorite_started: None,
@@ -1160,6 +1201,36 @@ fn build_active_collection_summary(
 
 fn saturating_i32(value: usize) -> i32 {
     i32::try_from(value).unwrap_or(i32::MAX)
+}
+
+fn fetch_automatic_video(
+    request: &AutomaticVideoRequest,
+    progress: crate::emumovies::ProgressCallback,
+) -> AutomaticVideoOutcome {
+    match crate::media::supplemental_media(&request.game_uid, request.database_id) {
+        Ok(media) => {
+            if let Some(video) = media.video {
+                return AutomaticVideoOutcome::Ready {
+                    path: video.path,
+                    downloaded: false,
+                };
+            }
+        }
+        Err(error) => return AutomaticVideoOutcome::Missing(error.to_string()),
+    }
+    match crate::emumovies_model::download_saved_video(
+        &request.game_uid,
+        request.database_id,
+        &request.title,
+        &request.platform,
+        Some(progress),
+    ) {
+        Ok(path) => AutomaticVideoOutcome::Ready {
+            path,
+            downloaded: true,
+        },
+        Err(error) => AutomaticVideoOutcome::Missing(error.to_string()),
+    }
 }
 
 fn collection_at(model: &qobject::LibraryModel, index: i32) -> Option<&UserCollection> {
@@ -2818,6 +2889,276 @@ impl qobject::LibraryModel {
             .queue_artwork_request(launchbox_db_id, title, platform, artwork_type, false);
     }
 
+    pub fn set_emumovies_configured(mut self: Pin<&mut Self>, configured: bool) {
+        if self.as_ref().rust().emumovies_configured == configured {
+            return;
+        }
+        self.as_mut().rust_mut().emumovies_configured = configured;
+        if configured {
+            self.as_mut().rust_mut().automatic_video_terminal.clear();
+            self.as_mut().set_media_setup_required(false);
+            self.as_mut().set_media_fetch_message(qstring(
+                "Visible artwork and gameplay videos download automatically.",
+            ));
+            let revision = self.as_ref().media_revision().wrapping_add(1);
+            self.as_mut().set_media_revision(revision);
+            self.as_mut().start_next_automatic_video();
+        } else {
+            while let Some(request) = self.as_mut().rust_mut().automatic_video_queue.pop_front() {
+                self.as_mut()
+                    .rust_mut()
+                    .automatic_video_pending
+                    .remove(&request.game_uid);
+            }
+            self.as_mut().update_media_pending_count();
+        }
+    }
+
+    pub fn request_visible_media(mut self: Pin<&mut Self>, game_uid: QString) {
+        const MAX_QUEUED_VISIBLE_VIDEOS: usize = 48;
+
+        let game_uid = game_uid.to_string();
+        if game_uid.trim().is_empty()
+            || self
+                .as_ref()
+                .rust()
+                .automatic_video_pending
+                .contains(&game_uid)
+            || self
+                .as_ref()
+                .rust()
+                .automatic_video_terminal
+                .contains(&game_uid)
+        {
+            return;
+        }
+        let Some(game_index) = self
+            .as_ref()
+            .rust()
+            .game_index_by_id
+            .get(&game_uid)
+            .copied()
+        else {
+            return;
+        };
+        let Some(game) = self.as_ref().rust().catalog.games.get(game_index).cloned() else {
+            return;
+        };
+        if game.title.trim().is_empty() || game.platform.trim().is_empty() {
+            return;
+        }
+        while self.as_ref().rust().automatic_video_queue.len() >= MAX_QUEUED_VISIBLE_VIDEOS {
+            if let Some(expired) = self.as_mut().rust_mut().automatic_video_queue.pop_front() {
+                self.as_mut()
+                    .rust_mut()
+                    .automatic_video_pending
+                    .remove(&expired.game_uid);
+            }
+        }
+        self.as_mut()
+            .rust_mut()
+            .automatic_video_pending
+            .insert(game_uid.clone());
+        self.as_mut()
+            .rust_mut()
+            .automatic_video_queue
+            .push_back(AutomaticVideoRequest {
+                game_uid,
+                database_id: game.launchbox_db_id,
+                title: game.title,
+                platform: game.platform,
+            });
+        self.as_mut().update_media_pending_count();
+        self.as_mut().start_next_automatic_video();
+    }
+
+    fn start_next_automatic_video(mut self: Pin<&mut Self>) {
+        if self.as_ref().rust().automatic_video_active.is_some() {
+            return;
+        }
+        let Some(request) = self.as_mut().rust_mut().automatic_video_queue.pop_front() else {
+            self.as_mut().set_media_active_title(QString::default());
+            self.as_mut().set_media_active_kind(QString::default());
+            self.as_mut().set_media_active_progress(-1);
+            self.as_mut().update_media_pending_count();
+            return;
+        };
+        self.as_mut().rust_mut().automatic_video_active = Some(request.clone());
+        self.as_mut()
+            .set_media_active_title(qstring(&request.title));
+        self.as_mut()
+            .set_media_active_kind(qstring("gameplay video"));
+        self.as_mut().set_media_active_progress(-1);
+        self.as_mut().set_media_fetch_message(qstring(format!(
+            "Finding gameplay video for {}…",
+            request.title
+        )));
+        self.as_mut().update_media_pending_count();
+
+        let qt_thread = self.as_ref().qt_thread();
+        let progress_thread = qt_thread.clone();
+        let progress_game_uid = request.game_uid.clone();
+        let progress_state = Arc::new(std::sync::Mutex::new((
+            std::time::Instant::now() - std::time::Duration::from_secs(1),
+            -1_i32,
+        )));
+        let progress_state_for_worker = Arc::clone(&progress_state);
+        let progress: crate::emumovies::ProgressCallback = Box::new(move |value| {
+            let percent = (value * 100.0).round().clamp(0.0, 100.0) as i32;
+            let Ok(mut state) = progress_state_for_worker.lock() else {
+                return;
+            };
+            if percent != 100
+                && percent == state.1
+                && state.0.elapsed() < std::time::Duration::from_millis(120)
+            {
+                return;
+            }
+            if percent != 100 && state.0.elapsed() < std::time::Duration::from_millis(120) {
+                return;
+            }
+            state.0 = std::time::Instant::now();
+            state.1 = percent;
+            let game_uid = progress_game_uid.clone();
+            let _ = progress_thread.queue(move |mut model| {
+                model
+                    .as_mut()
+                    .update_automatic_video_progress(game_uid, percent);
+            });
+        });
+        let request_for_worker = request.clone();
+        let request_for_completion = request.clone();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-visible-video".into())
+            .spawn(move || {
+                let outcome = fetch_automatic_video(&request_for_worker, progress);
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_automatic_video(request_for_completion, outcome);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().finish_automatic_video(
+                request,
+                AutomaticVideoOutcome::Missing(format!(
+                    "Could not start the gameplay-video worker: {error}"
+                )),
+            );
+        }
+    }
+
+    fn update_automatic_video_progress(mut self: Pin<&mut Self>, game_uid: String, percent: i32) {
+        if self
+            .as_ref()
+            .rust()
+            .automatic_video_active
+            .as_ref()
+            .is_some_and(|request| request.game_uid == game_uid)
+        {
+            self.as_mut()
+                .set_media_active_progress(percent.clamp(0, 100));
+        }
+    }
+
+    fn finish_automatic_video(
+        mut self: Pin<&mut Self>,
+        request: AutomaticVideoRequest,
+        outcome: AutomaticVideoOutcome,
+    ) {
+        if !self
+            .as_ref()
+            .rust()
+            .automatic_video_active
+            .as_ref()
+            .is_some_and(|active| active.game_uid == request.game_uid)
+        {
+            return;
+        }
+        self.as_mut().rust_mut().automatic_video_active = None;
+        self.as_mut()
+            .rust_mut()
+            .automatic_video_pending
+            .remove(&request.game_uid);
+        self.as_mut()
+            .rust_mut()
+            .automatic_video_terminal
+            .insert(request.game_uid.clone());
+        self.as_mut().set_media_active_title(QString::default());
+        self.as_mut().set_media_active_kind(QString::default());
+        self.as_mut().set_media_active_progress(-1);
+
+        match outcome {
+            AutomaticVideoOutcome::Ready { path, downloaded } => {
+                if downloaded {
+                    let count = self.as_ref().media_downloaded_count().saturating_add(1);
+                    self.as_mut().set_media_downloaded_count(count);
+                }
+                self.as_mut().set_media_fetch_message(qstring(format!(
+                    "{} gameplay video for {}.",
+                    if downloaded { "Downloaded" } else { "Cached" },
+                    request.title
+                )));
+                let revision = self.as_ref().media_revision().wrapping_add(1);
+                self.as_mut().set_media_revision(revision);
+                if self.as_ref().hover_preview_game_id().to_string() == request.game_uid {
+                    self.as_mut()
+                        .request_hover_preview(qstring(&request.game_uid));
+                }
+                println!(
+                    "LUNCHBOX_VISIBLE_VIDEO_READY game_uid={:?} downloaded={} path={:?}",
+                    request.game_uid, downloaded, path
+                );
+            }
+            AutomaticVideoOutcome::Missing(error) => {
+                if error.contains("no EmuMovies credentials are saved") {
+                    self.as_mut().rust_mut().emumovies_configured = false;
+                    self.as_mut().set_media_setup_required(true);
+                    self.as_mut().set_media_fetch_message(qstring(
+                        "EmuMovies needs an account. Open Settings to enable automatic gameplay videos.",
+                    ));
+                    while let Some(queued) =
+                        self.as_mut().rust_mut().automatic_video_queue.pop_front()
+                    {
+                        self.as_mut()
+                            .rust_mut()
+                            .automatic_video_pending
+                            .remove(&queued.game_uid);
+                    }
+                } else if error.contains("No video found")
+                    || error.contains("No video folder found")
+                {
+                    let count = self.as_ref().media_missing_count().saturating_add(1);
+                    self.as_mut().set_media_missing_count(count);
+                    self.as_mut().set_media_fetch_message(qstring(format!(
+                        "No EmuMovies gameplay video is available for {}.",
+                        request.title
+                    )));
+                } else {
+                    let count = self.as_ref().media_error_count().saturating_add(1);
+                    self.as_mut().set_media_error_count(count);
+                    self.as_mut().set_media_fetch_message(qstring(format!(
+                        "Gameplay video for {} failed: {}",
+                        request.title, error
+                    )));
+                }
+            }
+        }
+        self.as_mut().update_media_pending_count();
+        self.as_mut().start_next_automatic_video();
+    }
+
+    fn update_media_pending_count(mut self: Pin<&mut Self>) {
+        let pending = self
+            .as_ref()
+            .rust()
+            .media_requests
+            .len()
+            .saturating_add(self.as_ref().rust().automatic_video_pending.len());
+        self.as_mut()
+            .set_media_pending_count(saturating_i32(pending));
+    }
+
     pub fn redownload_artwork(
         mut self: Pin<&mut Self>,
         launchbox_db_id: i32,
@@ -2889,9 +3230,7 @@ impl qobject::LibraryModel {
                     self.as_mut().rust_mut().media_fetch_started = Some(std::time::Instant::now());
                 }
                 self.as_mut().rust_mut().media_requests.insert(key);
-                let pending = self.as_ref().rust().media_requests.len();
-                self.as_mut()
-                    .set_media_pending_count(saturating_i32(pending));
+                self.as_mut().update_media_pending_count();
                 if force {
                     self.as_mut().set_media_fetch_message(qstring(format!(
                         "Refreshing {} artwork from LibRetro…",
@@ -4206,9 +4545,7 @@ impl qobject::LibraryModel {
             .rust_mut()
             .media_requests
             .remove(&(database_id, requested_kind));
-        let pending = self.as_ref().rust().media_requests.len();
-        self.as_mut()
-            .set_media_pending_count(saturating_i32(pending));
+        self.as_mut().update_media_pending_count();
 
         match outcome {
             MediaFetchOutcome::Found {

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 
 Rectangle {
     id: nav
@@ -55,6 +56,7 @@ Rectangle {
         horizontalAlignment: Text.AlignHCenter
     }
     Text {
+        id: labelText
         text: nav.label
         anchors.left: parent.left
         anchors.leftMargin: 54
@@ -62,10 +64,14 @@ Rectangle {
         anchors.rightMargin: 8
         anchors.verticalCenter: parent.verticalCenter
         elide: Text.ElideRight
+        fontSizeMode: Text.HorizontalFit
+        minimumPixelSize: 10
         color: nav.active ? "#f4f7fb" : "#c0c8d4"
         font.pixelSize: 14
         font.weight: nav.active ? Font.DemiBold : Font.Medium
     }
+    ToolTip.visible: hover.hovered
+    ToolTip.text: nav.label
     Text {
         id: countText
         text: nav.count

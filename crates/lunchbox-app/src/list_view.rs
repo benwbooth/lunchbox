@@ -417,6 +417,13 @@ impl ListMetadataBuilder {
 }
 
 impl ListMetadata {
+    pub(crate) fn retain_rows(&mut self, indices: &[usize]) {
+        self.rows = indices
+            .iter()
+            .filter_map(|index| self.rows.get(*index).copied())
+            .collect();
+    }
+
     pub(crate) fn set_variant_count(&mut self, index: usize, count: usize) {
         if let Some(row) = self.rows.get_mut(index) {
             row.variants = u16::try_from(count).unwrap_or(u16::MAX).max(1);

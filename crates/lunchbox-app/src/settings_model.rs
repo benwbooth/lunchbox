@@ -68,6 +68,9 @@ pub mod qobject {
         fn test_connection(self: Pin<&mut SettingsModel>);
 
         #[qinvokable]
+        fn invalidate_qbittorrent_test(self: Pin<&mut SettingsModel>);
+
+        #[qinvokable]
         fn clear_password(self: Pin<&mut SettingsModel>);
 
         #[qinvokable]
@@ -470,6 +473,7 @@ impl qobject::SettingsModel {
             (
                 AppSettings,
                 bool,
+                Option<settings::QbittorrentConnectionTest>,
                 PathBuf,
                 Option<profile_backup::ProfileSummary>,
             ),
@@ -478,9 +482,16 @@ impl qobject::SettingsModel {
     ) {
         self.as_mut().set_busy(false);
         match loaded {
-            Ok((settings, password_saved, path, restored_profile)) => {
+            Ok((settings, password_saved, connection_test, path, restored_profile)) => {
+                let connection_ok = connection_test
+                    .as_ref()
+                    .is_some_and(|tested| tested.matches(&settings, password_saved));
+                let tested_version = connection_test
+                    .filter(|_| connection_ok)
+                    .map(|tested| tested.version);
                 self.as_mut().apply_settings(settings);
                 self.as_mut().set_password_saved(password_saved);
+                self.as_mut().set_connection_ok(connection_ok);
                 self.as_mut()
                     .set_state_database_path(qstring(path.to_string_lossy()));
                 self.as_mut().set_initialized(true);
@@ -490,10 +501,14 @@ impl qobject::SettingsModel {
                         summary.description()
                     )));
                 }
-                self.as_mut().set_message(qstring(if password_saved {
+                self.as_mut().set_message(qstring(if let Some(version) = tested_version {
+                    format!("qBittorrent {version} connection is verified and ready.")
+                } else if password_saved {
                     "Settings loaded; the qBittorrent password is in your system credential store."
+                        .to_owned()
                 } else {
                     "Settings loaded. Configure qBittorrent to enable Minerva downloads."
+                        .to_owned()
                 }));
             }
             Err(error) => self
@@ -515,15 +530,16 @@ impl qobject::SettingsModel {
             }
         };
         let password = self.as_ref().qbittorrent_password().to_string();
+        let connection_ok = *self.as_ref().connection_ok();
         self.as_mut().set_busy(true);
-        self.as_mut().set_connection_ok(false);
         self.as_mut().set_message(qstring("Saving settings…"));
         let qt_thread = self.as_ref().qt_thread();
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-settings-save".into())
             .spawn(move || {
                 let password_changed = !password.is_empty();
-                let saved = save_settings(&settings, &password).map_err(|error| error.to_string());
+                let saved = save_settings(&settings, &password, connection_ok)
+                    .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_save(saved, password_changed);
                 });
@@ -549,9 +565,12 @@ impl qobject::SettingsModel {
                 }
                 self.as_mut()
                     .set_state_database_path(qstring(path.to_string_lossy()));
-                self.as_mut().set_message(qstring(
-                    "Settings saved. Test the connection before downloading.",
-                ));
+                let connection_ok = *self.as_ref().connection_ok();
+                self.as_mut().set_message(qstring(if connection_ok {
+                    "Settings saved. The verified qBittorrent connection is ready."
+                } else {
+                    "Settings saved. Test qBittorrent before downloading."
+                }));
             }
             Err(error) => self
                 .as_mut()
@@ -581,7 +600,7 @@ impl qobject::SettingsModel {
             .name("lunchbox-qbittorrent-test".into())
             .spawn(move || {
                 let tested = effective_password(entered_password)
-                    .and_then(|password| qbittorrent::test_connection(&settings, &password))
+                    .and_then(|password| test_and_record_connection(&settings, &password))
                     .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_test(tested);
@@ -611,6 +630,15 @@ impl qobject::SettingsModel {
         }
     }
 
+    pub fn invalidate_qbittorrent_test(mut self: Pin<&mut Self>) {
+        if *self.as_ref().connection_ok() {
+            self.as_mut().set_connection_ok(false);
+            self.as_mut().set_message(qstring(
+                "qBittorrent connection details changed. Test the new values before downloading.",
+            ));
+        }
+    }
+
     pub fn clear_password(mut self: Pin<&mut Self>) {
         if *self.as_ref().busy() {
             return;
@@ -621,7 +649,11 @@ impl qobject::SettingsModel {
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-password-clear".into())
             .spawn(move || {
-                let cleared = settings::save_password("").map_err(|error| error.to_string());
+                let cleared = settings::save_password("")
+                    .and_then(|()| {
+                        SettingsStore::open_default()?.clear_qbittorrent_connection_test()
+                    })
+                    .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().set_busy(false);
                     match cleared {
@@ -672,7 +704,6 @@ impl qobject::SettingsModel {
         self.as_mut().rust_mut().region_priority.insert(to, region);
         self.as_mut().sync_primary_region();
         self.as_mut().bump_region_revision();
-        self.as_mut().set_connection_ok(false);
         self.as_mut().set_message(qstring(
             "Region priority changed. Save settings to apply it to Minerva results.",
         ));
@@ -683,7 +714,6 @@ impl qobject::SettingsModel {
             crate::region_priority::default_region_priority();
         self.as_mut().sync_primary_region();
         self.as_mut().bump_region_revision();
-        self.as_mut().set_connection_ok(false);
         self.as_mut().set_message(qstring(
             "Default region priority restored. Save settings to apply it.",
         ));
@@ -730,7 +760,6 @@ impl qobject::SettingsModel {
             .media_provider_priority
             .insert(to, provider);
         self.as_mut().bump_media_provider_revision();
-        self.as_mut().set_connection_ok(false);
         self.as_mut().set_message(qstring(
             "Media source priority changed. Save settings to reindex cached media.",
         ));
@@ -740,7 +769,6 @@ impl qobject::SettingsModel {
         self.as_mut().rust_mut().media_provider_priority =
             crate::media::default_provider_priority();
         self.as_mut().bump_media_provider_revision();
-        self.as_mut().set_connection_ok(false);
         self.as_mut().set_message(qstring(
             "Default media source priority restored. Save settings to reindex cached media.",
         ));
@@ -1603,7 +1631,6 @@ impl qobject::SettingsModel {
                 .set_torrent_library_directory(qstring(path.to_string_lossy())),
             _ => unreachable!(),
         }
-        self.as_mut().set_connection_ok(false);
         self.as_mut().set_message(qstring(
             "Directory selected. Save settings to keep this native path.",
         ));
@@ -2091,12 +2118,14 @@ fn controller_profile_option(
 fn load_settings() -> anyhow::Result<(
     AppSettings,
     bool,
+    Option<settings::QbittorrentConnectionTest>,
     PathBuf,
     Option<profile_backup::ProfileSummary>,
 )> {
     let store = SettingsStore::open_default()?;
     let settings = store.load()?;
     let password_saved = settings::load_password()?.is_some();
+    let connection_test = store.qbittorrent_connection_test()?;
     let restored_profile = match profile_backup::take_applied_notice(store.path()) {
         Ok(summary) => summary,
         Err(error) => {
@@ -2107,18 +2136,45 @@ fn load_settings() -> anyhow::Result<(
     Ok((
         settings,
         password_saved,
+        connection_test,
         store.path().to_owned(),
         restored_profile,
     ))
 }
 
-fn save_settings(settings: &AppSettings, password: &str) -> anyhow::Result<PathBuf> {
+fn save_settings(
+    settings: &AppSettings,
+    password: &str,
+    connection_ok: bool,
+) -> anyhow::Result<PathBuf> {
     let store = SettingsStore::open_default()?;
     store.save(settings)?;
     if !password.is_empty() {
         settings::save_password(password)?;
     }
+    if !connection_ok {
+        store.clear_qbittorrent_connection_test()?;
+    }
     Ok(store.path().to_owned())
+}
+
+fn test_and_record_connection(settings: &AppSettings, password: &str) -> anyhow::Result<String> {
+    match qbittorrent::test_connection(settings, password) {
+        Ok(version) => {
+            SettingsStore::open_default()?.save_qbittorrent_connection_test(
+                settings,
+                &version,
+                !settings.qbittorrent_username.trim().is_empty() || !password.is_empty(),
+            )?;
+            Ok(version)
+        }
+        Err(error) => {
+            if let Ok(store) = SettingsStore::open_default() {
+                let _ = store.clear_qbittorrent_connection_test();
+            }
+            Err(error)
+        }
+    }
 }
 
 fn effective_password(entered_password: String) -> anyhow::Result<String> {
