@@ -59,6 +59,7 @@ pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppSettings {
+    pub onboarding_complete: bool,
     pub qbittorrent_host: String,
     pub qbittorrent_port: u16,
     pub qbittorrent_use_https: bool,
@@ -80,6 +81,7 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            onboarding_complete: false,
             qbittorrent_host: "127.0.0.1".to_owned(),
             qbittorrent_port: 8080,
             qbittorrent_use_https: false,
@@ -1227,12 +1229,14 @@ impl SettingsStore {
                         qbittorrent_container_torrent_library_directory,
                         download_entire_torrent, file_link_mode, seeding_policy,
                         preferred_region, version_preference, region_priority_json,
-                        controller_mapping_json, media_provider_priority_json
+                        controller_mapping_json, media_provider_priority_json,
+                        onboarding_complete
                  FROM app_settings WHERE id=1",
                 [],
                 |row| {
                     let port = row.get::<_, i64>(1)?;
                     Ok(AppSettings {
+                        onboarding_complete: row.get(16)?,
                         qbittorrent_host: row.get(0)?,
                         qbittorrent_port: u16::try_from(port).unwrap_or_default(),
                         qbittorrent_use_https: row.get(2)?,
@@ -1301,8 +1305,9 @@ impl SettingsStore {
                  qbittorrent_container_torrent_library_directory,
                  download_entire_torrent, file_link_mode, seeding_policy,
                  preferred_region, version_preference, region_priority_json,
-                 controller_mapping_json, media_provider_priority_json
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                 controller_mapping_json, media_provider_priority_json,
+                 onboarding_complete
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
              ON CONFLICT(id) DO UPDATE SET
                  qbittorrent_host=excluded.qbittorrent_host,
                  qbittorrent_port=excluded.qbittorrent_port,
@@ -1319,7 +1324,8 @@ impl SettingsStore {
                  version_preference=excluded.version_preference,
                  region_priority_json=excluded.region_priority_json,
                  controller_mapping_json=excluded.controller_mapping_json,
-                 media_provider_priority_json=excluded.media_provider_priority_json",
+                 media_provider_priority_json=excluded.media_provider_priority_json,
+                 onboarding_complete=excluded.onboarding_complete",
             params![
                 settings.qbittorrent_host,
                 i64::from(settings.qbittorrent_port),
@@ -1340,6 +1346,7 @@ impl SettingsStore {
                     .context("encoding controller mapping settings")?,
                 serde_json::to_string(&settings.media_provider_priority)
                     .context("encoding media provider priority")?,
+                settings.onboarding_complete,
             ],
         )?;
         transaction.commit()?;
@@ -3738,7 +3745,10 @@ fn migrate(connection: &Connection) -> Result<()> {
              ),
              region_priority_json TEXT NOT NULL DEFAULT '[]',
              controller_mapping_json TEXT NOT NULL DEFAULT '{}',
-             media_provider_priority_json TEXT NOT NULL DEFAULT '[]'
+             media_provider_priority_json TEXT NOT NULL DEFAULT '[]',
+             onboarding_complete INTEGER NOT NULL DEFAULT 0 CHECK (
+                 onboarding_complete IN (0, 1)
+             )
          );
          CREATE TABLE IF NOT EXISTS library_preferences (
              id INTEGER PRIMARY KEY CHECK (id=1),
@@ -4528,6 +4538,14 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !column_exists(connection, "app_settings", "media_provider_priority_json")? {
         connection.execute(
             "ALTER TABLE app_settings ADD COLUMN media_provider_priority_json TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "app_settings", "onboarding_complete")? {
+        // Databases that predate onboarding belong to established users. New
+        // databases use the CREATE TABLE default above and start incomplete.
+        connection.execute(
+            "ALTER TABLE app_settings ADD COLUMN onboarding_complete INTEGER NOT NULL DEFAULT 1 CHECK (onboarding_complete IN (0, 1))",
             [],
         )?;
     }
@@ -5519,6 +5537,7 @@ mod tests {
         assert_eq!(store.load().unwrap(), AppSettings::default());
 
         let expected = AppSettings {
+            onboarding_complete: true,
             qbittorrent_host: "media.local".into(),
             qbittorrent_port: 9443,
             qbittorrent_use_https: true,
@@ -7480,6 +7499,7 @@ mod tests {
         assert_eq!(settings.preferred_region, "USA");
         assert!(settings.region_priority.is_empty());
         assert_eq!(settings.version_preference, "latest");
+        assert!(settings.onboarding_complete);
         assert_eq!(
             settings.media_provider_priority,
             crate::media::default_provider_priority()
@@ -7495,6 +7515,7 @@ mod tests {
         assert!(
             column_exists(&connection, "app_settings", "media_provider_priority_json").unwrap()
         );
+        assert!(column_exists(&connection, "app_settings", "onboarding_complete").unwrap());
         let prepared_table: Option<i64> = connection
             .query_row(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='prepared_game_installs'",

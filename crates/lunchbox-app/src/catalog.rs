@@ -47,6 +47,12 @@ pub struct Catalog {
     pub source_label: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct CatalogPreview {
+    pub catalog: Catalog,
+    pub total_game_count: usize,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Filter {
     pub search: String,
@@ -199,6 +205,129 @@ pub fn load(path: &Path) -> Result<Catalog> {
     }
 
     load_canonical_catalog(&connection)
+}
+
+/// Load enough of the discovery catalog to paint and interact with the first
+/// screen while the complete in-memory search index is built. This is never a
+/// substitute for the full load: the library model replaces it atomically.
+pub fn load_preview(path: &Path) -> Result<Option<CatalogPreview>> {
+    let canonical = open_read_only(path, "Lunchbox database")?;
+    validate_canonical_schema(&canonical)?;
+    let Some(discovery_path) = requested_discovery_database_path() else {
+        return Ok(None);
+    };
+    let discovery = open_read_only(&discovery_path, "Lunchbox discovery database")?;
+    validate_discovery_schema(&discovery)?;
+    let installed = load_installed_games(requested_user_database_path().as_deref())?;
+    let minerva = load_minerva_coverage(requested_minerva_database_path().as_deref())?;
+    let total_game_count =
+        count(&discovery, "games", "1")?.saturating_add(installed.local_only_games.len());
+    let order = if column_exists(&discovery, "games", "sort_title")? {
+        "coalesce(nullif(g.sort_title, ''), g.title)"
+    } else {
+        "g.title"
+    };
+    let query = format!(
+        "SELECT g.id, g.title, p.name, coalesce(g.status, 'canonical'),
+                coalesce(g.launchbox_db_id, 0)
+         FROM games g
+         JOIN platforms p ON p.id = g.platform_id
+         ORDER BY {order} COLLATE NOCASE, g.id
+         LIMIT 240"
+    );
+    let mut statement = discovery.prepare(&query)?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, i64>(4)?,
+        ))
+    })?;
+    let mut games = Vec::with_capacity(240 + installed.local_only_games.len());
+    let mut list_metadata = ListMetadataBuilder::with_capacity(games.capacity());
+    for row in rows {
+        let (id, title, platform, status, database_id) = row?;
+        let local = (database_id > 0 && installed.database_ids.contains(&database_id))
+            || installed.game_uids.contains(&id);
+        games.push(Game {
+            search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+            downloadable: !local
+                && minerva
+                    .platform_names
+                    .contains(&normalize_platform_key(&platform)),
+            id,
+            launchbox_db_id: database_id,
+            title,
+            platform,
+            status,
+            local,
+            non_retail: false,
+            adult: false,
+            cooperative: "unknown".to_owned(),
+        });
+        list_metadata.push_empty();
+    }
+    for game in &installed.local_only_games {
+        games.push(game.clone());
+        list_metadata.push_empty();
+    }
+
+    let canonical_aliases = canonical_platform_aliases(&canonical)?;
+    let mut platform_statement = discovery.prepare(
+        "SELECT p.name, count(g.id)
+         FROM platforms p
+         LEFT JOIN games g ON g.platform_id = p.id
+         GROUP BY p.id, p.name
+         HAVING count(g.id) > 0
+         ORDER BY p.name COLLATE NOCASE",
+    )?;
+    let platform_rows = platform_statement.query_map([], |row| {
+        let name = row.get::<_, String>(0)?;
+        let aliases = canonical_aliases
+            .get(&normalize_platform_key(&name))
+            .map(String::as_str);
+        Ok(Platform {
+            search_key: platform_search_key(&name, aliases),
+            name,
+            game_count: row.get(1)?,
+        })
+    })?;
+    let mut platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    for local_game in &installed.local_only_games {
+        if let Some(platform) = platforms
+            .iter_mut()
+            .find(|platform| platform.name == local_game.platform)
+        {
+            platform.game_count = platform.game_count.saturating_add(1);
+        } else {
+            platforms.push(Platform {
+                name: local_game.platform.clone(),
+                game_count: 1,
+                search_key: platform_search_key(&local_game.platform, None),
+            });
+        }
+    }
+    platforms.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.name.cmp(&right.name))
+    });
+
+    Ok(Some(CatalogPreview {
+        catalog: Catalog {
+            games,
+            platforms,
+            list_metadata: list_metadata.finish(),
+            local_file_count: installed.file_count,
+            offer_count: minerva.offer_count,
+            emulator_count: count(&canonical, "emulators", "1")?,
+            source_label: format!("Discovery catalog: {}", discovery_path.display()),
+        },
+        total_game_count,
+    }))
 }
 
 pub(crate) fn open_read_only(path: &Path, description: &str) -> Result<Connection> {

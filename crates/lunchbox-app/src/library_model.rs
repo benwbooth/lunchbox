@@ -1498,6 +1498,15 @@ impl qobject::LibraryModel {
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-catalog-load".into())
             .spawn(move || {
+                match catalog::load_preview(&path) {
+                    Ok(Some(preview)) => {
+                        let _ = qt_thread.queue(move |mut model| {
+                            model.as_mut().finish_preview(generation, preview);
+                        });
+                    }
+                    Ok(None) => {}
+                    Err(error) => eprintln!("Could not build catalog preview: {error}"),
+                }
                 let loaded = catalog::load(&path)
                     .map(|catalog| {
                         let (
@@ -1583,10 +1592,96 @@ impl qobject::LibraryModel {
         }
     }
 
+    fn finish_preview(mut self: Pin<&mut Self>, generation: u64, preview: catalog::CatalogPreview) {
+        if generation != self.as_ref().rust().load_generation {
+            return;
+        }
+        let catalog::CatalogPreview {
+            catalog,
+            total_game_count,
+        } = preview;
+        let preview_game_count = catalog.games.len();
+        let platform_count = catalog.platforms.len();
+        let local_file_count = catalog.local_file_count;
+        let local_game_count = catalog.games.iter().filter(|game| game.local).count();
+        let downloadable_game_count = catalog
+            .games
+            .iter()
+            .filter(|game| game.downloadable && !game.local)
+            .count();
+        let offer_count = catalog.offer_count;
+        let emulator_count = catalog.emulator_count;
+        let source_label = catalog.source_label.clone();
+        let platform_query = self.as_ref().platform_search().to_string().to_lowercase();
+
+        self.as_mut().begin_reset_model();
+        {
+            let mut this = self.as_mut();
+            let mut rust = this.as_mut().rust_mut();
+            rust.game_index_by_id = Arc::new(
+                catalog
+                    .games
+                    .iter()
+                    .enumerate()
+                    .map(|(index, game)| (game.id.clone(), index))
+                    .collect(),
+            );
+            rust.filtered_indices = (0..preview_game_count).collect();
+            rust.filtered_platform_indices = catalog
+                .platforms
+                .iter()
+                .enumerate()
+                .filter_map(|(index, platform)| {
+                    (platform_query.is_empty() || platform.search_key.contains(&platform_query))
+                        .then_some(index)
+                })
+                .collect();
+            rust.catalog = Arc::new(catalog);
+        }
+        self.as_mut().end_reset_model();
+
+        let filtered_platform_count = self.as_ref().rust().filtered_platform_indices.len();
+
+        self.as_mut()
+            .set_game_count(saturating_i32(total_game_count));
+        self.as_mut()
+            .set_filtered_count(saturating_i32(total_game_count));
+        self.as_mut()
+            .set_platform_count(saturating_i32(platform_count));
+        self.as_mut()
+            .set_filtered_platform_count(saturating_i32(filtered_platform_count));
+        self.as_mut()
+            .set_local_file_count(saturating_i32(local_file_count));
+        self.as_mut()
+            .set_local_game_count(saturating_i32(local_game_count));
+        self.as_mut().set_offer_count(saturating_i32(offer_count));
+        self.as_mut()
+            .set_downloadable_game_count(saturating_i32(downloadable_game_count));
+        self.as_mut()
+            .set_emulator_count(saturating_i32(emulator_count));
+        self.as_mut().set_ready(true);
+        let revision = self.as_ref().platform_revision().wrapping_add(1);
+        self.as_mut().set_platform_revision(revision);
+        let elapsed = self
+            .as_ref()
+            .rust()
+            .load_started
+            .map(|started| started.elapsed().as_millis())
+            .unwrap_or_default();
+        self.as_mut().set_status_message(qstring(format!(
+            "Ready — {total_game_count} games across {platform_count} platforms — optimizing the complete search index in the background"
+        )));
+        println!(
+            "LUNCHBOX_CATALOG_PREVIEW_READY_MS={elapsed} games={preview_game_count} total_games={total_game_count} platforms={platform_count} source={source_label:?}"
+        );
+    }
+
     fn finish_load(mut self: Pin<&mut Self>, generation: u64, loaded: CatalogLoadResult) {
         if generation != self.as_ref().rust().load_generation {
             return;
         }
+        self.as_mut().rust_mut().filter_generation =
+            self.as_ref().rust().filter_generation.wrapping_add(1);
         self.as_mut().set_loading(false);
         match loaded {
             Ok((
@@ -1789,6 +1884,14 @@ impl qobject::LibraryModel {
                 let indices = catalog::filter_indices(
                     &catalog,
                     &Filter {
+                        search: self.as_ref().rust().current_search.clone(),
+                        platform: self.as_ref().current_platform().to_string(),
+                        availability: self.as_ref().availability_filter().to_string(),
+                        tag: self.as_ref().tag_filter().to_string(),
+                        hide_non_retail: *self.as_ref().hide_non_retail(),
+                        hide_adult: *self.as_ref().hide_adult(),
+                        favorite_game_ids: Arc::new(favorite_game_ids.clone()),
+                        recent_game_order: Arc::new(recent_game_order.clone()),
                         display_titles: Arc::clone(&metadata_titles),
                         game_tags: Arc::clone(&game_tags),
                         game_custom_fields: Arc::clone(&game_custom_fields),
@@ -1799,6 +1902,7 @@ impl qobject::LibraryModel {
                         ..Filter::default()
                     },
                 );
+                let filtered_count = indices.len();
                 let platform_query = self.as_ref().platform_search().to_string().to_lowercase();
                 self.as_mut().begin_reset_model();
                 {
@@ -1869,7 +1973,8 @@ impl qobject::LibraryModel {
                     .map(|started| i32::try_from(started.elapsed().as_millis()).unwrap_or(i32::MAX))
                     .unwrap_or_default();
                 self.as_mut().set_game_count(saturating_i32(game_count));
-                self.as_mut().set_filtered_count(saturating_i32(game_count));
+                self.as_mut()
+                    .set_filtered_count(saturating_i32(filtered_count));
                 self.as_mut()
                     .set_platform_count(saturating_i32(platform_count));
                 let filtered_platform_count = self.as_ref().rust().filtered_platform_indices.len();
@@ -2019,7 +2124,7 @@ impl qobject::LibraryModel {
     }
 
     fn refilter_current_library(mut self: Pin<&mut Self>) {
-        if !*self.as_ref().ready() || *self.as_ref().loading() {
+        if !*self.as_ref().ready() {
             return;
         }
         let search = qstring(&self.as_ref().rust().current_search);
@@ -2058,7 +2163,7 @@ impl qobject::LibraryModel {
         platform: QString,
         availability: QString,
     ) {
-        if !*self.as_ref().ready() || *self.as_ref().loading() {
+        if !*self.as_ref().ready() {
             return;
         }
         let filter = self.as_ref().filter_snapshot(

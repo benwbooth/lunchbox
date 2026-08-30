@@ -12,6 +12,12 @@ must never run before the first shell-ready event or on the Qt GUI thread.
 
 The initial implementation enforces this shape:
 
+- Startup is deliberately two-stage. The catalog worker first publishes 240
+  real, alphabetically ordered games plus complete platform counts and
+  installed/Minerva coverage. That makes the shell browsable without waiting
+  for the 303,560-row search and sort index; the full catalog then replaces the
+  preview atomically while preserving the current shelf, search, platform, and
+  filters. Neither phase performs network work.
 - `LibraryModel` is a native `QAbstractListModel`; Qt views request only roles for
   visible rows.
 - Both grid and list views reuse delegates and keep a bounded one-viewport
@@ -33,6 +39,10 @@ The initial implementation enforces this shape:
   names, canonical database aliases, and bounded legacy abbreviations. Its
   search is immediate, the 180–400 px resize preview never touches storage, and
   debounced search/drag completion is coalesced through one SQLite worker.
+  The 216 legacy platform images are compiled into the application as Qt
+  resources. Explicit aliases cover catalog spellings such as Atari 8-bit,
+  Commodore CD32/CDTV/Plus-4, Naomi, PICO, Satellaview, Videopac+, and V.Smile,
+  so platform navigation never depends on a runtime asset path.
   `--sidebar-ui-probe --state-database EMPTY_PATH` filters by the `snes` alias,
   resizes to 332 px, and saves the real state. A new process using the same path
   and `--sidebar-restored-ui-probe` succeeds only when both values and the exact
@@ -49,6 +59,19 @@ The initial implementation enforces this shape:
   compact in-memory index, and Qt decodes local images asynchronously at display
   size. Video, manuals, emulator inspection, torrent metadata, and hashing remain
   separately scheduled services rather than additions to startup.
+- Pointer-wheel input uses one reusable QML physics component in both grid and
+  list views. It amplifies high-resolution trackpad deltas, accelerates repeated
+  wheel notches, accumulates momentum, and eases to rest without blocking the
+  GUI thread.
+- The desktop shell is split into reusable QML controls for header actions,
+  sidebar navigation, links, metrics, filters, metadata, status, wheel physics,
+  and first-run setup. `Main.qml` remains the composition root instead of
+  re-declaring those controls inline.
+- A new profile opens a native first-run setup page before ordinary browsing.
+  Required local-ROM and qBittorrent configuration is presented separately
+  from optional SteamGridDB, IGDB, and EmuMovies accounts. Every missing-account
+  action routes to the exact Settings section; secrets remain in the operating
+  system credential store. Existing profiles migrate as already configured.
 - Paths cross the Rust boundary as native paths. `--database PATH` and the
   `LUNCHBOX_DATABASE` environment variable are supported on Linux, macOS, and
   Windows without assuming `/bin/sh`, drive letters, or a path separator.
@@ -348,7 +371,10 @@ cargo run -p lunchbox-app -- --database build/lunchbox.db
 ```
 
 Use `--catalog-probe` to print database loading time and row counts before
-exiting. Unlike the shell probe, this waits for the asynchronous catalog worker.
+exiting. A normal run prints `LUNCHBOX_CATALOG_PREVIEW_READY_MS` as soon as real
+preview content is interactive. Unlike the shell probe, `--catalog-probe` waits
+for the complete asynchronous catalog replacement and prints
+`LUNCHBOX_CATALOG_READY_MS` with the complete row count.
 Use `--filter-probe` to load the catalog, apply a representative Minerva search,
 print `LUNCHBOX_FILTER_READY_MS`, and exit.
 Use `--filter-ui-probe` to leave the native filter surface open for an

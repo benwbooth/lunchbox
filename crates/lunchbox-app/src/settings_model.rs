@@ -11,6 +11,7 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[qproperty(bool, initialized)]
+        #[qproperty(bool, onboarding_complete)]
         #[qproperty(bool, busy)]
         #[qproperty(bool, password_saved)]
         #[qproperty(bool, connection_ok)]
@@ -278,6 +279,7 @@ use crate::settings::{
 
 pub struct SettingsModelRust {
     initialized: bool,
+    onboarding_complete: bool,
     busy: bool,
     password_saved: bool,
     connection_ok: bool,
@@ -338,6 +340,7 @@ impl Default for SettingsModelRust {
     fn default() -> Self {
         Self {
             initialized: false,
+            onboarding_complete: false,
             busy: false,
             password_saved: false,
             connection_ok: false,
@@ -1803,6 +1806,8 @@ impl qobject::SettingsModel {
             crate::media::effective_provider_priority(&settings.media_provider_priority);
         let controller_mapping = settings.controller_mapping.clone();
         self.as_mut()
+            .set_onboarding_complete(settings.onboarding_complete);
+        self.as_mut()
             .set_qbittorrent_host(qstring(settings.qbittorrent_host));
         self.as_mut()
             .set_qbittorrent_port(i32::from(settings.qbittorrent_port));
@@ -1850,6 +1855,7 @@ impl qobject::SettingsModel {
         let port = u16::try_from(*self.qbittorrent_port())
             .map_err(|_| "qBittorrent port must be between 1 and 65535".to_owned())?;
         let settings = AppSettings {
+            onboarding_complete: *self.onboarding_complete(),
             qbittorrent_host: self.qbittorrent_host().to_string(),
             qbittorrent_port: port,
             qbittorrent_use_https: *self.qbittorrent_use_https(),

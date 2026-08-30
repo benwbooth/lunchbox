@@ -12,7 +12,7 @@ ApplicationWindow {
     visible: true
     width: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
-           || webArtworkUiProbe
+           || webArtworkUiProbe || onboardingUiProbe
            || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
            || mediaAuditUiProbe
            || installManagementUiProbe
@@ -24,7 +24,7 @@ ApplicationWindow {
            ? 1920 : 1440
     height: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
             || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
-            || webArtworkUiProbe
+            || webArtworkUiProbe || onboardingUiProbe
             || collectionUiProbe || smartCollectionUiProbe || libraryAuditUiProbe
             || mediaAuditUiProbe
             || installManagementUiProbe
@@ -103,6 +103,8 @@ ApplicationWindow {
         return selectedGameId.length > 0 && library.favorite_pending(selectedGameId)
     }
     property string directoryTarget: ""
+    property string requestedSettingsSection: ""
+    property bool onboardingSavePending: false
     property bool favoriteProbeArmed: false
     property bool favoriteProbeTriggered: false
     property bool closeAfterFavoriteSave: false
@@ -270,6 +272,7 @@ ApplicationWindow {
     readonly property bool steamGridDbUiProbe: Qt.application.arguments.indexOf("--steamgriddb-ui-probe") >= 0
     readonly property bool igdbUiProbe: Qt.application.arguments.indexOf("--igdb-ui-probe") >= 0
     readonly property bool webArtworkUiProbe: Qt.application.arguments.indexOf("--web-artwork-ui-probe") >= 0
+    readonly property bool onboardingUiProbe: Qt.application.arguments.indexOf("--onboarding-ui-probe") >= 0
     property string artworkProvider: webArtworkUiProbe ? "websearch"
                                                        : igdbUiProbe ? "igdb" : "steamgriddb"
     readonly property var artworkProviderModel: artworkProvider === "websearch" ? webArtwork
@@ -361,6 +364,59 @@ ApplicationWindow {
         filterDelay.restart()
     }
 
+    function artworkProviderNeedsSetup(provider) {
+        return provider === "steamgriddb" ? !steamGridDb.api_key_saved
+             : provider === "igdb" ? !igdb.credentials_saved
+             : provider === "emumovies" ? !emuMovies.credentials_saved
+             : false
+    }
+
+    function shouldShowOnboarding() {
+        if (onboardingUiProbe)
+            return true
+        for (let index = 0; index < Qt.application.arguments.length; ++index) {
+            if (String(Qt.application.arguments[index]).indexOf("-probe") >= 0)
+                return false
+        }
+        return !appSettings.onboarding_complete
+    }
+
+    function requestedSettingsItem() {
+        return requestedSettingsSection === "steamgriddb" ? steamGridDbSettingsSection
+             : requestedSettingsSection === "igdb" ? igdbSettingsSection
+             : requestedSettingsSection === "emumovies" ? emuMoviesSettingsSection
+             : requestedSettingsSection === "qbittorrent" ? qbittorrentSettingsSection
+             : null
+    }
+
+    function positionRequestedSettingsSection() {
+        const item = requestedSettingsItem()
+        if (!item || !settingsDialog.visible)
+            return
+        const point = item.mapToItem(settingsScroll.contentItem, 0, 0)
+        const maximum = Math.max(0, settingsScroll.contentItem.contentHeight
+                                    - settingsScroll.availableHeight)
+        settingsScroll.contentItem.contentY = Math.max(
+                    0, Math.min(maximum, point.y - 18))
+        if (requestedSettingsSection === "steamgriddb")
+            steamGridDbApiKey.forceActiveFocus()
+        else if (requestedSettingsSection === "igdb")
+            igdbClientId.forceActiveFocus()
+        else if (requestedSettingsSection === "emumovies")
+            emuMoviesUsername.forceActiveFocus()
+    }
+
+    function openSettingsFor(section) {
+        requestedSettingsSection = section || ""
+        if (steamGridDbDialog.visible)
+            steamGridDbDialog.close()
+        if (!settingsDialog.visible)
+            settingsDialog.open()
+        Qt.callLater(function() {
+            Qt.callLater(root.positionRequestedSettingsSection)
+        })
+    }
+
     function openCatalogLink(label, destination) {
         if (destination.toString().length === 0)
             return
@@ -369,6 +425,30 @@ ApplicationWindow {
         } else {
             catalogLinkMessage = "Could not open " + label + " with the system browser."
         }
+    }
+
+    function platformIconUrl(platform) {
+        let name = platform === "Arcade Pinball"
+                   || platform === "Arcade Laserdisc" ? "Arcade" : platform
+        const legacyAliases = {
+            "Atari - 8-bit Family": "Atari 800",
+            "Commodore - CD32": "Commodore Amiga CD32",
+            "Commodore - CDTV": "Commodore CDTV",
+            "Commodore - Plus-4": "Commodore Plus 4",
+            "Funtech - Super Acan": "Funtech Super Acan",
+            "Nintendo - Satellaview": "Nintendo Satellaview",
+            "Philips - Videopac+": "Philips Videopac+",
+            "Sega - Naomi": "Sega Naomi",
+            "Sega - Naomi 2": "Sega Naomi 2",
+            "Sega - PICO": "Sega Pico",
+            "VTech - V.Smile": "VTech V.Smile"
+        }
+        name = legacyAliases[name] || name
+        name = name.split("/").join("-")
+                   .split(":").join("-")
+                   .split("&").join("and")
+                   .split(" ").join("_")
+        return "qrc:/platforms/" + name + ".png"
     }
 
     function argumentValue(name) {
@@ -390,6 +470,19 @@ ApplicationWindow {
                 && !appSettings.busy
                 && appSettings.message.indexOf("Settings saved.") === 0)
             Qt.quit()
+    }
+
+    function finishOnboardingWhenSaved() {
+        if (!onboardingSavePending || appSettings.busy)
+            return
+        if (appSettings.message.indexOf("Settings saved.") === 0) {
+            onboardingSavePending = false
+            onboardingPage.close()
+        } else if (appSettings.message.indexOf("Could not save settings:") === 0
+                   || appSettings.message.indexOf("Could not start settings worker:") === 0) {
+            onboardingSavePending = false
+            appSettings.onboarding_complete = false
+        }
     }
 
     function openEmulatorManager() {
@@ -1338,6 +1431,8 @@ ApplicationWindow {
     Connections {
         target: appSettings
         function onInitializedChanged() {
+            if (appSettings.initialized && root.shouldShowOnboarding())
+                Qt.callLater(onboardingPage.open)
             if (root.settingsSeedingProbe && appSettings.initialized
                     && !root.settingsSeedingTriggered) {
                 root.settingsSeedingTriggered = true
@@ -1369,9 +1464,11 @@ ApplicationWindow {
         }
         function onBusyChanged() {
             root.finishSettingsProbeWhenSaved()
+            root.finishOnboardingWhenSaved()
         }
         function onMessageChanged() {
             root.finishSettingsProbeWhenSaved()
+            root.finishOnboardingWhenSaved()
             if (appSettings.message.indexOf("Settings saved.") === 0) {
                 library.refresh_media()
                 if (root.settingsMediaPriorityUiProbe
@@ -1739,7 +1836,7 @@ ApplicationWindow {
         target: library
         function onReadyChanged() {
             if (library.ready) {
-                if (library.catalog_probe)
+                if (library.catalog_probe && !library.loading)
                     Qt.quit()
                 else if (root.installManagementUiProbe
                          && root.installManagementProbeStage === 0) {
@@ -3012,6 +3109,10 @@ ApplicationWindow {
                 }
                 couchModeScreenshotTimer.restart()
             }
+        }
+        function onLoadingChanged() {
+            if (library.catalog_probe && library.ready && !library.loading)
+                Qt.quit()
         }
     }
 
@@ -4532,6 +4633,8 @@ ApplicationWindow {
             library.shell_ready()
             if (library.startup_probe)
                 Qt.quit()
+            else if (root.onboardingUiProbe)
+                onboardingPage.open()
             else if (root.igdbUiProbe) {
                 igdb.begin_selection(140, "Super Mario Bros.",
                                      "Nintendo Entertainment System", "fanart")
@@ -4622,6 +4725,16 @@ ApplicationWindow {
                 root.openGame("ffb0ddd4-d5e1-4f78-90c8-068db5022cd5", 0,
                               "Cooking Pico - Minna to Issho ni Hajimete Cooking! (Japan)",
                               "Sega - PICO", false, false)
+        }
+    }
+
+    Timer {
+        interval: 50
+        running: library.catalog_probe
+        repeat: true
+        onTriggered: {
+            if (library.ready && !library.loading)
+                Qt.quit()
         }
     }
 
@@ -6544,344 +6657,6 @@ ApplicationWindow {
         }
     }
 
-    component HeaderButton: Button {
-        id: control
-        property bool active: false
-        implicitHeight: 38
-        leftPadding: 16
-        rightPadding: 16
-        font.pixelSize: 13
-        font.weight: Font.DemiBold
-        background: Rectangle {
-            radius: 9
-            color: control.down ? "#303b4d" : control.active ? "#34303a" : "#1b2330"
-            border.color: control.active ? root.accent : root.line
-            border.width: 1
-        }
-        contentItem: Text {
-            text: control.text
-            color: control.active ? root.accent : root.ink
-            font: control.font
-            verticalAlignment: Text.AlignVCenter
-            horizontalAlignment: Text.AlignHCenter
-        }
-    }
-
-    component CatalogLinkButton: Button {
-        id: catalogLink
-        required property url destination
-        implicitHeight: 32
-        implicitWidth: Math.max(92, contentItem.implicitWidth + 28)
-        leftPadding: 14
-        rightPadding: 14
-        visible: destination.toString().length > 0
-        enabled: visible
-        font.pixelSize: 9
-        font.weight: Font.Bold
-        onClicked: root.openCatalogLink(text, destination)
-        Accessible.name: "Open " + text + " in the system browser"
-        background: Rectangle {
-            radius: 8
-            color: catalogLink.down ? "#29384a"
-                                    : catalogLink.hovered ? "#202e3d" : "#172331"
-            border.color: catalogLink.hovered ? root.accentCool : "#30445a"
-        }
-        contentItem: Text {
-            text: catalogLink.text
-            color: catalogLink.hovered ? root.accentCool : root.ink
-            font: catalogLink.font
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
-
-    component NavButton: Rectangle {
-        id: nav
-        required property string label
-        required property string glyph
-        property string count: ""
-        property bool active: false
-        signal clicked()
-        width: ListView.view ? ListView.view.width : 228
-        height: 43
-        radius: 9
-        color: active ? "#272c34" : hover.hovered ? "#1b2330" : "transparent"
-        border.color: active ? "#443b31" : "transparent"
-
-        HoverHandler { id: hover }
-        TapHandler { onTapped: nav.clicked() }
-
-        Rectangle {
-            visible: nav.active
-            width: 3
-            height: 23
-            radius: 2
-            color: root.accent
-            anchors.left: parent.left
-            anchors.leftMargin: 1
-            anchors.verticalCenter: parent.verticalCenter
-        }
-        Text {
-            text: nav.glyph
-            width: 28
-            anchors.left: parent.left
-            anchors.leftMargin: 13
-            anchors.verticalCenter: parent.verticalCenter
-            color: nav.active ? root.accent : root.muted
-            font.pixelSize: 16
-            horizontalAlignment: Text.AlignHCenter
-        }
-        Text {
-            text: nav.label
-            anchors.left: parent.left
-            anchors.leftMargin: 54
-            anchors.right: countText.left
-            anchors.rightMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            elide: Text.ElideRight
-            color: nav.active ? root.ink : "#c0c8d4"
-            font.pixelSize: 14
-            font.weight: nav.active ? Font.DemiBold : Font.Medium
-        }
-        Text {
-            id: countText
-            text: nav.count
-            anchors.right: parent.right
-            anchors.rightMargin: 13
-            anchors.verticalCenter: parent.verticalCenter
-            color: root.muted
-            font.pixelSize: 12
-            font.features: { "tnum": 1 }
-        }
-    }
-
-    component StatusPill: Rectangle {
-        id: pill
-        required property string label
-        required property string value
-        implicitWidth: statusRow.implicitWidth + 24
-        implicitHeight: 34
-        radius: 9
-        color: "#151d29"
-        border.color: root.line
-        Row {
-            id: statusRow
-            anchors.centerIn: parent
-            spacing: 7
-            Text {
-                text: pill.value
-                color: root.ink
-                font.pixelSize: 13
-                font.weight: Font.Bold
-            }
-            Text {
-                text: pill.label
-                color: root.muted
-                font.pixelSize: 12
-            }
-        }
-    }
-
-    component CollectionMetric: Rectangle {
-        id: collectionMetric
-        required property string label
-        required property string value
-        property color tone: root.ink
-        width: 112
-        height: 56
-        radius: 9
-        color: "#151d29"
-        border.color: Qt.rgba(tone.r, tone.g, tone.b, 0.28)
-        Accessible.name: label + ": " + value
-        Column {
-            anchors.left: parent.left
-            anchors.leftMargin: 13
-            anchors.right: parent.right
-            anchors.rightMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 1
-            Text {
-                width: parent.width
-                text: collectionMetric.value
-                color: collectionMetric.tone
-                font.pixelSize: 17
-                font.weight: Font.Bold
-                font.features: { "tnum": 1 }
-                elide: Text.ElideRight
-            }
-            Text {
-                width: parent.width
-                text: collectionMetric.label.toUpperCase()
-                color: root.muted
-                font.pixelSize: 8
-                font.weight: Font.Bold
-                font.letterSpacing: 0.75
-                elide: Text.ElideRight
-            }
-        }
-    }
-
-    component AuditMetric: Rectangle {
-        id: metric
-        required property string label
-        required property int value
-        required property color tone
-        implicitHeight: 68
-        radius: 10
-        color: "#151d29"
-        border.color: Qt.rgba(metric.tone.r, metric.tone.g, metric.tone.b, 0.38)
-        Column {
-            anchors.left: parent.left
-            anchors.leftMargin: 15
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 1
-            Text {
-                text: metric.value.toLocaleString(Qt.locale(), "f", 0)
-                color: metric.tone
-                font.pixelSize: 20
-                font.weight: Font.Bold
-            }
-            Text {
-                text: metric.label.toUpperCase()
-                color: root.muted
-                font.pixelSize: 9
-                font.weight: Font.Bold
-                font.letterSpacing: 0.8
-            }
-        }
-    }
-
-    component FilterToggle: Rectangle {
-        id: filterToggle
-        required property string label
-        required property string description
-        property bool checked: false
-        signal toggled()
-        width: filterPopup.availableWidth
-        height: 58
-        radius: 8
-        color: filterHover.hovered ? "#1b2432" : "transparent"
-
-        HoverHandler { id: filterHover }
-        TapHandler { onTapped: filterToggle.toggled() }
-
-        Rectangle {
-            anchors.left: parent.left
-            anchors.leftMargin: 11
-            anchors.verticalCenter: parent.verticalCenter
-            width: 18
-            height: 18
-            radius: 5
-            color: filterToggle.checked ? root.accentCool : "#101721"
-            border.color: filterToggle.checked ? root.accentCool : "#455166"
-            Text {
-                anchors.centerIn: parent
-                text: filterToggle.checked ? "✓" : ""
-                color: "#0c1716"
-                font.pixelSize: 13
-                font.weight: Font.Black
-            }
-        }
-        Column {
-            anchors.left: parent.left
-            anchors.leftMargin: 42
-            anchors.right: parent.right
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 2
-            Text {
-                width: parent.width
-                text: filterToggle.label
-                color: root.ink
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
-                elide: Text.ElideRight
-            }
-            Text {
-                width: parent.width
-                text: filterToggle.description
-                color: root.muted
-                font.pixelSize: 9
-                elide: Text.ElideRight
-            }
-        }
-    }
-
-    component MetadataField: ColumnLayout {
-        property string label: ""
-        property string value: ""
-        property string placeholder: ""
-        property var fieldValidator: null
-        signal edited(string value)
-        spacing: 5
-
-        Text {
-            Layout.fillWidth: true
-            text: parent.label.toUpperCase()
-            color: root.muted
-            font.pixelSize: 9
-            font.weight: Font.Bold
-            font.letterSpacing: 0.8
-        }
-        TextField {
-            Layout.fillWidth: true
-            text: parent.value
-            placeholderText: parent.placeholder
-            color: root.ink
-            placeholderTextColor: "#637085"
-            selectByMouse: true
-            validator: parent.fieldValidator
-            onTextEdited: parent.edited(text)
-            background: Rectangle {
-                implicitHeight: 40
-                radius: 8
-                color: "#101721"
-                border.color: parent.activeFocus ? root.accent : root.line
-            }
-        }
-    }
-
-    component LibraryWheelHandler: WheelHandler {
-        required property Flickable scroller
-        target: null
-        property double lastNotchAt: 0
-        property int burstCount: 0
-
-        onWheel: function(event) {
-            let distance = 0
-            const pixelDelta = event.pixelDelta.y
-            if (pixelDelta !== 0) {
-                // Keep high-resolution trackpad motion continuous. A modest
-                // scale removes Qt's sluggish feel without quantizing it into
-                // mouse-wheel steps.
-                distance = -pixelDelta * 1.45
-                burstCount = 0
-                lastNotchAt = 0
-            } else {
-                const steps = event.angleDelta.y / 120
-                if (steps === 0)
-                    return
-                const now = Date.now()
-                burstCount = now - lastNotchAt <= 190
-                           ? Math.min(8, burstCount + 1) : 0
-                lastNotchAt = now
-                const acceleration = Math.min(4.5,
-                                              1 + burstCount * burstCount * 0.12)
-                const baseDistance = Math.max(120,
-                                              Math.min(210, scroller.height * 0.16))
-                distance = -steps * baseDistance * acceleration
-            }
-
-            const lowerBound = scroller.originY
-            const upperBound = lowerBound
-                    + Math.max(0, scroller.contentHeight - scroller.height)
-            scroller.contentY = Math.max(lowerBound,
-                                         Math.min(upperBound,
-                                                  scroller.contentY + distance))
-            event.accepted = true
-        }
-    }
-
     component GameGrid: GridView {
         id: grid
         reuseItems: true
@@ -6896,7 +6671,7 @@ ApplicationWindow {
         cellHeight: Math.round(cellWidth * 1.36)
         model: library
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-        LibraryWheelHandler { scroller: grid }
+        AcceleratedWheelHandler { scroller: grid }
 
         delegate: Item {
             id: tile
@@ -7312,7 +7087,7 @@ ApplicationWindow {
         contentWidth: Math.max(width, tableWidth)
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
-        LibraryWheelHandler { scroller: list }
+        AcceleratedWheelHandler { scroller: list }
 
         header: Rectangle {
             width: Math.max(list.width - 8, list.tableWidth)
@@ -7743,7 +7518,7 @@ ApplicationWindow {
                 implicitWidth: 42
                 leftPadding: 0
                 rightPadding: 0
-                onClicked: settingsDialog.open()
+                onClicked: root.openSettingsFor("")
                 ToolTip.visible: hovered
                 ToolTip.text: "Settings"
             }
@@ -7787,47 +7562,47 @@ ApplicationWindow {
                 topPadding: 8
                 bottomPadding: 7
             }
-            NavButton {
+            SidebarNavButton {
                 label: "All Games"
                 glyph: "▦"
                 count: library.game_count.toString()
                 active: root.selectedPlatform === "" && root.availability === ""
                 onClicked: root.selectLibrary("")
             }
-            NavButton {
+            SidebarNavButton {
                 label: "My Collection"
                 glyph: "◆"
                 count: library.local_game_count.toString()
                 active: root.selectedPlatform === "" && root.availability === "local"
                 onClicked: root.selectLibrary("local")
             }
-            NavButton {
+            SidebarNavButton {
                 label: "Favorites"
                 glyph: "★"
                 count: library.favorite_count.toString()
                 active: root.selectedPlatform === "" && root.availability === "favorites"
                 onClicked: root.selectLibrary("favorites")
             }
-            NavButton {
+            SidebarNavButton {
                 label: "Recently Played"
                 glyph: "◷"
                 count: library.recent_count.toString()
                 active: root.selectedPlatform === "" && root.availability === "recent"
                 onClicked: root.selectLibrary("recent")
             }
-            NavButton {
+            SidebarNavButton {
                 label: "Minerva"
                 glyph: "↓"
                 count: library.downloadable_game_count.toString()
                 active: root.availability === "downloadable"
                 onClicked: root.selectLibrary("downloadable")
             }
-            NavButton {
+            SidebarNavButton {
                 label: "Import ROMs"
                 glyph: "+"
                 onClicked: root.openImportDialog()
             }
-            NavButton {
+            SidebarNavButton {
                 label: "Library Audit"
                 glyph: "✓"
                 count: libraryAudit.total_entry_count > 0
@@ -7837,7 +7612,7 @@ ApplicationWindow {
                     libraryAudit.start_audit()
                 }
             }
-            NavButton {
+            SidebarNavButton {
                 label: "Media Audit"
                 glyph: "▣"
                 count: mediaAudit.examined_count > 0
@@ -7903,7 +7678,7 @@ ApplicationWindow {
             spacing: 3
             model: library.collection_count
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-            delegate: NavButton {
+            delegate: SidebarNavButton {
                 required property int index
                 property int revision: library.collection_revision
                 label: {
@@ -8039,7 +7814,7 @@ ApplicationWindow {
             spacing: 3
             model: library.filtered_platform_count
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-            delegate: NavButton {
+            delegate: SidebarNavButton {
                 required property int index
                 property int revision: library.platform_revision
                 label: {
@@ -8047,6 +7822,7 @@ ApplicationWindow {
                     return library.filtered_platform_name_at(index)
                 }
                 glyph: "·"
+                iconSource: root.platformIconUrl(label)
                 count: library.filtered_platform_game_count_at(index).toString()
                 active: root.selectedPlatform === label
                 onClicked: {
@@ -9304,14 +9080,19 @@ ApplicationWindow {
                                         Button {
                                             Layout.preferredWidth: 92
                                             Layout.preferredHeight: 32
-                                            text: "DOWNLOAD"
-                                            enabled: emuMovies.credentials_saved
-                                                     && !emuMovies.busy
-                                            onClicked: emuMovies.download_video(
-                                                           root.selectedGameId,
-                                                           root.selectedDatabaseId,
-                                                           gameDetails.title,
-                                                           gameDetails.platform)
+                                            text: emuMovies.credentials_saved
+                                                  ? "DOWNLOAD" : "SET UP"
+                                            enabled: !emuMovies.busy
+                                            onClicked: {
+                                                if (emuMovies.credentials_saved)
+                                                    emuMovies.download_video(
+                                                        root.selectedGameId,
+                                                        root.selectedDatabaseId,
+                                                        gameDetails.title,
+                                                        gameDetails.platform)
+                                                else
+                                                    root.openSettingsFor("emumovies")
+                                            }
                                             background: Rectangle {
                                                 radius: 7
                                                 color: parent.down ? "#d89444" : root.accent
@@ -9691,15 +9472,20 @@ ApplicationWindow {
                                             visible: !gameDetails.manual_transfer_active
                                             Layout.preferredWidth: 96
                                             Layout.preferredHeight: 32
-                                            text: "EMUMOVIES"
-                                            enabled: emuMovies.credentials_saved
-                                                     && !emuMovies.busy
+                                            text: emuMovies.credentials_saved
+                                                  ? "EMUMOVIES" : "SET UP"
+                                            enabled: !emuMovies.busy
                                                      && !gameDetails.manual_action_busy
-                                            onClicked: emuMovies.download_manual(
-                                                           root.selectedGameId,
-                                                           root.selectedDatabaseId,
-                                                           gameDetails.title,
-                                                           gameDetails.platform)
+                                            onClicked: {
+                                                if (emuMovies.credentials_saved)
+                                                    emuMovies.download_manual(
+                                                        root.selectedGameId,
+                                                        root.selectedDatabaseId,
+                                                        gameDetails.title,
+                                                        gameDetails.platform)
+                                                else
+                                                    root.openSettingsFor("emumovies")
+                                            }
                                             ToolTip.visible: hovered
                                             ToolTip.text: emuMovies.credentials_saved
                                                           ? "Download through the legacy EmuMovies FTP matcher"
@@ -9885,14 +9671,17 @@ ApplicationWindow {
                             CatalogLinkButton {
                                 text: "WATCH VIDEO"
                                 destination: gameDetails.catalog_video_url
+                                onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                             }
                             CatalogLinkButton {
                                 text: "WIKIPEDIA"
                                 destination: gameDetails.wikipedia_url
+                                onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                             }
                             CatalogLinkButton {
                                 text: "STEAM STORE"
                                 destination: gameDetails.steam_store_url
+                                onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                             }
                         }
                         Text {
@@ -16155,10 +15944,17 @@ ApplicationWindow {
                     onActivated: emuMovies.choose_artwork_kind(currentValue)
                 }
                 HeaderButton {
-                    text: emuMovies.busy ? "Downloading…" : "Download exact match"
+                    text: emuMovies.busy ? "Downloading…"
+                          : emuMovies.credentials_saved
+                          ? "Download exact match" : "Set up EmuMovies"
                     active: true
-                    enabled: !emuMovies.busy && emuMovies.credentials_saved
-                    onClicked: emuMovies.download_artwork()
+                    enabled: !emuMovies.busy
+                    onClicked: {
+                        if (emuMovies.credentials_saved)
+                            emuMovies.download_artwork()
+                        else
+                            root.openSettingsFor("emumovies")
+                    }
                 }
             }
 
@@ -16185,6 +15981,13 @@ ApplicationWindow {
                         color: root.muted
                         font.pixelSize: 10
                         wrapMode: Text.WordWrap
+                    }
+                    Button {
+                        visible: root.artworkProviderNeedsSetup(
+                                     root.artworkProvider)
+                        text: "SET UP IN SETTINGS"
+                        enabled: !root.artworkProviderModel.busy
+                        onClicked: root.openSettingsFor(root.artworkProvider)
                     }
                     Button {
                         visible: (root.artworkProvider === "steamgriddb"
@@ -16567,10 +16370,17 @@ ApplicationWindow {
                         Button {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 42
-                            text: emuMovies.busy
-                                  ? "Searching EmuMovies…" : "Download to Lunchbox media cache"
-                            enabled: emuMovies.credentials_saved && !emuMovies.busy
-                            onClicked: emuMovies.download_artwork()
+                            text: emuMovies.busy ? "Searching EmuMovies…"
+                                  : emuMovies.credentials_saved
+                                  ? "Download to Lunchbox media cache"
+                                  : "Set up EmuMovies in Settings"
+                            enabled: !emuMovies.busy
+                            onClicked: {
+                                if (emuMovies.credentials_saved)
+                                    emuMovies.download_artwork()
+                                else
+                                    root.openSettingsFor("emumovies")
+                            }
                         }
                     }
                 }
@@ -16604,6 +16414,38 @@ ApplicationWindow {
         }
     }
 
+    FirstRunSetup {
+        id: onboardingPage
+        parent: Overlay.overlay
+        x: 0
+        y: 0
+        width: root.width
+        height: root.height
+        settingsModel: appSettings
+        steamGridDbModel: steamGridDb
+        igdbModel: igdb
+        emuMoviesModel: emuMovies
+        ink: root.ink
+        muted: root.muted
+        panel: root.panel
+        panelRaised: root.panelRaised
+        line: root.line
+        accent: root.accent
+        accentCool: root.accentCool
+        uiProbe: root.onboardingUiProbe
+        screenshotOutput: root.screenshotOutput
+        onChooseDirectory: field => {
+            root.directoryTarget = field
+            directoryDialog.open()
+        }
+        onOpenSettings: section => root.openSettingsFor(section)
+        onFinishRequested: {
+            root.onboardingSavePending = true
+            appSettings.onboarding_complete = true
+            appSettings.save()
+        }
+    }
+
     Dialog {
         id: settingsDialog
         modal: true
@@ -16629,6 +16471,9 @@ ApplicationWindow {
             steamGridDb.initialize()
             igdb.initialize()
             emuMovies.initialize()
+            Qt.callLater(function() {
+                Qt.callLater(root.positionRequestedSettingsSection)
+            })
         }
 
         background: Rectangle {
@@ -16652,6 +16497,16 @@ ApplicationWindow {
                 font.pixelSize: 17
                 font.weight: Font.Bold
                 font.letterSpacing: 0.8
+            }
+            Button {
+                anchors.right: parent.right
+                anchors.rightMargin: 58
+                anchors.verticalCenter: parent.verticalCenter
+                text: "SETUP GUIDE"
+                flat: true
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                onClicked: onboardingPage.open()
             }
             RoundButton {
                 anchors.right: parent.right
@@ -16951,6 +16806,7 @@ ApplicationWindow {
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
 
                 Text {
+                    id: qbittorrentSettingsSection
                     text: "QBITTORRENT"
                     color: root.accent
                     font.pixelSize: 10
@@ -17406,6 +17262,7 @@ ApplicationWindow {
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
                 ColumnLayout {
+                    id: steamGridDbSettingsSection
                     Layout.fillWidth: true
                     spacing: 8
                     Text {
@@ -17487,6 +17344,7 @@ ApplicationWindow {
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
                 ColumnLayout {
+                    id: igdbSettingsSection
                     Layout.fillWidth: true
                     spacing: 8
                     Text {
@@ -17590,6 +17448,7 @@ ApplicationWindow {
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
                 ColumnLayout {
+                    id: emuMoviesSettingsSection
                     Layout.fillWidth: true
                     spacing: 8
                     Text {
@@ -17676,7 +17535,7 @@ ApplicationWindow {
                         Button {
                             text: "EmuMovies account ↗"
                             flat: true
-                            onClicked: Qt.openUrlExternally("https://emumovies.com/")
+                            onClicked: Qt.openUrlExternally("https://emumovies.com/register/")
                         }
                     }
                     Text {
@@ -21606,14 +21465,17 @@ ApplicationWindow {
                                     CatalogLinkButton {
                                         text: "WATCH VIDEO"
                                         destination: gameDetails.catalog_video_url
+                                        onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                                     }
                                     CatalogLinkButton {
                                         text: "WIKIPEDIA"
                                         destination: gameDetails.wikipedia_url
+                                        onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                                     }
                                     CatalogLinkButton {
                                         text: "STEAM STORE"
                                         destination: gameDetails.steam_store_url
+                                        onOpenRequested: (label, destination) => root.openCatalogLink(label, destination)
                                     }
                                     Item { Layout.fillWidth: true }
                                 }

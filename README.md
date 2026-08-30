@@ -17,7 +17,10 @@ nix develop
 cargo run -p lunchbox-app -- --database build/lunchbox.db
 ```
 
-The window paints before catalog work begins. SQLite loading and collection
+The window paints before full-catalog work begins. A first worker publication
+makes 240 real games, complete platform counts, and installed/Minerva coverage
+interactive; the complete catalog and search index replace that preview in the
+background without resetting navigation. SQLite loading and collection
 filtering run on worker threads, while virtualized Qt views consume a native
 `QAbstractListModel`. Use `--startup-probe` to measure shell construction without
 waiting for database loading.
@@ -26,7 +29,15 @@ The platform sidebar searches names and familiar aliases such as NES, SNES,
 PS2, and MAME while showing the live match count. Drag its right edge to resize
 it between 180 and 400 pixels, or double-click the edge to restore the default.
 The query and width survive restart in the native state database; filtering is
-in memory and persistence is coalesced off the Qt thread.
+in memory and persistence is coalesced off the Qt thread. The 216 restored
+legacy platform icons are compiled into the application, so navigation artwork
+does not depend on an external asset directory. Grid and list wheel scrolling
+share accelerated high-resolution input, repeated-notch acceleration, and
+momentum.
+
+New profiles start on a native setup page for ROM storage, qBittorrent, and the
+optional SteamGridDB, IGDB, and EmuMovies accounts. Missing-provider actions
+later route back to the exact Settings section instead of silently failing.
 
 Switch to List view for a compact, configurable 20-column library. Headers sort
 the full catalog and open searchable exact-value filters with game counts,

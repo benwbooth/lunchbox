@@ -1,6 +1,7 @@
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 use quick_xml::Reader;
 use quick_xml::events::Event;
+use std::fmt::Write as _;
 use std::fs;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
@@ -46,6 +47,7 @@ struct GeneratedArcadeEntry {
 
 fn main() {
     generate_arcade_lookup();
+    let platform_resources = generate_platform_resources();
 
     CxxQtBuilder::new_qml_module(
         QmlModule::new("Lunchbox")
@@ -54,11 +56,22 @@ fn main() {
             .depend("QtQuick3D")
             .depend("QtMultimedia")
             .qml_files([
+                "qml/AcceleratedWheelHandler.qml",
+                "qml/AuditMetric.qml",
+                "qml/CatalogLinkButton.qml",
+                "qml/CollectionMetric.qml",
                 "qml/CouchModeView.qml",
                 "qml/Box3DViewer.qml",
+                "qml/FilterToggle.qml",
+                "qml/FirstRunSetup.qml",
+                "qml/HeaderButton.qml",
+                "qml/MetadataField.qml",
+                "qml/SidebarNavButton.qml",
+                "qml/StatusPill.qml",
                 "qml/Main.qml",
             ]),
     )
+    .qrc(platform_resources)
     .qt_module("Quick")
     .qt_module("QuickControls2")
     .qt_module("Quick3D")
@@ -80,6 +93,43 @@ fn main() {
     .file("src/steamgriddb_model.rs")
     .file("src/web_artwork_model.rs")
     .build();
+}
+
+fn generate_platform_resources() -> PathBuf {
+    let manifest_directory =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    let icon_directory = manifest_directory.join("../../assets/platforms");
+    println!("cargo:rerun-if-changed={}", icon_directory.display());
+
+    let mut icons = fs::read_dir(&icon_directory)
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to read platform icons at {}: {error}",
+                icon_directory.display()
+            )
+        })
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "png"))
+        .collect::<Vec<_>>();
+    icons.sort();
+
+    let mut qrc = String::from("<RCC>\n  <qresource prefix=\"/platforms\">\n");
+    for path in icons {
+        println!("cargo:rerun-if-changed={}", path.display());
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("platform icon filename is not UTF-8");
+        writeln!(qrc, "    <file alias=\"{name}\">{}</file>", path.display())
+            .expect("writing platform resource manifest");
+    }
+    qrc.push_str("  </qresource>\n</RCC>\n");
+
+    let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"))
+        .join("platform_icons.qrc");
+    fs::write(&output, qrc).expect("failed to write platform icon resource manifest");
+    output
 }
 
 fn arcade_source_path() -> PathBuf {
