@@ -280,6 +280,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   manual/video bundle, cached grid preview, and ported legacy EmuMovies FTP
   artwork/video/manual client. Direct EmuMovies transfers now expose throttled
   progress, cooperatively abort FTP, and remove unpublished partial files.
+  Selected/opened games and sustained hover requests use a protected foreground
+  artwork lane and preempt a less relevant automatic video lookup/transfer at
+  its folder-listing, index, or byte-stream checkpoint. Interrupted work remains
+  queued, while reselecting it before cancellation reasserts it at the front.
   Remaining work includes an unattended member-account cancellation gate. With
   saved credentials, only an opened game or a pointer hover that survives the
   500-ms intent gate enters the bounded automatic video queue; visibility and

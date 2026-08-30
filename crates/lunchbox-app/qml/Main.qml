@@ -1073,9 +1073,10 @@ ApplicationWindow {
         selectedBox3d = false
         selectedHeroArtworkIndex = 0
         if (!root.downloadPlanUiProbe) {
-            library.request_artwork(databaseId, identityTitle, platform, library.artwork_type)
-            library.request_artwork(databaseId, identityTitle, platform, "fanart")
-            library.request_artwork(databaseId, identityTitle, platform, "box-front")
+            library.request_priority_artwork(databaseId, identityTitle, platform,
+                                             library.artwork_type)
+            library.request_priority_artwork(databaseId, identityTitle, platform, "fanart")
+            library.request_priority_artwork(databaseId, identityTitle, platform, "box-front")
             library.request_game_video(gameId)
             refreshSelectedArtwork()
         }
@@ -1520,6 +1521,10 @@ ApplicationWindow {
                     || root.hoverPreviewTile.gameId
                        !== root.hoverPreviewPendingGameId)
                 return
+            library.request_priority_artwork(root.hoverPreviewTile.gameDatabaseId,
+                                             root.hoverPreviewTile.gameCanonicalTitle,
+                                             root.hoverPreviewTile.gamePlatform,
+                                             library.artwork_type)
             library.request_game_video(root.hoverPreviewPendingGameId)
             library.request_hover_preview(root.hoverPreviewPendingGameId)
         }

@@ -332,6 +332,15 @@ pub mod qobject {
         );
 
         #[qinvokable]
+        fn request_priority_artwork(
+            self: Pin<&mut LibraryModel>,
+            launchbox_db_id: i32,
+            title: QString,
+            platform: QString,
+            artwork_type: QString,
+        );
+
+        #[qinvokable]
         fn request_game_video(self: Pin<&mut LibraryModel>, game_uid: QString);
 
         #[qinvokable]
@@ -658,7 +667,10 @@ pub mod qobject {
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QByteArray, QHash, QModelIndex, QString, QUrl, QVariant};
@@ -975,6 +987,8 @@ pub struct LibraryModelRust {
     automatic_video_unavailable: HashSet<String>,
     automatic_video_messages: HashMap<String, String>,
     automatic_video_active: Option<AutomaticVideoRequest>,
+    automatic_video_cancel: Option<Arc<AtomicBool>>,
+    automatic_video_requeue_front: bool,
     favorite_game_ids: Arc<HashSet<String>>,
     favorite_requests: HashSet<String>,
     favorite_started: Option<std::time::Instant>,
@@ -1179,6 +1193,8 @@ impl Default for LibraryModelRust {
             automatic_video_unavailable: HashSet::new(),
             automatic_video_messages: HashMap::new(),
             automatic_video_active: None,
+            automatic_video_cancel: None,
+            automatic_video_requeue_front: false,
             favorite_game_ids: Arc::new(HashSet::new()),
             favorite_requests: HashSet::new(),
             favorite_started: None,
@@ -1533,6 +1549,24 @@ fn prioritize_automatic_video_request(
     };
     queue.push_front(request);
     true
+}
+
+fn requeue_automatic_video_request(
+    queue: &mut VecDeque<AutomaticVideoRequest>,
+    request: AutomaticVideoRequest,
+    foreground: bool,
+) {
+    if let Some(position) = queue
+        .iter()
+        .position(|queued| queued.game_uid == request.game_uid)
+    {
+        queue.remove(position);
+    }
+    if foreground {
+        queue.push_front(request);
+    } else {
+        queue.push_back(request);
+    }
 }
 
 fn collection_at(model: &qobject::LibraryModel, index: i32) -> Option<&UserCollection> {
@@ -3330,8 +3364,31 @@ impl qobject::LibraryModel {
         platform: QString,
         artwork_type: QString,
     ) {
-        self.as_mut()
-            .queue_artwork_request(launchbox_db_id, title, platform, artwork_type, false);
+        self.as_mut().queue_artwork_request(
+            launchbox_db_id,
+            title,
+            platform,
+            artwork_type,
+            false,
+            false,
+        );
+    }
+
+    pub fn request_priority_artwork(
+        mut self: Pin<&mut Self>,
+        launchbox_db_id: i32,
+        title: QString,
+        platform: QString,
+        artwork_type: QString,
+    ) {
+        self.as_mut().queue_artwork_request(
+            launchbox_db_id,
+            title,
+            platform,
+            artwork_type,
+            false,
+            true,
+        );
     }
 
     pub fn set_emumovies_configured(mut self: Pin<&mut Self>, configured: bool) {
@@ -3467,13 +3524,31 @@ impl qobject::LibraryModel {
                 .rust()
                 .automatic_video_terminal
                 .contains(&request.game_uid)
-            || self
+        {
+            return;
+        }
+
+        if self
+            .as_ref()
+            .rust()
+            .automatic_video_active
+            .as_ref()
+            .is_some_and(|active| active.game_uid == request.game_uid)
+        {
+            if self
                 .as_ref()
                 .rust()
-                .automatic_video_active
+                .automatic_video_cancel
                 .as_ref()
-                .is_some_and(|active| active.game_uid == request.game_uid)
-        {
+                .is_some_and(|cancel| cancel.load(Ordering::Acquire))
+            {
+                self.as_mut().rust_mut().automatic_video_requeue_front = true;
+                self.as_mut().rust_mut().automatic_video_messages.insert(
+                    request.game_uid,
+                    "This game became relevant again; its interrupted gameplay video will restart first."
+                        .to_owned(),
+                );
+            }
             return;
         }
 
@@ -3488,10 +3563,12 @@ impl qobject::LibraryModel {
                 &request.game_uid,
             );
             self.as_mut().rust_mut().automatic_video_messages.insert(
-                request.game_uid,
+                request.game_uid.clone(),
                 "Moved the requested gameplay video to the front of the EmuMovies queue."
                     .to_owned(),
             );
+            self.as_mut().preempt_automatic_video_for(&request);
+            self.as_mut().update_media_pending_count();
             return;
         }
 
@@ -3516,9 +3593,40 @@ impl qobject::LibraryModel {
         self.as_mut()
             .rust_mut()
             .automatic_video_queue
-            .push_front(request);
+            .push_front(request.clone());
+        self.as_mut().preempt_automatic_video_for(&request);
         self.as_mut().update_media_pending_count();
         self.as_mut().start_next_automatic_video();
+    }
+
+    fn preempt_automatic_video_for(mut self: Pin<&mut Self>, request: &AutomaticVideoRequest) {
+        let Some(active) = self.as_ref().rust().automatic_video_active.clone() else {
+            return;
+        };
+        if active.game_uid == request.game_uid {
+            return;
+        }
+        let Some(cancel) = self.as_ref().rust().automatic_video_cancel.clone() else {
+            return;
+        };
+        cancel.store(true, Ordering::Release);
+        self.as_mut().rust_mut().automatic_video_requeue_front = false;
+        self.as_mut().rust_mut().automatic_video_messages.insert(
+            active.game_uid,
+            format!(
+                "Paused so {} can download first; this gameplay video remains queued.",
+                request.title
+            ),
+        );
+        self.as_mut().rust_mut().automatic_video_messages.insert(
+            request.game_uid.clone(),
+            "Priority requested. Interrupting the less relevant gameplay-video transfer…"
+                .to_owned(),
+        );
+        self.as_mut().set_media_fetch_message(qstring(format!(
+            "Switching media priority to {}…",
+            request.title
+        )));
     }
 
     fn start_next_automatic_video(mut self: Pin<&mut Self>) {
@@ -3548,6 +3656,9 @@ impl qobject::LibraryModel {
             return;
         };
         self.as_mut().rust_mut().automatic_video_active = Some(request.clone());
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().automatic_video_cancel = Some(Arc::clone(&cancel));
+        self.as_mut().rust_mut().automatic_video_requeue_front = false;
         self.as_mut().rust_mut().automatic_video_messages.insert(
             request.game_uid.clone(),
             format!(
@@ -3575,6 +3686,9 @@ impl qobject::LibraryModel {
         )));
         let progress_state_for_worker = Arc::clone(&progress_state);
         let progress: crate::emumovies::ProgressCallback = Box::new(move |value| {
+            if cancel.load(Ordering::Acquire) {
+                return false;
+            }
             let percent = (value * 100.0).round().clamp(0.0, 100.0) as i32;
             let Ok(mut state) = progress_state_for_worker.lock() else {
                 return true;
@@ -3596,7 +3710,7 @@ impl qobject::LibraryModel {
                     .as_mut()
                     .update_automatic_video_progress(game_uid, percent);
             });
-            true
+            !cancel.load(Ordering::Acquire)
         });
         let request_for_worker = request.clone();
         let request_for_completion = request.clone();
@@ -3654,7 +3768,40 @@ impl qobject::LibraryModel {
         {
             return;
         }
+        let preempted = matches!(outcome, AutomaticVideoOutcome::Missing(_))
+            && self
+                .as_ref()
+                .rust()
+                .automatic_video_cancel
+                .as_ref()
+                .is_some_and(|cancel| cancel.load(Ordering::Acquire));
+        let requeue_front = self.as_ref().rust().automatic_video_requeue_front;
         self.as_mut().rust_mut().automatic_video_active = None;
+        self.as_mut().rust_mut().automatic_video_cancel = None;
+        self.as_mut().rust_mut().automatic_video_requeue_front = false;
+        if preempted {
+            requeue_automatic_video_request(
+                &mut self.as_mut().rust_mut().automatic_video_queue,
+                request.clone(),
+                requeue_front,
+            );
+            self.as_mut().rust_mut().automatic_video_messages.insert(
+                request.game_uid.clone(),
+                if requeue_front {
+                    "Interrupted safely and requeued first because this game is relevant again."
+                        .to_owned()
+                } else {
+                    "Interrupted safely for a more relevant game; still queued for later."
+                        .to_owned()
+                },
+            );
+            self.as_mut().set_media_active_title(QString::default());
+            self.as_mut().set_media_active_kind(QString::default());
+            self.as_mut().set_media_active_progress(-1);
+            self.as_mut().update_media_pending_count();
+            self.as_mut().start_next_automatic_video();
+            return;
+        }
         self.as_mut()
             .rust_mut()
             .automatic_video_pending
@@ -3781,8 +3928,14 @@ impl qobject::LibraryModel {
         platform: QString,
         artwork_type: QString,
     ) {
-        self.as_mut()
-            .queue_artwork_request(launchbox_db_id, title, platform, artwork_type, true);
+        self.as_mut().queue_artwork_request(
+            launchbox_db_id,
+            title,
+            platform,
+            artwork_type,
+            true,
+            true,
+        );
     }
 
     fn queue_artwork_request(
@@ -3792,6 +3945,7 @@ impl qobject::LibraryModel {
         platform: QString,
         artwork_type: QString,
         force: bool,
+        foreground: bool,
     ) {
         if !*self.as_ref().media_retrieval_enabled()
             || *self.as_ref().media_loading()
@@ -3821,6 +3975,26 @@ impl qobject::LibraryModel {
         }
         let key = (database_id, kind);
         if self.as_ref().rust().media_requests.contains(&key) {
+            if foreground {
+                let prioritized = self
+                    .as_ref()
+                    .rust()
+                    .media_fetch_queue
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("artwork retrieval is not initialized"))
+                    .and_then(|queue| queue.prioritize_request(database_id, kind));
+                match prioritized {
+                    Ok(true) => self.as_mut().set_media_fetch_message(qstring(format!(
+                        "Moved {} artwork for {} to the front of the media queue.",
+                        kind.key().replace('-', " "),
+                        title
+                    ))),
+                    Ok(false) => {}
+                    Err(error) => self.as_mut().set_media_fetch_message(qstring(format!(
+                        "Artwork priority could not be changed: {error}"
+                    ))),
+                }
+            }
             return;
         }
         let request = MediaFetchRequest {
@@ -3838,7 +4012,13 @@ impl qobject::LibraryModel {
             .media_fetch_queue
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("artwork retrieval is not initialized"))
-            .and_then(|queue| queue.try_request(request));
+            .and_then(|queue| {
+                if foreground {
+                    queue.try_priority_request(request)
+                } else {
+                    queue.try_request(request)
+                }
+            });
         match queued {
             Ok(()) => {
                 if self.as_ref().rust().media_fetch_started.is_none() {
@@ -6538,6 +6718,35 @@ mod tests {
             ["hovered", "already-next", "middle"]
         );
         assert!(!prioritize_automatic_video_request(&mut queue, "missing"));
+    }
+
+    #[test]
+    fn preempted_video_requeues_behind_priority_work_or_back_in_front_on_reselection() {
+        let request = |game_uid: &str| AutomaticVideoRequest {
+            game_uid: game_uid.to_owned(),
+            database_id: 1,
+            title: game_uid.to_owned(),
+            platform: "Test platform".to_owned(),
+        };
+        let mut queue = VecDeque::from([request("selected"), request("later")]);
+
+        requeue_automatic_video_request(&mut queue, request("interrupted"), false);
+        assert_eq!(
+            queue
+                .iter()
+                .map(|request| request.game_uid.as_str())
+                .collect::<Vec<_>>(),
+            ["selected", "later", "interrupted"]
+        );
+
+        requeue_automatic_video_request(&mut queue, request("interrupted"), true);
+        assert_eq!(
+            queue
+                .iter()
+                .map(|request| request.game_uid.as_str())
+                .collect::<Vec<_>>(),
+            ["interrupted", "selected", "later"]
+        );
     }
 
     #[test]

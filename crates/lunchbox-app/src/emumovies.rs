@@ -1306,12 +1306,12 @@ impl EmuMoviesClient {
 
     /// List files in a directory
     pub fn list_files(&self, path: &str) -> Result<Vec<String>> {
-        self.list_files_with_progress(path, |_count| {})
+        self.list_files_with_progress(path, |_count| true)
     }
 
     fn list_files_with_progress<F>(&self, path: &str, mut on_progress: F) -> Result<Vec<String>>
     where
-        F: FnMut(usize),
+        F: FnMut(usize) -> bool,
     {
         let mut ftp = self.connect()?;
         let (_response, data_stream) = ftp
@@ -1347,7 +1347,9 @@ impl EmuMoviesClient {
                         continue;
                     }
                     files.push(line);
-                    on_progress(files.len());
+                    if !on_progress(files.len()) {
+                        anyhow::bail!(TRANSFER_CANCELLED_MESSAGE);
+                    }
                 }
                 Err(err) => {
                     let _ = ftp.close_data_connection(data_stream);
@@ -2057,7 +2059,9 @@ impl EmuMoviesClient {
         &self,
         platform: &str,
         game_cache_dir: Option<&Path>,
+        progress: Option<&ProgressCallback>,
     ) -> Result<Vec<String>> {
+        report_progress(progress, 0.0)?;
         let search_candidates = emumovies_platform_search_candidates(platform);
         let cache_key = search_candidates
             .iter()
@@ -2117,8 +2121,10 @@ impl EmuMoviesClient {
                     }
                     last_progress_update = Instant::now();
                 }
+                progress.is_none_or(|callback| callback(0.0))
             }) {
                 Ok(f) => f,
+                Err(error) if transfer_was_cancelled(&error.to_string()) => return Err(error),
                 Err(e) => {
                     tracing::warn!("Failed to list {}: {}", video_base, e);
                     continue;
@@ -2167,7 +2173,9 @@ impl EmuMoviesClient {
         &self,
         video_folder: &str,
         game_cache_dir: Option<&Path>,
+        progress: Option<&ProgressCallback>,
     ) -> Result<Arc<Vec<VideoIndexEntry>>> {
+        report_progress(progress, 0.0)?;
         if let Some(index) = VIDEO_INDEX_CACHE
             .get_or_init(|| Mutex::new(HashMap::new()))
             .lock()
@@ -2234,6 +2242,7 @@ impl EmuMoviesClient {
                 }
                 last_listing_update = Instant::now();
             }
+            progress.is_none_or(|callback| callback(0.0))
         })?;
         if let Some(game_cache_dir) = game_cache_dir {
             update_video_download_status(
@@ -2242,39 +2251,36 @@ impl EmuMoviesClient {
                 format!("Indexing {} video entries...", videos.len()),
             );
         }
-        let entries: Vec<VideoIndexEntry> = videos
-            .into_iter()
-            .enumerate()
-            .filter_map(|video| {
-                let index_position = video.0 + 1;
-                let video = video.1;
-                if (index_position == 1 || index_position % 500 == 0) && game_cache_dir.is_some() {
-                    if let Some(game_cache_dir) = game_cache_dir {
-                        update_video_download_status(
-                            game_cache_dir,
-                            "indexing-folder",
-                            format!("Indexing video entries... {} processed", index_position),
-                        );
-                    }
+        let mut entries = Vec::new();
+        for (index, video) in videos.into_iter().enumerate() {
+            let index_position = index + 1;
+            if index_position == 1 || index_position % 500 == 0 {
+                report_progress(progress, 0.0)?;
+                if let Some(game_cache_dir) = game_cache_dir {
+                    update_video_download_status(
+                        game_cache_dir,
+                        "indexing-folder",
+                        format!("Indexing video entries... {} processed", index_position),
+                    );
                 }
-                let filename = video.rsplit('/').next().unwrap_or(&video);
-                if !filename.ends_with(".mp4") {
-                    return None;
-                }
+            }
+            let filename = video.rsplit('/').next().unwrap_or(&video);
+            if !filename.ends_with(".mp4") {
+                continue;
+            }
 
-                let video_name = filename.strip_suffix(".mp4").unwrap_or(filename);
-                let normalized = normalize_game_name(video_name);
-                let no_region = remove_region_codes(&normalized);
-                let tokens = tokenize_for_match(&no_region);
+            let video_name = filename.strip_suffix(".mp4").unwrap_or(filename);
+            let normalized = normalize_game_name(video_name);
+            let no_region = remove_region_codes(&normalized);
+            let tokens = tokenize_for_match(&no_region);
 
-                Some(VideoIndexEntry {
-                    path: video,
-                    normalized,
-                    no_region,
-                    tokens,
-                })
-            })
-            .collect();
+            entries.push(VideoIndexEntry {
+                path: video,
+                normalized,
+                no_region,
+                tokens,
+            });
+        }
 
         if let Some(parent) = cache_path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -2334,7 +2340,7 @@ impl EmuMoviesClient {
             "finding-folder",
             "Finding matching video folder...",
         );
-        let video_folders = self.find_video_folders(platform, Some(game_cache_dir))?;
+        let video_folders = self.find_video_folders(platform, Some(game_cache_dir), progress)?;
         report_progress(progress, 0.0)?;
         if video_folders.is_empty() {
             anyhow::bail!("No video folder found for platform {}", platform);
@@ -2345,8 +2351,9 @@ impl EmuMoviesClient {
 
         for (source_order, video_folder) in video_folders.iter().enumerate() {
             report_progress(progress, 0.0)?;
-            let index = match self.get_video_index(video_folder, Some(game_cache_dir)) {
+            let index = match self.get_video_index(video_folder, Some(game_cache_dir), progress) {
                 Ok(v) => v,
+                Err(error) if transfer_was_cancelled(&error.to_string()) => return Err(error),
                 Err(e) => {
                     tracing::warn!("Failed to build video index for {}: {}", video_folder, e);
                     continue;
@@ -2463,13 +2470,13 @@ impl EmuMoviesClient {
 
     /// Check whether a matching video exists for a game without downloading it.
     pub fn has_video_match(&self, platform: &str, game_name: &str) -> Result<bool> {
-        let video_folders = self.find_video_folders(platform, None)?;
+        let video_folders = self.find_video_folders(platform, None, None)?;
         if video_folders.is_empty() {
             return Ok(false);
         }
 
         for (source_order, video_folder) in video_folders.iter().enumerate() {
-            let index = match self.get_video_index(video_folder, None) {
+            let index = match self.get_video_index(video_folder, None, None) {
                 Ok(v) => v,
                 Err(e) => {
                     tracing::warn!(

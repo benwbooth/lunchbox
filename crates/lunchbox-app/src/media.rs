@@ -1021,8 +1021,52 @@ pub struct MediaFetchQueue {
 
 #[derive(Default)]
 struct MediaFetchState {
+    foreground_requests: VecDeque<MediaFetchRequest>,
     requests: VecDeque<MediaFetchRequest>,
     shutdown: bool,
+}
+
+impl MediaFetchState {
+    fn queued_len(&self) -> usize {
+        self.foreground_requests
+            .len()
+            .saturating_add(self.requests.len())
+    }
+
+    fn push(&mut self, request: MediaFetchRequest, foreground: bool) {
+        if foreground {
+            self.foreground_requests.push_back(request);
+        } else {
+            self.requests.push_back(request);
+        }
+    }
+
+    fn prioritize(&mut self, database_id: i64, requested_kind: ArtworkKind) -> bool {
+        if let Some(position) = self.foreground_requests.iter().position(|request| {
+            request.database_id == database_id && request.requested_kind == requested_kind
+        }) {
+            if let Some(request) = self.foreground_requests.remove(position) {
+                self.foreground_requests.push_back(request);
+                return true;
+            }
+        }
+        let Some(position) = self.requests.iter().position(|request| {
+            request.database_id == database_id && request.requested_kind == requested_kind
+        }) else {
+            return false;
+        };
+        let Some(request) = self.requests.remove(position) else {
+            return false;
+        };
+        self.foreground_requests.push_back(request);
+        true
+    }
+
+    fn pop_next(&mut self) -> Option<MediaFetchRequest> {
+        self.foreground_requests
+            .pop_back()
+            .or_else(|| self.requests.pop_back())
+    }
 }
 
 impl MediaFetchQueue {
@@ -1057,6 +1101,18 @@ impl MediaFetchQueue {
     }
 
     pub fn try_request(&self, request: MediaFetchRequest) -> Result<()> {
+        self.try_request_with_priority(request, false)
+    }
+
+    pub fn try_priority_request(&self, request: MediaFetchRequest) -> Result<()> {
+        self.try_request_with_priority(request, true)
+    }
+
+    fn try_request_with_priority(
+        &self,
+        request: MediaFetchRequest,
+        foreground: bool,
+    ) -> Result<()> {
         let (state, ready) = &*self.shared;
         let mut state = state
             .lock()
@@ -1064,12 +1120,31 @@ impl MediaFetchQueue {
         if state.shutdown {
             bail!("artwork retrieval workers are unavailable");
         }
-        if state.requests.len() >= MEDIA_DOWNLOAD_QUEUE_CAPACITY {
+        if state.queued_len() >= MEDIA_DOWNLOAD_QUEUE_CAPACITY {
             bail!("artwork retrieval queue is full");
         }
-        state.requests.push_back(request);
+        state.push(request, foreground);
         ready.notify_one();
         Ok(())
+    }
+
+    pub fn prioritize_request(
+        &self,
+        database_id: i64,
+        requested_kind: ArtworkKind,
+    ) -> Result<bool> {
+        let (state, ready) = &*self.shared;
+        let mut state = state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("artwork retrieval queue is unavailable"))?;
+        if state.shutdown {
+            bail!("artwork retrieval workers are unavailable");
+        }
+        let prioritized = state.prioritize(database_id, requested_kind);
+        if prioritized {
+            ready.notify_one();
+        }
+        Ok(prioritized)
     }
 }
 
@@ -1123,7 +1198,10 @@ fn media_fetch_worker<F>(
                 Ok(state) => state,
                 Err(_) => return,
             };
-            while state.requests.is_empty() && !state.shutdown {
+            while state.foreground_requests.is_empty()
+                && state.requests.is_empty()
+                && !state.shutdown
+            {
                 state = match ready.wait(state) {
                     Ok(state) => state,
                     Err(_) => return,
@@ -1132,7 +1210,7 @@ fn media_fetch_worker<F>(
             if state.shutdown {
                 return;
             }
-            state.requests.pop_back()
+            state.pop_next()
         };
         let Some(request) = request else { continue };
         callback(fetch_media(&agent, &root, &base_url, request, worker_index));
@@ -1639,6 +1717,47 @@ fn percent_encode_path_segment(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fetch_request(database_id: i64, kind: ArtworkKind) -> MediaFetchRequest {
+        MediaFetchRequest {
+            request_id: format!("game-{database_id}"),
+            database_id,
+            title: format!("Game {database_id}"),
+            platform: "Test platform".to_owned(),
+            requested_kind: kind,
+            force: false,
+            exact_only: false,
+        }
+    }
+
+    #[test]
+    fn foreground_artwork_always_precedes_newer_background_work() {
+        let mut state = MediaFetchState::default();
+        state.push(fetch_request(1, ArtworkKind::BoxFront), false);
+        state.push(fetch_request(2, ArtworkKind::BoxFront), false);
+        state.push(fetch_request(3, ArtworkKind::Fanart), true);
+        state.push(fetch_request(4, ArtworkKind::BoxFront), false);
+
+        assert_eq!(state.pop_next().unwrap().database_id, 3);
+        assert_eq!(state.pop_next().unwrap().database_id, 4);
+        assert_eq!(state.pop_next().unwrap().database_id, 2);
+    }
+
+    #[test]
+    fn queued_artwork_can_be_promoted_and_reasserted_without_duplication() {
+        let mut state = MediaFetchState::default();
+        state.push(fetch_request(1, ArtworkKind::BoxFront), false);
+        state.push(fetch_request(2, ArtworkKind::BoxFront), true);
+        state.push(fetch_request(3, ArtworkKind::Fanart), true);
+
+        assert!(state.prioritize(1, ArtworkKind::BoxFront));
+        assert!(state.prioritize(2, ArtworkKind::BoxFront));
+        assert!(!state.prioritize(9, ArtworkKind::BoxFront));
+        assert_eq!(state.queued_len(), 3);
+        assert_eq!(state.pop_next().unwrap().database_id, 2);
+        assert_eq!(state.pop_next().unwrap().database_id, 1);
+        assert_eq!(state.pop_next().unwrap().database_id, 3);
+    }
 
     fn touch(path: &Path) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();

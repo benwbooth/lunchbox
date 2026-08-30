@@ -426,8 +426,8 @@ Item {
         selectedLocal = local
         selectedDownloadable = downloadable
         loadedGameId = ""
-        library.request_artwork(databaseId, title, platform, "box-front")
-        library.request_artwork(databaseId, title, platform, "fanart")
+        library.request_priority_artwork(databaseId, title, platform, "box-front")
+        library.request_priority_artwork(databaseId, title, platform, "fanart")
         variantRequested(gameId, databaseId, title, platform, local, downloadable)
         focusGameById(gameId)
         forceActiveFocus()
@@ -480,10 +480,10 @@ Item {
         selectedPlatform = item.gamePlatform
         selectedLocal = item.gameLocal
         selectedDownloadable = item.gameDownloadable
-        library.request_artwork(selectedDatabaseId, selectedTitle,
-                                selectedPlatform, "box-front")
-        library.request_artwork(selectedDatabaseId, selectedTitle,
-                                selectedPlatform, "fanart")
+        library.request_priority_artwork(selectedDatabaseId, selectedTitle,
+                                         selectedPlatform, "box-front")
+        library.request_priority_artwork(selectedDatabaseId, selectedTitle,
+                                         selectedPlatform, "fanart")
         return true
     }
 
@@ -940,10 +940,10 @@ Item {
 
     onMediaRevisionChanged: {
         if (selectedDatabaseId > 0) {
-            library.request_artwork(selectedDatabaseId, selectedTitle,
-                                    selectedPlatform, "box-front")
-            library.request_artwork(selectedDatabaseId, selectedTitle,
-                                    selectedPlatform, "fanart")
+            library.request_priority_artwork(selectedDatabaseId, selectedTitle,
+                                             selectedPlatform, "box-front")
+            library.request_priority_artwork(selectedDatabaseId, selectedTitle,
+                                             selectedPlatform, "fanart")
         }
     }
 
