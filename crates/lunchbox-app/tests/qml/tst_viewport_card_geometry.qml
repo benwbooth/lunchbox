@@ -66,6 +66,26 @@ TestCase {
                      "bottom edge")
     }
 
+    function test_resting_bottom_rows_stay_inside_their_own_delegates() {
+        geometry.expanded = false
+
+        geometry.tileViewportX = 900
+        geometry.tileViewportY = 420
+        fuzzyCompare(geometry.expansion, 1, "ordinary card expansion")
+        fuzzyCompare(geometry.localX, 8,
+                     "second-to-bottom card horizontal inset")
+        fuzzyCompare(geometry.localY, 8,
+                     "second-to-bottom card vertical inset")
+
+        geometry.tileViewportY = 700
+        fuzzyCompare(geometry.localX, 8,
+                     "bottom card horizontal inset")
+        fuzzyCompare(geometry.localY, 8,
+                     "bottom card must not move into the row above")
+        verify(geometry.viewportY + geometry.cardHeight > geometry.viewportHeight,
+               "a partially visible ordinary row should be clipped by the grid, not repositioned")
+    }
+
     function test_two_times_expansion_when_the_viewport_has_room() {
         geometry.baseHeight = 200
         geometry.tileHeight = 216

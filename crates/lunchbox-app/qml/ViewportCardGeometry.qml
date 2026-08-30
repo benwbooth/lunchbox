@@ -34,12 +34,22 @@ QtObject {
                                                 + (tileWidth - cardWidth) / 2
     readonly property real centeredViewportY: tileViewportY
                                                 + (tileHeight - cardHeight) / 2
-    readonly property real viewportX: clampToViewport(
-                                          centeredViewportX, cardWidth,
-                                          viewportWidth, trailingInset)
-    readonly property real viewportY: clampToViewport(
-                                          centeredViewportY, cardHeight,
-                                          viewportHeight, 0)
+    // A resting card belongs to its delegate and must never be shifted into a
+    // neighboring row merely because that row is partly outside the viewport.
+    // Keep clamping active through the collapse animation, then return to the
+    // delegate-local inset once the card reaches its ordinary size.
+    readonly property bool needsViewportClamp: expansion > 1.001
+    readonly property real viewportX: needsViewportClamp
+                                      ? clampToViewport(centeredViewportX,
+                                                        cardWidth,
+                                                        viewportWidth,
+                                                        trailingInset)
+                                      : centeredViewportX
+    readonly property real viewportY: needsViewportClamp
+                                      ? clampToViewport(centeredViewportY,
+                                                        cardHeight,
+                                                        viewportHeight, 0)
+                                      : centeredViewportY
     readonly property real localX: viewportX - tileViewportX
     readonly property real localY: viewportY - tileViewportY
 
