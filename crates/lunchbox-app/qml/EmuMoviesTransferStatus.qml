@@ -69,13 +69,15 @@ Rectangle {
             visible: status.transferActive
             spacing: 8
 
-            ProgressBar {
+            InlineProgressBar {
                 Layout.fillWidth: true
                 from: 0
                 to: 100
                 indeterminate: providerModel.transfer_progress <= 0
                                && !providerModel.cancel_requested
                 value: Math.max(0, providerModel.transfer_progress)
+                fillColor: status.accent
+                trackColor: status.line
             }
 
             Button {

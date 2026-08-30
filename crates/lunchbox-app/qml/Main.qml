@@ -264,8 +264,10 @@ ApplicationWindow {
     readonly property bool sidebarUiProbe: library.sidebar_probe
     readonly property bool downloadHistoryProbe: Qt.application.arguments.indexOf("--download-history-probe") >= 0
     readonly property string settingsSectionUiProbe: root.argumentValue("--settings-section-ui-probe")
+    readonly property bool credentialControlsUiProbe: Qt.application.arguments.indexOf("--credential-controls-ui-probe") >= 0
     readonly property bool settingsUiProbe: Qt.application.arguments.indexOf("--settings-ui-probe") >= 0
                                             || settingsSectionUiProbe.length > 0
+                                            || credentialControlsUiProbe
     readonly property bool settingsSeedingProbe: Qt.application.arguments.indexOf("--settings-seeding-probe") >= 0
     readonly property bool settingsReleaseProbe: Qt.application.arguments.indexOf("--settings-release-probe") >= 0
     readonly property bool settingsRegionUiProbe: Qt.application.arguments.indexOf("--settings-region-ui-probe") >= 0
@@ -930,7 +932,7 @@ ApplicationWindow {
 
     function beginHoverPreviewProbe() {
         if (!root.hoverPreviewUiProbe || root.hoverPreviewProbeStage !== 0
-                || !library.ready)
+                || !library.ready || library.loading)
             return
         root.hoverPreviewProbeStage = 1
         library.choose_view_mode("grid")
@@ -1291,7 +1293,7 @@ ApplicationWindow {
         onTriggered: {
             if (!root.hoverPreviewUiProbe || root.hoverPreviewProbeStage !== 1)
                 return
-            if (!library.ready || library.filtering) {
+            if (!library.ready || library.loading || library.filtering) {
                 restart()
                 return
             }
@@ -4696,7 +4698,9 @@ ApplicationWindow {
                      || root.controllerUiProbe || root.controllerProfileUiProbe
                      || root.retroarchShaderUiProbe) {
                 if (root.settingsUiProbe)
-                    root.openSettingsFor(root.settingsSectionUiProbe)
+                    root.openSettingsFor(root.credentialControlsUiProbe
+                                         ? "emumovies"
+                                         : root.settingsSectionUiProbe)
                 else
                     settingsDialog.open()
                 if (root.controllerUiProbe)
@@ -6168,6 +6172,38 @@ ApplicationWindow {
                 Qt.exit(2)
                 return
             }
+            if (root.credentialControlsUiProbe) {
+                emuMoviesPassword.text = "credential-display-probe"
+                emuMoviesPassword.revealed = false
+                if (emuMoviesPassword.effectiveEchoMode !== TextInput.Password
+                        || emuMoviesPassword.actionText !== "SHOW") {
+                    console.error("LUNCHBOX_CREDENTIAL_CONTROLS_UI_FAILED masked")
+                    Qt.exit(2)
+                    return
+                }
+                emuMoviesPassword.revealed = true
+                if (emuMoviesPassword.effectiveEchoMode !== TextInput.Normal
+                        || emuMoviesPassword.actionText !== "HIDE") {
+                    console.error("LUNCHBOX_CREDENTIAL_CONTROLS_UI_FAILED revealed")
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_CREDENTIAL_CONTROLS_UI_READY masked=true revealed=true")
+                if (root.screenshotOutput.length > 0) {
+                    emuMoviesPassword.grabToImage(function(result) {
+                        if (!result.saveToFile(root.screenshotOutput)) {
+                            console.error("LUNCHBOX_CREDENTIAL_CONTROLS_UI_FAILED screenshot="
+                                          + root.screenshotOutput)
+                            Qt.exit(2)
+                            return
+                        }
+                        console.log("LUNCHBOX_SETTINGS_UI_READY section=emumovies screenshot="
+                                    + root.screenshotOutput)
+                        Qt.quit()
+                    })
+                    return
+                }
+            }
             if (root.screenshotOutput.length === 0) {
                 console.log("LUNCHBOX_SETTINGS_UI_READY section="
                             + (root.settingsSectionUiProbe.length > 0
@@ -6894,7 +6930,8 @@ ApplicationWindow {
             function requestVisibleMedia() {
                 library.request_artwork(gameDatabaseId, gameCanonicalTitle,
                                         gamePlatform, requestedArtworkType)
-                library.request_visible_media(gameId)
+                if (!root.hoverPreviewUiProbe)
+                    library.request_visible_media(gameId)
             }
             function updatePreviewInterest() {
                 if (cardHover.hovered || activeFocus) {
@@ -9775,7 +9812,7 @@ ApplicationWindow {
                                         }
                                     }
 
-                                    ProgressBar {
+                                    InlineProgressBar {
                                         id: manualDownloadProgress
                                         visible: gameDetails.manual_transfer_active
                                         width: parent.width
@@ -9783,21 +9820,8 @@ ApplicationWindow {
                                         from: 0
                                         to: 100
                                         value: gameDetails.manual_download_progress
-                                        background: Rectangle {
-                                            implicitHeight: 5
-                                            radius: 3
-                                            color: "#303b4d"
-                                        }
-                                        contentItem: Item {
-                                            implicitHeight: 5
-                                            Rectangle {
-                                                width: manualDownloadProgress.visualPosition
-                                                       * parent.width
-                                                height: parent.height
-                                                radius: 3
-                                                color: root.accentCool
-                                            }
-                                        }
+                                        fillColor: root.accentCool
+                                        trackColor: "#303b4d"
                                     }
 
                                     RowLayout {
@@ -10971,26 +10995,21 @@ ApplicationWindow {
                                             font.pixelSize: 8
                                             font.weight: Font.Bold
                                         }
-                                        ScrollView {
+                                        NativeTextArea {
+                                            id: launchCommandTemplate
                                             width: parent.width
                                             height: 74
-                                            clip: true
-                                            TextArea {
-                                                id: launchCommandTemplate
-                                                text: gameDetails.launch_profile_command_template
-                                                placeholderText: "Leave blank for the built-in template"
-                                                selectByMouse: true
-                                                wrapMode: TextEdit.WrapAnywhere
-                                                font.family: "monospace"
-                                                font.pixelSize: 9
-                                                color: root.ink
-                                                background: Rectangle {
-                                                    radius: 7
-                                                    color: "#0b121b"
-                                                    border.color: parent.activeFocus
-                                                                  ? root.accentCool : root.line
-                                                }
-                                            }
+                                            text: gameDetails.launch_profile_command_template
+                                            placeholderText: "Leave blank for the built-in template"
+                                            selectByMouse: true
+                                            wrapMode: TextEdit.WrapAnywhere
+                                            font.family: "monospace"
+                                            font.pixelSize: 9
+                                            color: root.ink
+                                            backgroundColor: "#0b121b"
+                                            line: root.line
+                                            accent: root.accentCool
+                                            radius: 7
                                         }
                                     }
 
@@ -12167,13 +12186,17 @@ ApplicationWindow {
                 font.weight: Font.Bold
                 font.letterSpacing: 1.2
             }
-            TextArea {
+            NativeTextArea {
                 id: collectionDescriptionField
                 Layout.fillWidth: true
                 Layout.preferredHeight: 76
                 placeholderText: "Optional notes about this collection"
                 wrapMode: TextEdit.Wrap
                 selectByMouse: true
+                color: root.ink
+                backgroundColor: "#101721"
+                line: root.line
+                accent: root.accent
             }
             Text {
                 Layout.fillWidth: true
@@ -17221,11 +17244,15 @@ ApplicationWindow {
                             appSettings.invalidate_qbittorrent_test()
                         }
                     }
-                    TextField {
+                    SecretField {
+                        id: qbittorrentPassword
                         Layout.fillWidth: true
                         placeholderText: appSettings.password_saved ? "Saved password (leave blank to keep)" : "Password"
-                        echoMode: TextInput.Password
                         text: appSettings.qbittorrent_password
+                        ink: root.ink
+                        muted: root.muted
+                        line: root.line
+                        accent: root.accent
                         onTextEdited: {
                             appSettings.qbittorrent_password = text
                             appSettings.invalidate_qbittorrent_test()
@@ -17684,14 +17711,17 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        TextField {
+                        SecretField {
                             id: steamGridDbApiKey
                             Layout.fillWidth: true
                             placeholderText: steamGridDb.api_key_saved
                                              ? "Saved API key (leave blank to use)"
                                              : "SteamGridDB API key"
-                            echoMode: TextInput.Password
                             enabled: !steamGridDb.busy
+                            ink: root.ink
+                            muted: root.muted
+                            line: root.line
+                            accent: root.accent
                         }
                         Button {
                             text: "Test"
@@ -17781,14 +17811,17 @@ ApplicationWindow {
                                              : "Twitch client ID"
                             enabled: !igdb.busy
                         }
-                        TextField {
+                        SecretField {
                             id: igdbClientSecret
                             Layout.fillWidth: true
                             placeholderText: igdb.credentials_saved
                                              ? "Saved client secret (leave blank to use)"
                                              : "Twitch client secret"
-                            echoMode: TextInput.Password
                             enabled: !igdb.busy
+                            ink: root.ink
+                            muted: root.muted
+                            line: root.line
+                            accent: root.accent
                         }
                     }
                     RowLayout {
@@ -17895,14 +17928,17 @@ ApplicationWindow {
                                              : "EmuMovies forum username"
                             enabled: !emuMovies.busy
                         }
-                        TextField {
+                        SecretField {
                             id: emuMoviesPassword
                             Layout.fillWidth: true
                             placeholderText: emuMovies.credentials_saved
                                              ? "Saved password (leave blank to use)"
                                              : "EmuMovies forum password"
-                            echoMode: TextInput.Password
                             enabled: !emuMovies.busy
+                            ink: root.ink
+                            muted: root.muted
+                            line: root.line
+                            accent: root.accent
                         }
                     }
                     RowLayout {
@@ -18938,13 +18974,16 @@ ApplicationWindow {
                                 }
                             }
 
-                            ProgressBar {
+                            InlineProgressBar {
                                 Layout.fillWidth: true
+                                Layout.preferredHeight: 7
                                 visible: appSettings.shader_busy
                                          || appSettings.shader_progress > 0
                                 from: 0
                                 to: 100
                                 value: appSettings.shader_progress
+                                fillColor: root.accent
+                                trackColor: root.line
                             }
 
                             ColumnLayout {
@@ -20508,25 +20547,21 @@ ApplicationWindow {
                             font.pixelSize: 8
                             font.weight: Font.Bold
                         }
-                        ScrollView {
+                        NativeTextArea {
+                            id: launchProfileManagerCommandTemplate
                             Layout.fillWidth: true
                             Layout.preferredHeight: 128
-                            TextArea {
-                                id: launchProfileManagerCommandTemplate
-                                placeholderText: "Leave blank for the built-in template"
-                                selectByMouse: true
-                                wrapMode: TextEdit.Wrap
-                                color: root.ink
-                                placeholderTextColor: root.muted
-                                selectionColor: root.accent
-                                selectedTextColor: "#101318"
-                                background: Rectangle {
-                                    radius: 7
-                                    color: "#0b121b"
-                                    border.color: launchProfileManagerCommandTemplate.activeFocus
-                                                  ? root.accent : root.line
-                                }
-                            }
+                            placeholderText: "Leave blank for the built-in template"
+                            selectByMouse: true
+                            wrapMode: TextEdit.Wrap
+                            color: root.ink
+                            placeholderTextColor: root.muted
+                            selectionColor: root.accent
+                            selectedTextColor: "#101318"
+                            backgroundColor: "#0b121b"
+                            line: root.line
+                            accent: root.accent
+                            radius: 7
                         }
                         Text {
                             Layout.fillWidth: true
@@ -20848,9 +20883,12 @@ ApplicationWindow {
                                     font.pixelSize: 10
                                     elide: Text.ElideRight
                                 }
-                                ProgressBar {
+                                InlineProgressBar {
                                     Layout.fillWidth: true
+                                    Layout.preferredHeight: 7
                                     value: { downloadRow.queueRevision; return downloadQueue.job_progress_at(downloadRow.index) }
+                                    fillColor: root.accentCool
+                                    trackColor: root.line
                                 }
                                 Text {
                                     Layout.fillWidth: true
@@ -21561,7 +21599,7 @@ ApplicationWindow {
                                 font.weight: Font.Bold
                                 font.letterSpacing: 0.8
                             }
-                            TextArea {
+                            NativeTextArea {
                                 id: metadataDescriptionField
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 160
@@ -21573,11 +21611,10 @@ ApplicationWindow {
                                 wrapMode: TextEdit.Wrap
                                 onTextChanged: if (activeFocus)
                                                    gameDetails.metadata_description = text
-                                background: Rectangle {
-                                    radius: 9
-                                    color: "#101721"
-                                    border.color: parent.activeFocus ? root.accent : root.line
-                                }
+                                backgroundColor: "#101721"
+                                line: root.line
+                                accent: root.accent
+                                radius: 9
                             }
                         }
                         RowLayout {
@@ -21595,7 +21632,7 @@ ApplicationWindow {
                                     font.weight: Font.Bold
                                     font.letterSpacing: 0.8
                                 }
-                                TextArea {
+                                NativeTextArea {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 105
                                     text: gameDetails.metadata_notes
@@ -21606,11 +21643,10 @@ ApplicationWindow {
                                     wrapMode: TextEdit.Wrap
                                     onTextChanged: if (activeFocus)
                                                        gameDetails.metadata_notes = text
-                                    background: Rectangle {
-                                        radius: 9
-                                        color: "#101721"
-                                        border.color: parent.activeFocus ? root.accent : root.line
-                                    }
+                                    backgroundColor: "#101721"
+                                    line: root.line
+                                    accent: root.accent
+                                    radius: 9
                                 }
                             }
                             ColumnLayout {

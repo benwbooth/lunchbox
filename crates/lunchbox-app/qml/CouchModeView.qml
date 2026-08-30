@@ -2411,7 +2411,7 @@ Item {
                 model: view.library.platform_count
                 clip: true
                 reuseItems: true
-                cacheBuffer: height
+                cacheBuffer: Math.max(0, Math.round(height))
                 spacing: 6
                 boundsBehavior: Flickable.StopAtBounds
                 snapMode: ListView.SnapToItem
@@ -2664,7 +2664,7 @@ Item {
                 model: view.library.collection_count
                 clip: true
                 reuseItems: true
-                cacheBuffer: height
+                cacheBuffer: Math.max(0, Math.round(height))
                 spacing: 7
                 boundsBehavior: Flickable.StopAtBounds
                 snapMode: ListView.SnapToItem
@@ -2980,7 +2980,7 @@ Item {
                 model: view.details.variant_count
                 clip: true
                 reuseItems: true
-                cacheBuffer: height
+                cacheBuffer: Math.max(0, Math.round(height))
                 spacing: 7
                 boundsBehavior: Flickable.StopAtBounds
                 snapMode: ListView.SnapToItem

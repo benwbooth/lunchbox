@@ -59,7 +59,7 @@ Rectangle {
             elide: Text.ElideRight
         }
 
-        ProgressBar {
+        InlineProgressBar {
             width: parent.width
             height: 7
             from: 0
@@ -68,6 +68,8 @@ Rectangle {
                            && libraryModel.media_active_progress < 0
             value: Math.max(0, libraryModel.media_active_progress)
             visible: libraryModel.media_active_title.length > 0
+            fillColor: status.accentCool
+            trackColor: status.line
         }
 
         Text {

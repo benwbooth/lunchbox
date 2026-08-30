@@ -46,14 +46,17 @@ ColumnLayout {
             enabled: !root.providerModel.busy
         }
 
-        TextField {
+        SecretField {
             id: developerPassword
             Layout.fillWidth: true
             placeholderText: root.providerModel.credentials_saved
                              ? "Saved developer password (leave blank to use)"
                              : "Developer password"
-            echoMode: TextInput.Password
             enabled: !root.providerModel.busy
+            ink: root.ink
+            muted: root.muted
+            line: root.line
+            accent: root.accent
         }
     }
 
@@ -78,14 +81,17 @@ ColumnLayout {
             enabled: !root.providerModel.busy
         }
 
-        TextField {
+        SecretField {
             id: memberPassword
             Layout.fillWidth: true
             placeholderText: root.providerModel.credentials_saved
                              ? "Saved member password (leave blank to use)"
                              : "Member password (optional)"
-            echoMode: TextInput.Password
             enabled: !root.providerModel.busy
+            ink: root.ink
+            muted: root.muted
+            line: root.line
+            accent: root.accent
         }
     }
 
