@@ -162,13 +162,14 @@ Dialog {
             Layout.fillWidth: true
             spacing: 9
 
-            TextField {
+            ClearableSearchField {
                 id: searchField
                 Layout.fillWidth: true
                 Layout.minimumWidth: 280
                 placeholderText: "Search game, platform, emulator, package, or source"
                 selectByMouse: true
                 onTextEdited: filterDelay.restart()
+                onClearRequested: filterDelay.restart()
             }
             ComboBox {
                 id: statusFilter

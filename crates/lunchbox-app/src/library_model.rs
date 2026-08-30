@@ -105,6 +105,8 @@ pub mod qobject {
         #[qproperty(bool, couch_attract_enabled)]
         #[qproperty(i32, couch_attract_idle_seconds)]
         #[qproperty(i32, couch_attract_cycle_seconds)]
+        #[qproperty(bool, couch_music_enabled)]
+        #[qproperty(i32, couch_music_volume)]
         #[qproperty(bool, couch_state_saving)]
         #[qproperty(i32, local_file_count)]
         #[qproperty(i32, local_game_count)]
@@ -592,6 +594,13 @@ pub mod qobject {
         ) -> bool;
 
         #[qinvokable]
+        fn save_couch_audio_settings(
+            self: Pin<&mut LibraryModel>,
+            enabled: bool,
+            volume: i32,
+        ) -> bool;
+
+        #[qinvokable]
         fn couch_theme_id_at(self: &LibraryModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -926,6 +935,8 @@ pub struct LibraryModelRust {
     couch_attract_enabled: bool,
     couch_attract_idle_seconds: i32,
     couch_attract_cycle_seconds: i32,
+    couch_music_enabled: bool,
+    couch_music_volume: i32,
     couch_state_saving: bool,
     local_file_count: i32,
     local_game_count: i32,
@@ -988,7 +999,7 @@ pub struct LibraryModelRust {
     automatic_video_messages: HashMap<String, String>,
     automatic_video_active: Option<AutomaticVideoRequest>,
     automatic_video_cancel: Option<Arc<AtomicBool>>,
-    automatic_video_requeue_front: bool,
+    automatic_video_generation: u64,
     favorite_game_ids: Arc<HashSet<String>>,
     favorite_requests: HashSet<String>,
     favorite_started: Option<std::time::Instant>,
@@ -1132,6 +1143,8 @@ impl Default for LibraryModelRust {
             couch_attract_enabled: couch_preferences.attract_enabled,
             couch_attract_idle_seconds: couch_preferences.attract_idle_seconds,
             couch_attract_cycle_seconds: couch_preferences.attract_cycle_seconds,
+            couch_music_enabled: couch_preferences.background_music_enabled,
+            couch_music_volume: couch_preferences.background_music_volume,
             couch_state_saving: false,
             local_file_count: 0,
             local_game_count: 0,
@@ -1194,7 +1207,7 @@ impl Default for LibraryModelRust {
             automatic_video_messages: HashMap::new(),
             automatic_video_active: None,
             automatic_video_cancel: None,
-            automatic_video_requeue_front: false,
+            automatic_video_generation: 0,
             favorite_game_ids: Arc::new(HashSet::new()),
             favorite_requests: HashSet::new(),
             favorite_started: None,
@@ -2193,6 +2206,10 @@ impl qobject::LibraryModel {
                             .set_couch_attract_idle_seconds(preferences.attract_idle_seconds);
                         self.as_mut()
                             .set_couch_attract_cycle_seconds(preferences.attract_cycle_seconds);
+                        self.as_mut()
+                            .set_couch_music_enabled(preferences.background_music_enabled);
+                        self.as_mut()
+                            .set_couch_music_volume(preferences.background_music_volume);
                         if !self.as_mut().apply_couch_theme_id(&preferences.theme_id) {
                             couch_warnings.push(format!(
                                 "saved theme {} is not installed; using {}",
@@ -3535,20 +3552,6 @@ impl qobject::LibraryModel {
             .as_ref()
             .is_some_and(|active| active.game_uid == request.game_uid)
         {
-            if self
-                .as_ref()
-                .rust()
-                .automatic_video_cancel
-                .as_ref()
-                .is_some_and(|cancel| cancel.load(Ordering::Acquire))
-            {
-                self.as_mut().rust_mut().automatic_video_requeue_front = true;
-                self.as_mut().rust_mut().automatic_video_messages.insert(
-                    request.game_uid,
-                    "This game became relevant again; its interrupted gameplay video will restart first."
-                        .to_owned(),
-                );
-            }
             return;
         }
 
@@ -3610,11 +3613,17 @@ impl qobject::LibraryModel {
             return;
         };
         cancel.store(true, Ordering::Release);
-        self.as_mut().rust_mut().automatic_video_requeue_front = false;
+        requeue_automatic_video_request(
+            &mut self.as_mut().rust_mut().automatic_video_queue,
+            active.clone(),
+            false,
+        );
+        self.as_mut().rust_mut().automatic_video_active = None;
+        self.as_mut().rust_mut().automatic_video_cancel = None;
         self.as_mut().rust_mut().automatic_video_messages.insert(
             active.game_uid,
             format!(
-                "Paused so {} can download first; this gameplay video remains queued.",
+                "Paused so {} can start immediately; this gameplay video remains queued.",
                 request.title
             ),
         );
@@ -3624,9 +3633,10 @@ impl qobject::LibraryModel {
                 .to_owned(),
         );
         self.as_mut().set_media_fetch_message(qstring(format!(
-            "Switching media priority to {}…",
+            "Starting priority media for {} now…",
             request.title
         )));
+        self.as_mut().start_next_automatic_video();
     }
 
     fn start_next_automatic_video(mut self: Pin<&mut Self>) {
@@ -3658,7 +3668,12 @@ impl qobject::LibraryModel {
         self.as_mut().rust_mut().automatic_video_active = Some(request.clone());
         let cancel = Arc::new(AtomicBool::new(false));
         self.as_mut().rust_mut().automatic_video_cancel = Some(Arc::clone(&cancel));
-        self.as_mut().rust_mut().automatic_video_requeue_front = false;
+        self.as_mut().rust_mut().automatic_video_generation = self
+            .as_ref()
+            .rust()
+            .automatic_video_generation
+            .wrapping_add(1);
+        let generation = self.as_ref().rust().automatic_video_generation;
         self.as_mut().rust_mut().automatic_video_messages.insert(
             request.game_uid.clone(),
             format!(
@@ -3708,7 +3723,7 @@ impl qobject::LibraryModel {
             let _ = progress_thread.queue(move |mut model| {
                 model
                     .as_mut()
-                    .update_automatic_video_progress(game_uid, percent);
+                    .update_automatic_video_progress(generation, game_uid, percent);
             });
             !cancel.load(Ordering::Acquire)
         });
@@ -3719,13 +3734,16 @@ impl qobject::LibraryModel {
             .spawn(move || {
                 let outcome = fetch_automatic_video(&request_for_worker, progress);
                 let _ = qt_thread.queue(move |mut model| {
-                    model
-                        .as_mut()
-                        .finish_automatic_video(request_for_completion, outcome);
+                    model.as_mut().finish_automatic_video(
+                        generation,
+                        request_for_completion,
+                        outcome,
+                    );
                 });
             });
         if let Err(error) = spawn {
             self.as_mut().finish_automatic_video(
+                generation,
                 request,
                 AutomaticVideoOutcome::Missing(format!(
                     "Could not start the gameplay-video worker: {error}"
@@ -3734,13 +3752,19 @@ impl qobject::LibraryModel {
         }
     }
 
-    fn update_automatic_video_progress(mut self: Pin<&mut Self>, game_uid: String, percent: i32) {
-        if self
-            .as_ref()
-            .rust()
-            .automatic_video_active
-            .as_ref()
-            .is_some_and(|request| request.game_uid == game_uid)
+    fn update_automatic_video_progress(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        game_uid: String,
+        percent: i32,
+    ) {
+        if generation == self.as_ref().rust().automatic_video_generation
+            && self
+                .as_ref()
+                .rust()
+                .automatic_video_active
+                .as_ref()
+                .is_some_and(|request| request.game_uid == game_uid)
         {
             self.as_mut()
                 .set_media_active_progress(percent.clamp(0, 100));
@@ -3756,52 +3780,22 @@ impl qobject::LibraryModel {
 
     fn finish_automatic_video(
         mut self: Pin<&mut Self>,
+        generation: u64,
         request: AutomaticVideoRequest,
         outcome: AutomaticVideoOutcome,
     ) {
-        if !self
-            .as_ref()
-            .rust()
-            .automatic_video_active
-            .as_ref()
-            .is_some_and(|active| active.game_uid == request.game_uid)
+        if generation != self.as_ref().rust().automatic_video_generation
+            || !self
+                .as_ref()
+                .rust()
+                .automatic_video_active
+                .as_ref()
+                .is_some_and(|active| active.game_uid == request.game_uid)
         {
             return;
         }
-        let preempted = matches!(outcome, AutomaticVideoOutcome::Missing(_))
-            && self
-                .as_ref()
-                .rust()
-                .automatic_video_cancel
-                .as_ref()
-                .is_some_and(|cancel| cancel.load(Ordering::Acquire));
-        let requeue_front = self.as_ref().rust().automatic_video_requeue_front;
         self.as_mut().rust_mut().automatic_video_active = None;
         self.as_mut().rust_mut().automatic_video_cancel = None;
-        self.as_mut().rust_mut().automatic_video_requeue_front = false;
-        if preempted {
-            requeue_automatic_video_request(
-                &mut self.as_mut().rust_mut().automatic_video_queue,
-                request.clone(),
-                requeue_front,
-            );
-            self.as_mut().rust_mut().automatic_video_messages.insert(
-                request.game_uid.clone(),
-                if requeue_front {
-                    "Interrupted safely and requeued first because this game is relevant again."
-                        .to_owned()
-                } else {
-                    "Interrupted safely for a more relevant game; still queued for later."
-                        .to_owned()
-                },
-            );
-            self.as_mut().set_media_active_title(QString::default());
-            self.as_mut().set_media_active_kind(QString::default());
-            self.as_mut().set_media_active_progress(-1);
-            self.as_mut().update_media_pending_count();
-            self.as_mut().start_next_automatic_video();
-            return;
-        }
         self.as_mut()
             .rust_mut()
             .automatic_video_pending
@@ -5844,6 +5838,8 @@ impl qobject::LibraryModel {
             attract_enabled: *self.as_ref().couch_attract_enabled(),
             attract_idle_seconds: *self.as_ref().couch_attract_idle_seconds(),
             attract_cycle_seconds: *self.as_ref().couch_attract_cycle_seconds(),
+            background_music_enabled: *self.as_ref().couch_music_enabled(),
+            background_music_volume: *self.as_ref().couch_music_volume(),
         };
         if let Err(error) = preferences.validate() {
             self.as_mut().set_status_message(qstring(format!(
@@ -5900,6 +5896,8 @@ impl qobject::LibraryModel {
             attract_enabled: *self.as_ref().couch_attract_enabled(),
             attract_idle_seconds: *self.as_ref().couch_attract_idle_seconds(),
             attract_cycle_seconds: *self.as_ref().couch_attract_cycle_seconds(),
+            background_music_enabled: *self.as_ref().couch_music_enabled(),
+            background_music_volume: *self.as_ref().couch_music_volume(),
         };
         if let Err(error) = preferences.validate() {
             self.as_mut().set_status_message(qstring(format!(
@@ -5932,6 +5930,8 @@ impl qobject::LibraryModel {
             attract_enabled: enabled,
             attract_idle_seconds: idle_seconds,
             attract_cycle_seconds: cycle_seconds,
+            background_music_enabled: *self.as_ref().couch_music_enabled(),
+            background_music_volume: *self.as_ref().couch_music_volume(),
         };
         if let Err(error) = preferences.validate() {
             self.as_mut().set_status_message(qstring(format!(
@@ -5943,6 +5943,35 @@ impl qobject::LibraryModel {
         self.as_mut().set_couch_attract_enabled(enabled);
         self.as_mut().set_couch_attract_idle_seconds(idle_seconds);
         self.as_mut().set_couch_attract_cycle_seconds(cycle_seconds);
+        self.as_mut().rust_mut().couch_save_generation =
+            self.as_ref().rust().couch_save_generation.wrapping_add(1);
+        if !self.as_ref().rust().couch_save_pending {
+            self.as_mut().start_couch_save();
+        }
+        true
+    }
+
+    pub fn save_couch_audio_settings(mut self: Pin<&mut Self>, enabled: bool, volume: i32) -> bool {
+        let preferences = CouchModePreferences {
+            shelf: self.as_ref().couch_shelf().to_string(),
+            platform: self.as_ref().couch_platform().to_string(),
+            view_style: self.as_ref().couch_view_style().to_string(),
+            theme_id: self.as_ref().couch_theme_id().to_string(),
+            attract_enabled: *self.as_ref().couch_attract_enabled(),
+            attract_idle_seconds: *self.as_ref().couch_attract_idle_seconds(),
+            attract_cycle_seconds: *self.as_ref().couch_attract_cycle_seconds(),
+            background_music_enabled: enabled,
+            background_music_volume: volume,
+        };
+        if let Err(error) = preferences.validate() {
+            self.as_mut().set_status_message(qstring(format!(
+                "Couch Mode audio settings were not saved: {error}"
+            )));
+            return false;
+        }
+
+        self.as_mut().set_couch_music_enabled(enabled);
+        self.as_mut().set_couch_music_volume(volume);
         self.as_mut().rust_mut().couch_save_generation =
             self.as_ref().rust().couch_save_generation.wrapping_add(1);
         if !self.as_ref().rust().couch_save_pending {
@@ -6314,6 +6343,8 @@ impl qobject::LibraryModel {
             attract_enabled: *self.as_ref().couch_attract_enabled(),
             attract_idle_seconds: *self.as_ref().couch_attract_idle_seconds(),
             attract_cycle_seconds: *self.as_ref().couch_attract_cycle_seconds(),
+            background_music_enabled: *self.as_ref().couch_music_enabled(),
+            background_music_volume: *self.as_ref().couch_music_volume(),
         };
         self.as_mut().rust_mut().couch_save_pending = true;
         self.as_mut().set_couch_state_saving(true);

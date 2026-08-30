@@ -72,7 +72,11 @@ Game Menu or automatically after a configurable idle delay; it rotates through
 the current shelf rather than a second catalog, retains exact game identity,
 supports immediate directional browsing, and returns to browsing with Back.
 Its enable state, idle delay, and game interval are stored in the native state
-database and edited from Settings. Settings also includes a native theme manager
+database and edited from Settings. Couch Mode can also play an already cached
+EmuMovies soundtrack after the selected game remains stable for 650 ms; rapid
+browsing stays silent, launch and picker surfaces stop playback, and the saved
+enable/volume controls never trigger an implicit media download. The Game Menu,
+P key, and Couch Mode settings expose the same state. Settings also includes a native theme manager
 with three built-in looks plus safe `.lunchbox-theme` packages. Themes can alter
 the complete Couch Mode palette, fallback artwork, optional background image,
 hero contrast, and card radius; the exact selection survives restart. Packages
@@ -136,14 +140,17 @@ the same distinction explicit alongside Installed, Hide Non-Retail, and Hide
 Adult controls. Content classifications follow the bounded legacy rules, and
 the content-filter preferences survive restart in the writable state database.
 Select a game to open its
-native details pane; Minerva sources can be inspected against the real torrent
-contents, where title matches are presented as review candidates rather than
+native details pane; every Minerva source is inspected off the UI thread and
+shown as an expanded torrent section with its ranked download rows directly
+underneath. The source containing the strongest candidate appears first, and
+title matches are presented as review candidates rather than
 silently accepted identities. Exact alternate names tied to the same positive
 LaunchBox database ID appear as regional metadata chips and expand member
 matching; the review row discloses the alias that produced a match. They never
 merge catalog records or replace the game's stable UUID. Regional, language,
 prototype, and revision releases on the same exact platform appear as a native
-horizontal carousel. It is ordered by the saved region/version preferences and
+horizontal carousel with drag, wheel/touchpad momentum, a visible interactive
+scrollbar, and Left/Right/Home/End navigation. It is ordered by the saved region/version preferences and
 switches by the target row's exact UUID; duplicate full titles collapse only
 for presentation and never transfer IDs or metadata. Installed,
 Minerva-covered, catalog-only, and current states remain distinct. The same

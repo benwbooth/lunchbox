@@ -358,8 +358,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   session-complete surface from the shared launch supervisor, including the
   exact emulator and actionable Desktop Details/browsing handoffs. Continue
   with deeper media acquisition controls inside the implemented Details and
-  Game Menu overlays,
-  startup/shutdown/pause screens, background music, sound packs,
+  Game Menu overlays. Cached per-game background music is now native with a
+  stable-selection delay, launch/picker blocking, now-playing controls, and
+  durable enable/volume settings. Continue with startup/shutdown/pause screens, sound packs,
   marquee monitor support, parental lock, and richer couch-safe settings.
 - Extend the implemented keyboard/direct-gamepad navigation into every future
   Couch Mode surface. Certify attached-controller input, hotplug, and focus

@@ -48,7 +48,7 @@ Item {
     readonly property int cardRadius: library.couch_theme_card_radius
     readonly property real heroScrimOpacity: library.couch_theme_hero_scrim_percent / 100.0
     readonly property bool cinematicWheel: library.couch_view_style === "wheel"
-    readonly property int menuActionCount: 7
+    readonly property int menuActionCount: 8
     readonly property var categories: [
         { label: "ALL GAMES", key: "" },
         { label: "PLATFORMS", key: "platform" },
@@ -595,6 +595,9 @@ Item {
             return "START ATTRACT MODE"
         if (index === 5)
             return cinematicWheel ? "USE COVER SHELF" : "USE CINEMATIC WHEEL"
+        if (index === 6)
+            return library.couch_music_enabled
+                   ? "MUTE BACKGROUND MUSIC" : "ENABLE BACKGROUND MUSIC"
         return "RETURN TO BROWSING"
     }
 
@@ -621,6 +624,10 @@ Item {
             return cinematicWheel
                    ? "Switch to the horizontal cover shelf without changing this game."
                    : "Switch to a vertical cinematic wheel without changing this game."
+        if (index === 6)
+            return library.couch_music_enabled
+                   ? "Stop automatic cached game music throughout Couch Mode."
+                   : "Automatically play cached game music after selection settles."
         return "Close this menu without changing the selected game."
     }
 
@@ -658,6 +665,9 @@ Item {
         } else if (index === 5) {
             closeOverlay()
             toggleViewStyle()
+        } else if (index === 6) {
+            library.save_couch_audio_settings(!library.couch_music_enabled,
+                                              library.couch_music_volume)
         } else {
             closeOverlay()
         }
@@ -1013,6 +1023,14 @@ Item {
                    && !platformWheelOpen && !collectionWheelOpen
                    && !variantWheelOpen && !launchStatusOverlayOpen) {
             event.accepted = toggleViewStyle()
+            return
+        } else if (event.key === Qt.Key_P
+                   && couchMusic.visible
+                   && !overlayOpen && !platformWheelOpen
+                   && !collectionWheelOpen && !variantWheelOpen
+                   && !launchStatusOverlayOpen) {
+            couchMusic.togglePlayback()
+            event.accepted = true
             return
         } else if (event.key === Qt.Key_Tab) {
             action = "cycle_zone"
@@ -1587,7 +1605,7 @@ Item {
         }
         Text {
             visible: view.gamepad.connected_count === 0
-            text: "A  ATTRACT    V  CHANGE VIEW"
+            text: "A  ATTRACT    V  CHANGE VIEW    P  MUSIC"
             color: view.muted
             font.pixelSize: 9
             font.weight: Font.Bold
@@ -1603,6 +1621,29 @@ Item {
             font.weight: Font.Bold
             font.letterSpacing: 0.8
         }
+    }
+
+    CouchBackgroundMusic {
+        id: couchMusic
+        anchors.right: parent.right
+        anchors.rightMargin: 70
+        anchors.bottom: footer.top
+        anchors.bottomMargin: 14
+        z: 40
+        width: Math.min(380, Math.max(300, view.width * 0.24))
+        height: 68
+        library: view.library
+        details: view.details
+        selectedGameId: view.selectedGameId
+        active: view.active
+        blocked: view.launchStatusOverlayOpen
+                 || view.platformWheelOpen
+                 || view.collectionWheelOpen
+                 || view.variantWheelOpen
+        panelColor: view.panel
+        inkColor: view.ink
+        mutedColor: view.muted
+        accentColor: view.accent
     }
 
     Rectangle {
@@ -3706,7 +3747,9 @@ Item {
                                             ? (view.favorite ? "★" : "☆")
                                           : menuAction.index === 2 ? "↗"
                                           : menuAction.index === 3 ? "◈"
-                                          : menuAction.index === 4 ? "◌" : "×"
+                                          : menuAction.index === 4 ? "◌"
+                                          : menuAction.index === 5 ? "▦"
+                                          : menuAction.index === 6 ? "♪" : "×"
                                     color: menuAction.selected ? view.accent : view.muted
                                     font.pixelSize: menuAction.index === 1 ? 24 : 18
                                     font.weight: Font.Bold

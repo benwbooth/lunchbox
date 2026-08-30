@@ -42,6 +42,13 @@ ApplicationWindow {
     minimumHeight: 680
     title: downloadPlanUiProbe ? "Lunchbox - Download Review Probe" : "Lunchbox"
     color: palette.window
+    // Keep each host's native UI family (Noto Sans on this KDE session,
+    // Segoe UI on Windows, and the system UI font on macOS). Vertical-only
+    // hinting preserves accurate horizontal advances at fractional Wayland
+    // scales instead of snapping every glyph to a different pixel width.
+    font.family: Qt.application.font.family
+    font.kerning: true
+    font.hintingPreference: Font.PreferVerticalHinting
 
     readonly property color ink: "#f4f7fb"
     readonly property color muted: "#8d99aa"
@@ -7556,13 +7563,14 @@ ApplicationWindow {
                     }
                 }
 
-                TextField {
+                ClearableSearchField {
                     id: facetSearchField
                     width: parent.width
                     height: 42
                     placeholderText: "Search " + listFilterDialog.columnLabel.toLowerCase()
                     selectByMouse: true
                     onTextEdited: facetSearchTimer.restart()
+                    onClearRequested: facetSearchTimer.restart()
                     leftPadding: 14
                     rightPadding: 42
                     background: Rectangle {
@@ -7573,7 +7581,7 @@ ApplicationWindow {
                     }
                     BusyIndicator {
                         anchors.right: parent.right
-                        anchors.rightMargin: 9
+                        anchors.rightMargin: 39
                         anchors.verticalCenter: parent.verticalCenter
                         width: 24
                         height: 24
@@ -8006,6 +8014,15 @@ ApplicationWindow {
                 border.width: tile.previewActive || tile.activeFocus
                               || root.selectedGameId === tile.gameId ? 2 : 1
 
+                // Track the actual expanded card, not only the delegate's
+                // original cell. Otherwise moving the card inward can put the
+                // pointer outside the old cell and repeatedly arm/disarm the
+                // player, which appears as a one-frame video flicker.
+                HoverHandler {
+                    id: cardHover
+                    onHoveredChanged: tile.updatePreviewInterest()
+                }
+
                 ViewportCardGeometry {
                     id: cardGeometry
                     expanded: card.expanded
@@ -8087,9 +8104,12 @@ ApplicationWindow {
                                      ? library.hover_preview_source.toUpperCase()
                                      : "LOCAL CACHE")
                             color: root.ink
-                            font.pixelSize: 9 * card.expansion
+                            font.pixelSize: Math.round(9 * card.expansion)
                             font.weight: Font.Bold
-                            font.letterSpacing: 0.8 * card.expansion
+                            font.letterSpacing: Math.round(0.8 * card.expansion)
+                            font.kerning: true
+                            font.hintingPreference: Font.PreferVerticalHinting
+                            renderType: Text.NativeRendering
                             elide: Text.ElideRight
                         }
                     }
@@ -8121,8 +8141,11 @@ ApplicationWindow {
                             anchors.margins: 9 * card.expansion
                             text: tile.previewQueueMessage
                             color: library.media_setup_required ? root.accent : root.muted
-                            font.pixelSize: 9 * card.expansion
+                            font.pixelSize: Math.round(9 * card.expansion)
                             font.weight: Font.DemiBold
+                            font.kerning: true
+                            font.hintingPreference: Font.PreferVerticalHinting
+                            renderType: Text.NativeRendering
                             wrapMode: Text.WordWrap
                             maximumLineCount: 2
                             elide: Text.ElideRight
@@ -8158,7 +8181,10 @@ ApplicationWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.hoverPreviewPlaybackError
                             color: "#ffb2b9"
-                            font.pixelSize: 9 * card.expansion
+                            font.pixelSize: Math.round(9 * card.expansion)
+                            font.kerning: true
+                            font.hintingPreference: Font.PreferVerticalHinting
+                            renderType: Text.NativeRendering
                             wrapMode: Text.WordWrap
                         }
                     }
@@ -8169,9 +8195,13 @@ ApplicationWindow {
                         text: tile.gameTitle.length > 0 ? tile.gameTitle.charAt(0).toUpperCase() : "?"
                         horizontalAlignment: Text.AlignHCenter
                         color: "#ddffffff"
-                        font.pixelSize: Math.min(72 * card.expansion,
-                                                 parent.height * 0.38)
+                        font.pixelSize: Math.round(Math.min(
+                                                     72 * card.expansion,
+                                                     parent.height * 0.38))
                         font.weight: Font.Black
+                        font.kerning: true
+                        font.hintingPreference: Font.PreferVerticalHinting
+                        renderType: Text.NativeRendering
                         visible: coverImage.status !== Image.Ready && !tile.previewActive
                     }
                     Rectangle {
@@ -8190,9 +8220,12 @@ ApplicationWindow {
                             anchors.centerIn: parent
                             text: tile.gameLocal ? "READY" : "GET"
                             color: tile.gameLocal ? root.accentCool : root.accent
-                            font.pixelSize: 10 * card.expansion
+                            font.pixelSize: Math.round(10 * card.expansion)
                             font.weight: Font.Bold
-                            font.letterSpacing: 0.8 * card.expansion
+                            font.letterSpacing: Math.round(0.8 * card.expansion)
+                            font.kerning: true
+                            font.hintingPreference: Font.PreferVerticalHinting
+                            renderType: Text.NativeRendering
                         }
                     }
                     RoundButton {
@@ -8257,8 +8290,11 @@ ApplicationWindow {
                     anchors.topMargin: 10 * card.expansion
                     text: tile.gameTitle
                     color: root.ink
-                    font.pixelSize: 14 * card.expansion
+                    font.pixelSize: Math.round(14 * card.expansion)
                     font.weight: Font.DemiBold
+                    font.kerning: true
+                    font.hintingPreference: Font.PreferVerticalHinting
+                    renderType: Text.NativeRendering
                     elide: Text.ElideRight
                 }
                 Text {
@@ -8271,9 +8307,12 @@ ApplicationWindow {
                     anchors.bottomMargin: 9 * card.expansion
                     text: tile.gamePlatform.length > 0 ? tile.gamePlatform : "Unassigned platform"
                     color: root.muted
-                    font.pixelSize: 11 * card.expansion
+                    font.pixelSize: Math.round(11 * card.expansion)
                     fontSizeMode: Text.HorizontalFit
-                    minimumPixelSize: 7 * card.expansion
+                    minimumPixelSize: Math.round(7 * card.expansion)
+                    font.kerning: true
+                    font.hintingPreference: Font.PreferVerticalHinting
+                    renderType: Text.NativeRendering
                 }
                 Rectangle {
                     id: editionBadge
@@ -8292,14 +8331,13 @@ ApplicationWindow {
                         anchors.centerIn: parent
                         text: tile.gameVariants + " editions"
                         color: root.accentCool
-                        font.pixelSize: 8 * card.expansion
+                        font.pixelSize: Math.round(8 * card.expansion)
                         font.weight: Font.DemiBold
+                        font.kerning: true
+                        font.hintingPreference: Font.PreferVerticalHinting
+                        renderType: Text.NativeRendering
                     }
                 }
-            }
-            HoverHandler {
-                id: cardHover
-                onHoveredChanged: tile.updatePreviewInterest()
             }
         }
     }
@@ -8794,13 +8832,13 @@ ApplicationWindow {
             }
         }
 
-        TextField {
+        ClearableSearchField {
             id: searchField
             anchors.centerIn: parent
             width: Math.min(460, root.width * 0.34)
             height: 40
             leftPadding: 42
-            rightPadding: 14
+            rightPadding: 42
             placeholderText: "Search games, platforms, and tags"
             placeholderTextColor: "#687488"
             color: root.ink
@@ -8808,6 +8846,7 @@ ApplicationWindow {
             selectedTextColor: "#15100a"
             font.pixelSize: 13
             onTextEdited: root.scheduleFilter()
+            onClearRequested: root.scheduleFilter()
             background: Rectangle {
                 radius: 11
                 color: "#0a0f16"
@@ -11167,16 +11206,70 @@ ApplicationWindow {
                         ListView {
                             id: releaseVariantList
                             width: parent.width
-                            height: 100
+                            height: 112
                             orientation: ListView.Horizontal
                             spacing: 8
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
+                            interactive: true
+                            keyNavigationEnabled: true
+                            keyNavigationWraps: false
+                            activeFocusOnTab: true
+                            highlightFollowsCurrentItem: true
                             reuseItems: true
                             model: gameDetails.variant_count
                             ScrollBar.horizontal: ScrollBar {
-                                policy: ScrollBar.AsNeeded
-                                height: 3
+                                id: releaseHorizontalScrollBar
+                                policy: ScrollBar.AlwaysOn
+                                active: true
+                                interactive: true
+                                hoverEnabled: true
+                                height: 8
+                                z: 1000
+                                contentItem: Rectangle {
+                                    implicitHeight: 6
+                                    radius: height / 2
+                                    color: releaseHorizontalScrollBar.pressed
+                                           ? root.accent
+                                           : releaseHorizontalScrollBar.hovered
+                                             ? root.accentCool : "#748197"
+                                }
+                                background: Rectangle {
+                                    implicitHeight: 8
+                                    radius: height / 2
+                                    color: "#111923"
+                                    border.color: root.line
+                                }
+                            }
+                            HorizontalWheelHandler { scroller: releaseVariantList }
+
+                            function focusRelease(targetIndex) {
+                                if (count <= 0)
+                                    return
+                                currentIndex = Math.max(0,
+                                                        Math.min(count - 1,
+                                                                 targetIndex))
+                                positionViewAtIndex(currentIndex, ListView.Contain)
+                                Qt.callLater(function() {
+                                    if (releaseVariantList.currentItem)
+                                        releaseVariantList.currentItem.forceActiveFocus()
+                                })
+                            }
+
+                            Keys.onPressed: event => {
+                                const index = currentIndex >= 0 ? currentIndex : 0
+                                if (event.key === Qt.Key_Left) {
+                                    focusRelease(index - 1)
+                                } else if (event.key === Qt.Key_Right) {
+                                    focusRelease(index + 1)
+                                } else if (event.key === Qt.Key_Home) {
+                                    focusRelease(0)
+                                } else if (event.key === Qt.Key_End) {
+                                    focusRelease(count - 1)
+                                } else {
+                                    return
+                                }
+                                event.accepted = true
                             }
 
                             delegate: Rectangle {
@@ -11278,7 +11371,10 @@ ApplicationWindow {
                                 HoverHandler { id: releaseHover }
                                 TapHandler {
                                     enabled: !releaseCard.selectedRelease && !gameDetails.loading
-                                    onTapped: root.openVariant(releaseCard.index)
+                                    onTapped: {
+                                        releaseVariantList.currentIndex = releaseCard.index
+                                        root.openVariant(releaseCard.index)
+                                    }
                                 }
                                 Keys.onReturnPressed: root.openVariant(releaseCard.index)
                                 Keys.onEnterPressed: root.openVariant(releaseCard.index)
@@ -12813,7 +12909,7 @@ ApplicationWindow {
                     Text {
                         visible: !gameDetails.loading && gameDetails.bundle_count > 0
                         width: parent.width
-                        text: "Choose a verified platform bundle, then inspect candidates ranked by title, your preferred region, and release version before adding anything to the download queue."
+                        text: "Every verified torrent is shown with its matching downloads underneath. The strongest title, region, and release match is first; review the exact filename before adding it to the queue."
                         color: root.muted
                         font.pixelSize: 11
                         lineHeight: 1.25
@@ -12823,100 +12919,161 @@ ApplicationWindow {
                     Repeater {
                         model: gameDetails.bundle_count
                         delegate: Rectangle {
-                            id: sourceRow
+                            id: sourceSection
                             required property int index
                             property int revision: gameDetails.detail_revision
+                            readonly property int candidateCount: {
+                                sourceSection.revision
+                                return gameDetails.bundle_file_count_at(
+                                            sourceSection.index)
+                            }
                             width: detailsPane.width - 40
-                            height: 66
-                            radius: 9
-                            color: gameDetails.selected_bundle === index ? "#2a2e32" : sourceHover.hovered ? "#202a39" : root.panelRaised
-                            border.color: gameDetails.selected_bundle === index ? root.accent : root.line
-                            HoverHandler { id: sourceHover }
-                            TapHandler { onTapped: gameDetails.load_bundle_files(sourceRow.index) }
+                            height: sourceContents.implicitHeight + 24
+                            radius: 10
+                            color: "#141d29"
+                            border.color: sourceSection.index === 0
+                                          && sourceSection.candidateCount > 0
+                                          ? root.accentCool : root.line
                             Column {
+                                id: sourceContents
                                 anchors.left: parent.left
                                 anchors.right: parent.right
+                                anchors.top: parent.top
                                 anchors.leftMargin: 12
                                 anchors.rightMargin: 12
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 4
-                                Text {
+                                anchors.topMargin: 12
+                                spacing: 8
+                                RowLayout {
                                     width: parent.width
-                                    text: { sourceRow.revision; return gameDetails.bundle_title_at(sourceRow.index) }
-                                    color: root.ink
-                                    font.pixelSize: 12
-                                    font.weight: Font.DemiBold
-                                    elide: Text.ElideRight
+                                    spacing: 8
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            sourceSection.revision
+                                            return gameDetails.bundle_title_at(
+                                                        sourceSection.index)
+                                        }
+                                        color: root.ink
+                                        font.pixelSize: 12
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Rectangle {
+                                        visible: sourceSection.index === 0
+                                                 && sourceSection.candidateCount > 0
+                                        Layout.preferredWidth: bestSourceText.implicitWidth + 14
+                                        Layout.preferredHeight: 20
+                                        radius: 6
+                                        color: "#17342f"
+                                        border.color: root.accentCool
+                                        Text {
+                                            id: bestSourceText
+                                            anchors.centerIn: parent
+                                            text: "BEST SOURCE"
+                                            color: root.accentCool
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 0.6
+                                        }
+                                    }
                                 }
                                 Text {
                                     width: parent.width
-                                    text: { sourceRow.revision; return gameDetails.bundle_detail_at(sourceRow.index) }
+                                    text: {
+                                        sourceSection.revision
+                                        return gameDetails.bundle_detail_at(
+                                                    sourceSection.index)
+                                    }
                                     color: root.muted
                                     font.pixelSize: 10
                                     elide: Text.ElideRight
                                 }
-                            }
-                        }
-                    }
+                                Text {
+                                    visible: sourceSection.candidateCount === 0
+                                    width: parent.width
+                                    text: {
+                                        sourceSection.revision
+                                        return gameDetails.bundle_load_message_at(
+                                                    sourceSection.index)
+                                    }
+                                    color: gameDetails.torrent_loading
+                                           ? root.accent : root.muted
+                                    font.pixelSize: 10
+                                    wrapMode: Text.WordWrap
+                                }
 
-                    Text {
-                        id: fileCandidateHeading
-                        visible: gameDetails.file_count > 0
-                        width: parent.width
-                        topPadding: 6
-                        text: "TITLE CANDIDATES — REVIEW REQUIRED"
-                        color: root.accent
-                        font.pixelSize: 10
-                        font.weight: Font.Bold
-                        font.letterSpacing: 0.8
-                    }
-                    Repeater {
-                        model: gameDetails.file_count
-                        delegate: Rectangle {
-                            id: fileRow
-                            required property int index
-                            property int revision: gameDetails.detail_revision
-                            width: detailsPane.width - 40
-                            height: Math.max(68, fileName.implicitHeight + fileInfo.implicitHeight + 24)
-                            radius: 8
-                            color: fileRow.index === 0 ? "#17272a" : "#151d29"
-                            border.color: fileRow.index === 0 ? root.accentCool : root.line
-                            Column {
-                                anchors.left: parent.left
-                                anchors.right: getButton.left
-                                anchors.leftMargin: 11
-                                anchors.rightMargin: 9
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 4
-                                Text {
-                                    id: fileName
-                                    width: parent.width
-                                    text: { fileRow.revision; return gameDetails.file_name_at(fileRow.index) }
-                                    color: root.ink
-                                    font.pixelSize: 11
-                                    wrapMode: Text.WrapAnywhere
+                                Repeater {
+                                    model: sourceSection.candidateCount
+                                    delegate: Rectangle {
+                                        id: fileRow
+                                        required property int index
+                                        property int revision: gameDetails.detail_revision
+                                        width: sourceContents.width
+                                        height: Math.max(70,
+                                                         fileName.implicitHeight
+                                                         + fileInfo.implicitHeight + 26)
+                                        radius: 8
+                                        color: sourceSection.index === 0
+                                               && fileRow.index === 0
+                                               ? "#172b2a" : "#192330"
+                                        border.color: fileRow.index === 0
+                                                      ? root.accentCool : "#2a3748"
+                                        Column {
+                                            anchors.left: parent.left
+                                            anchors.right: getButton.left
+                                            anchors.leftMargin: 11
+                                            anchors.rightMargin: 9
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            spacing: 4
+                                            Text {
+                                                id: fileName
+                                                width: parent.width
+                                                text: {
+                                                    fileRow.revision
+                                                    return gameDetails.bundle_file_name_at(
+                                                                sourceSection.index,
+                                                                fileRow.index)
+                                                }
+                                                color: root.ink
+                                                font.pixelSize: 11
+                                                wrapMode: Text.WrapAnywhere
+                                            }
+                                            Text {
+                                                id: fileInfo
+                                                width: parent.width
+                                                text: {
+                                                    fileRow.revision
+                                                    return gameDetails.bundle_file_detail_at(
+                                                                sourceSection.index,
+                                                                fileRow.index)
+                                                }
+                                                color: root.muted
+                                                font.pixelSize: 10
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                        HeaderButton {
+                                            id: getButton
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 9
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: gameDetails.download_busy ? "…" : "GET"
+                                            enabled: !gameDetails.download_busy
+                                                     && !gameDetails.torrent_loading
+                                            implicitWidth: 62
+                                            implicitHeight: 34
+                                            leftPadding: 8
+                                            rightPadding: 8
+                                            onClicked: {
+                                                const selected = gameDetails.select_bundle_file(
+                                                                   sourceSection.index,
+                                                                   fileRow.index)
+                                                if (selected >= 0)
+                                                    downloadReviewDialog.openFor(selected)
+                                            }
+                                        }
+                                    }
                                 }
-                                Text {
-                                    id: fileInfo
-                                    width: parent.width
-                                    text: { fileRow.revision; return gameDetails.file_detail_at(fileRow.index) }
-                                    color: root.muted
-                                    font.pixelSize: 10
-                                    elide: Text.ElideRight
-                                }
-                            }
-                            HeaderButton {
-                                id: getButton
-                                anchors.right: parent.right
-                                anchors.rightMargin: 9
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: gameDetails.download_busy ? "…" : "GET"
-                                enabled: !gameDetails.download_busy && !gameDetails.torrent_loading
-                                implicitWidth: 62
-                                implicitHeight: 34
-                                leftPadding: 8
-                                rightPadding: 8
-                                onClicked: downloadReviewDialog.openFor(fileRow.index)
                             }
                         }
                     }
@@ -13900,13 +14057,14 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 9
-                TextField {
+                ClearableSearchField {
                     id: libraryAuditSearch
                     Layout.fillWidth: true
                     Layout.minimumWidth: 260
                     placeholderText: "Search title, platform, path, or issue"
                     selectByMouse: true
                     onTextEdited: libraryAuditFilterDelay.restart()
+                    onClearRequested: libraryAuditFilterDelay.restart()
                 }
                 ComboBox {
                     id: libraryAuditStatus
@@ -14414,7 +14572,7 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 9
-                TextField {
+                ClearableSearchField {
                     id: mediaAuditSearch
                     Layout.fillWidth: true
                     Layout.minimumWidth: 280
@@ -14422,6 +14580,7 @@ ApplicationWindow {
                     selectByMouse: true
                     Accessible.name: "Search missing media results"
                     onTextEdited: mediaAuditFilterDelay.restart()
+                    onClearRequested: mediaAuditFilterDelay.restart()
                 }
                 ComboBox {
                     id: mediaAuditStatus
@@ -16898,11 +17057,12 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
-                TextField {
+                ClearableSearchField {
                     id: manualMatchSearch
                     Layout.fillWidth: true
                     placeholderText: "Search canonical or alternate titles"
                     onTextEdited: manualMatchSearchTimer.restart()
+                    onClearRequested: manualMatchSearchTimer.restart()
                     onAccepted: manualMatchSearchTimer.restart()
                 }
                 ComboBox {
@@ -17223,7 +17383,7 @@ ApplicationWindow {
                 visible: root.artworkProvider === "steamgriddb"
                          || root.artworkProvider === "igdb"
                          || root.artworkProvider === "screenscraper"
-                TextField {
+                ClearableSearchField {
                     id: steamGridDbSearch
                     Layout.fillWidth: true
                     placeholderText: "Search " + root.artworkProviderName + " games"
@@ -17270,7 +17430,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 spacing: 8
                 visible: root.artworkProvider === "websearch"
-                TextField {
+                ClearableSearchField {
                     id: webArtworkSearch
                     Layout.fillWidth: true
                     text: webArtwork.query
@@ -18216,6 +18376,14 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 1
                         color: root.line
+                    }
+                    CouchAudioSettings {
+                        Layout.fillWidth: true
+                        library: library
+                        inkColor: root.ink
+                        mutedColor: root.muted
+                        accentColor: root.accent
+                        lineColor: root.line
                     }
                     Text {
                         Layout.fillWidth: true
@@ -20597,7 +20765,7 @@ ApplicationWindow {
                     anchors.leftMargin: 20
                     anchors.rightMargin: 20
                     spacing: 11
-                    TextField {
+                    ClearableSearchField {
                         id: emulatorSearch
                         Layout.fillWidth: true
                         Layout.preferredHeight: 38
@@ -20605,6 +20773,8 @@ ApplicationWindow {
                         selectByMouse: true
                         onTextEdited: emulatorManager.apply_filter(text,
                                                                     emulatorStatusFilter.currentValue)
+                        onClearRequested: emulatorManager.apply_filter(
+                                              "", emulatorStatusFilter.currentValue)
                     }
                     ComboBox {
                         id: emulatorStatusFilter
@@ -21326,7 +21496,7 @@ ApplicationWindow {
                     anchors.leftMargin: 18
                     anchors.rightMargin: 18
                     spacing: 10
-                    TextField {
+                    ClearableSearchField {
                         id: launchProfileSearch
                         Layout.fillWidth: true
                         Layout.preferredHeight: 38
@@ -21346,6 +21516,10 @@ ApplicationWindow {
                                           text,
                                           launchProfileScopeFilter.currentValue,
                                           launchProfileCustomizationFilter.currentValue)
+                        onClearRequested: launchProfileManager.apply_filter(
+                                              "",
+                                              launchProfileScopeFilter.currentValue,
+                                              launchProfileCustomizationFilter.currentValue)
                     }
                     ComboBox {
                         id: launchProfileScopeFilter

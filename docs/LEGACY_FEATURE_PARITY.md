@@ -46,6 +46,25 @@ extensions are supported without weakening archive safety or identity rules.
 
 ## Game details and media
 
+The current Qt details pane automatically inspects every Minerva torrent source
+off the GUI thread and renders each source with its ranked download rows directly
+underneath; the strongest source and candidate are first, so no preliminary
+source-selection click is required. Its exact-release strip supports drag,
+vertical or horizontal wheel/touchpad momentum, an always-visible interactive
+scrollbar, and Left/Right/Home/End navigation. Search fields across the primary
+library and management surfaces provide visible and Escape-key clear actions.
+
+Grid preview hover ownership follows the repositioned expanded card rather than
+its original grid cell, preventing the player from being disarmed when the card
+moves under the pointer. A newly hovered or opened game's EmuMovies transfer now
+starts immediately after canceling and safely requeueing the prior transfer;
+per-worker generations reject stale progress and completion events.
+
+Couch Mode also reuses already cached EmuMovies soundtracks after a 650-ms
+stable-selection gate. Fast browsing remains silent, launch and picker surfaces
+stop playback, and the now-playing, P-key, Game Menu, persisted enable, and
+volume controls never initiate an implicit media download.
+
 | Legacy behavior | Source | Native state |
 | --- | --- | --- |
 | Metadata, variants, notes, related actions and launch controls | `src/components/game_details.rs` | Native responsive details pane implements core metadata, exact catalog release navigation, Minerva source inspection, explicit download-variant labels/ranking, and real prepare/cancel/verify-refresh/detect/play workflows for installed eXo games. The polished three-tab native editor durably overlays display title, sort title, description, release date, developer, publisher, genre, players, rating, age rating, release type, series, region, play mode, version, release status, exact tri-state cooperative-play status, notes, bounded per-game tags, and ordered custom fields by stable UUID; search, sorting, exact list filters, smart title/tag/co-op rules, desktop details, and Couch Mode update immediately. Desktop details browse a series through one exact-value action; release fields never establish or merge identity, and internal catalog lifecycle values are not presented as release status. The real discovery catalog contributes 174,463 definite co-op values; unspecified rows remain unknown rather than being guessed. Tags deduplicate case-insensitively, appear as clickable details chips, and compose as an exact library filter. Custom-field names are case-insensitively unique per game, names and values participate in text search, order is explicit and keyboard/pointer editable, and the details pane presents the saved order. Metadata, tags, and custom fields validate before one SQLite transaction, so a rejected field cannot partially publish the rest of the profile. Canonical title/platform/provider/file identity stays immutable and continues to govern matching, downloads, artwork, activity, and launching; restoring catalog values deletes only the metadata overlay and retains tags and custom fields. The release carousel preserves separate exact UUIDs and visibly distinguishes current, installed, Minerva, and catalog-only rows. All alternate names linked to the record's positive LaunchBox database ID are shown with their source region and expand Minerva matching; candidate review discloses the winning lookup title. Neither release grouping nor alternate names merge records, replace stable UUIDs, transfer metadata, or auto-accept identity. The native **More Like This** shelf ranks at most 12 exact catalog records by series, normalized title/franchise terms, developer, publisher, genre, platform, play mode, and release proximity; applies the effective local metadata overlay and adult/non-retail preferences; excludes same-platform regional/version siblings already represented by Releases; and discloses the strongest relationship plus Installed/Minerva/Catalog availability. Its bounded query and availability join run on the existing details worker, while pointer, keyboard, and accessibility routes all open the chosen stable UUID without fuzzy identity transfer. |

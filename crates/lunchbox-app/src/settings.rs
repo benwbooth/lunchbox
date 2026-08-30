@@ -233,6 +233,8 @@ pub struct CouchModePreferences {
     pub attract_enabled: bool,
     pub attract_idle_seconds: i32,
     pub attract_cycle_seconds: i32,
+    pub background_music_enabled: bool,
+    pub background_music_volume: i32,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -779,6 +781,8 @@ impl Default for CouchModePreferences {
             attract_enabled: false,
             attract_idle_seconds: 300,
             attract_cycle_seconds: 12,
+            background_music_enabled: true,
+            background_music_volume: 35,
         }
     }
 }
@@ -820,6 +824,9 @@ impl CouchModePreferences {
         }
         if !(5..=120).contains(&self.attract_cycle_seconds) {
             bail!("Couch Mode attract cycle must be between 5 and 120 seconds");
+        }
+        if !(0..=100).contains(&self.background_music_volume) {
+            bail!("Couch Mode background music volume must be between 0 and 100 percent");
         }
         Ok(())
     }
@@ -1538,7 +1545,8 @@ impl SettingsStore {
             .connection()?
             .query_row(
                 "SELECT shelf, platform, view_style, theme_id, attract_enabled,
-                        attract_idle_seconds, attract_cycle_seconds
+                        attract_idle_seconds, attract_cycle_seconds,
+                        background_music_enabled, background_music_volume
                  FROM couch_mode_preferences WHERE id=1",
                 [],
                 |row| {
@@ -1550,6 +1558,8 @@ impl SettingsStore {
                         attract_enabled: row.get(4)?,
                         attract_idle_seconds: row.get(5)?,
                         attract_cycle_seconds: row.get(6)?,
+                        background_music_enabled: row.get(7)?,
+                        background_music_volume: row.get(8)?,
                     })
                 },
             )
@@ -1564,8 +1574,9 @@ impl SettingsStore {
         self.connection()?.execute(
             "INSERT INTO couch_mode_preferences (
                  id, shelf, platform, view_style, theme_id, attract_enabled,
-                 attract_idle_seconds, attract_cycle_seconds
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 attract_idle_seconds, attract_cycle_seconds,
+                 background_music_enabled, background_music_volume
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(id) DO UPDATE SET
                  shelf=excluded.shelf,
                  platform=excluded.platform,
@@ -1573,7 +1584,9 @@ impl SettingsStore {
                  theme_id=excluded.theme_id,
                  attract_enabled=excluded.attract_enabled,
                  attract_idle_seconds=excluded.attract_idle_seconds,
-                 attract_cycle_seconds=excluded.attract_cycle_seconds",
+                 attract_cycle_seconds=excluded.attract_cycle_seconds,
+                 background_music_enabled=excluded.background_music_enabled,
+                 background_music_volume=excluded.background_music_volume",
             params![
                 preferences.shelf,
                 preferences.platform,
@@ -1582,6 +1595,8 @@ impl SettingsStore {
                 preferences.attract_enabled,
                 preferences.attract_idle_seconds,
                 preferences.attract_cycle_seconds,
+                preferences.background_music_enabled,
+                preferences.background_music_volume,
             ],
         )?;
         Ok(())
@@ -4089,6 +4104,12 @@ fn migrate(connection: &Connection) -> Result<()> {
              attract_cycle_seconds INTEGER NOT NULL DEFAULT 12 CHECK (
                  attract_cycle_seconds BETWEEN 5 AND 120
              ),
+             background_music_enabled INTEGER NOT NULL DEFAULT 1 CHECK (
+                 background_music_enabled IN (0, 1)
+             ),
+             background_music_volume INTEGER NOT NULL DEFAULT 35 CHECK (
+                 background_music_volume BETWEEN 0 AND 100
+             ),
              CHECK (
                  (shelf = 'platform' AND length(trim(platform)) > 0)
                  OR (shelf != 'platform' AND platform = '')
@@ -4823,6 +4844,26 @@ fn migrate(connection: &Connection) -> Result<()> {
             [],
         )?;
     }
+    if !column_exists(
+        connection,
+        "couch_mode_preferences",
+        "background_music_enabled",
+    )? {
+        connection.execute(
+            "ALTER TABLE couch_mode_preferences ADD COLUMN background_music_enabled INTEGER NOT NULL DEFAULT 1 CHECK (background_music_enabled IN (0, 1))",
+            [],
+        )?;
+    }
+    if !column_exists(
+        connection,
+        "couch_mode_preferences",
+        "background_music_volume",
+    )? {
+        connection.execute(
+            "ALTER TABLE couch_mode_preferences ADD COLUMN background_music_volume INTEGER NOT NULL DEFAULT 35 CHECK (background_music_volume BETWEEN 0 AND 100)",
+            [],
+        )?;
+    }
     if !couch_mode_preferences_schema_is_current(connection)? {
         migrate_couch_mode_preferences_schema(connection)?;
     }
@@ -4983,7 +5024,10 @@ fn couch_mode_preferences_schema_is_current(connection: &Connection) -> Result<b
         [],
         |row| row.get::<_, String>(0),
     )?;
-    Ok(schema.contains("collection:%") && schema.contains("view_style"))
+    Ok(schema.contains("collection:%")
+        && schema.contains("view_style")
+        && schema.contains("background_music_enabled")
+        && schema.contains("background_music_volume"))
 }
 
 fn migrate_couch_mode_preferences_schema(connection: &Connection) -> Result<()> {
@@ -5010,6 +5054,12 @@ fn migrate_couch_mode_preferences_schema(connection: &Connection) -> Result<()> 
              attract_cycle_seconds INTEGER NOT NULL DEFAULT 12 CHECK (
                  attract_cycle_seconds BETWEEN 5 AND 120
              ),
+             background_music_enabled INTEGER NOT NULL DEFAULT 1 CHECK (
+                 background_music_enabled IN (0, 1)
+             ),
+             background_music_volume INTEGER NOT NULL DEFAULT 35 CHECK (
+                 background_music_volume BETWEEN 0 AND 100
+             ),
              CHECK (
                  (shelf = 'platform' AND length(trim(platform)) > 0)
                  OR (shelf != 'platform' AND platform = '')
@@ -5017,10 +5067,12 @@ fn migrate_couch_mode_preferences_schema(connection: &Connection) -> Result<()> 
          );
          INSERT INTO couch_mode_preferences_v2 (
              id, shelf, platform, view_style, theme_id, attract_enabled,
-             attract_idle_seconds, attract_cycle_seconds
+             attract_idle_seconds, attract_cycle_seconds,
+             background_music_enabled, background_music_volume
          )
          SELECT id, shelf, platform, view_style, theme_id, attract_enabled,
-                attract_idle_seconds, attract_cycle_seconds
+                attract_idle_seconds, attract_cycle_seconds,
+                background_music_enabled, background_music_volume
          FROM couch_mode_preferences;
          DROP TABLE couch_mode_preferences;
          ALTER TABLE couch_mode_preferences_v2 RENAME TO couch_mode_preferences;",
@@ -6356,6 +6408,8 @@ mod tests {
             attract_enabled: true,
             attract_idle_seconds: 180,
             attract_cycle_seconds: 8,
+            background_music_enabled: false,
+            background_music_volume: 62,
         };
         store.save_couch_mode_preferences(&expected).unwrap();
         let reopened = SettingsStore::at(store.path()).unwrap();
@@ -6418,6 +6472,14 @@ mod tests {
                 view_style: "poster-wall".into(),
                 ..CouchModePreferences::default()
             },
+            CouchModePreferences {
+                background_music_volume: -1,
+                ..CouchModePreferences::default()
+            },
+            CouchModePreferences {
+                background_music_volume: 101,
+                ..CouchModePreferences::default()
+            },
         ] {
             assert!(store.save_couch_mode_preferences(&invalid).is_err());
         }
@@ -6464,6 +6526,8 @@ mod tests {
             "attract_idle_seconds",
             "attract_cycle_seconds",
             "view_style",
+            "background_music_enabled",
+            "background_music_volume",
         ] {
             assert!(column_exists(&connection, "couch_mode_preferences", column).unwrap());
         }
