@@ -79,6 +79,7 @@ pub mod qobject {
         #[qproperty(QString, platform_search)]
         #[qproperty(i32, filtered_platform_count)]
         #[qproperty(i32, sidebar_width)]
+        #[qproperty(i32, details_pane_width)]
         #[qproperty(bool, sidebar_state_saving)]
         #[qproperty(QString, session_platform)]
         #[qproperty(QString, session_game_uid)]
@@ -596,6 +597,12 @@ pub mod qobject {
         fn save_sidebar_state(self: Pin<&mut LibraryModel>, query: QString, width: i32);
 
         #[qinvokable]
+        fn preview_details_pane_width(self: Pin<&mut LibraryModel>, width: i32);
+
+        #[qinvokable]
+        fn save_details_pane_width(self: Pin<&mut LibraryModel>, width: i32);
+
+        #[qinvokable]
         fn save_library_session(
             self: Pin<&mut LibraryModel>,
             platform: QString,
@@ -939,6 +946,7 @@ pub struct LibraryModelRust {
     platform_search: QString,
     filtered_platform_count: i32,
     sidebar_width: i32,
+    details_pane_width: i32,
     sidebar_state_saving: bool,
     session_platform: QString,
     session_game_uid: QString,
@@ -1150,6 +1158,7 @@ impl Default for LibraryModelRust {
             platform_search: QString::default(),
             filtered_platform_count: 0,
             sidebar_width: SidebarPreferences::default().width,
+            details_pane_width: SidebarPreferences::default().details_width,
             sidebar_state_saving: false,
             session_platform: QString::default(),
             session_game_uid: QString::default(),
@@ -2237,6 +2246,8 @@ impl qobject::LibraryModel {
                         self.as_mut()
                             .set_platform_search(qstring(&preferences.platform_search));
                         self.as_mut().set_sidebar_width(preferences.width);
+                        self.as_mut()
+                            .set_details_pane_width(preferences.details_width);
                         None
                     }
                     Err(error) => Some(error),
@@ -5889,6 +5900,22 @@ impl qobject::LibraryModel {
         }
     }
 
+    pub fn preview_details_pane_width(mut self: Pin<&mut Self>, width: i32) {
+        let width = width.clamp(340, 900);
+        if width != *self.as_ref().details_pane_width() {
+            self.as_mut().set_details_pane_width(width);
+        }
+    }
+
+    pub fn save_details_pane_width(mut self: Pin<&mut Self>, width: i32) {
+        self.as_mut().preview_details_pane_width(width);
+        self.as_mut().rust_mut().sidebar_save_generation =
+            self.as_ref().rust().sidebar_save_generation.wrapping_add(1);
+        if !self.as_ref().rust().sidebar_save_pending {
+            self.as_mut().start_sidebar_save();
+        }
+    }
+
     pub fn save_library_session(
         mut self: Pin<&mut Self>,
         platform: QString,
@@ -5966,6 +5993,7 @@ impl qobject::LibraryModel {
         let preferences = SidebarPreferences {
             platform_search: self.as_ref().platform_search().to_string(),
             width: *self.as_ref().sidebar_width(),
+            details_width: *self.as_ref().details_pane_width(),
         };
         self.as_mut().rust_mut().sidebar_save_pending = true;
         self.as_mut().set_sidebar_state_saving(true);

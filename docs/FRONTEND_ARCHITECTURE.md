@@ -38,7 +38,11 @@ The initial implementation enforces this shape:
 - Platform navigation keeps a separate compact Rust index over 191 platform
   names, canonical database aliases, and bounded legacy abbreviations. Its
   search is immediate, the 180–400 px resize preview never touches storage, and
-  debounced search/drag completion is coalesced through one SQLite worker.
+  debounced search/drag completion is coalesced through one SQLite worker. The
+  desktop game-details pane follows the same model: its 340–900 px width is
+  previewed without I/O while dragging, clamped to preserve the library area,
+  and durably coalesced with the sidebar state. The divider supports mouse
+  drag, keyboard arrows/Home/End, and double-click reset.
   The 216 legacy platform images are compiled into the application as Qt
   resources. Explicit aliases cover catalog spellings such as Atari 8-bit,
   Commodore CD32/CDTV/Plus-4, Naomi, PICO, Satellaview, Videopac+, and V.Smile,
@@ -70,6 +74,10 @@ The initial implementation enforces this shape:
   2x expansion only when a smaller window cannot contain it. They therefore
   remain sharp and cannot hide behind the sidebar, page heading, window edge,
   or scrollbar.
+- The horizontal `More Like This` shelf uses the same accelerated wheel
+  physics, touch flicking, an always-visible draggable scrollbar, and bounded
+  Left/Right/PageUp/PageDown/Home/End navigation. Related cards retain exact
+  catalog IDs when focus or scrolling changes.
 - The desktop shell is split into reusable QML controls for header actions,
   sidebar navigation, links, metrics, filters, metadata, status, wheel physics,
   and first-run setup. `Main.qml` remains the composition root instead of
@@ -86,6 +94,10 @@ The initial implementation enforces this shape:
   imitation. Header and navigation controls clip and elide labels at constrained
   widths. Deterministic overview and provider-section probes verify the complete
   window geometry and direct-section scrolling.
+- Search-entry text and compact game-detail facts use Qt outline rendering,
+  shaping, kerning, and unhinted advances. This avoids per-glyph grid fitting
+  against uneven device-pixel phases on fractional-scale Wayland while keeping
+  the host UI font on Windows, macOS, and Linux.
 - Paths cross the Rust boundary as native paths. `--database PATH` and the
   `LUNCHBOX_DATABASE` environment variable are supported on Linux, macOS, and
   Windows without assuming `/bin/sh`, drive letters, or a path separator.

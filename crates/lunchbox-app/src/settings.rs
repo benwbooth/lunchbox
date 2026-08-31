@@ -263,6 +263,7 @@ pub struct LibraryPreferences {
 pub struct SidebarPreferences {
     pub platform_search: String,
     pub width: i32,
+    pub details_width: i32,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -801,6 +802,7 @@ impl Default for SidebarPreferences {
         Self {
             platform_search: String::new(),
             width: 254,
+            details_width: 440,
         }
     }
 }
@@ -815,6 +817,9 @@ impl SidebarPreferences {
         }
         if !(180..=400).contains(&self.width) {
             bail!("sidebar width must be between 180 and 400 pixels");
+        }
+        if !(340..=900).contains(&self.details_width) {
+            bail!("details pane width must be between 340 and 900 pixels");
         }
         Ok(())
     }
@@ -1665,12 +1670,14 @@ impl SettingsStore {
         let preferences = self
             .connection()?
             .query_row(
-                "SELECT platform_search, width FROM sidebar_preferences WHERE id=1",
+                "SELECT platform_search, width, details_width
+                 FROM sidebar_preferences WHERE id=1",
                 [],
                 |row| {
                     Ok(SidebarPreferences {
                         platform_search: row.get(0)?,
                         width: row.get(1)?,
+                        details_width: row.get(2)?,
                     })
                 },
             )
@@ -1683,12 +1690,17 @@ impl SettingsStore {
     pub fn save_sidebar_preferences(&self, preferences: &SidebarPreferences) -> Result<()> {
         preferences.validate()?;
         self.connection()?.execute(
-            "INSERT INTO sidebar_preferences (id, platform_search, width)
-             VALUES (1, ?1, ?2)
+            "INSERT INTO sidebar_preferences (id, platform_search, width, details_width)
+             VALUES (1, ?1, ?2, ?3)
              ON CONFLICT(id) DO UPDATE SET
                  platform_search=excluded.platform_search,
-                 width=excluded.width",
-            params![preferences.platform_search, preferences.width],
+                 width=excluded.width,
+                 details_width=excluded.details_width",
+            params![
+                preferences.platform_search,
+                preferences.width,
+                preferences.details_width,
+            ],
         )?;
         Ok(())
     }
@@ -4449,7 +4461,10 @@ fn migrate(connection: &Connection) -> Result<()> {
          CREATE TABLE IF NOT EXISTS sidebar_preferences (
              id INTEGER PRIMARY KEY CHECK (id=1),
              platform_search TEXT NOT NULL DEFAULT '' CHECK (length(platform_search) <= 80),
-             width INTEGER NOT NULL DEFAULT 254 CHECK (width BETWEEN 180 AND 400)
+             width INTEGER NOT NULL DEFAULT 254 CHECK (width BETWEEN 180 AND 400),
+             details_width INTEGER NOT NULL DEFAULT 440 CHECK (
+                 details_width BETWEEN 340 AND 900
+             )
          );
          CREATE TABLE IF NOT EXISTS library_session_preferences (
              id INTEGER PRIMARY KEY CHECK (id=1),
@@ -5174,6 +5189,12 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !column_exists(connection, "download_jobs", "launchbox_db_id")? {
         connection.execute(
             "ALTER TABLE download_jobs ADD COLUMN launchbox_db_id INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "sidebar_preferences", "details_width")? {
+        connection.execute(
+            "ALTER TABLE sidebar_preferences ADD COLUMN details_width INTEGER NOT NULL DEFAULT 440 CHECK (details_width BETWEEN 340 AND 900)",
             [],
         )?;
     }
@@ -6932,6 +6953,7 @@ mod tests {
         let expected = SidebarPreferences {
             platform_search: "snes".into(),
             width: 332,
+            details_width: 612,
         };
         store.save_sidebar_preferences(&expected).unwrap();
         let reopened = SettingsStore::at(store.path()).unwrap();
@@ -6942,6 +6964,7 @@ mod tests {
                 .save_sidebar_preferences(&SidebarPreferences {
                     platform_search: "x".repeat(81),
                     width: 332,
+                    details_width: 440,
                 })
                 .is_err()
         );
@@ -6950,6 +6973,16 @@ mod tests {
                 .save_sidebar_preferences(&SidebarPreferences {
                     platform_search: String::new(),
                     width: 401,
+                    details_width: 440,
+                })
+                .is_err()
+        );
+        assert!(
+            store
+                .save_sidebar_preferences(&SidebarPreferences {
+                    platform_search: String::new(),
+                    width: 254,
+                    details_width: 901,
                 })
                 .is_err()
         );
@@ -8680,6 +8713,7 @@ mod tests {
             column_exists(&connection, "app_settings", "media_provider_priority_json").unwrap()
         );
         assert!(column_exists(&connection, "app_settings", "onboarding_complete").unwrap());
+        assert!(column_exists(&connection, "sidebar_preferences", "details_width").unwrap());
         let prepared_table: Option<i64> = connection
             .query_row(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='prepared_game_installs'",

@@ -45,9 +45,10 @@ TestCase {
         verify(!clearButton.enabled)
     }
 
-    function test_search_text_uses_native_hinted_rendering() {
-        compare(search.renderType, Text.NativeRendering)
-        compare(search.font.hintingPreference, Font.PreferVerticalHinting)
+    function test_search_text_keeps_fractional_scale_advances_stable() {
+        compare(search.renderType, Text.CurveRendering)
+        compare(search.font.hintingPreference, Font.PreferNoHinting)
         verify(search.font.kerning)
+        verify(search.font.preferShaping)
     }
 }

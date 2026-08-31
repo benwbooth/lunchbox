@@ -53,7 +53,6 @@ fn main() {
         QmlModule::new("Lunchbox")
             .depend("QtQuick.Dialogs")
             .depend("QtQuick.Layouts")
-            .depend("QtQuick3D")
             .depend("QtMultimedia")
             .qml_files([
                 "qml/AcceleratedWheelHandler.qml",

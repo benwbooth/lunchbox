@@ -9,9 +9,14 @@ TextField {
 
     rightPadding: text.length > 0 ? 40 : 12
     selectByMouse: true
-    renderType: Text.NativeRendering
-    font.hintingPreference: Font.PreferVerticalHinting
+    // Curve rendering keeps glyph outlines and advances stable under fractional
+    // Wayland scales (the development display is 1.3x). Native glyph bitmaps
+    // otherwise land on different device-pixel phases as text is edited.
+    renderType: Text.CurveRendering
+    verticalAlignment: TextInput.AlignVCenter
+    font.hintingPreference: Font.PreferNoHinting
     font.kerning: true
+    font.preferShaping: true
     Accessible.name: placeholderText
 
     Image {

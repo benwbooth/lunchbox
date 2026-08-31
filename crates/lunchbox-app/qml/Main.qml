@@ -43,12 +43,12 @@ ApplicationWindow {
     title: downloadPlanUiProbe ? "Lunchbox - Download Review Probe" : "Lunchbox"
     color: palette.window
     // Keep each host's native UI family (Noto Sans on this KDE session,
-    // Segoe UI on Windows, and the system UI font on macOS). Vertical-only
-    // hinting preserves accurate horizontal advances at fractional Wayland
-    // scales instead of snapping every glyph to a different pixel width.
+    // Segoe UI on Windows, and the system UI font on macOS). Avoid grid-fitting
+    // logical glyphs to uneven device pixels on fractional-scale displays.
     font.family: Qt.application.font.family
     font.kerning: true
-    font.hintingPreference: Font.PreferVerticalHinting
+    font.preferShaping: true
+    font.hintingPreference: Font.PreferNoHinting
 
     readonly property color ink: "#f4f7fb"
     readonly property color muted: "#8d99aa"
@@ -57,6 +57,8 @@ ApplicationWindow {
     readonly property color line: "#283244"
     readonly property color accent: "#ffb454"
     readonly property color accentCool: "#62d6c6"
+    readonly property int detailsPaneMinimumWidth: 340
+    readonly property int detailsPaneContentReserve: 480
     property string selectedPlatform: ""
     property bool librarySessionFilterApplied: false
     property bool librarySessionRestored: false
@@ -124,6 +126,17 @@ ApplicationWindow {
     readonly property bool selectedFavoritePending: {
         library.favorite_pending_count
         return selectedGameId.length > 0 && library.favorite_pending(selectedGameId)
+    }
+
+    function detailsPaneMaximumWidth() {
+        return Math.max(detailsPaneMinimumWidth,
+                        Math.min(900, root.width - library.sidebar_width
+                                      - detailsPaneContentReserve))
+    }
+
+    function clampDetailsPaneWidth(width) {
+        return Math.max(detailsPaneMinimumWidth,
+                        Math.min(detailsPaneMaximumWidth(), width))
     }
     property string requestedSettingsSection: ""
     property bool onboardingSavePending: false
@@ -6390,7 +6403,9 @@ ApplicationWindow {
         running: root.sidebarUiProbe
         repeat: true
         onTriggered: {
-            if (!library.ready)
+            // The preview intentionally marks the shell ready before durable
+            // preferences are applied by the complete catalog load.
+            if (!library.ready || library.loading)
                 return
             stop()
             if (!root.sidebarRestoreUiProbe) {
@@ -6399,6 +6414,9 @@ ApplicationWindow {
                 library.preview_sidebar_width(332)
                 library.save_sidebar_state(platformSearchField.text,
                                            library.sidebar_width)
+                library.preview_details_pane_width(612)
+                library.save_details_pane_width(
+                            library.details_pane_width)
             }
             sidebarProbeCaptureTimer.start()
         }
@@ -6422,10 +6440,12 @@ ApplicationWindow {
                 }
             }
             if (library.platform_search !== "snes"
-                    || library.sidebar_width !== 332 || !foundSnes) {
+                    || library.sidebar_width !== 332
+                    || library.details_pane_width !== 612 || !foundSnes) {
                 console.error("LUNCHBOX_SIDEBAR_UI_FAILED query="
                               + library.platform_search + " width="
-                              + library.sidebar_width + " results="
+                              + library.sidebar_width + " details_width="
+                              + library.details_pane_width + " results="
                               + library.filtered_platform_count)
                 Qt.exit(2)
                 return
@@ -6434,7 +6454,8 @@ ApplicationWindow {
                 console.log("LUNCHBOX_SIDEBAR_UI_READY restored="
                             + root.sidebarRestoreUiProbe + " results="
                             + library.filtered_platform_count + " width="
-                            + library.sidebar_width)
+                            + library.sidebar_width + " details_width="
+                            + library.details_pane_width)
                 Qt.quit()
                 return
             }
@@ -6448,7 +6469,8 @@ ApplicationWindow {
                 console.log("LUNCHBOX_SIDEBAR_UI_READY restored="
                             + root.sidebarRestoreUiProbe + " results="
                             + library.filtered_platform_count + " width="
-                            + library.sidebar_width + " screenshot="
+                            + library.sidebar_width + " details_width="
+                            + library.details_pane_width + " screenshot="
                             + root.screenshotOutput)
                 Qt.quit()
             })
@@ -6722,6 +6744,18 @@ ApplicationWindow {
         interval: 500
         repeat: false
         onTriggered: {
+            const beforeScroll = relatedGamesList.contentX
+            relatedWheelHandler.scrollNotches(1)
+            relatedWheelHandler.stopMomentum()
+            if (relatedGamesList.contentWidth <= relatedGamesList.width
+                    || relatedGamesList.contentX <= beforeScroll) {
+                console.error("LUNCHBOX_RELATED_GAMES_UI_FAILED horizontal_scroll content="
+                              + relatedGamesList.contentWidth + " viewport="
+                              + relatedGamesList.width + " before=" + beforeScroll
+                              + " after=" + relatedGamesList.contentX)
+                Qt.exit(2)
+                return
+            }
             function openProbeTarget() {
                 root.relatedGamesProbeStage = 2
                 root.openGame(gameDetails.related_game_id_at(0),
@@ -8073,6 +8107,31 @@ ApplicationWindow {
             repeat: false
             onTriggered: library.search_list_column_filter(facetSearchField.text)
         }
+    }
+
+    component DetailInfoLabel: Text {
+        color: "#687488"
+        font.pixelSize: 9
+        font.weight: Font.Bold
+        font.kerning: true
+        font.preferShaping: true
+        font.hintingPreference: Font.PreferNoHinting
+        renderType: Text.CurveRendering
+        renderTypeQuality: 8
+        verticalAlignment: Text.AlignVCenter
+    }
+
+    component DetailInfoValue: Text {
+        color: root.ink
+        font.pixelSize: 12
+        font.kerning: true
+        font.preferShaping: true
+        font.hintingPreference: Font.PreferNoHinting
+        renderType: Text.CurveRendering
+        renderTypeQuality: 8
+        verticalAlignment: Text.AlignVCenter
+        Layout.fillWidth: true
+        elide: Text.ElideRight
     }
 
     component GameGrid: GridView {
@@ -10036,18 +10095,96 @@ ApplicationWindow {
         Component { id: gameListComponent; GameList {} }
     }
 
+    Item {
+        id: detailsResizeHandle
+        anchors.right: detailsPane.left
+        anchors.top: header.bottom
+        anchors.bottom: statusBar.top
+        width: 10
+        visible: gameDetails.panel_open
+        z: 80
+        activeFocusOnTab: true
+        Accessible.role: Accessible.Separator
+        Accessible.name: "Resize game details pane"
+
+        function resizeBy(delta) {
+            const next = Math.round(root.clampDetailsPaneWidth(
+                                        library.details_pane_width + delta))
+            library.preview_details_pane_width(next)
+            library.save_details_pane_width(next)
+        }
+
+        Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Left) {
+                resizeBy(24)
+            } else if (event.key === Qt.Key_Right) {
+                resizeBy(-24)
+            } else if (event.key === Qt.Key_Home) {
+                library.preview_details_pane_width(
+                            root.detailsPaneMinimumWidth)
+                library.save_details_pane_width(
+                            root.detailsPaneMinimumWidth)
+            } else if (event.key === Qt.Key_End) {
+                const maximum = Math.round(root.detailsPaneMaximumWidth())
+                library.preview_details_pane_width(maximum)
+                library.save_details_pane_width(maximum)
+            } else {
+                return
+            }
+            event.accepted = true
+        }
+
+        Rectangle {
+            anchors.right: parent.right
+            anchors.rightMargin: 1
+            anchors.verticalCenter: parent.verticalCenter
+            width: detailsResizeMouse.pressed || detailsResizeHover.hovered ? 3 : 1
+            height: detailsResizeMouse.pressed || detailsResizeHover.hovered
+                    ? 64 : parent.height
+            radius: 2
+            color: detailsResizeMouse.pressed ? root.accent
+                   : detailsResizeHover.hovered ? root.accentCool : root.line
+            Behavior on height { NumberAnimation { duration: 120 } }
+        }
+        HoverHandler { id: detailsResizeHover }
+        MouseArea {
+            id: detailsResizeMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.SizeHorCursor
+            onPositionChanged: mouse => {
+                if (!pressed)
+                    return
+                const point = mapToItem(root.contentItem, mouse.x, mouse.y)
+                library.preview_details_pane_width(
+                            Math.round(root.clampDetailsPaneWidth(
+                                           root.width - point.x)))
+            }
+            onReleased: library.save_details_pane_width(
+                            library.details_pane_width)
+            onDoubleClicked: {
+                library.preview_details_pane_width(440)
+                library.save_details_pane_width(440)
+            }
+        }
+        ToolTip.visible: detailsResizeHover.hovered
+        ToolTip.text: "Drag to resize · double-click to reset"
+    }
+
     Rectangle {
         id: detailsPane
         anchors.right: parent.right
         anchors.top: header.bottom
         anchors.bottom: statusBar.top
-        width: gameDetails.panel_open ? Math.min(440, Math.max(350, root.width * 0.32)) : 0
+        width: gameDetails.panel_open
+               ? root.clampDetailsPaneWidth(library.details_pane_width) : 0
         visible: width > 0
         clip: true
         color: "#101620"
         border.color: root.line
 
         Behavior on width {
+            enabled: !detailsResizeMouse.pressed
             NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
         }
 
@@ -11319,25 +11456,37 @@ ApplicationWindow {
                         rowSpacing: 9
                         visible: !gameDetails.loading
 
-                        Text { visible: gameDetails.release_date.length > 0; text: "RELEASED"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.release_date.length > 0; text: gameDetails.release_date; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.developer.length > 0; text: "DEVELOPER"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.developer.length > 0; text: gameDetails.developer; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.publisher.length > 0; text: "PUBLISHER"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.publisher.length > 0; text: gameDetails.publisher; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.genre.length > 0; text: "GENRE"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.genre.length > 0; text: gameDetails.genre; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.players.length > 0; text: "PLAYERS"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.players.length > 0; text: gameDetails.players; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.cooperative !== "unknown"; text: "CO-OP"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.cooperative !== "unknown"; text: gameDetails.cooperative === "yes" ? "Supported" : "Not supported"; color: gameDetails.cooperative === "yes" ? root.accentCool : root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.rating.length > 0; text: "RATING"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.rating.length > 0; text: gameDetails.rating + " / 5" + (gameDetails.rating_count > 0 ? "  ·  " + gameDetails.rating_count.toLocaleString(Qt.locale(), "f", 0) + " ratings" : ""); color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.esrb.length > 0; text: "RATED"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.esrb.length > 0; text: gameDetails.esrb; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.release_type.length > 0; text: "TYPE"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.release_type.length > 0; text: gameDetails.release_type; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.series.length > 0; text: "SERIES"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
+                        DetailInfoLabel { visible: gameDetails.release_date.length > 0; text: "RELEASED" }
+                        DetailInfoValue { visible: gameDetails.release_date.length > 0; text: gameDetails.release_date }
+                        DetailInfoLabel { visible: gameDetails.developer.length > 0; text: "DEVELOPER" }
+                        DetailInfoValue { visible: gameDetails.developer.length > 0; text: gameDetails.developer }
+                        DetailInfoLabel { visible: gameDetails.publisher.length > 0; text: "PUBLISHER" }
+                        DetailInfoValue { visible: gameDetails.publisher.length > 0; text: gameDetails.publisher }
+                        DetailInfoLabel { visible: gameDetails.genre.length > 0; text: "GENRE" }
+                        DetailInfoValue { visible: gameDetails.genre.length > 0; text: gameDetails.genre }
+                        DetailInfoLabel { visible: gameDetails.players.length > 0; text: "PLAYERS" }
+                        DetailInfoValue { visible: gameDetails.players.length > 0; text: gameDetails.players }
+                        DetailInfoLabel { visible: gameDetails.cooperative !== "unknown"; text: "CO-OP" }
+                        DetailInfoValue {
+                            visible: gameDetails.cooperative !== "unknown"
+                            text: gameDetails.cooperative === "yes"
+                                  ? "Supported" : "Not supported"
+                            color: gameDetails.cooperative === "yes"
+                                   ? root.accentCool : root.ink
+                        }
+                        DetailInfoLabel { visible: gameDetails.rating.length > 0; text: "RATING" }
+                        DetailInfoValue {
+                            visible: gameDetails.rating.length > 0
+                            text: gameDetails.rating + " / 5"
+                                  + (gameDetails.rating_count > 0
+                                     ? "  ·  " + gameDetails.rating_count.toLocaleString(
+                                           Qt.locale(), "f", 0) + " ratings" : "")
+                        }
+                        DetailInfoLabel { visible: gameDetails.esrb.length > 0; text: "RATED" }
+                        DetailInfoValue { visible: gameDetails.esrb.length > 0; text: gameDetails.esrb }
+                        DetailInfoLabel { visible: gameDetails.release_type.length > 0; text: "TYPE" }
+                        DetailInfoValue { visible: gameDetails.release_type.length > 0; text: gameDetails.release_type }
+                        DetailInfoLabel { visible: gameDetails.series.length > 0; text: "SERIES" }
                         Button {
                             visible: gameDetails.series.length > 0
                             Layout.fillWidth: true
@@ -11349,13 +11498,10 @@ ApplicationWindow {
                                 library.apply_exact_list_column_filter("series", gameDetails.series)
                                 gameDetails.close_panel()
                             }
-                            contentItem: Text {
+                            contentItem: DetailInfoValue {
                                 text: parent.text
                                 color: parent.hovered ? root.accent : root.accentCool
-                                font.pixelSize: 12
                                 font.weight: Font.DemiBold
-                                elide: Text.ElideRight
-                                verticalAlignment: Text.AlignVCenter
                             }
                             background: Rectangle {
                                 radius: 6
@@ -11363,14 +11509,14 @@ ApplicationWindow {
                                 border.color: parent.activeFocus ? root.accentCool : "transparent"
                             }
                         }
-                        Text { visible: gameDetails.region.length > 0; text: "REGION"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.region.length > 0; text: gameDetails.region; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.version.length > 0; text: "VERSION"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.version.length > 0; text: gameDetails.version; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.play_mode.length > 0; text: "PLAY MODE"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.play_mode.length > 0; text: gameDetails.play_mode; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { visible: gameDetails.release_status.length > 0; text: "STATUS"; color: "#687488"; font.pixelSize: 9; font.weight: Font.Bold }
-                        Text { visible: gameDetails.release_status.length > 0; text: gameDetails.release_status; color: root.ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        DetailInfoLabel { visible: gameDetails.region.length > 0; text: "REGION" }
+                        DetailInfoValue { visible: gameDetails.region.length > 0; text: gameDetails.region }
+                        DetailInfoLabel { visible: gameDetails.version.length > 0; text: "VERSION" }
+                        DetailInfoValue { visible: gameDetails.version.length > 0; text: gameDetails.version }
+                        DetailInfoLabel { visible: gameDetails.play_mode.length > 0; text: "PLAY MODE" }
+                        DetailInfoValue { visible: gameDetails.play_mode.length > 0; text: gameDetails.play_mode }
+                        DetailInfoLabel { visible: gameDetails.release_status.length > 0; text: "STATUS" }
+                        DetailInfoValue { visible: gameDetails.release_status.length > 0; text: gameDetails.release_status }
                     }
 
                     Column {
@@ -11796,19 +11942,83 @@ ApplicationWindow {
                         ListView {
                             id: relatedGamesList
                             width: parent.width
-                            height: gameDetails.related_game_count > 0 ? 242 : 0
+                            height: gameDetails.related_game_count > 0 ? 246 : 0
                             visible: gameDetails.related_game_count > 0
                             orientation: ListView.Horizontal
                             spacing: 9
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
+                            interactive: true
+                            flickDeceleration: 3600
+                            maximumFlickVelocity: 18000
                             reuseItems: true
                             keyNavigationEnabled: true
+                            keyNavigationWraps: false
                             activeFocusOnTab: true
+                            highlightFollowsCurrentItem: true
                             model: gameDetails.related_game_count
                             ScrollBar.horizontal: ScrollBar {
-                                policy: ScrollBar.AsNeeded
-                                height: 3
+                                id: relatedHorizontalScrollBar
+                                policy: ScrollBar.AlwaysOn
+                                active: true
+                                interactive: true
+                                hoverEnabled: true
+                                height: 8
+                                z: 1000
+                                contentItem: Rectangle {
+                                    implicitHeight: 6
+                                    radius: height / 2
+                                    color: relatedHorizontalScrollBar.pressed
+                                           ? root.accent
+                                           : relatedHorizontalScrollBar.hovered
+                                             ? root.accentCool : "#748197"
+                                }
+                                background: Rectangle {
+                                    implicitHeight: 8
+                                    radius: height / 2
+                                    color: "#111923"
+                                    border.color: root.line
+                                }
+                            }
+                            HorizontalWheelHandler {
+                                id: relatedWheelHandler
+                                scroller: relatedGamesList
+                            }
+
+                            function focusRelated(targetIndex) {
+                                if (count <= 0)
+                                    return
+                                currentIndex = Math.max(0,
+                                                        Math.min(count - 1,
+                                                                 targetIndex))
+                                positionViewAtIndex(currentIndex, ListView.Contain)
+                                Qt.callLater(function() {
+                                    if (relatedGamesList.currentItem)
+                                        relatedGamesList.currentItem.forceActiveFocus()
+                                })
+                            }
+
+                            Keys.onPressed: event => {
+                                const index = currentIndex >= 0 ? currentIndex : 0
+                                const visibleCards = Math.max(
+                                                       1,
+                                                       Math.floor(width / 150))
+                                if (event.key === Qt.Key_Left) {
+                                    focusRelated(index - 1)
+                                } else if (event.key === Qt.Key_Right) {
+                                    focusRelated(index + 1)
+                                } else if (event.key === Qt.Key_PageUp) {
+                                    focusRelated(index - visibleCards)
+                                } else if (event.key === Qt.Key_PageDown) {
+                                    focusRelated(index + visibleCards)
+                                } else if (event.key === Qt.Key_Home) {
+                                    focusRelated(0)
+                                } else if (event.key === Qt.Key_End) {
+                                    focusRelated(count - 1)
+                                } else {
+                                    return
+                                }
+                                event.accepted = true
                             }
 
                             delegate: Rectangle {
@@ -12023,28 +12233,14 @@ ApplicationWindow {
                                 Keys.onLeftPressed: function(event) {
                                     if (relatedCard.index <= 0)
                                         return
-                                    relatedGamesList.currentIndex = relatedCard.index - 1
-                                    relatedGamesList.positionViewAtIndex(
-                                                relatedGamesList.currentIndex,
-                                                ListView.Contain)
-                                    Qt.callLater(function() {
-                                        if (relatedGamesList.currentItem)
-                                            relatedGamesList.currentItem.forceActiveFocus()
-                                    })
+                                    relatedGamesList.focusRelated(relatedCard.index - 1)
                                     event.accepted = true
                                 }
                                 Keys.onRightPressed: function(event) {
                                     if (relatedCard.index + 1
                                             >= gameDetails.related_game_count)
                                         return
-                                    relatedGamesList.currentIndex = relatedCard.index + 1
-                                    relatedGamesList.positionViewAtIndex(
-                                                relatedGamesList.currentIndex,
-                                                ListView.Contain)
-                                    Qt.callLater(function() {
-                                        if (relatedGamesList.currentItem)
-                                            relatedGamesList.currentItem.forceActiveFocus()
-                                    })
+                                    relatedGamesList.focusRelated(relatedCard.index + 1)
                                     event.accepted = true
                                 }
                                 ToolTip.visible: relatedHover.hovered
