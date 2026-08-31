@@ -110,8 +110,72 @@ jobs:
           macdeployqt dist/Lunchbox.app -qmldir=crates/lunchbox-app/qml -always-overwrite
           codesign --force --deep --sign - dist/Lunchbox.app
           test -f dist/Lunchbox.app/Contents/share/lunchbox/lunchbox.db
-      - name: Build DMG
-        run: hdiutil create -volname Lunchbox -srcfolder dist/Lunchbox.app -ov -format UDZO dist/Lunchbox-macos-${{ matrix.arch }}.dmg
+      - name: Build and verify DMG
+        shell: bash
+        env:
+          DMG_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+
+          output="$PWD/dist/Lunchbox-macos-${DMG_ARCH}.dmg"
+          staging="$(mktemp -d "${RUNNER_TEMP}/lunchbox-dmg.XXXXXX")"
+          mountpoint_dir="$(mktemp -d "${RUNNER_TEMP}/lunchbox-mount.XXXXXX")"
+          mounted=false
+
+          cleanup() {
+            if [[ "$mounted" == true ]]; then
+              hdiutil detach "$mountpoint_dir" -force >/dev/null 2>&1 || true
+            fi
+            rm -rf -- "$staging" "$mountpoint_dir"
+          }
+          trap cleanup EXIT
+
+          ditto --rsrc --extattr --acl dist/Lunchbox.app "$staging/Lunchbox.app"
+          ln -s /Applications "$staging/Applications"
+          sync
+
+          created=false
+          for attempt in 1 2 3 4; do
+            rm -f -- "$output"
+            if hdiutil create \
+                -volname Lunchbox \
+                -srcfolder "$staging" \
+                -fs HFS+ \
+                -format UDZO \
+                -imagekey zlib-level=9 \
+                "$output"; then
+              created=true
+              break
+            fi
+            if [[ "$attempt" -eq 4 ]]; then
+              echo "hdiutil could not create the DMG after $attempt attempts" >&2
+              exit 1
+            fi
+            delay=$((attempt * 5))
+            echo "hdiutil reported a transient failure; retrying in ${delay}s" >&2
+            sleep "$delay"
+          done
+          [[ "$created" == true && -s "$output" ]]
+
+          hdiutil verify "$output"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint_dir" "$output"
+          mounted=true
+          test -x "$mountpoint_dir/Lunchbox.app/Contents/MacOS/lunchbox"
+          test -f "$mountpoint_dir/Lunchbox.app/Contents/share/lunchbox/lunchbox.db"
+          test "$(readlink "$mountpoint_dir/Applications")" = /Applications
+          codesign --verify --deep --strict "$mountpoint_dir/Lunchbox.app"
+
+          packaged_arches="$(lipo -archs "$mountpoint_dir/Lunchbox.app/Contents/MacOS/lunchbox")"
+          case " $packaged_arches " in
+            *" $DMG_ARCH "*) ;;
+            *)
+              echo "DMG executable architectures '$packaged_arches' do not include '$DMG_ARCH'" >&2
+              exit 1
+              ;;
+          esac
+
+          hdiutil detach "$mountpoint_dir"
+          mounted=false
       - uses: actions/upload-artifact@v4
         with:
           name: Lunchbox-macos-${{ matrix.arch }}
