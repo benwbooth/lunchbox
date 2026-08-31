@@ -9260,7 +9260,7 @@ ApplicationWindow {
             color: root.ink
             selectionColor: root.accent
             selectedTextColor: "#15100a"
-            font.pixelSize: 13
+            font.pixelSize: 14
             onTextEdited: root.scheduleFilter()
             onClearRequested: root.scheduleFilter()
             background: Rectangle {
@@ -17332,9 +17332,8 @@ ApplicationWindow {
                     enabled: !webArtwork.busy && webArtworkSearch.text.length >= 2
                     onClicked: {
                         webArtwork.search_games(webArtworkSearch.text)
-                        Qt.openUrlExternally("https://duckduckgo.com/?q="
-                                             + encodeURIComponent(webArtworkSearch.text)
-                                             + "&iax=images&ia=images")
+                        Qt.openUrlExternally("https://www.google.com/search?tbm=isch&q="
+                                             + encodeURIComponent(webArtworkSearch.text))
                     }
                 }
                 ComboBox {

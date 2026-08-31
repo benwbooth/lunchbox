@@ -44,4 +44,10 @@ TestCase {
         verify(!clearButton.visible)
         verify(!clearButton.enabled)
     }
+
+    function test_search_text_uses_native_hinted_rendering() {
+        compare(search.renderType, Text.NativeRendering)
+        compare(search.font.hintingPreference, Font.PreferVerticalHinting)
+        verify(search.font.kerning)
+    }
 }

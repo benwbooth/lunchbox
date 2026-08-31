@@ -491,19 +491,26 @@ but the preferred provider. The details hero exposes previous/next controls and
 the current source while preserving the legacy provider and media-type fallback
 order. The complete provider order is editable and durable in Settings; saving
 it immediately rebuilds the in-memory artwork index off the GUI thread and also
-governs cached videos and manuals. Its refresh action bypasses the seven-day
-miss cache, validates a fresh LibRetro PNG, and replaces only Lunchbox's owned
-LibRetro file through a synced temporary file. Other providers remain available,
-and a miss or transfer error restores the existing image.
+governs cached videos and manuals. Missing exact artwork now walks that same
+order through LibRetro, SteamGridDB, IGDB, EmuMovies artwork packs, and
+ScreenScraper. Reviewed provider IDs are reused directly. Otherwise Lunchbox
+accepts only one unambiguous exact SteamGridDB title, one exact IGDB
+title/platform pair, or one exact ScreenScraper title inside an explicitly
+mapped platform; ambiguous results remain manual review candidates. Nintendo
+Switch therefore skips LibRetro's nonexistent Switch namespace and continues
+through every configured modern-game provider. Its refresh action bypasses
+fresh miss markers and each provider publishes only its own file. A miss or
+transfer error keeps every existing image.
 
 The sidebar's native **Media Audit** opens a virtualized, cancellable coverage
 review for either My Collection or the complete catalog. It checks one exact
-artwork category at a time, clearly separates exact LibRetro repairs from games
-that need per-provider review, and never treats a fallback image as completion.
-Users select reviewed rows before a confirmed, two-worker background repair;
-each response is size/signature validated and atomically published into only
-LibRetro's owned cache path. Provider misses and transfer failures stay visible
-for retry or per-game Find Artwork review.
+artwork category at a time, clearly separates rows with an exact LibRetro
+identity from games that need per-provider review, and never treats a fallback
+image as completion. Users select reviewed rows before a confirmed, two-worker
+background repair. That repair follows the same exact provider chain as visible
+games, and each response is size/signature validated and atomically published
+into only the successful provider's owned cache path. Provider misses and
+transfer failures stay visible for retry or per-game Find Artwork review.
 
 The unified native **Find Artwork** flow supports SteamGridDB, IGDB,
 ScreenScraper, EmuMovies, and an explicit Web source. Provider credentials live only in the operating-system
@@ -513,8 +520,8 @@ chooses one individual artwork file. SteamGridDB supplies backgrounds, covers,
 and logos; IGDB supplies covers, artwork, and screenshots through a Confidential
 Twitch Developer application's Client ID and newest Client Secret. IGDB account
 credentials and IGDB MCP credentials are not API application credentials. Web
-artwork uses a focused system-browser
-search rather than scraping: the user supplies one exact HTTPS image URL or
+artwork uses a focused Google Images query in the system browser rather than
+scraping unsupported search HTML: the user supplies one exact HTTPS image URL or
 local file, Lunchbox validates it off-thread in a unique quarantine, previews
 only that local validated copy, and publishes those exact bytes only after
 explicit confirmation. All reviewed image routes use bounded PNG/JPEG/WebP signature
@@ -526,10 +533,12 @@ commercial partnership.
 ScreenScraper is optional and appears only for authorized WebAPI v2 users. Its
 developer/member credentials may come from the native credential store or
 runtime environment. Lunchbox never accepts a title search as identity: the
-user first reviews and stores one exact positive provider game ID. Once linked,
-missing visible artwork may use that ID to select the highest-priority safe
-regional candidate automatically after LibRetro misses; unlinked games never
-trigger a ScreenScraper title search.
+user may review and store one exact positive provider game ID. Once linked,
+missing visible artwork uses that ID directly. An unlinked game may perform a
+platform-constrained search only when Lunchbox has an exact ScreenScraper
+platform mapping; one unique strict exact-title result may supply artwork for
+that request, but is not stored as an identity link. Every ambiguous result
+returns to the reviewed Find Artwork flow.
 
 EmuMovies reuses the legacy Rust FTP client rather than inventing a different
 backend contract. Existing members can save and test their forum credentials in

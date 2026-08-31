@@ -4055,7 +4055,7 @@ impl qobject::LibraryModel {
                 .as_ref()
                 .rust()
                 .media
-                .selected(database_id, kind)
+                .exact(database_id, kind)
                 .is_some()
         {
             return;
@@ -5625,7 +5625,8 @@ impl qobject::LibraryModel {
             return;
         }
         let qt_thread = self.as_ref().qt_thread();
-        match MediaFetchQueue::start(root, move |outcome| {
+        let provider_priority = self.as_ref().rust().media.provider_priority().to_vec();
+        match MediaFetchQueue::start(root, provider_priority, move |outcome| {
             let _ = qt_thread.queue(move |mut model| {
                 model.as_mut().finish_media_fetch(outcome);
             });
@@ -5633,7 +5634,7 @@ impl qobject::LibraryModel {
             Ok(queue) => {
                 self.as_mut().rust_mut().media_fetch_queue = Some(queue);
                 self.as_mut().set_media_fetch_message(qstring(
-                    "On-demand artwork is ready; visible games try LibRetro and reviewed ScreenScraper links first.",
+                    "On-demand artwork is ready; visible games follow the configured provider order.",
                 ));
             }
             Err(error) => {

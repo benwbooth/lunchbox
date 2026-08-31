@@ -40,7 +40,7 @@ pub struct EmuMoviesConfig {
 }
 
 /// Media types available from EmuMovies
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EmuMoviesMediaType {
     BoxFront,
     BoxBack,
@@ -382,6 +382,9 @@ static VIDEO_DOWNLOAD_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = 
 static SOUNDTRACK_DOWNLOAD_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
     OnceLock::new();
 static ARTWORK_FOLDER_CACHE: OnceLock<Mutex<Option<Vec<String>>>> = OnceLock::new();
+static ARTWORK_ARCHIVE_CACHE: OnceLock<
+    Mutex<HashMap<(String, EmuMoviesMediaType), Option<String>>>,
+> = OnceLock::new();
 // Cache discovered video folders per normalized EmuMovies platform folder.
 static VIDEO_FOLDER_CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
 // Cache video indices per remote FTP folder path.
@@ -1394,8 +1397,23 @@ impl EmuMoviesClient {
         platform: &str,
         media_type: EmuMoviesMediaType,
     ) -> Result<Option<String>> {
+        let cache_key = (normalize_emumovies_platform_key(platform), media_type);
+        if let Some(cached) = ARTWORK_ARCHIVE_CACHE
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .expect("artwork archive cache lock poisoned")
+            .get(&cache_key)
+            .cloned()
+        {
+            return Ok(cached);
+        }
         let Some(system_folder) = self.find_artwork_folder(platform)? else {
             tracing::info!("No EmuMovies artwork folder found for {}", platform);
+            ARTWORK_ARCHIVE_CACHE
+                .get_or_init(|| Mutex::new(HashMap::new()))
+                .lock()
+                .expect("artwork archive cache lock poisoned")
+                .insert(cache_key, None);
             return Ok(None);
         };
 
@@ -1411,11 +1429,21 @@ impl EmuMoviesClient {
             let filename = file.rsplit('/').next().unwrap_or(file);
             if filename.contains(pattern) && filename.ends_with(".zip") {
                 tracing::info!("Found archive: {}", file);
+                ARTWORK_ARCHIVE_CACHE
+                    .get_or_init(|| Mutex::new(HashMap::new()))
+                    .lock()
+                    .expect("artwork archive cache lock poisoned")
+                    .insert(cache_key, Some(file.clone()));
                 return Ok(Some(file.clone()));
             }
         }
 
         tracing::info!("No archive found matching pattern {}", pattern);
+        ARTWORK_ARCHIVE_CACHE
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .expect("artwork archive cache lock poisoned")
+            .insert(cache_key, None);
         Ok(None)
     }
 
@@ -1541,6 +1569,29 @@ impl EmuMoviesClient {
         game_cache_dir: &Path,
         progress: Option<&ProgressCallback>,
     ) -> Result<PathBuf> {
+        self.try_get_media_from_archive(platform, media_type, game_name, game_cache_dir, progress)?
+            .with_context(|| {
+                format!(
+                    "No entry found for game '{}' in the {} archive for {}",
+                    game_name,
+                    media_type.archive_pattern(),
+                    platform
+                )
+            })
+    }
+
+    /// Try to retrieve one exact title from an artwork archive.
+    ///
+    /// A missing platform archive or exact archive member is a normal provider
+    /// miss so the caller can continue through its configured provider chain.
+    pub fn try_get_media_from_archive(
+        &self,
+        platform: &str,
+        media_type: EmuMoviesMediaType,
+        game_name: &str,
+        game_cache_dir: &Path,
+        progress: Option<&ProgressCallback>,
+    ) -> Result<Option<PathBuf>> {
         report_progress(progress, 0.0)?;
 
         // Don't use archives for video
@@ -1548,35 +1599,24 @@ impl EmuMoviesClient {
             anyhow::bail!("Use get_video() for video content");
         }
         if media_type == EmuMoviesMediaType::Manual {
-            return self.get_manual(platform, game_name, game_cache_dir, progress);
+            return self
+                .get_manual(platform, game_name, game_cache_dir, progress)
+                .map(Some);
         }
 
         let archive_path = self.get_archive_path(platform, media_type);
         let index = {
             let lock = get_archive_lock(&archive_path);
-            let _guard = match lock.try_lock() {
-                Ok(g) => g,
-                Err(std::sync::TryLockError::WouldBlock) => {
-                    anyhow::bail!(
-                        "Archive setup already in progress for {}",
-                        archive_path.display()
-                    );
-                }
-                Err(std::sync::TryLockError::Poisoned(_)) => {
-                    anyhow::bail!("Archive setup lock poisoned for {}", archive_path.display());
-                }
-            };
+            let _guard = lock.lock().map_err(|_| {
+                anyhow::anyhow!("Archive setup lock poisoned for {}", archive_path.display())
+            })?;
 
             // Check if we need to download the archive
             if !archive_path.exists() {
                 // Find the archive on FTP
-                let remote_path = self.find_archive(platform, media_type)?.ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "No {} archive found for platform {}",
-                        media_type.archive_pattern(),
-                        platform
-                    )
-                })?;
+                let Some(remote_path) = self.find_archive(platform, media_type)? else {
+                    return Ok(None);
+                };
 
                 report_progress(progress, 0.0)?;
 
@@ -1590,13 +1630,9 @@ impl EmuMoviesClient {
         };
 
         // Find the entry for this game
-        let entry_path = index.find_entry(game_name).ok_or_else(|| {
-            anyhow::anyhow!(
-                "No entry found for game '{}' in {} archive",
-                game_name,
-                media_type.archive_pattern()
-            )
-        })?;
+        let Some(entry_path) = index.find_entry(game_name) else {
+            return Ok(None);
+        };
 
         // Determine output path
         let ext = entry_path.rsplit('.').next().unwrap_or("png");
@@ -1610,7 +1646,7 @@ impl EmuMoviesClient {
         report_progress(progress, 1.0)?;
         self.extract_from_archive(&archive_path, entry_path, &output_path)?;
 
-        Ok(output_path)
+        Ok(Some(output_path))
     }
 
     fn find_existing_manual(game_cache_dir: &Path) -> Option<PathBuf> {
@@ -2588,6 +2624,40 @@ fn move_article_to_end(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn switch_artwork_uses_an_existing_exact_emumovies_archive_without_ftp() {
+        use std::io::Write as _;
+
+        let temp = tempfile::tempdir().unwrap();
+        let client = EmuMoviesClient::new(EmuMoviesConfig::default(), temp.path().to_path_buf());
+        let archive_path = client.get_archive_path("Nintendo Switch", EmuMoviesMediaType::BoxFront);
+        std::fs::create_dir_all(archive_path.parent().unwrap()).unwrap();
+        let mut archive = zip::ZipWriter::new(std::fs::File::create(&archive_path).unwrap());
+        archive
+            .start_file(
+                "Super Mario Odyssey.png",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        archive.write_all(b"\x89PNG\r\n\x1a\nfixture").unwrap();
+        archive.finish().unwrap();
+
+        let game_directory = temp.path().join("lb-136132");
+        let artwork = client
+            .try_get_media_from_archive(
+                "Nintendo Switch",
+                EmuMoviesMediaType::BoxFront,
+                "Super Mario Odyssey",
+                &game_directory,
+                None,
+            )
+            .unwrap()
+            .expect("exact Switch artwork");
+
+        assert_eq!(artwork, game_directory.join("emumovies/box-front.png"));
+        assert_eq!(std::fs::read(artwork).unwrap(), b"\x89PNG\r\n\x1a\nfixture");
+    }
 
     #[test]
     fn accepts_existing_video_with_stale_match_version() {

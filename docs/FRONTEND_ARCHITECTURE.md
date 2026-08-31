@@ -99,11 +99,20 @@ The initial implementation enforces this shape:
   Rust never constructs a POSIX-only or Windows-only URL.
 - Visible delegates may enqueue missing artwork only after the local index is
   ready. Two named Rust workers consume a bounded newest-viewport-first queue;
-  no network request runs on the Qt thread or gates startup. LibRetro responses
-  must be PNG files of at most 8 MiB and are published with a same-directory
-  atomic rename. Provider misses are cached per stable LaunchBox ID and media
-  type for seven days. `--offline` or `LUNCHBOX_OFFLINE=1` makes the same UI
-  strictly cache-only.
+  no network request runs on the Qt thread or gates startup. The workers follow
+  the configured provider order: LibRetro, SteamGridDB, IGDB, exact EmuMovies
+  archive members, and ScreenScraper are eligible. Reviewed IDs are reused.
+  Unlinked automatic retrieval accepts only one strict exact SteamGridDB title,
+  one strict exact IGDB title/platform pair, or one strict exact ScreenScraper
+  title inside a mapped provider platform. It never persists those transient
+  matches as identity links, and ambiguous results remain explicit review work.
+  LibRetro responses must be PNG files of at most 8 MiB and are published with a
+  same-directory atomic rename.
+  Provider misses are cached per stable LaunchBox ID and media type for seven
+  days. A provider transport or authentication failure opens a two-minute
+  in-process circuit breaker so one bad account cannot stall every visible card;
+  explicit refresh bypasses that breaker. `--offline` or `LUNCHBOX_OFFLINE=1`
+  makes the same UI strictly cache-only.
 - The media index retains every valid candidate in deterministic media-type,
   provider, format, and path order. The details hero can rotate those candidates
   without rescanning the filesystem. Explicit refresh bypasses the miss cache
@@ -117,10 +126,12 @@ The initial implementation enforces this shape:
   is exact by media kind: an available fallback does not satisfy the audit.
   Positive exact game identities on LibRetro-supported platforms may enter a
   confirmed repair batch. Two workers receive at most eight scheduled rows at
-  once, require the requested category instead of retrieval fallbacks, validate
-  bounded PNG responses, and atomically publish only LibRetro-owned files.
-  Local-only or unsupported records remain reviewable and route back to Game
-  Details rather than receiving guessed identity or media.
+  once, require the requested category instead of media-type fallbacks, and
+  follow the same exact provider chain as visible games. Every success is
+  bounded, signature validated, and atomically published only into the source
+  provider's owned files. Local-only or unsupported records remain reviewable
+  and route back to Game Details rather than receiving guessed identity or
+  media.
 - `FirmwareAuditModel` reads only present native local paths and resolves the
   same exact game-then-platform emulator preference used by Play. A named Rust
   worker groups only identical normalized platform/emulator/runtime/core
@@ -1157,12 +1168,18 @@ signature-validating publisher and atomically replace only their own media kind.
 IGDB attribution and the non-commercial/commercial-partnership boundary are
 visible in Settings. ScreenScraper setup is explicitly authorization-gated and
 links a positive provider game ID only after review. The ordinary visible-media
-worker may use that reviewed ID as a bounded fallback after a LibRetro miss; it
-never performs an automatic ScreenScraper title search, and forced LibRetro
-repairs remain provider-specific.
+worker follows the saved provider order through LibRetro, SteamGridDB, IGDB,
+exact EmuMovies archive title members, and ScreenScraper. It reuses reviewed
+stable IDs, but may also consume one unambiguous strict exact title result from
+SteamGridDB, one strict exact title/platform result from IGDB, or one strict
+exact title result from a platform-constrained ScreenScraper search. Those
+transient matches are not persisted as identity links. Explicit refresh
+bypasses fresh provider-miss markers while every provider remains isolated to
+its own cache directory.
 
 Web artwork deliberately does not reproduce the legacy DuckDuckGo first-result
-scraper. The system browser receives a category-specific query; Lunchbox accepts
+scraper. The system browser receives a category-specific Google Images query;
+Lunchbox accepts
 only one user-reviewed HTTPS image URL or local file. A generation-guarded Rust
 worker downloads or copies the candidate into an opaque, per-candidate process
 quarantine, rejects files over 16 MiB and non-PNG/JPEG/WebP signatures, and

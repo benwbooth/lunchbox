@@ -1,10 +1,10 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
@@ -89,7 +89,17 @@ const MEDIA_DOWNLOAD_WORKERS: usize = 2;
 const MEDIA_DOWNLOAD_QUEUE_CAPACITY: usize = 128;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+const PROVIDER_FAILURE_BACKOFF: Duration = Duration::from_secs(2 * 60);
 const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+const AUTOMATIC_DOWNLOAD_PROVIDERS: [&str; 5] = [
+    "libretro",
+    "steamgriddb",
+    "igdb",
+    "emumovies",
+    "screenscraper",
+];
+static PROVIDER_FAILURES: std::sync::OnceLock<Mutex<HashMap<String, Instant>>> =
+    std::sync::OnceLock::new();
 
 // These aliases are exact mappings between names in the Lunchbox discovery
 // catalog and current libretro-thumbnails playlist directories. They are media
@@ -553,6 +563,10 @@ impl MediaIndex {
         index: usize,
     ) -> Option<&MediaAsset> {
         self.games.get(&database_id)?.candidate(kind, index)
+    }
+
+    pub fn provider_priority(&self) -> &[String] {
+        &self.provider_priority
     }
 
     pub fn insert_asset(
@@ -1070,23 +1084,32 @@ impl MediaFetchState {
 }
 
 impl MediaFetchQueue {
-    pub fn start<F>(root: PathBuf, callback: F) -> Result<Self>
+    pub fn start<F>(root: PathBuf, provider_priority: Vec<String>, callback: F) -> Result<Self>
     where
         F: Fn(MediaFetchOutcome) + Send + Sync + 'static,
     {
         let shared = Arc::new((Mutex::new(MediaFetchState::default()), Condvar::new()));
         let callback = Arc::new(callback);
         let base_url = requested_libretro_base_url();
+        let provider_priority = Arc::new(effective_provider_priority(&provider_priority));
         for worker_index in 0..MEDIA_DOWNLOAD_WORKERS {
             let shared = Arc::clone(&shared);
             let worker_shared = Arc::clone(&shared);
             let callback = Arc::clone(&callback);
             let root = root.clone();
             let base_url = base_url.clone();
+            let provider_priority = Arc::clone(&provider_priority);
             if let Err(error) = std::thread::Builder::new()
                 .name(format!("lunchbox-media-fetch-{worker_index}"))
                 .spawn(move || {
-                    media_fetch_worker(worker_shared, callback, root, base_url, worker_index)
+                    media_fetch_worker(
+                        worker_shared,
+                        callback,
+                        root,
+                        base_url,
+                        provider_priority,
+                        worker_index,
+                    )
                 })
             {
                 let (state, ready) = &*shared;
@@ -1181,6 +1204,7 @@ fn media_fetch_worker<F>(
     callback: Arc<F>,
     root: PathBuf,
     base_url: String,
+    provider_priority: Arc<Vec<String>>,
     worker_index: usize,
 ) where
     F: Fn(MediaFetchOutcome) + Send + Sync + 'static,
@@ -1213,7 +1237,14 @@ fn media_fetch_worker<F>(
             state.pop_next()
         };
         let Some(request) = request else { continue };
-        callback(fetch_media(&agent, &root, &base_url, request, worker_index));
+        callback(fetch_media(
+            &agent,
+            &root,
+            &base_url,
+            &provider_priority,
+            request,
+            worker_index,
+        ));
     }
 }
 
@@ -1221,17 +1252,110 @@ fn fetch_media(
     agent: &ureq::Agent,
     root: &Path,
     base_url: &str,
+    provider_priority: &[String],
     request: MediaFetchRequest,
     worker_index: usize,
 ) -> MediaFetchOutcome {
+    let mut errors = Vec::new();
+    for provider in automatic_provider_order(provider_priority) {
+        if !request.force && provider_failure_backoff_is_active(&provider) {
+            continue;
+        }
+        let result = match provider.as_str() {
+            "libretro" => fetch_libretro(agent, root, base_url, &request, worker_index),
+            "steamgriddb" => fetch_steamgriddb(root, &request),
+            "igdb" => fetch_igdb(root, &request),
+            "emumovies" => fetch_emumovies(root, &request),
+            "screenscraper" => fetch_screenscraper(root, &request),
+            _ => Ok(None),
+        };
+        match result {
+            Ok(Some((fetched_kind, path))) => {
+                clear_provider_failure(&provider);
+                return MediaFetchOutcome::Found {
+                    request_id: request.request_id,
+                    database_id: request.database_id,
+                    requested_kind: request.requested_kind,
+                    fetched_kind,
+                    path,
+                    provider,
+                    force: request.force,
+                };
+            }
+            Ok(None) => clear_provider_failure(&provider),
+            Err(error) => {
+                remember_provider_failure(&provider);
+                errors.push(format!(
+                    "{}: {}",
+                    provider_display_name(&provider),
+                    concise_provider_error(&error.to_string())
+                ));
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        missing_outcome(request)
+    } else {
+        MediaFetchOutcome::Failed {
+            request_id: request.request_id,
+            database_id: request.database_id,
+            requested_kind: request.requested_kind,
+            error: errors.join("; "),
+            force: request.force,
+        }
+    }
+}
+
+fn provider_failure_backoff_is_active(provider: &str) -> bool {
+    PROVIDER_FAILURES
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .ok()
+        .and_then(|failures| failures.get(provider).copied())
+        .is_some_and(|failed_at| failed_at.elapsed() < PROVIDER_FAILURE_BACKOFF)
+}
+
+fn remember_provider_failure(provider: &str) {
+    if let Ok(mut failures) = PROVIDER_FAILURES
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        failures.insert(provider.to_owned(), Instant::now());
+    }
+}
+
+fn clear_provider_failure(provider: &str) {
+    if let Ok(mut failures) = PROVIDER_FAILURES
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        failures.remove(provider);
+    }
+}
+
+fn automatic_provider_order(provider_priority: &[String]) -> Vec<String> {
+    effective_provider_priority(provider_priority)
+        .into_iter()
+        .filter(|provider| AUTOMATIC_DOWNLOAD_PROVIDERS.contains(&provider.as_str()))
+        .collect()
+}
+
+fn fetch_libretro(
+    agent: &ureq::Agent,
+    root: &Path,
+    base_url: &str,
+    request: &MediaFetchRequest,
+    worker_index: usize,
+) -> Result<Option<(ArtworkKind, PathBuf)>> {
     if !request.force && negative_cache_is_fresh(root, request.database_id, request.requested_kind)
     {
-        return missing_or_linked_screenscraper(root, request);
+        return Ok(None);
     }
 
     let Some(platform) = libretro_platform_name(&request.platform) else {
-        let _ = write_negative_cache(root, &request, "platform is not provided by LibRetro");
-        return missing_or_linked_screenscraper(root, request);
+        let _ = write_negative_cache(root, request, "platform is not provided by LibRetro");
+        return Ok(None);
     };
 
     for fetched_kind in retrieval_kinds(request.requested_kind, request.exact_only) {
@@ -1240,15 +1364,7 @@ fn fetch_media(
         };
         let output = media_output_path(root, request.database_id, fetched_kind);
         if output.is_file() && !request.force {
-            return MediaFetchOutcome::Found {
-                request_id: request.request_id,
-                database_id: request.database_id,
-                requested_kind: request.requested_kind,
-                fetched_kind,
-                path: output,
-                provider: "libretro".to_owned(),
-                force: false,
-            };
+            return Ok(Some((fetched_kind, output)));
         }
 
         for candidate in libretro_title_candidates(&request.title) {
@@ -1259,76 +1375,314 @@ fn fetch_media(
                 type_directory,
                 percent_encode_path_segment(&candidate)
             );
-            match download_png(agent, &url) {
-                Ok(Some(bytes)) => {
-                    match write_download_atomically(&output, &bytes, worker_index, request.force) {
-                        Ok(()) => {
-                            let _ = fs::remove_file(negative_cache_path(
-                                root,
-                                request.database_id,
-                                request.requested_kind,
-                            ));
-                            return MediaFetchOutcome::Found {
-                                request_id: request.request_id,
-                                database_id: request.database_id,
-                                requested_kind: request.requested_kind,
-                                fetched_kind,
-                                path: output,
-                                provider: "libretro".to_owned(),
-                                force: request.force,
-                            };
-                        }
-                        Err(error) => {
-                            return MediaFetchOutcome::Failed {
-                                request_id: request.request_id,
-                                database_id: request.database_id,
-                                requested_kind: request.requested_kind,
-                                error: error.to_string(),
-                                force: request.force,
-                            };
-                        }
-                    }
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    return MediaFetchOutcome::Failed {
-                        request_id: request.request_id,
-                        database_id: request.database_id,
-                        requested_kind: request.requested_kind,
-                        error: error.to_string(),
-                        force: request.force,
-                    };
-                }
+            if let Some(bytes) = download_png(agent, &url)? {
+                write_download_atomically(&output, &bytes, worker_index, request.force)?;
+                let _ = fs::remove_file(negative_cache_path(
+                    root,
+                    request.database_id,
+                    request.requested_kind,
+                ));
+                return Ok(Some((fetched_kind, output)));
             }
         }
     }
 
-    let _ = write_negative_cache(root, &request, "no matching LibRetro thumbnail");
-    missing_or_linked_screenscraper(root, request)
+    let _ = write_negative_cache(root, request, "no matching LibRetro thumbnail");
+    Ok(None)
 }
 
-fn missing_or_linked_screenscraper(root: &Path, request: MediaFetchRequest) -> MediaFetchOutcome {
-    if request.force {
-        return missing_outcome(request);
+fn fetch_steamgriddb(
+    root: &Path,
+    request: &MediaFetchRequest,
+) -> Result<Option<(ArtworkKind, PathBuf)>> {
+    let Some(api_key) = configured_steamgriddb_api_key()? else {
+        return Ok(None);
+    };
+    let link = crate::settings::SettingsStore::open_default()?
+        .media_provider_game_link("steamgriddb", request.database_id)?;
+    if link.is_none()
+        && !request.force
+        && provider_negative_cache_is_fresh(
+            root,
+            "steamgriddb",
+            request.database_id,
+            request.requested_kind,
+            request.exact_only,
+        )
+    {
+        return Ok(None);
     }
-    match fetch_linked_screenscraper(root, &request) {
-        Ok(Some((fetched_kind, path))) => MediaFetchOutcome::Found {
-            request_id: request.request_id,
-            database_id: request.database_id,
-            requested_kind: request.requested_kind,
+    let client = crate::steamgriddb::Client::new(api_key)?;
+    let game_id = if let Some(link) = link {
+        positive_provider_game_id(&link.provider_game_id, "SteamGridDB")?
+    } else {
+        let candidates = client.search_games(&request.title)?;
+        let Some(game_id) = unique_exact_provider_game_id(
+            candidates
+                .iter()
+                .map(|candidate| (candidate.id, candidate.name.as_str())),
+            &request.title,
+        ) else {
+            write_provider_negative_cache(
+                root,
+                "steamgriddb",
+                request,
+                "no unique exact-title SteamGridDB game",
+            )?;
+            return Ok(None);
+        };
+        game_id
+    };
+    for fetched_kind in retrieval_kinds(request.requested_kind, request.exact_only) {
+        if !matches!(
             fetched_kind,
-            path,
-            provider: "screenscraper".to_owned(),
-            force: false,
-        },
-        Ok(None) => missing_outcome(request),
-        Err(error) => MediaFetchOutcome::Failed {
-            request_id: request.request_id,
-            database_id: request.database_id,
-            requested_kind: request.requested_kind,
-            error: format!("reviewed ScreenScraper fallback failed: {error}"),
-            force: false,
-        },
+            ArtworkKind::BoxFront | ArtworkKind::Fanart | ArtworkKind::ClearLogo
+        ) {
+            continue;
+        }
+        let Some(candidate) = client
+            .artwork_for_game(game_id, fetched_kind)?
+            .into_iter()
+            .next()
+        else {
+            continue;
+        };
+        let fetched = client
+            .download_and_publish(&candidate, root, request.database_id, fetched_kind)
+            .map(|path| Some((fetched_kind, path)))?;
+        remove_provider_negative_cache(root, "steamgriddb", request);
+        return Ok(fetched);
+    }
+    write_provider_negative_cache(
+        root,
+        "steamgriddb",
+        request,
+        "the exact SteamGridDB game has no requested artwork",
+    )?;
+    Ok(None)
+}
+
+fn fetch_igdb(root: &Path, request: &MediaFetchRequest) -> Result<Option<(ArtworkKind, PathBuf)>> {
+    let Some((client_id, client_secret)) = configured_igdb_credentials()? else {
+        return Ok(None);
+    };
+    let link = crate::settings::SettingsStore::open_default()?
+        .media_provider_game_link("igdb", request.database_id)?;
+    if link.is_none()
+        && !request.force
+        && provider_negative_cache_is_fresh(
+            root,
+            "igdb",
+            request.database_id,
+            request.requested_kind,
+            request.exact_only,
+        )
+    {
+        return Ok(None);
+    }
+    let client = crate::igdb::Client::new(client_id, client_secret)?;
+    let game_id = if let Some(link) = link {
+        positive_provider_game_id(&link.provider_game_id, "IGDB")?
+    } else {
+        let candidates = client.search_games(&request.title)?;
+        let exact = candidates
+            .iter()
+            .filter(|candidate| {
+                strict_provider_title_matches(&candidate.name, &request.title)
+                    && igdb_platform_matches(candidate, &request.platform)
+            })
+            .map(|candidate| (candidate.id, candidate.name.as_str()));
+        let Some(game_id) = unique_exact_provider_game_id(exact, &request.title) else {
+            write_provider_negative_cache(
+                root,
+                "igdb",
+                request,
+                "no unique exact-title and exact-platform IGDB game",
+            )?;
+            return Ok(None);
+        };
+        game_id
+    };
+    for fetched_kind in retrieval_kinds(request.requested_kind, request.exact_only) {
+        if !matches!(
+            fetched_kind,
+            ArtworkKind::BoxFront | ArtworkKind::Screenshot | ArtworkKind::Fanart
+        ) {
+            continue;
+        }
+        let Some(candidate) = client
+            .artwork_for_game(game_id, fetched_kind)?
+            .into_iter()
+            .next()
+        else {
+            continue;
+        };
+        let fetched = client
+            .download_and_publish(&candidate, root, request.database_id, fetched_kind)
+            .map(|path| Some((fetched_kind, path)))?;
+        remove_provider_negative_cache(root, "igdb", request);
+        return Ok(fetched);
+    }
+    write_provider_negative_cache(
+        root,
+        "igdb",
+        request,
+        "the exact IGDB game has no requested artwork",
+    )?;
+    Ok(None)
+}
+
+fn fetch_emumovies(
+    root: &Path,
+    request: &MediaFetchRequest,
+) -> Result<Option<(ArtworkKind, PathBuf)>> {
+    let Some((username, password)) = configured_emumovies_credentials()? else {
+        return Ok(None);
+    };
+    let client = crate::emumovies::EmuMoviesClient::new(
+        crate::emumovies::EmuMoviesConfig { username, password },
+        root.to_path_buf(),
+    );
+    let game_directory = root.join(format!("lb-{}", request.database_id));
+    let lookup_title = crate::emumovies::resolve_arcade_download_lookup_name(
+        &request.platform,
+        &request.title,
+        Some(request.database_id),
+    );
+    for fetched_kind in retrieval_kinds(request.requested_kind, request.exact_only) {
+        let media_type = match fetched_kind {
+            ArtworkKind::BoxFront => crate::emumovies::EmuMoviesMediaType::BoxFront,
+            ArtworkKind::BoxBack => crate::emumovies::EmuMoviesMediaType::BoxBack,
+            ArtworkKind::Box3d => crate::emumovies::EmuMoviesMediaType::Box3D,
+            ArtworkKind::Screenshot => crate::emumovies::EmuMoviesMediaType::Screenshot,
+            ArtworkKind::TitleScreen => crate::emumovies::EmuMoviesMediaType::TitleScreen,
+            ArtworkKind::Fanart => crate::emumovies::EmuMoviesMediaType::Fanart,
+            ArtworkKind::ClearLogo => crate::emumovies::EmuMoviesMediaType::ClearLogo,
+        };
+        if let Some(path) = client.try_get_media_from_archive(
+            &request.platform,
+            media_type,
+            lookup_title.as_ref(),
+            &game_directory,
+            None,
+        )? {
+            return Ok(Some((fetched_kind, path)));
+        }
+    }
+    Ok(None)
+}
+
+fn positive_provider_game_id(value: &str, provider: &str) -> Result<i64> {
+    value
+        .parse::<i64>()
+        .ok()
+        .filter(|game_id| *game_id > 0)
+        .with_context(|| format!("reviewed {provider} game ID is invalid"))
+}
+
+fn strict_provider_title_key(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn strict_provider_title_matches(candidate: &str, requested: &str) -> bool {
+    let requested = strict_provider_title_key(requested);
+    !requested.is_empty() && strict_provider_title_key(candidate) == requested
+}
+
+fn unique_exact_provider_game_id<'a>(
+    candidates: impl IntoIterator<Item = (i64, &'a str)>,
+    requested_title: &str,
+) -> Option<i64> {
+    let mut exact_id = None;
+    for (id, name) in candidates {
+        if id <= 0 || !strict_provider_title_matches(name, requested_title) {
+            continue;
+        }
+        if exact_id.is_some_and(|existing| existing != id) {
+            return None;
+        }
+        exact_id = Some(id);
+    }
+    exact_id
+}
+
+fn exact_platform_keys(platform: &str) -> HashSet<String> {
+    let mut keys = HashSet::from([catalog::normalize_platform_key(platform)]);
+    if let Some(aliases) = catalog::legacy_platform_search_aliases(platform) {
+        keys.extend(aliases.split(',').map(catalog::normalize_platform_key));
+    }
+    keys.retain(|key| !key.is_empty());
+    keys
+}
+
+fn igdb_platform_matches(candidate: &crate::igdb::GameCandidate, requested_platform: &str) -> bool {
+    let requested = exact_platform_keys(requested_platform);
+    candidate.platforms.iter().any(|platform| {
+        requested.contains(&catalog::normalize_platform_key(&platform.name))
+            || requested.contains(&catalog::normalize_platform_key(&platform.abbreviation))
+    })
+}
+
+fn configured_steamgriddb_api_key() -> Result<Option<String>> {
+    if let Some(api_key) = std::env::var("LUNCHBOX_STEAMGRIDDB_API_KEY")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    {
+        return Ok(Some(api_key));
+    }
+    crate::settings::load_steamgriddb_api_key()
+}
+
+fn configured_igdb_credentials() -> Result<Option<(String, String)>> {
+    configured_credential_pair(
+        "LUNCHBOX_IGDB_CLIENT_ID",
+        "LUNCHBOX_IGDB_CLIENT_SECRET",
+        crate::settings::load_igdb_credentials,
+    )
+}
+
+fn configured_emumovies_credentials() -> Result<Option<(String, String)>> {
+    configured_credential_pair(
+        "LUNCHBOX_EMUMOVIES_USERNAME",
+        "LUNCHBOX_EMUMOVIES_PASSWORD",
+        crate::settings::load_emumovies_credentials,
+    )
+}
+
+fn configured_credential_pair<F>(
+    first_name: &str,
+    second_name: &str,
+    load_saved: F,
+) -> Result<Option<(String, String)>>
+where
+    F: FnOnce() -> Result<Option<(String, String)>>,
+{
+    let first = std::env::var(first_name)
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let second = std::env::var(second_name)
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    match (first, second) {
+        (Some(first), Some(second)) => Ok(Some((first, second))),
+        (None, None) => load_saved(),
+        _ => bail!("both {first_name} and {second_name} must be set"),
+    }
+}
+
+fn concise_provider_error(error: &str) -> String {
+    const LIMIT: usize = 240;
+    let error = error.trim();
+    if error.chars().count() <= LIMIT {
+        error.to_owned()
+    } else {
+        format!("{}…", error.chars().take(LIMIT).collect::<String>())
     }
 }
 
@@ -1341,41 +1695,46 @@ fn missing_outcome(request: MediaFetchRequest) -> MediaFetchOutcome {
     }
 }
 
-fn fetch_linked_screenscraper(
+fn fetch_screenscraper(
     root: &Path,
     request: &MediaFetchRequest,
 ) -> Result<Option<(ArtworkKind, PathBuf)>> {
-    let Some(link) = crate::settings::SettingsStore::open_default()?
-        .media_provider_game_link("screenscraper", request.database_id)?
-    else {
-        return Ok(None);
-    };
-    if screenscraper_negative_cache_is_fresh(
-        root,
-        request.database_id,
-        request.requested_kind,
-        request.exact_only,
-    ) {
+    let link = crate::settings::SettingsStore::open_default()?
+        .media_provider_game_link("screenscraper", request.database_id)?;
+    if link.is_none()
+        && !request.force
+        && screenscraper_negative_cache_is_fresh(
+            root,
+            request.database_id,
+            request.requested_kind,
+            request.exact_only,
+        )
+    {
         return Ok(None);
     }
-    // Most catalog records are not linked. Check the small indexed SQLite
-    // identity table before touching the operating-system credential store so
-    // ordinary visible-media misses remain cheap.
     let Some(credentials) = crate::screenscraper::configured_credentials()? else {
         return Ok(None);
     };
-    let game_id = link
-        .provider_game_id
-        .parse::<i64>()
-        .ok()
-        .filter(|game_id| *game_id > 0)
-        .with_context(|| {
-            format!(
-                "reviewed ScreenScraper link for database ID {} has an invalid provider game ID",
-                request.database_id
-            )
-        })?;
-    let fetched = crate::screenscraper::Client::new(credentials)?.download_linked_artwork(
+    let client = crate::screenscraper::Client::new(credentials)?;
+    let game_id = if let Some(link) = link {
+        positive_provider_game_id(&link.provider_game_id, "ScreenScraper")?
+    } else {
+        if crate::screenscraper::platform_id(&request.platform).is_none() {
+            return Ok(None);
+        }
+        let candidates = client.search_games(&request.title, &request.platform)?;
+        let Some(game_id) = unique_exact_provider_game_id(
+            candidates
+                .iter()
+                .map(|candidate| (candidate.id, candidate.name.as_str())),
+            &request.title,
+        ) else {
+            write_screenscraper_negative_cache(root, request)?;
+            return Ok(None);
+        };
+        game_id
+    };
+    let fetched = client.download_linked_artwork(
         game_id,
         root,
         request.database_id,
@@ -1543,6 +1902,22 @@ fn screenscraper_negative_cache_path(
         ))
 }
 
+fn provider_negative_cache_path(
+    root: &Path,
+    provider: &str,
+    database_id: i64,
+    kind: ArtworkKind,
+    exact_only: bool,
+) -> PathBuf {
+    root.join(format!("lb-{database_id}"))
+        .join(provider)
+        .join(format!(
+            ".missing-{}-{}",
+            kind.key(),
+            if exact_only { "exact" } else { "fallback" }
+        ))
+}
+
 fn negative_cache_is_fresh(root: &Path, database_id: i64, kind: ArtworkKind) -> bool {
     cache_marker_is_fresh(&negative_cache_path(root, database_id, kind))
 }
@@ -1555,6 +1930,22 @@ fn screenscraper_negative_cache_is_fresh(
 ) -> bool {
     cache_marker_is_fresh(&screenscraper_negative_cache_path(
         root,
+        database_id,
+        kind,
+        exact_only,
+    ))
+}
+
+fn provider_negative_cache_is_fresh(
+    root: &Path,
+    provider: &str,
+    database_id: i64,
+    kind: ArtworkKind,
+    exact_only: bool,
+) -> bool {
+    cache_marker_is_fresh(&provider_negative_cache_path(
+        root,
+        provider,
         database_id,
         kind,
         exact_only,
@@ -1587,12 +1978,54 @@ fn write_screenscraper_negative_cache(root: &Path, request: &MediaFetchRequest) 
             parent.display()
         )
     })?;
-    fs::write(&path, b"no matching reviewed ScreenScraper media\n").with_context(|| {
+    fs::write(&path, b"no unique exact ScreenScraper media match\n").with_context(|| {
         format!(
             "writing ScreenScraper negative artwork cache marker {}",
             path.display()
         )
     })
+}
+
+fn write_provider_negative_cache(
+    root: &Path,
+    provider: &str,
+    request: &MediaFetchRequest,
+    reason: &str,
+) -> Result<()> {
+    let path = provider_negative_cache_path(
+        root,
+        provider,
+        request.database_id,
+        request.requested_kind,
+        request.exact_only,
+    );
+    let parent = path
+        .parent()
+        .context("provider negative artwork cache path has no parent directory")?;
+    fs::create_dir_all(parent).with_context(|| {
+        format!(
+            "creating provider negative artwork cache directory {}",
+            parent.display()
+        )
+    })?;
+    fs::write(
+        &path,
+        format!(
+            "provider={provider}\nplatform={}\ntitle={}\nreason={reason}\n",
+            request.platform, request.title
+        ),
+    )
+    .with_context(|| format!("writing provider negative artwork cache {}", path.display()))
+}
+
+fn remove_provider_negative_cache(root: &Path, provider: &str, request: &MediaFetchRequest) {
+    let _ = fs::remove_file(provider_negative_cache_path(
+        root,
+        provider,
+        request.database_id,
+        request.requested_kind,
+        request.exact_only,
+    ));
 }
 
 fn write_negative_cache(root: &Path, request: &MediaFetchRequest, reason: &str) -> Result<()> {
@@ -1857,6 +2290,81 @@ mod tests {
     }
 
     #[test]
+    fn automatic_downloads_follow_configured_network_provider_order() {
+        let mut priority = default_provider_priority();
+        let emumovies_index = priority
+            .iter()
+            .position(|provider| provider == "emumovies")
+            .unwrap();
+        let emumovies = priority.remove(emumovies_index);
+        priority.insert(0, emumovies);
+
+        assert_eq!(
+            automatic_provider_order(&priority),
+            vec![
+                "emumovies",
+                "libretro",
+                "steamgriddb",
+                "igdb",
+                "screenscraper"
+            ]
+        );
+        assert!(!automatic_provider_order(&priority).contains(&"websearch".to_owned()));
+    }
+
+    #[test]
+    fn automatic_provider_search_accepts_only_one_strict_exact_title() {
+        assert_eq!(
+            unique_exact_provider_game_id(
+                [(42, "Super Mario Odyssey"), (43, "Super Mario Odyssey 2")],
+                "  super   mario odyssey ",
+            ),
+            Some(42)
+        );
+        assert_eq!(
+            unique_exact_provider_game_id(
+                [(42, "Super Mario Odyssey"), (44, "super mario odyssey")],
+                "Super Mario Odyssey",
+            ),
+            None
+        );
+        assert_eq!(
+            unique_exact_provider_game_id([(42, "Super Mario Odyssey™")], "Super Mario Odyssey",),
+            None
+        );
+    }
+
+    #[test]
+    fn igdb_automatic_search_requires_an_exact_platform_identity() {
+        let switch_game = crate::igdb::GameCandidate {
+            id: 42,
+            name: "Super Mario Odyssey".to_owned(),
+            first_release_date: None,
+            platforms: vec![crate::igdb::Platform {
+                name: "Nintendo Switch".to_owned(),
+                abbreviation: "Switch".to_owned(),
+            }],
+            cover: None,
+            screenshots: Vec::new(),
+            artworks: Vec::new(),
+        };
+
+        assert!(igdb_platform_matches(&switch_game, "Nintendo Switch"));
+        assert!(!igdb_platform_matches(&switch_game, "Nintendo Wii U"));
+    }
+
+    #[test]
+    fn failed_provider_is_temporarily_bypassed_without_blocking_the_chain() {
+        let provider = "test-provider-failure-backoff";
+        clear_provider_failure(provider);
+        assert!(!provider_failure_backoff_is_active(provider));
+        remember_provider_failure(provider);
+        assert!(provider_failure_backoff_is_active(provider));
+        clear_provider_failure(provider);
+        assert!(!provider_failure_backoff_is_active(provider));
+    }
+
+    #[test]
     fn selected_artwork_uses_explicit_kind_fallbacks() {
         let mut media = GameMedia::default();
         media.insert(
@@ -1923,6 +2431,7 @@ mod tests {
             &agent,
             root.path(),
             &format!("http://{address}"),
+            &default_provider_priority(),
             MediaFetchRequest {
                 request_id: "stable-game-uid".to_owned(),
                 database_id: 42,

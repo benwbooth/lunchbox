@@ -631,8 +631,15 @@ impl qobject::MediaAuditModel {
             self.as_ref().rust().repair_generation.wrapping_add(1);
         let generation = self.as_ref().rust().repair_generation;
         let qt_thread = self.as_ref().qt_thread();
+        let provider_priority = crate::settings::SettingsStore::open_default()
+            .and_then(|store| store.load())
+            .map(|settings| {
+                crate::media::effective_provider_priority(&settings.media_provider_priority)
+            })
+            .unwrap_or_else(|_| crate::media::default_provider_priority());
         let queue = match MediaFetchQueue::start(
             crate::media::requested_media_directory(),
+            provider_priority,
             move |outcome| {
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_repair(generation, outcome);

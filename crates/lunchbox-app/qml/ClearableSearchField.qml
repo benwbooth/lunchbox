@@ -9,6 +9,9 @@ TextField {
 
     rightPadding: text.length > 0 ? 40 : 12
     selectByMouse: true
+    renderType: Text.NativeRendering
+    font.hintingPreference: Font.PreferVerticalHinting
+    font.kerning: true
     Accessible.name: placeholderText
 
     Image {

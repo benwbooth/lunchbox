@@ -719,7 +719,7 @@ fn platform_search_key(name: &str, database_aliases: Option<&str>) -> String {
     key
 }
 
-fn legacy_platform_search_aliases(name: &str) -> Option<&'static str> {
+pub(crate) fn legacy_platform_search_aliases(name: &str) -> Option<&'static str> {
     Some(match name {
         "Nintendo Entertainment System" => "NES,Famicom,FC",
         "Super Nintendo Entertainment System" => "SNES,Super Famicom,SFC,snesna",
