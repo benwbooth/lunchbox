@@ -187,6 +187,7 @@ ApplicationWindow {
     property string pendingEmulatorUninstallName: ""
     property string pendingEmulatorUninstallConfirmation: ""
     property bool emulatorUpdateStartupScheduled: false
+    property int emulatorUpdatePinProbeStage: 0
     property int pendingControllerProfileDeleteIndex: -1
     property string pendingControllerProfileDeleteName: ""
     property int downloadPlanProbeBundleIndex: 0
@@ -369,6 +370,7 @@ ApplicationWindow {
     readonly property bool emulatorManagerProbe: Qt.application.arguments.indexOf("--emulator-manager-probe") >= 0
     readonly property bool emulatorManagerUiProbe: Qt.application.arguments.indexOf("--emulator-manager-ui-probe") >= 0
     readonly property bool emulatorUpdateUiProbe: Qt.application.arguments.indexOf("--emulator-update-ui-probe") >= 0
+    readonly property bool emulatorUpdatePinUiProbe: Qt.application.arguments.indexOf("--emulator-update-pin-ui-probe") >= 0
     readonly property bool firmwareProbe: Qt.application.arguments.indexOf("--firmware-probe") >= 0
     readonly property bool firmwareUiProbe: Qt.application.arguments.indexOf("--firmware-ui-probe") >= 0
     readonly property bool activityUiProbe: Qt.application.arguments.indexOf("--activity-ui-probe") >= 0
@@ -1951,8 +1953,61 @@ ApplicationWindow {
     Connections {
         target: emulatorUpdates
         function onInitializedChanged() {
-            if (root.emulatorUpdateUiProbe && emulatorUpdates.initialized)
+            if (root.emulatorUpdatePinUiProbe && emulatorUpdates.initialized
+                    && !emulatorUpdates.busy
+                    && root.emulatorUpdatePinProbeStage === 0) {
+                if (emulatorUpdates.row_count <= 0
+                        || emulatorUpdates.pinned_count !== 0
+                        || !emulatorUpdates.can_pin_at(0)) {
+                    console.error("LUNCHBOX_EMULATOR_UPDATE_PIN_UI_FAILED rows="
+                                  + emulatorUpdates.row_count + " pinned="
+                                  + emulatorUpdates.pinned_count + " message="
+                                  + emulatorUpdates.message)
+                    Qt.exit(2)
+                    return
+                }
+                root.emulatorUpdatePinProbeStage = 1
+                emulatorUpdates.toggle_pin(0)
+            } else if (root.emulatorUpdateUiProbe && emulatorUpdates.initialized) {
                 emulatorUpdateScreenshotTimer.restart()
+            }
+        }
+        function onRevisionChanged() {
+            if (!root.emulatorUpdatePinUiProbe || emulatorUpdates.busy)
+                return
+            if (root.emulatorUpdatePinProbeStage === 1) {
+                if (emulatorUpdates.pinned_count !== 1
+                        || emulatorUpdates.actionable_count
+                           !== emulatorUpdates.row_count - 1
+                        || !emulatorUpdates.pinned_at(0)
+                        || emulatorUpdates.selected_at(0)) {
+                    console.error("LUNCHBOX_EMULATOR_UPDATE_PIN_UI_FAILED pin rows="
+                                  + emulatorUpdates.row_count + " actionable="
+                                  + emulatorUpdates.actionable_count + " pinned="
+                                  + emulatorUpdates.pinned_count + " selected="
+                                  + emulatorUpdates.selected_count)
+                    Qt.exit(2)
+                    return
+                }
+                emulatorUpdatePinScreenshotTimer.restart()
+            } else if (root.emulatorUpdatePinProbeStage === 2) {
+                if (emulatorUpdates.pinned_count !== 0
+                        || emulatorUpdates.pinned_at(0)
+                        || emulatorUpdates.selected_at(0)) {
+                    console.error("LUNCHBOX_EMULATOR_UPDATE_PIN_UI_FAILED unpin pinned="
+                                  + emulatorUpdates.pinned_count + " selected="
+                                  + emulatorUpdates.selected_count)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_EMULATOR_UPDATE_PIN_UI_READY rows="
+                            + emulatorUpdates.row_count + " actionable="
+                            + emulatorUpdates.actionable_count + " pinned="
+                            + emulatorUpdates.pinned_count
+                            + (root.screenshotOutput.length > 0
+                               ? " screenshot=" + root.screenshotOutput : ""))
+                Qt.quit()
+            }
         }
         function onPrompt_pendingChanged() {
             if (!emulatorUpdates.prompt_pending)
@@ -5731,7 +5786,7 @@ ApplicationWindow {
             }
             else if (root.emulatorManagerProbe)
                 emulatorManager.initialize()
-            else if (root.emulatorUpdateUiProbe)
+            else if (root.emulatorUpdateUiProbe || root.emulatorUpdatePinUiProbe)
                 root.openEmulatorUpdates()
             else if (root.launchProfileManagerUiProbe)
                 root.openLaunchProfileManager()
@@ -21012,9 +21067,12 @@ ApplicationWindow {
                     onClicked: emulatorManager.refresh()
                 }
                 HeaderButton {
-                    text: emulatorUpdates.initialized && emulatorUpdates.row_count > 0
-                          ? emulatorUpdates.row_count + " updates" : "Check updates"
-                    active: emulatorUpdates.initialized && emulatorUpdates.row_count > 0
+                    text: emulatorUpdates.initialized && emulatorUpdates.actionable_count > 0
+                          ? emulatorUpdates.actionable_count + " updates"
+                          : emulatorUpdates.initialized && emulatorUpdates.pinned_count > 0
+                            ? emulatorUpdates.pinned_count + " pinned" : "Check updates"
+                    active: emulatorUpdates.initialized
+                            && emulatorUpdates.actionable_count > 0
                     enabled: !emulatorManager.busy && !emulatorUpdates.busy
                     onClicked: root.openEmulatorUpdates()
                 }
@@ -21394,14 +21452,19 @@ ApplicationWindow {
                     Layout.preferredWidth: updateCountText.implicitWidth + 22
                     Layout.preferredHeight: 30
                     radius: 15
-                    color: emulatorUpdates.row_count > 0 ? "#30291f" : "#172c28"
-                    border.color: emulatorUpdates.row_count > 0 ? "#5b4930" : "#28584f"
+                    color: emulatorUpdates.actionable_count > 0 ? "#30291f"
+                           : emulatorUpdates.pinned_count > 0 ? "#202938" : "#172c28"
+                    border.color: emulatorUpdates.actionable_count > 0 ? "#5b4930"
+                                  : emulatorUpdates.pinned_count > 0 ? root.line : "#28584f"
                     Text {
                         id: updateCountText
                         anchors.centerIn: parent
-                        text: emulatorUpdates.row_count > 0
-                              ? emulatorUpdates.row_count + " available" : "up to date"
-                        color: emulatorUpdates.row_count > 0 ? root.accent : root.accentCool
+                        text: emulatorUpdates.actionable_count > 0
+                              ? emulatorUpdates.actionable_count + " available"
+                              : emulatorUpdates.pinned_count > 0
+                                ? emulatorUpdates.pinned_count + " pinned" : "up to date"
+                        color: emulatorUpdates.actionable_count > 0 ? root.accent
+                               : emulatorUpdates.pinned_count > 0 ? "#b7c2d2" : root.accentCool
                         font.pixelSize: 10
                         font.weight: Font.Bold
                     }
@@ -21435,21 +21498,29 @@ ApplicationWindow {
                         anchors.rightMargin: 18
                         spacing: 10
                         HeaderButton {
-                            text: emulatorUpdates.selected_count === emulatorUpdates.row_count
-                                  && emulatorUpdates.row_count > 0
+                            text: emulatorUpdates.selected_count === emulatorUpdates.actionable_count
+                                  && emulatorUpdates.actionable_count > 0
                                   ? "Clear selection" : "Select all"
-                            enabled: !emulatorUpdates.busy && emulatorUpdates.row_count > 0
+                            enabled: !emulatorUpdates.busy
+                                     && emulatorUpdates.actionable_count > 0
                             onClicked: emulatorUpdates.select_all(
-                                           emulatorUpdates.selected_count !== emulatorUpdates.row_count)
+                                           emulatorUpdates.selected_count
+                                           !== emulatorUpdates.actionable_count)
                         }
                         Text {
                             text: emulatorUpdates.selected_count + " selected"
                             color: root.muted
                             font.pixelSize: 10
                         }
+                        Text {
+                            visible: emulatorUpdates.pinned_count > 0
+                            text: "·  " + emulatorUpdates.pinned_count + " pinned"
+                            color: "#8f9bad"
+                            font.pixelSize: 10
+                        }
                         Item { Layout.fillWidth: true }
                         Text {
-                            text: "Updates run only when requested here"
+                            text: "Pins exclude exact installations from Lunchbox update batches"
                             color: "#657186"
                             font.pixelSize: 9
                         }
@@ -21487,7 +21558,8 @@ ApplicationWindow {
                             radius: 10
                             color: updateHover.hovered ? "#1b2330" : "#151c27"
                             border.color: updateStatus === "UPDATED" ? "#28584f"
-                                          : updateStatus === "FAILED" ? "#713c43" : root.line
+                                          : updateStatus === "FAILED" ? "#713c43"
+                                          : updateStatus === "PINNED" ? "#40536b" : root.line
 
                             HoverHandler { id: updateHover }
 
@@ -21520,12 +21592,16 @@ ApplicationWindow {
                                     Layout.preferredHeight: 42
                                     radius: 11
                                     color: emulatorUpdateRow.updateStatus === "UPDATED"
-                                           ? "#1b3430" : "#292a30"
+                                           ? "#1b3430"
+                                           : emulatorUpdateRow.updateStatus === "PINNED"
+                                             ? "#202d3d" : "#292a30"
                                     Text {
                                         anchors.centerIn: parent
-                                        text: "↥"
+                                        text: emulatorUpdateRow.updateStatus === "PINNED" ? "—" : "↥"
                                         color: emulatorUpdateRow.updateStatus === "UPDATED"
-                                               ? root.accentCool : root.accent
+                                               ? root.accentCool
+                                               : emulatorUpdateRow.updateStatus === "PINNED"
+                                                 ? "#9fb4cc" : root.accent
                                         font.pixelSize: 18
                                         font.weight: Font.Black
                                     }
@@ -21585,13 +21661,32 @@ ApplicationWindow {
                                     Layout.preferredWidth: 24
                                     Layout.preferredHeight: 24
                                 }
+                                HeaderButton {
+                                    text: emulatorUpdates.pinned_at(emulatorUpdateRow.index)
+                                          ? "Unpin" : "Pin"
+                                    enabled: !emulatorUpdates.busy
+                                             && emulatorUpdates.can_pin_at(
+                                                 emulatorUpdateRow.index)
+                                    onClicked: emulatorUpdates.toggle_pin(
+                                                   emulatorUpdateRow.index)
+                                    Accessible.name: text + " "
+                                                     + emulatorUpdates.name_at(
+                                                         emulatorUpdateRow.index)
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: emulatorUpdates.pinned_at(
+                                                      emulatorUpdateRow.index)
+                                                  ? "Allow Lunchbox to offer updates again"
+                                                  : "Keep the detected version out of Lunchbox update batches"
+                                }
                                 Text {
                                     Layout.preferredWidth: 76
                                     text: emulatorUpdateRow.updateStatus
                                     color: emulatorUpdateRow.updateStatus === "UPDATED"
                                            ? root.accentCool
                                            : emulatorUpdateRow.updateStatus === "FAILED"
-                                             ? "#ff8c82" : root.accent
+                                             ? "#ff8c82"
+                                             : emulatorUpdateRow.updateStatus === "PINNED"
+                                               ? "#9fb4cc" : root.accent
                                     horizontalAlignment: Text.AlignRight
                                     font.pixelSize: 9
                                     font.weight: Font.Bold
@@ -21719,6 +21814,44 @@ ApplicationWindow {
                             + root.screenshotOutput)
                 Qt.quit()
             })
+        }
+    }
+
+    Timer {
+        id: emulatorUpdatePinScreenshotTimer
+        interval: 700
+        repeat: false
+        onTriggered: {
+            const finishCapture = function() {
+                root.emulatorUpdatePinProbeStage = 2
+                emulatorUpdates.toggle_pin(0)
+            }
+            if (root.screenshotOutput.length === 0) {
+                finishCapture()
+                return
+            }
+            emulatorUpdatePanel.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_EMULATOR_UPDATE_PIN_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                finishCapture()
+            })
+        }
+    }
+
+    Timer {
+        interval: 30000
+        running: root.emulatorUpdatePinUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_EMULATOR_UPDATE_PIN_UI_FAILED timeout stage="
+                          + root.emulatorUpdatePinProbeStage + " busy="
+                          + emulatorUpdates.busy + " message="
+                          + emulatorUpdates.message)
+            Qt.exit(2)
         }
     }
 

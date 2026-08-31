@@ -343,9 +343,17 @@ The initial implementation enforces this shape:
   GitHub/AppImage release manifests, exact winget results, and Homebrew's JSON
   inventory. Only proven updates enter the Qt review model. Rows start selected,
   run sequentially only after an explicit request, and retain Pending,
-  Updating, Updated, or Failed state with the underlying error. Partial source
-  failures are warnings; direct downloads and Libretro buildbot cores without a
-  reliable comparable version are not presented as updates.
+  Updating, Updated, or Failed state with the underlying error. A durable pin
+  is keyed by that same exact host/manager/package/path identity and records the
+  detected installed version. Pinned updates remain visible as `PINNED`, are
+  excluded from selection, batches, and scheduled prompts, and can be unpinned
+  in place. The pin controls only Lunchbox's update manager; it never claims to
+  hold an external Flatpak, Nix, winget, or Homebrew installation. Pin writes
+  run on a named worker. `--emulator-update-pin-ui-probe` exercises a real
+  discovered update through pin, visible non-actionable state, durable SQLite
+  write, unpin, and restored actionability without applying the update. Partial
+  source failures are warnings; direct downloads and Libretro buildbot cores
+  without a reliable comparable version are not presented as updates.
 - Firmware remains a `runtime -> rules -> target` system, matching the legacy
   architecture instead of assuming one BIOS directory per platform. Canonical
   rules bind an exact emulator or RetroArch core and platform to one reviewed

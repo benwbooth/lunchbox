@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 use crate::catalog;
 use crate::platform_process::{host_command, host_program_available, is_flatpak};
-use crate::settings::{ManagedEmulatorInstall, SettingsStore};
+use crate::settings::{EmulatorUpdatePin, ManagedEmulatorInstall, SettingsStore};
 
 const MAX_MANAGED_DOWNLOAD_BYTES: u64 = 1024 * 1024 * 1024;
 const GITHUB_API: &str = "https://api.github.com/repos";
@@ -51,6 +51,7 @@ pub struct ManagedEmulatorUpdate {
     pub source_label: String,
     pub current_version: String,
     pub available_version: String,
+    pub pin: Option<EmulatorUpdatePin>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -459,6 +460,11 @@ pub fn load_available_emulator_updates() -> Result<EmulatorUpdateInventory> {
         .into_iter()
         .map(|receipt| (receipt_key(&receipt), receipt))
         .collect::<HashMap<_, _>>();
+    let update_pins = store
+        .emulator_update_pins()?
+        .into_iter()
+        .map(|pin| (update_pin_key_for_pin(&pin), pin))
+        .collect::<HashMap<_, _>>();
     let snapshot = HostSnapshot::load(host, &sources)?;
     let mut installed = InstalledSourceGroups::new();
     for source in sources {
@@ -507,12 +513,14 @@ pub fn load_available_emulator_updates() -> Result<EmulatorUpdateInventory> {
         };
         match checks.check(&row) {
             UpdateCheckResult::Available(available_version) => {
+                let pin = update_pins.get(&update_pin_key(&row)).cloned();
                 updates.push(ManagedEmulatorUpdate {
                     display_name: summarize_emulator_names(&names),
                     source_label: update_source_label(&row),
                     current_version: state.version,
                     available_version,
                     row,
+                    pin,
                 });
             }
             UpdateCheckResult::Failed(error) => checks.warnings.push(format!(
@@ -536,6 +544,24 @@ pub fn load_available_emulator_updates() -> Result<EmulatorUpdateInventory> {
         updates,
         warnings: checks.warnings,
     })
+}
+
+fn update_pin_key(row: &ManagedEmulator) -> (String, String, String, String) {
+    (
+        row.host_system_slug.clone(),
+        row.manager.clone(),
+        row.package_id.clone(),
+        row.install_path.clone(),
+    )
+}
+
+fn update_pin_key_for_pin(pin: &EmulatorUpdatePin) -> (String, String, String, String) {
+    (
+        pin.host_system_slug.clone(),
+        pin.manager.clone(),
+        pin.package_id.clone(),
+        pin.install_path.clone(),
+    )
 }
 
 fn load_libretro_core_rows(
@@ -2425,6 +2451,38 @@ mod tests {
         ));
         assert!(versions_match("v1.22.2", "1.22.2"));
         assert!(!versions_match("1.21.0", "1.22.2"));
+    }
+
+    #[test]
+    fn emulator_update_pin_identity_includes_the_exact_install_scope() {
+        let row = ManagedEmulator {
+            compatible_platform_keys: BTreeSet::new(),
+            recommended_platform_keys: BTreeSet::new(),
+            emulator_id: "retroarch".to_owned(),
+            name: "RetroArch".to_owned(),
+            host_system_slug: "linux".to_owned(),
+            source_label: "Flatpak".to_owned(),
+            manager_available: true,
+            manager: "flatpak".to_owned(),
+            package_id: "org.libretro.RetroArch".to_owned(),
+            metadata_json: String::new(),
+            installed: true,
+            managed: false,
+            version: "1.21.0".to_owned(),
+            install_path: "user".to_owned(),
+        };
+        let mut pin = EmulatorUpdatePin {
+            host_system_slug: "linux".to_owned(),
+            manager: "flatpak".to_owned(),
+            package_id: "org.libretro.RetroArch".to_owned(),
+            install_path: "user".to_owned(),
+            pinned_version: "1.21.0".to_owned(),
+            pinned_at: 10,
+        };
+
+        assert_eq!(update_pin_key(&row), update_pin_key_for_pin(&pin));
+        pin.install_path = "system".to_owned();
+        assert_ne!(update_pin_key(&row), update_pin_key_for_pin(&pin));
     }
 
     #[test]

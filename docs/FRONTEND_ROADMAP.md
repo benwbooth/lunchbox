@@ -336,11 +336,13 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   Linux Flatpak MAME launch is runtime-verified with the ROM-free Pong driver.
   Known archive-oriented FinalBurn Neo, Flycast, and Supermodel executables
   retain the legacy bounded direct-file contract.
-- Add explicit version pinning and lifecycle cancellation/recovery to the
-  native manager. Available-version-only presentation is native:
-  it checks every exact installed backend, presents current-to-available
-  versions, and applies explicitly selected rows sequentially with per-row
-  outcomes. Firmware/BIOS validation before game launch is also native.
+- Exact installation-scoped version pinning is native. Pinned updates stay
+  visible and reversible but are excluded from Lunchbox batches and startup
+  prompts; external package managers remain explicitly unaffected.
+  Available-version-only presentation checks every exact installed backend,
+  presents current-to-available versions, and applies explicitly selected rows
+  sequentially with per-row outcomes. Lifecycle cancellation/recovery remains.
+  Firmware/BIOS validation before game launch is also native.
 - Dedicated Daphne runtime, TeknoParrot, and non-eXo PC launch profiles.
 - Finish the native controller slice with attached-hardware InputPlumber
   mutation/restore certification, Windows and macOS launch-remapping adapters,

@@ -11,6 +11,8 @@ pub mod qobject {
         #[qproperty(bool, initialized)]
         #[qproperty(bool, busy)]
         #[qproperty(i32, row_count)]
+        #[qproperty(i32, actionable_count)]
+        #[qproperty(i32, pinned_count)]
         #[qproperty(i32, selected_count)]
         #[qproperty(i32, completed_count)]
         #[qproperty(i32, batch_count)]
@@ -54,10 +56,19 @@ pub mod qobject {
         fn selected_at(self: &EmulatorUpdateModel, index: i32) -> bool;
 
         #[qinvokable]
+        fn pinned_at(self: &EmulatorUpdateModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn can_pin_at(self: &EmulatorUpdateModel, index: i32) -> bool;
+
+        #[qinvokable]
         fn set_selected(self: Pin<&mut EmulatorUpdateModel>, index: i32, selected: bool);
 
         #[qinvokable]
         fn select_all(self: Pin<&mut EmulatorUpdateModel>, selected: bool);
+
+        #[qinvokable]
+        fn toggle_pin(self: Pin<&mut EmulatorUpdateModel>, index: i32);
 
         #[qinvokable]
         fn update_selected(self: Pin<&mut EmulatorUpdateModel>);
@@ -76,6 +87,7 @@ use crate::emulator_manager::{self, ManagedAction, ManagedEmulatorUpdate};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum UpdateState {
     Pending,
+    Pinned,
     Updating,
     Success,
     Failed,
@@ -85,6 +97,7 @@ impl UpdateState {
     fn label(self) -> &'static str {
         match self {
             Self::Pending => "PENDING",
+            Self::Pinned => "PINNED",
             Self::Updating => "UPDATING",
             Self::Success => "UPDATED",
             Self::Failed => "FAILED",
@@ -108,6 +121,8 @@ pub struct EmulatorUpdateModelRust {
     initialized: bool,
     busy: bool,
     row_count: i32,
+    actionable_count: i32,
+    pinned_count: i32,
     selected_count: i32,
     completed_count: i32,
     batch_count: i32,
@@ -125,6 +140,8 @@ impl Default for EmulatorUpdateModelRust {
             initialized: false,
             busy: false,
             row_count: 0,
+            actionable_count: 0,
+            pinned_count: 0,
             selected_count: 0,
             completed_count: 0,
             batch_count: 0,
@@ -236,20 +253,20 @@ impl qobject::EmulatorUpdateModel {
         match result {
             Ok(inventory) => {
                 let warning_count = inventory.warnings.len();
-                let rows = inventory
-                    .updates
-                    .into_iter()
-                    .map(|update| UpdateRow {
-                        update,
-                        selected: true,
-                        state: UpdateState::Pending,
-                        status_detail: String::new(),
-                    })
-                    .collect::<Vec<_>>();
+                let rows = update_rows(inventory.updates);
                 let count = rows.len();
+                let pinned_count = rows
+                    .iter()
+                    .filter(|row| row.state == UpdateState::Pinned)
+                    .count();
+                let actionable_count = count.saturating_sub(pinned_count);
                 self.as_mut().rust_mut().rows = rows;
                 self.as_mut().set_row_count(saturating_i32(count));
-                self.as_mut().set_selected_count(saturating_i32(count));
+                self.as_mut()
+                    .set_actionable_count(saturating_i32(actionable_count));
+                self.as_mut().set_pinned_count(saturating_i32(pinned_count));
+                self.as_mut()
+                    .set_selected_count(saturating_i32(actionable_count));
                 self.as_mut().set_completed_count(0);
                 self.as_mut().set_batch_count(0);
                 self.as_mut().set_initialized(true);
@@ -262,11 +279,11 @@ impl qobject::EmulatorUpdateModel {
                         plural(warning_count)
                     )
                 } else if warning_count == 0 {
-                    format!("{count} emulator update{} available.", plural(count))
+                    update_inventory_message(actionable_count, pinned_count)
                 } else {
                     format!(
-                        "{count} update{} available; {warning_count} source{} could not be checked.",
-                        plural(count),
+                        "{} {warning_count} source{} could not be checked.",
+                        update_inventory_message(actionable_count, pinned_count),
                         plural(warning_count)
                     )
                 };
@@ -279,10 +296,10 @@ impl qobject::EmulatorUpdateModel {
                     {
                         eprintln!("LUNCHBOX_EMULATOR_UPDATE_CHECK_RECORD_FAILED error={error:#}");
                     }
-                    self.as_mut().set_prompt_pending(count > 0);
+                    self.as_mut().set_prompt_pending(actionable_count > 0);
                 }
                 println!(
-                    "LUNCHBOX_EMULATOR_UPDATES_READY updates={count} warnings={warning_count}"
+                    "LUNCHBOX_EMULATOR_UPDATES_READY updates={actionable_count} pinned={pinned_count} warnings={warning_count}"
                 );
             }
             Err(error) => {
@@ -337,13 +354,36 @@ impl qobject::EmulatorUpdateModel {
     pub fn status_detail_at(&self, index: i32) -> QString {
         qstring(
             self.row(index)
-                .map(|row| row.status_detail.as_str())
-                .unwrap_or(""),
+                .map(|row| {
+                    if !row.status_detail.is_empty() {
+                        row.status_detail.clone()
+                    } else if let Some(pin) = &row.update.pin {
+                        format!(
+                            "Lunchbox will skip this installation in update batches; it was pinned at {}. External package-manager updates are unaffected.",
+                            pin.pinned_version
+                        )
+                    } else {
+                        String::new()
+                    }
+                })
+                .unwrap_or_default(),
         )
     }
 
     pub fn selected_at(&self, index: i32) -> bool {
         self.row(index).is_some_and(|row| row.selected)
+    }
+
+    pub fn pinned_at(&self, index: i32) -> bool {
+        self.row(index)
+            .is_some_and(|row| row.state == UpdateState::Pinned)
+    }
+
+    pub fn can_pin_at(&self, index: i32) -> bool {
+        self.row(index).is_some_and(|row| {
+            !row.update.current_version.trim().is_empty()
+                && !matches!(row.state, UpdateState::Updating | UpdateState::Success)
+        })
     }
 
     pub fn set_selected(mut self: Pin<&mut Self>, index: i32, selected: bool) {
@@ -373,6 +413,129 @@ impl qobject::EmulatorUpdateModel {
         }
         self.as_mut().update_selected_count();
         self.as_mut().bump_revision();
+    }
+
+    pub fn toggle_pin(mut self: Pin<&mut Self>, index: i32) {
+        if *self.as_ref().busy() {
+            return;
+        }
+        let Ok(index) = usize::try_from(index) else {
+            return;
+        };
+        let Some(row) = self.as_ref().rust().rows.get(index).cloned() else {
+            return;
+        };
+        if row.update.current_version.trim().is_empty()
+            || matches!(row.state, UpdateState::Updating | UpdateState::Success)
+        {
+            self.as_mut().set_message(qstring(
+                "Lunchbox can pin only an exact detected installed version.",
+            ));
+            return;
+        }
+        let was_pinned = row.state == UpdateState::Pinned;
+        let update = row.update.clone();
+        self.as_mut().set_busy(true);
+        self.as_mut().set_message(qstring(if was_pinned {
+            format!("Unpinning {}…", update.display_name)
+        } else {
+            format!(
+                "Pinning {} at {}…",
+                update.display_name, update.current_version
+            )
+        }));
+        let qt_thread = self.as_ref().qt_thread();
+        let worker_update = update.clone();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-emulator-update-pin".into())
+            .spawn(move || {
+                let result = crate::settings::SettingsStore::open_default()
+                    .and_then(|store| {
+                        if was_pinned {
+                            store.remove_emulator_update_pin(
+                                &worker_update.row.host_system_slug,
+                                &worker_update.row.manager,
+                                &worker_update.row.package_id,
+                                &worker_update.row.install_path,
+                            )?;
+                            Ok(None)
+                        } else {
+                            store
+                                .set_emulator_update_pin(
+                                    &worker_update.row.host_system_slug,
+                                    &worker_update.row.manager,
+                                    &worker_update.row.package_id,
+                                    &worker_update.row.install_path,
+                                    &worker_update.current_version,
+                                )
+                                .map(Some)
+                        }
+                    })
+                    .map_err(|error| format!("{error:#}"));
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_toggle_pin(index, was_pinned, update, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_busy(false);
+            self.as_mut().set_message(qstring(format!(
+                "Could not start the emulator version-pin change: {error}"
+            )));
+        }
+    }
+
+    fn finish_toggle_pin(
+        mut self: Pin<&mut Self>,
+        index: usize,
+        was_pinned: bool,
+        update: ManagedEmulatorUpdate,
+        result: Result<Option<crate::settings::EmulatorUpdatePin>, String>,
+    ) {
+        self.as_mut().set_busy(false);
+        match result {
+            Ok(pin) => {
+                if index >= self.as_ref().rust().rows.len() {
+                    self.as_mut().set_message(qstring(
+                        "The emulator update list changed before the pin could be applied.",
+                    ));
+                    return;
+                }
+                let row = &mut self.as_mut().rust_mut().rows[index];
+                row.update.pin = pin;
+                row.state = if was_pinned {
+                    UpdateState::Pending
+                } else {
+                    UpdateState::Pinned
+                };
+                row.selected = false;
+                row.status_detail.clear();
+                self.as_mut().update_counts();
+                self.as_mut().bump_revision();
+                println!(
+                    "LUNCHBOX_EMULATOR_UPDATE_PIN_CHANGED action={} manager={} package={} pinned={}",
+                    if was_pinned { "unpin" } else { "pin" },
+                    update.row.manager,
+                    update.row.package_id,
+                    self.as_ref().pinned_count()
+                );
+                self.as_mut().set_message(qstring(if was_pinned {
+                    format!(
+                        "{} is unpinned. Select it if you want to apply the available update.",
+                        update.display_name
+                    )
+                } else {
+                    format!(
+                        "{} is pinned at {}. Lunchbox will not offer it in update batches.",
+                        update.display_name, update.current_version
+                    )
+                }));
+            }
+            Err(error) => self.as_mut().set_message(qstring(format!(
+                "Could not change the emulator version pin: {error}"
+            ))),
+        }
     }
 
     pub fn update_selected(mut self: Pin<&mut Self>) {
@@ -443,6 +606,7 @@ impl qobject::EmulatorUpdateModel {
             row.state = UpdateState::Updating;
             row.status_detail.clear();
         }
+        self.as_mut().update_counts();
         self.as_mut().bump_revision();
     }
 
@@ -462,7 +626,7 @@ impl qobject::EmulatorUpdateModel {
         }
         let completed = self.as_ref().completed_count().saturating_add(1);
         self.as_mut().set_completed_count(completed);
-        self.as_mut().update_selected_count();
+        self.as_mut().update_counts();
         self.as_mut().bump_revision();
     }
 
@@ -497,6 +661,27 @@ impl qobject::EmulatorUpdateModel {
         self.as_mut().set_selected_count(saturating_i32(count));
     }
 
+    fn update_counts(mut self: Pin<&mut Self>) {
+        let pinned = self
+            .as_ref()
+            .rust()
+            .rows
+            .iter()
+            .filter(|row| row.state == UpdateState::Pinned)
+            .count();
+        let actionable = self
+            .as_ref()
+            .rust()
+            .rows
+            .iter()
+            .filter(|row| row.state.selectable())
+            .count();
+        self.as_mut().set_pinned_count(saturating_i32(pinned));
+        self.as_mut()
+            .set_actionable_count(saturating_i32(actionable));
+        self.as_mut().update_selected_count();
+    }
+
     fn bump_revision(mut self: Pin<&mut Self>) {
         let revision = self.as_ref().revision().wrapping_add(1);
         self.as_mut().set_revision(revision);
@@ -509,4 +694,109 @@ fn saturating_i32(value: usize) -> i32 {
 
 fn plural(value: usize) -> &'static str {
     if value == 1 { "" } else { "s" }
+}
+
+fn update_rows(updates: Vec<ManagedEmulatorUpdate>) -> Vec<UpdateRow> {
+    updates
+        .into_iter()
+        .map(|update| {
+            let pinned = update.pin.is_some();
+            UpdateRow {
+                update,
+                selected: !pinned,
+                state: if pinned {
+                    UpdateState::Pinned
+                } else {
+                    UpdateState::Pending
+                },
+                status_detail: String::new(),
+            }
+        })
+        .collect()
+}
+
+fn update_inventory_message(actionable: usize, pinned: usize) -> String {
+    match (actionable, pinned) {
+        (0, pinned) => format!(
+            "No actionable emulator updates; {pinned} available update{} pinned.",
+            plural(pinned)
+        ),
+        (actionable, 0) => {
+            format!(
+                "{actionable} emulator update{} available.",
+                plural(actionable)
+            )
+        }
+        (actionable, pinned) => format!(
+            "{actionable} emulator update{} available; {pinned} pinned.",
+            plural(actionable)
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::*;
+    use crate::emulator_manager::ManagedEmulator;
+    use crate::settings::EmulatorUpdatePin;
+
+    fn update(name: &str, install_path: &str, pinned: bool) -> ManagedEmulatorUpdate {
+        let row = ManagedEmulator {
+            emulator_id: format!("{name}-id"),
+            name: name.to_owned(),
+            host_system_slug: "linux".to_owned(),
+            manager: "flatpak".to_owned(),
+            package_id: format!("org.example.{name}"),
+            metadata_json: String::new(),
+            source_label: "Flatpak".to_owned(),
+            installed: true,
+            managed: false,
+            manager_available: true,
+            version: "1.0".to_owned(),
+            install_path: install_path.to_owned(),
+            compatible_platform_keys: BTreeSet::new(),
+            recommended_platform_keys: BTreeSet::new(),
+        };
+        ManagedEmulatorUpdate {
+            row,
+            display_name: name.to_owned(),
+            source_label: format!("Flatpak · {install_path}"),
+            current_version: "1.0".to_owned(),
+            available_version: "2.0".to_owned(),
+            pin: pinned.then(|| EmulatorUpdatePin {
+                host_system_slug: "linux".to_owned(),
+                manager: "flatpak".to_owned(),
+                package_id: format!("org.example.{name}"),
+                install_path: install_path.to_owned(),
+                pinned_version: "1.0".to_owned(),
+                pinned_at: 10,
+            }),
+        }
+    }
+
+    #[test]
+    fn pinned_updates_stay_visible_but_are_not_selected_or_actionable() {
+        let rows = update_rows(vec![
+            update("RetroArch", "user", true),
+            update("MAME", "system", false),
+        ]);
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].state, UpdateState::Pinned);
+        assert!(!rows[0].selected);
+        assert!(!rows[0].state.selectable());
+        assert_eq!(rows[1].state, UpdateState::Pending);
+        assert!(rows[1].selected);
+        assert!(rows[1].state.selectable());
+        assert_eq!(
+            update_inventory_message(1, 1),
+            "1 emulator update available; 1 pinned."
+        );
+        assert_eq!(
+            update_inventory_message(0, 2),
+            "No actionable emulator updates; 2 available updates pinned."
+        );
+    }
 }

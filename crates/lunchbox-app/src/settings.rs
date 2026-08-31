@@ -129,6 +129,37 @@ pub struct EmulatorUpdatePreferences {
     pub last_checked_at: i64,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct EmulatorUpdatePin {
+    pub host_system_slug: String,
+    pub manager: String,
+    pub package_id: String,
+    pub install_path: String,
+    pub pinned_version: String,
+    pub pinned_at: i64,
+}
+
+impl EmulatorUpdatePin {
+    pub fn validate(&self) -> Result<()> {
+        validate_emulator_update_pin_identity(
+            &self.host_system_slug,
+            &self.manager,
+            &self.package_id,
+            &self.install_path,
+        )?;
+        if self.pinned_version.trim().is_empty()
+            || self.pinned_version.chars().count() > 256
+            || self.pinned_version.chars().any(char::is_control)
+        {
+            bail!("emulator update pins require a bounded printable installed version");
+        }
+        if self.pinned_at < 0 {
+            bail!("the emulator update pin time cannot be negative");
+        }
+        Ok(())
+    }
+}
+
 impl Default for EmulatorUpdatePreferences {
     fn default() -> Self {
         Self {
@@ -1413,6 +1444,87 @@ impl SettingsStore {
              VALUES (1, ?1, ?2)
              ON CONFLICT(id) DO UPDATE SET last_checked_at=excluded.last_checked_at",
             params![preferences.check_policy, checked_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn emulator_update_pins(&self) -> Result<Vec<EmulatorUpdatePin>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT host_system_slug, manager, package_id, install_path,
+                    pinned_version, pinned_at
+             FROM emulator_update_pins
+             ORDER BY host_system_slug, manager, package_id, install_path",
+        )?;
+        let pins = statement
+            .query_map([], |row| {
+                Ok(EmulatorUpdatePin {
+                    host_system_slug: row.get(0)?,
+                    manager: row.get(1)?,
+                    package_id: row.get(2)?,
+                    install_path: row.get(3)?,
+                    pinned_version: row.get(4)?,
+                    pinned_at: row.get(5)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for pin in &pins {
+            pin.validate()?;
+        }
+        Ok(pins)
+    }
+
+    pub fn set_emulator_update_pin(
+        &self,
+        host_system_slug: &str,
+        manager: &str,
+        package_id: &str,
+        install_path: &str,
+        pinned_version: &str,
+    ) -> Result<EmulatorUpdatePin> {
+        let pin = EmulatorUpdatePin {
+            host_system_slug: host_system_slug.trim().to_owned(),
+            manager: manager.trim().to_owned(),
+            package_id: package_id.trim().to_owned(),
+            install_path: install_path.to_owned(),
+            pinned_version: pinned_version.trim().to_owned(),
+            pinned_at: unix_timestamp(),
+        };
+        pin.validate()?;
+        self.connection()?.execute(
+            "INSERT INTO emulator_update_pins (
+                 host_system_slug, manager, package_id, install_path,
+                 pinned_version, pinned_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(host_system_slug, manager, package_id, install_path)
+             DO UPDATE SET
+                 pinned_version=excluded.pinned_version,
+                 pinned_at=excluded.pinned_at",
+            params![
+                pin.host_system_slug,
+                pin.manager,
+                pin.package_id,
+                pin.install_path,
+                pin.pinned_version,
+                pin.pinned_at,
+            ],
+        )?;
+        Ok(pin)
+    }
+
+    pub fn remove_emulator_update_pin(
+        &self,
+        host_system_slug: &str,
+        manager: &str,
+        package_id: &str,
+        install_path: &str,
+    ) -> Result<()> {
+        validate_emulator_update_pin_identity(host_system_slug, manager, package_id, install_path)?;
+        self.connection()?.execute(
+            "DELETE FROM emulator_update_pins
+             WHERE host_system_slug=?1 AND manager=?2
+               AND package_id=?3 AND install_path=?4",
+            params![host_system_slug, manager, package_id, install_path],
         )?;
         Ok(())
     }
@@ -5064,6 +5176,19 @@ fn migrate(connection: &Connection) -> Result<()> {
              ),
              last_checked_at INTEGER NOT NULL CHECK (last_checked_at >= 0)
          );
+         CREATE TABLE IF NOT EXISTS emulator_update_pins (
+             host_system_slug TEXT NOT NULL CHECK (
+                 host_system_slug IN ('linux', 'windows', 'macos')
+             ),
+             manager TEXT NOT NULL CHECK (
+                 manager IN ('flatpak', 'appimage', 'nix', 'github', 'direct', 'winget', 'homebrew', 'libretro')
+             ),
+             package_id TEXT NOT NULL CHECK (length(package_id) BETWEEN 1 AND 2048),
+             install_path TEXT NOT NULL CHECK (length(install_path) BETWEEN 1 AND 8192),
+             pinned_version TEXT NOT NULL CHECK (length(pinned_version) BETWEEN 1 AND 256),
+             pinned_at INTEGER NOT NULL CHECK (pinned_at >= 0),
+             PRIMARY KEY (host_system_slug, manager, package_id, install_path)
+         );
          CREATE TABLE IF NOT EXISTS user_collections (
              id TEXT PRIMARY KEY,
              name TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -6209,6 +6334,36 @@ fn validate_managed_emulator_install(
     Ok(())
 }
 
+fn validate_emulator_update_pin_identity(
+    host_system_slug: &str,
+    manager: &str,
+    package_id: &str,
+    install_path: &str,
+) -> Result<()> {
+    if !matches!(host_system_slug, "linux" | "windows" | "macos") {
+        bail!("unsupported emulator update pin host {host_system_slug}");
+    }
+    if !matches!(
+        manager,
+        "flatpak" | "appimage" | "nix" | "github" | "direct" | "winget" | "homebrew" | "libretro"
+    ) {
+        bail!("unsupported emulator update pin manager {manager}");
+    }
+    if package_id.trim().is_empty()
+        || package_id.chars().count() > 2048
+        || package_id.chars().any(char::is_control)
+    {
+        bail!("emulator update pins require a bounded printable package identity");
+    }
+    if install_path.trim().is_empty()
+        || install_path.chars().count() > 8192
+        || install_path.contains('\0')
+    {
+        bail!("emulator update pins require an exact bounded install path or scope");
+    }
+    Ok(())
+}
+
 fn validate_firmware_package_receipt(receipt: &FirmwarePackageReceipt) -> Result<()> {
     if receipt.source_id.trim().is_empty() || receipt.package_name.trim().is_empty() {
         bail!("firmware packages require exact source and package identities");
@@ -6705,6 +6860,63 @@ mod tests {
                 .check_is_due(i64::MAX)
         );
         assert!(store.set_emulator_update_check_policy("automatic").is_err());
+    }
+
+    #[test]
+    fn emulator_update_pins_are_exact_idempotent_and_removable() {
+        let (_directory, store) = store();
+        let first = store
+            .set_emulator_update_pin(
+                "linux",
+                "flatpak",
+                "org.libretro.RetroArch",
+                "user",
+                "1.21.0",
+            )
+            .unwrap();
+        let replaced = store
+            .set_emulator_update_pin(
+                "linux",
+                "flatpak",
+                "org.libretro.RetroArch",
+                "user",
+                "1.22.0",
+            )
+            .unwrap();
+        store
+            .set_emulator_update_pin(
+                "linux",
+                "flatpak",
+                "org.libretro.RetroArch",
+                "system",
+                "1.20.0",
+            )
+            .unwrap();
+
+        assert_eq!(first.pinned_version, "1.21.0");
+        assert_eq!(replaced.pinned_version, "1.22.0");
+        let pins = store.emulator_update_pins().unwrap();
+        assert_eq!(pins.len(), 2);
+        assert_eq!(pins[0].install_path, "system");
+        assert_eq!(pins[1].install_path, "user");
+        assert_eq!(pins[1].pinned_version, "1.22.0");
+
+        store
+            .remove_emulator_update_pin("linux", "flatpak", "org.libretro.RetroArch", "user")
+            .unwrap();
+        let pins = store.emulator_update_pins().unwrap();
+        assert_eq!(pins.len(), 1);
+        assert_eq!(pins[0].install_path, "system");
+        assert!(
+            store
+                .set_emulator_update_pin("linux", "flatpak", "", "user", "1.0")
+                .is_err()
+        );
+        assert!(
+            store
+                .set_emulator_update_pin("linux", "flatpak", "org.libretro.RetroArch", "user", "")
+                .is_err()
+        );
     }
 
     #[test]
@@ -8857,6 +9069,7 @@ mod tests {
             "play_sessions",
             "manual_torrent_sources",
             "retained_torrent_metadata",
+            "emulator_update_pins",
         ] {
             let migrated: Option<i64> = connection
                 .query_row(
