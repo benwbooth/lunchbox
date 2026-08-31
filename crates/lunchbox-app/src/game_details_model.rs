@@ -292,6 +292,9 @@ pub mod qobject {
         fn download_candidate_detail_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn selected_source_is_registered(self: &GameDetailsModel) -> bool;
+
+        #[qinvokable]
         fn select_download_candidate(self: Pin<&mut GameDetailsModel>, index: i32) -> i32;
 
         #[qinvokable]
@@ -2291,9 +2294,9 @@ impl qobject::GameDetailsModel {
                 let message = if details.local {
                     "Installed in your collection".to_owned()
                 } else if bundle_count == 0 {
-                    "No exact Minerva platform source was found for this game.".to_owned()
+                    "No matching download source is registered for this game.".to_owned()
                 } else {
-                    format!("{bundle_count} Minerva source bundles available")
+                    format!("{bundle_count} torrent source bundles available")
                 };
                 self.as_mut().set_message(qstring(message));
                 self.as_mut().set_loading(false);
@@ -3007,14 +3010,14 @@ impl qobject::GameDetailsModel {
     pub fn load_bundle_files(mut self: Pin<&mut Self>, index: i32) {
         let Some(bundle_index) = usize::try_from(index).ok() else {
             self.as_mut().set_message(qstring(
-                "The selected Minerva source is no longer available.",
+                "The selected torrent source is no longer available.",
             ));
             return;
         };
         let bundle = self.as_ref().rust().bundles.get(bundle_index).cloned();
         let Some(bundle) = bundle else {
             self.as_mut().set_message(qstring(
-                "The selected Minerva source is no longer available.",
+                "The selected torrent source is no longer available.",
             ));
             return;
         };
@@ -3345,7 +3348,7 @@ impl qobject::GameDetailsModel {
         let Some(bundle) = self.as_ref().bundle(selected_bundle).cloned() else {
             self.as_mut().set_download_preflight_ready(false);
             self.as_mut().set_download_preflight_status(qstring(
-                "The selected Minerva source is no longer available.",
+                "The selected torrent source is no longer available.",
             ));
             return;
         };
@@ -3379,9 +3382,9 @@ impl qobject::GameDetailsModel {
             .spawn(move || {
                 let inspected = (|| {
                     let store = crate::settings::SettingsStore::open_default()?;
-                    let settings = store.load()?;
+                    let settings = effective_download_settings(store.load()?, &bundle);
                     let torrent_bytes = game_details::torrent_bytes(&bundle)?;
-                    let request = minerva_enqueue_request(
+                    let request = torrent_enqueue_request(
                         game_id.clone(),
                         launchbox_db_id,
                         title,
@@ -3485,7 +3488,7 @@ impl qobject::GameDetailsModel {
         let selected_bundle = *self.as_ref().selected_bundle();
         let Some(bundle) = self.as_ref().bundle(selected_bundle).cloned() else {
             self.as_mut().set_message(qstring(
-                "The selected Minerva source is no longer available.",
+                "The selected torrent source is no longer available.",
             ));
             return;
         };
@@ -3509,7 +3512,7 @@ impl qobject::GameDetailsModel {
 
         let qt_thread = self.as_ref().qt_thread();
         let spawn_result = std::thread::Builder::new()
-            .name("lunchbox-minerva-enqueue".into())
+            .name("lunchbox-torrent-enqueue".into())
             .spawn(move || {
                 let queued =
                     queue_download(game_id, launchbox_db_id, title, platform, bundle, file)
@@ -5279,11 +5282,16 @@ impl qobject::GameDetailsModel {
     pub fn bundle_detail_at(&self, index: i32) -> QString {
         self.bundle(index)
             .map(|bundle| {
+                let source = if bundle.source_kind == "manual_torrent" {
+                    "registered local source"
+                } else {
+                    bundle.match_kind.label()
+                };
                 qstring(format!(
                     "{} files · {} · {}",
                     bundle.rom_count,
                     game_details::format_bytes(bundle.total_size),
-                    bundle.match_kind.label()
+                    source
                 ))
             })
             .unwrap_or_default()
@@ -5401,6 +5409,11 @@ impl qobject::GameDetailsModel {
             })
             .map(qstring)
             .unwrap_or_default()
+    }
+
+    pub fn selected_source_is_registered(&self) -> bool {
+        self.bundle(*self.selected_bundle())
+            .is_some_and(|bundle| bundle.source_kind == "manual_torrent")
     }
 
     pub fn select_download_candidate(mut self: Pin<&mut Self>, index: i32) -> i32 {
@@ -5862,24 +5875,59 @@ fn queue_download(
     file: TorrentFileCandidate,
 ) -> anyhow::Result<String> {
     let store = crate::settings::SettingsStore::open_default()?;
-    let settings = store.load()?;
+    let settings = effective_download_settings(store.load()?, &bundle);
+    let registered_source = bundle.source_kind == "manual_torrent";
     let password = crate::settings::load_password()?.unwrap_or_default();
     let torrent_bytes = game_details::torrent_bytes(&bundle)?;
-    let request = minerva_enqueue_request(
-        game_id,
+    let request = torrent_enqueue_request(
+        game_id.clone(),
         launchbox_db_id,
         title.clone(),
-        platform,
+        platform.clone(),
         bundle,
-        file,
+        file.clone(),
         torrent_bytes,
     )?;
     let job = crate::qbittorrent::enqueue(&settings, &password, &store, request)?;
-    store.upsert_job(&job)?;
+    if registered_source {
+        let source = store
+            .registered_torrent_source(&job.info_hash)?
+            .context("registered torrent source disappeared before its download was recorded")?;
+        store.record_manual_torrent_enqueue(
+            &crate::settings::ManualTorrentSourceReceipt {
+                game_uid: game_id,
+                launchbox_db_id,
+                canonical_title: title.clone(),
+                platform,
+                source_file_name: source.source_file_name,
+                torrent_name: source.torrent_name,
+                torrent_sha256: source.torrent_sha256,
+                info_hash: source.info_hash,
+                selected_file_index: u32::try_from(file.index)
+                    .context("torrent file index is too large")?,
+                selected_file_path: job.torrent_file_path.clone(),
+                queued_job_id: job.id.clone(),
+                reviewed_at: crate::settings::unix_timestamp(),
+            },
+            &job,
+        )?;
+    } else {
+        store.upsert_job(&job)?;
+    }
     Ok(title)
 }
 
-fn minerva_enqueue_request(
+fn effective_download_settings(
+    mut settings: crate::settings::AppSettings,
+    bundle: &MinervaBundle,
+) -> crate::settings::AppSettings {
+    if bundle.source_kind == "manual_torrent" {
+        settings.download_entire_torrent = false;
+    }
+    settings
+}
+
+fn torrent_enqueue_request(
     game_id: String,
     launchbox_db_id: i64,
     title: String,
@@ -5890,13 +5938,21 @@ fn minerva_enqueue_request(
 ) -> anyhow::Result<crate::qbittorrent::EnqueueRequest> {
     let file_index = u32::try_from(file.index)
         .map_err(|_| anyhow::anyhow!("torrent file index is too large"))?;
+    let torrent_url = if bundle.source_kind == "manual_torrent" {
+        format!(
+            "manual-torrent:sha256:{}",
+            bundle.torrent_sha256.to_ascii_lowercase()
+        )
+    } else {
+        bundle.torrent_url
+    };
     Ok(crate::qbittorrent::EnqueueRequest {
         game_id,
         launchbox_db_id,
         title,
         platform,
-        source_kind: "minerva".to_owned(),
-        torrent_url: bundle.torrent_url,
+        source_kind: bundle.source_kind,
+        torrent_url,
         torrent_bytes,
         selected_file_index: file_index,
         selected_file_path: file.filename,
@@ -5951,13 +6007,13 @@ fn preflight_storage_summary(preflight: &crate::qbittorrent::DownloadPreflight) 
 mod tests {
     use super::{
         BundleCandidateGroup, LaunchProfileTarget, download_candidate_location,
-        download_source_location, format_last_played, format_play_time, format_release_date,
-        format_session_duration, metadata_save_messages, preferred_loaded_group_index,
-        preview_for_launch_profile_target, session_outcome_label, steam_store_url_string,
-        validate_launch_profile_template,
+        download_source_location, effective_download_settings, format_last_played,
+        format_play_time, format_release_date, format_session_duration, metadata_save_messages,
+        preferred_loaded_group_index, preview_for_launch_profile_target, session_outcome_label,
+        steam_store_url_string, validate_launch_profile_template,
     };
     use crate::emulator::effective_launch_preview_values;
-    use crate::game_details::TorrentFileCandidate;
+    use crate::game_details::{BundleMatchKind, MinervaBundle, TorrentFileCandidate};
 
     fn candidate_group(loaded: bool, has_candidate: bool) -> BundleCandidateGroup {
         BundleCandidateGroup {
@@ -5977,6 +6033,35 @@ mod tests {
                 .collect(),
             error: String::new(),
         }
+    }
+
+    fn bundle(source_kind: &str) -> MinervaBundle {
+        MinervaBundle {
+            torrent_id: 1,
+            torrent_url: "registered-torrent:0123456789abcdef0123456789abcdef01234567".to_owned(),
+            source_kind: source_kind.to_owned(),
+            torrent_sha256: "0".repeat(64),
+            collection: "Reviewed source".to_owned(),
+            provider_platform: "Nintendo Switch".to_owned(),
+            rom_count: 2,
+            total_size: 2,
+            match_kind: BundleMatchKind::MappedName,
+        }
+    }
+
+    #[test]
+    fn registered_sources_always_download_only_the_selected_game() {
+        let mut settings = crate::settings::AppSettings::default();
+        settings.download_entire_torrent = true;
+
+        assert!(
+            effective_download_settings(settings.clone(), &bundle("minerva"))
+                .download_entire_torrent
+        );
+        assert!(
+            !effective_download_settings(settings, &bundle("manual_torrent"))
+                .download_entire_torrent
+        );
     }
 
     #[test]

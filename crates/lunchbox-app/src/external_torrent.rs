@@ -8,7 +8,10 @@ use lava_torrent::torrent::v1::Torrent;
 use sha2::{Digest, Sha256};
 
 use crate::qbittorrent::{self, EnqueueRequest};
-use crate::settings::{AppSettings, ManualTorrentSourceReceipt, SettingsStore, unix_timestamp};
+use crate::settings::{
+    AppSettings, ManualTorrentSourceReceipt, RegisteredTorrentCatalog, RegisteredTorrentMember,
+    SettingsStore, unix_timestamp,
+};
 
 pub(crate) const MAX_TORRENT_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_TORRENT_FILES: usize = 100_000;
@@ -227,45 +230,45 @@ pub(crate) fn discard_unqueued_magnet_review(
     Ok(())
 }
 
-pub(crate) fn queue_collection_torrent(
+pub(crate) fn register_collection_torrent(
     settings: &AppSettings,
     password: &str,
     store: &SettingsStore,
     association: CollectionTorrentAssociation,
     offer: ManualTorrentOffer,
-) -> Result<String> {
-    validate_label(&association.platform, "collection platform", 512)?;
-    let reviewed_files = offer
+) -> Result<i64> {
+    validate_label(&association.platform, "torrent source platform", 512)?;
+    if association.platform == "Unassigned platform" {
+        bail!("choose the platform represented by this torrent before adding the source");
+    }
+    if offer.source_kind == "magnet" && offer.magnet_review_created {
+        discard_unqueued_magnet_review(settings, password, &offer)
+            .context("removing the metadata-only magnet review from qBittorrent")?;
+    }
+    let members = offer
         .files
         .iter()
-        .map(|file| (file.index, file.path.clone()))
+        .map(|file| RegisteredTorrentMember {
+            index: file.index,
+            path: file.path.clone(),
+            byte_size: file.byte_size,
+            title_key: crate::game_details::torrent_member_title_key(&file.path),
+        })
         .collect::<Vec<_>>();
-    let source_locator = format!("manual-collection-torrent:sha256:{}", offer.torrent_sha256);
-    let job = qbittorrent::enqueue_collection(
-        settings,
-        password,
-        store,
-        qbittorrent::CollectionEnqueueRequest {
-            title: offer.torrent_name.clone(),
-            platform: association.platform.clone(),
-            source_locator,
-            torrent_bytes: offer.torrent_bytes.clone(),
-            reviewed_files,
-        },
-    )?;
-    let receipt = crate::settings::ManualCollectionTorrentSourceReceipt {
+    store.register_torrent_catalog(&RegisteredTorrentCatalog {
+        platform_key: crate::catalog::normalize_platform_key(&association.platform),
         platform: association.platform,
         source_kind: offer.source_kind,
         source_label: offer.source_label,
+        source_file_name: offer.source_file_name,
         torrent_name: offer.torrent_name,
         torrent_sha256: offer.torrent_sha256,
-        info_hash: job.info_hash.clone(),
-        destination: job.local_target_path.clone(),
-        queued_job_id: job.id.clone(),
-        reviewed_at: unix_timestamp(),
-    };
-    store.record_manual_collection_torrent_enqueue(&receipt, &job)?;
-    Ok(job.id)
+        info_hash: offer.info_hash,
+        torrent_bytes: offer.torrent_bytes,
+        total_bytes: offer.total_bytes,
+        members,
+        registered_at: unix_timestamp(),
+    })
 }
 
 fn parse_v1_magnet(value: &str) -> Result<(String, Option<String>)> {
@@ -778,7 +781,7 @@ mod tests {
     }
 
     #[test]
-    fn reviewed_collection_enqueue_is_whole_torrent_and_hands_off_to_local_import() {
+    fn reviewed_collection_registration_is_idempotent_and_downloads_no_payload() {
         let directory = tempfile::tempdir().unwrap();
         let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
         let offer = inspect_torrent_bytes(
@@ -788,56 +791,20 @@ mod tests {
         .unwrap();
         let info_hash = offer.info_hash.clone();
         let torrent_sha256 = offer.torrent_sha256.clone();
-        let responses = vec![
-            MockResponse {
-                body: "Ok.".into(),
-                cookie: true,
-            },
-            MockResponse {
-                body: "[]".into(),
-                cookie: false,
-            },
-            MockResponse {
-                body: r#"{"lunchbox":{"name":"lunchbox","savePath":""}}"#.into(),
-                cookie: false,
-            },
-            MockResponse {
-                body: String::new(),
-                cookie: false,
-            },
-            MockResponse {
-                body: format!(
-                    r#"[{{"hash":"{info_hash}","category":"lunchbox","state":"stoppedDL"}}]"#
-                ),
-                cookie: false,
-            },
-            MockResponse {
-                body: r#"[{"index":0,"name":"Sample Pack/Game/Sample Game.rom","size":4,"progress":0.0},{"index":1,"name":"Sample Pack/Game/Sample Game (Europe).rom","size":6,"progress":0.0}]"#.into(),
-                cookie: false,
-            },
-            MockResponse {
-                body: String::new(),
-                cookie: false,
-            },
-            MockResponse {
-                body: String::new(),
-                cookie: false,
-            },
-        ];
-        let (address, requests, worker) = mock_server(responses);
-        let settings = AppSettings {
-            qbittorrent_host: address.ip().to_string(),
-            qbittorrent_port: address.port(),
-            qbittorrent_username: "lunchbox".into(),
-            torrent_library_directory: directory.path().join("downloads"),
-            qbittorrent_container_torrent_library_directory: "/downloads".into(),
-            rom_directory: directory.path().join("roms"),
-            ..AppSettings::default()
-        };
-
-        let job_id = queue_collection_torrent(
+        let settings = AppSettings::default();
+        let source_id = register_collection_torrent(
             &settings,
-            "secret",
+            "",
+            &store,
+            CollectionTorrentAssociation {
+                platform: "Nintendo Switch".into(),
+            },
+            offer.clone(),
+        )
+        .unwrap();
+        let repeated_id = register_collection_torrent(
+            &settings,
+            "",
             &store,
             CollectionTorrentAssociation {
                 platform: "Nintendo Switch".into(),
@@ -845,26 +812,27 @@ mod tests {
             offer,
         )
         .unwrap();
+        assert_eq!(source_id, repeated_id);
+        assert!(store.jobs().unwrap().is_empty());
 
-        let jobs = store.jobs().unwrap();
-        assert_eq!(jobs.len(), 1);
-        assert_eq!(jobs[0].id, job_id);
-        assert_eq!(jobs[0].game_id, format!("torrent-import:{info_hash}"));
-        assert_eq!(jobs[0].title, "Sample Pack");
-        assert_eq!(jobs[0].platform, "Nintendo Switch");
-        assert_eq!(jobs[0].torrent_file_index, None);
-        assert!(jobs[0].local_target_path.ends_with(&info_hash));
-        let receipts = store.manual_collection_torrent_sources().unwrap();
-        assert_eq!(receipts.len(), 1);
-        assert_eq!(receipts[0].source_kind, "file");
-        assert_eq!(receipts[0].torrent_sha256, torrent_sha256);
-        assert_eq!(receipts[0].destination, jobs[0].local_target_path);
+        let sources = store
+            .registered_torrent_sources_for_platform("nintendo-switch")
+            .unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].id, source_id);
+        assert_eq!(sources[0].torrent_sha256, torrent_sha256);
+        assert_eq!(sources[0].info_hash, info_hash);
+        assert_eq!(sources[0].file_count, 2);
+        assert_eq!(
+            store.registered_torrent_bytes(&info_hash).unwrap(),
+            probe_fixture_torrent_bytes()
+        );
 
-        let captured = (0..8).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
-        assert!(captured[3].starts_with("POST /api/v2/torrents/add HTTP/1.1"));
-        assert!(captured[3].contains("/downloads/lunchbox/imports/Nintendo Switch/"));
-        assert!(captured[6].contains("id=0%7C1&priority=1"));
-        assert!(captured[7].starts_with("POST /api/v2/torrents/start HTTP/1.1"));
-        worker.join().unwrap();
+        let members = store
+            .registered_torrent_members_for_title_keys(&info_hash, &["sample game".to_owned()])
+            .unwrap();
+        assert_eq!(members.len(), 2);
+        assert_eq!(members[0].path, "Game/Sample Game.rom");
+        assert_eq!(members[1].path, "Game/Sample Game (Europe).rom");
     }
 }

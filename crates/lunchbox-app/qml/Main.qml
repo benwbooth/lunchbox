@@ -2120,6 +2120,19 @@ ApplicationWindow {
             externalTorrentDialog.close()
             romDownloadStatus.expanded = true
         }
+        function onRegistered_revisionChanged() {
+            if (externalTorrent.registered_revision <= 0)
+                return
+            externalTorrentDialog.close()
+            if (root.selectedGameId.length > 0
+                    && gameDetails.game_id === root.selectedGameId) {
+                gameDetails.select_game(root.selectedGameId,
+                                        gameDetails.title,
+                                        gameDetails.platform,
+                                        gameDetails.local,
+                                        gameDetails.downloadable)
+            }
+        }
         function onReadyChanged() {
             if (!root.manualTorrentUiProbe || !externalTorrent.ready)
                 return
@@ -9367,7 +9380,7 @@ ApplicationWindow {
                 onClicked: root.openImportDialog()
             }
             SidebarNavButton {
-                label: "Import Torrent"
+                label: "Torrent Sources"
                 glyph: "↓"
                 onClicked: root.openTorrentImport()
             }
@@ -12471,7 +12484,7 @@ ApplicationWindow {
                                  && (gameDetails.torrent_loading
                                      || minervaSourceState.count > 0)
                         width: parent.width
-                        text: "MINERVA SOURCES"
+                        text: "TORRENT SOURCES"
                         color: "#687488"
                         font.pixelSize: 10
                         font.weight: Font.Bold
@@ -12484,7 +12497,7 @@ ApplicationWindow {
                                      || minervaSourceState.count > 0)
                         width: parent.width
                         text: minervaSourceState.count > 0
-                              ? "Only torrents containing a matching game file are shown. The strongest title, region, and release match is first; review the exact filename before adding it to the queue."
+                              ? "Minerva and your registered torrents are searched together. Only exact-title candidates are shown from local sources; review the filename before downloading that individual game."
                               : "Checking available torrents for matching game files…"
                         color: root.muted
                         font.pixelSize: 11
@@ -14576,7 +14589,7 @@ ApplicationWindow {
                         Text {
                             Layout.fillWidth: true
                             text: externalTorrent.collection_mode
-                                  ? "IMPORT TORRENT COLLECTION"
+                                  ? "ADD TORRENT SOURCE"
                                   : "ADD EXTERNAL TORRENT SOURCE"
                             color: root.ink
                             font.pixelSize: 16
@@ -14586,7 +14599,7 @@ ApplicationWindow {
                         Text {
                             Layout.fillWidth: true
                             text: externalTorrent.collection_mode
-                                  ? "Inspect the complete source, download it into a managed folder, then review exact game identities in Import ROMs."
+                                  ? "Index a torrent once, then download individual matching games from their Get lists. Adding a source downloads no payload files."
                                   : "Inspect first, choose one exact payload, then hand it to the existing download and import pipeline."
                             color: root.muted
                             font.pixelSize: 10
@@ -14640,7 +14653,7 @@ ApplicationWindow {
                             Text {
                                 Layout.fillWidth: true
                                 text: externalTorrent.collection_mode
-                                      ? "Local collection intake"
+                                      ? "On-demand torrent catalog"
                                       : externalTorrent.game_title
                                 color: root.ink
                                 font.pixelSize: 14
@@ -14650,7 +14663,7 @@ ApplicationWindow {
                             Text {
                                 Layout.fillWidth: true
                                 text: externalTorrent.collection_mode
-                                      ? "Whole torrent · normal local-import review follows"
+                                      ? "Metadata only · individual files download later"
                                       : externalTorrent.game_platform
                                         + "  ·  Exact catalog association locked"
                                 color: root.accentCool
@@ -14673,7 +14686,7 @@ ApplicationWindow {
                             onActivated: externalTorrent.set_collection_platform(
                                 currentIndex === 0 ? "Unassigned platform" : currentText)
                             ToolTip.visible: hovered
-                            ToolTip.text: "Files are isolated under this platform before the normal ROM identity review"
+                            ToolTip.text: "Only games on this exact platform search this registered torrent"
                         }
                         Text {
                             visible: !externalTorrent.collection_mode
@@ -14849,7 +14862,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: externalTorrent.ready
                                           ? (externalTorrent.collection_mode
-                                             ? "REVIEWED COLLECTION CONTENTS"
+                                             ? "FILES AVAILABLE ON DEMAND"
                                              : "SELECT THE EXACT GAME PAYLOAD")
                                           : "TORRENT CONTENTS"
                                     color: root.muted
@@ -14859,7 +14872,9 @@ ApplicationWindow {
                                 }
                                 Text {
                                     visible: externalTorrent.ready
-                                    text: "Nothing downloads until Queue"
+                                    text: externalTorrent.collection_mode
+                                          ? "Adding this source downloads nothing"
+                                          : "Nothing downloads until Queue"
                                     color: "#6f7c8f"
                                     font.pixelSize: 8
                                 }
@@ -14935,7 +14950,7 @@ ApplicationWindow {
                                         visible: externalTorrent.collection_mode
                                                  || torrentFileRow.highlighted
                                         text: externalTorrent.collection_mode
-                                              ? "INCLUDED" : "REVIEWED SELECTION"
+                                              ? "INDEXED" : "REVIEWED SELECTION"
                                         color: externalTorrent.collection_mode
                                                ? root.accentCool : root.accent
                                         font.pixelSize: 8
@@ -15015,7 +15030,7 @@ ApplicationWindow {
                         Layout.preferredHeight: 36
                         text: externalTorrent.busy ? "WORKING…"
                               : externalTorrent.collection_mode
-                                ? "QUEUE ENTIRE TORRENT"
+                                ? "ADD SOURCE"
                                 : "QUEUE REVIEWED FILE"
                         enabled: externalTorrent.ready
                                  && (externalTorrent.collection_mode
@@ -15023,7 +15038,12 @@ ApplicationWindow {
                                  && !externalTorrent.busy
                         font.pixelSize: 9
                         font.weight: Font.Bold
-                        onClicked: externalTorrent.queue_selected()
+                        onClicked: {
+                            if (externalTorrent.collection_mode)
+                                externalTorrent.register_source()
+                            else
+                                externalTorrent.queue_selected()
+                        }
                         background: Rectangle {
                             radius: 8
                             color: parent.enabled
@@ -15047,7 +15067,7 @@ ApplicationWindow {
     FileDialog {
         id: externalTorrentFileDialog
         title: externalTorrent.collection_mode
-               ? "Choose a lawful torrent collection"
+               ? "Choose a lawful torrent source"
                : "Choose a lawful torrent for " + externalTorrent.game_title
         fileMode: FileDialog.OpenFile
         nameFilters: ["BitTorrent metadata (*.torrent)"]

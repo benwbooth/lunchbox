@@ -77,28 +77,28 @@ catalog metadata.
    out-of-process with a versioned JSON contract and least-privilege storage.
    Credentials belong in the system keyring; databases contain references only.
 
-## Implemented collection source flow
+## Implemented reusable source flow
 
-1. **Import Torrent** in the main navigation accepts one native `.torrent` or a
-   pasted v1 magnet link and a destination platform. It does not create catalog
-   games from torrent labels.
+1. **Torrent Sources** in the main navigation accepts one native `.torrent` or
+   a pasted v1 magnet link and an exact platform. It does not create catalog
+   games from torrent labels and adding it queues no payload.
 2. Local metadata uses the same bounded parser as exact-game intake. Magnet
    syntax is bounded and must contain one unambiguous hexadecimal or Base32 v1
    `btih`; qBittorrent retrieves the metadata under Lunchbox's isolated category,
    exports the resulting `.torrent`, and Lunchbox verifies its info hash before
-   showing the review. Magnet URIs and tracker lists are not stored.
-3. The Qt review shows the complete portable inventory and total size. A
-   collection import always queues the reviewed torrent as a whole into a
-   managed per-platform directory; there is no filename-based game selection at
-   this stage.
-4. The existing durable download queue owns progress, pause/resume, retry,
-   cancellation, storage reservation, duplicate suppression, and post-import
-   seeding policy. SQLite records bounded source provenance, verified torrent
-   identity, managed paths, platform, and queue job.
-5. Completion exposes **Review import** in both queue surfaces. That action
-   opens the ordinary local-collection import workflow against the downloaded
-   directory. Its exact/hash-backed matcher and user review establish canonical
-   game associations; the torrent itself never does.
+   showing the review. The temporary metadata-only qBittorrent entry is removed
+   after registration and the magnet URI is not stored.
+3. The Qt review shows the complete portable inventory and total size. SQLite
+   stores the bounded reviewed torrent metadata, source provenance, exact
+   platform, verified identities, and a normalized member-title index. Re-adding
+   the same info hash updates the source idempotently.
+4. Game details query that index only by the exact normalized canonical title
+   and exact-linked alternate titles. Matching members appear in the ordinary
+   Get review; filename similarity never establishes catalog identity.
+5. Queueing always selects only the explicitly reviewed member from a registered
+   source, regardless of the global whole-torrent preference. The existing
+   durable queue then owns progress, pause/resume, retry, cancellation, storage
+   reservation, import validation, and post-import seeding policy.
 
 This route supports newer platforms without binding the core application to one
 Telegram channel. Platform support is still separate from download availability:
@@ -108,11 +108,10 @@ ownership, safe import, and exact launch configuration remain independent gates.
 ## Delivery order
 
 1. **Complete:** exact-game manual `.torrent` and v1 magnet intake with
-   exact-file review, whole-torrent policy support, durable provenance, and
-   deterministic Rust/Qt tests.
-2. **Complete:** whole-collection `.torrent` and v1 magnet intake with bounded
-   metadata resolution, complete-inventory review, managed platform paths,
-   durable queueing, and local-import handoff.
+   exact-file review, durable provenance, and deterministic Rust/Qt tests.
+2. **Complete:** reusable `.torrent` and v1 magnet registration with bounded
+   metadata resolution, complete-inventory review, exact platform/title lookup,
+   and selective per-game queueing.
 3. Idempotent watched-folder intake with archive/move-on-success behavior and
    duplicate info-hash suppression.
 4. A local provider manifest for user-managed, lawful catalogs.

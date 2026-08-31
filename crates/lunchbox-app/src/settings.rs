@@ -6,8 +6,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
+use lava_torrent::torrent::v1::Torrent;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::catalog;
 use crate::collections::SmartCollectionRules;
@@ -1224,16 +1226,43 @@ pub(crate) struct ManualTorrentSourceReceipt {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ManualCollectionTorrentSourceReceipt {
+pub(crate) struct RegisteredTorrentMember {
+    pub index: u32,
+    pub path: String,
+    pub byte_size: u64,
+    pub title_key: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RegisteredTorrentCatalog {
     pub platform: String,
+    pub platform_key: String,
     pub source_kind: String,
     pub source_label: String,
+    pub source_file_name: String,
     pub torrent_name: String,
     pub torrent_sha256: String,
     pub info_hash: String,
-    pub destination: PathBuf,
-    pub queued_job_id: String,
-    pub reviewed_at: i64,
+    pub torrent_bytes: Vec<u8>,
+    pub total_bytes: u64,
+    pub members: Vec<RegisteredTorrentMember>,
+    pub registered_at: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RegisteredTorrentCatalogSummary {
+    pub id: i64,
+    pub platform: String,
+    pub platform_key: String,
+    pub source_kind: String,
+    pub source_label: String,
+    pub source_file_name: String,
+    pub torrent_name: String,
+    pub torrent_sha256: String,
+    pub info_hash: String,
+    pub file_count: u32,
+    pub total_bytes: u64,
+    pub registered_at: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -3635,67 +3664,170 @@ impl SettingsStore {
         Ok(())
     }
 
-    pub(crate) fn record_manual_collection_torrent_enqueue(
+    pub(crate) fn register_torrent_catalog(
         &self,
-        receipt: &ManualCollectionTorrentSourceReceipt,
-        job: &DownloadJob,
-    ) -> Result<()> {
-        validate_manual_collection_torrent_receipt(receipt, job)?;
-        self.upsert_job(job)?;
-        self.connection()?.execute(
-            "INSERT INTO manual_collection_torrent_sources (
-                 info_hash, platform, source_kind, source_label, torrent_name,
-                 torrent_sha256, destination, queued_job_id, reviewed_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        catalog: &RegisteredTorrentCatalog,
+    ) -> Result<i64> {
+        validate_registered_torrent_catalog(catalog)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO registered_torrent_catalogs (
+                 platform, platform_key, source_kind, source_label,
+                 source_file_name, torrent_name, torrent_sha256, info_hash,
+                 torrent_bytes, file_count, total_bytes, registered_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
              ON CONFLICT(info_hash) DO UPDATE SET
                  platform=excluded.platform,
+                 platform_key=excluded.platform_key,
                  source_kind=excluded.source_kind,
                  source_label=excluded.source_label,
+                 source_file_name=excluded.source_file_name,
                  torrent_name=excluded.torrent_name,
                  torrent_sha256=excluded.torrent_sha256,
-                 destination=excluded.destination,
-                 queued_job_id=excluded.queued_job_id,
-                 reviewed_at=excluded.reviewed_at",
+                 torrent_bytes=excluded.torrent_bytes,
+                 file_count=excluded.file_count,
+                 total_bytes=excluded.total_bytes,
+                 registered_at=excluded.registered_at",
             params![
-                receipt.info_hash,
-                receipt.platform,
-                receipt.source_kind,
-                receipt.source_label,
-                receipt.torrent_name,
-                receipt.torrent_sha256,
-                path_text(&receipt.destination),
-                receipt.queued_job_id,
-                receipt.reviewed_at,
+                catalog.platform,
+                catalog.platform_key,
+                catalog.source_kind,
+                catalog.source_label,
+                catalog.source_file_name,
+                catalog.torrent_name,
+                catalog.torrent_sha256.to_ascii_lowercase(),
+                catalog.info_hash.to_ascii_lowercase(),
+                catalog.torrent_bytes,
+                i64::try_from(catalog.members.len()).context("torrent file count is too large")?,
+                i64::try_from(catalog.total_bytes).context("torrent payload is too large")?,
+                catalog.registered_at,
             ],
         )?;
-        Ok(())
+        let source_id = transaction.query_row(
+            "SELECT id FROM registered_torrent_catalogs WHERE info_hash=?1",
+            [catalog.info_hash.to_ascii_lowercase()],
+            |row| row.get::<_, i64>(0),
+        )?;
+        transaction.execute(
+            "DELETE FROM registered_torrent_members WHERE source_id=?1",
+            [source_id],
+        )?;
+        {
+            let mut insert = transaction.prepare(
+                "INSERT INTO registered_torrent_members (
+                     source_id, file_index, file_path, byte_size, title_key
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )?;
+            for member in &catalog.members {
+                insert.execute(params![
+                    source_id,
+                    i64::from(member.index),
+                    member.path,
+                    i64::try_from(member.byte_size).context("torrent member is too large")?,
+                    member.title_key,
+                ])?;
+            }
+        }
+        transaction.commit()?;
+        Ok(source_id)
     }
 
-    #[cfg(test)]
-    pub(crate) fn manual_collection_torrent_sources(
+    pub(crate) fn registered_torrent_sources_for_platform(
         &self,
-    ) -> Result<Vec<ManualCollectionTorrentSourceReceipt>> {
+        platform_key: &str,
+    ) -> Result<Vec<RegisteredTorrentCatalogSummary>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
-            "SELECT platform, source_kind, source_label, torrent_name,
-                    torrent_sha256, info_hash, destination, queued_job_id, reviewed_at
-             FROM manual_collection_torrent_sources
-             ORDER BY reviewed_at, info_hash",
+            "SELECT id, platform, platform_key, source_kind, source_label,
+                    source_file_name, torrent_name, torrent_sha256, info_hash,
+                    file_count, total_bytes, registered_at
+             FROM registered_torrent_catalogs
+             WHERE platform_key=?1
+             ORDER BY registered_at DESC, torrent_name COLLATE NOCASE, info_hash",
         )?;
-        let rows = statement.query_map([], |row| {
-            Ok(ManualCollectionTorrentSourceReceipt {
-                platform: row.get(0)?,
-                source_kind: row.get(1)?,
-                source_label: row.get(2)?,
-                torrent_name: row.get(3)?,
-                torrent_sha256: row.get(4)?,
-                info_hash: row.get(5)?,
-                destination: PathBuf::from(row.get::<_, String>(6)?),
-                queued_job_id: row.get(7)?,
-                reviewed_at: row.get(8)?,
-            })
-        })?;
+        let rows = statement.query_map([platform_key], registered_torrent_summary_from_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub(crate) fn registered_torrent_source(
+        &self,
+        info_hash: &str,
+    ) -> Result<Option<RegisteredTorrentCatalogSummary>> {
+        self.connection()?
+            .query_row(
+                "SELECT id, platform, platform_key, source_kind, source_label,
+                        source_file_name, torrent_name, torrent_sha256, info_hash,
+                        file_count, total_bytes, registered_at
+                 FROM registered_torrent_catalogs
+                 WHERE info_hash=?1",
+                [info_hash.to_ascii_lowercase()],
+                registered_torrent_summary_from_row,
+            )
+            .optional()
+            .context("loading registered torrent source")
+    }
+
+    pub(crate) fn registered_torrent_bytes(&self, info_hash: &str) -> Result<Vec<u8>> {
+        self.connection()?
+            .query_row(
+                "SELECT torrent_bytes FROM registered_torrent_catalogs WHERE info_hash=?1",
+                [info_hash.to_ascii_lowercase()],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .optional()?
+            .with_context(|| {
+                format!("registered torrent source {info_hash} is no longer available")
+            })
+    }
+
+    pub(crate) fn registered_torrent_members_for_title_keys(
+        &self,
+        info_hash: &str,
+        title_keys: &[String],
+    ) -> Result<Vec<RegisteredTorrentMember>> {
+        let connection = self.connection()?;
+        let source_id = connection
+            .query_row(
+                "SELECT id FROM registered_torrent_catalogs WHERE info_hash=?1",
+                [info_hash.to_ascii_lowercase()],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .with_context(|| {
+                format!("registered torrent source {info_hash} is no longer available")
+            })?;
+        let mut statement = connection.prepare(
+            "SELECT file_index, file_path, byte_size, title_key
+             FROM registered_torrent_members
+             WHERE source_id=?1 AND title_key=?2
+             ORDER BY file_index",
+        )?;
+        let mut seen = HashSet::new();
+        let mut members = Vec::new();
+        for title_key in title_keys {
+            if title_key.is_empty() {
+                continue;
+            }
+            let rows = statement.query_map(params![source_id, title_key], |row| {
+                let index = row.get::<_, i64>(0)?;
+                let byte_size = row.get::<_, i64>(2)?;
+                Ok(RegisteredTorrentMember {
+                    index: u32::try_from(index).unwrap_or(u32::MAX),
+                    path: row.get(1)?,
+                    byte_size: u64::try_from(byte_size).unwrap_or_default(),
+                    title_key: row.get(3)?,
+                })
+            })?;
+            for member in rows {
+                let member = member?;
+                if seen.insert(member.index) {
+                    members.push(member);
+                }
+            }
+        }
+        members.sort_by_key(|member| member.index);
+        Ok(members)
     }
 
     #[cfg(test)]
@@ -4435,6 +4567,34 @@ fn migrate(connection: &Connection) -> Result<()> {
              queued_job_id TEXT NOT NULL CHECK (length(queued_job_id) > 0),
              reviewed_at INTEGER NOT NULL CHECK (reviewed_at >= 0)
          );
+         CREATE TABLE IF NOT EXISTS registered_torrent_catalogs (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             platform TEXT NOT NULL CHECK (length(platform) BETWEEN 1 AND 512),
+             platform_key TEXT NOT NULL CHECK (length(platform_key) BETWEEN 1 AND 512),
+             source_kind TEXT NOT NULL CHECK (source_kind IN ('file', 'magnet')),
+             source_label TEXT NOT NULL CHECK (length(source_label) BETWEEN 1 AND 4096),
+             source_file_name TEXT NOT NULL CHECK (length(source_file_name) BETWEEN 1 AND 1024),
+             torrent_name TEXT NOT NULL CHECK (length(torrent_name) BETWEEN 1 AND 1024),
+             torrent_sha256 TEXT NOT NULL CHECK (length(torrent_sha256)=64),
+             info_hash TEXT NOT NULL UNIQUE CHECK (length(info_hash)=40),
+             torrent_bytes BLOB NOT NULL CHECK (length(torrent_bytes) BETWEEN 1 AND 16777216),
+             file_count INTEGER NOT NULL CHECK (file_count BETWEEN 1 AND 100000),
+             total_bytes INTEGER NOT NULL CHECK (total_bytes > 0),
+             registered_at INTEGER NOT NULL CHECK (registered_at >= 0)
+         );
+         CREATE INDEX IF NOT EXISTS registered_torrent_catalogs_platform
+             ON registered_torrent_catalogs(platform_key, registered_at DESC);
+         CREATE TABLE IF NOT EXISTS registered_torrent_members (
+             source_id INTEGER NOT NULL REFERENCES registered_torrent_catalogs(id) ON DELETE CASCADE,
+             file_index INTEGER NOT NULL CHECK (file_index >= 0),
+             file_path TEXT NOT NULL CHECK (length(file_path) BETWEEN 1 AND 4096),
+             byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
+             title_key TEXT NOT NULL CHECK (length(title_key) <= 2048),
+             PRIMARY KEY (source_id, file_index),
+             UNIQUE (source_id, file_path)
+         );
+         CREATE INDEX IF NOT EXISTS registered_torrent_members_title
+             ON registered_torrent_members(source_id, title_key, file_index);
          CREATE TABLE IF NOT EXISTS installed_games (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -6040,6 +6200,115 @@ fn validate_download_source_kind(source_kind: &str) -> Result<()> {
     }
 }
 
+fn registered_torrent_summary_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<RegisteredTorrentCatalogSummary> {
+    let file_count = row.get::<_, i64>(9)?;
+    let total_bytes = row.get::<_, i64>(10)?;
+    Ok(RegisteredTorrentCatalogSummary {
+        id: row.get(0)?,
+        platform: row.get(1)?,
+        platform_key: row.get(2)?,
+        source_kind: row.get(3)?,
+        source_label: row.get(4)?,
+        source_file_name: row.get(5)?,
+        torrent_name: row.get(6)?,
+        torrent_sha256: row.get(7)?,
+        info_hash: row.get(8)?,
+        file_count: u32::try_from(file_count).unwrap_or(u32::MAX),
+        total_bytes: u64::try_from(total_bytes).unwrap_or_default(),
+        registered_at: row.get(11)?,
+    })
+}
+
+fn validate_registered_torrent_catalog(catalog: &RegisteredTorrentCatalog) -> Result<()> {
+    fn validate_text(value: &str, label: &str, limit: usize) -> Result<()> {
+        if value.trim().is_empty() || value.chars().count() > limit {
+            bail!("{label} must contain between 1 and {limit} characters");
+        }
+        if value.chars().any(char::is_control) {
+            bail!("{label} contains control characters");
+        }
+        Ok(())
+    }
+
+    validate_text(&catalog.platform, "registered torrent platform", 512)?;
+    validate_text(
+        &catalog.platform_key,
+        "registered torrent platform key",
+        512,
+    )?;
+    validate_text(
+        &catalog.source_label,
+        "registered torrent source label",
+        4096,
+    )?;
+    validate_text(
+        &catalog.source_file_name,
+        "registered torrent source filename",
+        1024,
+    )?;
+    validate_text(&catalog.torrent_name, "registered torrent name", 1024)?;
+    if !matches!(catalog.source_kind.as_str(), "file" | "magnet") {
+        bail!("registered torrent source kind must be file or magnet");
+    }
+    if catalog.torrent_sha256.len() != 64
+        || !catalog
+            .torrent_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+        || hex::encode(Sha256::digest(&catalog.torrent_bytes))
+            != catalog.torrent_sha256.to_ascii_lowercase()
+    {
+        bail!("registered torrent SHA-256 does not match its metadata bytes");
+    }
+    let torrent = Torrent::read_from_bytes(&catalog.torrent_bytes)
+        .map_err(|error| anyhow::anyhow!("registered torrent metadata is invalid: {error}"))?;
+    if catalog.info_hash.len() != 40
+        || !catalog
+            .info_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+        || !torrent.info_hash().eq_ignore_ascii_case(&catalog.info_hash)
+    {
+        bail!("registered torrent info hash does not match its metadata bytes");
+    }
+    if !(1..=100_000).contains(&catalog.members.len()) {
+        bail!("registered torrent must contain between 1 and 100000 files");
+    }
+    if catalog.torrent_bytes.len() > 16 * 1024 * 1024 {
+        bail!("registered torrent metadata exceeds the 16 MiB limit");
+    }
+    if catalog.registered_at < 0 {
+        bail!("registered torrent timestamp cannot be negative");
+    }
+    let mut indexes = HashSet::with_capacity(catalog.members.len());
+    let mut paths = HashSet::with_capacity(catalog.members.len());
+    let mut total_bytes = 0_u64;
+    for member in &catalog.members {
+        if !indexes.insert(member.index) {
+            bail!("registered torrent contains a duplicate file index");
+        }
+        validate_text(&member.path, "registered torrent file path", 4096)?;
+        if !paths.insert(member.path.replace('\\', "/").to_lowercase()) {
+            bail!("registered torrent contains a duplicate or case-ambiguous file path");
+        }
+        if member.title_key.chars().count() > 2048 || member.title_key.chars().any(char::is_control)
+        {
+            bail!("registered torrent member title key is invalid");
+        }
+        i64::try_from(member.byte_size).context("registered torrent member is too large")?;
+        total_bytes = total_bytes
+            .checked_add(member.byte_size)
+            .context("registered torrent payload size overflows")?;
+    }
+    i64::try_from(total_bytes).context("registered torrent payload is too large")?;
+    if total_bytes == 0 || total_bytes != catalog.total_bytes {
+        bail!("registered torrent payload total does not match its reviewed members");
+    }
+    Ok(())
+}
+
 fn validate_download_job_id(job_id: &str) -> Result<()> {
     if job_id.trim().is_empty() || job_id.chars().count() > 128 {
         bail!("download history requires a bounded stable job identity");
@@ -6172,48 +6441,6 @@ fn validate_manual_torrent_receipt(
         bail!("manual torrent provenance does not match the queued download");
     }
     crate::qbittorrent::safe_torrent_relative_path(&receipt.selected_file_path)?;
-    Ok(())
-}
-
-fn validate_manual_collection_torrent_receipt(
-    receipt: &ManualCollectionTorrentSourceReceipt,
-    job: &DownloadJob,
-) -> Result<()> {
-    if job.source_kind != "manual_torrent"
-        || !job.game_id.starts_with("torrent-import:")
-        || receipt.platform.trim().is_empty()
-        || receipt.platform != job.platform
-        || !matches!(receipt.source_kind.as_str(), "file" | "magnet")
-        || receipt.source_label.trim().is_empty()
-        || receipt.source_label.chars().count() > 4096
-        || receipt.torrent_name.trim().is_empty()
-        || receipt.torrent_name != job.title
-        || receipt.torrent_name.chars().count() > 1024
-        || receipt.torrent_sha256.len() != 64
-        || !receipt
-            .torrent_sha256
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit())
-        || receipt.info_hash.len() != 40
-        || !receipt
-            .info_hash
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit())
-        || !receipt.info_hash.eq_ignore_ascii_case(&job.info_hash)
-        || job.torrent_file_index.is_some()
-        || job.torrent_url
-            != format!(
-                "manual-collection-torrent:sha256:{}",
-                receipt.torrent_sha256.to_ascii_lowercase()
-            )
-        || receipt.destination.as_os_str().is_empty()
-        || receipt.destination != job.local_target_path
-        || receipt.queued_job_id != job.id
-        || receipt.reviewed_at < 0
-    {
-        bail!("collection torrent provenance does not match the queued download");
-    }
-    crate::qbittorrent::safe_torrent_relative_path(&job.torrent_file_path)?;
     Ok(())
 }
 

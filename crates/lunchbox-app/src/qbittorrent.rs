@@ -30,15 +30,6 @@ pub struct EnqueueRequest {
     pub download_plan: Option<DownloadPlan>,
 }
 
-#[derive(Clone, Debug)]
-pub struct CollectionEnqueueRequest {
-    pub title: String,
-    pub platform: String,
-    pub source_locator: String,
-    pub torrent_bytes: Vec<u8>,
-    pub reviewed_files: Vec<(u32, String)>,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MagnetMetadataReview {
     pub torrent_bytes: Vec<u8>,
@@ -732,110 +723,6 @@ pub fn discard_magnet_review(
     info_hash: &str,
 ) -> Result<()> {
     QbittorrentClient::authenticated(settings, password)?.discard_review_if_present(info_hash)
-}
-
-pub fn enqueue_collection(
-    settings: &AppSettings,
-    password: &str,
-    store: &crate::settings::SettingsStore,
-    request: CollectionEnqueueRequest,
-) -> Result<DownloadJob> {
-    settings.validate()?;
-    validate_download_directories(settings)?;
-    if request.title.trim().is_empty()
-        || request.title.chars().count() > 1024
-        || request.platform.trim().is_empty()
-        || request.platform.chars().count() > 512
-        || !request
-            .source_locator
-            .starts_with("manual-collection-torrent:sha256:")
-    {
-        bail!("collection torrent intake requires a bounded title, platform, and source identity");
-    }
-    let torrent = Torrent::read_from_bytes(&request.torrent_bytes)
-        .map_err(|error| anyhow::anyhow!("could not parse reviewed collection torrent: {error}"))?;
-    let info_hash = torrent.info_hash().to_ascii_lowercase();
-    let inventory = reviewed_torrent_inventory(torrent)?;
-    if inventory.is_empty() || request.reviewed_files.len() != inventory.len() {
-        bail!("the reviewed collection inventory changed before queueing");
-    }
-    let inventory_by_index = inventory
-        .iter()
-        .map(|file| (file.index, file))
-        .collect::<HashMap<_, _>>();
-    let total_bytes = reviewed_selection_bytes(&inventory_by_index, &request.reviewed_files)?;
-    for job in store.jobs_for_info_hash(&info_hash)? {
-        if is_collection_import_job(&job) && job.state != "cancelled" {
-            bail!(
-                "This collection torrent is already in Lunchbox downloads; open the ROM download queue instead"
-            );
-        }
-    }
-
-    let native_destination = managed_collection_native_save_path(
-        &settings.torrent_library_directory,
-        &request.platform,
-        &info_hash,
-    );
-    let native_anchor = existing_ancestor(&native_destination)?;
-    let available_bytes = fs2::available_space(&native_anchor).with_context(|| {
-        format!(
-            "checking available space for {}",
-            settings.torrent_library_directory.display()
-        )
-    })?;
-    let required_bytes = storage_with_reserve(total_bytes);
-    if available_bytes < required_bytes {
-        bail!(
-            "Not enough free space in the torrent library. The reviewed collection and safety reserve need {}, but only {} is available.",
-            crate::game_details::format_bytes(required_bytes),
-            crate::game_details::format_bytes(available_bytes)
-        );
-    }
-    std::fs::create_dir_all(&native_destination).with_context(|| {
-        format!(
-            "creating collection torrent destination {}",
-            native_destination.display()
-        )
-    })?;
-    let client_destination = managed_collection_client_save_path(
-        &settings.qbittorrent_container_torrent_library_directory,
-        &request.platform,
-        &info_hash,
-    );
-    let client = QbittorrentClient::authenticated(settings, password)?;
-    let added = client.add_with_placement(
-        &request.torrent_bytes,
-        &info_hash,
-        &client_destination,
-        &DownloadSelection::All,
-        &request.reviewed_files,
-    )?;
-    let representative = added
-        .files
-        .first()
-        .cloned()
-        .context("qBittorrent returned no reviewed collection files")?;
-    let actual_destination = native_path_for_client_save_path(
-        &settings.torrent_library_directory,
-        &settings.qbittorrent_container_torrent_library_directory,
-        &added.client_save_path,
-    )?;
-    Ok(DownloadJob::queued(NewDownloadJob {
-        game_id: format!("torrent-import:{info_hash}"),
-        launchbox_db_id: 0,
-        title: request.title,
-        platform: request.platform,
-        source_kind: "manual_torrent".to_owned(),
-        torrent_url: request.source_locator,
-        torrent_file_index: None,
-        torrent_file_path: representative.1,
-        info_hash,
-        client_save_path: added.client_save_path,
-        local_download_path: actual_destination.clone(),
-        local_target_path: actual_destination,
-        download_plan: String::new(),
-    }))
 }
 
 pub fn inspect_enqueue(
@@ -1549,20 +1436,9 @@ pub(crate) fn managed_collection_client_save_path(
     platform: &str,
     info_hash: &str,
 ) -> String {
-    let imports = client_path_join(&client_path_join(root, "lunchbox"), "imports");
-    let platform = client_path_join(&imports, &safe_path_component(platform));
+    let sources = client_path_join(&client_path_join(root, "lunchbox"), "sources");
+    let platform = client_path_join(&sources, &safe_path_component(platform));
     client_path_join(&platform, info_hash)
-}
-
-pub(crate) fn managed_collection_native_save_path(
-    root: &Path,
-    platform: &str,
-    info_hash: &str,
-) -> PathBuf {
-    root.join("lunchbox")
-        .join("imports")
-        .join(safe_path_component(platform))
-        .join(info_hash)
 }
 
 pub(crate) fn native_path_for_client_file(

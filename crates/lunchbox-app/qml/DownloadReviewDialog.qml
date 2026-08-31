@@ -16,6 +16,10 @@ Dialog {
     required property color accentCool
 
     property int reviewIndex: -1
+    readonly property bool selectiveOnly: {
+        detailsModel.detail_revision
+        return detailsModel.selected_source_is_registered()
+    }
     readonly property bool hasPlan: reviewIndex >= 0
                                     && detailsModel.file_has_download_plan(reviewIndex)
     readonly property string planKind: hasPlan
@@ -202,8 +206,10 @@ Dialog {
 
         Text {
             Layout.fillWidth: true
-            text: settingsModel.download_entire_torrent
+            text: settingsModel.download_entire_torrent && !dialog.selectiveOnly
                   ? "Whole-torrent mode is enabled. The storage check covers the complete source; disable it in Settings to select only the reviewed member set."
+                  : dialog.selectiveOnly
+                    ? "This is a registered on-demand source. Lunchbox will select only the reviewed game file, never the complete torrent."
                   : dialog.planKind === "optical_multidisc"
                     ? "Every required disc and companion file is one durable queue item. Relative layout is preserved and the playlist is published last."
                     : dialog.planKind.indexOf("arcade_") === 0
@@ -211,7 +217,8 @@ Dialog {
                       : dialog.planKind.length > 0
                         ? "The reviewed game, metadata, game-data, and utility members are retained as one recoverable download."
                         : "Only this exact reviewed torrent member is selected."
-            color: settingsModel.download_entire_torrent ? dialog.accent : dialog.muted
+            color: settingsModel.download_entire_torrent && !dialog.selectiveOnly
+                   ? dialog.accent : dialog.muted
             font.pixelSize: 10
             lineHeight: 1.25
             wrapMode: Text.WordWrap
@@ -292,8 +299,8 @@ Dialog {
             Button {
                 width: 158
                 height: 40
-                text: settingsModel.download_entire_torrent ? "DOWNLOAD ALL"
-                                                             : "DOWNLOAD"
+                text: settingsModel.download_entire_torrent && !dialog.selectiveOnly
+                      ? "DOWNLOAD ALL" : "DOWNLOAD"
                 enabled: dialog.reviewIndex >= 0
                          && detailsModel.download_preflight_ready
                          && !detailsModel.download_preflight_busy

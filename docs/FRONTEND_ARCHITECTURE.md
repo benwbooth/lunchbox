@@ -629,8 +629,11 @@ its exact preserved UUID, creates and parses a real two-file `.torrent` through
 the production worker, verifies the locked association, v1 info hash, safe file
 inventory, and second-file selection, then captures the native review dialog.
 The core test suite separately drives the production queue function through a
-mock qBittorrent Web API and verifies whole-torrent priority plus durable source
-and game provenance without contacting any content provider.
+mock qBittorrent Web API and verifies exact-member priority plus durable source
+and game provenance without contacting any content provider. The reusable
+torrent-source tests additionally prove that registration is idempotent, queues
+no payload, resolves only exact platform/title keys, and forces selective
+downloads even when the global whole-torrent preference is enabled.
 `--settings-ui-probe` leaves the native settings dialog open, including the
 post-import seeding policy, for deterministic visual inspection.
 `--settings-seeding-probe --state-database EMPTY_PATH` selects the pause policy,

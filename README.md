@@ -193,28 +193,25 @@ The pause request is non-destructive, survives restart when deferred, and
 retries automatically when qBittorrent is temporarily unavailable.
 
 The source architecture deliberately separates catalog identity from
-acquisition offers. Minerva remains the reviewed built-in provider. From an
-exact game's details pane, **Add External Torrent Source** accepts a lawful
-user-supplied `.torrent` or v1 magnet link, parses at most 16 MiB off the GUI
-thread, rejects
-unsafe or cross-platform-incompatible paths, and presents every file, its size,
-the v1 info hash, and the current exact-file/whole-torrent policy before Queue
-is enabled. The catalog UUID, title, and platform remain locked throughout the
-review; torrent labels cannot establish or replace identity. Queueing reuses the
-same qBittorrent, progress, import, and collection pipeline and durably records
-the source-file name, torrent SHA-256, info hash, reviewed file, exact catalog
-association, and resulting job.
+acquisition offers. Minerva remains the reviewed built-in provider. The
+sidebar's **Torrent Sources** action accepts a lawful user-supplied `.torrent`
+or v1 magnet link, parses at most 16 MiB off the GUI thread, rejects unsafe or
+cross-platform-incompatible paths, and presents every file and its size before
+the user associates that source with one exact platform. Adding the source
+downloads no payload: Lunchbox stores the verified torrent metadata and an
+exact normalized title index locally so matching games can expose those members
+alongside Minerva in the normal Get flow. Torrent labels never create or merge
+catalog games.
 
-The sidebar's **Import Torrent** action handles a lawful whole collection from
-either a native `.torrent` picker or a pasted v1 magnet link. Magnet metadata is
-resolved through the configured qBittorrent instance under a short bounded
-review operation; Lunchbox stores its verified info hash and inventory, not the
-magnet URI or tracker list. The review names the destination platform and shows
-the complete portable file inventory before Queue Entire Torrent is enabled.
-The download uses a managed per-platform directory, remains visible in the
-durable queue, and exposes **Review import** when complete. That action opens
-the normal exact local-collection matcher, where filenames are only candidates
-and the user reviews canonical game associations before publication. Watched
+Opening Get on an exact catalog game shows only members whose normalized title
+key equals that game's canonical or exact-linked alternate title. The existing
+review, qBittorrent, progress, import, and collection pipeline then queues only
+the chosen member; registered collection sources always override the optional
+whole-torrent preference. The reviewed source-file name, torrent SHA-256, info
+hash, exact catalog association, selected member, and resulting job remain
+durable. Magnet metadata is resolved through configured qBittorrent under a
+short bounded review operation and the temporary metadata-only torrent is
+removed after registration; the original magnet URI is not retained. Watched
 folders and authorized provider adapters remain planned. See [external torrent
 providers](docs/EXTERNAL_TORRENT_PROVIDERS.md).
 

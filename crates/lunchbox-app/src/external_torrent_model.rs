@@ -17,6 +17,7 @@ pub mod qobject {
         #[qproperty(i32, selected_index)]
         #[qproperty(i32, revision)]
         #[qproperty(i32, queued_revision)]
+        #[qproperty(i32, registered_revision)]
         #[qproperty(QString, game_title)]
         #[qproperty(QString, game_platform)]
         #[qproperty(QString, source_file_name)]
@@ -60,6 +61,9 @@ pub mod qobject {
         fn queue_selected(self: Pin<&mut ExternalTorrentModel>);
 
         #[qinvokable]
+        fn register_source(self: Pin<&mut ExternalTorrentModel>);
+
+        #[qinvokable]
         fn clear(self: Pin<&mut ExternalTorrentModel>);
 
         #[qinvokable]
@@ -91,6 +95,7 @@ pub struct ExternalTorrentModelRust {
     selected_index: i32,
     revision: i32,
     queued_revision: i32,
+    registered_revision: i32,
     game_title: QString,
     game_platform: QString,
     source_file_name: QString,
@@ -118,6 +123,7 @@ impl Default for ExternalTorrentModelRust {
             selected_index: -1,
             revision: 0,
             queued_revision: 0,
+            registered_revision: 0,
             game_title: QString::default(),
             game_platform: QString::default(),
             source_file_name: QString::default(),
@@ -202,7 +208,7 @@ impl qobject::ExternalTorrentModel {
         self.as_mut().set_game_platform(qstring(platform));
         self.as_mut().reset_offer();
         self.as_mut().set_message(qstring(
-            "Review the complete source inventory before sending it to the local collection importer.",
+            "Review and register this torrent as an on-demand source. No payload files download when it is added.",
         ));
     }
 
@@ -282,8 +288,8 @@ impl qobject::ExternalTorrentModel {
                     )?;
                     Ok(InspectionResult {
                         offer,
-                        download_entire_torrent: collection_mode
-                            || settings.download_entire_torrent,
+                        download_entire_torrent: !collection_mode
+                            && settings.download_entire_torrent,
                     })
                 })()
                 .map_err(|error| format!("{error:#}"));
@@ -411,7 +417,7 @@ impl qobject::ExternalTorrentModel {
                     )));
                 self.as_mut()
                     .set_download_scope(qstring(if collection_mode {
-                        "Entire torrent · reviewed collection"
+                        "Indexed source · downloads on demand"
                     } else if result.download_entire_torrent {
                         "Entire torrent · required by Settings"
                     } else {
@@ -419,7 +425,7 @@ impl qobject::ExternalTorrentModel {
                     }));
                 self.as_mut().set_message(qstring(if collection_mode {
                     format!(
-                        "Reviewed {file_count} safe {}. The complete torrent will download for local import review.",
+                        "Reviewed {file_count} safe {}. Add the source now; individual games will appear in their matching Get lists.",
                         if file_count == 1 { "file" } else { "files" }
                     )
                 } else {
@@ -459,6 +465,12 @@ impl qobject::ExternalTorrentModel {
         if *self.as_ref().busy() || !*self.as_ref().ready() {
             return;
         }
+        if *self.as_ref().collection_mode() {
+            self.as_mut().set_message(qstring(
+                "Add this torrent as a source; individual games are downloaded later from their Get lists.",
+            ));
+            return;
+        }
         let Some(offer) = self.as_ref().rust().offer.clone() else {
             self.as_mut()
                 .set_message(qstring("Choose and review a torrent first."));
@@ -474,8 +486,6 @@ impl qobject::ExternalTorrentModel {
             "Adding the reviewed selection to Lunchbox downloads…",
         ));
         let association = self.as_ref().rust().association.clone();
-        let collection_association = self.as_ref().rust().collection_association.clone();
-        let collection_mode = *self.as_ref().collection_mode();
         let generation = self.as_ref().rust().generation;
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
@@ -485,28 +495,16 @@ impl qobject::ExternalTorrentModel {
                     let store = crate::settings::SettingsStore::open_default()?;
                     let settings = store.load()?;
                     let password = crate::settings::load_password()?.unwrap_or_default();
-                    if collection_mode {
-                        let association = collection_association
-                            .context("the collection platform is no longer available")?;
-                        external_torrent::queue_collection_torrent(
-                            &settings,
-                            &password,
-                            &store,
-                            association,
-                            offer,
-                        )
-                    } else {
-                        let association = association
-                            .context("the exact catalog association is no longer available")?;
-                        external_torrent::queue_manual_torrent(
-                            &settings,
-                            &password,
-                            &store,
-                            association,
-                            offer,
-                            selected_index,
-                        )
-                    }
+                    let association = association
+                        .context("the exact catalog association is no longer available")?;
+                    external_torrent::queue_manual_torrent(
+                        &settings,
+                        &password,
+                        &store,
+                        association,
+                        offer,
+                        selected_index,
+                    )
                 })()
                 .map_err(|error| format!("{error:#}"));
                 let _ = qt_thread.queue(move |mut model| {
@@ -534,16 +532,83 @@ impl qobject::ExternalTorrentModel {
                 self.as_mut().set_queued_job_id(qstring(job_id));
                 let revision = self.as_ref().queued_revision().saturating_add(1);
                 self.as_mut().set_queued_revision(revision);
-                let message = if *self.as_ref().collection_mode() {
-                    "Queued the complete reviewed collection. Use Review import when the download finishes."
-                } else {
-                    "Queued with exact game, source, info-hash, and file provenance."
-                };
-                self.as_mut().set_message(qstring(message));
+                self.as_mut().set_message(qstring(
+                    "Queued with exact game, source, info-hash, and file provenance.",
+                ));
             }
             Err(error) => self
                 .as_mut()
                 .set_message(qstring(format!("Could not queue this torrent: {error}"))),
+        }
+    }
+
+    pub fn register_source(mut self: Pin<&mut Self>) {
+        if *self.as_ref().busy() || !*self.as_ref().ready() || !*self.as_ref().collection_mode() {
+            return;
+        }
+        let Some(offer) = self.as_ref().rust().offer.clone() else {
+            self.as_mut()
+                .set_message(qstring("Choose and review a torrent first."));
+            return;
+        };
+        let Some(association) = self.as_ref().rust().collection_association.clone() else {
+            self.as_mut()
+                .set_message(qstring("Choose the platform represented by this torrent."));
+            return;
+        };
+        self.as_mut().set_busy(true);
+        self.as_mut().set_message(qstring(
+            "Indexing exact torrent members for on-demand game downloads…",
+        ));
+        let generation = self.as_ref().rust().generation;
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-torrent-source-register".to_owned())
+            .spawn(move || {
+                let result = (|| -> anyhow::Result<i64> {
+                    let store = crate::settings::SettingsStore::open_default()?;
+                    let settings = store.load()?;
+                    let password = crate::settings::load_password()?.unwrap_or_default();
+                    external_torrent::register_collection_torrent(
+                        &settings,
+                        &password,
+                        &store,
+                        association,
+                        offer,
+                    )
+                })()
+                .map_err(|error| format!("{error:#}"));
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_registration(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_busy(false);
+            self.as_mut().set_message(qstring(format!(
+                "Could not start torrent source registration: {error}"
+            )));
+        }
+    }
+
+    fn finish_registration(mut self: Pin<&mut Self>, generation: u64, result: Result<i64, String>) {
+        if generation != self.as_ref().rust().generation {
+            return;
+        }
+        self.as_mut().set_busy(false);
+        match result {
+            Ok(_) => {
+                if let Some(offer) = self.as_mut().rust_mut().offer.as_mut() {
+                    offer.magnet_review_created = false;
+                }
+                let revision = self.as_ref().registered_revision().saturating_add(1);
+                self.as_mut().set_registered_revision(revision);
+                self.as_mut().set_message(qstring(
+                    "Torrent source added. Matching games can now download individual files from their Get lists.",
+                ));
+            }
+            Err(error) => self.as_mut().set_message(qstring(format!(
+                "Could not add this torrent source: {error}"
+            ))),
         }
     }
 

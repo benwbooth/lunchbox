@@ -118,11 +118,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   association, and durable source/torrent/job provenance all reuse the existing
   qBittorrent, import, and collection pipeline. No external source label can
   establish game identity.
-- Provider-neutral whole-collection intake from a native `.torrent` or pasted
+- Provider-neutral reusable-source intake from a native `.torrent` or pasted
   v1 magnet link: bounded qBittorrent metadata resolution, verified info hash,
-  complete-inventory review, a managed per-platform destination, durable queue
-  progress, and explicit handoff to the normal local-import identity review.
-  Magnet URIs and tracker lists are not persisted.
+  complete-inventory review, exact platform/title indexing, no payload at
+  registration, and selective per-game queueing through the normal Get review.
+  Magnet URIs are not persisted.
 - Unified native Find Artwork workflow for SteamGridDB, IGDB, authorized
   ScreenScraper WebAPI v2, EmuMovies FTP, and explicit Web
   artwork with
@@ -258,7 +258,7 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 - Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
   into the GUI process.
-- Extend the implemented provider-neutral exact-game and whole-collection
+- Extend the implemented provider-neutral exact-game and reusable-source
   `.torrent`/v1-magnet intake with an idempotent watched folder, local
   user-managed provider manifests, and then authorized catalog adapters.
   External offers must retain source provenance and never establish or merge a

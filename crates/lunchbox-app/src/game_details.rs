@@ -113,6 +113,8 @@ pub struct RelatedGame {
 pub struct MinervaBundle {
     pub torrent_id: i64,
     pub torrent_url: String,
+    pub source_kind: String,
+    pub torrent_sha256: String,
     pub collection: String,
     pub provider_platform: String,
     pub rom_count: i64,
@@ -287,6 +289,14 @@ pub fn load(
     }
 
     details.bundles = resolve_minerva_bundles(&details)?;
+    details
+        .bundles
+        .extend(resolve_registered_torrent_bundles_for_game(
+            &settings_store,
+            &details.platform,
+            &details.title,
+            &details.alternate_titles,
+        )?);
     details.downloadable = !details.local && !details.bundles.is_empty();
     let identities = details
         .variants
@@ -1374,6 +1384,8 @@ fn resolve_minerva_bundles_from_path(
         bundles.push(MinervaBundle {
             torrent_id,
             torrent_url,
+            source_kind: "minerva".to_owned(),
+            torrent_sha256: String::new(),
             collection,
             provider_platform,
             rom_count,
@@ -1389,6 +1401,37 @@ fn resolve_minerva_bundles_from_path(
             .then_with(|| left.collection.cmp(&right.collection))
             .then_with(|| left.provider_platform.cmp(&right.provider_platform))
     });
+    Ok(bundles)
+}
+
+fn resolve_registered_torrent_bundles_for_game(
+    store: &crate::settings::SettingsStore,
+    platform: &str,
+    game_title: &str,
+    alternate_titles: &[AlternateTitle],
+) -> Result<Vec<MinervaBundle>> {
+    let platform_key = catalog::normalize_platform_key(platform);
+    let title_keys = registered_torrent_title_keys(game_title, alternate_titles);
+    let mut bundles = Vec::new();
+    for source in store.registered_torrent_sources_for_platform(&platform_key)? {
+        if store
+            .registered_torrent_members_for_title_keys(&source.info_hash, &title_keys)?
+            .is_empty()
+        {
+            continue;
+        }
+        bundles.push(MinervaBundle {
+            torrent_id: source.id,
+            torrent_url: registered_torrent_locator(&source.info_hash),
+            source_kind: "manual_torrent".to_owned(),
+            torrent_sha256: source.torrent_sha256,
+            collection: source.torrent_name,
+            provider_platform: source.platform,
+            rom_count: i64::from(source.file_count),
+            total_size: source.total_bytes,
+            match_kind: BundleMatchKind::MappedName,
+        });
+    }
     Ok(bundles)
 }
 
@@ -1446,7 +1489,16 @@ pub fn load_torrent_files(
     alternate_titles: &[AlternateTitle],
     preferences: &ReleasePreferences,
 ) -> Result<Vec<TorrentFileCandidate>> {
-    let plan_files = indexed_torrent_files(&bundle.torrent_url)?;
+    let plan_files = if bundle.source_kind == "manual_torrent" {
+        registered_torrent_plan_files(
+            &crate::settings::SettingsStore::open_default()?,
+            bundle,
+            game_title,
+            alternate_titles,
+        )?
+    } else {
+        indexed_torrent_files(&bundle.torrent_url)?
+    };
     let files = plan_files
         .iter()
         .map(|file| TorrentFileCandidate {
@@ -1499,6 +1551,40 @@ pub fn load_torrent_files(
     }
 
     rank_file_candidates(files, game_title, alternate_titles, preferences)
+}
+
+fn registered_torrent_plan_files(
+    store: &crate::settings::SettingsStore,
+    bundle: &MinervaBundle,
+    game_title: &str,
+    alternate_titles: &[AlternateTitle],
+) -> Result<Arc<Vec<TorrentPlanFile>>> {
+    let info_hash = registered_torrent_info_hash(&bundle.torrent_url)?;
+    let title_keys = registered_torrent_title_keys(game_title, alternate_titles);
+    Ok(Arc::new(
+        store
+            .registered_torrent_members_for_title_keys(info_hash, &title_keys)?
+            .into_iter()
+            .map(|member| TorrentPlanFile {
+                index: usize::try_from(member.index).unwrap_or(usize::MAX),
+                filename: member.path,
+                byte_size: member.byte_size,
+            })
+            .collect(),
+    ))
+}
+
+fn registered_torrent_title_keys(
+    game_title: &str,
+    alternate_titles: &[AlternateTitle],
+) -> Vec<String> {
+    lookup_titles(game_title, alternate_titles)
+        .into_iter()
+        .map(torrent_member_title_key)
+        .filter(|key| !key.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 pub(crate) fn alternate_title_probe() -> Result<String> {
@@ -2005,11 +2091,33 @@ fn write_torrent_cache_file(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 pub(crate) fn torrent_bytes(bundle: &MinervaBundle) -> Result<Vec<u8>> {
-    Ok(fetch_torrent(&bundle.torrent_url)?.as_ref().clone())
+    torrent_bytes_for_url(&bundle.torrent_url)
 }
 
 pub(crate) fn torrent_bytes_for_url(url: &str) -> Result<Vec<u8>> {
+    if let Ok(info_hash) = registered_torrent_info_hash(url) {
+        return crate::settings::SettingsStore::open_default()?.registered_torrent_bytes(info_hash);
+    }
     Ok(fetch_torrent(url)?.as_ref().clone())
+}
+
+const REGISTERED_TORRENT_LOCATOR_PREFIX: &str = "registered-torrent:";
+
+fn registered_torrent_locator(info_hash: &str) -> String {
+    format!(
+        "{REGISTERED_TORRENT_LOCATOR_PREFIX}{}",
+        info_hash.to_ascii_lowercase()
+    )
+}
+
+fn registered_torrent_info_hash(locator: &str) -> Result<&str> {
+    let info_hash = locator
+        .strip_prefix(REGISTERED_TORRENT_LOCATOR_PREFIX)
+        .context("torrent source is not a registered local catalog")?;
+    if info_hash.len() != 40 || !info_hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        bail!("registered torrent source has an invalid info hash");
+    }
+    Ok(info_hash)
 }
 
 fn rank_file_candidates(
@@ -2138,6 +2246,14 @@ fn title_without_tags(value: &str) -> &str {
         .find(['(', '['])
         .map(|index| value[..index].trim_end())
         .unwrap_or(value)
+}
+
+pub(crate) fn torrent_member_title_key(path: &str) -> String {
+    let stem = Path::new(path)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path);
+    normalized_words(title_without_tags(stem))
 }
 
 fn release_labels(filename: &str) -> (String, String) {
@@ -3148,6 +3264,8 @@ mod tests {
         let bundle = |id, collection: &str, platform: &str| MinervaBundle {
             torrent_id: id,
             torrent_url: format!("https://example.test/{id}.torrent"),
+            source_kind: "minerva".to_owned(),
+            torrent_sha256: String::new(),
             collection: collection.to_owned(),
             provider_platform: platform.to_owned(),
             rom_count: 1,
@@ -3173,6 +3291,82 @@ mod tests {
                 "Nintendo - Nintendo Entertainment System (Headered) (Private)",
             ))
         );
+    }
+
+    #[test]
+    fn registered_torrent_catalog_resolves_by_exact_platform_and_title_key() {
+        assert_eq!(
+            torrent_member_title_key(
+                "MIG Switch/Captain Toad Treasure Tracker [01009BF0072D4000][v0].xci"
+            ),
+            "captain toad treasure tracker"
+        );
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::settings::SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let offer = crate::external_torrent::inspect_torrent_bytes(
+            &crate::external_torrent::probe_fixture_torrent_bytes(),
+            "switch-volume.torrent",
+        )
+        .unwrap();
+        store
+            .register_torrent_catalog(&crate::settings::RegisteredTorrentCatalog {
+                platform: "Nintendo Switch".into(),
+                platform_key: "nintendo-switch".into(),
+                source_kind: "file".into(),
+                source_label: "switch-volume.torrent".into(),
+                source_file_name: "switch-volume.torrent".into(),
+                torrent_name: offer.torrent_name,
+                torrent_sha256: offer.torrent_sha256,
+                info_hash: offer.info_hash,
+                torrent_bytes: offer.torrent_bytes,
+                total_bytes: offer.total_bytes,
+                members: offer
+                    .files
+                    .into_iter()
+                    .map(|file| crate::settings::RegisteredTorrentMember {
+                        index: file.index,
+                        title_key: torrent_member_title_key(&file.path),
+                        path: file.path,
+                        byte_size: file.byte_size,
+                    })
+                    .collect(),
+                registered_at: 1,
+            })
+            .unwrap();
+
+        assert!(
+            resolve_registered_torrent_bundles_for_game(
+                &store,
+                "Nintendo GameCube",
+                "Sample Game",
+                &[],
+            )
+            .unwrap()
+            .is_empty()
+        );
+        assert!(
+            resolve_registered_torrent_bundles_for_game(
+                &store,
+                "Nintendo Switch",
+                "Different Game",
+                &[],
+            )
+            .unwrap()
+            .is_empty()
+        );
+        let bundles = resolve_registered_torrent_bundles_for_game(
+            &store,
+            "Nintendo Switch",
+            "Sample Game",
+            &[],
+        )
+        .unwrap();
+        assert_eq!(bundles.len(), 1);
+        assert_eq!(bundles[0].source_kind, "manual_torrent");
+        let files = registered_torrent_plan_files(&store, &bundles[0], "Sample Game", &[]).unwrap();
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].filename, "Game/Sample Game.rom");
+        assert_eq!(files[1].filename, "Game/Sample Game (Europe).rom");
     }
 
     #[test]

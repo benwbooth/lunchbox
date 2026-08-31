@@ -18,7 +18,9 @@ TestCase {
             QtObject {
                 id: detailsState
                 property string title: "Faxanadu"
+                property int detail_revision: 0
                 property int file_count: 1
+                property bool registeredSource: false
                 property bool download_busy: false
                 property bool download_preflight_busy: false
                 property bool download_preflight_ready: false
@@ -35,6 +37,7 @@ TestCase {
                 function file_detail_at(index) { return "BEST MATCH · 100% title match" }
                 function file_plan_members_at(index) { return "" }
                 function inspect_download(index) { ++inspectCount }
+                function selected_source_is_registered() { return registeredSource }
             }
 
             QtObject {
@@ -73,6 +76,9 @@ TestCase {
         host.detailsState.download_preflight_action = ""
         host.detailsState.download_preflight_ready = true
         compare(host.review.readinessLabel, "READY")
+        host.detailsState.registeredSource = true
+        ++host.detailsState.detail_revision
+        compare(host.review.selectiveOnly, true)
         host.review.close()
     }
 }
