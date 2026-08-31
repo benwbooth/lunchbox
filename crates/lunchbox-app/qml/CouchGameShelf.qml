@@ -240,8 +240,8 @@ ListView {
             Column {
                 anchors.left: wheelCoverFrame.right
                 anchors.leftMargin: 14
-                anchors.right: statePill.left
-                anchors.rightMargin: 12
+                anchors.right: localPlayIcon.visible ? localPlayIcon.left : parent.right
+                anchors.rightMargin: 14
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 5
 
@@ -266,33 +266,17 @@ ListView {
                 }
             }
 
-            Rectangle {
-                id: statePill
+            Text {
+                id: localPlayIcon
+                visible: gameTile.gameLocal
                 anchors.right: parent.right
                 anchors.rightMargin: 14
                 anchors.verticalCenter: parent.verticalCenter
-                width: stateLabel.implicitWidth + 16
-                height: 24
-                radius: 7
-                color: gameTile.gameLocal
-                       ? shelf.withAlpha(shelf.accentCool, 0.22)
-                       : gameTile.gameDownloadable
-                         ? shelf.withAlpha(shelf.accent, 0.2)
-                         : shelf.withAlpha(shelf.background, 0.46)
-                border.color: gameTile.gameLocal ? shelf.accentCool
-                              : gameTile.gameDownloadable ? shelf.accent
-                                                          : shelf.withAlpha(shelf.muted, 0.35)
-                Text {
-                    id: stateLabel
-                    anchors.centerIn: parent
-                    text: gameTile.gameLocal ? "READY"
-                          : gameTile.gameDownloadable ? "GET" : "CATALOG"
-                    color: gameTile.gameLocal ? shelf.accentCool
-                           : gameTile.gameDownloadable ? shelf.accent : shelf.muted
-                    font.pixelSize: 8
-                    font.weight: Font.Bold
-                    font.letterSpacing: 0.7
-                }
+                text: "▶"
+                color: shelf.accentCool
+                font.pixelSize: gameTile.current ? 20 : 16
+                font.weight: Font.Bold
+                Accessible.ignored: true
             }
 
             HoverHandler { id: wheelHover }

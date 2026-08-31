@@ -51,7 +51,9 @@ Rectangle {
                   : libraryModel.media_active_title.length > 0
                     ? libraryModel.media_active_kind + " · "
                       + libraryModel.media_active_title
-                    : libraryModel.media_fetch_message
+                    : libraryModel.media_pending_count > 0
+                      ? "Waiting for the next media transfer"
+                      : "Automatic media ready"
             color: libraryModel.media_setup_required ? status.accent : status.muted
             font.pixelSize: 10
             font.weight: libraryModel.media_setup_required
@@ -77,7 +79,6 @@ Rectangle {
             visible: libraryModel.media_active_title.length === 0
                      && !libraryModel.media_setup_required
             text: libraryModel.media_downloaded_count + " downloaded · "
-                  + libraryModel.media_missing_count + " unavailable · "
                   + libraryModel.media_error_count + " errors"
             color: status.muted
             font.pixelSize: 8
@@ -93,5 +94,5 @@ Rectangle {
     ToolTip.visible: hover.hovered
     ToolTip.text: libraryModel.media_setup_required
                   ? "Open EmuMovies Settings"
-                  : libraryModel.media_fetch_message
+                  : "Automatic artwork and video download queue"
 }

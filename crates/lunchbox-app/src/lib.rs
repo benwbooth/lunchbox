@@ -36,6 +36,7 @@ mod media;
 mod media_acquisition;
 mod media_audit;
 pub mod media_audit_model;
+mod platform_process;
 mod profile_backup;
 mod provider_image;
 mod qbittorrent;

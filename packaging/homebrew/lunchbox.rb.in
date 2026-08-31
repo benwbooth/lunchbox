@@ -1,0 +1,20 @@
+cask "lunchbox" do
+  version "@VERSION@"
+  arch arm: "arm64", intel: "x86_64"
+
+  sha256 arm: "@ARM64_SHA256@",
+         intel: "@X86_64_SHA256@"
+
+  url "https://github.com/benwbooth/lunchbox/releases/download/v#{version}/Lunchbox-macos-#{arch}.dmg"
+  name "Lunchbox"
+  desc "Native game library, acquisition browser, and emulator frontend"
+  homepage "https://github.com/benwbooth/lunchbox"
+
+  app "Lunchbox.app"
+
+  zap trash: [
+    "~/Library/Application Support/Lunchbox",
+    "~/Library/Caches/Lunchbox",
+    "~/Library/Preferences/io.github.benwbooth.Lunchbox.plist",
+  ]
+end

@@ -3,7 +3,7 @@ use std::env;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::catalog;
+use crate::platform_process::{host_command, host_program_available, is_flatpak};
 use crate::settings::{ManagedEmulatorInstall, SettingsStore};
 
 const MAX_MANAGED_DOWNLOAD_BYTES: u64 = 1024 * 1024 * 1024;
@@ -100,7 +101,36 @@ impl ManagedEmulator {
     }
 
     pub fn can_uninstall(&self) -> bool {
-        self.installed && self.managed && self.manager_available
+        self.installed
+            && self.manager_available
+            && (self.managed || self.can_uninstall_external_package())
+    }
+
+    fn can_uninstall_external_package(&self) -> bool {
+        matches!(self.manager.as_str(), "flatpak" | "winget" | "homebrew")
+    }
+
+    pub fn uninstall_confirmation(&self) -> String {
+        if self.managed {
+            return format!(
+                "Lunchbox will remove only its managed {} installation. Your games, saves, and firmware are not touched.",
+                self.package_id
+            );
+        }
+
+        let scope = if self.manager == "flatpak" {
+            match self.install_path.as_str() {
+                "system" => "system ",
+                "user" => "user ",
+                _ => "",
+            }
+        } else {
+            ""
+        };
+        format!(
+            "Lunchbox detected this installation outside Lunchbox. {} will be asked to uninstall the exact {scope}package {}. This can affect other games or applications that use the same emulator. Your ROMs, saves, and firmware are not removed.",
+            self.source_label, self.package_id
+        )
     }
 
     pub fn is_compatible_with(&self, platform_key: &str) -> bool {
@@ -626,20 +656,18 @@ pub fn perform_action(row: &ManagedEmulator, action: ManagedAction) -> Result<St
             Ok(format!("Updated {} with {}.", row.name, row.source_label))
         }
         ManagedAction::Uninstall => {
-            if !row.managed {
-                bail!(
-                    "{} was not installed by Lunchbox; remove it with {} instead",
-                    row.name,
-                    row.source_label
-                );
-            }
             uninstall(row)?;
-            store.remove_managed_emulator_install(
-                &row.host_system_slug,
-                &row.manager,
-                &row.package_id,
-            )?;
-            Ok(format!("Uninstalled {}.", row.name))
+            if row.managed {
+                store.remove_managed_emulator_install(
+                    &row.host_system_slug,
+                    &row.manager,
+                    &row.package_id,
+                )?;
+            }
+            Ok(format!(
+                "Uninstalled {} with {}.",
+                row.name, row.source_label
+            ))
         }
     }
 }
@@ -804,7 +832,11 @@ fn validate_row_for_action(row: &ManagedEmulator, action: ManagedAction) -> Resu
         ManagedAction::Install if !row.can_install() => bail!("{} cannot be installed", row.name),
         ManagedAction::Update if !row.can_update() => bail!("{} cannot be updated", row.name),
         ManagedAction::Uninstall if !row.can_uninstall() => {
-            bail!("{} is not a Lunchbox-managed installation", row.name)
+            bail!(
+                "{} cannot be safely uninstalled from Lunchbox; remove it with {} instead",
+                row.name,
+                row.source_label
+            )
         }
         _ => Ok(()),
     }
@@ -1384,7 +1416,7 @@ fn check_winget_update(package_id: &str) -> UpdateCheckResult {
     let Ok(winget) = command_path("winget") else {
         return UpdateCheckResult::Unsupported;
     };
-    let output = match Command::new(winget)
+    let output = match host_command(winget)
         .args([
             "upgrade",
             "--disable-interactivity",
@@ -1535,6 +1567,9 @@ impl HostSnapshot {
 }
 
 fn command_path(name: &str) -> Result<PathBuf> {
+    if is_flatpak() && host_program_available(name) {
+        return Ok(PathBuf::from(name));
+    }
     let mut names = vec![name.to_owned()];
     if cfg!(target_os = "windows") && !name.to_ascii_lowercase().ends_with(".exe") {
         names.push(format!("{name}.exe"));
@@ -1560,7 +1595,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let output = Command::new(&program)
+    let output = host_command(&program)
         .args(arguments)
         .output()
         .with_context(|| format!("starting {operation} with {}", program.display()))?;
@@ -1579,7 +1614,7 @@ fn installed_flatpaks() -> HashMap<(String, String), String> {
     };
     let mut installed = HashMap::new();
     for (scope, flag) in [("user", "--user"), ("system", "--system")] {
-        let Ok(output) = Command::new(&flatpak)
+        let Ok(output) = host_command(&flatpak)
             .args(["list", flag, "--app", "--columns=application,version"])
             .output()
         else {
@@ -1612,7 +1647,7 @@ fn installed_homebrew_packages() -> HashMap<String, String> {
     };
     let mut installed = HashMap::new();
     for kind in ["--formula", "--cask"] {
-        let Ok(output) = Command::new(&brew)
+        let Ok(output) = host_command(&brew)
             .args(["list", "--versions", kind])
             .output()
         else {
@@ -1635,7 +1670,7 @@ fn installed_winget(package_id: &str) -> Result<InstallationState> {
     if !cfg!(target_os = "windows") {
         return Ok(InstallationState::default());
     }
-    let output = Command::new(command_path("winget")?)
+    let output = host_command(command_path("winget")?)
         .args(["list", "--disable-interactivity", "-e", "--id", package_id])
         .output()
         .context("checking winget installation")?;
@@ -1660,7 +1695,7 @@ fn nix_profile_path() -> Result<PathBuf> {
 
 fn load_nix_profile() -> Result<NixProfileList> {
     let profile = nix_profile_path()?;
-    let output = Command::new(command_path("nix")?)
+    let output = host_command(command_path("nix")?)
         .args(["profile", "list", "--profile"])
         .arg(&profile)
         .arg("--json")
@@ -1717,7 +1752,7 @@ fn install_nix(row: &ManagedEmulator) -> Result<String> {
         fs::create_dir_all(parent)
             .with_context(|| format!("creating Nix profile directory {}", parent.display()))?;
     }
-    let output = Command::new(command_path("nix")?)
+    let output = host_command(command_path("nix")?)
         .args(["profile", "install", "--profile"])
         .arg(&profile)
         .arg(format!("nixpkgs#{}", row.package_id))
@@ -1732,7 +1767,7 @@ fn update_nix(row: &ManagedEmulator) -> Result<String> {
     let profile_list = load_nix_profile()?;
     let (name, _) = nix_profile_element(&profile_list, &row.package_id)
         .with_context(|| format!("{} is not in the Lunchbox Nix profile", row.package_id))?;
-    let output = Command::new(command_path("nix")?)
+    let output = host_command(command_path("nix")?)
         .args(["profile", "upgrade", "--profile"])
         .arg(&profile)
         .arg(&name)
@@ -1747,7 +1782,7 @@ fn uninstall_nix(row: &ManagedEmulator) -> Result<()> {
     let profile_list = load_nix_profile()?;
     let (name, _) = nix_profile_element(&profile_list, &row.package_id)
         .with_context(|| format!("{} is not in the Lunchbox Nix profile", row.package_id))?;
-    let output = Command::new(command_path("nix")?)
+    let output = host_command(command_path("nix")?)
         .args(["profile", "remove", "--profile"])
         .arg(&profile)
         .arg(&name)
@@ -1901,7 +1936,7 @@ fn run_appimage_update(executable: &Path) -> Result<PathBuf> {
     );
     fs::copy(executable, &staged)?;
     mark_executable(&staged)?;
-    let output = Command::new(&updater)
+    let output = host_command(&updater)
         .arg(&staged)
         .env("APPIMAGE_EXTRACT_AND_RUN", "1")
         .current_dir(&work)
@@ -1958,7 +1993,7 @@ fn ensure_appimage_updater() -> Result<PathBuf> {
 
 fn appimage_update_transport(path: &Path) -> Option<String> {
     for flag in ["--appimage-updateinformation", "--appimage-updateinfo"] {
-        let output = Command::new(path)
+        let output = host_command(path)
             .arg(flag)
             .env("APPIMAGE_EXTRACT_AND_RUN", "1")
             .output()

@@ -1,0 +1,234 @@
+name: Native packages
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-packages-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_TERM_COLOR: always
+  QT_VERSION: 6.8.3
+
+jobs:
+  nix:
+    name: Nix flake
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      - name: Check flake outputs
+        run: nix flake check --print-build-logs
+      - name: Build Lunchbox
+        run: nix build .#lunchbox --print-build-logs
+
+  windows:
+    name: Windows MSI and portable ZIP
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          modules: qtimageformats qtmultimedia qtquick3d qtsvg
+          cache: true
+      - name: Build release executable
+        run: cargo build --locked --release --package lunchbox-app
+      - name: Stage Qt runtime and database
+        shell: pwsh
+        run: |
+          $stage = Join-Path $PWD 'dist\Lunchbox'
+          New-Item -ItemType Directory -Force "$stage\bin", "$stage\share\lunchbox" | Out-Null
+          Copy-Item 'target\release\lunchbox.exe' "$stage\bin\lunchbox.exe"
+          cargo run --locked --release --package lunchbox-db -- extract --archive 'artifacts\lunchbox.db.7z' --output "$stage\share\lunchbox"
+          windeployqt --release --qmldir 'crates\lunchbox-app\qml' "$stage\bin\lunchbox.exe"
+          if (-not (Test-Path "$stage\share\lunchbox\lunchbox.db")) { throw 'database staging failed' }
+      - name: Build portable ZIP
+        shell: pwsh
+        run: Compress-Archive -Path 'dist\Lunchbox' -DestinationPath 'dist\Lunchbox-windows-x86_64.zip' -CompressionLevel Optimal -Force
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $version = ($metadata.packages | Where-Object { $_.name -eq 'lunchbox-app' }).version
+          dotnet tool install --global wix --version 7.0.0
+          wix build packaging\windows\Lunchbox.wxs -arch x64 -d "StageDir=$((Resolve-Path 'dist\Lunchbox').Path)" -d "Version=$version" -o dist\Lunchbox-windows-x86_64.msi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lunchbox-windows-x86_64
+          path: |
+            dist/Lunchbox-windows-x86_64.zip
+            dist/Lunchbox-windows-x86_64.msi
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    name: macOS ${{ matrix.arch }} DMG
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            qt_arch: clang_64
+            arch: arm64
+          - runner: macos-15-intel
+            qt_arch: clang_64
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt_arch }}
+          modules: qtimageformats qtmultimedia qtquick3d qtsvg
+          cache: true
+      - name: Build release executable
+        run: cargo build --locked --release --package lunchbox-app
+      - name: Assemble application bundle
+        run: |
+          rm -rf dist/Lunchbox.app
+          mkdir -p dist/Lunchbox.app/Contents/MacOS dist/Lunchbox.app/Contents/share/lunchbox
+          install -m 0755 target/release/lunchbox dist/Lunchbox.app/Contents/MacOS/lunchbox
+          install -m 0644 packaging/macos/Info.plist dist/Lunchbox.app/Contents/Info.plist
+          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "lunchbox-app") | .version')"
+          plutil -replace CFBundleShortVersionString -string "$version" dist/Lunchbox.app/Contents/Info.plist
+          plutil -replace CFBundleVersion -string "${GITHUB_RUN_NUMBER}" dist/Lunchbox.app/Contents/Info.plist
+          cargo run --locked --release --package lunchbox-db -- extract --archive artifacts/lunchbox.db.7z --output dist/Lunchbox.app/Contents/share/lunchbox
+          macdeployqt dist/Lunchbox.app -qmldir=crates/lunchbox-app/qml -always-overwrite
+          codesign --force --deep --sign - dist/Lunchbox.app
+          test -f dist/Lunchbox.app/Contents/share/lunchbox/lunchbox.db
+      - name: Build DMG
+        run: hdiutil create -volname Lunchbox -srcfolder dist/Lunchbox.app -ov -format UDZO dist/Lunchbox-macos-${{ matrix.arch }}.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lunchbox-macos-${{ matrix.arch }}
+          path: dist/Lunchbox-macos-${{ matrix.arch }}.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  appimage:
+    name: Linux AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev libgl1-mesa-dev libpulse-dev libudev-dev libwayland-dev libxkbcommon-dev patchelf
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+          modules: qtimageformats qtmultimedia qtquick3d qtsvg
+          cache: true
+      - name: Build release executable
+        run: cargo build --locked --release --package lunchbox-app
+      - name: Stage AppDir
+        run: |
+          rm -rf dist/AppDir
+          mkdir -p dist/AppDir/usr/bin dist/AppDir/usr/share/lunchbox
+          install -m 0755 target/release/lunchbox dist/AppDir/usr/bin/lunchbox
+          cargo run --locked --release --package lunchbox-db -- extract --archive artifacts/lunchbox.db.7z --output dist/AppDir/usr/share/lunchbox
+          test -f dist/AppDir/usr/share/lunchbox/lunchbox.db
+      - name: Fetch pinned linuxdeploy tools
+        run: |
+          curl --fail --location --silent --show-error -o linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
+          curl --fail --location --silent --show-error -o linuxdeploy-plugin-qt https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage
+          echo 'c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d  linuxdeploy' | sha256sum --check
+          echo '15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724  linuxdeploy-plugin-qt' | sha256sum --check
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          EXTRA_QT_PLUGINS: imageformats;multimedia
+          OUTPUT: dist/Lunchbox-linux-x86_64.AppImage
+          QML_SOURCES_PATHS: crates/lunchbox-app/qml
+        run: ./linuxdeploy --appdir dist/AppDir --desktop-file packaging/io.github.benwbooth.Lunchbox.desktop --icon-file assets/lunchbox.svg --executable dist/AppDir/usr/bin/lunchbox --plugin qt --output appimage
+      - name: Verify AppImage payload
+        run: |
+          chmod +x dist/Lunchbox-linux-x86_64.AppImage
+          cd dist
+          ./Lunchbox-linux-x86_64.AppImage --appimage-extract >/dev/null
+          test -f squashfs-root/usr/share/lunchbox/lunchbox.db
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lunchbox-linux-x86_64
+          path: dist/Lunchbox-linux-x86_64.AppImage
+          if-no-files-found: error
+          retention-days: 14
+
+  flatpak:
+    name: Linux Flatpak
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build bundle and repository
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: Lunchbox-linux-x86_64.flatpak
+          manifest-path: packaging/flatpak/io.github.benwbooth.Lunchbox.yml
+          repo-dir: repo
+          cache-key: flatpak-${{ hashFiles('Cargo.lock', 'packaging/flatpak/io.github.benwbooth.Lunchbox.yml', 'packaging/flatpak/cargo-sources.json') }}
+          upload-artifact: false
+      - name: Archive update repository reproducibly
+        run: tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner -czf Lunchbox-flatpak-repo.tar.gz repo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lunchbox-flatpak-x86_64
+          path: |
+            Lunchbox-linux-x86_64.flatpak
+            Lunchbox-flatpak-repo.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish tagged release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [nix, windows, macos, appimage, flatpak]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+      - name: Generate checksums and Homebrew cask
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          cargo_version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "lunchbox-app") | .version')"
+          test "$version" = "$cargo_version"
+          arm_dmg="release/Lunchbox-macos-arm64/Lunchbox-macos-arm64.dmg"
+          intel_dmg="release/Lunchbox-macos-x86_64/Lunchbox-macos-x86_64.dmg"
+          arm_sha="$(sha256sum "$arm_dmg" | cut -d' ' -f1)"
+          intel_sha="$(sha256sum "$intel_dmg" | cut -d' ' -f1)"
+          sed -e "s/@VERSION@/$version/g" -e "s/@ARM64_SHA256@/$arm_sha/g" -e "s/@X86_64_SHA256@/$intel_sha/g" packaging/homebrew/lunchbox.rb.in > release/lunchbox.rb
+          find release -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > release/SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release/**/*.msi
+            release/**/*.zip
+            release/**/*.dmg
+            release/**/*.AppImage
+            release/**/*.flatpak
+            release/**/*flatpak-repo.tar.gz
+            release/lunchbox.rb
+            release/SHA256SUMS

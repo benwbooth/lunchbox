@@ -1,0 +1,46 @@
+app-id: io.github.benwbooth.Lunchbox
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: lunchbox
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=all
+  - --filesystem=host
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  - name: lunchbox
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/lunchbox/cargo
+        CARGO_NET_OFFLINE: 'true'
+        QMAKE: /usr/bin/qmake6
+    build-commands:
+      - cargo build --locked --offline --release --package lunchbox-app
+      - cargo run --locked --offline --release --package lunchbox-db -- extract --archive artifacts/lunchbox.db.7z --output database
+      - install -Dm0755 target/release/lunchbox /app/bin/lunchbox
+      - install -Dm0644 database/lunchbox.db /app/share/lunchbox/lunchbox.db
+      - install -Dm0644 packaging/io.github.benwbooth.Lunchbox.desktop /app/share/applications/io.github.benwbooth.Lunchbox.desktop
+      - install -Dm0644 packaging/io.github.benwbooth.Lunchbox.metainfo.xml /app/share/metainfo/io.github.benwbooth.Lunchbox.metainfo.xml
+      - install -Dm0644 assets/lunchbox.svg /app/share/icons/hicolor/scalable/apps/io.github.benwbooth.Lunchbox.svg
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - .flatpak-builder
+          - build
+          - result
+          - target
+      - cargo-sources.json

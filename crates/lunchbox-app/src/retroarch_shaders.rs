@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -12,6 +11,8 @@ use directories::{BaseDirs, ProjectDirs};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+use crate::platform_process::host_command;
 
 const MAX_ARCHIVE_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_UNPACKED_BYTES: u64 = 512 * 1024 * 1024;
@@ -294,7 +295,7 @@ pub fn open_target(path: &Path) -> Result<()> {
     } else {
         "xdg-open"
     };
-    Command::new(program)
+    host_command(program)
         .arg(path)
         .spawn()
         .with_context(|| format!("opening RetroArch shader directory {}", path.display()))?;

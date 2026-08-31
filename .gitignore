@@ -2,6 +2,7 @@
 **/.qmlls.ini
 /result
 /.direnv/
+/.flatpak-builder/
 /.codex
 /.vscode/
 /.local/

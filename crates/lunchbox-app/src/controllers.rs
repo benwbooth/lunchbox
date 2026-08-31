@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
+use crate::platform_process::host_command;
 use crate::settings::{
     AppSettings, CONTROLLER_GAMEPAD_BUTTONS, ControllerButtonMapping, ControllerCustomProfile,
     ControllerMappingSettings, ControllerPlayerMapping,
@@ -978,7 +979,7 @@ fn run_command_with_timeout(
     timeout: Duration,
 ) -> Result<String, String> {
     let started = Instant::now();
-    let mut child = Command::new(program)
+    let mut child = host_command(program)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

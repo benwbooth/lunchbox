@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Lunchbox"
+    Manufacturer="Lunchbox"
+    Version="$(Version)"
+    UpgradeCode="A9F5844F-7D95-4B8A-AF19-31AC0B829B1A"
+    Scope="perMachine">
+    <SummaryInformation Description="Lunchbox game library and emulator frontend" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Lunchbox is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Lunchbox" />
+    </StandardDirectory>
+
+    <Files Include="$(StageDir)\**" Directory="INSTALLFOLDER">
+      <Exclude Files="$(StageDir)\**\*.pdb" />
+    </Files>
+  </Package>
+</Wix>

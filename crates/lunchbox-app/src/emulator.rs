@@ -3,12 +3,13 @@ use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 
 use anyhow::{Context, Result, anyhow, bail};
 use rusqlite::params_from_iter;
 
 use crate::exo_install::{ExoCollection, PreparedInstall};
+use crate::platform_process::{host_command, is_flatpak};
 
 const DEFAULT_SCUMMVM_CONFIG: &str = r#"[scummvm]
 filtering=false
@@ -1096,7 +1097,7 @@ pub fn build_rom_launch_plan_with_customization(
 }
 
 pub fn spawn_launch_plan(plan: &LaunchPlan) -> Result<Child> {
-    let mut command = Command::new(&plan.program);
+    let mut command = host_command(&plan.program);
     command
         .args(&plan.arguments)
         .current_dir(&plan.current_directory)
@@ -1757,10 +1758,12 @@ fn installed_flatpak_apps(host: HostPlatform) -> BTreeSet<String> {
         return BTreeSet::new();
     }
     let paths = executable_search_directories();
-    let Some(flatpak) = find_executable_in_paths("flatpak", &paths) else {
+    let flatpak = find_executable_in_paths("flatpak", &paths)
+        .or_else(|| is_flatpak().then(|| PathBuf::from("flatpak")));
+    let Some(flatpak) = flatpak else {
         return BTreeSet::new();
     };
-    Command::new(flatpak)
+    host_command(flatpak)
         .args(["list", "--app", "--columns=application"])
         .output()
         .ok()

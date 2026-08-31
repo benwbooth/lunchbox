@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
@@ -15,6 +14,7 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::emulator::{EmulatorExecutable, EmulatorRuntimeKind, RomEmulatorOption};
+use crate::platform_process::host_command;
 use crate::settings::{
     FirmwareDownloadReceipt, FirmwareFileReceipt, FirmwareInstallReceipt, FirmwarePackageReceipt,
     SettingsStore,
@@ -1464,7 +1464,7 @@ fn open_path(path: &Path) -> Result<()> {
     } else {
         ("xdg-open", path.as_os_str())
     };
-    Command::new(program)
+    host_command(program)
         .arg(argument)
         .spawn()
         .with_context(|| format!("opening firmware directory {}", path.display()))?;

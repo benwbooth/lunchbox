@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.benwbooth.Lunchbox</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.benwbooth">
+    <name>Lunchbox contributors</name>
+  </developer>
+  <name>Lunchbox</name>
+  <summary>Browse, manage, download, and play your game collection</summary>
+  <description>
+    <p>
+      Lunchbox is a native game library, acquisition browser, collection
+      manager, and emulator frontend built with Rust, CXX-Qt, and QML.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.benwbooth.Lunchbox.desktop</launchable>
+  <url type="homepage">https://github.com/benwbooth/lunchbox</url>
+  <url type="bugtracker">https://github.com/benwbooth/lunchbox/issues</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-08-30" />
+  </releases>
+</component>

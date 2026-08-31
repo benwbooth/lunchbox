@@ -63,6 +63,9 @@ pub mod qobject {
         fn can_uninstall_at(self: &EmulatorManagerModel, index: i32) -> bool;
 
         #[qinvokable]
+        fn uninstall_confirmation_at(self: &EmulatorManagerModel, index: i32) -> QString;
+
+        #[qinvokable]
         fn install_at(self: Pin<&mut EmulatorManagerModel>, index: i32);
 
         #[qinvokable]
@@ -177,12 +180,19 @@ impl qobject::EmulatorManagerModel {
                 self.as_mut().set_initialized(true);
                 let installed = *self.as_ref().installed_count();
                 let total = self.as_ref().rust().all_rows.len();
+                let uninstallable = self
+                    .as_ref()
+                    .rust()
+                    .all_rows
+                    .iter()
+                    .filter(|row| row.can_uninstall())
+                    .count();
                 self.as_mut().set_message(qstring(format!(
                     "Detected {installed} installed runtime{} across {total} managed emulator choices.",
                     if installed == 1 { "" } else { "s" }
                 )));
                 println!(
-                    "LUNCHBOX_EMULATOR_MANAGER_READY runtimes={detected} installed={installed}"
+                    "LUNCHBOX_EMULATOR_MANAGER_READY runtimes={detected} installed={installed} uninstallable={uninstallable}"
                 );
             }
             Err(error) => {
@@ -316,6 +326,14 @@ impl qobject::EmulatorManagerModel {
         self.row(index).is_some_and(ManagedEmulator::can_uninstall)
     }
 
+    pub fn uninstall_confirmation_at(&self, index: i32) -> QString {
+        qstring(
+            self.row(index)
+                .map(ManagedEmulator::uninstall_confirmation)
+                .unwrap_or_else(|| "Select an emulator first.".to_owned()),
+        )
+    }
+
     pub fn install_at(self: Pin<&mut Self>, index: i32) {
         self.perform_at(index, ManagedAction::Install);
     }
@@ -426,14 +444,34 @@ mod tests {
     }
 
     #[test]
-    fn model_rows_keep_external_installs_out_of_uninstall_actions() {
+    fn model_rows_allow_exact_package_manager_uninstalls() {
         let managed = row("Managed", true, true);
         let external = row("External", true, false);
         let available = row("Available", false, false);
         assert!(managed.can_uninstall());
-        assert!(!external.can_uninstall());
+        assert!(external.can_uninstall());
         assert!(external.can_update());
         assert!(available.can_install());
+    }
+
+    #[test]
+    fn only_exact_package_managers_can_remove_external_installations() {
+        for manager in ["flatpak", "winget", "homebrew"] {
+            let mut external = row(manager, true, false);
+            external.manager = manager.into();
+            assert!(external.can_uninstall(), "{manager}");
+            assert!(
+                external
+                    .uninstall_confirmation()
+                    .contains(&external.package_id)
+            );
+        }
+
+        for manager in ["nix", "appimage", "github", "direct", "libretro"] {
+            let mut external = row(manager, true, false);
+            external.manager = manager.into();
+            assert!(!external.can_uninstall(), "{manager}");
+        }
     }
 
     #[test]

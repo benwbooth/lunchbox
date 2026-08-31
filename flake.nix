@@ -78,6 +78,8 @@
               "$out/share/icons/hicolor/scalable/apps/io.github.benwbooth.Lunchbox.svg"
             install -Dm644 packaging/io.github.benwbooth.Lunchbox.desktop \
               "$out/share/applications/io.github.benwbooth.Lunchbox.desktop"
+            install -Dm644 packaging/io.github.benwbooth.Lunchbox.metainfo.xml \
+              "$out/share/metainfo/io.github.benwbooth.Lunchbox.metainfo.xml"
           '';
           preFixup = ''
             qtWrapperArgs+=(--set LUNCHBOX_DATABASE "$out/share/lunchbox/lunchbox.db")

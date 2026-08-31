@@ -172,6 +172,7 @@ ApplicationWindow {
     property bool mediaRotationProbeOpened: false
     property int pendingEmulatorUninstallIndex: -1
     property string pendingEmulatorUninstallName: ""
+    property string pendingEmulatorUninstallConfirmation: ""
     property bool emulatorUpdateStartupScheduled: false
     property int pendingControllerProfileDeleteIndex: -1
     property string pendingControllerProfileDeleteName: ""
@@ -8179,10 +8180,9 @@ ApplicationWindow {
             readonly property string downloadJobState: downloadJobIndex >= 0
                                                        ? downloadQueue.job_state_at(downloadJobIndex)
                                                        : ""
-            readonly property string availabilityBadge: gameLocal ? "READY"
-                                                        : downloadJobIndex >= 0
-                                                          ? downloadQueue.job_badge_at(downloadJobIndex)
-                                                          : gameDownloadable ? "GET" : ""
+            readonly property string availabilityBadge:
+                downloadJobIndex >= 0 && downloadJobState !== "IMPORTED"
+                ? downloadQueue.job_badge_at(downloadJobIndex) : ""
             property var previewVideoOutput: tileVideoOutput
             readonly property real previewCardExpansion: cardGeometry.expansion
             readonly property real previewCardViewportX: cardGeometry.viewportX
@@ -9255,12 +9255,6 @@ ApplicationWindow {
                 onClicked: root.enterCouchMode()
                 ToolTip.visible: hovered
                 ToolTip.text: "Couch mode"
-            }
-            HeaderButton {
-                text: "Minerva  " + library.downloadable_game_count
-                visible: root.width >= 1280
-                active: root.availability === "downloadable"
-                onClicked: root.selectLibrary(active ? "" : "downloadable")
             }
             HeaderButton {
                 text: "↓  " + downloadQueue.active_count
@@ -10832,147 +10826,6 @@ ApplicationWindow {
                                 }
                             }
 
-                            Rectangle {
-                                id: automaticVideoCard
-                                visible: !gameDetails.video_available
-                                width: parent.width
-                                height: visible ? emuMoviesVideoColumn.implicitHeight + 20 : 0
-                                radius: 8
-                                color: "#151f2c"
-                                readonly property string queueState: {
-                                    library.media_pending_count
-                                    library.media_active_title
-                                    library.media_active_progress
-                                    library.media_setup_required
-                                    library.media_revision
-                                    return library.automatic_video_state(
-                                                root.selectedGameId)
-                                }
-                                readonly property string queueMessage: {
-                                    library.media_pending_count
-                                    library.media_active_title
-                                    library.media_active_progress
-                                    library.media_setup_required
-                                    library.media_revision
-                                    return library.automatic_video_message(
-                                                root.selectedGameId)
-                                }
-                                border.color: queueState === "downloading"
-                                              ? root.accentCool : root.line
-
-                                Column {
-                                    id: emuMoviesVideoColumn
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.top: parent.top
-                                    anchors.margins: 10
-                                    spacing: 8
-                                    RowLayout {
-                                        width: parent.width
-                                        spacing: 10
-                                        Column {
-                                            Layout.fillWidth: true
-                                            spacing: 3
-                                            Text {
-                                                text: "GAMEPLAY VIDEO"
-                                                color: root.ink
-                                                font.pixelSize: 10
-                                                font.weight: Font.Bold
-                                            }
-                                            Text {
-                                                text: automaticVideoCard.queueState
-                                                      === "checking-setup"
-                                                      ? "CHECKING EMUMOVIES SETUP"
-                                                      : automaticVideoCard.queueState
-                                                        === "setup-required"
-                                                      ? "ACCOUNT REQUIRED · OPEN SETTINGS"
-                                                      : automaticVideoCard.queueState
-                                                        === "downloading"
-                                                      ? "DOWNLOADING · EMUMOVIES FTP"
-                                                      : automaticVideoCard.queueState
-                                                        === "queued"
-                                                      ? "QUEUED · AUTOMATIC DOWNLOAD"
-                                                      : automaticVideoCard.queueState
-                                                        === "unavailable"
-                                                      ? "NO EXACT EMUMOVIES VIDEO FOUND"
-                                                      : automaticVideoCard.queueState
-                                                        === "ready"
-                                                      ? "DOWNLOADED · REFRESHING PLAYER"
-                                                      : "AUTOMATIC DOWNLOAD · EMUMOVIES FTP"
-                                                color: root.muted
-                                                font.pixelSize: 7
-                                                font.weight: Font.Bold
-                                                font.letterSpacing: 0.5
-                                            }
-                                        }
-                                        BusyIndicator {
-                                            Layout.preferredWidth: 26
-                                            Layout.preferredHeight: 26
-                                            running: automaticVideoCard.queueState
-                                                     === "downloading"
-                                                     || automaticVideoCard.queueState
-                                                        === "checking-setup"
-                                            visible: running
-                                        }
-                                        Button {
-                                            Layout.preferredWidth: 92
-                                            Layout.preferredHeight: 32
-                                            text: automaticVideoCard.queueState
-                                                  === "setup-required"
-                                                  ? "SET UP"
-                                                  : automaticVideoCard.queueState
-                                                    === "downloading"
-                                                  ? "DOWNLOADING"
-                                                  : automaticVideoCard.queueState
-                                                    === "queued"
-                                                  ? "QUEUED"
-                                                  : automaticVideoCard.queueState
-                                                    === "checking-setup"
-                                                  ? "CHECKING"
-                                                  : automaticVideoCard.queueState
-                                                    === "ready"
-                                                  ? "REFRESHING"
-                                                  : automaticVideoCard.queueState
-                                                    === "unavailable"
-                                                  ? "RETRY"
-                                                  : "DOWNLOAD NOW"
-                                            enabled: automaticVideoCard.queueState
-                                                     === "setup-required"
-                                                     || automaticVideoCard.queueState
-                                                        === "unavailable"
-                                                     || automaticVideoCard.queueState
-                                                        === "automatic"
-                                            onClicked: {
-                                                if (automaticVideoCard.queueState
-                                                        === "setup-required")
-                                                    root.openSettingsFor("emumovies")
-                                                else
-                                                    library.retry_game_video(
-                                                        root.selectedGameId)
-                                            }
-                                            background: Rectangle {
-                                                radius: 7
-                                                color: parent.down ? "#d89444" : root.accent
-                                            }
-                                            contentItem: Text {
-                                                text: parent.text
-                                                color: "#17110a"
-                                                font.pixelSize: 8
-                                                font.weight: Font.Bold
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
-                                        }
-                                    }
-                                    Text {
-                                        width: parent.width
-                                        text: automaticVideoCard.queueMessage
-                                        color: root.muted
-                                        font.pixelSize: 8
-                                        wrapMode: Text.WordWrap
-                                    }
-                                }
-                            }
 
                             Rectangle {
                                 id: detailVideoFrame
@@ -11397,8 +11250,6 @@ ApplicationWindow {
                                         Text {
                                             Layout.fillWidth: true
                                             text: gameDetails.manual_download_message
-                                                  + (emuMovies.last_media_kind === "manual"
-                                                     ? "  " + emuMovies.message : "")
                                             color: gameDetails.manual_download_state === "error"
                                                    ? "#f3a49c" : root.muted
                                             font.pixelSize: 8
@@ -11972,7 +11823,7 @@ ApplicationWindow {
                                                                library.artwork_type)
                                 }
                                 readonly property string availabilityLabel:
-                                    relatedLocal ? "PLAY" : relatedDownloadable ? "GET" : "CATALOG"
+                                    relatedLocal ? "▶" : relatedDownloadable ? "" : "CATALOG"
                                 width: Math.min(158, Math.max(146,
                                                relatedGamesList.width * 0.39))
                                 height: 232
@@ -12037,6 +11888,7 @@ ApplicationWindow {
                                         font.weight: Font.Black
                                     }
                                     Rectangle {
+                                        visible: relatedCard.availabilityLabel.length > 0
                                         anchors.left: parent.left
                                         anchors.right: parent.right
                                         anchors.bottom: parent.bottom
@@ -12197,744 +12049,6 @@ ApplicationWindow {
                         wrapMode: Text.WrapAnywhere
                     }
 
-                    Rectangle {
-                        visible: !gameDetails.loading
-                                 && gameDetails.local_file_count > 0
-                                 && !gameDetails.preparable
-                                 && !gameDetails.prepared
-                        width: parent.width
-                        height: localPlayColumn.implicitHeight + 28
-                        radius: 11
-                        color: "#142429"
-                        border.color: "#31504b"
-
-                        Column {
-                            id: localPlayColumn
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.margins: 14
-                            spacing: 9
-
-                            Row {
-                                width: parent.width
-                                spacing: 8
-                                Column {
-                                    width: parent.width - localRefresh.width - 8
-                                    spacing: 3
-                                    Text {
-                                        text: "PLAY LOCALLY"
-                                        color: root.accentCool
-                                        font.pixelSize: 10
-                                        font.weight: Font.Bold
-                                        font.letterSpacing: 1.1
-                                    }
-                                    Text {
-                                        text: gameDetails.emulator_preference_scope === "game"
-                                              ? "GAME DEFAULT"
-                                              : gameDetails.emulator_preference_scope === "platform"
-                                                ? "PLATFORM DEFAULT"
-                                                : "AUTOMATIC SELECTION"
-                                        color: root.muted
-                                        font.pixelSize: 8
-                                        font.weight: Font.Bold
-                                        font.letterSpacing: 0.6
-                                    }
-                                }
-                                Button {
-                                    id: localRefresh
-                                    width: 76
-                                    height: 30
-                                    text: "REFRESH"
-                                    enabled: !gameDetails.launch_discovery_busy
-                                             && !gameDetails.launch_busy
-                                    font.pixelSize: 9
-                                    font.weight: Font.Bold
-                                    onClicked: gameDetails.refresh_emulators()
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: parent.down ? "#28364a" : "#202b3a"
-                                        border.color: root.line
-                                    }
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: root.muted
-                                        font: parent.font
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                            }
-
-                            Column {
-                                width: parent.width
-                                visible: gameDetails.local_file_count > 1
-                                spacing: 4
-                                Text {
-                                    text: "GAME FILE"
-                                    color: "#7f8b9e"
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                }
-                                ComboBox {
-                                    id: localFilePicker
-                                    width: parent.width
-                                    height: 36
-                                    model: gameDetails.local_file_count
-                                    currentIndex: gameDetails.selected_local_file
-                                    displayText: currentIndex >= 0
-                                                 ? gameDetails.local_file_label_at(currentIndex)
-                                                 : "Select a local file"
-                                    onActivated: function(index) {
-                                        gameDetails.select_local_file(index)
-                                    }
-                                    delegate: ItemDelegate {
-                                        required property int index
-                                        width: localFilePicker.width
-                                        text: gameDetails.local_file_label_at(index)
-                                        font.pixelSize: 10
-                                        highlighted: localFilePicker.highlightedIndex === index
-                                    }
-                                    contentItem: Text {
-                                        leftPadding: 10
-                                        rightPadding: 28
-                                        text: localFilePicker.displayText
-                                        color: root.ink
-                                        font.pixelSize: 10
-                                        verticalAlignment: Text.AlignVCenter
-                                        elide: Text.ElideMiddle
-                                    }
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: "#111923"
-                                        border.color: root.line
-                                    }
-                                }
-                            }
-
-                            Column {
-                                width: parent.width
-                                spacing: 4
-                                Text {
-                                    text: "EMULATOR"
-                                    color: "#7f8b9e"
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                }
-                                ComboBox {
-                                    id: localEmulatorPicker
-                                    width: parent.width
-                                    height: 38
-                                    visible: gameDetails.emulator_option_count > 0
-                                    enabled: !gameDetails.launch_discovery_busy
-                                             && !gameDetails.launch_busy
-                                    model: gameDetails.emulator_option_count
-                                    currentIndex: gameDetails.selected_emulator_option
-                                    displayText: currentIndex >= 0
-                                                 ? gameDetails.emulator_option_label_at(currentIndex)
-                                                 : "Select an emulator"
-                                    onActivated: function(index) {
-                                        gameDetails.select_emulator_option(index)
-                                    }
-                                    delegate: ItemDelegate {
-                                        required property int index
-                                        width: localEmulatorPicker.width
-                                        text: gameDetails.emulator_option_label_at(index)
-                                        font.pixelSize: 10
-                                        highlighted: localEmulatorPicker.highlightedIndex === index
-                                    }
-                                    contentItem: Text {
-                                        leftPadding: 10
-                                        rightPadding: 28
-                                        text: localEmulatorPicker.displayText
-                                        color: root.ink
-                                        font.pixelSize: 10
-                                        font.weight: Font.Medium
-                                        verticalAlignment: Text.AlignVCenter
-                                        elide: Text.ElideRight
-                                    }
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: "#111923"
-                                        border.color: root.accentCool
-                                    }
-                                }
-                                Text {
-                                    width: parent.width
-                                    visible: gameDetails.emulator_option_count === 0
-                                    text: gameDetails.launch_discovery_busy
-                                          ? "Detecting installed emulators…"
-                                          : gameDetails.emulator_name
-                                    color: root.muted
-                                    font.pixelSize: 10
-                                    wrapMode: Text.WordWrap
-                                }
-                                Text {
-                                    width: parent.width
-                                    visible: gameDetails.emulator_summary.length > 0
-                                    text: gameDetails.emulator_summary
-                                    color: root.muted
-                                    font.pixelSize: 9
-                                    elide: Text.ElideMiddle
-                                }
-                            }
-
-                            Row {
-                                width: parent.width
-                                visible: gameDetails.emulator_option_count > 0
-                                spacing: 6
-                                Button {
-                                    width: (parent.width - 12) / 3
-                                    height: 30
-                                    text: "THIS GAME"
-                                    enabled: !gameDetails.launch_busy
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                    onClicked: gameDetails.save_game_emulator_preference()
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: gameDetails.emulator_preference_scope === "game"
-                                               ? "#1d493f" : "#202b3a"
-                                        border.color: gameDetails.emulator_preference_scope === "game"
-                                                      ? root.accentCool : root.line
-                                    }
-                                    contentItem: Text { text: parent.text; color: root.ink; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                                }
-                                Button {
-                                    width: (parent.width - 12) / 3
-                                    height: 30
-                                    text: "PLATFORM"
-                                    enabled: !gameDetails.launch_busy
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                    onClicked: gameDetails.save_platform_emulator_preference()
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: gameDetails.emulator_preference_scope === "platform"
-                                               ? "#1d493f" : "#202b3a"
-                                        border.color: gameDetails.emulator_preference_scope === "platform"
-                                                      ? root.accentCool : root.line
-                                    }
-                                    contentItem: Text { text: parent.text; color: root.ink; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                                }
-                                Button {
-                                    width: (parent.width - 12) / 3
-                                    height: 30
-                                    text: "RESET"
-                                    enabled: gameDetails.emulator_preference_scope.length > 0
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                    onClicked: {
-                                        if (gameDetails.emulator_preference_scope === "game")
-                                            gameDetails.clear_game_emulator_preference()
-                                        else if (gameDetails.emulator_preference_scope === "platform")
-                                            gameDetails.clear_platform_emulator_preference()
-                                    }
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: parent.enabled ? "#202b3a" : "#18212c"
-                                        border.color: root.line
-                                    }
-                                    contentItem: Text { text: parent.text; color: parent.enabled ? root.muted : "#526071"; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                                }
-                            }
-
-                            Button {
-                                width: parent.width
-                                height: 32
-                                visible: gameDetails.prepared
-                                         || gameDetails.emulator_option_count > 0
-                                text: gameDetails.launch_profile_open
-                                      ? "HIDE LAUNCH COMMAND"
-                                      : "CUSTOMIZE LAUNCH COMMAND"
-                                enabled: !gameDetails.launch_busy
-                                font.pixelSize: 8
-                                font.weight: Font.Bold
-                                onClicked: {
-                                    if (gameDetails.launch_profile_open)
-                                        gameDetails.close_launch_profile_editor()
-                                    else
-                                        gameDetails.open_launch_profile_editor()
-                                }
-                                background: Rectangle {
-                                    radius: 7
-                                    color: parent.down ? "#273447" : "#182331"
-                                    border.color: gameDetails.launch_profile_open
-                                                  ? root.accentCool : root.line
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: gameDetails.launch_profile_open
-                                           ? root.accentCool : root.muted
-                                    font: parent.font
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                            }
-
-                            Rectangle {
-                                id: launchProfileCard
-                                width: parent.width
-                                height: launchProfileColumn.implicitHeight + 24
-                                visible: gameDetails.launch_profile_open
-                                radius: 9
-                                color: "#101a27"
-                                border.color: "#2a4357"
-
-                                Column {
-                                    id: launchProfileColumn
-                                    x: 12
-                                    y: 12
-                                    width: parent.width - 24
-                                    spacing: 9
-
-                                    Row {
-                                        width: parent.width
-                                        spacing: 8
-                                        Column {
-                                            width: parent.width - launchProfileClose.width - 8
-                                            spacing: 2
-                                            Text {
-                                                text: "LAUNCH COMMAND"
-                                                color: root.ink
-                                                font.pixelSize: 10
-                                                font.weight: Font.Bold
-                                                font.letterSpacing: 0.5
-                                            }
-                                            Text {
-                                                width: parent.width
-                                                text: "Exact argv customization for "
-                                                      + gameDetails.emulator_name
-                                                color: root.muted
-                                                font.pixelSize: 8
-                                                elide: Text.ElideRight
-                                            }
-                                        }
-                                        Button {
-                                            id: launchProfileClose
-                                            width: 28
-                                            height: 26
-                                            text: "×"
-                                            onClicked: gameDetails.close_launch_profile_editor()
-                                            background: Rectangle {
-                                                radius: 6
-                                                color: parent.down ? "#2b3747" : "#1b2735"
-                                                border.color: root.line
-                                            }
-                                        }
-                                    }
-
-                                    Column {
-                                        width: parent.width
-                                        spacing: 4
-                                        Text {
-                                            text: "SAVE SCOPE"
-                                            color: "#7f8b9e"
-                                            font.pixelSize: 8
-                                            font.weight: Font.Bold
-                                        }
-                                        ComboBox {
-                                            id: launchProfileScope
-                                            width: parent.width
-                                            height: 34
-                                            model: ["This game", "This platform", "All platforms"]
-                                            currentIndex: gameDetails.launch_profile_scope === "platform"
-                                                          ? 1
-                                                          : gameDetails.launch_profile_scope === "global"
-                                                            ? 2 : 0
-                                            onActivated: function(index) {
-                                                gameDetails.select_launch_profile_scope(
-                                                    index === 1 ? "platform"
-                                                                : index === 2 ? "global" : "game")
-                                            }
-                                            background: Rectangle {
-                                                radius: 7
-                                                color: "#111923"
-                                                border.color: root.line
-                                            }
-                                        }
-                                    }
-
-                                    Rectangle {
-                                        width: parent.width
-                                        height: defaultLaunchTemplate.implicitHeight + 20
-                                        radius: 7
-                                        color: "#0c141f"
-                                        border.color: "#223246"
-                                        Text {
-                                            id: defaultLaunchTemplate
-                                            x: 10
-                                            y: 10
-                                            width: parent.width - 20
-                                            text: "BUILT-IN  "
-                                                  + gameDetails.launch_profile_default_template
-                                            color: "#94a2b5"
-                                            font.family: "monospace"
-                                            font.pixelSize: 9
-                                            wrapMode: Text.WrapAnywhere
-                                        }
-                                    }
-
-                                    Text {
-                                        width: parent.width
-                                        text: gameDetails.launch_profile_inheritance
-                                        color: "#75c8ba"
-                                        font.pixelSize: 8
-                                        wrapMode: Text.WordWrap
-                                    }
-
-                                    Column {
-                                        width: parent.width
-                                        spacing: 4
-                                        Text {
-                                            text: "EXTRA ARGUMENTS"
-                                            color: "#7f8b9e"
-                                            font.pixelSize: 8
-                                            font.weight: Font.Bold
-                                        }
-                                        TextField {
-                                            id: launchExtraArguments
-                                            width: parent.width
-                                            height: 34
-                                            text: gameDetails.launch_profile_extra_arguments
-                                            placeholderText: "Example: --fullscreen --latency 1"
-                                            selectByMouse: true
-                                            font.family: "monospace"
-                                            font.pixelSize: 9
-                                            onTextChanged: {
-                                                if (gameDetails.launch_profile_open)
-                                                    gameDetails.update_launch_profile_preview(
-                                                                text,
-                                                                launchCommandTemplate.text)
-                                            }
-                                            background: Rectangle {
-                                                radius: 7
-                                                color: "#0b121b"
-                                                border.color: parent.activeFocus
-                                                              ? root.accentCool : root.line
-                                            }
-                                        }
-                                    }
-
-                                    Column {
-                                        width: parent.width
-                                        spacing: 4
-                                        Text {
-                                            text: "COMMAND TEMPLATE (OPTIONAL)"
-                                            color: "#7f8b9e"
-                                            font.pixelSize: 8
-                                            font.weight: Font.Bold
-                                        }
-                                        NativeTextArea {
-                                            id: launchCommandTemplate
-                                            width: parent.width
-                                            height: 74
-                                            text: gameDetails.launch_profile_command_template
-                                            placeholderText: "Leave blank for the built-in template"
-                                            selectByMouse: true
-                                            wrapMode: TextEdit.WrapAnywhere
-                                            font.family: "monospace"
-                                            font.pixelSize: 9
-                                            color: root.ink
-                                            backgroundColor: "#0b121b"
-                                            line: root.line
-                                            accent: root.accentCool
-                                            radius: 7
-                                            onTextChanged: {
-                                                if (gameDetails.launch_profile_open)
-                                                    gameDetails.update_launch_profile_preview(
-                                                                launchExtraArguments.text,
-                                                                text)
-                                            }
-                                        }
-                                    }
-
-                                    LaunchCommandPreview {
-                                        id: gameLaunchCommandPreview
-                                        width: parent.width
-                                        height: implicitHeight
-                                        previewModel: gameDetails
-                                        compact: true
-                                        ink: root.ink
-                                        muted: root.muted
-                                        accent: root.accent
-                                        accentCool: root.accentCool
-                                        panel: "#0b121b"
-                                        line: root.line
-                                    }
-
-                                    Text {
-                                        width: parent.width
-                                        text: "Use the placeholders shown by the built-in template; %f is the selected file and %% is a literal percent. Prepared PC games may expose %{config}, %{shared_config}, %{game_path}, %{game_id}, or %{vm_root}."
-                                        color: root.muted
-                                        font.pixelSize: 8
-                                        lineHeight: 1.2
-                                        wrapMode: Text.WordWrap
-                                    }
-
-                                    Text {
-                                        width: parent.width
-                                        visible: gameDetails.launch_profile_status.length > 0
-                                        text: gameDetails.launch_profile_status
-                                        color: gameDetails.launch_profile_status.indexOf("Could not") === 0
-                                               ? "#ef9999" : "#9bd7cc"
-                                        font.pixelSize: 8
-                                        wrapMode: Text.WordWrap
-                                    }
-
-                                    Row {
-                                        width: parent.width
-                                        spacing: 7
-                                        Button {
-                                            width: (parent.width - 7) * 0.62
-                                            height: 32
-                                            text: "SAVE PROFILE"
-                                            enabled: gameDetails.launch_profile_preview_valid
-                                            font.pixelSize: 8
-                                            font.weight: Font.Bold
-                                            onClicked: gameDetails.save_launch_profile(
-                                                           launchExtraArguments.text,
-                                                           launchCommandTemplate.text)
-                                            background: Rectangle {
-                                                radius: 7
-                                                color: parent.down ? "#93601e" : "#b77a2c"
-                                                border.color: "#d99a48"
-                                            }
-                                        }
-                                        Button {
-                                            width: (parent.width - 7) * 0.38
-                                            height: 32
-                                            text: "CLEAR SCOPE"
-                                            font.pixelSize: 8
-                                            font.weight: Font.Bold
-                                            onClicked: gameDetails.clear_launch_profile()
-                                            background: Rectangle {
-                                                radius: 7
-                                                color: parent.down ? "#39252a" : "#271d25"
-                                                border.color: "#60404b"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            Rectangle {
-                                width: parent.width
-                                height: firmwareColumn.implicitHeight + 24
-                                visible: gameDetails.firmware_rule_count > 0
-                                radius: 9
-                                color: gameDetails.firmware_missing_count > 0
-                                       || gameDetails.firmware_manual_count > 0
-                                       ? "#321f24" : "#142d2a"
-                                border.color: gameDetails.firmware_missing_count > 0
-                                              || gameDetails.firmware_manual_count > 0
-                                              ? "#7a3c48" : "#315c54"
-
-                                Column {
-                                    id: firmwareColumn
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.leftMargin: 12
-                                    anchors.rightMargin: 12
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 5
-                                    Row {
-                                        width: parent.width
-                                        spacing: 8
-                                        Text {
-                                            width: parent.width - firmwareFolderButton.width - 8
-                                            text: gameDetails.firmware_manual_count > 0
-                                                  ? "MANUAL FIRMWARE REQUIRED"
-                                                  : gameDetails.firmware_missing_count > 0
-                                                    ? "FIRMWARE REQUIRED"
-                                                    : gameDetails.firmware_optional_count > 0
-                                                      ? "OPTIONAL FIRMWARE AVAILABLE"
-                                                    : "FIRMWARE READY"
-                                            color: gameDetails.firmware_missing_count > 0
-                                                   || gameDetails.firmware_manual_count > 0
-                                                   ? "#ff9b91" : root.accentCool
-                                            font.pixelSize: 9
-                                            font.weight: Font.Bold
-                                            font.letterSpacing: 0.7
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
-                                        Button {
-                                            id: firmwareFolderButton
-                                            visible: gameDetails.firmware_runtime_path.length > 0
-                                            width: visible ? 86 : 0
-                                            height: 26
-                                            text: "OPEN FOLDER"
-                                            font.pixelSize: 8
-                                            font.weight: Font.Bold
-                                            onClicked: gameDetails.open_firmware_directory()
-                                            background: Rectangle {
-                                                radius: 6
-                                                color: parent.down ? "#2a394c" : "#202b3a"
-                                                border.color: root.line
-                                            }
-                                            contentItem: Text {
-                                                text: parent.text
-                                                color: root.ink
-                                                font: parent.font
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
-                                        }
-                                    }
-                                    Text {
-                                        width: parent.width
-                                        text: gameDetails.firmware_summary
-                                        color: root.ink
-                                        font.pixelSize: 10
-                                        wrapMode: Text.WordWrap
-                                    }
-                                    Text {
-                                        width: parent.width
-                                        text: gameDetails.firmware_package_summary
-                                        color: root.muted
-                                        font.pixelSize: 9
-                                        elide: Text.ElideMiddle
-                                    }
-                                    Text {
-                                        width: parent.width
-                                        text: gameDetails.firmware_source_summary
-                                              + (gameDetails.firmware_runtime_path.length > 0
-                                                 ? " · " + gameDetails.firmware_runtime_path : "")
-                                        color: root.muted
-                                        font.pixelSize: 8
-                                        elide: Text.ElideMiddle
-                                    }
-                                    Button {
-                                        width: parent.width
-                                        height: 30
-                                        visible: gameDetails.firmware_can_download
-                                                 || gameDetails.firmware_can_sync
-                                        enabled: !gameDetails.firmware_busy
-                                        text: gameDetails.firmware_busy ? "VERIFYING…"
-                                              : gameDetails.firmware_can_download
-                                                ? "DOWNLOAD & INSTALL"
-                                                : "SYNC / REPAIR"
-                                        font.pixelSize: 9
-                                        font.weight: Font.Bold
-                                        onClicked: {
-                                            if (gameDetails.firmware_can_download)
-                                                gameDetails.download_firmware()
-                                            else
-                                                gameDetails.sync_firmware()
-                                        }
-                                        background: Rectangle {
-                                            radius: 6
-                                            color: parent.enabled
-                                                   ? (parent.down ? "#315047" : "#203a35")
-                                                   : "#18212c"
-                                            border.color: parent.enabled ? root.accentCool : root.line
-                                        }
-                                        contentItem: Text {
-                                            text: parent.text
-                                            color: parent.enabled ? root.accentCool : root.muted
-                                            font: parent.font
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
-                                    }
-                                    Button {
-                                        width: parent.width
-                                        height: 28
-                                        visible: gameDetails.firmware_needs_import
-                                        enabled: !gameDetails.firmware_busy
-                                        text: "IMPORT A LOCAL COPY INSTEAD"
-                                        font.pixelSize: 8
-                                        font.weight: Font.Bold
-                                        onClicked: firmwarePackageDialog.open()
-                                        background: Rectangle {
-                                            radius: 6
-                                            color: parent.down ? "#2a394c" : "#202b3a"
-                                            border.color: root.line
-                                        }
-                                        contentItem: Text {
-                                            text: parent.text
-                                            color: parent.enabled ? root.muted : "#526071"
-                                            font: parent.font
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
-                                    }
-                                }
-                            }
-
-                            Text {
-                                width: parent.width
-                                visible: gameDetails.launch_status.length > 0
-                                text: gameDetails.launch_status
-                                color: gameDetails.can_launch ? "#a8d9cf" : root.muted
-                                font.pixelSize: 10
-                                lineHeight: 1.25
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Button {
-                                width: parent.width
-                                height: 44
-                                text: gameDetails.launch_busy ? "STARTING…"
-                                      : gameDetails.game_running ? "GAME IS RUNNING"
-                                      : "PLAY"
-                                enabled: gameDetails.can_launch
-                                         && !gameDetails.launch_busy
-                                         && !gameDetails.game_running
-                                         && !gameDetails.firmware_busy
-                                font.pixelSize: 11
-                                font.weight: Font.Bold
-                                onClicked: gameDetails.launch_game()
-                                background: Rectangle {
-                                    radius: 8
-                                    color: parent.enabled
-                                           ? (parent.down ? "#d24e36" : root.accent)
-                                           : "#26313e"
-                                    border.color: parent.enabled ? "#ff8a70" : root.line
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: parent.enabled ? "#ffffff" : root.muted
-                                    font: parent.font
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                            }
-
-                            Button {
-                                width: parent.width
-                                height: 36
-                                text: "ADD EXTERNAL TORRENT SOURCE"
-                                enabled: root.selectedGameId.length > 0
-                                         && !gameDetails.loading
-                                         && !externalTorrent.busy
-                                font.pixelSize: 9
-                                font.weight: Font.Bold
-                                onClicked: {
-                                    externalTorrent.begin_review(
-                                                root.selectedGameId,
-                                                root.selectedDatabaseId,
-                                                gameDetails.title,
-                                                gameDetails.platform)
-                                    externalTorrentDialog.open()
-                                }
-                                background: Rectangle {
-                                    radius: 8
-                                    color: parent.down ? "#293748" : "#1b2532"
-                                    border.color: parent.enabled ? "#4f6077" : root.line
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: parent.enabled ? "#c7d1df" : root.muted
-                                    font: parent.font
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                ToolTip.visible: hovered
-                                ToolTip.text: "Review a lawful .torrent and associate one exact file with this catalog game"
-                            }
-                        }
-                    }
 
                     Rectangle {
                         id: installationFilesCard
@@ -13302,15 +12416,9 @@ ApplicationWindow {
                         line: root.line
                         accent: root.accent
                         accentCool: root.accentCool
-                        playEnabled: gameDetails.can_launch
-                                     && !gameDetails.game_running
-                                     && !gameDetails.firmware_busy
-                        playBusy: gameDetails.launch_busy
-                        playText: gameDetails.game_running ? "GAME IS RUNNING" : "PLAY"
                         alternativesAvailable: gameDetails.torrent_loading
                                                || minervaSourceState.count > 0
                         alternativesExpanded: root.downloadAlternativesExpanded
-                        onPlayRequested: gameDetails.launch_game()
                         onManageRequested: downloadsDrawer.open()
                         onAlternativesRequested:
                             root.downloadAlternativesExpanded = !root.downloadAlternativesExpanded
@@ -21523,10 +20631,13 @@ ApplicationWindow {
                             Button {
                                 visible: !emulatorManager.busy
                                          && emulatorManager.can_uninstall_at(emulatorRow.index)
-                                text: "Remove"
+                                text: "Uninstall"
                                 onClicked: {
                                     root.pendingEmulatorUninstallIndex = emulatorRow.index
                                     root.pendingEmulatorUninstallName = emulatorRow.emulatorName
+                                    root.pendingEmulatorUninstallConfirmation =
+                                            emulatorManager.uninstall_confirmation_at(
+                                                emulatorRow.index)
                                     emulatorUninstallDialog.open()
                                 }
                             }
@@ -21603,7 +20714,7 @@ ApplicationWindow {
                         elide: Text.ElideRight
                     }
                     Text {
-                        text: "External installs are never removed"
+                        text: "External package-manager installs require confirmation"
                         color: "#657186"
                         font.pixelSize: 9
                     }
@@ -22666,20 +21777,22 @@ ApplicationWindow {
         x: Math.round((parent.width - width) / 2)
         y: Math.round((parent.height - height) / 2)
         width: 430
-        title: "Remove " + root.pendingEmulatorUninstallName + "?"
+        title: "Uninstall " + root.pendingEmulatorUninstallName + "?"
         standardButtons: Dialog.Cancel | Dialog.Ok
         onAccepted: {
             if (root.pendingEmulatorUninstallIndex >= 0)
                 emulatorManager.uninstall_at(root.pendingEmulatorUninstallIndex)
             root.pendingEmulatorUninstallIndex = -1
             root.pendingEmulatorUninstallName = ""
+            root.pendingEmulatorUninstallConfirmation = ""
         }
         onRejected: {
             root.pendingEmulatorUninstallIndex = -1
             root.pendingEmulatorUninstallName = ""
+            root.pendingEmulatorUninstallConfirmation = ""
         }
         contentItem: Text {
-            text: "Lunchbox will remove only the installation it created. Your games, saves, firmware, and externally managed emulator installations are not touched."
+            text: root.pendingEmulatorUninstallConfirmation
             color: root.ink
             wrapMode: Text.WordWrap
             font.pixelSize: 12

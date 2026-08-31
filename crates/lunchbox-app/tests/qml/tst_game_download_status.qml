@@ -46,7 +46,6 @@ TestCase {
                 accent: "#f1a23b"
                 accentCool: "#5de2d2"
                 alternativesAvailable: true
-                playEnabled: true
             }
 
             property alias queueState: queueState
@@ -54,7 +53,7 @@ TestCase {
         }
     }
 
-    function test_completed_download_becomes_ready_without_showing_sources() {
+    function test_completed_download_becomes_history_without_duplicate_play_action() {
         const host = createTemporaryObject(hostComponent, testCase)
         verify(host)
         compare(host.status.jobIndex, 0)
@@ -65,7 +64,7 @@ TestCase {
         ++host.queueState.revision
         compare(host.status.badge, "READY")
         compare(host.status.jobState, "IMPORTED")
-        verify(host.status.playEnabled)
+        compare(host.status.alternativesExpanded, false)
     }
 
     function test_unmanaged_game_has_no_download_status_card() {

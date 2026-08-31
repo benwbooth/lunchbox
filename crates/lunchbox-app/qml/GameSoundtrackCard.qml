@@ -326,13 +326,5 @@ Rectangle {
             trackColor: "#303b4d"
         }
 
-        Text {
-            Layout.fillWidth: true
-            visible: emuMoviesModel && emuMoviesModel.last_media_kind === "soundtrack"
-            text: emuMoviesModel ? emuMoviesModel.message : ""
-            color: text.indexOf("failed") >= 0 ? "#f3a49c" : card.muted
-            font.pixelSize: 8
-            wrapMode: Text.WordWrap
-        }
     }
 }

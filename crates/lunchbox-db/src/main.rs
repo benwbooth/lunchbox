@@ -121,6 +121,13 @@ enum Command {
         #[arg(long, default_value_t = 100_000_000)]
         max_bytes: u64,
     },
+    /// Extract a checked-in Lunchbox database archive for native packaging.
+    Extract {
+        #[arg(long)]
+        archive: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
@@ -228,7 +235,27 @@ fn main() -> Result<()> {
             let result = compress::compress(&database, &output, max_bytes)?;
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
+        Command::Extract { archive, output } => {
+            extract_database_archive(&archive, &output)?;
+            println!("{}", output.join("lunchbox.db").display());
+        }
     }
 
+    Ok(())
+}
+
+fn extract_database_archive(archive: &std::path::Path, output: &std::path::Path) -> Result<()> {
+    if !archive.is_file() {
+        bail!("database archive does not exist: {}", archive.display());
+    }
+    std::fs::create_dir_all(output)?;
+    sevenz_rust2::decompress_file(archive, output).map_err(|error| anyhow::anyhow!(error))?;
+    let database = output.join("lunchbox.db");
+    if !database.is_file() {
+        bail!(
+            "database archive did not contain the expected lunchbox.db file: {}",
+            archive.display()
+        );
+    }
     Ok(())
 }
