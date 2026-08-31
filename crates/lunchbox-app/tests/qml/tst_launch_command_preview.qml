@@ -41,7 +41,7 @@ TestCase {
         compare(preview.runtime, "RetroArch")
         compare(preview.argumentCount, 4)
         compare(preview.argumentAt(2), "<retroarch-core>")
-        verify(preview.implicitHeight > 100)
+        tryVerify(function() { return preview.implicitHeight > 100 })
     }
 
     function test_invalid_preview_replaces_tokens_with_actionable_error() {

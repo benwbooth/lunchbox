@@ -20,6 +20,7 @@ TestCase {
             anchors.centerIn: parent
             width: 360
             placeholderText: "Search games"
+            searchIconVisible: true
             onClearRequested: testCase.clearCount += 1
         }
     }
@@ -32,10 +33,15 @@ TestCase {
 
     function test_clear_button_clears_and_notifies_filter_owner() {
         const clearButton = findChild(search, "clearSearchButton")
+        const searchIcon = findChild(search, "searchIcon")
         verify(clearButton !== null)
+        verify(searchIcon !== null)
+        verify(searchIcon.visible)
         verify(clearButton.visible)
         mouseClick(clearButton, clearButton.width / 2, clearButton.height / 2)
         compare(search.text, "")
         compare(clearCount, 1)
+        verify(!clearButton.visible)
+        verify(!clearButton.enabled)
     }
 }

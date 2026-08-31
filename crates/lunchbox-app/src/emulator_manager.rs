@@ -39,6 +39,8 @@ pub struct ManagedEmulator {
     pub manager_available: bool,
     pub version: String,
     pub install_path: String,
+    pub compatible_platform_keys: BTreeSet<String>,
+    pub recommended_platform_keys: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -100,6 +102,20 @@ impl ManagedEmulator {
     pub fn can_uninstall(&self) -> bool {
         self.installed && self.managed && self.manager_available
     }
+
+    pub fn is_compatible_with(&self, platform_key: &str) -> bool {
+        platform_key.is_empty() || self.compatible_platform_keys.contains(platform_key)
+    }
+
+    pub fn is_recommended_for(&self, platform_key: &str) -> bool {
+        !platform_key.is_empty() && self.recommended_platform_keys.contains(platform_key)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct EmulatorCompatibility {
+    platform_keys: BTreeSet<String>,
+    recommended_platform_keys: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -185,6 +201,7 @@ pub fn load_managed_emulators() -> Result<Vec<ManagedEmulator>> {
     let database = catalog::requested_database_path()
         .context("No canonical database found. Pass --database PATH or set LUNCHBOX_DATABASE.")?;
     let connection = catalog::open_read_only(&database, "Lunchbox emulator catalog")?;
+    let (emulator_compatibility, core_compatibility) = load_emulator_compatibility(&connection)?;
     let mut statement = connection.prepare(
         "SELECT e.id, e.name, p.host_system_slug, p.manager, p.package_id, p.metadata_json
          FROM emulator_packages p
@@ -242,6 +259,14 @@ pub fn load_managed_emulators() -> Result<Vec<ManagedEmulator>> {
             })
             .context("emulator install source group was unexpectedly empty")?;
         rows.push(ManagedEmulator {
+            compatible_platform_keys: emulator_compatibility
+                .get(&source.emulator_id)
+                .map(|compatibility| compatibility.platform_keys.clone())
+                .unwrap_or_default(),
+            recommended_platform_keys: emulator_compatibility
+                .get(&source.emulator_id)
+                .map(|compatibility| compatibility.recommended_platform_keys.clone())
+                .unwrap_or_default(),
             emulator_id: source.emulator_id,
             name: source.name,
             host_system_slug: source.host_system_slug,
@@ -256,7 +281,12 @@ pub fn load_managed_emulators() -> Result<Vec<ManagedEmulator>> {
             install_path: state.install_path,
         });
     }
-    rows.extend(load_libretro_core_rows(&connection, host, &receipts)?);
+    rows.extend(load_libretro_core_rows(
+        &connection,
+        host,
+        &receipts,
+        &core_compatibility,
+    )?);
     rows.sort_by(|left, right| {
         right.installed.cmp(&left.installed).then_with(|| {
             left.name
@@ -265,6 +295,106 @@ pub fn load_managed_emulators() -> Result<Vec<ManagedEmulator>> {
         })
     });
     Ok(rows)
+}
+
+fn load_emulator_compatibility(
+    connection: &rusqlite::Connection,
+) -> Result<(
+    HashMap<String, EmulatorCompatibility>,
+    HashMap<String, EmulatorCompatibility>,
+)> {
+    let mut statement = connection.prepare(
+        "SELECT ep.emulator_id, p.normalized_name, ep.core_name, ep.recommended
+         FROM emulator_platforms ep
+         JOIN platforms p ON p.id=ep.platform_id
+         ORDER BY ep.emulator_id, p.normalized_name, ep.core_name",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, bool>(3)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let mut emulators = HashMap::<String, EmulatorCompatibility>::new();
+    let mut cores = HashMap::<String, EmulatorCompatibility>::new();
+    for (emulator_id, platform_key, core_names, recommended) in rows {
+        add_compatibility(
+            emulators.entry(emulator_id).or_default(),
+            &platform_key,
+            recommended,
+        );
+        for core_name in core_names
+            .split(';')
+            .map(str::trim)
+            .filter(|core_name| !core_name.is_empty())
+        {
+            add_compatibility(
+                cores.entry(core_name.to_owned()).or_default(),
+                &platform_key,
+                recommended,
+            );
+        }
+    }
+
+    // Imported collections sometimes retain an established alias instead of
+    // the canonical display name. Keep those aliases eligible for the same
+    // platform-scoped manager without guessing from game titles.
+    let mut alias_statement = connection.prepare(
+        "SELECT ep.emulator_id, a.normalized_alias, ep.core_name, ep.recommended
+         FROM emulator_platforms ep
+         JOIN platform_aliases a ON a.platform_id=ep.platform_id
+         ORDER BY ep.emulator_id, a.normalized_alias, ep.core_name",
+    )?;
+    let alias_rows = alias_statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, bool>(3)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (emulator_id, platform_key, core_names, recommended) in alias_rows {
+        add_compatibility(
+            emulators.entry(emulator_id).or_default(),
+            &platform_key,
+            recommended,
+        );
+        for core_name in core_names
+            .split(';')
+            .map(str::trim)
+            .filter(|core_name| !core_name.is_empty())
+        {
+            add_compatibility(
+                cores.entry(core_name.to_owned()).or_default(),
+                &platform_key,
+                recommended,
+            );
+        }
+    }
+    Ok((emulators, cores))
+}
+
+fn add_compatibility(
+    compatibility: &mut EmulatorCompatibility,
+    platform_key: &str,
+    recommended: bool,
+) {
+    if platform_key.is_empty() {
+        return;
+    }
+    compatibility.platform_keys.insert(platform_key.to_owned());
+    if recommended {
+        compatibility
+            .recommended_platform_keys
+            .insert(platform_key.to_owned());
+    }
 }
 
 pub fn load_available_emulator_updates() -> Result<EmulatorUpdateInventory> {
@@ -330,6 +460,8 @@ pub fn load_available_emulator_updates() -> Result<EmulatorUpdateInventory> {
     let mut updates = Vec::new();
     for (_, (source, state, managed, names)) in installed {
         let row = ManagedEmulator {
+            compatible_platform_keys: BTreeSet::new(),
+            recommended_platform_keys: BTreeSet::new(),
             emulator_id: source.emulator_id,
             name: source.name,
             host_system_slug: source.host_system_slug,
@@ -380,6 +512,7 @@ fn load_libretro_core_rows(
     connection: &rusqlite::Connection,
     host: &str,
     receipts: &HashMap<(String, String, String), ManagedEmulatorInstall>,
+    core_compatibility: &HashMap<String, EmulatorCompatibility>,
 ) -> Result<Vec<ManagedEmulator>> {
     let mut statement = connection.prepare(
         "SELECT ep.core_name, e.name
@@ -429,6 +562,14 @@ fn load_libretro_core_rows(
                 .cloned()
                 .unwrap_or_else(|| core_name.replace('_', " "));
             ManagedEmulator {
+                compatible_platform_keys: core_compatibility
+                    .get(&core_name)
+                    .map(|compatibility| compatibility.platform_keys.clone())
+                    .unwrap_or_default(),
+                recommended_platform_keys: core_compatibility
+                    .get(&core_name)
+                    .map(|compatibility| compatibility.recommended_platform_keys.clone())
+                    .unwrap_or_default(),
                 emulator_id: format!("libretro-core-{core_name}"),
                 name: format!("RetroArch: {display_name}"),
                 host_system_slug: host.to_owned(),

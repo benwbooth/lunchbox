@@ -84,6 +84,12 @@ pub mod qobject {
         fn job_can_retry(self: &DownloadQueueModel, index: i32) -> bool;
 
         #[qinvokable]
+        fn job_index_for_game(self: &DownloadQueueModel, game_id: QString) -> i32;
+
+        #[qinvokable]
+        fn job_badge_at(self: &DownloadQueueModel, index: i32) -> QString;
+
+        #[qinvokable]
         fn load_history(self: Pin<&mut DownloadQueueModel>, job_id: QString);
 
         #[qinvokable]
@@ -511,6 +517,18 @@ impl qobject::DownloadQueueModel {
         self.job(index).is_some_and(can_retry)
     }
 
+    pub fn job_index_for_game(&self, game_id: QString) -> i32 {
+        relevant_job_index(&self.rust().jobs, &game_id.to_string())
+            .and_then(|index| i32::try_from(index).ok())
+            .unwrap_or(-1)
+    }
+
+    pub fn job_badge_at(&self, index: i32) -> QString {
+        self.job(index)
+            .map(|job| qstring(job_badge(&job.state)))
+            .unwrap_or_default()
+    }
+
     pub fn load_history(mut self: Pin<&mut Self>, job_id: QString) {
         let job_id = job_id.to_string();
         let Some(job) = self
@@ -658,6 +676,17 @@ fn refresh_jobs() -> Result<QueueUpdate> {
             .and_then(|selection| client.snapshot(&job.info_hash, selection.as_deref()));
         match snapshot {
             Ok(snapshot) => {
+                if !snapshot.client_save_path.trim().is_empty()
+                    && snapshot.client_save_path != job.client_save_path
+                {
+                    job.client_save_path = snapshot.client_save_path.clone();
+                    job.local_download_path = qbittorrent::native_path_for_client_file(
+                        &settings.torrent_library_directory,
+                        &settings.qbittorrent_container_torrent_library_directory,
+                        &job.client_save_path,
+                        &job.torrent_file_path,
+                    )?;
+                }
                 job.state = snapshot.state;
                 job.progress = snapshot.progress;
                 job.download_speed = snapshot.download_speed;
@@ -918,6 +947,23 @@ fn can_retry(job: &DownloadJob) -> bool {
     job.state == "failed" && job.post_import_action != "pause_pending"
 }
 
+fn relevant_job_index(jobs: &[DownloadJob], game_id: &str) -> Option<usize> {
+    jobs.iter()
+        .position(|job| job.game_id == game_id && job.state != "cancelled")
+}
+
+fn job_badge(state: &str) -> &'static str {
+    match state {
+        "queued" => "QUEUED",
+        "downloading" => "DOWNLOADING",
+        "paused" => "PAUSED",
+        "complete" => "INSTALLING",
+        "imported" => "READY",
+        "failed" => "ATTENTION",
+        _ => "DOWNLOAD",
+    }
+}
+
 fn event_label(kind: &str) -> &'static str {
     match kind {
         "queued" => "QUEUED",
@@ -1012,8 +1058,9 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        can_retry, event_label, format_download_rate, is_active, needs_refresh, ready_pause_hashes,
-        recovery_failure_message, seed_download_recovery_probe,
+        can_retry, event_label, format_download_rate, is_active, job_badge, needs_refresh,
+        ready_pause_hashes, recovery_failure_message, relevant_job_index,
+        seed_download_recovery_probe,
     };
     use crate::settings::{DownloadJob, NewDownloadJob, SettingsStore};
 
@@ -1101,5 +1148,18 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["failed", "downloading", "queued"]
         );
+    }
+
+    #[test]
+    fn per_game_status_uses_the_newest_non_cancelled_job() {
+        let cancelled = job("game", "new", "cancelled", "none");
+        let complete = job("game", "current", "complete", "none");
+        let unrelated = job("other", "other", "downloading", "none");
+        let jobs = vec![cancelled, complete, unrelated];
+        assert_eq!(relevant_job_index(&jobs, "game"), Some(1));
+        assert_eq!(relevant_job_index(&jobs, "missing"), None);
+        assert_eq!(job_badge("complete"), "INSTALLING");
+        assert_eq!(job_badge("imported"), "READY");
+        assert_eq!(job_badge("failed"), "ATTENTION");
     }
 }

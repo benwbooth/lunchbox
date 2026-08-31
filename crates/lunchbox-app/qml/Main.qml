@@ -58,6 +58,8 @@ ApplicationWindow {
     readonly property color accent: "#ffb454"
     readonly property color accentCool: "#62d6c6"
     property string selectedPlatform: ""
+    property bool librarySessionFilterApplied: false
+    property bool librarySessionRestored: false
     property string availability: ""
     property string selectedCollectionId: ""
     property string selectedCollectionName: ""
@@ -98,6 +100,13 @@ ApplicationWindow {
     property string couchViewStyleProbeOriginalGameId: ""
     property string couchViewStyleProbeMovedGameId: ""
     property string selectedGameId: ""
+    property string pendingCardLaunchGameId: ""
+    property bool downloadAlternativesExpanded: false
+    readonly property int selectedDownloadJobIndex: {
+        downloadQueue.revision
+        return selectedGameId.length > 0
+                ? downloadQueue.job_index_for_game(selectedGameId) : -1
+    }
     property int selectedDatabaseId: 0
     property url selectedArtworkUrl: ""
     property url selectedFanartUrl: ""
@@ -163,6 +172,7 @@ ApplicationWindow {
     property bool mediaRotationProbeOpened: false
     property int pendingEmulatorUninstallIndex: -1
     property string pendingEmulatorUninstallName: ""
+    property bool emulatorUpdateStartupScheduled: false
     property int pendingControllerProfileDeleteIndex: -1
     property string pendingControllerProfileDeleteName: ""
     property int downloadPlanProbeBundleIndex: 0
@@ -379,6 +389,14 @@ ApplicationWindow {
     property bool couchDownloadProbeArmed: false
     readonly property string metadataProbeTitle: "Super Mario Bros. — Living Room Edition"
     readonly property string metadataProbeCustomSearch: "8BitDo Ultimate"
+    readonly property bool automatedProbeRun: {
+        for (let index = 0; index < Qt.application.arguments.length; ++index) {
+            const argument = Qt.application.arguments[index]
+            if (argument.indexOf("probe") >= 0)
+                return true
+        }
+        return false
+    }
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -392,6 +410,8 @@ ApplicationWindow {
     palette.highlightedText: "#10141c"
 
     onClosing: close => {
+        if (!root.automatedProbeRun && library.session_state_ready)
+            root.saveLibrarySession()
         if (root.couchLaunchUiProbe) {
             close.accepted = true
         } else if (root.couchModeActive) {
@@ -412,6 +432,42 @@ ApplicationWindow {
         filterDelay.restart()
     }
 
+    function saveLibrarySession() {
+        const view = gameViewLoader.item
+        const position = view ? Math.max(0, Math.round(view.contentY)) : 0
+        library.save_library_session(root.selectedPlatform,
+                                     root.selectedGameId,
+                                     library.view_mode,
+                                     position)
+    }
+
+    function restoreLibrarySession() {
+        const view = gameViewLoader.item
+        if (!view)
+            return false
+
+        const savedPosition = root.gridMode
+                              ? library.session_grid_content_y
+                              : library.session_list_content_y
+        const maximumPosition = Math.max(0, view.contentHeight - view.height)
+        view.contentY = Math.min(savedPosition, maximumPosition)
+
+        const gameId = library.session_game_uid
+        if (gameId.length > 0) {
+            const row = library.row_for_game(gameId)
+            if (row >= 0) {
+                view.currentIndex = row
+                root.openGame(gameId,
+                              library.database_id_for_game(gameId),
+                              library.display_title_for_game(gameId),
+                              library.platform_for_game(gameId),
+                              library.local_for_game(gameId),
+                              library.downloadable_for_game(gameId))
+            }
+        }
+        return true
+    }
+
     function artworkProviderNeedsSetup(provider) {
         return provider === "steamgriddb" ? !steamGridDb.api_key_saved
              : provider === "igdb" ? !igdb.credentials_saved
@@ -430,12 +486,21 @@ ApplicationWindow {
         return !appSettings.onboarding_complete
     }
 
+    function isProbeRun() {
+        for (let index = 0; index < Qt.application.arguments.length; ++index) {
+            if (String(Qt.application.arguments[index]).indexOf("-probe") >= 0)
+                return true
+        }
+        return false
+    }
+
     function requestedSettingsItem() {
         return requestedSettingsSection === "steamgriddb" ? steamGridDbSettingsSection
              : requestedSettingsSection === "igdb" ? igdbSettingsSection
              : requestedSettingsSection === "emumovies" ? emuMoviesSettingsSection
              : requestedSettingsSection === "screenscraper" ? screenScraperSettingsSection
              : requestedSettingsSection === "qbittorrent" ? qbittorrentSettingsSection
+             : requestedSettingsSection === "emulators" ? emulatorSettingsSection
              : null
     }
 
@@ -545,6 +610,13 @@ ApplicationWindow {
     }
 
     function openEmulatorManager() {
+        emulatorManager.set_platform_scope("")
+        emulatorManagerDialog.open()
+        emulatorManager.initialize()
+    }
+
+    function openEmulatorManagerForPlatform(platform) {
+        emulatorManager.set_platform_scope(platform)
         emulatorManagerDialog.open()
         emulatorManager.initialize()
     }
@@ -1096,8 +1168,12 @@ ApplicationWindow {
 
     function openGame(gameId, databaseId, title, platform, local, downloadable) {
         root.disarmGridPreview(null)
+        if (root.pendingCardLaunchGameId.length > 0
+                && root.pendingCardLaunchGameId !== gameId)
+            root.pendingCardLaunchGameId = ""
         const canonicalTitle = library.canonical_title_for_game(gameId)
         const identityTitle = canonicalTitle.length > 0 ? canonicalTitle : title
+        downloadAlternativesExpanded = false
         selectedGameId = gameId
         selectedDatabaseId = databaseId
         selectedBox3d = false
@@ -1111,6 +1187,26 @@ ApplicationWindow {
             refreshSelectedArtwork()
         }
         gameDetails.select_game(gameId, identityTitle, platform, local, downloadable)
+    }
+
+    function requestCardLaunch(gameId, databaseId, title, platform, local) {
+        root.pendingCardLaunchGameId = gameId
+        root.openGame(gameId, databaseId, title, platform, local, false)
+    }
+
+    function resolvePendingCardLaunch() {
+        if (root.pendingCardLaunchGameId.length === 0
+                || gameDetails.game_id !== root.pendingCardLaunchGameId
+                || gameDetails.loading || gameDetails.launch_discovery_busy)
+            return
+        if (gameDetails.can_launch) {
+            root.pendingCardLaunchGameId = ""
+            gameDetails.launch_game()
+            return
+        }
+        root.pendingCardLaunchGameId = ""
+        if (detailScroll.contentItem)
+            detailScroll.contentItem.contentY = 0
     }
 
     function startDownloadPlanProbe() {
@@ -1816,6 +1912,12 @@ ApplicationWindow {
             if (root.emulatorManagerProbe && emulatorManager.initialized)
                 Qt.quit()
         }
+        function onOperation_revisionChanged() {
+            if (emulatorManager.operation_revision > 0
+                    && root.selectedGameId.length > 0
+                    && gameDetails.local)
+                gameDetails.refresh_emulators()
+        }
     }
 
     Connections {
@@ -1823,6 +1925,12 @@ ApplicationWindow {
         function onInitializedChanged() {
             if (root.emulatorUpdateUiProbe && emulatorUpdates.initialized)
                 emulatorUpdateScreenshotTimer.restart()
+        }
+        function onPrompt_pendingChanged() {
+            if (!emulatorUpdates.prompt_pending)
+                return
+            root.openEmulatorUpdates()
+            emulatorUpdates.dismiss_prompt()
         }
     }
 
@@ -1890,6 +1998,12 @@ ApplicationWindow {
             if (appSettings.initialized) {
                 emuMovies.initialize()
                 screenScraper.initialize()
+            }
+            if (appSettings.initialized && appSettings.onboarding_complete
+                    && !root.isProbeRun()
+                    && !root.emulatorUpdateStartupScheduled) {
+                root.emulatorUpdateStartupScheduled = true
+                emulatorUpdateStartupTimer.restart()
             }
             if (appSettings.initialized && root.shouldShowOnboarding())
                 Qt.callLater(onboardingPage.open)
@@ -2839,6 +2953,9 @@ ApplicationWindow {
     Connections {
         target: gameDetails
         function onLoadingChanged() {
+            if (!gameDetails.loading
+                    && root.pendingCardLaunchGameId.length > 0)
+                Qt.callLater(root.resolvePendingCardLaunch)
             if (root.relatedGamesUiProbe
                     && root.relatedGamesProbeStage === 2
                     && !gameDetails.loading) {
@@ -4696,6 +4813,9 @@ ApplicationWindow {
                 Qt.quit()
         }
         function onCan_launchChanged() {
+            if (gameDetails.can_launch
+                    && root.pendingCardLaunchGameId.length > 0)
+                Qt.callLater(root.resolvePendingCardLaunch)
             if (root.launchProfileUiProbe && gameDetails.can_launch
                     && !root.launchProfileProbeTriggered) {
                 root.launchProfileProbeTriggered = true
@@ -4707,6 +4827,11 @@ ApplicationWindow {
                 root.launchProbeTriggered = true
                 gameDetails.launch_game()
             }
+        }
+        function onLaunch_discovery_busyChanged() {
+            if (!gameDetails.launch_discovery_busy
+                    && root.pendingCardLaunchGameId.length > 0)
+                Qt.callLater(root.resolvePendingCardLaunch)
         }
         function onGame_runningChanged() {
             if (gameDetails.game_running && gameDetails.video_available) {
@@ -4787,8 +4912,18 @@ ApplicationWindow {
     Connections {
         target: downloadQueue
         function onCollection_revisionChanged() {
-            if (downloadQueue.collection_revision > 0)
+            if (downloadQueue.collection_revision > 0) {
                 library.reload()
+                if (root.selectedDownloadJobIndex >= 0
+                        && downloadQueue.job_state_at(
+                            root.selectedDownloadJobIndex) === "IMPORTED"
+                        && gameDetails.game_id === root.selectedGameId) {
+                    gameDetails.select_game(root.selectedGameId,
+                                            gameDetails.title,
+                                            gameDetails.platform,
+                                            true, false)
+                }
+            }
         }
         function onRevisionChanged() {
             if (downloadQueue.busy)
@@ -5911,6 +6046,13 @@ ApplicationWindow {
     }
 
     Timer {
+        id: emulatorUpdateStartupTimer
+        interval: 1500
+        repeat: false
+        onTriggered: emulatorUpdates.check_if_due()
+    }
+
+    Timer {
         id: libraryViewProbeTimer
         interval: 80
         running: root.libraryViewUiProbe
@@ -6305,6 +6447,41 @@ ApplicationWindow {
         repeat: false
         onTriggered: library.apply_filter(searchField.text, root.selectedPlatform,
                                            root.availability)
+    }
+
+    Timer {
+        id: librarySessionRestoreTimer
+        interval: 40
+        repeat: true
+        running: library.session_state_ready
+                 && !root.librarySessionRestored
+                 && !root.automatedProbeRun
+        onTriggered: {
+            if (!root.librarySessionFilterApplied) {
+                root.selectedPlatform = library.session_platform
+                root.selectedCollectionId = ""
+                root.selectedCollectionName = ""
+                root.availability = ""
+                library.apply_filter(searchField.text,
+                                     root.selectedPlatform,
+                                     root.availability)
+                root.librarySessionFilterApplied = true
+                return
+            }
+            if (library.filtering)
+                return
+            if (!gameViewLoader.item) {
+                if (library.filtered_count === 0) {
+                    root.librarySessionRestored = true
+                    stop()
+                }
+                return
+            }
+            if (root.restoreLibrarySession()) {
+                root.librarySessionRestored = true
+                stop()
+            }
+        }
     }
 
     Timer {
@@ -7918,13 +8095,11 @@ ApplicationWindow {
         AlphabetRail {
             id: gridAlphabetRail
             parent: grid
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
             anchors.right: parent.right
-            anchors.topMargin: 8
-            anchors.bottomMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
             anchors.rightMargin: gridScrollBar.width + 7
             width: 34
+            height: Math.min(implicitHeight, parent.height - 16)
             z: 1100
             libraryModel: library
             currentRow: grid.currentIndex
@@ -7996,6 +8171,18 @@ ApplicationWindow {
             required property bool gameDownloadable
             required property int gameDatabaseId
             required property string gameVariants
+            property int downloadRevision: downloadQueue.revision
+            readonly property int downloadJobIndex: {
+                downloadRevision
+                return downloadQueue.job_index_for_game(gameId)
+            }
+            readonly property string downloadJobState: downloadJobIndex >= 0
+                                                       ? downloadQueue.job_state_at(downloadJobIndex)
+                                                       : ""
+            readonly property string availabilityBadge: gameLocal ? "READY"
+                                                        : downloadJobIndex >= 0
+                                                          ? downloadQueue.job_badge_at(downloadJobIndex)
+                                                          : gameDownloadable ? "GET" : ""
             property var previewVideoOutput: tileVideoOutput
             readonly property real previewCardExpansion: cardGeometry.expansion
             readonly property real previewCardViewportX: cardGeometry.viewportX
@@ -8343,7 +8530,7 @@ ApplicationWindow {
                         visible: coverImage.status !== Image.Ready && !tile.previewActive
                     }
                     Rectangle {
-                        visible: tile.gameLocal || tile.gameDownloadable
+                        visible: tile.availabilityBadge.length > 0
                         anchors.top: parent.top
                         anchors.right: parent.right
                         anchors.margins: 9 * card.expansion
@@ -8351,13 +8538,22 @@ ApplicationWindow {
                                        + 14 * card.expansion
                         implicitHeight: 25 * card.expansion
                         radius: 7 * card.expansion
-                        color: tile.gameLocal ? "#d91d3d35" : "#d9303540"
-                        border.color: tile.gameLocal ? root.accentCool : root.accent
+                        color: tile.gameLocal || tile.downloadJobState === "IMPORTED"
+                               ? "#d91d3d35"
+                               : tile.downloadJobState === "FAILED" ? "#d92a1a22"
+                               : "#d9303540"
+                        border.color: tile.gameLocal || tile.downloadJobState === "IMPORTED"
+                                      ? root.accentCool
+                                      : tile.downloadJobState === "FAILED" ? "#ff8b9a"
+                                      : root.accent
                         Text {
                             id: badgeText
                             anchors.centerIn: parent
-                            text: tile.gameLocal ? "READY" : "GET"
-                            color: tile.gameLocal ? root.accentCool : root.accent
+                            text: tile.availabilityBadge
+                            color: tile.gameLocal || tile.downloadJobState === "IMPORTED"
+                                   ? root.accentCool
+                                   : tile.downloadJobState === "FAILED" ? "#ff8b9a"
+                                   : root.accent
                             font.pixelSize: Math.round(10 * card.expansion)
                             font.weight: Font.Bold
                             font.letterSpacing: Math.round(0.8 * card.expansion)
@@ -8391,6 +8587,41 @@ ApplicationWindow {
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
+                    }
+                    RoundButton {
+                        anchors.left: parent.left
+                        anchors.bottom: parent.bottom
+                        anchors.margins: 8 * card.expansion
+                        width: 40 * card.expansion
+                        height: 40 * card.expansion
+                        z: 20
+                        visible: tile.gameLocal
+                                 || tile.downloadJobState === "IMPORTED"
+                        enabled: root.pendingCardLaunchGameId !== tile.gameId
+                                 && !gameDetails.launch_busy
+                        text: root.pendingCardLaunchGameId === tile.gameId ? "…" : "▶"
+                        font.pixelSize: 17 * card.expansion
+                        Accessible.name: "Play " + tile.gameTitle
+                        onClicked: root.requestCardLaunch(
+                                       tile.gameId, tile.gameDatabaseId,
+                                       tile.gameTitle, tile.gamePlatform, true)
+                        background: Rectangle {
+                            radius: parent.width / 2
+                            color: parent.enabled
+                                   ? (parent.down ? "#238153" : "#2cad6d")
+                                   : "#244337"
+                            border.width: 2
+                            border.color: parent.enabled ? "#8de8b5" : root.line
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: parent.enabled ? "white" : root.muted
+                            font: parent.font
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Play " + tile.gameTitle
                     }
                     RoundButton {
                         anchors.right: parent.right
@@ -8531,13 +8762,12 @@ ApplicationWindow {
         AlphabetRail {
             id: listAlphabetRail
             parent: list
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
             anchors.right: parent.right
-            anchors.topMargin: 54
-            anchors.bottomMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: 23
             anchors.rightMargin: listVerticalScrollBar.width + 7
             width: 34
+            height: Math.min(implicitHeight, parent.height - 62)
             z: 1100
             libraryModel: library
             currentRow: list.currentIndex
@@ -8716,6 +8946,14 @@ ApplicationWindow {
             required property string gameVersion
             required property string gameReleaseStatus
             required property string gameNotes
+            property int downloadRevision: downloadQueue.revision
+            readonly property int downloadJobIndex: {
+                downloadRevision
+                return downloadQueue.job_index_for_game(gameId)
+            }
+            readonly property string downloadBadge: downloadJobIndex >= 0
+                                                    ? downloadQueue.job_badge_at(downloadJobIndex)
+                                                    : ""
             property int mediaRevision: library.media_revision
             property int favoriteRevision: library.favorite_revision
             property int favoritePendingRevision: library.favorite_pending_count
@@ -8742,6 +8980,7 @@ ApplicationWindow {
                 case "platform": return gamePlatform.length > 0
                                       ? gamePlatform : "Unassigned platform"
                 case "availability": return gameLocal ? "Installed"
+                                            : downloadBadge.length > 0 ? downloadBadge
                                             : gameDownloadable ? "Available" : "Catalog"
                 case "developer": return gameDeveloper
                 case "publisher": return gamePublisher
@@ -8894,6 +9133,7 @@ ApplicationWindow {
         library: library
         details: gameDetails
         gamepad: gamepadInput
+        downloadQueue: downloadQueue
         preferredGameId: root.selectedGameId
         currentFilterKey: root.availability
         currentPlatformName: root.selectedPlatform
@@ -8925,6 +9165,10 @@ ApplicationWindow {
             root.openSettingsFor(section)
         }
         onLaunchRequested: gameDetails.launch_game()
+        onDownloadsRequested: {
+            root.exitCouchMode()
+            downloadsDrawer.open()
+        }
     }
 
     Rectangle {
@@ -8981,6 +9225,7 @@ ApplicationWindow {
             height: 40
             leftPadding: 42
             rightPadding: 42
+            searchIconVisible: true
             placeholderText: "Search games, platforms, and tags"
             placeholderTextColor: "#687488"
             color: root.ink
@@ -8994,14 +9239,6 @@ ApplicationWindow {
                 color: "#0a0f16"
                 border.color: searchField.activeFocus ? root.accent : root.line
                 border.width: searchField.activeFocus ? 2 : 1
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 15
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "⌕"
-                    color: root.muted
-                    font.pixelSize: 20
-                }
             }
         }
 
@@ -9268,19 +9505,12 @@ ApplicationWindow {
             border.color: platformSearchField.activeFocus ? root.accent : root.line
             border.width: platformSearchField.activeFocus ? 2 : 1
 
-            Text {
-                anchors.left: parent.left
-                anchors.leftMargin: 12
-                anchors.verticalCenter: parent.verticalCenter
-                text: "⌕"
-                color: platformSearchField.activeFocus ? root.accent : root.muted
-                font.pixelSize: 17
-            }
-            TextField {
+            ClearableSearchField {
                 id: platformSearchField
                 anchors.fill: parent
-                leftPadding: 36
-                rightPadding: 35
+                leftPadding: 40
+                rightPadding: 40
+                searchIconVisible: true
                 maximumLength: 80
                 text: library.platform_search
                 placeholderText: "Find a platform"
@@ -9295,29 +9525,10 @@ ApplicationWindow {
                     platformSearchSaveTimer.restart()
                 }
                 onAccepted: library.save_sidebar_state(text, library.sidebar_width)
-                Keys.onEscapePressed: {
-                    text = ""
+                onClearRequested: {
                     library.filter_platforms("")
                     library.save_sidebar_state("", library.sidebar_width)
                 }
-            }
-            ToolButton {
-                anchors.right: parent.right
-                anchors.rightMargin: 3
-                anchors.verticalCenter: parent.verticalCenter
-                width: 31
-                height: 31
-                visible: platformSearchField.text.length > 0
-                text: "×"
-                flat: true
-                onClicked: {
-                    platformSearchField.text = ""
-                    library.filter_platforms("")
-                    library.save_sidebar_state("", library.sidebar_width)
-                    platformSearchField.forceActiveFocus()
-                }
-                ToolTip.visible: hovered
-                ToolTip.text: "Clear platform search"
             }
         }
 
@@ -10212,6 +10423,52 @@ ApplicationWindow {
                                 font.weight: Font.Bold
                                 font.letterSpacing: 0.7
                             }
+                        }
+                    }
+
+                    GamePlayHero {
+                        width: parent.width
+                        local: gameDetails.local
+                               || (root.selectedDownloadJobIndex >= 0
+                                   && downloadQueue.job_state_at(
+                                       root.selectedDownloadJobIndex) === "IMPORTED")
+                        loading: gameDetails.loading
+                        canLaunch: gameDetails.can_launch
+                        discoveryBusy: gameDetails.launch_discovery_busy
+                        launchBusy: gameDetails.launch_busy
+                        gameRunning: gameDetails.game_running
+                        emulatorName: gameDetails.emulator_name
+                        platform: gameDetails.platform
+                        launchStatus: gameDetails.launch_status
+                        preferenceScope: gameDetails.emulator_preference_scope
+                        emulatorOptionCount: gameDetails.emulator_option_count
+                        selectedEmulatorOption: gameDetails.selected_emulator_option
+                        emulatorLabelAt: function(index) {
+                            return gameDetails.emulator_option_label_at(index)
+                        }
+                        ink: root.ink
+                        muted: root.muted
+                        line: root.line
+                        accentCool: root.accentCool
+                        onPlayRequested: gameDetails.launch_game()
+                        onSetupRequested: {
+                            if (gameDetails.emulator_option_count === 0)
+                                root.openEmulatorManagerForPlatform(gameDetails.platform)
+                            else
+                                gameDetails.refresh_emulators()
+                        }
+                        onEmulatorSelected: function(index) {
+                            gameDetails.select_emulator_option(index)
+                        }
+                        onManageEmulatorsRequested: root.openEmulatorManagerForPlatform(
+                                                        gameDetails.platform)
+                        onSaveGameDefaultRequested: gameDetails.save_game_emulator_preference()
+                        onSavePlatformDefaultRequested: gameDetails.save_platform_emulator_preference()
+                        onClearDefaultRequested: {
+                            if (gameDetails.emulator_preference_scope === "game")
+                                gameDetails.clear_game_emulator_preference()
+                            else if (gameDetails.emulator_preference_scope === "platform")
+                                gameDetails.clear_platform_emulator_preference()
                         }
                     }
 
@@ -13035,18 +13292,46 @@ ApplicationWindow {
                         }
                     }
 
+                    GameDownloadStatus {
+                        width: parent.width
+                        queue: downloadQueue
+                        gameId: gameDetails.game_id
+                        ink: root.ink
+                        muted: root.muted
+                        panel: root.panelRaised
+                        line: root.line
+                        accent: root.accent
+                        accentCool: root.accentCool
+                        playEnabled: gameDetails.can_launch
+                                     && !gameDetails.game_running
+                                     && !gameDetails.firmware_busy
+                        playBusy: gameDetails.launch_busy
+                        playText: gameDetails.game_running ? "GAME IS RUNNING" : "PLAY"
+                        alternativesAvailable: gameDetails.torrent_loading
+                                               || minervaSourceState.count > 0
+                        alternativesExpanded: root.downloadAlternativesExpanded
+                        onPlayRequested: gameDetails.launch_game()
+                        onManageRequested: downloadsDrawer.open()
+                        onAlternativesRequested:
+                            root.downloadAlternativesExpanded = !root.downloadAlternativesExpanded
+                    }
+
                     Item {
                         id: minervaSourceState
                         width: 1
                         height: 0
                         property int revision: gameDetails.detail_revision
+                        readonly property bool revealed:
+                            root.selectedDownloadJobIndex < 0
+                            || root.downloadAlternativesExpanded
                         readonly property int count: {
                             revision
                             return gameDetails.download_source_count()
                         }
                     }
                     Rectangle {
-                        visible: !gameDetails.loading
+                        visible: minervaSourceState.revealed
+                                 && !gameDetails.loading
                                  && (gameDetails.torrent_loading
                                      || minervaSourceState.count > 0)
                         width: parent.width
@@ -13054,7 +13339,8 @@ ApplicationWindow {
                         color: root.line
                     }
                     Text {
-                        visible: !gameDetails.loading
+                        visible: minervaSourceState.revealed
+                                 && !gameDetails.loading
                                  && (gameDetails.torrent_loading
                                      || minervaSourceState.count > 0)
                         width: parent.width
@@ -13065,7 +13351,8 @@ ApplicationWindow {
                         font.letterSpacing: 1.2
                     }
                     Text {
-                        visible: !gameDetails.loading
+                        visible: minervaSourceState.revealed
+                                 && !gameDetails.loading
                                  && (gameDetails.torrent_loading
                                      || minervaSourceState.count > 0)
                         width: parent.width
@@ -13079,7 +13366,8 @@ ApplicationWindow {
                     }
 
                     Repeater {
-                        model: minervaSourceState.count
+                        model: minervaSourceState.revealed
+                               ? minervaSourceState.count : 0
                         delegate: Rectangle {
                             id: sourceSection
                             required property int index
@@ -20809,6 +21097,52 @@ ApplicationWindow {
                     }
                 }
 
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            text: "UPDATE CHECKS"
+                            color: root.ink
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Lunchbox checks in the background and asks before applying any emulator update. Updates are never installed automatically."
+                            color: root.muted
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                    ComboBox {
+                        id: emulatorUpdatePolicy
+                        Layout.preferredWidth: 190
+                        textRole: "label"
+                        valueRole: "value"
+                        model: [
+                            { label: "Check daily", value: "daily" },
+                            { label: "Check weekly", value: "weekly" },
+                            { label: "Manual only", value: "manual" }
+                        ]
+                        currentIndex: emulatorUpdates.check_policy === "weekly" ? 1
+                                      : emulatorUpdates.check_policy === "manual" ? 2 : 0
+                        onActivated: emulatorUpdates.choose_check_policy(currentValue)
+                        Accessible.name: "Emulator update check frequency"
+                    }
+                    Button {
+                        text: "Check now"
+                        enabled: !emulatorUpdates.busy
+                        onClicked: {
+                            settingsDialog.close()
+                            root.openEmulatorUpdates()
+                            emulatorUpdates.refresh()
+                        }
+                    }
+                }
+
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: settingsMessage.implicitHeight + 22
@@ -20948,10 +21282,17 @@ ApplicationWindow {
                         font.letterSpacing: 0.8
                     }
                     Text {
-                        text: "Native runtimes for this computer · no global Nix profile changes"
+                        text: emulatorManager.platform_filter.length > 0
+                              ? "Compatible with " + emulatorManager.platform_filter
+                              : "Native runtimes for this computer · no global Nix profile changes"
                         color: root.muted
                         font.pixelSize: 10
                     }
+                }
+                HeaderButton {
+                    visible: emulatorManager.platform_filter.length > 0
+                    text: "Show all"
+                    onClicked: emulatorManager.set_platform_scope("")
                 }
                 HeaderButton {
                     text: emulatorManager.busy ? "Refreshing…" : "↻  Refresh"
@@ -21113,6 +21454,22 @@ ApplicationWindow {
                                         font.weight: Font.DemiBold
                                     }
                                     Rectangle {
+                                        visible: emulatorManager.recommended_at(emulatorRow.index)
+                                        Layout.preferredWidth: recommendedText.implicitWidth + 14
+                                        Layout.preferredHeight: 20
+                                        radius: 6
+                                        color: "#173a2d"
+                                        border.color: "#347259"
+                                        Text {
+                                            id: recommendedText
+                                            anchors.centerIn: parent
+                                            text: "RECOMMENDED"
+                                            color: root.accentCool
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                        }
+                                    }
+                                    Rectangle {
                                         Layout.preferredWidth: sourceText.implicitWidth + 14
                                         Layout.preferredHeight: 20
                                         radius: 6
@@ -21208,7 +21565,11 @@ ApplicationWindow {
                     }
                     Text {
                         width: parent.width
-                        text: "Try another search or status filter."
+                        text: emulatorManager.platform_filter.length > 0
+                              ? "No managed runtime is cataloged for "
+                                + emulatorManager.platform_filter
+                                + ". Show all emulators or review the platform mapping."
+                              : "Try another search or status filter."
                         color: root.muted
                         font.pixelSize: 11
                         horizontalAlignment: Text.AlignHCenter

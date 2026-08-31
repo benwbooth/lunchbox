@@ -8,6 +8,7 @@ Item {
     required property var library
     required property var details
     required property var gamepad
+    required property var downloadQueue
     property bool active: false
     property int navigationZone: 2
     property int categoryIndex: 0
@@ -99,12 +100,23 @@ Item {
     }
     readonly property bool detailsCurrent: selectedGameId.length > 0
                                            && details.game_id === selectedGameId
+    readonly property int downloadJobIndex: {
+        downloadQueue.revision
+        return selectedGameId.length > 0
+                ? downloadQueue.job_index_for_game(selectedGameId) : -1
+    }
+    readonly property string downloadJobState: downloadJobIndex >= 0
+                                                  ? downloadQueue.job_state_at(downloadJobIndex)
+                                                  : ""
+    readonly property bool downloadInProgress: downloadJobIndex >= 0
+                                               && downloadJobState !== "IMPORTED"
     readonly property string primaryAction: !detailsCurrent || details.loading ? "LOADING…"
             : details.launch_busy ? "STARTING…"
             : details.game_running ? "GAME IS RUNNING"
             : details.download_busy ? "ADDING DOWNLOAD…"
             : details.can_launch ? "PLAY"
             : selectedLocal ? "SET UP PLAY"
+            : downloadInProgress ? "VIEW DOWNLOAD"
             : selectedDownloadable ? "DOWNLOAD OPTIONS"
             : "VIEW DETAILS"
 
@@ -120,6 +132,7 @@ Item {
                             string platform, bool local, bool downloadable)
     signal settingsRequested(string section)
     signal launchRequested()
+    signal downloadsRequested()
 
     visible: active
     focus: active
@@ -536,6 +549,8 @@ Item {
                     && !details.game_running) {
                 launchStatusOverlayOpen = true
                 launchRequested()
+            } else if (downloadInProgress) {
+                downloadsRequested()
             } else if (selectedDownloadable) {
                 openDownloadOverlay()
             } else {
@@ -641,6 +656,8 @@ Item {
         if (index === 0) {
             if (details.can_launch)
                 return "Launch with the selected emulator and exact local file."
+            if (downloadInProgress)
+                return "Open the exact ROM download, import status, and recovery controls."
             if (selectedDownloadable)
                 return "Review exact Minerva files and download options."
             if (selectedLocal)

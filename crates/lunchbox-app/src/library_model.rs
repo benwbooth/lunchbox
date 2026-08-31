@@ -80,6 +80,11 @@ pub mod qobject {
         #[qproperty(i32, filtered_platform_count)]
         #[qproperty(i32, sidebar_width)]
         #[qproperty(bool, sidebar_state_saving)]
+        #[qproperty(QString, session_platform)]
+        #[qproperty(QString, session_game_uid)]
+        #[qproperty(i32, session_grid_content_y)]
+        #[qproperty(i32, session_list_content_y)]
+        #[qproperty(bool, session_state_ready)]
         #[qproperty(QString, couch_shelf)]
         #[qproperty(QString, couch_platform)]
         #[qproperty(QString, couch_view_style)]
@@ -376,6 +381,21 @@ pub mod qobject {
         fn row_for_game(self: &LibraryModel, game_uid: QString) -> i32;
 
         #[qinvokable]
+        fn database_id_for_game(self: &LibraryModel, game_uid: QString) -> i32;
+
+        #[qinvokable]
+        fn display_title_for_game(self: &LibraryModel, game_uid: QString) -> QString;
+
+        #[qinvokable]
+        fn platform_for_game(self: &LibraryModel, game_uid: QString) -> QString;
+
+        #[qinvokable]
+        fn local_for_game(self: &LibraryModel, game_uid: QString) -> bool;
+
+        #[qinvokable]
+        fn downloadable_for_game(self: &LibraryModel, game_uid: QString) -> bool;
+
+        #[qinvokable]
         fn alphabet_target_row(self: &LibraryModel, label: QString) -> i32;
 
         #[qinvokable]
@@ -576,6 +596,15 @@ pub mod qobject {
         fn save_sidebar_state(self: Pin<&mut LibraryModel>, query: QString, width: i32);
 
         #[qinvokable]
+        fn save_library_session(
+            self: Pin<&mut LibraryModel>,
+            platform: QString,
+            game_uid: QString,
+            view_mode: QString,
+            content_y: i32,
+        ) -> bool;
+
+        #[qinvokable]
         fn save_couch_state(
             self: Pin<&mut LibraryModel>,
             shelf: QString,
@@ -695,8 +724,8 @@ use crate::media::{
 };
 use crate::settings::{
     CollectionMemberPresentation, CouchModePreferences, GameCustomField, GameMetadataOverride,
-    LibraryPreferences, PlayActivity, SettingsStore, SidebarPreferences, UserCollection,
-    UserCollections, UserTag, UserTags, couch_collection_id,
+    LibraryPreferences, LibrarySessionPreferences, PlayActivity, SettingsStore, SidebarPreferences,
+    UserCollection, UserCollections, UserTag, UserTags, couch_collection_id,
 };
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
@@ -705,6 +734,7 @@ type CatalogLoadResult = Result<
         Catalog,
         Result<LibraryPreferences, String>,
         Result<SidebarPreferences, String>,
+        Result<LibrarySessionPreferences, String>,
         Result<CouchModePreferences, String>,
         ThemeCatalog,
         Result<HashSet<String>, String>,
@@ -910,6 +940,11 @@ pub struct LibraryModelRust {
     filtered_platform_count: i32,
     sidebar_width: i32,
     sidebar_state_saving: bool,
+    session_platform: QString,
+    session_game_uid: QString,
+    session_grid_content_y: i32,
+    session_list_content_y: i32,
+    session_state_ready: bool,
     couch_shelf: QString,
     couch_platform: QString,
     couch_view_style: QString,
@@ -1116,6 +1151,11 @@ impl Default for LibraryModelRust {
             filtered_platform_count: 0,
             sidebar_width: SidebarPreferences::default().width,
             sidebar_state_saving: false,
+            session_platform: QString::default(),
+            session_game_uid: QString::default(),
+            session_grid_content_y: 0,
+            session_list_content_y: 0,
+            session_state_ready: false,
             couch_shelf: qstring(&couch_preferences.shelf),
             couch_platform: QString::default(),
             couch_view_style: qstring(&couch_preferences.view_style),
@@ -1588,6 +1628,11 @@ fn collection_at(model: &qobject::LibraryModel, index: i32) -> Option<&UserColle
         .and_then(|index| model.rust().collections.get(index))
 }
 
+fn game_for_uid<'a>(model: &'a qobject::LibraryModel, game_uid: &str) -> Option<&'a catalog::Game> {
+    let index = *model.rust().game_index_by_id.get(game_uid)?;
+    model.rust().catalog.games.get(index)
+}
+
 fn collection_member_game(
     model: &qobject::LibraryModel,
     collection_index: i32,
@@ -1932,6 +1977,7 @@ impl qobject::LibraryModel {
         self.as_mut().set_ready(false);
         self.as_mut().set_filtering(false);
         self.as_mut().set_loading(true);
+        self.as_mut().set_session_state_ready(false);
         self.as_mut()
             .rust_mut()
             .active_presentation_collection_id
@@ -1958,6 +2004,7 @@ impl qobject::LibraryModel {
                         let (
                             preferences,
                             sidebar_preferences,
+                            session_preferences,
                             couch_preferences,
                             favorites,
                             collections,
@@ -1972,6 +2019,9 @@ impl qobject::LibraryModel {
                                     .map_err(|error| error.to_string()),
                                 store
                                     .load_sidebar_preferences()
+                                    .map_err(|error| error.to_string()),
+                                store
+                                    .load_library_session_preferences()
                                     .map_err(|error| error.to_string()),
                                 store
                                     .load_couch_mode_preferences()
@@ -1998,6 +2048,7 @@ impl qobject::LibraryModel {
                                     Err(error.clone()),
                                     Err(error.clone()),
                                     Err(error.clone()),
+                                    Err(error.clone()),
                                     Err(error),
                                 )
                             }
@@ -2016,6 +2067,7 @@ impl qobject::LibraryModel {
                             catalog,
                             preferences,
                             sidebar_preferences,
+                            session_preferences,
                             couch_preferences,
                             theme_catalog,
                             favorites,
@@ -2148,6 +2200,7 @@ impl qobject::LibraryModel {
                 catalog,
                 preferences,
                 sidebar_preferences,
+                session_preferences,
                 couch_preferences,
                 theme_catalog,
                 favorites,
@@ -2188,6 +2241,43 @@ impl qobject::LibraryModel {
                     }
                     Err(error) => Some(error),
                 };
+                let session_warning = match session_preferences {
+                    Ok(mut preferences) => {
+                        let mut warnings = Vec::new();
+                        if !preferences.platform.is_empty()
+                            && !catalog
+                                .platforms
+                                .iter()
+                                .any(|platform| platform.name == preferences.platform)
+                        {
+                            warnings.push(format!(
+                                "saved platform {} is no longer present",
+                                preferences.platform
+                            ));
+                            preferences.platform.clear();
+                        }
+                        if !preferences.selected_game_uid.is_empty()
+                            && !catalog
+                                .games
+                                .iter()
+                                .any(|game| game.id == preferences.selected_game_uid)
+                        {
+                            warnings.push("saved game is no longer present".to_owned());
+                            preferences.selected_game_uid.clear();
+                        }
+                        self.as_mut()
+                            .set_session_platform(qstring(&preferences.platform));
+                        self.as_mut()
+                            .set_session_game_uid(qstring(&preferences.selected_game_uid));
+                        self.as_mut()
+                            .set_session_grid_content_y(preferences.grid_content_y);
+                        self.as_mut()
+                            .set_session_list_content_y(preferences.list_content_y);
+                        (!warnings.is_empty()).then(|| warnings.join("; "))
+                    }
+                    Err(error) => Some(error),
+                };
+                self.as_mut().set_session_state_ready(true);
                 let ThemeCatalog {
                     themes,
                     warnings: mut couch_warnings,
@@ -2538,6 +2628,9 @@ impl qobject::LibraryModel {
                 }
                 if let Some(warning) = sidebar_warning {
                     status.push_str(&format!(" — sidebar preferences unavailable: {warning}"));
+                }
+                if let Some(warning) = session_warning {
+                    status.push_str(&format!(" — library position unavailable: {warning}"));
                 }
                 if let Some(warning) = couch_warning {
                     status.push_str(&format!(" — Couch Mode preferences unavailable: {warning}"));
@@ -4058,6 +4151,40 @@ impl qobject::LibraryModel {
             .position(|index| index == catalog_index)
             .map(saturating_i32)
             .unwrap_or(-1)
+    }
+
+    pub fn database_id_for_game(&self, game_uid: QString) -> i32 {
+        game_for_uid(self, &game_uid.to_string())
+            .map(|game| i32::try_from(game.launchbox_db_id).unwrap_or(i32::MAX))
+            .unwrap_or_default()
+    }
+
+    pub fn display_title_for_game(&self, game_uid: QString) -> QString {
+        let game_uid = game_uid.to_string();
+        game_for_uid(self, &game_uid)
+            .map(|game| {
+                qstring(
+                    self.rust()
+                        .metadata_titles
+                        .get(&game_uid)
+                        .unwrap_or(&game.title),
+                )
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn platform_for_game(&self, game_uid: QString) -> QString {
+        game_for_uid(self, &game_uid.to_string())
+            .map(|game| qstring(&game.platform))
+            .unwrap_or_default()
+    }
+
+    pub fn local_for_game(&self, game_uid: QString) -> bool {
+        game_for_uid(self, &game_uid.to_string()).is_some_and(|game| game.local)
+    }
+
+    pub fn downloadable_for_game(&self, game_uid: QString) -> bool {
+        game_for_uid(self, &game_uid.to_string()).is_some_and(|game| game.downloadable)
     }
 
     pub fn alphabet_target_row(&self, label: QString) -> i32 {
@@ -5759,6 +5886,52 @@ impl qobject::LibraryModel {
         if !self.as_ref().rust().sidebar_save_pending {
             self.as_mut().start_sidebar_save();
         }
+    }
+
+    pub fn save_library_session(
+        mut self: Pin<&mut Self>,
+        platform: QString,
+        game_uid: QString,
+        view_mode: QString,
+        content_y: i32,
+    ) -> bool {
+        let view_mode = view_mode.to_string();
+        if !matches!(view_mode.as_str(), "grid" | "list") {
+            self.as_mut().set_status_message(qstring(format!(
+                "Library position was not saved: unsupported view mode {view_mode}"
+            )));
+            return false;
+        }
+
+        let mut preferences = LibrarySessionPreferences {
+            platform: platform.to_string(),
+            selected_game_uid: game_uid.to_string(),
+            grid_content_y: *self.as_ref().session_grid_content_y(),
+            list_content_y: *self.as_ref().session_list_content_y(),
+        };
+        if view_mode == "grid" {
+            preferences.grid_content_y = content_y;
+        } else {
+            preferences.list_content_y = content_y;
+        }
+        if let Err(error) = preferences.validate().and_then(|()| {
+            SettingsStore::open_default()
+                .and_then(|store| store.save_library_session_preferences(&preferences))
+        }) {
+            self.as_mut()
+                .set_status_message(qstring(format!("Library position was not saved: {error}")));
+            return false;
+        }
+
+        self.as_mut()
+            .set_session_platform(qstring(&preferences.platform));
+        self.as_mut()
+            .set_session_game_uid(qstring(&preferences.selected_game_uid));
+        self.as_mut()
+            .set_session_grid_content_y(preferences.grid_content_y);
+        self.as_mut()
+            .set_session_list_content_y(preferences.list_content_y);
+        true
     }
 
     fn rebuild_filtered_platforms(mut self: Pin<&mut Self>) {

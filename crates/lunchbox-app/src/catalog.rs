@@ -496,9 +496,28 @@ fn load_discovery_catalog(
     minerva_path: Option<&Path>,
     user_path: Option<&Path>,
 ) -> Result<Catalog> {
+    let native_state_path = crate::settings::state_database_path()?;
+    load_discovery_catalog_with_native_state(
+        canonical,
+        discovery_path,
+        minerva_path,
+        user_path,
+        native_state_path
+            .is_file()
+            .then_some(native_state_path.as_path()),
+    )
+}
+
+fn load_discovery_catalog_with_native_state(
+    canonical: &Connection,
+    discovery_path: &Path,
+    minerva_path: Option<&Path>,
+    user_path: Option<&Path>,
+    native_state_path: Option<&Path>,
+) -> Result<Catalog> {
     let discovery = open_read_only(discovery_path, "Lunchbox discovery database")?;
     validate_discovery_schema(&discovery)?;
-    let installed = load_installed_games(user_path)?;
+    let installed = load_installed_games_with_native_state(user_path, native_state_path)?;
     let minerva = load_minerva_coverage(minerva_path)?;
 
     let game_capacity = count(&discovery, "games", "1")?;
@@ -903,6 +922,19 @@ fn cooperative_status(value: Option<i64>) -> &'static str {
 }
 
 fn load_installed_games(path: Option<&Path>) -> Result<InstalledGames> {
+    let native_state_path = crate::settings::state_database_path()?;
+    load_installed_games_with_native_state(
+        path,
+        native_state_path
+            .is_file()
+            .then_some(native_state_path.as_path()),
+    )
+}
+
+fn load_installed_games_with_native_state(
+    path: Option<&Path>,
+    native_state_path: Option<&Path>,
+) -> Result<InstalledGames> {
     let mut installed = InstalledGames::default();
     if let Some(path) = path {
         let connection = open_read_only(path, "Lunchbox user database")?;
@@ -922,7 +954,9 @@ fn load_installed_games(path: Option<&Path>) -> Result<InstalledGames> {
             }
         }
     }
-    load_native_installed_games(&mut installed)?;
+    if let Some(native_state_path) = native_state_path {
+        load_native_installed_games_at(&mut installed, native_state_path)?;
+    }
     Ok(installed)
 }
 
@@ -954,14 +988,6 @@ pub(crate) fn game_availability_flags(
             (local, downloadable)
         })
         .collect())
-}
-
-fn load_native_installed_games(installed: &mut InstalledGames) -> Result<()> {
-    let path = crate::settings::state_database_path()?;
-    if !path.is_file() {
-        return Ok(());
-    }
-    load_native_installed_games_at(installed, &path)
 }
 
 fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -> Result<()> {
@@ -1952,11 +1978,12 @@ mod tests {
         .unwrap();
         drop(user);
 
-        let catalog = load_discovery_catalog(
+        let catalog = load_discovery_catalog_with_native_state(
             &canonical,
             &discovery_path,
             Some(&minerva_path),
             Some(&user_path),
+            None,
         )
         .unwrap();
         assert_eq!(catalog.games.len(), 4);

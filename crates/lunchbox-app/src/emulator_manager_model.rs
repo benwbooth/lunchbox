@@ -18,6 +18,8 @@ pub mod qobject {
         #[qproperty(QString, message)]
         #[qproperty(QString, search)]
         #[qproperty(QString, status_filter)]
+        #[qproperty(QString, platform_filter)]
+        #[qproperty(i32, operation_revision)]
         type EmulatorManagerModel = super::EmulatorManagerModelRust;
 
         #[qinvokable]
@@ -34,6 +36,9 @@ pub mod qobject {
         );
 
         #[qinvokable]
+        fn set_platform_scope(self: Pin<&mut EmulatorManagerModel>, platform: QString);
+
+        #[qinvokable]
         fn name_at(self: &EmulatorManagerModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -44,6 +49,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn status_at(self: &EmulatorManagerModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn recommended_at(self: &EmulatorManagerModel, index: i32) -> bool;
 
         #[qinvokable]
         fn can_install_at(self: &EmulatorManagerModel, index: i32) -> bool;
@@ -85,6 +93,8 @@ pub struct EmulatorManagerModelRust {
     message: QString,
     search: QString,
     status_filter: QString,
+    platform_filter: QString,
+    operation_revision: i32,
     all_rows: Vec<ManagedEmulator>,
     rows: Vec<ManagedEmulator>,
 }
@@ -102,6 +112,8 @@ impl Default for EmulatorManagerModelRust {
             message: QString::from("Open Emulator Manager to detect installed runtimes."),
             search: QString::default(),
             status_filter: QString::from("all"),
+            platform_filter: QString::default(),
+            operation_revision: 0,
             all_rows: Vec::new(),
             rows: Vec::new(),
         }
@@ -187,6 +199,11 @@ impl qobject::EmulatorManagerModel {
         self.as_mut().refilter();
     }
 
+    pub fn set_platform_scope(mut self: Pin<&mut Self>, platform: QString) {
+        self.as_mut().set_platform_filter(platform);
+        self.as_mut().refilter();
+    }
+
     fn refilter(mut self: Pin<&mut Self>) {
         let search = self
             .as_ref()
@@ -195,15 +212,18 @@ impl qobject::EmulatorManagerModel {
             .trim()
             .to_ascii_lowercase();
         let filter = self.as_ref().status_filter().to_string();
-        let rows = self
+        let platform_key =
+            crate::catalog::normalize_platform_key(&self.as_ref().platform_filter().to_string());
+        let mut rows = self
             .as_ref()
             .rust()
             .all_rows
             .iter()
             .filter(|row| {
-                (search.is_empty()
-                    || row.name.to_ascii_lowercase().contains(&search)
-                    || row.package_id.to_ascii_lowercase().contains(&search))
+                row.is_compatible_with(&platform_key)
+                    && (search.is_empty()
+                        || row.name.to_ascii_lowercase().contains(&search)
+                        || row.package_id.to_ascii_lowercase().contains(&search))
                     && match filter.as_str() {
                         "installed" => row.installed,
                         "available" => !row.installed && row.manager_available,
@@ -213,19 +233,32 @@ impl qobject::EmulatorManagerModel {
             })
             .cloned()
             .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            right
+                .is_recommended_for(&platform_key)
+                .cmp(&left.is_recommended_for(&platform_key))
+                .then_with(|| right.installed.cmp(&left.installed))
+                .then_with(|| {
+                    left.name
+                        .to_ascii_lowercase()
+                        .cmp(&right.name.to_ascii_lowercase())
+                })
+        });
         let installed = self
             .as_ref()
             .rust()
             .all_rows
             .iter()
-            .filter(|row| row.installed)
+            .filter(|row| row.installed && row.is_compatible_with(&platform_key))
             .count();
         let available = self
             .as_ref()
             .rust()
             .all_rows
             .iter()
-            .filter(|row| !row.installed && row.manager_available)
+            .filter(|row| {
+                !row.installed && row.manager_available && row.is_compatible_with(&platform_key)
+            })
             .count();
         let row_count = rows.len();
         self.as_mut().rust_mut().rows = rows;
@@ -262,6 +295,13 @@ impl qobject::EmulatorManagerModel {
                 .map(ManagedEmulator::status_label)
                 .unwrap_or(""),
         )
+    }
+
+    pub fn recommended_at(&self, index: i32) -> bool {
+        let platform_key =
+            crate::catalog::normalize_platform_key(&self.platform_filter().to_string());
+        self.row(index)
+            .is_some_and(|row| row.is_recommended_for(&platform_key))
     }
 
     pub fn can_install_at(&self, index: i32) -> bool {
@@ -339,6 +379,8 @@ impl qobject::EmulatorManagerModel {
                 self.as_mut().rust_mut().all_rows = rows;
                 self.as_mut().refilter();
                 self.as_mut().set_message(qstring(message));
+                let revision = self.as_ref().operation_revision().wrapping_add(1);
+                self.as_mut().set_operation_revision(revision);
             }
             Err(error) => {
                 eprintln!("LUNCHBOX_EMULATOR_OPERATION_FAILED error={error}");
@@ -362,6 +404,7 @@ fn saturating_i32(value: usize) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     fn row(name: &str, installed: bool, managed: bool) -> ManagedEmulator {
         ManagedEmulator {
@@ -377,6 +420,8 @@ mod tests {
             manager_available: true,
             version: String::new(),
             install_path: String::new(),
+            compatible_platform_keys: BTreeSet::from(["nintendo-entertainment-system".into()]),
+            recommended_platform_keys: BTreeSet::from(["nintendo-entertainment-system".into()]),
         }
     }
 
@@ -389,5 +434,14 @@ mod tests {
         assert!(!external.can_uninstall());
         assert!(external.can_update());
         assert!(available.can_install());
+    }
+
+    #[test]
+    fn compatibility_is_exact_and_recommended_within_the_platform_scope() {
+        let nes = row("Mesen", false, false);
+        assert!(nes.is_compatible_with("nintendo-entertainment-system"));
+        assert!(nes.is_recommended_for("nintendo-entertainment-system"));
+        assert!(!nes.is_compatible_with("nintendo-switch"));
+        assert!(nes.is_compatible_with(""));
     }
 }

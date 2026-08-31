@@ -120,6 +120,45 @@ impl Default for AppSettings {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmulatorUpdatePreferences {
+    pub check_policy: String,
+    pub last_checked_at: i64,
+}
+
+impl Default for EmulatorUpdatePreferences {
+    fn default() -> Self {
+        Self {
+            check_policy: "daily".to_owned(),
+            last_checked_at: 0,
+        }
+    }
+}
+
+impl EmulatorUpdatePreferences {
+    pub fn validate(&self) -> Result<()> {
+        if !matches!(self.check_policy.as_str(), "daily" | "weekly" | "manual") {
+            bail!(
+                "unsupported emulator update check policy {}",
+                self.check_policy
+            );
+        }
+        if self.last_checked_at < 0 {
+            bail!("the emulator update check time cannot be negative");
+        }
+        Ok(())
+    }
+
+    pub fn check_is_due(&self, now: i64) -> bool {
+        let interval = match self.check_policy.as_str() {
+            "daily" => 24 * 60 * 60,
+            "weekly" => 7 * 24 * 60 * 60,
+            _ => return false,
+        };
+        now.saturating_sub(self.last_checked_at) >= interval
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ControllerMappingSettings {
     #[serde(default)]
@@ -222,6 +261,14 @@ pub struct LibraryPreferences {
 pub struct SidebarPreferences {
     pub platform_search: String,
     pub width: i32,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LibrarySessionPreferences {
+    pub platform: String,
+    pub selected_game_uid: String,
+    pub grid_content_y: i32,
+    pub list_content_y: i32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -771,6 +818,23 @@ impl SidebarPreferences {
     }
 }
 
+impl LibrarySessionPreferences {
+    pub fn validate(&self) -> Result<()> {
+        if self.platform.chars().count() > 200 || self.platform.contains('\0') {
+            bail!("saved library platform is invalid");
+        }
+        if self.selected_game_uid.chars().count() > 512 || self.selected_game_uid.contains('\0') {
+            bail!("saved library game identity is invalid");
+        }
+        if !(0..=100_000_000).contains(&self.grid_content_y)
+            || !(0..=100_000_000).contains(&self.list_content_y)
+        {
+            bail!("saved library position is outside the supported range");
+        }
+        Ok(())
+    }
+}
+
 impl Default for CouchModePreferences {
     fn default() -> Self {
         Self {
@@ -1258,6 +1322,53 @@ impl SettingsStore {
         Ok(())
     }
 
+    pub fn emulator_update_preferences(&self) -> Result<EmulatorUpdatePreferences> {
+        let preferences = self
+            .connection()?
+            .query_row(
+                "SELECT check_policy, last_checked_at
+                 FROM emulator_update_preferences WHERE id=1",
+                [],
+                |row| {
+                    Ok(EmulatorUpdatePreferences {
+                        check_policy: row.get(0)?,
+                        last_checked_at: row.get(1)?,
+                    })
+                },
+            )
+            .optional()?
+            .unwrap_or_default();
+        preferences.validate()?;
+        Ok(preferences)
+    }
+
+    pub fn set_emulator_update_check_policy(&self, policy: &str) -> Result<()> {
+        let mut preferences = self.emulator_update_preferences()?;
+        preferences.check_policy = policy.trim().to_ascii_lowercase();
+        preferences.validate()?;
+        self.connection()?.execute(
+            "INSERT INTO emulator_update_preferences (id, check_policy, last_checked_at)
+             VALUES (1, ?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET check_policy=excluded.check_policy",
+            params![preferences.check_policy, preferences.last_checked_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn record_emulator_update_check(&self, checked_at: i64) -> Result<()> {
+        if checked_at < 0 {
+            bail!("the emulator update check time cannot be negative");
+        }
+        let preferences = self.emulator_update_preferences()?;
+        self.connection()?.execute(
+            "INSERT INTO emulator_update_preferences (id, check_policy, last_checked_at)
+             VALUES (1, ?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET last_checked_at=excluded.last_checked_at",
+            params![preferences.check_policy, checked_at],
+        )?;
+        Ok(())
+    }
+
     pub fn media_provider_game_link(
         &self,
         provider: &str,
@@ -1536,6 +1647,52 @@ impl SettingsStore {
                  platform_search=excluded.platform_search,
                  width=excluded.width",
             params![preferences.platform_search, preferences.width],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_library_session_preferences(&self) -> Result<LibrarySessionPreferences> {
+        let preferences = self
+            .connection()?
+            .query_row(
+                "SELECT platform, selected_game_uid, grid_content_y, list_content_y
+                 FROM library_session_preferences WHERE id=1",
+                [],
+                |row| {
+                    Ok(LibrarySessionPreferences {
+                        platform: row.get(0)?,
+                        selected_game_uid: row.get(1)?,
+                        grid_content_y: row.get(2)?,
+                        list_content_y: row.get(3)?,
+                    })
+                },
+            )
+            .optional()?
+            .unwrap_or_default();
+        preferences.validate()?;
+        Ok(preferences)
+    }
+
+    pub fn save_library_session_preferences(
+        &self,
+        preferences: &LibrarySessionPreferences,
+    ) -> Result<()> {
+        preferences.validate()?;
+        self.connection()?.execute(
+            "INSERT INTO library_session_preferences (
+                 id, platform, selected_game_uid, grid_content_y, list_content_y
+             ) VALUES (1, ?1, ?2, ?3, ?4)
+             ON CONFLICT(id) DO UPDATE SET
+                 platform=excluded.platform,
+                 selected_game_uid=excluded.selected_game_uid,
+                 grid_content_y=excluded.grid_content_y,
+                 list_content_y=excluded.list_content_y",
+            params![
+                preferences.platform,
+                preferences.selected_game_uid,
+                preferences.grid_content_y,
+                preferences.list_content_y,
+            ],
         )?;
         Ok(())
     }
@@ -3343,6 +3500,8 @@ impl SettingsStore {
                  ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
                  ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
              ) ON CONFLICT(id) DO UPDATE SET
+                 client_save_path=excluded.client_save_path,
+                 local_download_path=excluded.local_download_path,
                  state=excluded.state, progress=excluded.progress,
                  download_speed=excluded.download_speed,
                  downloaded_bytes=excluded.downloaded_bytes,
@@ -4084,6 +4243,17 @@ fn migrate(connection: &Connection) -> Result<()> {
              platform_search TEXT NOT NULL DEFAULT '' CHECK (length(platform_search) <= 80),
              width INTEGER NOT NULL DEFAULT 254 CHECK (width BETWEEN 180 AND 400)
          );
+         CREATE TABLE IF NOT EXISTS library_session_preferences (
+             id INTEGER PRIMARY KEY CHECK (id=1),
+             platform TEXT NOT NULL DEFAULT '' CHECK (length(platform) <= 200),
+             selected_game_uid TEXT NOT NULL DEFAULT '' CHECK (length(selected_game_uid) <= 512),
+             grid_content_y INTEGER NOT NULL DEFAULT 0 CHECK (
+                 grid_content_y BETWEEN 0 AND 100000000
+             ),
+             list_content_y INTEGER NOT NULL DEFAULT 0 CHECK (
+                 list_content_y BETWEEN 0 AND 100000000
+             )
+         );
          CREATE TABLE IF NOT EXISTS couch_mode_preferences (
              id INTEGER PRIMARY KEY CHECK (id=1),
              shelf TEXT NOT NULL DEFAULT 'all' CHECK (
@@ -4533,6 +4703,13 @@ fn migrate(connection: &Connection) -> Result<()> {
              version TEXT NOT NULL CHECK (length(version) BETWEEN 1 AND 128),
              credentials_required INTEGER NOT NULL CHECK (credentials_required IN (0, 1)),
              tested_at INTEGER NOT NULL CHECK (tested_at >= 0)
+         );
+         CREATE TABLE IF NOT EXISTS emulator_update_preferences (
+             id INTEGER PRIMARY KEY CHECK (id=1),
+             check_policy TEXT NOT NULL CHECK (
+                 check_policy IN ('daily', 'weekly', 'manual')
+             ),
+             last_checked_at INTEGER NOT NULL CHECK (last_checked_at >= 0)
          );
          CREATE TABLE IF NOT EXISTS user_collections (
              id TEXT PRIMARY KEY,
@@ -5997,6 +6174,34 @@ mod tests {
     }
 
     #[test]
+    fn emulator_update_checks_default_to_daily_and_never_install_implicitly() {
+        let (_directory, store) = store();
+        let defaults = store.emulator_update_preferences().unwrap();
+        assert_eq!(defaults.check_policy, "daily");
+        assert!(defaults.check_is_due(24 * 60 * 60));
+
+        store.record_emulator_update_check(100).unwrap();
+        let checked = store.emulator_update_preferences().unwrap();
+        assert!(!checked.check_is_due(100 + 24 * 60 * 60 - 1));
+        assert!(checked.check_is_due(100 + 24 * 60 * 60));
+
+        store.set_emulator_update_check_policy("weekly").unwrap();
+        let weekly = store.emulator_update_preferences().unwrap();
+        assert_eq!(weekly.last_checked_at, 100);
+        assert!(!weekly.check_is_due(100 + 6 * 24 * 60 * 60));
+        assert!(weekly.check_is_due(100 + 7 * 24 * 60 * 60));
+
+        store.set_emulator_update_check_policy("manual").unwrap();
+        assert!(
+            !store
+                .emulator_update_preferences()
+                .unwrap()
+                .check_is_due(i64::MAX)
+        );
+        assert!(store.set_emulator_update_check_policy("automatic").is_err());
+    }
+
+    #[test]
     fn qbittorrent_test_is_durable_and_scoped_to_the_exact_connection() {
         let (_directory, store) = store();
         let settings = AppSettings {
@@ -6071,6 +6276,8 @@ mod tests {
         job.state = "downloading".into();
         job.progress = 0.5;
         job.download_speed = 1024;
+        job.client_save_path = "/downloads/legacy".into();
+        job.local_download_path = PathBuf::from("/native/downloads/legacy/Game.zip");
         job.updated_at += 1;
         store.upsert_job(&job).unwrap();
 
@@ -6390,6 +6597,35 @@ mod tests {
                 })
                 .is_err()
         );
+    }
+
+    #[test]
+    fn library_session_defaults_safely_and_restores_exact_navigation() {
+        let (_directory, store) = store();
+        assert_eq!(
+            store.load_library_session_preferences().unwrap(),
+            LibrarySessionPreferences::default()
+        );
+
+        let expected = LibrarySessionPreferences {
+            platform: "Nintendo Entertainment System".into(),
+            selected_game_uid: "2d6cb4b2-a219-4c40-9b31-ac466a77e88c".into(),
+            grid_content_y: 12_345,
+            list_content_y: 6_789,
+        };
+        store.save_library_session_preferences(&expected).unwrap();
+        let reopened = SettingsStore::at(store.path()).unwrap();
+        assert_eq!(
+            reopened.load_library_session_preferences().unwrap(),
+            expected
+        );
+
+        let mut invalid = expected.clone();
+        invalid.grid_content_y = -1;
+        assert!(store.save_library_session_preferences(&invalid).is_err());
+        invalid.grid_content_y = 0;
+        invalid.selected_game_uid = "x".repeat(513);
+        assert!(store.save_library_session_preferences(&invalid).is_err());
     }
 
     #[test]

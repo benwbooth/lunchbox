@@ -54,6 +54,11 @@ struct ReviewedTorrentFile {
     byte_size: u64,
 }
 
+struct AddedTorrent {
+    files: Vec<(u32, String)>,
+    client_save_path: String,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TorrentSnapshot {
     pub state: String,
@@ -62,6 +67,7 @@ pub struct TorrentSnapshot {
     pub downloaded_bytes: u64,
     pub total_bytes: u64,
     pub message: String,
+    pub client_save_path: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,6 +85,8 @@ struct TorrentInfo {
     downloaded: u64,
     #[serde(default)]
     size: u64,
+    #[serde(default)]
+    save_path: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -185,9 +193,27 @@ impl QbittorrentClient {
         selection: &DownloadSelection,
         reviewed_files: &[(u32, String)],
     ) -> Result<Vec<(u32, String)>> {
-        let existed = if let Some(existing) = self.torrent_info(info_hash)? {
+        self.add_with_placement(
+            torrent_bytes,
+            info_hash,
+            save_path,
+            selection,
+            reviewed_files,
+        )
+        .map(|added| added.files)
+    }
+
+    fn add_with_placement(
+        &self,
+        torrent_bytes: &[u8],
+        info_hash: &str,
+        save_path: &str,
+        selection: &DownloadSelection,
+        reviewed_files: &[(u32, String)],
+    ) -> Result<AddedTorrent> {
+        let (existed, info) = if let Some(existing) = self.torrent_info(info_hash)? {
             ensure_owned(&existing)?;
-            true
+            (true, existing)
         } else {
             self.ensure_category()?;
             let torrent_part = Part::bytes(torrent_bytes)
@@ -221,16 +247,28 @@ impl QbittorrentClient {
             }
             let info = added.context("qBittorrent accepted the torrent but did not index it")?;
             ensure_owned(&info)?;
-            false
+            (false, info)
         };
 
         let files = self.apply_selection(info_hash, selection, existed, true)?;
-        reviewed_files
+        let files = reviewed_files
             .iter()
             .map(|(index, path)| {
                 verified_file(&files, *index, path).map(|file| (file.index, file.name.clone()))
             })
-            .collect()
+            .collect::<Result<Vec<_>>>()?;
+        let client_save_path = if info.save_path.trim().is_empty() {
+            if existed {
+                bail!("qBittorrent did not report the existing torrent save path");
+            }
+            save_path.to_owned()
+        } else {
+            info.save_path.trim().to_owned()
+        };
+        Ok(AddedTorrent {
+            files,
+            client_save_path,
+        })
     }
 
     pub fn snapshot(
@@ -267,6 +305,7 @@ impl QbittorrentClient {
             downloaded_bytes,
             total_bytes,
             message,
+            client_save_path: info.save_path,
         })
     }
 
@@ -973,7 +1012,7 @@ pub fn enqueue(
             native_download_path.display()
         )
     })?;
-    let client_save_path =
+    let requested_client_save_path =
         managed_client_save_path(&settings.qbittorrent_container_torrent_library_directory);
 
     let progress_file_index = if settings.download_entire_torrent {
@@ -999,13 +1038,14 @@ pub fn enqueue(
     )?;
 
     let client = QbittorrentClient::authenticated(settings, password)?;
-    let actual_files = client.add(
+    let added = client.add_with_placement(
         &request.torrent_bytes,
         &info_hash,
-        &client_save_path,
+        &requested_client_save_path,
         &selection,
         &requested_files,
     )?;
+    let actual_files = added.files;
     if let Some(plan) = download_plan.as_mut() {
         for member in &mut plan.members {
             let member_index =
@@ -1025,8 +1065,13 @@ pub fn enqueue(
         .find(|(index, _)| *index == request.selected_file_index)
         .map(|(_, path)| path.clone())
         .context("qBittorrent did not return the reviewed representative file")?;
-    let local_source_path =
-        native_download_path.join(safe_torrent_relative_path(&actual_file_path)?);
+    let client_save_path = added.client_save_path;
+    let local_source_path = native_path_for_client_file(
+        &settings.torrent_library_directory,
+        &settings.qbittorrent_container_torrent_library_directory,
+        &client_save_path,
+        &actual_file_path,
+    )?;
     let serialized_plan = download_plan
         .map(|plan| serde_json::to_string(&plan).context("encoding download plan"))
         .transpose()?
@@ -1216,6 +1261,47 @@ pub(crate) fn managed_native_download_path(root: &Path) -> PathBuf {
 
 pub(crate) fn managed_client_save_path(root: &str) -> String {
     client_path_join(&client_path_join(root, "lunchbox"), "roms")
+}
+
+pub(crate) fn native_path_for_client_file(
+    native_library_root: &Path,
+    client_library_root: &str,
+    client_save_path: &str,
+    torrent_file_path: &str,
+) -> Result<PathBuf> {
+    let client_file_path = client_path_join(client_save_path, torrent_file_path);
+    let relative = client_relative_path(client_library_root, &client_file_path)?;
+    Ok(native_library_root.join(relative))
+}
+
+fn client_relative_path(client_library_root: &str, client_path: &str) -> Result<PathBuf> {
+    let root = client_library_root.replace('\\', "/");
+    let root = root.trim().trim_end_matches('/');
+    let path = client_path.replace('\\', "/");
+    let path = path.trim();
+    if root.is_empty() || path.is_empty() {
+        bail!("qBittorrent path mapping requires non-empty client paths");
+    }
+
+    let windows_style = root.contains(':') || client_library_root.contains('\\');
+    let prefix_matches = if windows_style {
+        path.get(..root.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(root))
+    } else {
+        path.starts_with(root)
+    };
+    if !prefix_matches {
+        bail!(
+            "qBittorrent save path {client_path} is outside the configured client torrent library {client_library_root}"
+        );
+    }
+    let suffix = &path[root.len()..];
+    if !suffix.is_empty() && !suffix.starts_with('/') {
+        bail!(
+            "qBittorrent save path {client_path} is outside the configured client torrent library {client_library_root}"
+        );
+    }
+    safe_torrent_relative_path(suffix.trim_start_matches('/'))
 }
 
 fn safe_path_component(value: &str) -> String {
@@ -1766,6 +1852,78 @@ mod tests {
             managed_native_download_path(Path::new("/native/downloads")),
             PathBuf::from("/native/downloads/lunchbox/roms")
         );
+    }
+
+    #[test]
+    fn authoritative_client_save_paths_map_to_the_native_library() {
+        assert_eq!(
+            native_path_for_client_file(
+                Path::new("/mnt/stuff/Downloads"),
+                "/downloads",
+                "/downloads/roms/Nintendo Entertainment System",
+                "Minerva_Myrient/No-Intro/Faxanadu (USA) (Rev 1).zip",
+            )
+            .unwrap(),
+            PathBuf::from(
+                "/mnt/stuff/Downloads/roms/Nintendo Entertainment System/Minerva_Myrient/No-Intro/Faxanadu (USA) (Rev 1).zip"
+            )
+        );
+        assert_eq!(
+            native_path_for_client_file(
+                Path::new(r"E:\Downloads"),
+                r"D:\Downloads",
+                r"d:\downloads\Lunchbox\roms",
+                r"Pack\Game.zip",
+            )
+            .unwrap(),
+            PathBuf::from(r"E:\Downloads").join("Lunchbox/roms/Pack/Game.zip")
+        );
+        assert!(
+            native_path_for_client_file(
+                Path::new("/native/downloads"),
+                "/downloads",
+                "/other",
+                "Game.zip",
+            )
+            .is_err()
+        );
+        assert!(
+            native_path_for_client_file(
+                Path::new("/native/downloads"),
+                "/downloads",
+                "/downloads-old",
+                "Game.zip",
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn snapshot_reports_qbittorrents_authoritative_save_path() {
+        let (address, requests, worker) = mock_server(vec![
+            MockResponse {
+                body: "Ok.",
+                cookie: true,
+            },
+            MockResponse {
+                body: r#"[{"hash":"abc123","category":"lunchbox","state":"uploading","progress":1.0,"downloaded":42,"size":42,"save_path":"/downloads/legacy"}]"#,
+                cookie: false,
+            },
+        ]);
+        let client = QbittorrentClient::authenticated(&settings_for(address), "secret").unwrap();
+
+        let snapshot = client.snapshot("ABC123", None).unwrap();
+
+        assert_eq!(snapshot.state, "complete");
+        assert_eq!(snapshot.client_save_path, "/downloads/legacy");
+        let _login = requests.recv().unwrap();
+        assert!(
+            requests
+                .recv()
+                .unwrap()
+                .starts_with("GET /api/v2/torrents/info?hashes=ABC123 HTTP/1.1")
+        );
+        worker.join().unwrap();
     }
 
     #[test]

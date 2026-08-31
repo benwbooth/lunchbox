@@ -30,7 +30,9 @@ Item {
                 ? libraryModel.alphabet_label_for_row(currentRow) : ""
     }
 
+    readonly property int preferredButtonHeight: 18
     implicitWidth: 34
+    implicitHeight: 12 + labels.length * preferredButtonHeight
     Accessible.role: Accessible.List
     Accessible.name: "Game title alphabet"
 

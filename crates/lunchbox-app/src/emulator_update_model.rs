@@ -16,6 +16,8 @@ pub mod qobject {
         #[qproperty(i32, batch_count)]
         #[qproperty(i32, revision)]
         #[qproperty(QString, message)]
+        #[qproperty(QString, check_policy)]
+        #[qproperty(bool, prompt_pending)]
         type EmulatorUpdateModel = super::EmulatorUpdateModelRust;
 
         #[qinvokable]
@@ -23,6 +25,15 @@ pub mod qobject {
 
         #[qinvokable]
         fn refresh(self: Pin<&mut EmulatorUpdateModel>);
+
+        #[qinvokable]
+        fn check_if_due(self: Pin<&mut EmulatorUpdateModel>);
+
+        #[qinvokable]
+        fn choose_check_policy(self: Pin<&mut EmulatorUpdateModel>, policy: QString);
+
+        #[qinvokable]
+        fn dismiss_prompt(self: Pin<&mut EmulatorUpdateModel>);
 
         #[qinvokable]
         fn name_at(self: &EmulatorUpdateModel, index: i32) -> QString;
@@ -102,6 +113,9 @@ pub struct EmulatorUpdateModelRust {
     batch_count: i32,
     revision: i32,
     message: QString,
+    check_policy: QString,
+    prompt_pending: bool,
+    scheduled_check: bool,
     rows: Vec<UpdateRow>,
 }
 
@@ -116,6 +130,9 @@ impl Default for EmulatorUpdateModelRust {
             batch_count: 0,
             revision: 0,
             message: QString::from("Check for emulator updates when you are ready."),
+            check_policy: QString::from("daily"),
+            prompt_pending: false,
+            scheduled_check: false,
             rows: Vec::new(),
         }
     }
@@ -130,17 +147,63 @@ impl qobject::EmulatorUpdateModel {
         if *self.as_ref().initialized() || *self.as_ref().busy() {
             return;
         }
-        self.load_async("Checking installed emulator versions…");
+        self.load_async("Checking installed emulator versions…", false);
     }
 
     pub fn refresh(self: Pin<&mut Self>) {
         if *self.as_ref().busy() {
             return;
         }
-        self.load_async("Refreshing available emulator updates…");
+        self.load_async("Refreshing available emulator updates…", false);
     }
 
-    fn load_async(mut self: Pin<&mut Self>, message: &str) {
+    pub fn check_if_due(mut self: Pin<&mut Self>) {
+        if *self.as_ref().busy() {
+            return;
+        }
+        let preferences = match crate::settings::SettingsStore::open_default()
+            .and_then(|store| store.emulator_update_preferences())
+        {
+            Ok(preferences) => preferences,
+            Err(error) => {
+                self.as_mut().set_message(qstring(format!(
+                    "Could not load emulator update preferences: {error}"
+                )));
+                return;
+            }
+        };
+        self.as_mut()
+            .set_check_policy(qstring(&preferences.check_policy));
+        if preferences.check_is_due(crate::settings::unix_timestamp()) {
+            self.load_async("Checking for emulator updates in the background…", true);
+        }
+    }
+
+    pub fn choose_check_policy(mut self: Pin<&mut Self>, policy: QString) {
+        let policy = policy.to_string();
+        match crate::settings::SettingsStore::open_default()
+            .and_then(|store| store.set_emulator_update_check_policy(&policy))
+        {
+            Ok(()) => {
+                self.as_mut().set_check_policy(qstring(&policy));
+                self.as_mut().set_message(qstring(match policy.as_str() {
+                    "daily" => "Lunchbox will check daily and ask before applying updates.",
+                    "weekly" => "Lunchbox will check weekly and ask before applying updates.",
+                    _ => "Automatic emulator update checks are disabled.",
+                }));
+            }
+            Err(error) => self.as_mut().set_message(qstring(format!(
+                "Could not save emulator update preferences: {error}"
+            ))),
+        }
+    }
+
+    pub fn dismiss_prompt(mut self: Pin<&mut Self>) {
+        self.as_mut().set_prompt_pending(false);
+    }
+
+    fn load_async(mut self: Pin<&mut Self>, message: &str, scheduled: bool) {
+        self.as_mut().rust_mut().scheduled_check = scheduled;
         self.as_mut().set_busy(true);
         self.as_mut().set_completed_count(0);
         self.as_mut().set_batch_count(0);
@@ -168,6 +231,8 @@ impl qobject::EmulatorUpdateModel {
         result: Result<emulator_manager::EmulatorUpdateInventory, String>,
     ) {
         self.as_mut().set_busy(false);
+        let scheduled = self.as_ref().rust().scheduled_check;
+        self.as_mut().rust_mut().scheduled_check = false;
         match result {
             Ok(inventory) => {
                 let warning_count = inventory.warnings.len();
@@ -206,6 +271,16 @@ impl qobject::EmulatorUpdateModel {
                     )
                 };
                 self.as_mut().set_message(qstring(message));
+                if scheduled {
+                    if let Err(error) =
+                        crate::settings::SettingsStore::open_default().and_then(|store| {
+                            store.record_emulator_update_check(crate::settings::unix_timestamp())
+                        })
+                    {
+                        eprintln!("LUNCHBOX_EMULATOR_UPDATE_CHECK_RECORD_FAILED error={error:#}");
+                    }
+                    self.as_mut().set_prompt_pending(count > 0);
+                }
                 println!(
                     "LUNCHBOX_EMULATOR_UPDATES_READY updates={count} warnings={warning_count}"
                 );
@@ -319,6 +394,7 @@ impl qobject::EmulatorUpdateModel {
             return;
         }
         let total = selected.len();
+        self.as_mut().set_prompt_pending(false);
         self.as_mut().set_busy(true);
         self.as_mut().set_completed_count(0);
         self.as_mut().set_batch_count(saturating_i32(total));
