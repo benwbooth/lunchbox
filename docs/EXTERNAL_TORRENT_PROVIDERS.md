@@ -95,14 +95,20 @@ catalog metadata.
 3. The Qt review shows the complete portable inventory and total size. SQLite
    stores the bounded reviewed torrent metadata, source provenance, exact
    platform, verified identities, and a normalized member-title index. Re-adding
-   the same info hash updates the source idempotently.
+   the same info hash updates the source idempotently. This durable Lunchbox
+   catalog is the source of truth: qBittorrent is only the transfer executor,
+   and deleting its live torrent entry does not remove the saved metadata or
+   member index.
 4. Game details query that index only by the exact normalized canonical title
    and exact-linked alternate titles. Matching members appear in the ordinary
    Get review; filename similarity never establishes catalog identity.
 5. Queueing always selects only the explicitly reviewed member from a registered
    source, regardless of the global whole-torrent preference. The existing
    durable queue then owns progress, pause/resume, retry, cancellation, storage
-   reservation, import validation, and post-import seeding policy.
+   reservation, import validation, and post-import seeding policy. If the
+   qBittorrent entry is absent, Lunchbox recreates its managed transfer from the
+   retained exact bytes at the recorded managed path instead of re-querying or
+   guessing the source.
 
 This route supports newer platforms without binding the core application to one
 Telegram channel. Platform support is still separate from download availability:

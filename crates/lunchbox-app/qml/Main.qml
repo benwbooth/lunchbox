@@ -15034,7 +15034,7 @@ ApplicationWindow {
                         Text {
                             Layout.fillWidth: true
                             text: externalTorrent.collection_mode
-                                  ? "Index exact members now; individual matching games download only when requested."
+                                  ? "Lunchbox retains the exact metadata and index; matching games download only when requested."
                                   : externalTorrent.game_title + "  ·  "
                                     + externalTorrent.game_platform
                                     + "  ·  Exact catalog association"
@@ -15511,7 +15511,7 @@ ApplicationWindow {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Index its filenames for future exact-title Get results. No additional files are queued."
+                                text: "Save its metadata and member index in Lunchbox for future exact-title Get results. The source remains usable if its qBittorrent entry is removed."
                                 color: root.muted
                                 font.pixelSize: 9
                                 wrapMode: Text.WordWrap

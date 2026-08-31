@@ -813,7 +813,7 @@ impl qobject::ExternalTorrentModel {
                 let revision = self.as_ref().registered_revision().saturating_add(1);
                 self.as_mut().set_registered_revision(revision);
                 self.as_mut().set_message(qstring(
-                    "Torrent source added. Matching games can now download individual files from their Get lists.",
+                    "Source saved and indexed by Lunchbox. Matching games can download individual files even if the original qBittorrent entry is later removed.",
                 ));
             }
             Err(error) => self.as_mut().set_message(qstring(format!(

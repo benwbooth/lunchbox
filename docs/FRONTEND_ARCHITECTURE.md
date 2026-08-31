@@ -216,6 +216,13 @@ The initial implementation enforces this shape:
   hours. The currently inspected torrent also has one decoded file index shared
   by its source views, so a large multi-platform torrent is not downloaded or
   expanded repeatedly. All fetch and decode work remains off the Qt thread.
+- A reviewed reusable torrent is different from that transient inspection
+  cache: Lunchbox durably owns its exact bounded `.torrent` bytes, SHA-256 and
+  v1 info-hash receipts, source provenance, platform association, and normalized
+  member index in SQLite. qBittorrent is a replaceable transfer executor rather
+  than the catalog authority. A removed live client job therefore cannot erase
+  discovery data; queueing or recovery recreates only a Lunchbox-owned transfer
+  from the retained bytes and exact reviewed selection.
 - Generic optical multi-disc matches become one versioned download plan. Disc,
   disk, CD, side, part, volume and card markers support numeric, alphabetic and
   common Roman forms; the planner chooses one runnable primary per disc and

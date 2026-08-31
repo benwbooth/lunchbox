@@ -883,9 +883,10 @@ mod tests {
     }
 
     #[test]
-    fn reviewed_collection_registration_is_idempotent_and_downloads_no_payload() {
+    fn reviewed_collection_is_idempotent_durable_and_independent_of_qbittorrent_lifetime() {
         let directory = tempfile::tempdir().unwrap();
-        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let database_path = directory.path().join("state.db");
+        let store = SettingsStore::at(&database_path).unwrap();
         let offer = inspect_torrent_bytes(
             &probe_fixture_torrent_bytes(),
             "user-reviewed-collection.torrent",
@@ -936,5 +937,26 @@ mod tests {
         assert_eq!(members.len(), 2);
         assert_eq!(members[0].path, "Game/Sample Game.rom");
         assert_eq!(members[1].path, "Game/Sample Game (Europe).rom");
+
+        // Registration is a Lunchbox-owned catalog operation, not a live
+        // qBittorrent lookup. Reopen the durable state with no client present
+        // and prove both the exact metadata and member index remain usable.
+        drop(store);
+        let reopened = SettingsStore::at(database_path).unwrap();
+        let retained_bytes = reopened.registered_torrent_bytes(&info_hash).unwrap();
+        let retained_offer = inspect_torrent_bytes(&retained_bytes, "retained-source.torrent")
+            .expect("retained torrent metadata remains independently inspectable");
+        assert_eq!(retained_offer.info_hash, info_hash);
+        assert_eq!(retained_offer.files.len(), 2);
+        assert_eq!(
+            reopened
+                .registered_torrent_members_for_title_keys(
+                    &retained_offer.info_hash,
+                    &["sample game".to_owned()],
+                )
+                .unwrap()
+                .len(),
+            2
+        );
     }
 }
