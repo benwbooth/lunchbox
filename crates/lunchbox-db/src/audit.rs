@@ -241,7 +241,7 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
             OR trim(r.source_package_name)=''
             OR trim(r.notes)=''
             OR (r.supports_hle_fallback=1 AND r.required=1)
-            OR ((s.transport='manual') <> (r.target_strategy='manual_import'))
+            OR ((s.transport='manual') <> (r.target_strategy IN ('manual_import', 'managed_import')))
             OR (r.target_strategy='mame_rompath' AND r.runtime_kind<>'mame')
             OR (r.runtime_kind='retroarch' AND lower(e.name)<>'retroarch')
             OR (r.runtime_kind<>'retroarch' AND lower(e.name)<>lower(r.runtime_name))

@@ -65,8 +65,9 @@ catalog metadata.
    duplicates, case ambiguity, controls, and filenames that are not portable
    across Linux, macOS, and Windows.
 3. The native Qt review dialog exposes the source filename, torrent name,
-   SHA-1 info hash, complete file inventory, exact selection, and whether
-   Settings requires the entire torrent. Nothing downloads until Queue is
+   SHA-1 info hash, complete file inventory, and exact selection. A game-level
+   import always queues only that reviewed member, even when the global Minerva
+   preference allows whole torrents. Nothing downloads until Queue is
    explicitly activated.
 4. The existing qBittorrent/download planner owns selection, progress,
    cancellation, import validation, and collection publication. SQLite records
@@ -76,6 +77,9 @@ catalog metadata.
 5. A later adapter API can run in-process only for a small audited protocol or
    out-of-process with a versioned JSON contract and least-privilege storage.
    Credentials belong in the system keyring; databases contain references only.
+6. The same dialog can optionally register the reviewed torrent for the exact
+   game's platform. Its normalized member index then supplies future exact-title
+   Get results without queueing any additional payload files.
 
 ## Implemented reusable source flow
 

@@ -52,6 +52,12 @@ pub(crate) struct CollectionTorrentAssociation {
     pub platform: String,
 }
 
+pub(crate) struct ManualTorrentQueueResult {
+    pub job_id: String,
+    pub platform_registered: bool,
+    pub platform_registration_error: Option<String>,
+}
+
 pub(crate) fn inspect_torrent_file(path: &Path) -> Result<ManualTorrentOffer> {
     let source_file_name = path
         .file_name()
@@ -245,6 +251,18 @@ pub(crate) fn register_collection_torrent(
         discard_unqueued_magnet_review(settings, password, &offer)
             .context("removing the metadata-only magnet review from qBittorrent")?;
     }
+    register_reviewed_torrent_catalog(store, association, &offer)
+}
+
+fn register_reviewed_torrent_catalog(
+    store: &SettingsStore,
+    association: CollectionTorrentAssociation,
+    offer: &ManualTorrentOffer,
+) -> Result<i64> {
+    validate_label(&association.platform, "torrent source platform", 512)?;
+    if association.platform == "Unassigned platform" {
+        bail!("choose the platform represented by this torrent before adding the source");
+    }
     let members = offer
         .files
         .iter()
@@ -258,13 +276,13 @@ pub(crate) fn register_collection_torrent(
     store.register_torrent_catalog(&RegisteredTorrentCatalog {
         platform_key: crate::catalog::normalize_platform_key(&association.platform),
         platform: association.platform,
-        source_kind: offer.source_kind,
-        source_label: offer.source_label,
-        source_file_name: offer.source_file_name,
-        torrent_name: offer.torrent_name,
-        torrent_sha256: offer.torrent_sha256,
-        info_hash: offer.info_hash,
-        torrent_bytes: offer.torrent_bytes,
+        source_kind: offer.source_kind.clone(),
+        source_label: offer.source_label.clone(),
+        source_file_name: offer.source_file_name.clone(),
+        torrent_name: offer.torrent_name.clone(),
+        torrent_sha256: offer.torrent_sha256.clone(),
+        info_hash: offer.info_hash.clone(),
+        torrent_bytes: offer.torrent_bytes.clone(),
         total_bytes: offer.total_bytes,
         members,
         registered_at: unix_timestamp(),
@@ -362,7 +380,8 @@ pub(crate) fn queue_manual_torrent(
     association: CanonicalGameAssociation,
     offer: ManualTorrentOffer,
     selected_index: usize,
-) -> Result<String> {
+    register_for_platform: bool,
+) -> Result<ManualTorrentQueueResult> {
     validate_association(&association)?;
     let selected = offer
         .files
@@ -370,8 +389,13 @@ pub(crate) fn queue_manual_torrent(
         .context("choose an exact file from the reviewed torrent")?
         .clone();
     let source_locator = format!("manual-torrent:sha256:{}", offer.torrent_sha256);
+    // A game-level torrent import always means the one reviewed member. The
+    // global whole-torrent preference is for Minerva bundles and must never
+    // turn this explicit selection into an accidental collection download.
+    let mut selective_settings = settings.clone();
+    selective_settings.download_entire_torrent = false;
     let job = qbittorrent::enqueue(
-        settings,
+        &selective_settings,
         password,
         store,
         EnqueueRequest {
@@ -381,20 +405,20 @@ pub(crate) fn queue_manual_torrent(
             platform: association.platform.clone(),
             source_kind: "manual_torrent".to_owned(),
             torrent_url: source_locator,
-            torrent_bytes: offer.torrent_bytes,
+            torrent_bytes: offer.torrent_bytes.clone(),
             selected_file_index: selected.index,
             selected_file_path: selected.path.clone(),
             download_plan: None,
         },
     )?;
     let receipt = ManualTorrentSourceReceipt {
-        game_uid: association.game_uid,
+        game_uid: association.game_uid.clone(),
         launchbox_db_id: association.launchbox_db_id,
-        canonical_title: association.title,
-        platform: association.platform,
-        source_file_name: offer.source_file_name,
-        torrent_name: offer.torrent_name,
-        torrent_sha256: offer.torrent_sha256,
+        canonical_title: association.title.clone(),
+        platform: association.platform.clone(),
+        source_file_name: offer.source_file_name.clone(),
+        torrent_name: offer.torrent_name.clone(),
+        torrent_sha256: offer.torrent_sha256.clone(),
         info_hash: job.info_hash.clone(),
         selected_file_index: selected.index,
         selected_file_path: job.torrent_file_path.clone(),
@@ -402,7 +426,25 @@ pub(crate) fn queue_manual_torrent(
         reviewed_at: unix_timestamp(),
     };
     store.record_manual_torrent_enqueue(&receipt, &job)?;
-    Ok(job.id)
+    let (platform_registered, platform_registration_error) = if register_for_platform {
+        match register_reviewed_torrent_catalog(
+            store,
+            CollectionTorrentAssociation {
+                platform: association.platform,
+            },
+            &offer,
+        ) {
+            Ok(_) => (true, None),
+            Err(error) => (false, Some(format!("{error:#}"))),
+        }
+    } else {
+        (false, None)
+    };
+    Ok(ManualTorrentQueueResult {
+        job_id: job.id,
+        platform_registered,
+        platform_registration_error,
+    })
 }
 
 fn reviewed_file(index: usize, path: String, signed_size: i64) -> Result<ReviewedTorrentFile> {
@@ -677,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn reviewed_whole_torrent_enqueue_preserves_exact_source_and_game_provenance() {
+    fn reviewed_game_enqueue_is_selective_and_can_register_the_platform_source() {
         let directory = tempfile::tempdir().unwrap();
         let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
         let offer = inspect_torrent_bytes(
@@ -722,6 +764,10 @@ mod tests {
                 body: String::new(),
                 cookie: false,
             },
+            MockResponse {
+                body: String::new(),
+                cookie: false,
+            },
         ];
         let (address, requests, worker) = mock_server(responses);
         let settings = AppSettings {
@@ -741,9 +787,19 @@ mod tests {
             platform: "Sample System".into(),
         };
 
-        let job_id =
-            queue_manual_torrent(&settings, "secret", &store, association.clone(), offer, 0)
-                .unwrap();
+        let outcome = queue_manual_torrent(
+            &settings,
+            "secret",
+            &store,
+            association.clone(),
+            offer,
+            0,
+            true,
+        )
+        .unwrap();
+        let job_id = outcome.job_id;
+        assert!(outcome.platform_registered);
+        assert_eq!(outcome.platform_registration_error, None);
 
         let jobs = store.jobs().unwrap();
         assert_eq!(jobs.len(), 1);
@@ -756,7 +812,7 @@ mod tests {
             format!("manual-torrent:sha256:{torrent_sha256}")
         );
         assert_eq!(jobs[0].info_hash, info_hash);
-        assert_eq!(jobs[0].torrent_file_index, None);
+        assert_eq!(jobs[0].torrent_file_index, Some(0));
         assert_eq!(
             jobs[0].torrent_file_path,
             "Sample Pack/Game/Sample Game.rom"
@@ -768,15 +824,23 @@ mod tests {
         assert_eq!(receipts[0].selected_file_path, jobs[0].torrent_file_path);
         assert_eq!(receipts[0].torrent_sha256, torrent_sha256);
 
-        let captured = (0..8).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        let sources = store
+            .registered_torrent_sources_for_platform("sample-system")
+            .unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].torrent_sha256, torrent_sha256);
+        assert_eq!(sources[0].file_count, 2);
+
+        let captured = (0..9).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
         assert!(captured[0].starts_with("POST /api/v2/auth/login HTTP/1.1"));
         assert!(captured[3].starts_with("POST /api/v2/torrents/add HTTP/1.1"));
         assert!(captured[3].contains("filename=\"lunchbox-source.torrent\""));
         assert!(captured[5].starts_with(&format!(
             "GET /api/v2/torrents/files?hash={info_hash} HTTP/1.1"
         )));
-        assert!(captured[6].contains("id=0%7C1&priority=1"));
-        assert!(captured[7].starts_with("POST /api/v2/torrents/start HTTP/1.1"));
+        assert!(captured[6].contains("id=0%7C1&priority=0"));
+        assert!(captured[7].contains("id=0&priority=7"));
+        assert!(captured[8].starts_with("POST /api/v2/torrents/start HTTP/1.1"));
         worker.join().unwrap();
     }
 

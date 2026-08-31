@@ -226,14 +226,19 @@ fn validate_catalog(catalog: &FirmwareCatalog) -> Result<()> {
         }
         if !matches!(
             rule.target_strategy.as_str(),
-            "runtime_dir" | "launch_scoped" | "mame_rompath" | "manual_import"
+            "runtime_dir" | "launch_scoped" | "mame_rompath" | "manual_import" | "managed_import"
         ) {
             bail!(
                 "firmware rule {} has invalid target strategy",
                 rule.rule_key
             );
         }
-        if (rule.source.starts_with("manual:")) != (rule.target_strategy == "manual_import") {
+        if rule.source.starts_with("manual:")
+            != matches!(
+                rule.target_strategy.as_str(),
+                "manual_import" | "managed_import"
+            )
+        {
             bail!(
                 "firmware rule {} has inconsistent manual target strategy",
                 rule.rule_key
@@ -339,8 +344,8 @@ mod tests {
     fn declared_catalog_has_unique_exact_rules_and_sources() {
         let catalog: FirmwareCatalog = serde_json::from_str(RULES_JSON).unwrap();
         validate_catalog(&catalog).unwrap();
-        assert_eq!(catalog.rules.len(), 118);
-        assert_eq!(catalog.acquisition_sources.len(), 17);
+        assert_eq!(catalog.rules.len(), 124);
+        assert_eq!(catalog.acquisition_sources.len(), 19);
         assert!(catalog.rules.iter().any(|rule| {
             rule.runtime_kind == "retroarch"
                 && rule.runtime_name == "swanstation"
@@ -353,6 +358,11 @@ mod tests {
         );
         assert!(catalog.rules.iter().any(|rule| {
             rule.runtime_kind == "demul" && rule.target_strategy == "manual_import"
+        }));
+        assert!(catalog.rules.iter().any(|rule| {
+            rule.runtime_kind == "eden"
+                && rule.platform_name == "Nintendo Switch"
+                && rule.target_strategy == "managed_import"
         }));
     }
 }

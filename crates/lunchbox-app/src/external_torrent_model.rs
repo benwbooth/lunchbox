@@ -13,6 +13,7 @@ pub mod qobject {
         #[qproperty(bool, busy)]
         #[qproperty(bool, ready)]
         #[qproperty(bool, collection_mode)]
+        #[qproperty(bool, register_for_platform)]
         #[qproperty(i32, file_count)]
         #[qproperty(i32, selected_index)]
         #[qproperty(i32, revision)]
@@ -58,6 +59,9 @@ pub mod qobject {
         fn select_file(self: Pin<&mut ExternalTorrentModel>, index: i32);
 
         #[qinvokable]
+        fn set_platform_registration(self: Pin<&mut ExternalTorrentModel>, enabled: bool);
+
+        #[qinvokable]
         fn queue_selected(self: Pin<&mut ExternalTorrentModel>);
 
         #[qinvokable]
@@ -91,6 +95,7 @@ pub struct ExternalTorrentModelRust {
     busy: bool,
     ready: bool,
     collection_mode: bool,
+    register_for_platform: bool,
     file_count: i32,
     selected_index: i32,
     revision: i32,
@@ -119,6 +124,7 @@ impl Default for ExternalTorrentModelRust {
             busy: false,
             ready: false,
             collection_mode: false,
+            register_for_platform: false,
             file_count: 0,
             selected_index: -1,
             revision: 0,
@@ -184,6 +190,7 @@ impl qobject::ExternalTorrentModel {
         self.as_mut().rust_mut().association = Some(association.clone());
         self.as_mut().rust_mut().collection_association = None;
         self.as_mut().set_collection_mode(false);
+        self.as_mut().set_register_for_platform(false);
         self.as_mut().set_game_title(qstring(association.title));
         self.as_mut()
             .set_game_platform(qstring(association.platform));
@@ -204,6 +211,7 @@ impl qobject::ExternalTorrentModel {
             platform: platform.clone(),
         });
         self.as_mut().set_collection_mode(true);
+        self.as_mut().set_register_for_platform(false);
         self.as_mut().set_game_title(qstring("Collection torrent"));
         self.as_mut().set_game_platform(qstring(platform));
         self.as_mut().reset_offer();
@@ -461,6 +469,13 @@ impl qobject::ExternalTorrentModel {
         self.as_mut().bump_revision();
     }
 
+    pub fn set_platform_registration(mut self: Pin<&mut Self>, enabled: bool) {
+        if *self.as_ref().busy() || *self.as_ref().collection_mode() {
+            return;
+        }
+        self.as_mut().set_register_for_platform(enabled);
+    }
+
     pub fn queue_selected(mut self: Pin<&mut Self>) {
         if *self.as_ref().busy() || !*self.as_ref().ready() {
             return;
@@ -486,12 +501,13 @@ impl qobject::ExternalTorrentModel {
             "Adding the reviewed selection to Lunchbox downloads…",
         ));
         let association = self.as_ref().rust().association.clone();
+        let register_for_platform = *self.as_ref().register_for_platform();
         let generation = self.as_ref().rust().generation;
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
             .name("lunchbox-torrent-enqueue".to_owned())
             .spawn(move || {
-                let result = (|| -> anyhow::Result<String> {
+                let result = (|| -> anyhow::Result<external_torrent::ManualTorrentQueueResult> {
                     let store = crate::settings::SettingsStore::open_default()?;
                     let settings = store.load()?;
                     let password = crate::settings::load_password()?.unwrap_or_default();
@@ -504,6 +520,7 @@ impl qobject::ExternalTorrentModel {
                         association,
                         offer,
                         selected_index,
+                        register_for_platform,
                     )
                 })()
                 .map_err(|error| format!("{error:#}"));
@@ -519,22 +536,37 @@ impl qobject::ExternalTorrentModel {
         }
     }
 
-    fn finish_queue(mut self: Pin<&mut Self>, generation: u64, result: Result<String, String>) {
+    fn finish_queue(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<external_torrent::ManualTorrentQueueResult, String>,
+    ) {
         if generation != self.as_ref().rust().generation {
             return;
         }
         self.as_mut().set_busy(false);
         match result {
-            Ok(job_id) => {
+            Ok(outcome) => {
                 if let Some(offer) = self.as_mut().rust_mut().offer.as_mut() {
                     offer.magnet_review_created = false;
                 }
-                self.as_mut().set_queued_job_id(qstring(job_id));
+                self.as_mut().set_queued_job_id(qstring(outcome.job_id));
+                if outcome.platform_registered {
+                    let revision = self.as_ref().registered_revision().saturating_add(1);
+                    self.as_mut().set_registered_revision(revision);
+                }
                 let revision = self.as_ref().queued_revision().saturating_add(1);
                 self.as_mut().set_queued_revision(revision);
-                self.as_mut().set_message(qstring(
-                    "Queued with exact game, source, info-hash, and file provenance.",
-                ));
+                self.as_mut().set_message(qstring(if outcome.platform_registered {
+                    "Queued the selected game and added this torrent as a reusable source for the platform."
+                        .to_owned()
+                } else if let Some(error) = outcome.platform_registration_error {
+                    format!(
+                        "Queued the selected game, but could not add the reusable platform source: {error}"
+                    )
+                } else {
+                    "Queued with exact game, source, info-hash, and file provenance.".to_owned()
+                }));
             }
             Err(error) => self
                 .as_mut()
@@ -621,6 +653,7 @@ impl qobject::ExternalTorrentModel {
         self.as_mut().rust_mut().association = None;
         self.as_mut().rust_mut().collection_association = None;
         self.as_mut().set_collection_mode(false);
+        self.as_mut().set_register_for_platform(false);
         self.as_mut().set_game_title(QString::default());
         self.as_mut().set_game_platform(QString::default());
         self.as_mut().reset_offer();

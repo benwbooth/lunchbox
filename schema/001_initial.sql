@@ -388,7 +388,7 @@ CREATE TABLE firmware_rules (
     target_subdir TEXT NOT NULL DEFAULT '',
     install_mode TEXT NOT NULL CHECK (install_mode IN ('merge_tree', 'copy_archive')),
     target_strategy TEXT NOT NULL CHECK (
-        target_strategy IN ('runtime_dir', 'launch_scoped', 'mame_rompath', 'manual_import')
+        target_strategy IN ('runtime_dir', 'launch_scoped', 'mame_rompath', 'manual_import', 'managed_import')
     ),
     required INTEGER NOT NULL CHECK (required IN (0, 1)),
     supports_hle_fallback INTEGER NOT NULL CHECK (supports_hle_fallback IN (0, 1)),

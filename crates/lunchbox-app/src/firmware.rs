@@ -25,6 +25,8 @@ const MAX_FIRMWARE_EXTRACTED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 const MAX_FIRMWARE_FILES: usize = 250_000;
 const MAX_GITHUB_RELEASE_BYTES: u64 = 4 * 1024 * 1024;
 const FIRMWARE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(60 * 60);
+const SWITCH_KEYS_MAX_BYTES: u64 = 8 * 1024 * 1024;
+const SWITCH_FIRMWARE_PACKAGE: &str = "switch-firmware.zip";
 
 #[derive(Debug, Deserialize)]
 struct GitHubRelease {
@@ -74,6 +76,9 @@ impl FirmwareStatus {
     }
 
     pub fn source_label(&self) -> &'static str {
+        if self.target_strategy == "managed_import" {
+            return "User-owned import";
+        }
         match self.source_transport.as_str() {
             "minerva" => "Minerva",
             "github_release" => "GitHub release",
@@ -437,6 +442,24 @@ fn runtime_root(
         "86box" if cfg!(target_os = "macos") => home.join("Library/Application Support/86Box/roms"),
         "86box" => base.data_local_dir().join("86Box/roms"),
         "pcem" => home.join(".pcem/roms"),
+        "eden" if cfg!(target_os = "linux") && flatpak => {
+            home.join(".var/app/dev.eden_emu.eden/data/eden")
+        }
+        "eden" if cfg!(target_os = "linux") => base.data_local_dir().join("eden"),
+        "eden" if cfg!(target_os = "windows") => base.config_dir().join("eden"),
+        "eden" => home.join("Library/Application Support/eden"),
+        "ryubing" if cfg!(target_os = "linux") && flatpak => {
+            home.join(".var/app/io.github.ryubing.Ryujinx/config/Ryujinx")
+        }
+        "ryubing" if cfg!(target_os = "linux") => base.config_dir().join("Ryujinx"),
+        "ryubing" if cfg!(target_os = "windows") => base.config_dir().join("Ryujinx"),
+        "ryubing" => home.join("Library/Application Support/Ryujinx"),
+        "torzu" if cfg!(target_os = "linux") && flatpak => {
+            home.join(".var/app/onion.torzu_emu.torzu/data/yuzu")
+        }
+        "torzu" if cfg!(target_os = "linux") => base.data_local_dir().join("yuzu"),
+        "torzu" if cfg!(target_os = "windows") => base.config_dir().join("yuzu"),
+        "torzu" => home.join("Library/Application Support/yuzu"),
         kind => bail!("firmware runtime {kind} has no reviewed target adapter"),
     };
     Ok(Some(root))
@@ -522,7 +545,7 @@ pub fn import_and_sync(statuses: &[FirmwareStatus], selected_path: &Path) -> Res
     let candidates = statuses
         .iter()
         .filter(|status| status.target_strategy != "manual_import" && !status.imported)
-        .filter(|status| status.package_name.eq_ignore_ascii_case(selected_name))
+        .filter(|status| firmware_selection_matches(status, selected_name))
         .collect::<Vec<_>>();
     if candidates.is_empty() {
         let mut expected = statuses
@@ -550,6 +573,7 @@ pub fn import_and_sync(statuses: &[FirmwareStatus], selected_path: &Path) -> Res
         );
     }
     let selected = candidates[0];
+    validate_managed_firmware_selection(selected, selected_path)?;
     let receipt = import_package(&selected.source_id, &selected.package_name, selected_path)?;
     let synced = sync_matching_statuses(statuses, std::slice::from_ref(&receipt))?;
     Ok(format!(
@@ -566,6 +590,120 @@ pub fn import_and_sync(statuses: &[FirmwareStatus], selected_path: &Path) -> Res
             )
         }
     ))
+}
+
+fn firmware_selection_matches(status: &FirmwareStatus, selected_name: &str) -> bool {
+    status.package_name.eq_ignore_ascii_case(selected_name)
+        || (status.target_strategy == "managed_import"
+            && status.package_name == SWITCH_FIRMWARE_PACKAGE
+            && selected_name.to_ascii_lowercase().ends_with(".zip"))
+}
+
+fn validate_managed_firmware_selection(
+    status: &FirmwareStatus,
+    selected_path: &Path,
+) -> Result<()> {
+    if status.target_strategy != "managed_import" {
+        return Ok(());
+    }
+    match status.source_id.as_str() {
+        "manual:nintendo-switch-keys" => validate_switch_prod_keys(selected_path),
+        "manual:nintendo-switch-firmware" => validate_switch_firmware_zip(selected_path),
+        source => bail!("managed firmware source {source} has no validator"),
+    }
+}
+
+fn validate_switch_prod_keys(path: &Path) -> Result<()> {
+    let metadata = fs::metadata(path)?;
+    if metadata.len() == 0 || metadata.len() > SWITCH_KEYS_MAX_BYTES {
+        bail!("prod.keys must be a non-empty text file smaller than 8 MiB");
+    }
+    let contents = fs::read_to_string(path).context("prod.keys is not valid UTF-8 text")?;
+    let mut valid_entries = 0usize;
+    let mut has_header_key = false;
+    let mut has_master_key = false;
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((name, value)) = line.split_once('=') else {
+            bail!("prod.keys contains a malformed non-comment line");
+        };
+        let name = name.trim();
+        let value = value.trim();
+        if name.is_empty()
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+            || !(16..=128).contains(&value.len())
+            || value.len() % 2 != 0
+            || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            bail!("prod.keys contains an invalid key name or hexadecimal value");
+        }
+        valid_entries += 1;
+        has_header_key |= name == "header_key";
+        has_master_key |= name.starts_with("master_key_");
+    }
+    if valid_entries < 8 || !has_header_key || !has_master_key {
+        bail!("prod.keys does not contain the expected Switch production-key structure");
+    }
+    Ok(())
+}
+
+fn validate_switch_firmware_zip(path: &Path) -> Result<()> {
+    let file = File::open(path)?;
+    let mut archive = zip::ZipArchive::new(file)
+        .with_context(|| format!("reading Switch firmware ZIP {}", path.display()))?;
+    if archive.len() > MAX_FIRMWARE_FILES {
+        bail!("Switch firmware ZIP exceeds the file-count safety limit");
+    }
+    let mut nca_names = HashSet::new();
+    let mut nca_count = 0usize;
+    let mut total_nca_bytes = 0u64;
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index)?;
+        let Some(enclosed) = entry.enclosed_name() else {
+            bail!("Switch firmware ZIP contains an unsafe path");
+        };
+        if entry.is_dir()
+            || !enclosed
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("nca"))
+        {
+            continue;
+        }
+        let file_name = enclosed
+            .file_name()
+            .and_then(|name| name.to_str())
+            .context("Switch firmware ZIP contains a non-Unicode NCA filename")?
+            .to_ascii_lowercase();
+        let content_id = file_name
+            .strip_suffix(".nca")
+            .context("Switch firmware ZIP contains an invalid NCA filename")?;
+        if content_id.len() != 32
+            || !content_id.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || entry.size() == 0
+        {
+            bail!("Switch firmware ZIP contains an invalid NCA entry");
+        }
+        if !nca_names.insert(file_name) {
+            bail!("Switch firmware ZIP contains duplicate NCA filenames");
+        }
+        nca_count += 1;
+        total_nca_bytes = total_nca_bytes
+            .checked_add(entry.size())
+            .context("Switch firmware ZIP declares an invalid total size")?;
+        if total_nca_bytes > MAX_FIRMWARE_EXTRACTED_BYTES {
+            bail!("Switch firmware ZIP exceeds the extracted-size safety limit");
+        }
+    }
+    if nca_count < 10 || total_nca_bytes < 1024 * 1024 {
+        bail!("selected ZIP is not a recognizable Nintendo Switch firmware dump");
+    }
+    Ok(())
 }
 
 pub fn sync_imported(statuses: &[FirmwareStatus]) -> Result<String> {
@@ -1138,6 +1276,9 @@ fn sync_status(
     let target = PathBuf::from(&status.target_path);
     match status.install_mode.as_str() {
         "copy_archive" => atomic_copy(Path::new(&package.archive_path), &target)?,
+        "merge_tree" if status.source_id == "manual:nintendo-switch-firmware" => {
+            copy_switch_firmware_tree(Path::new(&package.extracted_root), &target)?;
+        }
         "merge_tree" => {
             let source = package_sync_root(Path::new(&package.extracted_root), &status.source_id)?;
             if status.runtime_kind == "openmsx" {
@@ -1157,6 +1298,77 @@ fn sync_status(
         synced_at: crate::settings::unix_timestamp(),
     })?;
     Ok(true)
+}
+
+fn copy_switch_firmware_tree(source: &Path, target: &Path) -> Result<()> {
+    let parent = target
+        .parent()
+        .context("Switch firmware target has no parent directory")?;
+    let directory_name = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("Switch firmware target is not valid Unicode")?;
+    fs::create_dir_all(parent)?;
+    if fs::symlink_metadata(target).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        bail!("refusing to replace a symbolic-link Switch firmware directory");
+    }
+    let staging = parent.join(format!(
+        ".{directory_name}.lunchbox-staging-{}",
+        Uuid::new_v4()
+    ));
+    fs::create_dir(&staging)?;
+    let mut copied_names = HashSet::new();
+    let mut copied = 0usize;
+    let staged = (|| -> Result<()> {
+        for entry in WalkDir::new(source).follow_links(false) {
+            let entry = entry?;
+            if !entry.file_type().is_file()
+                || !entry
+                    .path()
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("nca"))
+            {
+                continue;
+            }
+            let name = entry
+                .path()
+                .file_name()
+                .and_then(|name| name.to_str())
+                .context("Switch firmware contains a non-Unicode NCA filename")?;
+            if !copied_names.insert(name.to_ascii_lowercase()) {
+                bail!("Switch firmware contains duplicate NCA filenames");
+            }
+            atomic_copy(entry.path(), &staging.join(name))?;
+            copied += 1;
+        }
+        if copied < 10 {
+            bail!("Switch firmware package no longer contains the reviewed NCA set");
+        }
+        Ok(())
+    })();
+    if let Err(error) = staged {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+
+    let backup = parent.join(format!(".{directory_name}.previous-{}", Uuid::new_v4()));
+    let had_previous = target.exists();
+    if had_previous && let Err(error) = fs::rename(target, &backup) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error).context("preserving the previous Switch firmware directory");
+    }
+    if let Err(error) = fs::rename(&staging, target) {
+        let _ = fs::remove_dir_all(&staging);
+        if had_previous {
+            let _ = fs::rename(&backup, target);
+        }
+        return Err(error).context("activating the imported Switch firmware directory");
+    }
+    if had_previous {
+        fs::remove_dir_all(&backup).context("removing the replaced Switch firmware directory")?;
+    }
+    Ok(())
 }
 
 fn firmware_package_store() -> Result<PathBuf> {
@@ -1558,6 +1770,74 @@ mod tests {
 
         assert!(extract_zip_archive(&archive, &extracted).is_err());
         assert!(!temporary.path().join("escape.bin").exists());
+    }
+
+    #[test]
+    fn switch_user_material_requires_structured_keys_and_recognizable_ncas() {
+        let temporary = tempfile::tempdir().unwrap();
+        let keys = temporary.path().join("prod.keys");
+        let mut key_lines = vec![format!("header_key = {}", "a1".repeat(16))];
+        for index in 0..7 {
+            key_lines.push(format!("master_key_{index:02x} = {}", "b2".repeat(16)));
+        }
+        fs::write(&keys, key_lines.join("\n")).unwrap();
+        validate_switch_prod_keys(&keys).unwrap();
+        fs::write(&keys, "not a production key file").unwrap();
+        assert!(validate_switch_prod_keys(&keys).is_err());
+
+        let firmware = temporary.path().join("my-console-firmware.zip");
+        let file = File::create(&firmware).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        for index in 0..10 {
+            archive
+                .start_file(
+                    format!("dump/{index:032x}.nca"),
+                    zip::write::SimpleFileOptions::default(),
+                )
+                .unwrap();
+            archive.write_all(&vec![index as u8; 128 * 1024]).unwrap();
+        }
+        archive.finish().unwrap();
+        validate_switch_firmware_zip(&firmware).unwrap();
+
+        let unrelated = temporary.path().join("unrelated.zip");
+        write_zip(&unrelated, &[("readme.txt", b"not firmware")]);
+        assert!(validate_switch_firmware_zip(&unrelated).is_err());
+    }
+
+    #[test]
+    fn switch_firmware_sync_atomically_replaces_the_registered_nca_set() {
+        let temporary = tempfile::tempdir().unwrap();
+        let source = temporary.path().join("source/nested");
+        let target = temporary.path().join("nand/system/Contents/registered");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("obsolete.nca"), b"old firmware").unwrap();
+        fs::write(
+            target.join("unrelated.txt"),
+            b"must not survive replacement",
+        )
+        .unwrap();
+        for index in 0..10 {
+            fs::write(
+                source.join(format!("{index:032x}.nca")),
+                vec![index as u8; 16],
+            )
+            .unwrap();
+        }
+
+        copy_switch_firmware_tree(temporary.path().join("source").as_path(), &target).unwrap();
+
+        let mut installed = fs::read_dir(&target)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        installed.sort();
+        assert_eq!(installed.len(), 10);
+        assert_eq!(installed[0], "00000000000000000000000000000000.nca");
+        assert_eq!(installed[9], "00000000000000000000000000000009.nca");
+        assert!(!target.join("obsolete.nca").exists());
+        assert!(!target.join("unrelated.txt").exists());
     }
 
     #[test]

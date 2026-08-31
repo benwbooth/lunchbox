@@ -2145,7 +2145,9 @@ ApplicationWindow {
                     || externalTorrent.file_path_at(0)
                        !== "Game/Sample Game.rom"
                     || externalTorrent.file_path_at(1)
-                       !== "Game/Sample Game (Europe).rom") {
+                       !== "Game/Sample Game (Europe).rom"
+                    || externalTorrent.register_for_platform
+                    || !externalTorrentPlatformSource.visible) {
                 console.error("LUNCHBOX_MANUAL_TORRENT_UI_FAILED association="
                               + externalTorrent.game_title + " platform="
                               + externalTorrent.game_platform + " torrent="
@@ -12438,6 +12440,129 @@ ApplicationWindow {
                         }
                     }
 
+                    Rectangle {
+                        visible: !gameDetails.loading
+                                 && gameDetails.firmware_rule_count > 0
+                        width: parent.width
+                        height: firmwareCardColumn.implicitHeight + 28
+                        radius: 11
+                        color: gameDetails.firmware_missing_count > 0
+                               ? "#241d1a" : "#142d2a"
+                        border.color: gameDetails.firmware_missing_count > 0
+                                      ? root.accent : root.accentCool
+
+                        Column {
+                            id: firmwareCardColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 14
+                            spacing: 8
+                            Row {
+                                width: parent.width
+                                spacing: 8
+                                Text {
+                                    width: parent.width - firmwareState.width - 8
+                                    text: "BIOS & FIRMWARE"
+                                    color: gameDetails.firmware_missing_count > 0
+                                           ? root.accent : root.accentCool
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 1.1
+                                }
+                                Rectangle {
+                                    id: firmwareState
+                                    width: firmwareStateText.implicitWidth + 14
+                                    height: 22
+                                    radius: 7
+                                    color: gameDetails.firmware_missing_count > 0
+                                           ? "#39291e" : "#1d493f"
+                                    border.color: gameDetails.firmware_missing_count > 0
+                                                  ? root.accent : root.accentCool
+                                    Text {
+                                        id: firmwareStateText
+                                        anchors.centerIn: parent
+                                        text: gameDetails.firmware_busy ? "WORKING"
+                                              : gameDetails.firmware_missing_count > 0
+                                                ? "SETUP NEEDED" : "READY"
+                                        color: gameDetails.firmware_missing_count > 0
+                                               ? root.accent : root.accentCool
+                                        font.pixelSize: 8
+                                        font.weight: Font.Bold
+                                    }
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                text: gameDetails.firmware_summary
+                                color: root.ink
+                                font.pixelSize: 11
+                                lineHeight: 1.25
+                                wrapMode: Text.WordWrap
+                            }
+                            Text {
+                                width: parent.width
+                                visible: gameDetails.firmware_package_summary.length > 0
+                                text: gameDetails.firmware_source_summary + "  ·  "
+                                      + gameDetails.firmware_package_summary
+                                color: root.muted
+                                font.pixelSize: 9
+                                wrapMode: Text.WrapAnywhere
+                            }
+                            Text {
+                                width: parent.width
+                                visible: gameDetails.firmware_runtime_path.length > 0
+                                text: gameDetails.firmware_runtime_path
+                                color: "#718096"
+                                font.pixelSize: 8
+                                elide: Text.ElideMiddle
+                            }
+                            Flow {
+                                width: parent.width
+                                spacing: 8
+                                Button {
+                                    visible: gameDetails.firmware_needs_import
+                                    width: 154
+                                    height: 34
+                                    text: "IMPORT USER FILE"
+                                    enabled: !gameDetails.firmware_busy
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    onClicked: firmwarePackageDialog.open()
+                                }
+                                Button {
+                                    visible: gameDetails.firmware_can_download
+                                    width: 154
+                                    height: 34
+                                    text: "DOWNLOAD EXACT FILE"
+                                    enabled: !gameDetails.firmware_busy
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    onClicked: gameDetails.download_firmware()
+                                }
+                                Button {
+                                    visible: gameDetails.firmware_can_sync
+                                    width: 112
+                                    height: 34
+                                    text: "REPAIR SYNC"
+                                    enabled: !gameDetails.firmware_busy
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    onClicked: gameDetails.sync_firmware()
+                                }
+                                Button {
+                                    width: 112
+                                    height: 34
+                                    text: "OPEN FOLDER"
+                                    enabled: !gameDetails.firmware_busy
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    onClicked: gameDetails.open_firmware_directory()
+                                }
+                            }
+                        }
+                    }
+
                     GameDownloadStatus {
                         width: parent.width
                         queue: downloadQueue
@@ -12454,6 +12579,39 @@ ApplicationWindow {
                         onManageRequested: downloadsDrawer.open()
                         onAlternativesRequested:
                             root.downloadAlternativesExpanded = !root.downloadAlternativesExpanded
+                    }
+
+                    Button {
+                        width: parent.width
+                        height: 38
+                        visible: !gameDetails.loading
+                                 && gameDetails.game_id.length > 0
+                                 && root.selectedDatabaseId >= 0
+                        text: "ADD TORRENT FOR THIS GAME"
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        onClicked: {
+                            externalTorrent.begin_review(
+                                        gameDetails.game_id,
+                                        root.selectedDatabaseId,
+                                        gameDetails.title,
+                                        gameDetails.platform)
+                            externalTorrentDialog.open()
+                        }
+                        background: Rectangle {
+                            radius: 8
+                            color: parent.down ? "#28364a" : "#1b2532"
+                            border.color: root.line
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: root.ink
+                            font: parent.font
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Review one torrent, select this game's exact file, and optionally reuse the torrent for other games on " + gameDetails.platform + "."
                     }
 
                     Item {
@@ -14704,7 +14862,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: 10
                     Button {
-                        Layout.preferredWidth: 176
+                        Layout.preferredWidth: 220
                         Layout.preferredHeight: 38
                         text: externalTorrent.ready ? "CHOOSE ANOTHER…"
                                                     : "CHOOSE .TORRENT…"
@@ -15006,6 +15164,47 @@ ApplicationWindow {
                     }
                 }
 
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: externalTorrent.collection_mode ? 0 : 64
+                    visible: !externalTorrent.collection_mode
+                    radius: 9
+                    color: "#111923"
+                    border.color: root.line
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 10
+                        CheckBox {
+                            id: externalTorrentPlatformSource
+                            checked: externalTorrent.register_for_platform
+                            enabled: !externalTorrent.busy
+                            onToggled: externalTorrent.set_platform_registration(checked)
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                Layout.fillWidth: true
+                                text: "USE THIS TORRENT FOR "
+                                      + externalTorrent.game_platform.toUpperCase()
+                                color: root.ink
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Index its filenames for future exact-title Get results. No additional files are queued."
+                                color: root.muted
+                                font.pixelSize: 9
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+                }
+
                 Text {
                     Layout.fillWidth: true
                     text: "Only add content you are authorized to download. Lunchbox records provenance but does not infer distribution rights from a torrent or its labels."
@@ -15031,7 +15230,9 @@ ApplicationWindow {
                         text: externalTorrent.busy ? "WORKING…"
                               : externalTorrent.collection_mode
                                 ? "ADD SOURCE"
-                                : "QUEUE REVIEWED FILE"
+                                : externalTorrent.register_for_platform
+                                  ? "QUEUE FILE + ADD SOURCE"
+                                  : "QUEUE REVIEWED FILE"
                         enabled: externalTorrent.ready
                                  && (externalTorrent.collection_mode
                                      || externalTorrent.selected_index >= 0)
@@ -15563,7 +15764,7 @@ ApplicationWindow {
         id: firmwarePackageDialog
         title: "Choose the exact firmware package shown in Game Details"
         fileMode: FileDialog.OpenFile
-        nameFilters: ["Firmware packages (*.zip *.xml *.bin *.rom *.dat)", "All files (*)"]
+        nameFilters: ["Firmware packages (*.zip *.keys *.xml *.bin *.rom *.dat)", "All files (*)"]
         onAccepted: gameDetails.import_firmware_package(selectedFile)
     }
 
