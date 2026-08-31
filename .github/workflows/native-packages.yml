@@ -41,7 +41,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
-          modules: qtimageformats qtmultimedia qtquick3d
+          modules: qtimageformats qtmultimedia qtquick3d qtshadertools
           cache: true
       - name: Build release executable
         run: cargo build --locked --release --package lunchbox-app
@@ -93,7 +93,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: ${{ matrix.qt_arch }}
-          modules: qtimageformats qtmultimedia qtquick3d
+          modules: qtimageformats qtmultimedia qtquick3d qtshadertools
           cache: true
       - name: Build release executable
         run: cargo build --locked --release --package lunchbox-app
@@ -131,7 +131,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: linux_gcc_64
-          modules: qtimageformats qtmultimedia qtquick3d
+          modules: qtimageformats qtmultimedia qtquick3d qtshadertools
           cache: true
       - name: Build release executable
         run: cargo build --locked --release --package lunchbox-app
