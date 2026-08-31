@@ -62,7 +62,7 @@ jobs:
         run: |
           $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
           $version = ($metadata.packages | Where-Object { $_.name -eq 'lunchbox-app' }).version
-          dotnet tool install --global wix --version 7.0.0
+          dotnet tool install --global wix --version 5.0.0
           wix build packaging\windows\Lunchbox.wxs -arch x64 -d "StageDir=$((Resolve-Path 'dist\Lunchbox').Path)" -d "Version=$version" -o dist\Lunchbox-windows-x86_64.msi
       - uses: actions/upload-artifact@v4
         with:
