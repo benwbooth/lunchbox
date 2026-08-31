@@ -28,6 +28,7 @@ pub struct EnqueueRequest {
     pub selected_file_index: u32,
     pub selected_file_path: String,
     pub download_plan: Option<DownloadPlan>,
+    pub adopt_existing_torrent: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -77,9 +78,22 @@ pub struct TorrentSnapshot {
     pub client_save_path: String,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExistingTorrentSummary {
+    pub info_hash: String,
+    pub name: String,
+    pub category: String,
+    pub state: String,
+    pub progress: f64,
+    pub size: u64,
+    pub save_path: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct TorrentInfo {
     hash: String,
+    #[serde(default)]
+    name: String,
     #[serde(default)]
     category: String,
     #[serde(default)]
@@ -206,6 +220,7 @@ impl QbittorrentClient {
             save_path,
             selection,
             reviewed_files,
+            false,
         )
         .map(|added| added.files)
     }
@@ -217,9 +232,16 @@ impl QbittorrentClient {
         save_path: &str,
         selection: &DownloadSelection,
         reviewed_files: &[(u32, String)],
+        adopt_existing_torrent: bool,
     ) -> Result<AddedTorrent> {
-        let (existed, info) = if let Some(existing) = self.torrent_info(info_hash)? {
-            ensure_owned(&existing)?;
+        let (existed, info) = if let Some(mut existing) = self.torrent_info(info_hash)? {
+            if existing.category != LUNCHBOX_CATEGORY && adopt_existing_torrent {
+                self.ensure_category()?;
+                self.set_category(info_hash, LUNCHBOX_CATEGORY)?;
+                existing.category = LUNCHBOX_CATEGORY.to_owned();
+            } else {
+                ensure_owned(&existing)?;
+            }
             (true, existing)
         } else {
             self.ensure_category()?;
@@ -358,7 +380,6 @@ impl QbittorrentClient {
             .torrent_info(info_hash)?
             .with_context(|| format!("torrent {info_hash} is no longer in qBittorrent"))?;
         ensure_owned(&info)?;
-
         let (progress, downloaded_bytes, total_bytes) = if let Some(selected_files) = selected_files
         {
             selected_snapshot(&self.files(info_hash)?, selected_files)?
@@ -385,6 +406,43 @@ impl QbittorrentClient {
             message,
             client_save_path: info.save_path,
         })
+    }
+
+    fn existing_torrents(&self) -> Result<Vec<ExistingTorrentSummary>> {
+        let response = self
+            .agent
+            .get(self.endpoint("torrents/info"))
+            .header("Referer", &self.base_url)
+            .query("sort", "name")
+            .query("limit", "5000")
+            .call()
+            .context("requesting existing qBittorrent torrents")?;
+        let (status, body) = response_text(response)?;
+        require_success(status, &body, "qBittorrent torrent list request")?;
+        let mut torrents = serde_json::from_str::<Vec<TorrentInfo>>(&body)
+            .with_context(|| format!("decoding qBittorrent torrent list: {}", concise_body(&body)))?
+            .into_iter()
+            .filter(|torrent| {
+                torrent.hash.len() == 40
+                    && torrent.hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+            .map(|torrent| ExistingTorrentSummary {
+                info_hash: torrent.hash.to_ascii_lowercase(),
+                name: torrent.name,
+                category: torrent.category,
+                state: torrent.state,
+                progress: torrent.progress.clamp(0.0, 1.0),
+                size: torrent.size,
+                save_path: torrent.save_path,
+            })
+            .collect::<Vec<_>>();
+        torrents.sort_by(|left, right| {
+            left.name
+                .to_lowercase()
+                .cmp(&right.name.to_lowercase())
+                .then_with(|| left.info_hash.cmp(&right.info_hash))
+        });
+        Ok(torrents)
     }
 
     fn pause(&self, info_hash: &str) -> Result<()> {
@@ -602,6 +660,17 @@ impl QbittorrentClient {
         require_success(status, &body, "qBittorrent file priority request")
     }
 
+    fn set_category(&self, info_hash: &str, category: &str) -> Result<()> {
+        let response = self
+            .agent
+            .post(self.endpoint("torrents/setCategory"))
+            .header("Referer", &self.base_url)
+            .send_form([("hashes", info_hash), ("category", category)])
+            .context("assigning the imported torrent to Lunchbox")?;
+        let (status, body) = response_text(response)?;
+        require_success(status, &body, "qBittorrent category assignment")
+    }
+
     fn ensure_category(&self) -> Result<()> {
         let response = self
             .agent
@@ -648,6 +717,47 @@ pub fn test_connection_details(
         version,
         default_save_path,
     })
+}
+
+pub fn existing_torrents(
+    settings: &AppSettings,
+    password: &str,
+) -> Result<Vec<ExistingTorrentSummary>> {
+    QbittorrentClient::authenticated(settings, password)?.existing_torrents()
+}
+
+pub fn export_existing_torrent(
+    settings: &AppSettings,
+    password: &str,
+    info_hash: &str,
+    maximum_bytes: u64,
+) -> Result<Vec<u8>> {
+    if info_hash.len() != 40 || !info_hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        bail!("existing torrent selection requires a hexadecimal v1 info hash");
+    }
+    let client = QbittorrentClient::authenticated(settings, password)?;
+    client
+        .torrent_info(info_hash)?
+        .with_context(|| format!("torrent {info_hash} is no longer loaded in qBittorrent"))?;
+    client
+        .export_torrent(info_hash, maximum_bytes)?
+        .context("qBittorrent did not provide exportable .torrent metadata for this item")
+}
+
+pub fn adopt_existing_torrent(
+    settings: &AppSettings,
+    password: &str,
+    info_hash: &str,
+) -> Result<()> {
+    let client = QbittorrentClient::authenticated(settings, password)?;
+    let info = client
+        .torrent_info(info_hash)?
+        .with_context(|| format!("torrent {info_hash} is no longer loaded in qBittorrent"))?;
+    if info.category == LUNCHBOX_CATEGORY {
+        return Ok(());
+    }
+    client.ensure_category()?;
+    client.set_category(info_hash, LUNCHBOX_CATEGORY)
 }
 
 pub fn inspect_magnet_metadata(
@@ -1199,12 +1309,33 @@ pub fn enqueue(
     )?;
 
     let client = QbittorrentClient::authenticated(settings, password)?;
+    if request.adopt_existing_torrent
+        && let Some(existing) = client.torrent_info(&info_hash)?
+    {
+        if existing.save_path.trim().is_empty() {
+            bail!("qBittorrent did not report a save path for the torrent being imported");
+        }
+        let existing_files = client.files(&info_hash)?;
+        for (index, reviewed_path) in &requested_files {
+            let actual = verified_file(&existing_files, *index, reviewed_path)?;
+            native_path_for_client_file(
+                &settings.torrent_library_directory,
+                &settings.qbittorrent_container_torrent_library_directory,
+                &existing.save_path,
+                &actual.name,
+            )
+            .context(
+                "the existing torrent is outside the configured qBittorrent/native library mapping; update that mapping in Settings before importing it",
+            )?;
+        }
+    }
     let added = client.add_with_placement(
         &request.torrent_bytes,
         &info_hash,
         &requested_client_save_path,
         &selection,
         &requested_files,
+        request.adopt_existing_torrent,
     )?;
     let actual_files = added.files;
     if let Some(plan) = download_plan.as_mut() {
@@ -1828,6 +1959,105 @@ mod tests {
     }
 
     #[test]
+    fn existing_torrent_import_list_is_bounded_sorted_and_v1_only() {
+        let first_hash = "1111111111111111111111111111111111111111";
+        let second_hash = "2222222222222222222222222222222222222222";
+        let body = format!(
+            r#"[{{"hash":"{second_hash}","name":"Zelda","category":"switch","state":"uploading","progress":1.0,"size":42,"save_path":"/games"}},{{"hash":"v2-only","name":"Ignored"}},{{"hash":"{first_hash}","name":"Mario","state":"downloading","progress":0.5,"size":84,"save_path":"/games"}}]"#
+        );
+        let (address, requests, worker) = mock_server(vec![
+            MockResponse {
+                body: "Ok.",
+                cookie: true,
+            },
+            MockResponse {
+                body: Box::leak(body.into_boxed_str()),
+                cookie: false,
+            },
+        ]);
+
+        let torrents = existing_torrents(&settings_for(address), "secret").unwrap();
+
+        assert_eq!(torrents.len(), 2);
+        assert_eq!(torrents[0].name, "Mario");
+        assert_eq!(torrents[1].name, "Zelda");
+        let _login = requests.recv().unwrap();
+        assert!(
+            requests
+                .recv()
+                .unwrap()
+                .starts_with("GET /api/v2/torrents/info?sort=name&limit=5000 HTTP/1.1")
+        );
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn adopting_an_existing_torrent_assigns_the_lunchbox_category() {
+        let info_hash = "1111111111111111111111111111111111111111";
+        let info = format!(r#"[{{"hash":"{info_hash}","category":"personal"}}]"#);
+        let (address, requests, worker) = mock_server(vec![
+            MockResponse {
+                body: "Ok.",
+                cookie: true,
+            },
+            MockResponse {
+                body: Box::leak(info.into_boxed_str()),
+                cookie: false,
+            },
+            MockResponse {
+                body: r#"{"lunchbox":{"name":"lunchbox","savePath":""}}"#,
+                cookie: false,
+            },
+            MockResponse {
+                body: "",
+                cookie: false,
+            },
+        ]);
+
+        adopt_existing_torrent(&settings_for(address), "secret", info_hash).unwrap();
+
+        let captured = (0..4).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured[1].contains("torrents/info?hashes="));
+        assert!(captured[2].starts_with("GET /api/v2/torrents/categories HTTP/1.1"));
+        assert!(captured[3].starts_with("POST /api/v2/torrents/setCategory HTTP/1.1"));
+        assert!(captured[3].contains("category=lunchbox"));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn exporting_an_existing_torrent_is_read_only_and_identity_bounded() {
+        let torrent_bytes = crate::external_torrent::probe_fixture_torrent_bytes();
+        let info_hash = Torrent::read_from_bytes(&torrent_bytes)
+            .unwrap()
+            .info_hash();
+        let info = format!(r#"[{{"hash":"{info_hash}","category":"personal"}}]"#);
+        let (address, requests, worker) = mock_server_bytes(vec![
+            (b"Ok.".to_vec(), true),
+            (info.into_bytes(), false),
+            (torrent_bytes.clone(), false),
+        ]);
+
+        let exported = export_existing_torrent(
+            &settings_for(address),
+            "secret",
+            &info_hash,
+            16 * 1024 * 1024,
+        )
+        .unwrap();
+
+        assert_eq!(exported, torrent_bytes);
+        let captured = (0..3).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured[1].starts_with("GET /api/v2/torrents/info?hashes="));
+        assert!(captured[2].starts_with("GET /api/v2/torrents/export?hash="));
+        assert!(
+            captured
+                .iter()
+                .all(|request| !request.contains("setCategory"))
+        );
+        worker.join().unwrap();
+    }
+
+    #[test]
     fn existing_lunchbox_category_is_left_unchanged() {
         let (address, requests, worker) = mock_server(vec![
             MockResponse {
@@ -2265,6 +2495,7 @@ mod tests {
             selected_file_index: 0,
             selected_file_path: "Game/Sample Game.rom".to_owned(),
             download_plan: None,
+            adopt_existing_torrent: false,
         };
         let mut settings = AppSettings {
             rom_directory: roms.clone(),

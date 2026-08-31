@@ -11,6 +11,8 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[qproperty(bool, busy)]
+        #[qproperty(bool, existing_loading)]
+        #[qproperty(bool, importing_existing)]
         #[qproperty(bool, ready)]
         #[qproperty(bool, collection_mode)]
         #[qproperty(bool, register_for_platform)]
@@ -19,6 +21,8 @@ pub mod qobject {
         #[qproperty(i32, revision)]
         #[qproperty(i32, queued_revision)]
         #[qproperty(i32, registered_revision)]
+        #[qproperty(i32, existing_count)]
+        #[qproperty(i32, existing_revision)]
         #[qproperty(QString, game_title)]
         #[qproperty(QString, game_platform)]
         #[qproperty(QString, source_file_name)]
@@ -29,6 +33,7 @@ pub mod qobject {
         #[qproperty(QString, download_scope)]
         #[qproperty(QString, message)]
         #[qproperty(QString, queued_job_id)]
+        #[qproperty(QString, existing_message)]
         type ExternalTorrentModel = super::ExternalTorrentModelRust;
 
         #[qinvokable]
@@ -53,6 +58,12 @@ pub mod qobject {
         fn inspect_magnet(self: Pin<&mut ExternalTorrentModel>, magnet_uri: QString);
 
         #[qinvokable]
+        fn refresh_existing_torrents(self: Pin<&mut ExternalTorrentModel>);
+
+        #[qinvokable]
+        fn inspect_existing_torrent(self: Pin<&mut ExternalTorrentModel>, index: i32);
+
+        #[qinvokable]
         fn inspect_probe_fixture(self: Pin<&mut ExternalTorrentModel>);
 
         #[qinvokable]
@@ -75,6 +86,12 @@ pub mod qobject {
 
         #[qinvokable]
         fn file_size_at(self: &ExternalTorrentModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn existing_name_at(self: &ExternalTorrentModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn existing_detail_at(self: &ExternalTorrentModel, index: i32) -> QString;
     }
 
     impl cxx_qt::Threading for ExternalTorrentModel {}
@@ -93,6 +110,8 @@ use crate::external_torrent::{
 
 pub struct ExternalTorrentModelRust {
     busy: bool,
+    existing_loading: bool,
+    importing_existing: bool,
     ready: bool,
     collection_mode: bool,
     register_for_platform: bool,
@@ -101,6 +120,8 @@ pub struct ExternalTorrentModelRust {
     revision: i32,
     queued_revision: i32,
     registered_revision: i32,
+    existing_count: i32,
+    existing_revision: i32,
     game_title: QString,
     game_platform: QString,
     source_file_name: QString,
@@ -111,10 +132,13 @@ pub struct ExternalTorrentModelRust {
     download_scope: QString,
     message: QString,
     queued_job_id: QString,
+    existing_message: QString,
     association: Option<CanonicalGameAssociation>,
     collection_association: Option<CollectionTorrentAssociation>,
     offer: Option<ManualTorrentOffer>,
     generation: u64,
+    existing_generation: u64,
+    existing_torrents: Vec<crate::qbittorrent::ExistingTorrentSummary>,
     probe_fixture_path: Option<std::path::PathBuf>,
 }
 
@@ -122,6 +146,8 @@ impl Default for ExternalTorrentModelRust {
     fn default() -> Self {
         Self {
             busy: false,
+            existing_loading: false,
+            importing_existing: false,
             ready: false,
             collection_mode: false,
             register_for_platform: false,
@@ -130,6 +156,8 @@ impl Default for ExternalTorrentModelRust {
             revision: 0,
             queued_revision: 0,
             registered_revision: 0,
+            existing_count: 0,
+            existing_revision: 0,
             game_title: QString::default(),
             game_platform: QString::default(),
             source_file_name: QString::default(),
@@ -142,10 +170,13 @@ impl Default for ExternalTorrentModelRust {
                 "Choose a lawful .torrent file, then review its exact contents before anything is downloaded.",
             ),
             queued_job_id: QString::default(),
+            existing_message: QString::from("Checking qBittorrent for torrents you can import…"),
             association: None,
             collection_association: None,
             offer: None,
             generation: 0,
+            existing_generation: 0,
+            existing_torrents: Vec::new(),
             probe_fixture_path: None,
         }
     }
@@ -198,6 +229,7 @@ impl qobject::ExternalTorrentModel {
         self.as_mut().set_message(qstring(
             "This source will be associated with the exact game shown above. Torrent labels cannot change catalog identity.",
         ));
+        self.as_mut().refresh_existing_torrents();
     }
 
     pub fn begin_collection_review(mut self: Pin<&mut Self>, platform: QString) {
@@ -218,6 +250,7 @@ impl qobject::ExternalTorrentModel {
         self.as_mut().set_message(qstring(
             "Review and register this torrent as an on-demand source. No payload files download when it is added.",
         ));
+        self.as_mut().refresh_existing_torrents();
     }
 
     pub fn set_collection_platform(mut self: Pin<&mut Self>, platform: QString) {
@@ -309,6 +342,135 @@ impl qobject::ExternalTorrentModel {
             self.as_mut().set_busy(false);
             self.as_mut()
                 .set_message(qstring(format!("Could not start magnet review: {error}")));
+        }
+    }
+
+    pub fn refresh_existing_torrents(mut self: Pin<&mut Self>) {
+        if *self.as_ref().existing_loading() {
+            return;
+        }
+        self.as_mut().rust_mut().existing_generation =
+            self.as_ref().rust().existing_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().existing_generation;
+        self.as_mut().set_existing_loading(true);
+        self.as_mut()
+            .set_existing_message(qstring("Checking qBittorrent for torrents you can import…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-qbittorrent-import-list".to_owned())
+            .spawn(move || {
+                let result =
+                    (|| -> anyhow::Result<Vec<crate::qbittorrent::ExistingTorrentSummary>> {
+                        let store = crate::settings::SettingsStore::open_default()?;
+                        let settings = store.load()?;
+                        let password = crate::settings::load_password()?.unwrap_or_default();
+                        crate::qbittorrent::existing_torrents(&settings, &password)
+                    })()
+                    .map_err(|error| format!("{error:#}"));
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_existing_refresh(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_existing_loading(false);
+            self.as_mut()
+                .set_existing_message(qstring(format!("Could not check qBittorrent: {error}")));
+        }
+    }
+
+    fn finish_existing_refresh(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<Vec<crate::qbittorrent::ExistingTorrentSummary>, String>,
+    ) {
+        if generation != self.as_ref().rust().existing_generation {
+            return;
+        }
+        self.as_mut().set_existing_loading(false);
+        match result {
+            Ok(torrents) => {
+                let count = torrents.len();
+                self.as_mut().rust_mut().existing_torrents = torrents;
+                self.as_mut()
+                    .set_existing_count(i32::try_from(count).unwrap_or(i32::MAX));
+                let revision = self.as_ref().existing_revision().saturating_add(1);
+                self.as_mut().set_existing_revision(revision);
+                self.as_mut().set_existing_message(qstring(if count == 0 {
+                    "qBittorrent has no exportable v1 torrents loaded.".to_owned()
+                } else {
+                    format!(
+                        "Found {count} loaded {}. Select one to import it into Lunchbox.",
+                        if count == 1 { "torrent" } else { "torrents" }
+                    )
+                }));
+            }
+            Err(error) => {
+                self.as_mut().rust_mut().existing_torrents.clear();
+                self.as_mut().set_existing_count(0);
+                self.as_mut()
+                    .set_existing_message(qstring(format!("Could not check qBittorrent: {error}")));
+            }
+        }
+    }
+
+    pub fn inspect_existing_torrent(mut self: Pin<&mut Self>, index: i32) {
+        if *self.as_ref().busy() || !self.as_ref().rust().has_review_target() {
+            return;
+        }
+        let summary = usize::try_from(index).ok().and_then(|index| {
+            let model = self.as_ref();
+            model.rust().existing_torrents.get(index).cloned()
+        });
+        let Some(summary) = summary else {
+            self.as_mut().set_message(qstring(
+                "That qBittorrent torrent is no longer in the import list. Refresh and try again.",
+            ));
+            return;
+        };
+        let previous_offer = self.as_mut().rust_mut().offer.take();
+        self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
+        let generation = self.as_ref().rust().generation;
+        self.as_mut().reset_offer();
+        self.as_mut().set_busy(true);
+        self.as_mut().set_message(qstring(
+            "Exporting and validating the selected qBittorrent metadata…",
+        ));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-qbittorrent-import-review".to_owned())
+            .spawn(move || {
+                let result = (|| -> anyhow::Result<InspectionResult> {
+                    let store = crate::settings::SettingsStore::open_default()?;
+                    let settings = store.load()?;
+                    let password = crate::settings::load_password()?.unwrap_or_default();
+                    if let Some(previous_offer) = previous_offer.as_ref() {
+                        external_torrent::discard_unqueued_magnet_review(
+                            &settings,
+                            &password,
+                            previous_offer,
+                        )?;
+                    }
+                    let offer = external_torrent::inspect_existing_qbittorrent_source(
+                        &settings,
+                        &password,
+                        &summary.info_hash,
+                        &summary.name,
+                    )?;
+                    Ok(InspectionResult {
+                        offer,
+                        download_entire_torrent: false,
+                    })
+                })()
+                .map_err(|error| format!("{error:#}"));
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_inspection(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_busy(false);
+            self.as_mut().set_message(qstring(format!(
+                "Could not start qBittorrent import: {error}"
+            )));
         }
     }
 
@@ -420,6 +582,8 @@ impl qobject::ExternalTorrentModel {
                 self.as_mut().set_torrent_name(qstring(&offer.torrent_name));
                 self.as_mut().set_info_hash(qstring(&offer.info_hash));
                 self.as_mut()
+                    .set_importing_existing(offer.externally_managed);
+                self.as_mut()
                     .set_total_size(qstring(crate::game_details::format_bytes(
                         offer.total_bytes,
                     )));
@@ -432,15 +596,29 @@ impl qobject::ExternalTorrentModel {
                         "Selected file only"
                     }));
                 self.as_mut().set_message(qstring(if collection_mode {
-                    format!(
-                        "Reviewed {file_count} safe {}. Add the source now; individual games will appear in their matching Get lists.",
-                        if file_count == 1 { "file" } else { "files" }
-                    )
+                    if offer.externally_managed {
+                        format!(
+                            "Reviewed {file_count} safe {}. Add Source imports this torrent into Lunchbox management and indexes its games.",
+                            if file_count == 1 { "file" } else { "files" }
+                        )
+                    } else {
+                        format!(
+                            "Reviewed {file_count} safe {}. Add the source now; individual games will appear in their matching Get lists.",
+                            if file_count == 1 { "file" } else { "files" }
+                        )
+                    }
                 } else {
-                    format!(
-                        "Reviewed {file_count} safe {}. Choose the exact payload for this game.",
-                        if file_count == 1 { "file" } else { "files" }
-                    )
+                    if offer.externally_managed {
+                        format!(
+                            "Reviewed {file_count} safe {}. Queue imports the torrent into Lunchbox management and selects this game's exact payload.",
+                            if file_count == 1 { "file" } else { "files" }
+                        )
+                    } else {
+                        format!(
+                            "Reviewed {file_count} safe {}. Choose the exact payload for this game.",
+                            if file_count == 1 { "file" } else { "files" }
+                        )
+                    }
                 }));
                 self.as_mut().rust_mut().offer = Some(offer);
                 self.as_mut().bump_revision();
@@ -678,9 +856,44 @@ impl qobject::ExternalTorrentModel {
             .unwrap_or_default()
     }
 
+    pub fn existing_name_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().existing_torrents.get(index))
+            .map(|torrent| {
+                qstring(if torrent.name.trim().is_empty() {
+                    &torrent.info_hash
+                } else {
+                    &torrent.name
+                })
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn existing_detail_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().existing_torrents.get(index))
+            .map(|torrent| {
+                let percent = (torrent.progress * 100.0).round();
+                let category = if torrent.category.trim().is_empty() {
+                    "uncategorized"
+                } else {
+                    torrent.category.as_str()
+                };
+                qstring(format!(
+                    "{percent:.0}% · {} · {} · {category}",
+                    crate::game_details::format_bytes(torrent.size),
+                    torrent.state
+                ))
+            })
+            .unwrap_or_default()
+    }
+
     fn reset_offer(mut self: Pin<&mut Self>) {
         self.as_mut().rust_mut().offer = None;
         self.as_mut().set_ready(false);
+        self.as_mut().set_importing_existing(false);
         self.as_mut().set_file_count(0);
         self.as_mut().set_selected_index(-1);
         self.as_mut().set_source_file_name(QString::default());

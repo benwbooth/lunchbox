@@ -37,6 +37,7 @@ pub(crate) struct ManualTorrentOffer {
     pub files: Vec<ReviewedTorrentFile>,
     pub torrent_bytes: Vec<u8>,
     pub magnet_review_created: bool,
+    pub externally_managed: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -168,7 +169,31 @@ pub(crate) fn inspect_torrent_bytes(
         files,
         torrent_bytes: bytes.to_vec(),
         magnet_review_created: false,
+        externally_managed: false,
     })
+}
+
+pub(crate) fn inspect_existing_qbittorrent_source(
+    settings: &AppSettings,
+    password: &str,
+    info_hash: &str,
+    display_name: &str,
+) -> Result<ManualTorrentOffer> {
+    validate_label(
+        display_name,
+        "qBittorrent torrent name",
+        MAX_TORRENT_NAME_CHARS,
+    )?;
+    let bytes =
+        qbittorrent::export_existing_torrent(settings, password, info_hash, MAX_TORRENT_BYTES)?;
+    let source_file_name = format!("qBittorrent-{}.torrent", &info_hash[..12]);
+    let mut offer = inspect_torrent_bytes(&bytes, &source_file_name)?;
+    if !offer.info_hash.eq_ignore_ascii_case(info_hash) {
+        bail!("qBittorrent exported metadata with a different torrent identity");
+    }
+    offer.source_label = format!("qBittorrent: {display_name}");
+    offer.externally_managed = true;
+    Ok(offer)
 }
 
 pub(crate) fn inspect_magnet_source(
@@ -246,6 +271,10 @@ pub(crate) fn register_collection_torrent(
     validate_label(&association.platform, "torrent source platform", 512)?;
     if association.platform == "Unassigned platform" {
         bail!("choose the platform represented by this torrent before adding the source");
+    }
+    if offer.externally_managed {
+        qbittorrent::adopt_existing_torrent(settings, password, &offer.info_hash)
+            .context("importing the existing qBittorrent torrent into Lunchbox management")?;
     }
     if offer.source_kind == "magnet" && offer.magnet_review_created {
         discard_unqueued_magnet_review(settings, password, &offer)
@@ -388,7 +417,11 @@ pub(crate) fn queue_manual_torrent(
         .get(selected_index)
         .context("choose an exact file from the reviewed torrent")?
         .clone();
-    let source_locator = format!("manual-torrent:sha256:{}", offer.torrent_sha256);
+    let source_locator = if offer.externally_managed {
+        format!("qbittorrent-existing:sha256:{}", offer.torrent_sha256)
+    } else {
+        format!("manual-torrent:sha256:{}", offer.torrent_sha256)
+    };
     // A game-level torrent import always means the one reviewed member. The
     // global whole-torrent preference is for Minerva bundles and must never
     // turn this explicit selection into an accidental collection download.
@@ -409,6 +442,7 @@ pub(crate) fn queue_manual_torrent(
             selected_file_index: selected.index,
             selected_file_path: selected.path.clone(),
             download_plan: None,
+            adopt_existing_torrent: offer.externally_managed,
         },
     )?;
     let receipt = ManualTorrentSourceReceipt {

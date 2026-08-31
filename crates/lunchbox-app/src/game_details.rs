@@ -1747,6 +1747,7 @@ pub(crate) fn faxanadu_candidate_probe() -> Result<String> {
                 .context("Faxanadu torrent file index is too large")?,
             selected_file_path: candidate.filename.clone(),
             download_plan: candidate.download_plan.clone(),
+            adopt_existing_torrent: false,
         },
     )?;
     if !preflight.can_queue {

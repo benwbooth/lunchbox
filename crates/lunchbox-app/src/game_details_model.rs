@@ -5957,6 +5957,7 @@ fn torrent_enqueue_request(
         selected_file_index: file_index,
         selected_file_path: file.filename,
         download_plan: file.download_plan,
+        adopt_existing_torrent: false,
     })
 }
 

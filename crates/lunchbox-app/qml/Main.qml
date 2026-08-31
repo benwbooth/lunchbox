@@ -2149,25 +2149,48 @@ ApplicationWindow {
         function onReadyChanged() {
             if (!root.manualTorrentUiProbe || !externalTorrent.ready)
                 return
-            if (externalTorrent.game_title !== "Super Mario Bros."
-                    || externalTorrent.game_platform
-                       !== "Nintendo Entertainment System"
-                    || externalTorrent.torrent_name !== "Sample Pack"
-                    || externalTorrent.file_count !== 2
-                    || externalTorrent.info_hash.length !== 40
-                    || externalTorrent.file_path_at(0)
-                       !== "Game/Sample Game.rom"
-                    || externalTorrent.file_path_at(1)
-                       !== "Game/Sample Game (Europe).rom"
-                    || externalTorrent.register_for_platform
-                    || !externalTorrentPlatformSource.visible) {
-                console.error("LUNCHBOX_MANUAL_TORRENT_UI_FAILED association="
+            let failure = ""
+            let failureCode = 2
+            if (externalTorrent.game_title !== "Super Mario Bros.") {
+                failure = "game title"
+                failureCode = 21
+            } else if (externalTorrent.game_platform
+                       !== "Nintendo Entertainment System") {
+                failure = "platform"
+                failureCode = 22
+            } else if (externalTorrent.torrent_name !== "Sample Pack") {
+                failure = "torrent name"
+                failureCode = 23
+            } else if (externalTorrent.file_count !== 2) {
+                failure = "file count"
+                failureCode = 24
+            } else if (externalTorrent.info_hash.length !== 40) {
+                failure = "info hash"
+                failureCode = 25
+            } else if (externalTorrent.file_path_at(0)
+                       !== "Game/Sample Game.rom") {
+                failure = "first path"
+                failureCode = 26
+            } else if (externalTorrent.file_path_at(1)
+                       !== "Game/Sample Game (Europe).rom") {
+                failure = "second path"
+                failureCode = 27
+            } else if (externalTorrent.register_for_platform) {
+                failure = "platform registration default"
+                failureCode = 28
+            } else if (!externalTorrentPlatformSource.visible) {
+                failure = "platform source control visibility"
+                failureCode = 29
+            }
+            if (failure.length > 0) {
+                console.error("LUNCHBOX_MANUAL_TORRENT_UI_FAILED check="
+                              + failure + " association="
                               + externalTorrent.game_title + " platform="
                               + externalTorrent.game_platform + " torrent="
                               + externalTorrent.torrent_name + " files="
                               + externalTorrent.file_count + " message="
                               + externalTorrent.message)
-                Qt.exit(2)
+                Qt.exit(failureCode)
                 return
             }
             externalTorrent.select_file(1)
@@ -3056,10 +3079,11 @@ ApplicationWindow {
                     && gameDetails.game_id.length > 0) {
                 root.manualTorrentProbeTriggered = true
                 externalTorrent.begin_review(
-                            gameDetails.game_id,
-                            root.selectedDatabaseId,
-                            gameDetails.title,
-                            gameDetails.platform)
+                            "9697a5eb-e0b4-4f24-8d43-672701414ee7",
+                            140,
+                            "Super Mario Bros.",
+                            "Nintendo Entertainment System")
+                externalTorrentDialog.sourceMode = 1
                 externalTorrentDialog.open()
                 externalTorrent.inspect_probe_fixture()
             }
@@ -14884,6 +14908,7 @@ ApplicationWindow {
         padding: 0
         closePolicy: externalTorrent.busy ? Popup.NoAutoClose
                                            : Popup.CloseOnEscape
+        property int sourceMode: 0
         function syncCollectionPlatform() {
             if (!externalTorrent.collection_mode)
                 return
@@ -14901,6 +14926,7 @@ ApplicationWindow {
             if (!externalTorrent.busy) {
                 externalTorrent.clear()
                 externalMagnet.text = ""
+                externalTorrentDialog.sourceMode = 0
             }
         }
         background: Rectangle {
@@ -14914,7 +14940,7 @@ ApplicationWindow {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 76
+                Layout.preferredHeight: 68
                 color: "#101721"
                 radius: 14
                 border.color: root.line
@@ -14943,8 +14969,8 @@ ApplicationWindow {
                         Text {
                             Layout.fillWidth: true
                             text: externalTorrent.collection_mode
-                                  ? "ADD TORRENT SOURCE"
-                                  : "ADD EXTERNAL TORRENT SOURCE"
+                                  ? "ADD ON-DEMAND TORRENT SOURCE"
+                                  : "ADD TORRENT SOURCE"
                             color: root.ink
                             font.pixelSize: 16
                             font.weight: Font.Bold
@@ -14953,12 +14979,31 @@ ApplicationWindow {
                         Text {
                             Layout.fillWidth: true
                             text: externalTorrent.collection_mode
-                                  ? "Index a torrent once, then download individual matching games from their Get lists. Adding a source downloads no payload files."
-                                  : "Inspect first, choose one exact payload, then hand it to the existing download and import pipeline."
+                                  ? "Index exact members now; individual matching games download only when requested."
+                                  : externalTorrent.game_title + "  ·  "
+                                    + externalTorrent.game_platform
+                                    + "  ·  Exact catalog association"
                             color: root.muted
                             font.pixelSize: 10
                             elide: Text.ElideRight
                         }
+                    }
+                    ComboBox {
+                        id: externalTorrentPlatform
+                        visible: externalTorrent.collection_mode
+                        Layout.preferredWidth: 250
+                        enabled: !externalTorrent.busy && !externalTorrent.ready
+                        model: {
+                            const values = ["Auto-detect platform"]
+                            const revision = localImport.platform_count
+                            for (let index = 0; index < revision; ++index)
+                                values.push(localImport.platform_name_at(index))
+                            return values
+                        }
+                        onActivated: externalTorrent.set_collection_platform(
+                            currentIndex === 0 ? "Unassigned platform" : currentText)
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Only games on this exact platform search this registered torrent"
                     }
                     BusyIndicator {
                         Layout.preferredWidth: 30
@@ -14978,90 +15023,50 @@ ApplicationWindow {
                 Layout.bottomMargin: 14
                 spacing: 12
 
-                Rectangle {
+                RowLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 76
-                    radius: 11
-                    color: "#171f2b"
-                    border.color: "#3a4659"
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        spacing: 12
-                        Rectangle {
-                            Layout.preferredWidth: 34
-                            Layout.preferredHeight: 34
-                            radius: 9
-                            color: "#17322e"
-                            border.color: root.accentCool
-                            Text {
-                                anchors.centerIn: parent
-                                text: "◆"
-                                color: root.accentCool
-                                font.pixelSize: 13
-                            }
-                        }
-                        ColumnLayout {
+                    spacing: 6
+                    Repeater {
+                        model: ["LOADED IN QBITTORRENT", ".TORRENT FILE", "MAGNET LINK"]
+                        delegate: Button {
+                            required property int index
+                            required property string modelData
                             Layout.fillWidth: true
-                            spacing: 2
-                            Text {
-                                Layout.fillWidth: true
-                                text: externalTorrent.collection_mode
-                                      ? "On-demand torrent catalog"
-                                      : externalTorrent.game_title
-                                color: root.ink
-                                font.pixelSize: 14
-                                font.weight: Font.Bold
-                                elide: Text.ElideRight
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: externalTorrent.collection_mode
-                                      ? "Metadata only · individual files download later"
-                                      : externalTorrent.game_platform
-                                        + "  ·  Exact catalog association locked"
-                                color: root.accentCool
-                                font.pixelSize: 10
-                                elide: Text.ElideRight
-                            }
-                        }
-                        ComboBox {
-                            id: externalTorrentPlatform
-                            visible: externalTorrent.collection_mode
-                            Layout.preferredWidth: 250
-                            enabled: !externalTorrent.busy && !externalTorrent.ready
-                            model: {
-                                const values = ["Auto-detect platform"]
-                                const revision = localImport.platform_count
-                                for (let index = 0; index < revision; ++index)
-                                    values.push(localImport.platform_name_at(index))
-                                return values
-                            }
-                            onActivated: externalTorrent.set_collection_platform(
-                                currentIndex === 0 ? "Unassigned platform" : currentText)
-                            ToolTip.visible: hovered
-                            ToolTip.text: "Only games on this exact platform search this registered torrent"
-                        }
-                        Text {
-                            visible: !externalTorrent.collection_mode
-                            text: "SOURCE LABELS NEVER\nREPLACE GAME IDENTITY"
-                            color: root.muted
+                            Layout.preferredHeight: 32
+                            text: modelData
                             font.pixelSize: 8
                             font.weight: Font.Bold
-                            font.letterSpacing: 0.7
-                            horizontalAlignment: Text.AlignRight
+                            onClicked: externalTorrentDialog.sourceMode = index
+                            background: Rectangle {
+                                radius: 7
+                                color: externalTorrentDialog.sourceMode === parent.index
+                                       ? "#273544" : "#151d29"
+                                border.color: externalTorrentDialog.sourceMode === parent.index
+                                              ? root.accent : root.line
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: externalTorrentDialog.sourceMode === parent.index
+                                       ? root.ink : root.muted
+                                font: parent.font
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
                         }
                     }
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
+                    visible: externalTorrentDialog.sourceMode === 1
+                    Layout.preferredHeight: visible ? 38 : 0
                     spacing: 10
                     Button {
+                        id: externalTorrentImportButton
                         Layout.preferredWidth: 220
                         Layout.preferredHeight: 38
-                        text: externalTorrent.ready ? "CHOOSE ANOTHER…"
-                                                    : "CHOOSE .TORRENT…"
+                        text: externalTorrent.ready ? "IMPORT ANOTHER…"
+                                                    : "IMPORT .TORRENT…"
                         enabled: !externalTorrent.busy
                         font.pixelSize: 9
                         font.weight: Font.Bold
@@ -15104,6 +15109,65 @@ ApplicationWindow {
 
                 RowLayout {
                     Layout.fillWidth: true
+                    visible: externalTorrentDialog.sourceMode === 0
+                    Layout.preferredHeight: visible ? 42 : 0
+                    spacing: 10
+                    ComboBox {
+                        id: externalQbittorrentTorrent
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 42
+                        enabled: !externalTorrent.busy
+                                 && !externalTorrent.existing_loading
+                                 && externalTorrent.existing_count > 0
+                        currentIndex: -1
+                        model: {
+                            const revision = externalTorrent.existing_revision
+                            const values = []
+                            for (let index = 0;
+                                 index < externalTorrent.existing_count; ++index) {
+                                values.push(externalTorrent.existing_name_at(index))
+                            }
+                            return values
+                        }
+                        displayText: currentIndex >= 0
+                                     ? currentText
+                                     : externalTorrent.existing_loading
+                                       ? "Checking qBittorrent…"
+                                       : "Import a torrent already loaded in qBittorrent"
+                        onActivated: externalTorrent.inspect_existing_torrent(currentIndex)
+                        ToolTip.visible: hovered
+                        ToolTip.text: currentIndex >= 0
+                                      ? externalTorrent.existing_detail_at(currentIndex)
+                                      : externalTorrent.existing_message
+                    }
+                    Button {
+                        id: externalQbittorrentRefreshButton
+                        Layout.preferredWidth: 118
+                        Layout.preferredHeight: 38
+                        text: externalTorrent.existing_loading ? "CHECKING…" : "REFRESH"
+                        enabled: !externalTorrent.existing_loading
+                        onClicked: externalTorrent.refresh_existing_torrents()
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: externalTorrentDialog.sourceMode === 0
+                    Layout.preferredHeight: visible ? implicitHeight : 0
+                    text: externalTorrent.existing_message
+                    color: externalTorrent.existing_message.indexOf("Could not") === 0
+                           ? "#ff9b91" : "#6f7c8f"
+                    font.pixelSize: 9
+                    elide: Text.ElideRight
+                    ToolTip.visible: truncated && hoverHandler.hovered
+                    ToolTip.text: text
+                    HoverHandler { id: hoverHandler }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: externalTorrentDialog.sourceMode === 2
+                    Layout.preferredHeight: visible ? 38 : 0
                     spacing: 10
                     ClearableSearchField {
                         id: externalMagnet
@@ -15318,7 +15382,7 @@ ApplicationWindow {
                                 visible: externalTorrent.file_count === 0
                                 text: externalTorrent.busy
                                       ? "Reading torrent metadata…"
-                                      : "Choose a .torrent file or paste a magnet link to inspect exact paths and sizes."
+                                      : "Import a .torrent file, choose one already loaded in qBittorrent, or paste a magnet link to inspect exact paths and sizes."
                                 color: root.muted
                                 font.pixelSize: 11
                                 horizontalAlignment: Text.AlignHCenter
@@ -15421,11 +15485,17 @@ ApplicationWindow {
                         onClicked: externalTorrentDialog.close()
                     }
                     Button {
-                        Layout.preferredWidth: 176
+                        Layout.preferredWidth: externalTorrent.importing_existing ? 232 : 176
                         Layout.preferredHeight: 36
                         text: externalTorrent.busy ? "WORKING…"
                               : externalTorrent.collection_mode
-                                ? "ADD SOURCE"
+                                ? externalTorrent.importing_existing
+                                  ? "IMPORT + ADD SOURCE"
+                                  : "ADD SOURCE"
+                                : externalTorrent.importing_existing
+                                  ? externalTorrent.register_for_platform
+                                    ? "IMPORT + QUEUE + ADD SOURCE"
+                                    : "IMPORT + QUEUE FILE"
                                 : externalTorrent.register_for_platform
                                   ? "QUEUE FILE + ADD SOURCE"
                                   : "QUEUE REVIEWED FILE"
@@ -15433,7 +15503,8 @@ ApplicationWindow {
                                  && (externalTorrent.collection_mode
                                      || externalTorrent.selected_index >= 0)
                                  && !externalTorrent.busy
-                        font.pixelSize: 9
+                        font.pixelSize: externalTorrent.importing_existing
+                                        && externalTorrent.register_for_platform ? 8 : 9
                         font.weight: Font.Bold
                         onClicked: {
                             if (externalTorrent.collection_mode)
