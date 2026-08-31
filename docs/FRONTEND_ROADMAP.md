@@ -107,10 +107,13 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   that base automatically, and all managed payloads live beneath the portable
   `lunchbox/roms` suffix; only container or remote clients need a host mapping.
   Failed jobs expose exact stable-ID recovery and newest-first durable event
-  history. Recovery verifies the existing torrent's isolated Lunchbox ownership,
-  rechecks its data, and resumes it without changing reviewed file selection,
-  provenance, plans, or path mappings; missing or foreign torrents remain failed
-  rather than being guessed or recreated.
+  history. Every enqueue retains exact bounded torrent metadata with SHA-256 and
+  v1-info-hash receipts before qBittorrent mutation. Recovery verifies existing
+  Lunchbox ownership or recreates a removed owned torrent from those exact bytes,
+  restores the combined reviewed file selection and persisted save path, then
+  rechecks and resumes without changing provenance, plans, or native mappings.
+  Active missing torrents self-heal on refresh; foreign torrents are never
+  adopted or modified.
 - Provider-neutral manual `.torrent`/v1-magnet intake from an exact game's
   details pane:
   a bounded off-thread parser, portable-path validation, complete native file
@@ -272,10 +275,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   destination-collision, and broader duplicate checks are already mandatory
   before queueing and are repeated immediately before qBittorrent mutation.
 - Extend the implemented persistent qBittorrent queue, aggregate speed, safe
-  record/history cleanup, durable post-import pause policy, exact owned-torrent
-  retry, and per-job event history with opt-in automatic retry schedules and an
-  authorized retained-metadata workflow for re-adding a torrent that the user
-  removed from qBittorrent.
+  record/history cleanup, durable post-import pause policy, exact retained-
+  metadata recreation, active-job self-healing, and per-job event history with
+  opt-in retry schedules for other transient client or network failures.
 - Extend the implemented runtime-scoped firmware inventory, exact Minerva and
   official-source acquisition, local import, per-file integrity manifests,
   repair workflow, and whole-library readiness audit with scheduled optional

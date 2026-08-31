@@ -65,6 +65,7 @@ struct ReviewedTorrentFile {
 struct AddedTorrent {
     files: Vec<(u32, String)>,
     client_save_path: String,
+    existed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -297,6 +298,7 @@ impl QbittorrentClient {
         Ok(AddedTorrent {
             files,
             client_save_path,
+            existed,
         })
     }
 
@@ -476,6 +478,35 @@ impl QbittorrentClient {
         ensure_owned(&info)?;
         self.recheck(info_hash)?;
         self.resume(info_hash)
+    }
+
+    pub fn recover_or_readd_owned(
+        &self,
+        torrent_bytes: &[u8],
+        info_hash: &str,
+        client_save_path: &str,
+        selection: &DownloadSelection,
+        reviewed_files: &[(u32, String)],
+    ) -> Result<bool> {
+        if client_save_path.trim().is_empty() {
+            bail!("recovery requires the exact persisted qBittorrent save path");
+        }
+        let torrent = Torrent::read_from_bytes(torrent_bytes)
+            .map_err(|error| anyhow::anyhow!("retained torrent metadata is invalid: {error}"))?;
+        if !torrent.info_hash().eq_ignore_ascii_case(info_hash) {
+            bail!("retained torrent metadata does not match the failed download");
+        }
+        let added = self.add_with_placement(
+            torrent_bytes,
+            info_hash,
+            client_save_path,
+            selection,
+            reviewed_files,
+            false,
+        )?;
+        self.recheck(info_hash)?;
+        self.resume(info_hash)?;
+        Ok(!added.existed)
     }
 
     fn cancel(&self, info_hash: &str) -> Result<()> {
@@ -1260,6 +1291,14 @@ pub fn enqueue(
     let torrent = Torrent::read_from_bytes(&request.torrent_bytes)
         .map_err(|error| anyhow::anyhow!("could not parse selected torrent: {error}"))?;
     let info_hash = torrent.info_hash();
+    let retained_info_hash = store.retain_torrent_metadata(
+        &request.source_kind,
+        &request.torrent_url,
+        &request.torrent_bytes,
+    )?;
+    if !retained_info_hash.eq_ignore_ascii_case(&info_hash) {
+        bail!("retained torrent metadata identity changed during enqueue");
+    }
     let existing_jobs = store.jobs_for_info_hash(&info_hash)?;
     let mut download_plan = if settings.download_entire_torrent {
         None
@@ -2211,6 +2250,58 @@ mod tests {
     }
 
     #[test]
+    fn missing_owned_torrent_is_recreated_from_exact_retained_metadata() {
+        let torrent_bytes = crate::external_torrent::probe_fixture_torrent_bytes();
+        let info_hash = Torrent::read_from_bytes(&torrent_bytes)
+            .unwrap()
+            .info_hash();
+        let owned_info = format!(
+            r#"[{{"hash":"{info_hash}","category":"lunchbox","save_path":"/downloads/lunchbox/roms"}}]"#
+        );
+        let files = r#"[{"index":0,"name":"Game/Sample Game.rom","size":4,"progress":0.0},{"index":1,"name":"Game/Sample Game (Europe).rom","size":6,"progress":0.0}]"#;
+        let (address, requests, worker) = mock_server_bytes(vec![
+            (b"Ok.".to_vec(), true),
+            (b"[]".to_vec(), false),
+            (
+                br#"{"lunchbox":{"name":"lunchbox","savePath":""}}"#.to_vec(),
+                false,
+            ),
+            (Vec::new(), false),
+            (owned_info.into_bytes(), false),
+            (files.as_bytes().to_vec(), false),
+            (Vec::new(), false),
+            (Vec::new(), false),
+            (Vec::new(), false),
+            (Vec::new(), false),
+            (Vec::new(), false),
+        ]);
+        let client = QbittorrentClient::authenticated(&settings_for(address), "secret").unwrap();
+
+        let recreated = client
+            .recover_or_readd_owned(
+                &torrent_bytes,
+                &info_hash,
+                "/downloads/lunchbox/roms",
+                &DownloadSelection::Exact(vec![(1, "Game/Sample Game (Europe).rom".to_owned())]),
+                &[(1, "Game/Sample Game (Europe).rom".to_owned())],
+            )
+            .unwrap();
+
+        assert!(recreated);
+        let captured = (0..11)
+            .map(|_| requests.recv().unwrap())
+            .collect::<Vec<_>>();
+        assert!(captured[1].starts_with("GET /api/v2/torrents/info?hashes="));
+        assert!(captured[3].starts_with("POST /api/v2/torrents/add HTTP/1.1"));
+        assert!(captured[3].contains("name=\"savepath\"\r\n\r\n/downloads/lunchbox/roms"));
+        assert!(captured[6].contains("priority=0"));
+        assert!(captured[7].contains("id=1&priority=7"));
+        assert!(captured[9].starts_with("POST /api/v2/torrents/recheck HTTP/1.1"));
+        assert!(captured[10].starts_with("POST /api/v2/torrents/start HTTP/1.1"));
+        worker.join().unwrap();
+    }
+
+    #[test]
     fn exact_file_set_add_is_owned_verified_prioritized_and_started() {
         let (address, requests, worker) = mock_server(vec![
             MockResponse {
@@ -2534,6 +2625,10 @@ mod tests {
         assert!(!leave_in_place.uses_install_destination);
         assert_eq!(leave_in_place.required_install_bytes, 0);
         assert!(leave_in_place.install_path.starts_with(downloads));
+        let info_hash = Torrent::read_from_bytes(&request.torrent_bytes)
+            .unwrap()
+            .info_hash();
+        assert_eq!(store.retained_torrent_bytes(&info_hash).unwrap(), None);
     }
 
     #[test]

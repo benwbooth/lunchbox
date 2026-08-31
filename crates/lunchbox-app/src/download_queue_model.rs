@@ -120,7 +120,7 @@ pub mod qobject {
 use std::collections::HashSet;
 use std::pin::Pin;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 
@@ -770,7 +770,29 @@ fn refresh_jobs() -> Result<QueueUpdate> {
                 }
             }
             Err(error) => {
-                job.message = format!("Could not refresh qBittorrent: {error}");
+                if error.to_string().contains("is no longer in qBittorrent") {
+                    match recover_managed_torrent(&store, job, &client) {
+                        Ok(recreated) => {
+                            job.state = "queued".to_owned();
+                            job.download_speed = 0;
+                            job.message = if recreated {
+                                "Lunchbox restored the missing torrent from retained metadata; qBittorrent is rechecking the existing payload"
+                                    .to_owned()
+                            } else {
+                                "Lunchbox restored the reviewed selection; qBittorrent is rechecking the existing payload"
+                                    .to_owned()
+                            };
+                            durable_event = Some(("retry", job.message.clone()));
+                        }
+                        Err(recovery_error) => {
+                            job.state = "failed".to_owned();
+                            job.download_speed = 0;
+                            job.message = recovery_failure_message(&recovery_error.to_string());
+                        }
+                    }
+                } else {
+                    job.message = format!("Could not refresh qBittorrent: {error}");
+                }
                 job.updated_at = settings::unix_timestamp();
             }
         }
@@ -939,9 +961,9 @@ fn recover_failed_job(job: DownloadJob) -> Result<QueueUpdate> {
         .and_then(|password| {
             QbittorrentClient::authenticated(&settings, password.as_deref().unwrap_or_default())
         })
-        .and_then(|client| client.recover_owned(&current.info_hash));
+        .and_then(|client| recover_managed_torrent(&store, &current, &client));
     match recovery {
-        Ok(()) => {
+        Ok(recreated) => {
             let now = settings::unix_timestamp();
             let mut recovered = 0_usize;
             for related in store.jobs_for_info_hash(&current.info_hash)? {
@@ -951,12 +973,20 @@ fn recover_failed_job(job: DownloadJob) -> Result<QueueUpdate> {
                 store.record_download_job_event(
                     &related.id,
                     "retry",
-                    "Recovery verified Lunchbox ownership, requested a data recheck, and retained the exact reviewed file selection.",
+                    if recreated {
+                        "Recovery recreated the missing Lunchbox-owned torrent from retained metadata, restored the exact reviewed file selection, and requested a data recheck."
+                    } else {
+                        "Recovery verified Lunchbox ownership, restored the exact reviewed file selection, and requested a data recheck."
+                    },
                 )?;
                 let mut related = related;
                 related.state = "queued".to_owned();
-                related.message =
-                    "Recovery requested; qBittorrent is rechecking the existing payload".to_owned();
+                related.message = if recreated {
+                    "Lunchbox restored the missing torrent; qBittorrent is rechecking the existing payload"
+                        .to_owned()
+                } else {
+                    "Recovery requested; qBittorrent is rechecking the existing payload".to_owned()
+                };
                 related.updated_at = now;
                 store.upsert_job(&related)?;
                 recovered = recovered.saturating_add(1);
@@ -966,7 +996,12 @@ fn recover_failed_job(job: DownloadJob) -> Result<QueueUpdate> {
                 imported_count: 0,
                 removed_count: 0,
                 notice: Some(format!(
-                    "Recovery started for {recovered} exact download record{}; reviewed file priorities and existing payloads were preserved.",
+                    "Recovery {} for {recovered} exact download record{}; reviewed file priorities and existing payloads were preserved.",
+                    if recreated {
+                        "recreated the missing torrent"
+                    } else {
+                        "started"
+                    },
                     if recovered == 1 { "" } else { "s" }
                 )),
             })
@@ -986,14 +1021,85 @@ fn recover_failed_job(job: DownloadJob) -> Result<QueueUpdate> {
     }
 }
 
-fn recovery_failure_message(error: &str) -> String {
-    if error.contains("is no longer in qBittorrent") {
-        "Recovery stopped because the exact torrent is no longer in qBittorrent. Re-open this game and review its source again; Lunchbox will not recreate missing torrent metadata or guess a replacement.".to_owned()
-    } else {
-        format!(
-            "Recovery could not start: {error}. The torrent, reviewed selection, downloaded files, and target files were left untouched."
-        )
+fn recover_managed_torrent(
+    store: &SettingsStore,
+    current: &DownloadJob,
+    client: &QbittorrentClient,
+) -> Result<bool> {
+    let related = store.jobs_for_info_hash(&current.info_hash)?;
+    let recoverable = related
+        .iter()
+        .filter(|job| is_active(&job.state) || job.state == "failed")
+        .collect::<Vec<_>>();
+    if recoverable.is_empty() {
+        bail!("no active or failed Lunchbox download records remain for this torrent");
     }
+    let client_save_path = recoverable
+        .iter()
+        .map(|job| job.client_save_path.trim())
+        .find(|path| !path.is_empty())
+        .context("the download record has no persisted qBittorrent save path")?;
+    if recoverable.iter().any(|job| {
+        let candidate = job.client_save_path.trim();
+        !candidate.is_empty() && candidate != client_save_path
+    }) {
+        bail!("related download records disagree about the qBittorrent save path");
+    }
+
+    let mut whole_torrent = false;
+    let mut reviewed_files = Vec::new();
+    for job in recoverable {
+        match qbittorrent::job_exact_files(job)? {
+            Some(files) => reviewed_files.extend(files),
+            None => whole_torrent = true,
+        }
+    }
+    reviewed_files.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    reviewed_files.dedup_by(|left, right| left.0 == right.0 && left.1 == right.1);
+    let selection = if whole_torrent {
+        qbittorrent::DownloadSelection::All
+    } else if reviewed_files.is_empty() {
+        bail!("recovery has no exact reviewed torrent files");
+    } else {
+        qbittorrent::DownloadSelection::Exact(reviewed_files.clone())
+    };
+    let torrent_bytes = retained_or_recovered_torrent_bytes(store, current)?;
+    client.recover_or_readd_owned(
+        &torrent_bytes,
+        &current.info_hash,
+        client_save_path,
+        &selection,
+        &reviewed_files,
+    )
+}
+
+fn retained_or_recovered_torrent_bytes(
+    store: &SettingsStore,
+    job: &DownloadJob,
+) -> Result<Vec<u8>> {
+    if let Some(bytes) = store.retained_torrent_bytes(&job.info_hash)? {
+        return Ok(bytes);
+    }
+    let can_recover_source =
+        job.source_kind == "minerva" || job.torrent_url.starts_with("registered-torrent:");
+    if !can_recover_source {
+        bail!(
+            "this older download record predates retained torrent metadata; review its exact source once to bring it under Lunchbox lifecycle management"
+        );
+    }
+    let bytes = crate::game_details::torrent_bytes_for_url(&job.torrent_url)
+        .context("recovering exact torrent metadata from its recorded source")?;
+    let retained = store.retain_torrent_metadata(&job.source_kind, &job.torrent_url, &bytes)?;
+    if !retained.eq_ignore_ascii_case(&job.info_hash) {
+        bail!("the recorded source now returns different torrent metadata");
+    }
+    Ok(bytes)
+}
+
+fn recovery_failure_message(error: &str) -> String {
+    format!(
+        "Recovery could not start: {error}. The reviewed selection, downloaded files, and target files were left untouched."
+    )
 }
 
 fn can_retry(job: &DownloadJob) -> bool {
@@ -1175,10 +1281,9 @@ mod tests {
         assert!(!can_retry(&job("active", "abc123", "downloading", "none")));
         assert_eq!(event_label("retry"), "RECOVERY");
         assert_eq!(event_label("import_error"), "IMPORT RETRY");
-        assert!(
-            recovery_failure_message("torrent abc is no longer in qBittorrent")
-                .contains("review its source again")
-        );
+        let message = recovery_failure_message("retained torrent metadata failed its receipt");
+        assert!(message.contains("retained torrent metadata"));
+        assert!(message.contains("downloaded files, and target files were left untouched"));
     }
 
     #[test]

@@ -658,6 +658,10 @@ game download or collection source imports the torrent into Lunchbox management
 by assigning its `lunchbox` category; Lunchbox also persists the validated
 `.torrent` metadata and exact member inventory so a later on-demand selection
 can recreate a missing qBittorrent entry.
+Every actual enqueue, including Minerva and a one-game manual import, also
+retains the exact bounded metadata in writable state with SHA-256 and v1-info-
+hash receipts before qBittorrent is mutated. This lifecycle copy is independent
+of whether the user registers the torrent as a reusable platform source.
 The core test suite separately drives the production queue function through a
 mock qBittorrent Web API and verifies exact-member priority plus durable source
 and game provenance without contacting any content provider. The reusable
@@ -1128,14 +1132,15 @@ CXX-Qt model reports one retryable job and the three newest-first transitions
 `FAILED`, `DOWNLOADING`, and `QUEUED`. State transitions and explicit recovery,
 import, and post-import outcomes are retained against the stable queue job ID;
 deleting that terminal record intentionally cascades only its event history.
-Retry re-reads the exact durable job, verifies that the info hash still belongs
-to the isolated `lunchbox` qBittorrent category, then requests a data recheck
-and resume. It preserves reviewed file selection, acquisition provenance,
-download plans, and both native and qBittorrent path mappings. Multiple failed
-members of the same exact torrent move together because qBittorrent controls
-one shared transfer. A missing or foreign torrent remains failed with an
-actionable event; Lunchbox does not recreate unretained torrent metadata or
-guess a replacement source.
+Retry re-reads the exact durable job and combines every active or failed member
+of the same torrent. If the info hash still belongs to the isolated `lunchbox`
+category it restores the reviewed priorities; if it was removed, Lunchbox adds
+the exact retained metadata at the persisted client save path. It then requests
+a data recheck and resume while preserving acquisition provenance, download
+plans, and native mappings. Active jobs use this same path automatically when
+refresh observes that the owned torrent disappeared. A foreign same-hash
+torrent remains untouched. An older manual job without retained bytes fails
+actionably; no display title or network search can substitute identity.
 
 On the current Linux development host, the real preserved 303,560-game catalog
 loads on its worker in roughly 0.5–0.8 seconds in release mode, while a combined

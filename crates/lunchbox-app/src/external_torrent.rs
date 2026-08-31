@@ -864,6 +864,10 @@ mod tests {
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].torrent_sha256, torrent_sha256);
         assert_eq!(sources[0].file_count, 2);
+        assert_eq!(
+            store.retained_torrent_bytes(&info_hash).unwrap(),
+            Some(probe_fixture_torrent_bytes())
+        );
 
         let captured = (0..9).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
         assert!(captured[0].starts_with("POST /api/v2/auth/login HTTP/1.1"));

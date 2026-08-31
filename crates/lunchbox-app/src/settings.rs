@@ -21,6 +21,7 @@ const STEAMGRIDDB_KEYRING_ACCOUNT: &str = "steamgriddb-api-key";
 const IGDB_KEYRING_ACCOUNT: &str = "igdb-twitch-credentials";
 const EMUMOVIES_KEYRING_ACCOUNT: &str = "emumovies-credentials";
 const SCREENSCRAPER_KEYRING_ACCOUNT: &str = "screenscraper-credentials";
+const MAX_RETAINED_TORRENT_BYTES: usize = 64 * 1024 * 1024;
 static STORE_INITIALIZATION: Mutex<()> = Mutex::new(());
 pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
     "South",
@@ -3676,6 +3677,82 @@ impl SettingsStore {
         Ok(())
     }
 
+    pub(crate) fn retain_torrent_metadata(
+        &self,
+        source_kind: &str,
+        source_locator: &str,
+        torrent_bytes: &[u8],
+    ) -> Result<String> {
+        validate_download_source_kind(source_kind)?;
+        if source_locator.trim().is_empty()
+            || source_locator.chars().count() > 8192
+            || source_locator.chars().any(char::is_control)
+        {
+            bail!("retained torrent metadata requires a bounded printable source locator");
+        }
+        if torrent_bytes.is_empty() || torrent_bytes.len() > MAX_RETAINED_TORRENT_BYTES {
+            bail!(
+                "torrent metadata must contain between 1 byte and {} MiB",
+                MAX_RETAINED_TORRENT_BYTES / (1024 * 1024)
+            );
+        }
+        let torrent = Torrent::read_from_bytes(torrent_bytes)
+            .map_err(|error| anyhow::anyhow!("retained torrent metadata is invalid: {error}"))?;
+        let info_hash = torrent.info_hash().to_ascii_lowercase();
+        let torrent_sha256 = hex::encode(Sha256::digest(torrent_bytes));
+        self.connection()?.execute(
+            "INSERT INTO retained_torrent_metadata (
+                 info_hash, torrent_sha256, torrent_bytes, source_kind,
+                 source_locator, retained_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(info_hash) DO UPDATE SET
+                 torrent_sha256=excluded.torrent_sha256,
+                 torrent_bytes=excluded.torrent_bytes,
+                 source_kind=excluded.source_kind,
+                 source_locator=excluded.source_locator,
+                 retained_at=excluded.retained_at",
+            params![
+                info_hash,
+                torrent_sha256,
+                torrent_bytes,
+                source_kind,
+                source_locator,
+                unix_timestamp(),
+            ],
+        )?;
+        Ok(info_hash)
+    }
+
+    pub(crate) fn retained_torrent_bytes(&self, info_hash: &str) -> Result<Option<Vec<u8>>> {
+        if info_hash.len() != 40 || !info_hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            bail!("retained torrent lookup requires a hexadecimal v1 info hash");
+        }
+        let retained = self
+            .connection()?
+            .query_row(
+                "SELECT torrent_sha256, torrent_bytes
+                 FROM retained_torrent_metadata WHERE info_hash=?1",
+                [info_hash.to_ascii_lowercase()],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+            )
+            .optional()?;
+        let Some((expected_sha256, bytes)) = retained else {
+            return Ok(None);
+        };
+        if bytes.is_empty()
+            || bytes.len() > MAX_RETAINED_TORRENT_BYTES
+            || hex::encode(Sha256::digest(&bytes)) != expected_sha256.to_ascii_lowercase()
+        {
+            bail!("retained torrent metadata failed its SHA-256 receipt");
+        }
+        let torrent = Torrent::read_from_bytes(&bytes)
+            .map_err(|error| anyhow::anyhow!("retained torrent metadata is invalid: {error}"))?;
+        if !torrent.info_hash().eq_ignore_ascii_case(info_hash) {
+            bail!("retained torrent metadata does not match its v1 info hash");
+        }
+        Ok(Some(bytes))
+    }
+
     pub(crate) fn register_torrent_catalog(
         &self,
         catalog: &RegisteredTorrentCatalog,
@@ -4610,6 +4687,20 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS registered_torrent_members_title
              ON registered_torrent_members(source_id, title_key, file_index);
+         CREATE TABLE IF NOT EXISTS retained_torrent_metadata (
+             info_hash TEXT PRIMARY KEY CHECK (length(info_hash)=40),
+             torrent_sha256 TEXT NOT NULL CHECK (length(torrent_sha256)=64),
+             torrent_bytes BLOB NOT NULL CHECK (
+                 length(torrent_bytes) BETWEEN 1 AND 67108864
+             ),
+             source_kind TEXT NOT NULL CHECK (
+                 source_kind IN ('minerva', 'manual_torrent')
+             ),
+             source_locator TEXT NOT NULL CHECK (
+                 length(source_locator) BETWEEN 1 AND 8192
+             ),
+             retained_at INTEGER NOT NULL CHECK (retained_at >= 0)
+         );
          CREATE TABLE IF NOT EXISTS installed_games (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -5146,6 +5237,16 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS prepared_game_installs_launchbox_id
              ON prepared_game_installs(launchbox_db_id) WHERE launchbox_db_id > 0;",
+    )?;
+    connection.execute(
+        "INSERT OR IGNORE INTO retained_torrent_metadata (
+             info_hash, torrent_sha256, torrent_bytes, source_kind,
+             source_locator, retained_at
+         )
+         SELECT info_hash, torrent_sha256, torrent_bytes, 'manual_torrent',
+                'registered-torrent:' || info_hash, registered_at
+         FROM registered_torrent_catalogs",
+        [],
     )?;
     let added_archive_member = !column_exists(connection, "local_rom_files", "archive_member")?;
     if added_archive_member {
@@ -6548,6 +6649,34 @@ mod tests {
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
         assert!(!columns.iter().any(|column| column.contains("password")));
+    }
+
+    #[test]
+    fn retained_torrent_metadata_round_trips_only_with_exact_hash_receipts() {
+        let (_directory, store) = store();
+        let bytes = crate::external_torrent::probe_fixture_torrent_bytes();
+        let expected_hash = Torrent::read_from_bytes(&bytes).unwrap().info_hash();
+
+        let retained = store
+            .retain_torrent_metadata("manual_torrent", "manual-torrent:sha256:fixture", &bytes)
+            .unwrap();
+
+        assert_eq!(retained, expected_hash);
+        assert_eq!(
+            store.retained_torrent_bytes(&expected_hash).unwrap(),
+            Some(bytes.clone())
+        );
+        assert_eq!(store.retained_torrent_bytes(&"f".repeat(40)).unwrap(), None);
+        assert!(
+            store
+                .retain_torrent_metadata("unknown", "source", &bytes)
+                .is_err()
+        );
+        assert!(
+            store
+                .retain_torrent_metadata("manual_torrent", "", &bytes)
+                .is_err()
+        );
     }
 
     #[test]
@@ -8723,7 +8852,12 @@ mod tests {
             .optional()
             .unwrap();
         assert_eq!(prepared_table, Some(1));
-        for table in ["game_activity", "play_sessions", "manual_torrent_sources"] {
+        for table in [
+            "game_activity",
+            "play_sessions",
+            "manual_torrent_sources",
+            "retained_torrent_metadata",
+        ] {
             let migrated: Option<i64> = connection
                 .query_row(
                     "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
