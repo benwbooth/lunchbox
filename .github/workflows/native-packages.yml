@@ -137,9 +137,10 @@ jobs:
         run: cargo build --locked --release --package lunchbox-app
       - name: Stage AppDir
         run: |
-          rm -rf dist/AppDir
-          mkdir -p dist/AppDir/usr/bin dist/AppDir/usr/share/lunchbox
+          rm -rf dist/AppDir dist/appimage-assets
+          mkdir -p dist/AppDir/usr/bin dist/AppDir/usr/share/lunchbox dist/appimage-assets
           install -m 0755 target/release/lunchbox dist/AppDir/usr/bin/lunchbox
+          install -m 0644 assets/lunchbox.svg dist/appimage-assets/io.github.benwbooth.Lunchbox.svg
           cargo run --locked --release --package lunchbox-db -- extract --archive artifacts/lunchbox.db.7z --output dist/AppDir/usr/share/lunchbox
           test -f dist/AppDir/usr/share/lunchbox/lunchbox.db
       - name: Fetch pinned linuxdeploy tools
@@ -155,7 +156,7 @@ jobs:
           EXTRA_QT_PLUGINS: imageformats;multimedia
           OUTPUT: dist/Lunchbox-linux-x86_64.AppImage
           QML_SOURCES_PATHS: crates/lunchbox-app/qml
-        run: ./linuxdeploy --appdir dist/AppDir --desktop-file packaging/io.github.benwbooth.Lunchbox.desktop --icon-file assets/lunchbox.svg --executable dist/AppDir/usr/bin/lunchbox --plugin qt --output appimage
+        run: ./linuxdeploy --appdir dist/AppDir --desktop-file packaging/io.github.benwbooth.Lunchbox.desktop --icon-file dist/appimage-assets/io.github.benwbooth.Lunchbox.svg --executable dist/AppDir/usr/bin/lunchbox --plugin qt --output appimage
       - name: Verify AppImage payload
         run: |
           chmod +x dist/Lunchbox-linux-x86_64.AppImage

@@ -808,7 +808,6 @@ fn is_steam_input_virtual_gamepad(device: &ControllerDevice) -> bool {
         .any(|token| name.contains(token))
 }
 
-#[cfg(target_os = "linux")]
 fn is_likely_non_game_controller(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
     [
@@ -1737,6 +1736,13 @@ mod tests {
             }],
             ..ControllerInventory::default()
         }
+    }
+
+    #[test]
+    fn filters_non_game_input_devices_on_every_platform() {
+        assert!(is_likely_non_game_controller("USB Keyboard"));
+        assert!(is_likely_non_game_controller("Wireless Mouse"));
+        assert!(!is_likely_non_game_controller("Xbox Wireless Controller"));
     }
 
     #[test]

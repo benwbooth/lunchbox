@@ -501,12 +501,11 @@ fn metadata_fingerprint(metadata: &fs::Metadata) -> String {
     use std::os::windows::fs::MetadataExt;
 
     format!(
-        "windows-v1:{:?}:{:?}:{}:{}:{}",
-        metadata.volume_serial_number(),
-        metadata.file_index(),
+        "windows-v2:{}:{}:{}:{}",
         metadata.file_size(),
         metadata.creation_time(),
         metadata.last_write_time(),
+        metadata.file_attributes(),
     )
 }
 
