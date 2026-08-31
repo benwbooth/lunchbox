@@ -194,17 +194,29 @@ retries automatically when qBittorrent is temporarily unavailable.
 
 The source architecture deliberately separates catalog identity from
 acquisition offers. Minerva remains the reviewed built-in provider. From an
-exact game's details pane, **Add External Torrent Source** now accepts a lawful
-user-supplied `.torrent`, parses at most 16 MiB off the GUI thread, rejects
+exact game's details pane, **Add External Torrent Source** accepts a lawful
+user-supplied `.torrent` or v1 magnet link, parses at most 16 MiB off the GUI
+thread, rejects
 unsafe or cross-platform-incompatible paths, and presents every file, its size,
 the v1 info hash, and the current exact-file/whole-torrent policy before Queue
 is enabled. The catalog UUID, title, and platform remain locked throughout the
 review; torrent labels cannot establish or replace identity. Queueing reuses the
 same qBittorrent, progress, import, and collection pipeline and durably records
 the source-file name, torrent SHA-256, info hash, reviewed file, exact catalog
-association, and resulting job. Magnet intake, watched folders, and authorized
-provider adapters remain planned rather than implied by this manual path. See
-[external torrent providers](docs/EXTERNAL_TORRENT_PROVIDERS.md).
+association, and resulting job.
+
+The sidebar's **Import Torrent** action handles a lawful whole collection from
+either a native `.torrent` picker or a pasted v1 magnet link. Magnet metadata is
+resolved through the configured qBittorrent instance under a short bounded
+review operation; Lunchbox stores its verified info hash and inventory, not the
+magnet URI or tracker list. The review names the destination platform and shows
+the complete portable file inventory before Queue Entire Torrent is enabled.
+The download uses a managed per-platform directory, remains visible in the
+durable queue, and exposes **Review import** when complete. That action opens
+the normal exact local-collection matcher, where filenames are only candidates
+and the user reviews canonical game associations before publication. Watched
+folders and authorized provider adapters remain planned. See [external torrent
+providers](docs/EXTERNAL_TORRENT_PROVIDERS.md).
 
 The details header also opens a native metadata editor for display title,
 description, release date, developer, publisher, genre, players, rating, age

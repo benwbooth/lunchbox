@@ -56,6 +56,9 @@ pub mod qobject {
         fn choose_directory(self: Pin<&mut LocalImportModel>, url: QUrl);
 
         #[qinvokable]
+        fn choose_directory_path(self: Pin<&mut LocalImportModel>, path: QString);
+
+        #[qinvokable]
         fn choose_native_directory(self: Pin<&mut LocalImportModel>);
 
         #[qinvokable]
@@ -473,6 +476,21 @@ impl qobject::LocalImportModel {
         self.as_mut().rust_mut().profile_root_override = None;
         self.as_mut().set_active_profile_index(-1);
         self.as_mut().set_directory(path);
+    }
+
+    pub fn choose_directory_path(mut self: Pin<&mut Self>, path: QString) {
+        let path = path.to_string();
+        if path.trim().is_empty() || !std::path::Path::new(&path).is_absolute() {
+            self.as_mut()
+                .set_message(qstring("Choose an absolute local filesystem directory."));
+            return;
+        }
+        self.as_mut().rust_mut().profile_root_override = None;
+        self.as_mut().set_active_profile_index(-1);
+        self.as_mut().set_directory(qstring(path));
+        self.as_mut().set_message(qstring(
+            "Downloaded collection selected. Review platform scope and scan results before importing.",
+        ));
     }
 
     pub fn choose_native_directory(mut self: Pin<&mut Self>) {

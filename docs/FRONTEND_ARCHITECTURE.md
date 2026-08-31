@@ -366,21 +366,24 @@ The initial implementation enforces this shape:
   filter indices and selection state. Confirmed cleanup accepts stable UUIDs
   only and its SQL predicate can remove only included rows already marked
   `missing`; filesystem paths are not part of the mutation API.
-- Manual external-torrent intake is an exact-game operation, not another title
-  matcher. `ExternalTorrentModel` receives the already-selected stable UUID and
-  immutable catalog fields, then parses one local `.torrent` on a named Rust
-  worker. The parser caps input at 16 MiB and 100,000 files, validates the v1
-  info hash and checked total size, and rejects traversal, duplicate or
+- Manual external-torrent intake has two explicit modes and is never another
+  title matcher. Exact-game mode receives the already-selected stable UUID and
+  immutable catalog fields, accepts one native `.torrent` or pasted v1 magnet,
+  and queues an explicit reviewed file. Collection mode receives a platform
+  scope plus the same source choices. Both modes resolve magnet
+  metadata through configured qBittorrent under a bounded deadline, verifies
+  the exported info hash, and queues the complete reviewed inventory into a
+  managed per-platform directory. The parser caps input at 16 MiB and 100,000
+  files, validates checked total size, and rejects traversal, duplicate or
   case-ambiguous paths, control characters, Windows-reserved components, and
   names that cannot be used consistently on Linux, macOS, and Windows. QML
-  receives only compact reviewed metadata. Queueing passes the original bytes
-  and explicit file index through the existing qBittorrent client; the durable
-  job is tagged `manual_torrent`, and a separate receipt binds the torrent
-  SHA-256, actual info hash/path, source filename, exact catalog identity, and
-  resulting job. The whole-torrent setting changes qBittorrent priority without
-  discarding which file the user reviewed as representative. Magnet resolution,
-  watched-folder state, and network-provider adapters are separate future
-  transports and are not simulated by this path.
+  receives only compact reviewed metadata; magnet URIs and trackers are not
+  persisted. Both modes use `manual_torrent` durable jobs and separate receipts
+  binding source type/label, SHA-256, info hash, actual paths, and resulting job.
+  A completed collection job exposes its exact downloaded directory to the
+  ordinary local-import review; only that matcher and user confirmation can
+  establish canonical game identities. Watched-folder state and
+  network-provider adapters remain separate future transports.
 - RetroArch shader management is a Rust service surfaced through the existing
   Settings CXX-Qt model. It discovers host-native shader roots, resolves the
   official Libretro Slang and GLSL archives into a SHA-256-verified cache, and

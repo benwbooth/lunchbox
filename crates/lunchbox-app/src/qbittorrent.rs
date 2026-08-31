@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use lava_torrent::torrent::v1::Torrent;
@@ -28,6 +28,22 @@ pub struct EnqueueRequest {
     pub selected_file_index: u32,
     pub selected_file_path: String,
     pub download_plan: Option<DownloadPlan>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CollectionEnqueueRequest {
+    pub title: String,
+    pub platform: String,
+    pub source_locator: String,
+    pub torrent_bytes: Vec<u8>,
+    pub reviewed_files: Vec<(u32, String)>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MagnetMetadataReview {
+    pub torrent_bytes: Vec<u8>,
+    pub info_hash: String,
+    pub created_for_review: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -271,6 +287,77 @@ impl QbittorrentClient {
         })
     }
 
+    fn add_magnet_for_review(
+        &self,
+        magnet_uri: &str,
+        info_hash: &str,
+        save_path: &str,
+    ) -> Result<bool> {
+        if let Some(existing) = self.torrent_info(info_hash)? {
+            ensure_owned(&existing)?;
+            return Ok(false);
+        }
+        self.ensure_category()?;
+        let response = self
+            .agent
+            .post(self.endpoint("torrents/add"))
+            .header("Referer", &self.base_url)
+            .send_form([
+                ("urls", magnet_uri),
+                ("savepath", save_path),
+                ("category", LUNCHBOX_CATEGORY),
+                ("autoTMM", "false"),
+                ("stopped", "true"),
+                ("paused", "true"),
+                ("contentLayout", "Original"),
+                ("root_folder", "true"),
+            ])
+            .context("adding the magnet for metadata review")?;
+        let (status, body) = response_text(response)?;
+        require_success(status, &body, "qBittorrent magnet review request")?;
+        Ok(true)
+    }
+
+    fn export_torrent(&self, info_hash: &str, maximum_bytes: u64) -> Result<Option<Vec<u8>>> {
+        let mut response = self
+            .agent
+            .get(self.endpoint("torrents/export"))
+            .header("Referer", &self.base_url)
+            .query("hash", info_hash)
+            .call()
+            .context("requesting reviewed torrent metadata from qBittorrent")?;
+        let status = response.status().as_u16();
+        if matches!(status, 404 | 409) {
+            return Ok(None);
+        }
+        if !(200..300).contains(&status) {
+            let body = response
+                .body_mut()
+                .with_config()
+                .limit(4096)
+                .lossy_utf8(true)
+                .read_to_string()
+                .unwrap_or_default();
+            bail!(
+                "qBittorrent torrent export failed (HTTP {status}): {}",
+                concise_body(&body)
+            );
+        }
+        let bytes = response
+            .body_mut()
+            .with_config()
+            .limit(maximum_bytes.saturating_add(1))
+            .read_to_vec()
+            .context("reading reviewed torrent metadata from qBittorrent")?;
+        if bytes.is_empty() {
+            return Ok(None);
+        }
+        if bytes.len() as u64 > maximum_bytes {
+            bail!("qBittorrent returned torrent metadata larger than the review limit");
+        }
+        Ok(Some(bytes))
+    }
+
     pub fn snapshot(
         &self,
         info_hash: &str,
@@ -357,6 +444,14 @@ impl QbittorrentClient {
         let info = self
             .torrent_info(info_hash)?
             .with_context(|| format!("torrent {info_hash} is no longer in qBittorrent"))?;
+        ensure_owned(&info)?;
+        self.cancel(info_hash)
+    }
+
+    fn discard_review_if_present(&self, info_hash: &str) -> Result<()> {
+        let Some(info) = self.torrent_info(info_hash)? else {
+            return Ok(());
+        };
         ensure_owned(&info)?;
         self.cancel(info_hash)
     }
@@ -562,6 +657,185 @@ pub fn test_connection_details(
         version,
         default_save_path,
     })
+}
+
+pub fn inspect_magnet_metadata(
+    settings: &AppSettings,
+    password: &str,
+    magnet_uri: &str,
+    info_hash: &str,
+    client_save_path: &str,
+    maximum_bytes: u64,
+) -> Result<MagnetMetadataReview> {
+    if info_hash.len() != 40 || !info_hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        bail!("magnet review requires a hexadecimal v1 info hash");
+    }
+    if client_save_path.trim().is_empty() || maximum_bytes == 0 {
+        bail!("magnet review requires a bounded managed destination");
+    }
+    let client = QbittorrentClient::authenticated(settings, password)?;
+    let created_for_review = client.add_magnet_for_review(
+        magnet_uri,
+        &info_hash.to_ascii_lowercase(),
+        client_save_path,
+    )?;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let result = loop {
+        match client.export_torrent(info_hash, maximum_bytes) {
+            Ok(Some(torrent_bytes)) => break Ok(torrent_bytes),
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(200)),
+            Ok(None) => {
+                break Err(anyhow::anyhow!(
+                    "qBittorrent did not receive magnet metadata within 15 seconds; leave qBittorrent running and try again"
+                ));
+            }
+            Err(error) => break Err(error),
+        }
+    };
+    let torrent_bytes = match result {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            if created_for_review {
+                let _ = client.cancel_owned(info_hash);
+            }
+            return Err(error);
+        }
+    };
+    let validation = (|| -> Result<()> {
+        if created_for_review {
+            client.pause_owned(info_hash)?;
+        }
+        let torrent = Torrent::read_from_bytes(&torrent_bytes).map_err(|error| {
+            anyhow::anyhow!("qBittorrent exported invalid torrent metadata: {error}")
+        })?;
+        if !torrent.info_hash().eq_ignore_ascii_case(info_hash) {
+            bail!("qBittorrent metadata does not match the reviewed magnet info hash");
+        }
+        Ok(())
+    })();
+    if let Err(error) = validation {
+        if created_for_review {
+            let _ = client.cancel_owned(info_hash);
+        }
+        return Err(error);
+    }
+    Ok(MagnetMetadataReview {
+        torrent_bytes,
+        info_hash: info_hash.to_ascii_lowercase(),
+        created_for_review,
+    })
+}
+
+pub fn discard_magnet_review(
+    settings: &AppSettings,
+    password: &str,
+    info_hash: &str,
+) -> Result<()> {
+    QbittorrentClient::authenticated(settings, password)?.discard_review_if_present(info_hash)
+}
+
+pub fn enqueue_collection(
+    settings: &AppSettings,
+    password: &str,
+    store: &crate::settings::SettingsStore,
+    request: CollectionEnqueueRequest,
+) -> Result<DownloadJob> {
+    settings.validate()?;
+    validate_download_directories(settings)?;
+    if request.title.trim().is_empty()
+        || request.title.chars().count() > 1024
+        || request.platform.trim().is_empty()
+        || request.platform.chars().count() > 512
+        || !request
+            .source_locator
+            .starts_with("manual-collection-torrent:sha256:")
+    {
+        bail!("collection torrent intake requires a bounded title, platform, and source identity");
+    }
+    let torrent = Torrent::read_from_bytes(&request.torrent_bytes)
+        .map_err(|error| anyhow::anyhow!("could not parse reviewed collection torrent: {error}"))?;
+    let info_hash = torrent.info_hash().to_ascii_lowercase();
+    let inventory = reviewed_torrent_inventory(torrent)?;
+    if inventory.is_empty() || request.reviewed_files.len() != inventory.len() {
+        bail!("the reviewed collection inventory changed before queueing");
+    }
+    let inventory_by_index = inventory
+        .iter()
+        .map(|file| (file.index, file))
+        .collect::<HashMap<_, _>>();
+    let total_bytes = reviewed_selection_bytes(&inventory_by_index, &request.reviewed_files)?;
+    for job in store.jobs_for_info_hash(&info_hash)? {
+        if is_collection_import_job(&job) && job.state != "cancelled" {
+            bail!(
+                "This collection torrent is already in Lunchbox downloads; open the ROM download queue instead"
+            );
+        }
+    }
+
+    let native_destination = managed_collection_native_save_path(
+        &settings.torrent_library_directory,
+        &request.platform,
+        &info_hash,
+    );
+    let native_anchor = existing_ancestor(&native_destination)?;
+    let available_bytes = fs2::available_space(&native_anchor).with_context(|| {
+        format!(
+            "checking available space for {}",
+            settings.torrent_library_directory.display()
+        )
+    })?;
+    let required_bytes = storage_with_reserve(total_bytes);
+    if available_bytes < required_bytes {
+        bail!(
+            "Not enough free space in the torrent library. The reviewed collection and safety reserve need {}, but only {} is available.",
+            crate::game_details::format_bytes(required_bytes),
+            crate::game_details::format_bytes(available_bytes)
+        );
+    }
+    std::fs::create_dir_all(&native_destination).with_context(|| {
+        format!(
+            "creating collection torrent destination {}",
+            native_destination.display()
+        )
+    })?;
+    let client_destination = managed_collection_client_save_path(
+        &settings.qbittorrent_container_torrent_library_directory,
+        &request.platform,
+        &info_hash,
+    );
+    let client = QbittorrentClient::authenticated(settings, password)?;
+    let added = client.add_with_placement(
+        &request.torrent_bytes,
+        &info_hash,
+        &client_destination,
+        &DownloadSelection::All,
+        &request.reviewed_files,
+    )?;
+    let representative = added
+        .files
+        .first()
+        .cloned()
+        .context("qBittorrent returned no reviewed collection files")?;
+    let actual_destination = native_path_for_client_save_path(
+        &settings.torrent_library_directory,
+        &settings.qbittorrent_container_torrent_library_directory,
+        &added.client_save_path,
+    )?;
+    Ok(DownloadJob::queued(NewDownloadJob {
+        game_id: format!("torrent-import:{info_hash}"),
+        launchbox_db_id: 0,
+        title: request.title,
+        platform: request.platform,
+        source_kind: "manual_torrent".to_owned(),
+        torrent_url: request.source_locator,
+        torrent_file_index: None,
+        torrent_file_path: representative.1,
+        info_hash,
+        client_save_path: added.client_save_path,
+        local_download_path: actual_destination.clone(),
+        local_target_path: actual_destination,
+        download_plan: String::new(),
+    }))
 }
 
 pub fn inspect_enqueue(
@@ -1192,6 +1466,13 @@ fn is_managed_download(state: &str) -> bool {
     matches!(state, "queued" | "downloading" | "paused" | "complete")
 }
 
+pub(crate) fn is_collection_import_job(job: &DownloadJob) -> bool {
+    job.game_id.starts_with("torrent-import:")
+        && job
+            .torrent_url
+            .starts_with("manual-collection-torrent:sha256:")
+}
+
 fn response_text(mut response: ureq::http::Response<ureq::Body>) -> Result<(u16, String)> {
     let status = response.status().as_u16();
     let body = response
@@ -1263,6 +1544,27 @@ pub(crate) fn managed_client_save_path(root: &str) -> String {
     client_path_join(&client_path_join(root, "lunchbox"), "roms")
 }
 
+pub(crate) fn managed_collection_client_save_path(
+    root: &str,
+    platform: &str,
+    info_hash: &str,
+) -> String {
+    let imports = client_path_join(&client_path_join(root, "lunchbox"), "imports");
+    let platform = client_path_join(&imports, &safe_path_component(platform));
+    client_path_join(&platform, info_hash)
+}
+
+pub(crate) fn managed_collection_native_save_path(
+    root: &Path,
+    platform: &str,
+    info_hash: &str,
+) -> PathBuf {
+    root.join("lunchbox")
+        .join("imports")
+        .join(safe_path_component(platform))
+        .join(info_hash)
+}
+
 pub(crate) fn native_path_for_client_file(
     native_library_root: &Path,
     client_library_root: &str,
@@ -1271,6 +1573,15 @@ pub(crate) fn native_path_for_client_file(
 ) -> Result<PathBuf> {
     let client_file_path = client_path_join(client_save_path, torrent_file_path);
     let relative = client_relative_path(client_library_root, &client_file_path)?;
+    Ok(native_library_root.join(relative))
+}
+
+pub(crate) fn native_path_for_client_save_path(
+    native_library_root: &Path,
+    client_library_root: &str,
+    client_save_path: &str,
+) -> Result<PathBuf> {
+    let relative = client_relative_path(client_library_root, client_save_path)?;
     Ok(native_library_root.join(relative))
 }
 
@@ -1304,7 +1615,7 @@ fn client_relative_path(client_library_root: &str, client_path: &str) -> Result<
     safe_torrent_relative_path(suffix.trim_start_matches('/'))
 }
 
-fn safe_path_component(value: &str) -> String {
+pub(crate) fn safe_path_component(value: &str) -> String {
     let cleaned = value
         .chars()
         .map(|character| match character {
@@ -1316,9 +1627,22 @@ fn safe_path_component(value: &str) -> String {
     let cleaned = cleaned.trim().trim_matches('.');
     if cleaned.is_empty() {
         "Unassigned platform".to_owned()
+    } else if windows_reserved_component(cleaned) {
+        format!("_{cleaned}")
     } else {
         cleaned.to_owned()
     }
+}
+
+fn windows_reserved_component(value: &str) -> bool {
+    let stem = value
+        .split_once('.')
+        .map_or(value, |(stem, _extension)| stem)
+        .to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
 }
 
 pub(crate) fn safe_torrent_relative_path(value: &str) -> Result<PathBuf> {
@@ -1428,25 +1752,40 @@ mod tests {
         mpsc::Receiver<String>,
         std::thread::JoinHandle<()>,
     ) {
+        mock_server_bytes(
+            responses
+                .into_iter()
+                .map(|response| (response.body.as_bytes().to_vec(), response.cookie))
+                .collect(),
+        )
+    }
+
+    fn mock_server_bytes(
+        responses: Vec<(Vec<u8>, bool)>,
+    ) -> (
+        SocketAddr,
+        mpsc::Receiver<String>,
+        std::thread::JoinHandle<()>,
+    ) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let (request_sender, request_receiver) = mpsc::channel();
         let worker = std::thread::spawn(move || {
-            for response in responses {
+            for (body, set_cookie) in responses {
                 let (mut stream, _) = listener.accept().unwrap();
                 let request = read_http_request(&mut stream);
                 request_sender.send(request).unwrap();
-                let cookie = if response.cookie {
+                let cookie = if set_cookie {
                     "Set-Cookie: SID=lunchbox-test; Path=/\r\n"
                 } else {
                     ""
                 };
-                let reply = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: text/plain\r\n{cookie}Connection: close\r\n\r\n{}",
-                    response.body.len(),
-                    response.body
+                let headers = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/octet-stream\r\n{cookie}Connection: close\r\n\r\n",
+                    body.len()
                 );
-                stream.write_all(reply.as_bytes()).unwrap();
+                stream.write_all(headers.as_bytes()).unwrap();
+                stream.write_all(&body).unwrap();
             }
         });
         (address, request_receiver, worker)
@@ -1526,6 +1865,47 @@ mod tests {
                 .to_ascii_lowercase()
                 .contains("cookie: sid=lunchbox-test")
         );
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn magnet_review_exports_verified_metadata_and_leaves_new_payload_stopped() {
+        let torrent_bytes = crate::external_torrent::probe_fixture_torrent_bytes();
+        let torrent = Torrent::read_from_bytes(&torrent_bytes).unwrap();
+        let info_hash = torrent.info_hash();
+        let owned_info =
+            format!(r#"[{{"hash":"{info_hash}","category":"lunchbox","state":"stoppedDL"}}]"#);
+        let (address, requests, worker) = mock_server_bytes(vec![
+            (b"Ok.".to_vec(), true),
+            (b"[]".to_vec(), false),
+            (
+                br#"{"lunchbox":{"name":"lunchbox","savePath":""}}"#.to_vec(),
+                false,
+            ),
+            (Vec::new(), false),
+            (torrent_bytes.clone(), false),
+            (owned_info.into_bytes(), false),
+            (Vec::new(), false),
+        ]);
+        let magnet = format!("magnet:?xt=urn:btih:{info_hash}&dn=Reviewed+Collection");
+
+        let review = inspect_magnet_metadata(
+            &settings_for(address),
+            "secret",
+            &magnet,
+            &info_hash,
+            "/downloads/lunchbox/imports/Test",
+            16 * 1024 * 1024,
+        )
+        .unwrap();
+
+        assert!(review.created_for_review);
+        assert_eq!(review.info_hash, info_hash);
+        assert_eq!(review.torrent_bytes, torrent_bytes);
+        let captured = (0..7).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured[3].starts_with("POST /api/v2/torrents/add HTTP/1.1"));
+        assert!(captured[4].starts_with("GET /api/v2/torrents/export?hash="));
+        assert!(captured[6].starts_with("POST /api/v2/torrents/stop HTTP/1.1"));
         worker.join().unwrap();
     }
 
@@ -1970,6 +2350,14 @@ mod tests {
             "Other Pack/Game/Sample Game.rom",
             "Sample Pack/Game/Sample Game.rom"
         ));
+    }
+
+    #[test]
+    fn managed_collection_platform_component_is_cross_platform_safe() {
+        assert_eq!(safe_path_component("Nintendo/Switch"), "Nintendo_Switch");
+        assert_eq!(safe_path_component("CON"), "_CON");
+        assert_eq!(safe_path_component("lpt9.games"), "_lpt9.games");
+        assert_eq!(safe_path_component(" .. "), "Unassigned platform");
     }
 
     #[test]

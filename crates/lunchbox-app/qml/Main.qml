@@ -1414,6 +1414,20 @@ ApplicationWindow {
         importDialogLoader.item.open()
     }
 
+    function openTorrentImport() {
+        const platform = root.selectedPlatform.length > 0
+                       ? root.selectedPlatform : "Unassigned platform"
+        externalTorrent.begin_collection_review(platform)
+        externalTorrentDialog.open()
+    }
+
+    function reviewDownloadedCollection(directory, platform) {
+        localImport.choose_directory_path(directory)
+        importDialogLoader.active = true
+        importDialogLoader.item.selectPlatformHint(platform)
+        importDialogLoader.item.open()
+    }
+
     function startImportProfileProbe() {
         if (!root.importProfileUiProbe || root.importProfileProbeStarted
                 || !localImport.initialized || localImport.directory.length === 0)
@@ -9353,6 +9367,11 @@ ApplicationWindow {
                 onClicked: root.openImportDialog()
             }
             SidebarNavButton {
+                label: "Import Torrent"
+                glyph: "↓"
+                onClicked: root.openTorrentImport()
+            }
+            SidebarNavButton {
                 label: "Library Audit"
                 glyph: "✓"
                 count: libraryAudit.total_entry_count > 0
@@ -14498,9 +14517,24 @@ ApplicationWindow {
         padding: 0
         closePolicy: externalTorrent.busy ? Popup.NoAutoClose
                                            : Popup.CloseOnEscape
+        function syncCollectionPlatform() {
+            if (!externalTorrent.collection_mode)
+                return
+            externalTorrentPlatform.currentIndex = 0
+            for (let index = 1; index < externalTorrentPlatform.model.length; ++index) {
+                if (externalTorrentPlatform.model[index]
+                        === externalTorrent.game_platform) {
+                    externalTorrentPlatform.currentIndex = index
+                    return
+                }
+            }
+        }
+        onOpened: syncCollectionPlatform()
         onClosed: {
-            if (!externalTorrent.busy)
+            if (!externalTorrent.busy) {
                 externalTorrent.clear()
+                externalMagnet.text = ""
+            }
         }
         background: Rectangle {
             color: root.panel
@@ -14541,7 +14575,9 @@ ApplicationWindow {
                         spacing: 3
                         Text {
                             Layout.fillWidth: true
-                            text: "ADD EXTERNAL TORRENT SOURCE"
+                            text: externalTorrent.collection_mode
+                                  ? "IMPORT TORRENT COLLECTION"
+                                  : "ADD EXTERNAL TORRENT SOURCE"
                             color: root.ink
                             font.pixelSize: 16
                             font.weight: Font.Bold
@@ -14549,7 +14585,9 @@ ApplicationWindow {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: "Inspect first, choose one exact payload, then hand it to the existing download and import pipeline."
+                            text: externalTorrent.collection_mode
+                                  ? "Inspect the complete source, download it into a managed folder, then review exact game identities in Import ROMs."
+                                  : "Inspect first, choose one exact payload, then hand it to the existing download and import pipeline."
                             color: root.muted
                             font.pixelSize: 10
                             elide: Text.ElideRight
@@ -14601,7 +14639,9 @@ ApplicationWindow {
                             spacing: 2
                             Text {
                                 Layout.fillWidth: true
-                                text: externalTorrent.game_title
+                                text: externalTorrent.collection_mode
+                                      ? "Local collection intake"
+                                      : externalTorrent.game_title
                                 color: root.ink
                                 font.pixelSize: 14
                                 font.weight: Font.Bold
@@ -14609,14 +14649,34 @@ ApplicationWindow {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: externalTorrent.game_platform
-                                      + "  ·  Exact catalog association locked"
+                                text: externalTorrent.collection_mode
+                                      ? "Whole torrent · normal local-import review follows"
+                                      : externalTorrent.game_platform
+                                        + "  ·  Exact catalog association locked"
                                 color: root.accentCool
                                 font.pixelSize: 10
                                 elide: Text.ElideRight
                             }
                         }
+                        ComboBox {
+                            id: externalTorrentPlatform
+                            visible: externalTorrent.collection_mode
+                            Layout.preferredWidth: 250
+                            enabled: !externalTorrent.busy && !externalTorrent.ready
+                            model: {
+                                const values = ["Auto-detect platform"]
+                                const revision = localImport.platform_count
+                                for (let index = 0; index < revision; ++index)
+                                    values.push(localImport.platform_name_at(index))
+                                return values
+                            }
+                            onActivated: externalTorrent.set_collection_platform(
+                                currentIndex === 0 ? "Unassigned platform" : currentText)
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Files are isolated under this platform before the normal ROM identity review"
+                        }
                         Text {
+                            visible: !externalTorrent.collection_mode
                             text: "SOURCE LABELS NEVER\nREPLACE GAME IDENTITY"
                             color: root.muted
                             font.pixelSize: 8
@@ -14672,6 +14732,33 @@ ApplicationWindow {
                             font.pixelSize: 9
                             elide: Text.ElideRight
                         }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    ClearableSearchField {
+                        id: externalMagnet
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 38
+                        enabled: !externalTorrent.busy
+                        placeholderText: "Or paste a magnet link"
+                        searchIconVisible: false
+                        font.pixelSize: 10
+                        selectByMouse: true
+                        onAccepted: {
+                            if (text.trim().length > 0)
+                                externalTorrent.inspect_magnet(text)
+                        }
+                    }
+                    Button {
+                        Layout.preferredWidth: 150
+                        Layout.preferredHeight: 38
+                        text: externalTorrent.busy ? "FETCHING…" : "REVIEW MAGNET"
+                        enabled: !externalTorrent.busy
+                                 && externalMagnet.text.trim().length > 0
+                        onClicked: externalTorrent.inspect_magnet(externalMagnet.text)
                     }
                 }
 
@@ -14761,7 +14848,9 @@ ApplicationWindow {
                                 Text {
                                     Layout.fillWidth: true
                                     text: externalTorrent.ready
-                                          ? "SELECT THE EXACT GAME PAYLOAD"
+                                          ? (externalTorrent.collection_mode
+                                             ? "REVIEWED COLLECTION CONTENTS"
+                                             : "SELECT THE EXACT GAME PAYLOAD")
                                           : "TORRENT CONTENTS"
                                     color: root.muted
                                     font.pixelSize: 9
@@ -14792,9 +14881,13 @@ ApplicationWindow {
                                 property int offerRevision: externalTorrent.revision
                                 width: ListView.view.width
                                 height: 58
-                                highlighted: externalTorrent.selected_index === index
+                                highlighted: !externalTorrent.collection_mode
+                                             && externalTorrent.selected_index === index
                                 enabled: !externalTorrent.busy
-                                onClicked: externalTorrent.select_file(index)
+                                onClicked: {
+                                    if (!externalTorrent.collection_mode)
+                                        externalTorrent.select_file(index)
+                                }
                                 background: Rectangle {
                                     color: torrentFileRow.highlighted ? "#263342"
                                                                        : torrentFileRow.hovered
@@ -14807,6 +14900,7 @@ ApplicationWindow {
                                 contentItem: RowLayout {
                                     spacing: 10
                                     RadioButton {
+                                        visible: !externalTorrent.collection_mode
                                         checked: externalTorrent.selected_index
                                                  === torrentFileRow.index
                                         onClicked: externalTorrent.select_file(
@@ -14838,9 +14932,12 @@ ApplicationWindow {
                                         }
                                     }
                                     Text {
-                                        visible: torrentFileRow.highlighted
-                                        text: "REVIEWED SELECTION"
-                                        color: root.accent
+                                        visible: externalTorrent.collection_mode
+                                                 || torrentFileRow.highlighted
+                                        text: externalTorrent.collection_mode
+                                              ? "INCLUDED" : "REVIEWED SELECTION"
+                                        color: externalTorrent.collection_mode
+                                               ? root.accentCool : root.accent
                                         font.pixelSize: 8
                                         font.weight: Font.Bold
                                     }
@@ -14852,7 +14949,7 @@ ApplicationWindow {
                                 visible: externalTorrent.file_count === 0
                                 text: externalTorrent.busy
                                       ? "Reading torrent metadata…"
-                                      : "Choose a .torrent file to inspect its exact paths and sizes."
+                                      : "Choose a .torrent file or paste a magnet link to inspect exact paths and sizes."
                                 color: root.muted
                                 font.pixelSize: 11
                                 horizontalAlignment: Text.AlignHCenter
@@ -14916,9 +15013,13 @@ ApplicationWindow {
                     Button {
                         Layout.preferredWidth: 176
                         Layout.preferredHeight: 36
-                        text: externalTorrent.busy ? "WORKING…" : "QUEUE REVIEWED FILE"
+                        text: externalTorrent.busy ? "WORKING…"
+                              : externalTorrent.collection_mode
+                                ? "QUEUE ENTIRE TORRENT"
+                                : "QUEUE REVIEWED FILE"
                         enabled: externalTorrent.ready
-                                 && externalTorrent.selected_index >= 0
+                                 && (externalTorrent.collection_mode
+                                     || externalTorrent.selected_index >= 0)
                                  && !externalTorrent.busy
                         font.pixelSize: 9
                         font.weight: Font.Bold
@@ -14945,7 +15046,9 @@ ApplicationWindow {
 
     FileDialog {
         id: externalTorrentFileDialog
-        title: "Choose a lawful torrent for " + externalTorrent.game_title
+        title: externalTorrent.collection_mode
+               ? "Choose a lawful torrent collection"
+               : "Choose a lawful torrent for " + externalTorrent.game_title
         fileMode: FileDialog.OpenFile
         nameFilters: ["BitTorrent metadata (*.torrent)"]
         onAccepted: externalTorrent.inspect_file(selectedFile)
@@ -15481,6 +15584,20 @@ ApplicationWindow {
             function loadProfile(profileIndex) {
                 if (localImport.apply_profile(profileIndex))
                     syncProfileControls(profileIndex)
+            }
+
+            function selectPlatformHint(platform) {
+                importProfile.currentIndex = 0
+                localImport.clear_active_profile()
+                importPlatform.currentIndex = 0
+                if (platform === "Unassigned platform")
+                    return
+                for (let index = 1; index < importPlatform.model.length; ++index) {
+                    if (importPlatform.model[index] === platform) {
+                        importPlatform.currentIndex = index
+                        return
+                    }
+                }
             }
 
             function openScanHistory() {
@@ -21819,6 +21936,10 @@ ApplicationWindow {
             expanded = false
             downloadsDrawer.open()
         }
+        onImportRequested: function(directory, platform) {
+            expanded = false
+            root.reviewDownloadedCollection(directory, platform)
+        }
     }
 
     Drawer {
@@ -22003,6 +22124,21 @@ ApplicationWindow {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Item { Layout.fillWidth: true }
+                                    Button {
+                                        text: "Review import"
+                                        visible: {
+                                            downloadRow.queueRevision
+                                            return downloadQueue.job_can_import(downloadRow.index)
+                                        }
+                                        enabled: !downloadQueue.busy
+                                        highlighted: true
+                                        onClicked: {
+                                            downloadsDrawer.close()
+                                            root.reviewDownloadedCollection(
+                                                downloadQueue.job_import_directory_at(downloadRow.index),
+                                                downloadQueue.job_platform_at(downloadRow.index))
+                                        }
+                                    }
                                     Button {
                                         text: "History"
                                         enabled: !downloadQueue.history_busy

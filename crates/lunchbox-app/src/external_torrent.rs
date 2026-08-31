@@ -25,12 +25,15 @@ pub(crate) struct ReviewedTorrentFile {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ManualTorrentOffer {
     pub source_file_name: String,
+    pub source_kind: String,
+    pub source_label: String,
     pub torrent_name: String,
     pub torrent_sha256: String,
     pub info_hash: String,
     pub total_bytes: u64,
     pub files: Vec<ReviewedTorrentFile>,
     pub torrent_bytes: Vec<u8>,
+    pub magnet_review_created: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -38,6 +41,11 @@ pub(crate) struct CanonicalGameAssociation {
     pub game_uid: String,
     pub launchbox_db_id: i64,
     pub title: String,
+    pub platform: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CollectionTorrentAssociation {
     pub platform: String,
 }
 
@@ -142,13 +150,206 @@ pub(crate) fn inspect_torrent_bytes(
 
     Ok(ManualTorrentOffer {
         source_file_name: source_file_name.to_owned(),
+        source_kind: "file".to_owned(),
+        source_label: source_file_name.to_owned(),
         torrent_name: torrent.name,
         torrent_sha256: hex::encode(Sha256::digest(bytes)),
         info_hash,
         total_bytes,
         files,
         torrent_bytes: bytes.to_vec(),
+        magnet_review_created: false,
     })
+}
+
+pub(crate) fn inspect_magnet_source(
+    settings: &AppSettings,
+    password: &str,
+    magnet_uri: &str,
+    platform: &str,
+    collection_mode: bool,
+) -> Result<ManualTorrentOffer> {
+    let (info_hash, display_name) = parse_v1_magnet(magnet_uri)?;
+    let client_save_path = if collection_mode {
+        qbittorrent::managed_collection_client_save_path(
+            &settings.qbittorrent_container_torrent_library_directory,
+            platform,
+            &info_hash,
+        )
+    } else {
+        qbittorrent::managed_client_save_path(
+            &settings.qbittorrent_container_torrent_library_directory,
+        )
+    };
+    let review = qbittorrent::inspect_magnet_metadata(
+        settings,
+        password,
+        magnet_uri,
+        &info_hash,
+        &client_save_path,
+        MAX_TORRENT_BYTES,
+    )?;
+    let source_file_name = format!(
+        "{}-{}.torrent",
+        display_name.as_deref().unwrap_or("magnet"),
+        &info_hash[..12]
+    );
+    let inspected = inspect_torrent_bytes(&review.torrent_bytes, &source_file_name);
+    let mut offer = match inspected {
+        Ok(offer) => offer,
+        Err(error) => {
+            if review.created_for_review {
+                let _ = qbittorrent::discard_magnet_review(settings, password, &info_hash);
+            }
+            return Err(error);
+        }
+    };
+    if !offer.info_hash.eq_ignore_ascii_case(&review.info_hash) {
+        if review.created_for_review {
+            let _ = qbittorrent::discard_magnet_review(settings, password, &info_hash);
+        }
+        bail!("reviewed magnet metadata changed identity");
+    }
+    offer.source_kind = "magnet".to_owned();
+    offer.source_label = format!("Magnet {}", &info_hash[..12]);
+    offer.magnet_review_created = review.created_for_review;
+    Ok(offer)
+}
+
+pub(crate) fn discard_unqueued_magnet_review(
+    settings: &AppSettings,
+    password: &str,
+    offer: &ManualTorrentOffer,
+) -> Result<()> {
+    if offer.source_kind == "magnet" && offer.magnet_review_created {
+        qbittorrent::discard_magnet_review(settings, password, &offer.info_hash)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn queue_collection_torrent(
+    settings: &AppSettings,
+    password: &str,
+    store: &SettingsStore,
+    association: CollectionTorrentAssociation,
+    offer: ManualTorrentOffer,
+) -> Result<String> {
+    validate_label(&association.platform, "collection platform", 512)?;
+    let reviewed_files = offer
+        .files
+        .iter()
+        .map(|file| (file.index, file.path.clone()))
+        .collect::<Vec<_>>();
+    let source_locator = format!("manual-collection-torrent:sha256:{}", offer.torrent_sha256);
+    let job = qbittorrent::enqueue_collection(
+        settings,
+        password,
+        store,
+        qbittorrent::CollectionEnqueueRequest {
+            title: offer.torrent_name.clone(),
+            platform: association.platform.clone(),
+            source_locator,
+            torrent_bytes: offer.torrent_bytes.clone(),
+            reviewed_files,
+        },
+    )?;
+    let receipt = crate::settings::ManualCollectionTorrentSourceReceipt {
+        platform: association.platform,
+        source_kind: offer.source_kind,
+        source_label: offer.source_label,
+        torrent_name: offer.torrent_name,
+        torrent_sha256: offer.torrent_sha256,
+        info_hash: job.info_hash.clone(),
+        destination: job.local_target_path.clone(),
+        queued_job_id: job.id.clone(),
+        reviewed_at: unix_timestamp(),
+    };
+    store.record_manual_collection_torrent_enqueue(&receipt, &job)?;
+    Ok(job.id)
+}
+
+fn parse_v1_magnet(value: &str) -> Result<(String, Option<String>)> {
+    let value = value.trim();
+    if value.is_empty() || value.chars().count() > 8192 || value.chars().any(char::is_control) {
+        bail!("magnet link must contain between 1 and 8192 printable characters");
+    }
+    let url = url::Url::parse(value).context("parsing magnet link")?;
+    if url.scheme() != "magnet" {
+        bail!("paste a magnet link beginning with magnet:?");
+    }
+    let mut info_hash = None;
+    let mut display_name = None;
+    for (key, value) in url.query_pairs() {
+        if key == "xt" {
+            let Some(encoded) = value
+                .strip_prefix("urn:btih:")
+                .or_else(|| value.strip_prefix("URN:BTIH:"))
+            else {
+                continue;
+            };
+            let decoded = decode_btih(encoded)?;
+            if info_hash
+                .as_ref()
+                .is_some_and(|current: &String| !current.eq_ignore_ascii_case(&decoded))
+            {
+                bail!("magnet link contains conflicting v1 info hashes");
+            }
+            info_hash = Some(decoded);
+        } else if key == "dn" && display_name.is_none() {
+            let value = value.trim();
+            if !value.is_empty()
+                && value.chars().count() <= 512
+                && !value.chars().any(char::is_control)
+            {
+                display_name = Some(
+                    value
+                        .chars()
+                        .map(|character| {
+                            if matches!(
+                                character,
+                                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+                            ) {
+                                '_'
+                            } else {
+                                character
+                            }
+                        })
+                        .collect::<String>(),
+                );
+            }
+        }
+    }
+    let info_hash = info_hash.context("magnet link does not contain a v1 urn:btih info hash")?;
+    Ok((info_hash, display_name))
+}
+
+fn decode_btih(value: &str) -> Result<String> {
+    if value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Ok(value.to_ascii_lowercase());
+    }
+    if value.len() != 32 {
+        bail!("magnet v1 info hash must contain 40 hexadecimal or 32 base32 characters");
+    }
+    let mut output = Vec::with_capacity(20);
+    let mut accumulator = 0_u32;
+    let mut bits = 0_u8;
+    for byte in value.bytes() {
+        let value = match byte.to_ascii_uppercase() {
+            b'A'..=b'Z' => byte.to_ascii_uppercase() - b'A',
+            b'2'..=b'7' => byte - b'2' + 26,
+            _ => bail!("magnet v1 info hash contains invalid base32 characters"),
+        };
+        accumulator = (accumulator << 5) | u32::from(value);
+        bits += 5;
+        if bits >= 8 {
+            bits -= 8;
+            output.push(((accumulator >> bits) & 0xff) as u8);
+        }
+    }
+    if output.len() != 20 || bits != 0 {
+        bail!("magnet v1 info hash has an invalid base32 length");
+    }
+    Ok(hex::encode(output))
 }
 
 pub(crate) fn queue_manual_torrent(
@@ -446,6 +647,33 @@ mod tests {
     }
 
     #[test]
+    fn magnet_parser_accepts_hex_and_base32_v1_hashes_without_retaining_trackers() {
+        let hex_hash = "0123456789abcdef0123456789abcdef01234567";
+        let (parsed, name) = parse_v1_magnet(&format!(
+            "magnet:?xt=urn:btih:{hex_hash}&dn=Portable%20Collection&tr=https%3A%2F%2Ftracker.invalid"
+        ))
+        .unwrap();
+        assert_eq!(parsed, hex_hash);
+        assert_eq!(name.as_deref(), Some("Portable Collection"));
+
+        let (base32, _) =
+            parse_v1_magnet("magnet:?xt=urn:btih:AERUKZ4JVPG66AJDIVTYTK6N54ASGRLH").unwrap();
+        assert_eq!(base32, hex_hash);
+    }
+
+    #[test]
+    fn magnet_parser_rejects_missing_or_conflicting_v1_identity() {
+        assert!(parse_v1_magnet("https://example.invalid/file.torrent").is_err());
+        assert!(parse_v1_magnet("magnet:?dn=No+identity").is_err());
+        assert!(
+            parse_v1_magnet(
+                "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&xt=urn:btih:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn reviewed_whole_torrent_enqueue_preserves_exact_source_and_game_provenance() {
         let directory = tempfile::tempdir().unwrap();
         let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
@@ -544,6 +772,97 @@ mod tests {
         assert!(captured[5].starts_with(&format!(
             "GET /api/v2/torrents/files?hash={info_hash} HTTP/1.1"
         )));
+        assert!(captured[6].contains("id=0%7C1&priority=1"));
+        assert!(captured[7].starts_with("POST /api/v2/torrents/start HTTP/1.1"));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn reviewed_collection_enqueue_is_whole_torrent_and_hands_off_to_local_import() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let offer = inspect_torrent_bytes(
+            &probe_fixture_torrent_bytes(),
+            "user-reviewed-collection.torrent",
+        )
+        .unwrap();
+        let info_hash = offer.info_hash.clone();
+        let torrent_sha256 = offer.torrent_sha256.clone();
+        let responses = vec![
+            MockResponse {
+                body: "Ok.".into(),
+                cookie: true,
+            },
+            MockResponse {
+                body: "[]".into(),
+                cookie: false,
+            },
+            MockResponse {
+                body: r#"{"lunchbox":{"name":"lunchbox","savePath":""}}"#.into(),
+                cookie: false,
+            },
+            MockResponse {
+                body: String::new(),
+                cookie: false,
+            },
+            MockResponse {
+                body: format!(
+                    r#"[{{"hash":"{info_hash}","category":"lunchbox","state":"stoppedDL"}}]"#
+                ),
+                cookie: false,
+            },
+            MockResponse {
+                body: r#"[{"index":0,"name":"Sample Pack/Game/Sample Game.rom","size":4,"progress":0.0},{"index":1,"name":"Sample Pack/Game/Sample Game (Europe).rom","size":6,"progress":0.0}]"#.into(),
+                cookie: false,
+            },
+            MockResponse {
+                body: String::new(),
+                cookie: false,
+            },
+            MockResponse {
+                body: String::new(),
+                cookie: false,
+            },
+        ];
+        let (address, requests, worker) = mock_server(responses);
+        let settings = AppSettings {
+            qbittorrent_host: address.ip().to_string(),
+            qbittorrent_port: address.port(),
+            qbittorrent_username: "lunchbox".into(),
+            torrent_library_directory: directory.path().join("downloads"),
+            qbittorrent_container_torrent_library_directory: "/downloads".into(),
+            rom_directory: directory.path().join("roms"),
+            ..AppSettings::default()
+        };
+
+        let job_id = queue_collection_torrent(
+            &settings,
+            "secret",
+            &store,
+            CollectionTorrentAssociation {
+                platform: "Nintendo Switch".into(),
+            },
+            offer,
+        )
+        .unwrap();
+
+        let jobs = store.jobs().unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].id, job_id);
+        assert_eq!(jobs[0].game_id, format!("torrent-import:{info_hash}"));
+        assert_eq!(jobs[0].title, "Sample Pack");
+        assert_eq!(jobs[0].platform, "Nintendo Switch");
+        assert_eq!(jobs[0].torrent_file_index, None);
+        assert!(jobs[0].local_target_path.ends_with(&info_hash));
+        let receipts = store.manual_collection_torrent_sources().unwrap();
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].source_kind, "file");
+        assert_eq!(receipts[0].torrent_sha256, torrent_sha256);
+        assert_eq!(receipts[0].destination, jobs[0].local_target_path);
+
+        let captured = (0..8).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured[3].starts_with("POST /api/v2/torrents/add HTTP/1.1"));
+        assert!(captured[3].contains("/downloads/lunchbox/imports/Nintendo Switch/"));
         assert!(captured[6].contains("id=0%7C1&priority=1"));
         assert!(captured[7].starts_with("POST /api/v2/torrents/start HTTP/1.1"));
         worker.join().unwrap();

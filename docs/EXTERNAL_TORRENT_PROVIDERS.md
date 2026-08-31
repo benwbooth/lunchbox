@@ -4,8 +4,8 @@ Lunchbox should broaden acquisition coverage without making any download source
 the authority for game identity and without embedding access to an unlicensed
 commercial-ROM service. Minerva remains the reviewed built-in source. The first
 portable foundation is now provider-neutral intake for lawful user-supplied
-`.torrent` files; future sources still require documented authorization and
-stable terms.
+`.torrent` files and v1 magnet links; future sources still require documented
+authorization and stable terms.
 
 ## Research finding: NSW Torrent Library
 
@@ -31,11 +31,9 @@ Therefore Lunchbox will not ship a direct NSW adapter, Telegram userbot, bot
 scraper, bundled account, network-blocking bypass, or copy of its index/torrents.
 That decision can be revisited only if the source publishes documented rights,
 terms acceptable to a redistributable client, and an authorized API. Users may
-still import lawful torrent files they obtained independently; until manual
-magnet intake is implemented, magnet links remain the responsibility of the
-user's chosen external client. Lunchbox is responsible for review and safe
-handling, not for deciding that an external source had permission to distribute
-its content.
+still import lawful torrent files or v1 magnet links they obtained independently.
+Lunchbox is responsible for review and safe handling, not for deciding that an
+external source had permission to distribute its content.
 
 ## Provider-neutral contract
 
@@ -56,12 +54,13 @@ Import success records the selected canonical UUID, provider/offer identity,
 info hash, chosen files, and hashes. It does not merge game records or rewrite
 catalog metadata.
 
-## Implemented manual source flow
+## Implemented exact-game source flow
 
-1. The exact game's details pane opens an OS-native picker for one local
-   `.torrent`; the selected catalog UUID, title, platform, and positive
+1. The exact game's details pane accepts one native `.torrent` or pasted v1
+   magnet link; the selected catalog UUID, title, platform, and positive
    LaunchBox database ID are locked before inspection begins.
-2. A Rust worker reads at most 16 MiB off the GUI thread, parses v1 metadata,
+2. A Rust worker reads at most 16 MiB off the GUI thread or asks configured
+   qBittorrent for bounded magnet metadata, then parses the v1 metadata,
    bounds file counts, names, paths, and total sizes, and rejects traversal,
    duplicates, case ambiguity, controls, and filenames that are not portable
    across Linux, macOS, and Windows.
@@ -78,6 +77,29 @@ catalog metadata.
    out-of-process with a versioned JSON contract and least-privilege storage.
    Credentials belong in the system keyring; databases contain references only.
 
+## Implemented collection source flow
+
+1. **Import Torrent** in the main navigation accepts one native `.torrent` or a
+   pasted v1 magnet link and a destination platform. It does not create catalog
+   games from torrent labels.
+2. Local metadata uses the same bounded parser as exact-game intake. Magnet
+   syntax is bounded and must contain one unambiguous hexadecimal or Base32 v1
+   `btih`; qBittorrent retrieves the metadata under Lunchbox's isolated category,
+   exports the resulting `.torrent`, and Lunchbox verifies its info hash before
+   showing the review. Magnet URIs and tracker lists are not stored.
+3. The Qt review shows the complete portable inventory and total size. A
+   collection import always queues the reviewed torrent as a whole into a
+   managed per-platform directory; there is no filename-based game selection at
+   this stage.
+4. The existing durable download queue owns progress, pause/resume, retry,
+   cancellation, storage reservation, duplicate suppression, and post-import
+   seeding policy. SQLite records bounded source provenance, verified torrent
+   identity, managed paths, platform, and queue job.
+5. Completion exposes **Review import** in both queue surfaces. That action
+   opens the ordinary local-collection import workflow against the downloaded
+   directory. Its exact/hash-backed matcher and user review establish canonical
+   game associations; the torrent itself never does.
+
 This route supports newer platforms without binding the core application to one
 Telegram channel. Platform support is still separate from download availability:
 emulator/runtime compatibility, user-owned keys or firmware, legal content
@@ -85,9 +107,12 @@ ownership, safe import, and exact launch configuration remain independent gates.
 
 ## Delivery order
 
-1. **Complete:** manual `.torrent` intake with exact-file review, whole-torrent
-   policy support, durable provenance, and deterministic Rust/Qt tests.
-2. Manual magnet intake with metadata retrieval followed by the same review.
+1. **Complete:** exact-game manual `.torrent` and v1 magnet intake with
+   exact-file review, whole-torrent policy support, durable provenance, and
+   deterministic Rust/Qt tests.
+2. **Complete:** whole-collection `.torrent` and v1 magnet intake with bounded
+   metadata resolution, complete-inventory review, managed platform paths,
+   durable queueing, and local-import handoff.
 3. Idempotent watched-folder intake with archive/move-on-success behavior and
    duplicate info-hash suppression.
 4. A local provider manifest for user-managed, lawful catalogs.

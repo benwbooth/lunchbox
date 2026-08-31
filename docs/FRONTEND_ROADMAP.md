@@ -111,12 +111,18 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   rechecks its data, and resumes it without changing reviewed file selection,
   provenance, plans, or path mappings; missing or foreign torrents remain failed
   rather than being guessed or recreated.
-- Provider-neutral manual `.torrent` intake from an exact game's details pane:
+- Provider-neutral manual `.torrent`/v1-magnet intake from an exact game's
+  details pane:
   a bounded off-thread parser, portable-path validation, complete native file
   review, explicit exact-file or whole-torrent handoff, immutable catalog
   association, and durable source/torrent/job provenance all reuse the existing
   qBittorrent, import, and collection pipeline. No external source label can
   establish game identity.
+- Provider-neutral whole-collection intake from a native `.torrent` or pasted
+  v1 magnet link: bounded qBittorrent metadata resolution, verified info hash,
+  complete-inventory review, a managed per-platform destination, durable queue
+  progress, and explicit handoff to the normal local-import identity review.
+  Magnet URIs and tracker lists are not persisted.
 - Unified native Find Artwork workflow for SteamGridDB, IGDB, authorized
   ScreenScraper WebAPI v2, EmuMovies FTP, and explicit Web
   artwork with
@@ -252,8 +258,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 - Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
   into the GUI process.
-- Extend the implemented provider-neutral, review-first manual `.torrent`
-  intake with magnet metadata resolution, an idempotent watched folder, local
+- Extend the implemented provider-neutral exact-game and whole-collection
+  `.torrent`/v1-magnet intake with an idempotent watched folder, local
   user-managed provider manifests, and then authorized catalog adapters.
   External offers must retain source provenance and never establish or merge a
   canonical game identity. A direct NSW Torrent Library adapter is not planned

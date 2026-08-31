@@ -12,6 +12,7 @@ pub mod qobject {
         #[qml_element]
         #[qproperty(bool, busy)]
         #[qproperty(bool, ready)]
+        #[qproperty(bool, collection_mode)]
         #[qproperty(i32, file_count)]
         #[qproperty(i32, selected_index)]
         #[qproperty(i32, revision)]
@@ -19,6 +20,7 @@ pub mod qobject {
         #[qproperty(QString, game_title)]
         #[qproperty(QString, game_platform)]
         #[qproperty(QString, source_file_name)]
+        #[qproperty(QString, source_kind)]
         #[qproperty(QString, torrent_name)]
         #[qproperty(QString, info_hash)]
         #[qproperty(QString, total_size)]
@@ -37,7 +39,16 @@ pub mod qobject {
         );
 
         #[qinvokable]
+        fn begin_collection_review(self: Pin<&mut ExternalTorrentModel>, platform: QString);
+
+        #[qinvokable]
+        fn set_collection_platform(self: Pin<&mut ExternalTorrentModel>, platform: QString);
+
+        #[qinvokable]
         fn inspect_file(self: Pin<&mut ExternalTorrentModel>, url: QUrl);
+
+        #[qinvokable]
+        fn inspect_magnet(self: Pin<&mut ExternalTorrentModel>, magnet_uri: QString);
 
         #[qinvokable]
         fn inspect_probe_fixture(self: Pin<&mut ExternalTorrentModel>);
@@ -63,16 +74,19 @@ pub mod qobject {
 
 use std::pin::Pin;
 
+use anyhow::Context;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QUrl};
 
 use crate::external_torrent::{
-    self, CanonicalGameAssociation, ManualTorrentOffer, ReviewedTorrentFile,
+    self, CanonicalGameAssociation, CollectionTorrentAssociation, ManualTorrentOffer,
+    ReviewedTorrentFile,
 };
 
 pub struct ExternalTorrentModelRust {
     busy: bool,
     ready: bool,
+    collection_mode: bool,
     file_count: i32,
     selected_index: i32,
     revision: i32,
@@ -80,6 +94,7 @@ pub struct ExternalTorrentModelRust {
     game_title: QString,
     game_platform: QString,
     source_file_name: QString,
+    source_kind: QString,
     torrent_name: QString,
     info_hash: QString,
     total_size: QString,
@@ -87,6 +102,7 @@ pub struct ExternalTorrentModelRust {
     message: QString,
     queued_job_id: QString,
     association: Option<CanonicalGameAssociation>,
+    collection_association: Option<CollectionTorrentAssociation>,
     offer: Option<ManualTorrentOffer>,
     generation: u64,
     probe_fixture_path: Option<std::path::PathBuf>,
@@ -97,6 +113,7 @@ impl Default for ExternalTorrentModelRust {
         Self {
             busy: false,
             ready: false,
+            collection_mode: false,
             file_count: 0,
             selected_index: -1,
             revision: 0,
@@ -104,6 +121,7 @@ impl Default for ExternalTorrentModelRust {
             game_title: QString::default(),
             game_platform: QString::default(),
             source_file_name: QString::default(),
+            source_kind: QString::from("file"),
             torrent_name: QString::default(),
             info_hash: QString::default(),
             total_size: QString::default(),
@@ -113,6 +131,7 @@ impl Default for ExternalTorrentModelRust {
             ),
             queued_job_id: QString::default(),
             association: None,
+            collection_association: None,
             offer: None,
             generation: 0,
             probe_fixture_path: None,
@@ -155,7 +174,10 @@ impl qobject::ExternalTorrentModel {
             ));
             return;
         }
+        self.as_mut().schedule_current_offer_cleanup();
         self.as_mut().rust_mut().association = Some(association.clone());
+        self.as_mut().rust_mut().collection_association = None;
+        self.as_mut().set_collection_mode(false);
         self.as_mut().set_game_title(qstring(association.title));
         self.as_mut()
             .set_game_platform(qstring(association.platform));
@@ -165,13 +187,43 @@ impl qobject::ExternalTorrentModel {
         ));
     }
 
+    pub fn begin_collection_review(mut self: Pin<&mut Self>, platform: QString) {
+        if *self.as_ref().busy() {
+            return;
+        }
+        self.as_mut().schedule_current_offer_cleanup();
+        let platform = normalized_collection_platform(&platform.to_string());
+        self.as_mut().rust_mut().association = None;
+        self.as_mut().rust_mut().collection_association = Some(CollectionTorrentAssociation {
+            platform: platform.clone(),
+        });
+        self.as_mut().set_collection_mode(true);
+        self.as_mut().set_game_title(qstring("Collection torrent"));
+        self.as_mut().set_game_platform(qstring(platform));
+        self.as_mut().reset_offer();
+        self.as_mut().set_message(qstring(
+            "Review the complete source inventory before sending it to the local collection importer.",
+        ));
+    }
+
+    pub fn set_collection_platform(mut self: Pin<&mut Self>, platform: QString) {
+        if *self.as_ref().busy() || *self.as_ref().ready() || !*self.as_ref().collection_mode() {
+            return;
+        }
+        let platform = normalized_collection_platform(&platform.to_string());
+        self.as_mut().rust_mut().collection_association = Some(CollectionTorrentAssociation {
+            platform: platform.clone(),
+        });
+        self.as_mut().set_game_platform(qstring(platform));
+    }
+
     pub fn inspect_file(mut self: Pin<&mut Self>, url: QUrl) {
         if *self.as_ref().busy() {
             return;
         }
-        if self.as_ref().rust().association.is_none() {
+        if !self.as_ref().rust().has_review_target() {
             self.as_mut().set_message(qstring(
-                "Select an exact catalog game before choosing a torrent.",
+                "Choose an exact game or collection platform before selecting a torrent.",
             ));
             return;
         }
@@ -182,6 +234,68 @@ impl qobject::ExternalTorrentModel {
         };
         let path = std::path::PathBuf::from(path.to_string());
         self.as_mut().start_inspection(path);
+    }
+
+    pub fn inspect_magnet(mut self: Pin<&mut Self>, magnet_uri: QString) {
+        if *self.as_ref().busy() {
+            return;
+        }
+        if !self.as_ref().rust().has_review_target() {
+            self.as_mut().set_message(qstring(
+                "Choose an exact game or collection platform before reviewing a magnet link.",
+            ));
+            return;
+        }
+        let magnet_uri = magnet_uri.to_string();
+        let platform = self.as_ref().game_platform().to_string();
+        let collection_mode = *self.as_ref().collection_mode();
+        let previous_offer = self.as_mut().rust_mut().offer.take();
+        self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
+        let generation = self.as_ref().rust().generation;
+        self.as_mut().reset_offer();
+        self.as_mut().set_busy(true);
+        self.as_mut().set_message(qstring(
+            "Asking qBittorrent for bounded magnet metadata; payload files remain paused…",
+        ));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-magnet-review".to_owned())
+            .spawn(move || {
+                let result = (|| -> anyhow::Result<InspectionResult> {
+                    let store = crate::settings::SettingsStore::open_default()?;
+                    let settings = store.load()?;
+                    let password = crate::settings::load_password()?.unwrap_or_default();
+                    if let Some(previous_offer) = previous_offer.as_ref() {
+                        external_torrent::discard_unqueued_magnet_review(
+                            &settings,
+                            &password,
+                            previous_offer,
+                        )
+                        .context("removing the previous unqueued magnet review")?;
+                    }
+                    let offer = external_torrent::inspect_magnet_source(
+                        &settings,
+                        &password,
+                        &magnet_uri,
+                        &platform,
+                        collection_mode,
+                    )?;
+                    Ok(InspectionResult {
+                        offer,
+                        download_entire_torrent: collection_mode
+                            || settings.download_entire_torrent,
+                    })
+                })()
+                .map_err(|error| format!("{error:#}"));
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_inspection(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_busy(false);
+            self.as_mut()
+                .set_message(qstring(format!("Could not start magnet review: {error}")));
+        }
     }
 
     pub fn inspect_probe_fixture(mut self: Pin<&mut Self>) {
@@ -222,12 +336,13 @@ impl qobject::ExternalTorrentModel {
         if *self.as_ref().busy() {
             return;
         }
-        if self.as_ref().rust().association.is_none() {
+        if !self.as_ref().rust().has_review_target() {
             self.as_mut().set_message(qstring(
-                "Select an exact catalog game before choosing a torrent.",
+                "Choose an exact game or collection platform before selecting a torrent.",
             ));
             return;
         }
+        let previous_offer = self.as_mut().rust_mut().offer.take();
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         let generation = self.as_ref().rust().generation;
         self.as_mut().reset_offer();
@@ -239,8 +354,18 @@ impl qobject::ExternalTorrentModel {
             .name("lunchbox-torrent-review".to_owned())
             .spawn(move || {
                 let result = (|| -> anyhow::Result<InspectionResult> {
+                    let store = crate::settings::SettingsStore::open_default()?;
+                    let settings = store.load()?;
+                    if let Some(previous_offer) = previous_offer.as_ref() {
+                        let password = crate::settings::load_password()?.unwrap_or_default();
+                        external_torrent::discard_unqueued_magnet_review(
+                            &settings,
+                            &password,
+                            previous_offer,
+                        )
+                        .context("removing the previous unqueued magnet review")?;
+                    }
                     let offer = external_torrent::inspect_torrent_file(&path)?;
-                    let settings = crate::settings::SettingsStore::open_default()?.load()?;
                     Ok(InspectionResult {
                         offer,
                         download_entire_torrent: settings.download_entire_torrent,
@@ -271,11 +396,13 @@ impl qobject::ExternalTorrentModel {
             Ok(result) => {
                 let offer = result.offer;
                 let file_count = offer.files.len();
+                let collection_mode = *self.as_ref().collection_mode();
                 self.as_mut()
                     .set_file_count(i32::try_from(file_count).unwrap_or(i32::MAX));
                 self.as_mut().set_selected_index(0);
                 self.as_mut()
                     .set_source_file_name(qstring(&offer.source_file_name));
+                self.as_mut().set_source_kind(qstring(&offer.source_kind));
                 self.as_mut().set_torrent_name(qstring(&offer.torrent_name));
                 self.as_mut().set_info_hash(qstring(&offer.info_hash));
                 self.as_mut()
@@ -283,15 +410,24 @@ impl qobject::ExternalTorrentModel {
                         offer.total_bytes,
                     )));
                 self.as_mut()
-                    .set_download_scope(qstring(if result.download_entire_torrent {
+                    .set_download_scope(qstring(if collection_mode {
+                        "Entire torrent · reviewed collection"
+                    } else if result.download_entire_torrent {
                         "Entire torrent · required by Settings"
                     } else {
                         "Selected file only"
                     }));
-                self.as_mut().set_message(qstring(format!(
-                    "Reviewed {file_count} safe {}. Choose the exact payload for this game.",
-                    if file_count == 1 { "file" } else { "files" }
-                )));
+                self.as_mut().set_message(qstring(if collection_mode {
+                    format!(
+                        "Reviewed {file_count} safe {}. The complete torrent will download for local import review.",
+                        if file_count == 1 { "file" } else { "files" }
+                    )
+                } else {
+                    format!(
+                        "Reviewed {file_count} safe {}. Choose the exact payload for this game.",
+                        if file_count == 1 { "file" } else { "files" }
+                    )
+                }));
                 self.as_mut().rust_mut().offer = Some(offer);
                 self.as_mut().bump_revision();
                 self.as_mut().set_ready(true);
@@ -323,12 +459,6 @@ impl qobject::ExternalTorrentModel {
         if *self.as_ref().busy() || !*self.as_ref().ready() {
             return;
         }
-        let Some(association) = self.as_ref().rust().association.clone() else {
-            self.as_mut().set_message(qstring(
-                "The exact catalog association is no longer available.",
-            ));
-            return;
-        };
         let Some(offer) = self.as_ref().rust().offer.clone() else {
             self.as_mut()
                 .set_message(qstring("Choose and review a torrent first."));
@@ -343,6 +473,9 @@ impl qobject::ExternalTorrentModel {
         self.as_mut().set_message(qstring(
             "Adding the reviewed selection to Lunchbox downloads…",
         ));
+        let association = self.as_ref().rust().association.clone();
+        let collection_association = self.as_ref().rust().collection_association.clone();
+        let collection_mode = *self.as_ref().collection_mode();
         let generation = self.as_ref().rust().generation;
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
@@ -352,14 +485,28 @@ impl qobject::ExternalTorrentModel {
                     let store = crate::settings::SettingsStore::open_default()?;
                     let settings = store.load()?;
                     let password = crate::settings::load_password()?.unwrap_or_default();
-                    external_torrent::queue_manual_torrent(
-                        &settings,
-                        &password,
-                        &store,
-                        association,
-                        offer,
-                        selected_index,
-                    )
+                    if collection_mode {
+                        let association = collection_association
+                            .context("the collection platform is no longer available")?;
+                        external_torrent::queue_collection_torrent(
+                            &settings,
+                            &password,
+                            &store,
+                            association,
+                            offer,
+                        )
+                    } else {
+                        let association = association
+                            .context("the exact catalog association is no longer available")?;
+                        external_torrent::queue_manual_torrent(
+                            &settings,
+                            &password,
+                            &store,
+                            association,
+                            offer,
+                            selected_index,
+                        )
+                    }
                 })()
                 .map_err(|error| format!("{error:#}"));
                 let _ = qt_thread.queue(move |mut model| {
@@ -381,12 +528,18 @@ impl qobject::ExternalTorrentModel {
         self.as_mut().set_busy(false);
         match result {
             Ok(job_id) => {
+                if let Some(offer) = self.as_mut().rust_mut().offer.as_mut() {
+                    offer.magnet_review_created = false;
+                }
                 self.as_mut().set_queued_job_id(qstring(job_id));
                 let revision = self.as_ref().queued_revision().saturating_add(1);
                 self.as_mut().set_queued_revision(revision);
-                self.as_mut().set_message(qstring(
-                    "Queued with exact game, source, info-hash, and file provenance.",
-                ));
+                let message = if *self.as_ref().collection_mode() {
+                    "Queued the complete reviewed collection. Use Review import when the download finishes."
+                } else {
+                    "Queued with exact game, source, info-hash, and file provenance."
+                };
+                self.as_mut().set_message(qstring(message));
             }
             Err(error) => self
                 .as_mut()
@@ -398,8 +551,11 @@ impl qobject::ExternalTorrentModel {
         if *self.as_ref().busy() {
             return;
         }
+        self.as_mut().schedule_current_offer_cleanup();
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         self.as_mut().rust_mut().association = None;
+        self.as_mut().rust_mut().collection_association = None;
+        self.as_mut().set_collection_mode(false);
         self.as_mut().set_game_title(QString::default());
         self.as_mut().set_game_platform(QString::default());
         self.as_mut().reset_offer();
@@ -430,6 +586,7 @@ impl qobject::ExternalTorrentModel {
         self.as_mut().set_file_count(0);
         self.as_mut().set_selected_index(-1);
         self.as_mut().set_source_file_name(QString::default());
+        self.as_mut().set_source_kind(qstring("file"));
         self.as_mut().set_torrent_name(QString::default());
         self.as_mut().set_info_hash(QString::default());
         self.as_mut().set_total_size(QString::default());
@@ -437,6 +594,25 @@ impl qobject::ExternalTorrentModel {
             .set_download_scope(qstring("Selected file only"));
         self.as_mut().set_queued_job_id(QString::default());
         self.as_mut().bump_revision();
+    }
+
+    fn schedule_current_offer_cleanup(mut self: Pin<&mut Self>) {
+        let Some(offer) = self.as_mut().rust_mut().offer.take() else {
+            return;
+        };
+        if offer.source_kind != "magnet" || !offer.magnet_review_created {
+            return;
+        }
+        let _ = std::thread::Builder::new()
+            .name("lunchbox-magnet-review-cleanup".to_owned())
+            .spawn(move || {
+                let _ = (|| -> anyhow::Result<()> {
+                    let store = crate::settings::SettingsStore::open_default()?;
+                    let settings = store.load()?;
+                    let password = crate::settings::load_password()?.unwrap_or_default();
+                    external_torrent::discard_unqueued_magnet_review(&settings, &password, &offer)
+                })();
+            });
     }
 
     fn bump_revision(mut self: Pin<&mut Self>) {
@@ -448,6 +624,19 @@ impl qobject::ExternalTorrentModel {
 impl ExternalTorrentModelRust {
     fn file(&self, index: usize) -> Option<&ReviewedTorrentFile> {
         self.offer.as_ref()?.files.get(index)
+    }
+
+    fn has_review_target(&self) -> bool {
+        self.association.is_some() || self.collection_association.is_some()
+    }
+}
+
+fn normalized_collection_platform(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        "Unassigned platform".to_owned()
+    } else {
+        value.chars().take(512).collect()
     }
 }
 

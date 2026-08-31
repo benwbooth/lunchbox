@@ -84,6 +84,12 @@ pub mod qobject {
         fn job_can_retry(self: &DownloadQueueModel, index: i32) -> bool;
 
         #[qinvokable]
+        fn job_can_import(self: &DownloadQueueModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn job_import_directory_at(self: &DownloadQueueModel, index: i32) -> QString;
+
+        #[qinvokable]
         fn job_index_for_game(self: &DownloadQueueModel, game_id: QString) -> i32;
 
         #[qinvokable]
@@ -517,6 +523,19 @@ impl qobject::DownloadQueueModel {
         self.job(index).is_some_and(can_retry)
     }
 
+    pub fn job_can_import(&self, index: i32) -> bool {
+        self.job(index).is_some_and(|job| {
+            qbittorrent::is_collection_import_job(job) && job.state == "imported"
+        })
+    }
+
+    pub fn job_import_directory_at(&self, index: i32) -> QString {
+        self.job(index)
+            .filter(|job| qbittorrent::is_collection_import_job(job))
+            .map(|job| qstring(job.local_target_path.to_string_lossy()))
+            .unwrap_or_default()
+    }
+
     pub fn job_index_for_game(&self, game_id: QString) -> i32 {
         relevant_job_index(&self.rust().jobs, &game_id.to_string())
             .and_then(|index| i32::try_from(index).ok())
@@ -680,12 +699,22 @@ fn refresh_jobs() -> Result<QueueUpdate> {
                     && snapshot.client_save_path != job.client_save_path
                 {
                     job.client_save_path = snapshot.client_save_path.clone();
-                    job.local_download_path = qbittorrent::native_path_for_client_file(
-                        &settings.torrent_library_directory,
-                        &settings.qbittorrent_container_torrent_library_directory,
-                        &job.client_save_path,
-                        &job.torrent_file_path,
-                    )?;
+                    if qbittorrent::is_collection_import_job(job) {
+                        let destination = qbittorrent::native_path_for_client_save_path(
+                            &settings.torrent_library_directory,
+                            &settings.qbittorrent_container_torrent_library_directory,
+                            &job.client_save_path,
+                        )?;
+                        job.local_download_path = destination.clone();
+                        job.local_target_path = destination;
+                    } else {
+                        job.local_download_path = qbittorrent::native_path_for_client_file(
+                            &settings.torrent_library_directory,
+                            &settings.qbittorrent_container_torrent_library_directory,
+                            &job.client_save_path,
+                            &job.torrent_file_path,
+                        )?;
+                    }
                 }
                 job.state = snapshot.state;
                 job.progress = snapshot.progress;
@@ -695,10 +724,13 @@ fn refresh_jobs() -> Result<QueueUpdate> {
                 job.message = snapshot.message;
                 job.updated_at = settings::unix_timestamp();
                 if job.state == "complete" {
-                    match ingest::ingest_completed(&settings, &store, job) {
-                        Ok(path) => {
+                    if qbittorrent::is_collection_import_job(job) {
+                        if job.local_target_path.is_dir() {
                             job.state = "imported".to_owned();
-                            job.message = format!("Ready in your library at {}", path.display());
+                            job.message = format!(
+                                "Downloaded collection ready for review at {}",
+                                job.local_target_path.display()
+                            );
                             job.post_import_action =
                                 if settings.seeding_policy == "pause_after_import" {
                                     "pause_pending".to_owned()
@@ -706,12 +738,33 @@ fn refresh_jobs() -> Result<QueueUpdate> {
                                     "none".to_owned()
                                 };
                             imported_count += 1;
-                        }
-                        Err(error) => {
+                        } else {
                             job.message = format!(
-                                "Download complete; import will retry automatically: {error}"
+                                "Download complete; waiting for the mapped collection folder at {}",
+                                job.local_target_path.display()
                             );
                             durable_event = Some(("import_error", job.message.clone()));
+                        }
+                    } else {
+                        match ingest::ingest_completed(&settings, &store, job) {
+                            Ok(path) => {
+                                job.state = "imported".to_owned();
+                                job.message =
+                                    format!("Ready in your library at {}", path.display());
+                                job.post_import_action =
+                                    if settings.seeding_policy == "pause_after_import" {
+                                        "pause_pending".to_owned()
+                                    } else {
+                                        "none".to_owned()
+                                    };
+                                imported_count += 1;
+                            }
+                            Err(error) => {
+                                job.message = format!(
+                                    "Download complete; import will retry automatically: {error}"
+                                );
+                                durable_event = Some(("import_error", job.message.clone()));
+                            }
                         }
                     }
                 }

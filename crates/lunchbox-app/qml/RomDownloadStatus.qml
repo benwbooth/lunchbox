@@ -16,6 +16,7 @@ Item {
     property color accentCool: "#62d6c6"
     property int previousActiveCount: 0
     signal manageRequested()
+    signal importRequested(string directory, string platform)
 
     readonly property int activeCount: queue ? queue.active_count : 0
     readonly property int finishedCount: queue ? queue.finished_count : 0
@@ -293,6 +294,17 @@ Item {
                                 color: status.muted
                                 font.pixelSize: 9
                                 elide: Text.ElideRight
+                            }
+                            Button {
+                                objectName: "importButton-" + downloadRow.index
+                                readonly property bool importAvailable: status.queue
+                                                                        && status.queue.job_can_import(downloadRow.index)
+                                visible: importAvailable
+                                enabled: status.queue && !status.queue.busy
+                                text: "Review import"
+                                onClicked: status.importRequested(
+                                    status.queue.job_import_directory_at(downloadRow.index),
+                                    status.queue.job_platform_at(downloadRow.index))
                             }
                             Button {
                                 visible: status.queue && status.queue.job_can_pause(downloadRow.index)

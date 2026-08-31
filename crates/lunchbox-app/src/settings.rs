@@ -1223,6 +1223,19 @@ pub(crate) struct ManualTorrentSourceReceipt {
     pub reviewed_at: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ManualCollectionTorrentSourceReceipt {
+    pub platform: String,
+    pub source_kind: String,
+    pub source_label: String,
+    pub torrent_name: String,
+    pub torrent_sha256: String,
+    pub info_hash: String,
+    pub destination: PathBuf,
+    pub queued_job_id: String,
+    pub reviewed_at: i64,
+}
+
 #[derive(Clone, Debug)]
 pub struct SettingsStore {
     path: PathBuf,
@@ -3622,6 +3635,69 @@ impl SettingsStore {
         Ok(())
     }
 
+    pub(crate) fn record_manual_collection_torrent_enqueue(
+        &self,
+        receipt: &ManualCollectionTorrentSourceReceipt,
+        job: &DownloadJob,
+    ) -> Result<()> {
+        validate_manual_collection_torrent_receipt(receipt, job)?;
+        self.upsert_job(job)?;
+        self.connection()?.execute(
+            "INSERT INTO manual_collection_torrent_sources (
+                 info_hash, platform, source_kind, source_label, torrent_name,
+                 torrent_sha256, destination, queued_job_id, reviewed_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(info_hash) DO UPDATE SET
+                 platform=excluded.platform,
+                 source_kind=excluded.source_kind,
+                 source_label=excluded.source_label,
+                 torrent_name=excluded.torrent_name,
+                 torrent_sha256=excluded.torrent_sha256,
+                 destination=excluded.destination,
+                 queued_job_id=excluded.queued_job_id,
+                 reviewed_at=excluded.reviewed_at",
+            params![
+                receipt.info_hash,
+                receipt.platform,
+                receipt.source_kind,
+                receipt.source_label,
+                receipt.torrent_name,
+                receipt.torrent_sha256,
+                path_text(&receipt.destination),
+                receipt.queued_job_id,
+                receipt.reviewed_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn manual_collection_torrent_sources(
+        &self,
+    ) -> Result<Vec<ManualCollectionTorrentSourceReceipt>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT platform, source_kind, source_label, torrent_name,
+                    torrent_sha256, info_hash, destination, queued_job_id, reviewed_at
+             FROM manual_collection_torrent_sources
+             ORDER BY reviewed_at, info_hash",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(ManualCollectionTorrentSourceReceipt {
+                platform: row.get(0)?,
+                source_kind: row.get(1)?,
+                source_label: row.get(2)?,
+                torrent_name: row.get(3)?,
+                torrent_sha256: row.get(4)?,
+                info_hash: row.get(5)?,
+                destination: PathBuf::from(row.get::<_, String>(6)?),
+                queued_job_id: row.get(7)?,
+                reviewed_at: row.get(8)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     #[cfg(test)]
     pub(crate) fn manual_torrent_sources(&self) -> Result<Vec<ManualTorrentSourceReceipt>> {
         let connection = self.connection()?;
@@ -4348,6 +4424,17 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS manual_torrent_sources_info_hash
              ON manual_torrent_sources(info_hash, game_uid);
+         CREATE TABLE IF NOT EXISTS manual_collection_torrent_sources (
+             info_hash TEXT PRIMARY KEY CHECK (length(info_hash)=40),
+             platform TEXT NOT NULL CHECK (length(platform) BETWEEN 1 AND 512),
+             source_kind TEXT NOT NULL CHECK (source_kind IN ('file', 'magnet')),
+             source_label TEXT NOT NULL CHECK (length(source_label) BETWEEN 1 AND 4096),
+             torrent_name TEXT NOT NULL CHECK (length(torrent_name) BETWEEN 1 AND 1024),
+             torrent_sha256 TEXT NOT NULL CHECK (length(torrent_sha256)=64),
+             destination TEXT NOT NULL CHECK (length(destination) BETWEEN 1 AND 8192),
+             queued_job_id TEXT NOT NULL CHECK (length(queued_job_id) > 0),
+             reviewed_at INTEGER NOT NULL CHECK (reviewed_at >= 0)
+         );
          CREATE TABLE IF NOT EXISTS installed_games (
              game_uid TEXT PRIMARY KEY,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -6085,6 +6172,48 @@ fn validate_manual_torrent_receipt(
         bail!("manual torrent provenance does not match the queued download");
     }
     crate::qbittorrent::safe_torrent_relative_path(&receipt.selected_file_path)?;
+    Ok(())
+}
+
+fn validate_manual_collection_torrent_receipt(
+    receipt: &ManualCollectionTorrentSourceReceipt,
+    job: &DownloadJob,
+) -> Result<()> {
+    if job.source_kind != "manual_torrent"
+        || !job.game_id.starts_with("torrent-import:")
+        || receipt.platform.trim().is_empty()
+        || receipt.platform != job.platform
+        || !matches!(receipt.source_kind.as_str(), "file" | "magnet")
+        || receipt.source_label.trim().is_empty()
+        || receipt.source_label.chars().count() > 4096
+        || receipt.torrent_name.trim().is_empty()
+        || receipt.torrent_name != job.title
+        || receipt.torrent_name.chars().count() > 1024
+        || receipt.torrent_sha256.len() != 64
+        || !receipt
+            .torrent_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+        || receipt.info_hash.len() != 40
+        || !receipt
+            .info_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+        || !receipt.info_hash.eq_ignore_ascii_case(&job.info_hash)
+        || job.torrent_file_index.is_some()
+        || job.torrent_url
+            != format!(
+                "manual-collection-torrent:sha256:{}",
+                receipt.torrent_sha256.to_ascii_lowercase()
+            )
+        || receipt.destination.as_os_str().is_empty()
+        || receipt.destination != job.local_target_path
+        || receipt.queued_job_id != job.id
+        || receipt.reviewed_at < 0
+    {
+        bail!("collection torrent provenance does not match the queued download");
+    }
+    crate::qbittorrent::safe_torrent_relative_path(&job.torrent_file_path)?;
     Ok(())
 }
 

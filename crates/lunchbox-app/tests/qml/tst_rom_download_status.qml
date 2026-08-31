@@ -34,6 +34,8 @@ TestCase {
                 function job_detail_at(index) { return "100% · Downloaded" }
                 function job_can_pause(index) { return false }
                 function job_can_resume(index) { return false }
+                function job_can_import(index) { return index === 0 }
+                function job_import_directory_at(index) { return index === 0 ? "/tmp/lunchbox/imports" : "" }
                 function pause_job(index) {}
                 function resume_job(index) {}
             }
@@ -72,5 +74,22 @@ TestCase {
                 "1 active download  ·  8.4 MiB/s")
         host.downloadStatus.expanded = false
         compare(host.downloadStatus.expanded, false)
+    }
+
+    function test_completed_collection_exposes_import_review() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.downloadStatus.expanded = true
+        const rows = findChild(host.downloadStatus, "downloadRows")
+        verify(rows)
+        compare(rows.count, 2)
+        tryVerify(function() { return rows.height > 0 })
+        tryVerify(function() { return rows.itemAtIndex(0) !== null })
+        const collectionRow = rows.itemAtIndex(0)
+        verify(collectionRow)
+        const importButton = findChild(collectionRow, "importButton-0")
+        verify(importButton)
+        compare(importButton.importAvailable, true)
+        compare(importButton.text, "Review import")
     }
 }
