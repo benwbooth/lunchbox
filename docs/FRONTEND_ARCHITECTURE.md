@@ -361,6 +361,19 @@ The initial implementation enforces this shape:
   write, unpin, and restored actionability without applying the update. Partial
   source failures are warnings; direct downloads and Libretro buildbot cores
   without a reliable comparable version are not presented as updates.
+- Emulator install, update, and uninstall mutations share one stable,
+  state-adjacent cross-process lease. Lunchbox records the exact emulator,
+  host, manager, package, install path, action, and start time in SQLite before
+  invoking a package manager, then terminalizes that row exactly once and
+  retains the newest 200 operations. On restart, it marks abandoned running
+  rows interrupted only when the lease is free, immediately rescans the exact
+  installation state, and presents the latest result in the manager instead of
+  guessing whether a package transaction succeeded. Update batches support
+  **Stop after current**: Lunchbox never kills an external Flatpak, Nix,
+  winget, or Homebrew transaction, and later selected rows remain pending for
+  review. `--emulator-lifecycle-recovery-ui-probe` seeds a real interrupted
+  journal row in an isolated state database and verifies its recovered Qt
+  presentation unattended.
 - Firmware remains a `runtime -> rules -> target` system, matching the legacy
   architecture instead of assuming one BIOS directory per platform. Canonical
   rules bind an exact emulator or RetroArch core and platform to one reviewed

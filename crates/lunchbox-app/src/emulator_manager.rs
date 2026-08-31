@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::env;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -9,12 +9,15 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use flate2::read::GzDecoder;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::catalog;
 use crate::platform_process::{host_command, host_program_available, is_flatpak};
-use crate::settings::{EmulatorUpdatePin, ManagedEmulatorInstall, SettingsStore};
+use crate::settings::{
+    EmulatorLifecycleOperation, EmulatorUpdatePin, ManagedEmulatorInstall, SettingsStore,
+};
 
 const MAX_MANAGED_DOWNLOAD_BYTES: u64 = 1024 * 1024 * 1024;
 const GITHUB_API: &str = "https://api.github.com/repos";
@@ -24,6 +27,26 @@ pub enum ManagedAction {
     Install,
     Update,
     Uninstall,
+}
+
+impl ManagedAction {
+    fn slug(self) -> &'static str {
+        match self {
+            Self::Install => "install",
+            Self::Update => "update",
+            Self::Uninstall => "uninstall",
+        }
+    }
+}
+
+struct EmulatorOperationLease {
+    file: File,
+}
+
+impl Drop for EmulatorOperationLease {
+    fn drop(&mut self) {
+        let _ = FileExt::unlock(&self.file);
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -58,6 +81,7 @@ pub struct ManagedEmulatorUpdate {
 pub struct EmulatorUpdateInventory {
     pub updates: Vec<ManagedEmulatorUpdate>,
     pub warnings: Vec<String>,
+    pub recovered_operations: usize,
 }
 
 impl ManagedEmulator {
@@ -429,6 +453,7 @@ fn add_compatibility(
 }
 
 pub fn load_available_emulator_updates() -> Result<EmulatorUpdateInventory> {
+    let recovered_operations = recover_interrupted_emulator_operations()?.len();
     let host = current_host_slug()?;
     let database = catalog::requested_database_path()
         .context("No canonical database found. Pass --database PATH or set LUNCHBOX_DATABASE.")?;
@@ -543,6 +568,7 @@ pub fn load_available_emulator_updates() -> Result<EmulatorUpdateInventory> {
     Ok(EmulatorUpdateInventory {
         updates,
         warnings: checks.warnings,
+        recovered_operations,
     })
 }
 
@@ -643,9 +669,111 @@ fn load_libretro_core_rows(
         .collect())
 }
 
+fn emulator_operation_lock_path(store: &SettingsStore) -> PathBuf {
+    let parent = store.path().parent().unwrap_or_else(|| Path::new("."));
+    parent.join("emulator-lifecycle.lock")
+}
+
+fn try_acquire_emulator_operation_lease(
+    store: &SettingsStore,
+) -> Result<Option<EmulatorOperationLease>> {
+    let path = emulator_operation_lock_path(store);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "creating emulator lifecycle lock directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    let file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(&path)
+        .with_context(|| format!("opening emulator lifecycle lock {}", path.display()))?;
+    match FileExt::try_lock_exclusive(&file) {
+        Ok(()) => Ok(Some(EmulatorOperationLease { file })),
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+        Err(error) => Err(error).context("locking the emulator lifecycle service"),
+    }
+}
+
+pub fn recover_interrupted_emulator_operations() -> Result<Vec<EmulatorLifecycleOperation>> {
+    let store = SettingsStore::open_default()?;
+    recover_interrupted_emulator_operations_at(&store)
+}
+
+fn recover_interrupted_emulator_operations_at(
+    store: &SettingsStore,
+) -> Result<Vec<EmulatorLifecycleOperation>> {
+    let Some(lease) = try_acquire_emulator_operation_lease(store)? else {
+        return Ok(Vec::new());
+    };
+    let mut recovered = Vec::new();
+    for operation in store.running_emulator_lifecycle_operations()? {
+        let detail = "Lunchbox closed before the operation reported a result. The exact installation state will be rescanned before another operation is offered; review it before retrying.";
+        let interrupted =
+            store.finish_emulator_lifecycle_operation(&operation.id, "interrupted", detail)?;
+        println!(
+            "LUNCHBOX_EMULATOR_OPERATION_RECOVERED action={} manager={} package={}",
+            interrupted.action, interrupted.manager, interrupted.package_id
+        );
+        recovered.push(interrupted);
+    }
+    drop(lease);
+    Ok(recovered)
+}
+
+pub fn recent_emulator_lifecycle_operation() -> Result<Option<EmulatorLifecycleOperation>> {
+    Ok(SettingsStore::open_default()?
+        .recent_emulator_lifecycle_operations(1)?
+        .into_iter()
+        .next())
+}
+
 pub fn perform_action(row: &ManagedEmulator, action: ManagedAction) -> Result<String> {
     validate_row_for_action(row, action)?;
     let store = SettingsStore::open_default()?;
+    let lease = try_acquire_emulator_operation_lease(&store)?.context(
+        "another Lunchbox window is already installing, updating, uninstalling, or reconciling an emulator; wait for it to finish and refresh",
+    )?;
+    let operation_id = uuid::Uuid::new_v4().to_string();
+    store.begin_emulator_lifecycle_operation(
+        &operation_id,
+        &row.emulator_id,
+        &row.name,
+        &row.host_system_slug,
+        &row.manager,
+        &row.package_id,
+        &row.install_path,
+        action.slug(),
+    )?;
+    let result = perform_action_inner(row, action, &store);
+    let (status, detail) = match &result {
+        Ok(message) => ("succeeded", bounded_operation_detail(message)),
+        Err(error) => ("failed", bounded_operation_detail(&format!("{error:#}"))),
+    };
+    let journal_result = store.finish_emulator_lifecycle_operation(&operation_id, status, &detail);
+    drop(lease);
+    match (result, journal_result) {
+        (Ok(message), Ok(_)) => Ok(message),
+        (Ok(_), Err(error)) => Err(error).context(
+            "the emulator operation succeeded, but Lunchbox could not record its final state; refresh before acting again",
+        ),
+        (Err(error), Ok(_)) => Err(error),
+        (Err(error), Err(journal_error)) => Err(error).context(format!(
+            "Lunchbox also could not record the failed emulator operation: {journal_error:#}"
+        )),
+    }
+}
+
+fn perform_action_inner(
+    row: &ManagedEmulator,
+    action: ManagedAction,
+    store: &SettingsStore,
+) -> Result<String> {
     match action {
         ManagedAction::Install => {
             let install_path = if row.manager == "libretro" {
@@ -696,6 +824,14 @@ pub fn perform_action(row: &ManagedEmulator, action: ManagedAction) -> Result<St
             ))
         }
     }
+}
+
+fn bounded_operation_detail(detail: &str) -> String {
+    const MAX_DETAIL_CHARS: usize = 8192;
+    if detail.chars().count() <= MAX_DETAIL_CHARS {
+        return detail.to_owned();
+    }
+    detail.chars().take(MAX_DETAIL_CHARS).collect()
 }
 
 fn install(row: &ManagedEmulator) -> Result<String> {
@@ -2483,6 +2619,44 @@ mod tests {
         assert_eq!(update_pin_key(&row), update_pin_key_for_pin(&pin));
         pin.install_path = "system".to_owned();
         assert_ne!(update_pin_key(&row), update_pin_key_for_pin(&pin));
+    }
+
+    #[test]
+    fn operation_recovery_respects_a_live_cross_process_lease() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let operation_id = uuid::Uuid::new_v4().to_string();
+        let lease = try_acquire_emulator_operation_lease(&store)
+            .unwrap()
+            .unwrap();
+        store
+            .begin_emulator_lifecycle_operation(
+                &operation_id,
+                "retroarch",
+                "RetroArch",
+                "linux",
+                "nix",
+                "retroarch",
+                "retroarch",
+                "update",
+            )
+            .unwrap();
+
+        assert!(
+            recover_interrupted_emulator_operations_at(&store)
+                .unwrap()
+                .is_empty()
+        );
+        drop(lease);
+        let recovered = recover_interrupted_emulator_operations_at(&store).unwrap();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].id, operation_id);
+        assert_eq!(recovered[0].status, "interrupted");
+        assert!(
+            recover_interrupted_emulator_operations_at(&store)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

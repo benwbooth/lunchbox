@@ -222,6 +222,16 @@ pub fn run() -> i32 {
         return 1;
     }
 
+    if std::env::args().any(|argument| argument == "--emulator-lifecycle-recovery-ui-probe") {
+        match settings::seed_emulator_lifecycle_recovery_probe() {
+            Ok(evidence) => println!("LUNCHBOX_EMULATOR_RECOVERY_SEEDED {evidence}"),
+            Err(error) => {
+                eprintln!("LUNCHBOX_EMULATOR_RECOVERY_UI_FAILED seed error={error:#}");
+                return 1;
+            }
+        }
+    }
+
     if std::env::args().any(|argument| argument == "--library-audit-fixture") {
         return match library_audit::library_audit_fixture_probe() {
             Ok(evidence) => {

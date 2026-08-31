@@ -367,7 +367,9 @@ ApplicationWindow {
     readonly property bool launchProfileManagerUiProbe: Qt.application.arguments.indexOf("--launch-profile-manager-ui-probe") >= 0
     readonly property bool arcadeLaunchProbe: Qt.application.arguments.indexOf("--arcade-launch-probe") >= 0
     readonly property bool arcadeLaunchUiProbe: Qt.application.arguments.indexOf("--arcade-launch-ui-probe") >= 0
-    readonly property bool emulatorManagerProbe: Qt.application.arguments.indexOf("--emulator-manager-probe") >= 0
+    readonly property bool emulatorLifecycleRecoveryUiProbe: Qt.application.arguments.indexOf("--emulator-lifecycle-recovery-ui-probe") >= 0
+    readonly property bool emulatorManagerProbe: emulatorLifecycleRecoveryUiProbe
+                                                 || Qt.application.arguments.indexOf("--emulator-manager-probe") >= 0
     readonly property bool emulatorManagerUiProbe: Qt.application.arguments.indexOf("--emulator-manager-ui-probe") >= 0
     readonly property bool emulatorUpdateUiProbe: Qt.application.arguments.indexOf("--emulator-update-ui-probe") >= 0
     readonly property bool emulatorUpdatePinUiProbe: Qt.application.arguments.indexOf("--emulator-update-pin-ui-probe") >= 0
@@ -1939,7 +1941,10 @@ ApplicationWindow {
     Connections {
         target: emulatorManager
         function onInitializedChanged() {
-            if (root.emulatorManagerProbe && emulatorManager.initialized)
+            if (root.emulatorLifecycleRecoveryUiProbe && emulatorManager.initialized) {
+                root.openEmulatorManager()
+                emulatorLifecycleRecoveryReadyTimer.restart()
+            } else if (root.emulatorManagerProbe && emulatorManager.initialized)
                 Qt.quit()
         }
         function onOperation_revisionChanged() {
@@ -5888,6 +5893,19 @@ ApplicationWindow {
         running: root.emulatorManagerUiProbe
         repeat: false
         onTriggered: root.openEmulatorManager()
+    }
+
+    Timer {
+        id: emulatorLifecycleRecoveryReadyTimer
+        interval: 650
+        repeat: false
+        onTriggered: {
+            if (!emulatorManager.verify_recovery_probe(emulatorManagerDialog.visible)) {
+                Qt.exit(2)
+                return
+            }
+            Qt.quit()
+        }
     }
 
     Timer {
@@ -21375,8 +21393,38 @@ ApplicationWindow {
                         font.pixelSize: 10
                         elide: Text.ElideRight
                     }
+                    Rectangle {
+                        visible: emulatorManager.recent_activity.length > 0
+                        Layout.preferredWidth: Math.min(310,
+                                                        recentEmulatorActivity.implicitWidth + 22)
+                        Layout.preferredHeight: 28
+                        radius: 8
+                        color: emulatorManager.recent_activity_attention
+                               ? "#30251f" : "#172c28"
+                        border.color: emulatorManager.recent_activity_attention
+                                      ? "#6d4937" : "#28584f"
+                        Text {
+                            id: recentEmulatorActivity
+                            anchors.fill: parent
+                            anchors.leftMargin: 11
+                            anchors.rightMargin: 11
+                            text: emulatorManager.recent_activity
+                            color: emulatorManager.recent_activity_attention
+                                   ? root.accent : root.accentCool
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        HoverHandler { id: recentEmulatorActivityHover }
+                        ToolTip.visible: recentEmulatorActivityHover.hovered
+                        ToolTip.text: emulatorManager.recent_activity_detail.length > 0
+                                      ? emulatorManager.recent_activity_detail
+                                      : emulatorManager.recent_activity
+                    }
                     Text {
-                        text: "External package-manager installs require confirmation"
+                        visible: emulatorManager.recent_activity.length === 0
+                        text: "External package-manager changes require confirmation"
                         color: "#657186"
                         font.pixelSize: 9
                     }
@@ -21768,7 +21816,7 @@ ApplicationWindow {
                                 elide: Text.ElideRight
                             }
                             Text {
-                                visible: emulatorUpdates.busy && emulatorUpdates.row_count > 0
+                                visible: emulatorUpdates.batch_running
                                 text: emulatorUpdates.completed_count + " of "
                                       + emulatorUpdates.batch_count + " completed"
                                 color: "#657186"
@@ -21776,18 +21824,33 @@ ApplicationWindow {
                             }
                         }
                         HeaderButton {
-                            text: emulatorUpdates.busy ? "Checking…" : "↻  Refresh"
+                            text: emulatorUpdates.busy ? (emulatorUpdates.batch_running
+                                                          ? "Updating…" : "Working…")
+                                                       : "↻  Refresh"
                             enabled: !emulatorUpdates.busy
                             onClicked: emulatorUpdates.refresh()
                         }
                         HeaderButton {
-                            text: emulatorUpdates.busy
-                                  ? "Updating…" : "Update selected ("
-                                    + emulatorUpdates.selected_count + ")"
+                            text: emulatorUpdates.batch_running
+                                  ? (emulatorUpdates.cancel_requested
+                                     ? "Stopping…" : "Stop after current")
+                                  : emulatorUpdates.busy ? "Working…"
+                                    : "Update selected ("
+                                      + emulatorUpdates.selected_count + ")"
                             active: true
-                            enabled: !emulatorUpdates.busy
-                                     && emulatorUpdates.selected_count > 0
-                            onClicked: emulatorUpdates.update_selected()
+                            accent: emulatorUpdates.batch_running ? "#ff8c82" : root.accent
+                            enabled: emulatorUpdates.batch_running
+                                     ? !emulatorUpdates.cancel_requested
+                                     : !emulatorUpdates.busy
+                                       && emulatorUpdates.selected_count > 0
+                            onClicked: {
+                                if (emulatorUpdates.batch_running)
+                                    emulatorUpdates.cancel_batch()
+                                else
+                                    emulatorUpdates.update_selected()
+                            }
+                            ToolTip.visible: hovered && emulatorUpdates.batch_running
+                            ToolTip.text: "Finish the active package-manager transaction, then leave all later selected updates pending."
                         }
                     }
                 }

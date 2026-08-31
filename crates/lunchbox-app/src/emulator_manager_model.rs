@@ -14,8 +14,12 @@ pub mod qobject {
         #[qproperty(i32, row_count)]
         #[qproperty(i32, installed_count)]
         #[qproperty(i32, available_count)]
+        #[qproperty(i32, recovered_count)]
         #[qproperty(i32, revision)]
         #[qproperty(QString, message)]
+        #[qproperty(QString, recent_activity)]
+        #[qproperty(QString, recent_activity_detail)]
+        #[qproperty(bool, recent_activity_attention)]
         #[qproperty(QString, search)]
         #[qproperty(QString, status_filter)]
         #[qproperty(QString, platform_filter)]
@@ -66,6 +70,9 @@ pub mod qobject {
         fn uninstall_confirmation_at(self: &EmulatorManagerModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn verify_recovery_probe(self: &EmulatorManagerModel, dialog_visible: bool) -> bool;
+
+        #[qinvokable]
         fn install_at(self: Pin<&mut EmulatorManagerModel>, index: i32);
 
         #[qinvokable]
@@ -92,8 +99,12 @@ pub struct EmulatorManagerModelRust {
     row_count: i32,
     installed_count: i32,
     available_count: i32,
+    recovered_count: i32,
     revision: i32,
     message: QString,
+    recent_activity: QString,
+    recent_activity_detail: QString,
+    recent_activity_attention: bool,
     search: QString,
     status_filter: QString,
     platform_filter: QString,
@@ -111,8 +122,12 @@ impl Default for EmulatorManagerModelRust {
             row_count: 0,
             installed_count: 0,
             available_count: 0,
+            recovered_count: 0,
             revision: 0,
             message: QString::from("Open Emulator Manager to detect installed runtimes."),
+            recent_activity: QString::default(),
+            recent_activity_detail: QString::default(),
+            recent_activity_attention: false,
             search: QString::default(),
             status_filter: QString::from("all"),
             platform_filter: QString::default(),
@@ -150,10 +165,18 @@ impl qobject::EmulatorManagerModel {
         let spawn = std::thread::Builder::new()
             .name("lunchbox-emulator-discovery".into())
             .spawn(move || {
-                let result = emulator_manager::load_managed_emulators()
+                let result = emulator_manager::recover_interrupted_emulator_operations()
+                    .and_then(|recovered| {
+                        let rows = emulator_manager::load_managed_emulators()?;
+                        let recent = emulator_manager::recent_emulator_lifecycle_operation()?;
+                        Ok((rows, recovered.len(), recent))
+                    })
                     .map_err(|error| format!("{error:#}"));
-                if let Ok(rows) = &result {
-                    println!("LUNCHBOX_EMULATOR_DISCOVERY_READY runtimes={}", rows.len());
+                if let Ok((rows, recovered, _)) = &result {
+                    println!(
+                        "LUNCHBOX_EMULATOR_DISCOVERY_READY runtimes={} recovered={recovered}",
+                        rows.len()
+                    );
                 }
                 if let Err(error) = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_load(result);
@@ -169,12 +192,24 @@ impl qobject::EmulatorManagerModel {
         }
     }
 
-    fn finish_load(mut self: Pin<&mut Self>, result: Result<Vec<ManagedEmulator>, String>) {
+    fn finish_load(
+        mut self: Pin<&mut Self>,
+        result: Result<
+            (
+                Vec<ManagedEmulator>,
+                usize,
+                Option<crate::settings::EmulatorLifecycleOperation>,
+            ),
+            String,
+        >,
+    ) {
         self.as_mut().set_busy(false);
         self.as_mut().set_busy_index(-1);
         match result {
-            Ok(rows) => {
+            Ok((rows, recovered, recent)) => {
                 let detected = rows.len();
+                self.as_mut().set_recovered_count(saturating_i32(recovered));
+                self.as_mut().set_recent_operation(recent.as_ref());
                 self.as_mut().rust_mut().all_rows = rows;
                 self.as_mut().refilter();
                 self.as_mut().set_initialized(true);
@@ -187,10 +222,17 @@ impl qobject::EmulatorManagerModel {
                     .iter()
                     .filter(|row| row.can_uninstall())
                     .count();
-                self.as_mut().set_message(qstring(format!(
+                let mut message = format!(
                     "Detected {installed} installed runtime{} across {total} managed emulator choices.",
                     if installed == 1 { "" } else { "s" }
-                )));
+                );
+                if recovered > 0 {
+                    message.push_str(&format!(
+                        " Recovered {recovered} interrupted operation{} and rescanned the exact installation state.",
+                        if recovered == 1 { "" } else { "s" }
+                    ));
+                }
+                self.as_mut().set_message(qstring(message));
                 println!(
                     "LUNCHBOX_EMULATOR_MANAGER_READY runtimes={detected} installed={installed} uninstallable={uninstallable}"
                 );
@@ -326,6 +368,31 @@ impl qobject::EmulatorManagerModel {
         self.row(index).is_some_and(ManagedEmulator::can_uninstall)
     }
 
+    pub fn verify_recovery_probe(&self, dialog_visible: bool) -> bool {
+        let activity = self.recent_activity().to_string();
+        let ready = dialog_visible
+            && *self.initialized()
+            && *self.recovered_count() == 1
+            && *self.recent_activity_attention()
+            && activity.contains("RetroArch")
+            && activity.contains("interrupted");
+        let evidence = format!(
+            "visible={dialog_visible} initialized={} recovered={} attention={} activity={activity:?}",
+            *self.initialized(),
+            *self.recovered_count(),
+            *self.recent_activity_attention(),
+        );
+        if ready {
+            println!("LUNCHBOX_EMULATOR_RECOVERY_UI_READY {evidence}");
+        } else {
+            eprintln!(
+                "LUNCHBOX_EMULATOR_RECOVERY_UI_FAILED {evidence} message={:?}",
+                self.message().to_string()
+            );
+        }
+        ready
+    }
+
     pub fn uninstall_confirmation_at(&self, index: i32) -> QString {
         qstring(
             self.row(index)
@@ -370,7 +437,9 @@ impl qobject::EmulatorManagerModel {
             .spawn(move || {
                 let result = emulator_manager::perform_action(&row, action)
                     .and_then(|message| {
-                        emulator_manager::load_managed_emulators().map(|rows| (message, rows))
+                        let rows = emulator_manager::load_managed_emulators()?;
+                        let recent = emulator_manager::recent_emulator_lifecycle_operation()?;
+                        Ok((message, rows, recent))
                     })
                     .map_err(|error| format!("{error:#}"));
                 let _ = qt_thread.queue(move |mut model| {
@@ -388,14 +457,22 @@ impl qobject::EmulatorManagerModel {
 
     fn finish_action(
         mut self: Pin<&mut Self>,
-        result: Result<(String, Vec<ManagedEmulator>), String>,
+        result: Result<
+            (
+                String,
+                Vec<ManagedEmulator>,
+                Option<crate::settings::EmulatorLifecycleOperation>,
+            ),
+            String,
+        >,
     ) {
         self.as_mut().set_busy(false);
         self.as_mut().set_busy_index(-1);
         match result {
-            Ok((message, rows)) => {
+            Ok((message, rows, recent)) => {
                 self.as_mut().rust_mut().all_rows = rows;
                 self.as_mut().refilter();
+                self.as_mut().set_recent_operation(recent.as_ref());
                 self.as_mut().set_message(qstring(message));
                 let revision = self.as_ref().operation_revision().wrapping_add(1);
                 self.as_mut().set_operation_revision(revision);
@@ -413,6 +490,45 @@ impl qobject::EmulatorManagerModel {
             .ok()
             .and_then(|index| self.rust().rows.get(index))
     }
+
+    fn set_recent_operation(
+        mut self: Pin<&mut Self>,
+        operation: Option<&crate::settings::EmulatorLifecycleOperation>,
+    ) {
+        let Some(operation) = operation else {
+            self.as_mut().set_recent_activity(QString::default());
+            self.as_mut().set_recent_activity_detail(QString::default());
+            self.as_mut().set_recent_activity_attention(false);
+            return;
+        };
+        self.as_mut()
+            .set_recent_activity(qstring(recent_operation_label(operation)));
+        self.as_mut()
+            .set_recent_activity_detail(qstring(&operation.detail));
+        self.as_mut()
+            .set_recent_activity_attention(operation.status != "succeeded");
+    }
+}
+
+fn recent_operation_label(operation: &crate::settings::EmulatorLifecycleOperation) -> String {
+    let action = match (operation.action.as_str(), operation.status.as_str()) {
+        ("install", "succeeded") => "Installed",
+        ("update", "succeeded") => "Updated",
+        ("uninstall", "succeeded") => "Uninstalled",
+        ("install", _) => "Install",
+        ("update", _) => "Update",
+        ("uninstall", _) => "Uninstall",
+        _ => "Operation",
+    };
+    let status = match operation.status.as_str() {
+        "succeeded" => "complete",
+        "failed" => "failed",
+        "interrupted" => "interrupted",
+        "cancelled" => "cancelled",
+        "running" => "in progress",
+        _ => "unknown",
+    };
+    format!("{action} {} · {status}", operation.display_name)
 }
 
 fn saturating_i32(value: usize) -> i32 {
@@ -481,5 +597,32 @@ mod tests {
         assert!(nes.is_recommended_for("nintendo-entertainment-system"));
         assert!(!nes.is_compatible_with("nintendo-switch"));
         assert!(nes.is_compatible_with(""));
+    }
+
+    #[test]
+    fn recent_operation_labels_distinguish_success_and_interruption() {
+        let mut operation = crate::settings::EmulatorLifecycleOperation {
+            id: uuid::Uuid::new_v4().to_string(),
+            emulator_id: "retroarch".into(),
+            display_name: "RetroArch".into(),
+            host_system_slug: "linux".into(),
+            manager: "nix".into(),
+            package_id: "retroarch".into(),
+            install_path: "retroarch".into(),
+            action: "update".into(),
+            status: "succeeded".into(),
+            detail: "Updated RetroArch".into(),
+            started_at: 1,
+            finished_at: Some(2),
+        };
+        assert_eq!(
+            recent_operation_label(&operation),
+            "Updated RetroArch · complete"
+        );
+        operation.status = "interrupted".into();
+        assert_eq!(
+            recent_operation_label(&operation),
+            "Update RetroArch · interrupted"
+        );
     }
 }

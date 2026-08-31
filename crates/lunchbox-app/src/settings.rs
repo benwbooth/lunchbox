@@ -22,6 +22,7 @@ const IGDB_KEYRING_ACCOUNT: &str = "igdb-twitch-credentials";
 const EMUMOVIES_KEYRING_ACCOUNT: &str = "emumovies-credentials";
 const SCREENSCRAPER_KEYRING_ACCOUNT: &str = "screenscraper-credentials";
 const MAX_RETAINED_TORRENT_BYTES: usize = 64 * 1024 * 1024;
+const MAX_EMULATOR_LIFECYCLE_HISTORY: usize = 200;
 static STORE_INITIALIZATION: Mutex<()> = Mutex::new(());
 pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
     "South",
@@ -137,6 +138,60 @@ pub struct EmulatorUpdatePin {
     pub install_path: String,
     pub pinned_version: String,
     pub pinned_at: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmulatorLifecycleOperation {
+    pub id: String,
+    pub emulator_id: String,
+    pub display_name: String,
+    pub host_system_slug: String,
+    pub manager: String,
+    pub package_id: String,
+    pub install_path: String,
+    pub action: String,
+    pub status: String,
+    pub detail: String,
+    pub started_at: i64,
+    pub finished_at: Option<i64>,
+}
+
+impl EmulatorLifecycleOperation {
+    pub fn validate(&self) -> Result<()> {
+        uuid::Uuid::parse_str(&self.id)
+            .context("emulator lifecycle operations require a UUID identity")?;
+        validate_emulator_lifecycle_identity(
+            &self.emulator_id,
+            &self.display_name,
+            &self.host_system_slug,
+            &self.manager,
+            &self.package_id,
+            &self.install_path,
+        )?;
+        if !matches!(self.action.as_str(), "install" | "update" | "uninstall") {
+            bail!("unsupported emulator lifecycle action {}", self.action);
+        }
+        if !matches!(
+            self.status.as_str(),
+            "running" | "succeeded" | "failed" | "interrupted" | "cancelled"
+        ) {
+            bail!("unsupported emulator lifecycle status {}", self.status);
+        }
+        if self.detail.chars().count() > 8192 || self.detail.contains('\0') {
+            bail!("emulator lifecycle details must be bounded text");
+        }
+        if self.started_at < 0
+            || self
+                .finished_at
+                .is_some_and(|value| value < self.started_at)
+        {
+            bail!("emulator lifecycle timestamps are invalid");
+        }
+        if (self.status == "running") != self.finished_at.is_none() {
+            bail!("only running emulator lifecycle operations may omit a finish time");
+        }
+        Ok(())
+    }
 }
 
 impl EmulatorUpdatePin {
@@ -1527,6 +1582,168 @@ impl SettingsStore {
             params![host_system_slug, manager, package_id, install_path],
         )?;
         Ok(())
+    }
+
+    pub fn begin_emulator_lifecycle_operation(
+        &self,
+        operation_id: &str,
+        emulator_id: &str,
+        display_name: &str,
+        host_system_slug: &str,
+        manager: &str,
+        package_id: &str,
+        install_path: &str,
+        action: &str,
+    ) -> Result<EmulatorLifecycleOperation> {
+        let operation = EmulatorLifecycleOperation {
+            id: operation_id.trim().to_owned(),
+            emulator_id: emulator_id.trim().to_owned(),
+            display_name: display_name.trim().to_owned(),
+            host_system_slug: host_system_slug.trim().to_owned(),
+            manager: manager.trim().to_owned(),
+            package_id: package_id.trim().to_owned(),
+            install_path: install_path.to_owned(),
+            action: action.trim().to_ascii_lowercase(),
+            status: "running".to_owned(),
+            detail: String::new(),
+            started_at: unix_timestamp(),
+            finished_at: None,
+        };
+        operation.validate()?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO emulator_lifecycle_operations (
+                 id, emulator_id, display_name, host_system_slug, manager,
+                 package_id, install_path, action, status, detail,
+                 started_at, finished_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'running', '', ?9, NULL)",
+            params![
+                operation.id,
+                operation.emulator_id,
+                operation.display_name,
+                operation.host_system_slug,
+                operation.manager,
+                operation.package_id,
+                operation.install_path,
+                operation.action,
+                operation.started_at,
+            ],
+        )?;
+        transaction.execute(
+            "DELETE FROM emulator_lifecycle_operations
+             WHERE status <> 'running'
+               AND id NOT IN (
+                   SELECT id FROM emulator_lifecycle_operations
+                   WHERE status <> 'running'
+                   ORDER BY started_at DESC, rowid DESC
+                   LIMIT ?1
+               )",
+            [i64::try_from(MAX_EMULATOR_LIFECYCLE_HISTORY)
+                .context("emulator lifecycle history limit overflow")?],
+        )?;
+        transaction.commit()?;
+        Ok(operation)
+    }
+
+    pub fn finish_emulator_lifecycle_operation(
+        &self,
+        operation_id: &str,
+        status: &str,
+        detail: &str,
+    ) -> Result<EmulatorLifecycleOperation> {
+        let status = status.trim().to_ascii_lowercase();
+        if !matches!(
+            status.as_str(),
+            "succeeded" | "failed" | "interrupted" | "cancelled"
+        ) {
+            bail!("an emulator lifecycle operation requires a terminal status");
+        }
+        if detail.chars().count() > 8192 || detail.contains('\0') {
+            bail!("emulator lifecycle details must be bounded text");
+        }
+        uuid::Uuid::parse_str(operation_id)
+            .context("emulator lifecycle operations require a UUID identity")?;
+        let finished_at = unix_timestamp();
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let changed = transaction.execute(
+            "UPDATE emulator_lifecycle_operations
+             SET status=?2, detail=?3, finished_at=?4
+             WHERE id=?1 AND status='running'",
+            params![operation_id, status, detail, finished_at],
+        )?;
+        if changed != 1 {
+            bail!("the emulator lifecycle operation is missing or already terminal");
+        }
+        let operation = transaction.query_row(
+            "SELECT id, emulator_id, display_name, host_system_slug, manager,
+                    package_id, install_path, action, status, detail,
+                    started_at, finished_at
+             FROM emulator_lifecycle_operations WHERE id=?1",
+            [operation_id],
+            emulator_lifecycle_operation_from_row,
+        )?;
+        operation.validate()?;
+        transaction.execute(
+            "DELETE FROM emulator_lifecycle_operations
+             WHERE status <> 'running'
+               AND id NOT IN (
+                   SELECT id FROM emulator_lifecycle_operations
+                   WHERE status <> 'running'
+                   ORDER BY started_at DESC, rowid DESC
+                   LIMIT ?1
+               )",
+            [i64::try_from(MAX_EMULATOR_LIFECYCLE_HISTORY)
+                .context("emulator lifecycle history limit overflow")?],
+        )?;
+        transaction.commit()?;
+        Ok(operation)
+    }
+
+    pub fn running_emulator_lifecycle_operations(&self) -> Result<Vec<EmulatorLifecycleOperation>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT id, emulator_id, display_name, host_system_slug, manager,
+                    package_id, install_path, action, status, detail,
+                    started_at, finished_at
+             FROM emulator_lifecycle_operations
+             WHERE status='running'
+             ORDER BY started_at, rowid",
+        )?;
+        let operations = statement
+            .query_map([], emulator_lifecycle_operation_from_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for operation in &operations {
+            operation.validate()?;
+        }
+        Ok(operations)
+    }
+
+    pub fn recent_emulator_lifecycle_operations(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<EmulatorLifecycleOperation>> {
+        let limit = limit.clamp(1, MAX_EMULATOR_LIFECYCLE_HISTORY);
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT id, emulator_id, display_name, host_system_slug, manager,
+                    package_id, install_path, action, status, detail,
+                    started_at, finished_at
+             FROM emulator_lifecycle_operations
+             ORDER BY started_at DESC, rowid DESC
+             LIMIT ?1",
+        )?;
+        let operations = statement
+            .query_map(
+                [i64::try_from(limit)?],
+                emulator_lifecycle_operation_from_row,
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for operation in &operations {
+            operation.validate()?;
+        }
+        Ok(operations)
     }
 
     pub fn media_provider_game_link(
@@ -4294,6 +4511,41 @@ pub fn state_database_path() -> Result<PathBuf> {
         .context("could not determine the operating system application data directory")
 }
 
+pub(crate) fn seed_emulator_lifecycle_recovery_probe() -> Result<String> {
+    let path = catalog::requested_path("--state-database", "LUNCHBOX_STATE_DATABASE")
+        .filter(|path| !path.as_os_str().is_empty())
+        .context(
+            "the emulator lifecycle recovery UI probe requires an explicit --state-database or LUNCHBOX_STATE_DATABASE",
+        )?;
+    let store = SettingsStore::at(&path)?;
+    if !store.running_emulator_lifecycle_operations()?.is_empty() {
+        bail!("the emulator lifecycle recovery UI probe requires no existing running operation");
+    }
+    let (host, manager, package_id) = emulator_lifecycle_recovery_probe_identity();
+    let operation_id = uuid::Uuid::new_v4().to_string();
+    store.begin_emulator_lifecycle_operation(
+        &operation_id,
+        "retroarch",
+        "RetroArch",
+        host,
+        manager,
+        package_id,
+        package_id,
+        "update",
+    )?;
+    Ok(format!("operation={operation_id} state={:?}", path))
+}
+
+fn emulator_lifecycle_recovery_probe_identity() -> (&'static str, &'static str, &'static str) {
+    if cfg!(target_os = "windows") {
+        ("windows", "winget", "Libretro.RetroArch")
+    } else if cfg!(target_os = "macos") {
+        ("macos", "homebrew", "retroarch")
+    } else {
+        ("linux", "nix", "retroarch")
+    }
+}
+
 pub(crate) fn seed_activity_history_probe() -> Result<()> {
     let path = catalog::requested_path("--state-database", "LUNCHBOX_STATE_DATABASE")
         .filter(|path| !path.as_os_str().is_empty())
@@ -5189,6 +5441,32 @@ fn migrate(connection: &Connection) -> Result<()> {
              pinned_at INTEGER NOT NULL CHECK (pinned_at >= 0),
              PRIMARY KEY (host_system_slug, manager, package_id, install_path)
          );
+         CREATE TABLE IF NOT EXISTS emulator_lifecycle_operations (
+             id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 64),
+             emulator_id TEXT NOT NULL CHECK (length(emulator_id) BETWEEN 1 AND 512),
+             display_name TEXT NOT NULL CHECK (length(display_name) BETWEEN 1 AND 512),
+             host_system_slug TEXT NOT NULL CHECK (
+                 host_system_slug IN ('linux', 'windows', 'macos')
+             ),
+             manager TEXT NOT NULL CHECK (
+                 manager IN ('flatpak', 'appimage', 'nix', 'github', 'direct', 'winget', 'homebrew', 'libretro')
+             ),
+             package_id TEXT NOT NULL CHECK (length(package_id) BETWEEN 1 AND 2048),
+             install_path TEXT NOT NULL CHECK (length(install_path) <= 8192),
+             action TEXT NOT NULL CHECK (action IN ('install', 'update', 'uninstall')),
+             status TEXT NOT NULL CHECK (
+                 status IN ('running', 'succeeded', 'failed', 'interrupted', 'cancelled')
+             ),
+             detail TEXT NOT NULL CHECK (length(detail) <= 8192),
+             started_at INTEGER NOT NULL CHECK (started_at >= 0),
+             finished_at INTEGER CHECK (finished_at IS NULL OR finished_at >= started_at),
+             CHECK (
+                 (status='running' AND finished_at IS NULL)
+                 OR (status<>'running' AND finished_at IS NOT NULL)
+             )
+         );
+         CREATE INDEX IF NOT EXISTS emulator_lifecycle_operations_status
+             ON emulator_lifecycle_operations(status, started_at, id);
          CREATE TABLE IF NOT EXISTS user_collections (
              id TEXT PRIMARY KEY,
              name TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -6364,6 +6642,52 @@ fn validate_emulator_update_pin_identity(
     Ok(())
 }
 
+fn validate_emulator_lifecycle_identity(
+    emulator_id: &str,
+    display_name: &str,
+    host_system_slug: &str,
+    manager: &str,
+    package_id: &str,
+    install_path: &str,
+) -> Result<()> {
+    validate_managed_emulator_install(emulator_id, host_system_slug, manager, package_id)?;
+    if emulator_id.chars().count() > 512 || emulator_id.chars().any(char::is_control) {
+        bail!("emulator lifecycle operations require a bounded emulator identity");
+    }
+    if display_name.trim().is_empty()
+        || display_name.chars().count() > 512
+        || display_name.chars().any(char::is_control)
+    {
+        bail!("emulator lifecycle operations require a bounded display name");
+    }
+    if package_id.chars().count() > 2048 || package_id.chars().any(char::is_control) {
+        bail!("emulator lifecycle operations require a bounded package identity");
+    }
+    if install_path.chars().count() > 8192 || install_path.contains('\0') {
+        bail!("emulator lifecycle operations require a bounded install path or scope");
+    }
+    Ok(())
+}
+
+fn emulator_lifecycle_operation_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<EmulatorLifecycleOperation> {
+    Ok(EmulatorLifecycleOperation {
+        id: row.get(0)?,
+        emulator_id: row.get(1)?,
+        display_name: row.get(2)?,
+        host_system_slug: row.get(3)?,
+        manager: row.get(4)?,
+        package_id: row.get(5)?,
+        install_path: row.get(6)?,
+        action: row.get(7)?,
+        status: row.get(8)?,
+        detail: row.get(9)?,
+        started_at: row.get(10)?,
+        finished_at: row.get(11)?,
+    })
+}
+
 fn validate_firmware_package_receipt(receipt: &FirmwarePackageReceipt) -> Result<()> {
     if receipt.source_id.trim().is_empty() || receipt.package_name.trim().is_empty() {
         bail!("firmware packages require exact source and package identities");
@@ -6916,6 +7240,111 @@ mod tests {
             store
                 .set_emulator_update_pin("linux", "flatpak", "org.libretro.RetroArch", "user", "")
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn emulator_lifecycle_operations_are_exact_durable_and_terminal_once() {
+        let (_directory, store) = store();
+        let operation_id = uuid::Uuid::new_v4().to_string();
+        let running = store
+            .begin_emulator_lifecycle_operation(
+                &operation_id,
+                "retroarch",
+                "RetroArch",
+                "linux",
+                "nix",
+                "retroarch",
+                "retroarch",
+                "update",
+            )
+            .unwrap();
+
+        assert_eq!(running.status, "running");
+        assert_eq!(running.finished_at, None);
+        assert_eq!(
+            store.running_emulator_lifecycle_operations().unwrap(),
+            vec![running.clone()]
+        );
+
+        let finished = store
+            .finish_emulator_lifecycle_operation(
+                &operation_id,
+                "interrupted",
+                "Lunchbox closed before the package manager reported a result.",
+            )
+            .unwrap();
+        assert_eq!(finished.status, "interrupted");
+        assert!(finished.finished_at.is_some());
+        assert!(
+            store
+                .finish_emulator_lifecycle_operation(&operation_id, "succeeded", "late result")
+                .is_err()
+        );
+        assert!(
+            store
+                .running_emulator_lifecycle_operations()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            store.recent_emulator_lifecycle_operations(10).unwrap(),
+            vec![finished]
+        );
+        assert!(
+            store
+                .begin_emulator_lifecycle_operation(
+                    &uuid::Uuid::new_v4().to_string(),
+                    "retroarch",
+                    "RetroArch",
+                    "linux",
+                    "nix",
+                    "retroarch",
+                    "",
+                    "replace",
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn emulator_lifecycle_history_is_bounded_to_the_newest_terminal_rows() {
+        let (_directory, store) = store();
+        let mut operation_ids = Vec::new();
+        for index in 0..(MAX_EMULATOR_LIFECYCLE_HISTORY + 5) {
+            let operation_id = uuid::Uuid::new_v4().to_string();
+            operation_ids.push(operation_id.clone());
+            store
+                .begin_emulator_lifecycle_operation(
+                    &operation_id,
+                    &format!("emulator-{index}"),
+                    &format!("Emulator {index}"),
+                    "linux",
+                    "nix",
+                    &format!("package-{index}"),
+                    &format!("package-{index}"),
+                    "install",
+                )
+                .unwrap();
+            store
+                .finish_emulator_lifecycle_operation(
+                    &operation_id,
+                    "succeeded",
+                    "Installed exact package.",
+                )
+                .unwrap();
+        }
+
+        let recent = store
+            .recent_emulator_lifecycle_operations(MAX_EMULATOR_LIFECYCLE_HISTORY + 50)
+            .unwrap();
+        assert_eq!(recent.len(), MAX_EMULATOR_LIFECYCLE_HISTORY);
+        assert_eq!(recent[0].id, *operation_ids.last().unwrap());
+        assert_eq!(recent.last().unwrap().id, operation_ids[5]);
+        assert!(
+            operation_ids[..5]
+                .iter()
+                .all(|id| recent.iter().all(|operation| &operation.id != id))
         );
     }
 
@@ -9070,6 +9499,7 @@ mod tests {
             "manual_torrent_sources",
             "retained_torrent_metadata",
             "emulator_update_pins",
+            "emulator_lifecycle_operations",
         ] {
             let migrated: Option<i64> = connection
                 .query_row(

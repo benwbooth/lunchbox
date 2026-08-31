@@ -10,9 +10,12 @@ pub mod qobject {
         #[qml_element]
         #[qproperty(bool, initialized)]
         #[qproperty(bool, busy)]
+        #[qproperty(bool, batch_running)]
+        #[qproperty(bool, cancel_requested)]
         #[qproperty(i32, row_count)]
         #[qproperty(i32, actionable_count)]
         #[qproperty(i32, pinned_count)]
+        #[qproperty(i32, recovered_count)]
         #[qproperty(i32, selected_count)]
         #[qproperty(i32, completed_count)]
         #[qproperty(i32, batch_count)]
@@ -71,6 +74,9 @@ pub mod qobject {
         fn toggle_pin(self: Pin<&mut EmulatorUpdateModel>, index: i32);
 
         #[qinvokable]
+        fn cancel_batch(self: Pin<&mut EmulatorUpdateModel>);
+
+        #[qinvokable]
         fn update_selected(self: Pin<&mut EmulatorUpdateModel>);
     }
 
@@ -78,6 +84,8 @@ pub mod qobject {
 }
 
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
@@ -120,9 +128,12 @@ struct UpdateRow {
 pub struct EmulatorUpdateModelRust {
     initialized: bool,
     busy: bool,
+    batch_running: bool,
+    cancel_requested: bool,
     row_count: i32,
     actionable_count: i32,
     pinned_count: i32,
+    recovered_count: i32,
     selected_count: i32,
     completed_count: i32,
     batch_count: i32,
@@ -131,6 +142,7 @@ pub struct EmulatorUpdateModelRust {
     check_policy: QString,
     prompt_pending: bool,
     scheduled_check: bool,
+    batch_cancel: Arc<AtomicBool>,
     rows: Vec<UpdateRow>,
 }
 
@@ -139,9 +151,12 @@ impl Default for EmulatorUpdateModelRust {
         Self {
             initialized: false,
             busy: false,
+            batch_running: false,
+            cancel_requested: false,
             row_count: 0,
             actionable_count: 0,
             pinned_count: 0,
+            recovered_count: 0,
             selected_count: 0,
             completed_count: 0,
             batch_count: 0,
@@ -150,6 +165,7 @@ impl Default for EmulatorUpdateModelRust {
             check_policy: QString::from("daily"),
             prompt_pending: false,
             scheduled_check: false,
+            batch_cancel: Arc::new(AtomicBool::new(false)),
             rows: Vec::new(),
         }
     }
@@ -253,6 +269,7 @@ impl qobject::EmulatorUpdateModel {
         match result {
             Ok(inventory) => {
                 let warning_count = inventory.warnings.len();
+                let recovered_count = inventory.recovered_operations;
                 let rows = update_rows(inventory.updates);
                 let count = rows.len();
                 let pinned_count = rows
@@ -266,12 +283,14 @@ impl qobject::EmulatorUpdateModel {
                     .set_actionable_count(saturating_i32(actionable_count));
                 self.as_mut().set_pinned_count(saturating_i32(pinned_count));
                 self.as_mut()
+                    .set_recovered_count(saturating_i32(recovered_count));
+                self.as_mut()
                     .set_selected_count(saturating_i32(actionable_count));
                 self.as_mut().set_completed_count(0);
                 self.as_mut().set_batch_count(0);
                 self.as_mut().set_initialized(true);
                 self.as_mut().bump_revision();
-                let message = if count == 0 && warning_count == 0 {
+                let mut message = if count == 0 && warning_count == 0 {
                     "All supported emulator installations are up to date.".to_owned()
                 } else if count == 0 {
                     format!(
@@ -287,6 +306,12 @@ impl qobject::EmulatorUpdateModel {
                         plural(warning_count)
                     )
                 };
+                if recovered_count > 0 {
+                    message.push_str(&format!(
+                        " Recovered {recovered_count} interrupted lifecycle operation{} and rescanned the exact installation state.",
+                        plural(recovered_count)
+                    ));
+                }
                 self.as_mut().set_message(qstring(message));
                 if scheduled {
                     if let Err(error) =
@@ -299,7 +324,7 @@ impl qobject::EmulatorUpdateModel {
                     self.as_mut().set_prompt_pending(actionable_count > 0);
                 }
                 println!(
-                    "LUNCHBOX_EMULATOR_UPDATES_READY updates={actionable_count} pinned={pinned_count} warnings={warning_count}"
+                    "LUNCHBOX_EMULATOR_UPDATES_READY updates={actionable_count} pinned={pinned_count} warnings={warning_count} recovered={recovered_count}"
                 );
             }
             Err(error) => {
@@ -538,6 +563,20 @@ impl qobject::EmulatorUpdateModel {
         }
     }
 
+    pub fn cancel_batch(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().batch_running() || *self.as_ref().cancel_requested() {
+            return;
+        }
+        self.as_ref()
+            .rust()
+            .batch_cancel
+            .store(true, Ordering::Release);
+        self.as_mut().set_cancel_requested(true);
+        self.as_mut().set_message(qstring(
+            "Stopping after the current emulator update; no later selected update will start.",
+        ));
+    }
+
     pub fn update_selected(mut self: Pin<&mut Self>) {
         if *self.as_ref().busy() {
             return;
@@ -557,8 +596,14 @@ impl qobject::EmulatorUpdateModel {
             return;
         }
         let total = selected.len();
+        self.as_ref()
+            .rust()
+            .batch_cancel
+            .store(false, Ordering::Release);
         self.as_mut().set_prompt_pending(false);
         self.as_mut().set_busy(true);
+        self.as_mut().set_batch_running(true);
+        self.as_mut().set_cancel_requested(false);
         self.as_mut().set_completed_count(0);
         self.as_mut().set_batch_count(saturating_i32(total));
         self.as_mut().set_message(qstring(format!(
@@ -566,35 +611,43 @@ impl qobject::EmulatorUpdateModel {
             plural(total)
         )));
         let qt_thread = self.as_ref().qt_thread();
+        let cancellation = self.as_ref().rust().batch_cancel.clone();
         let spawn = std::thread::Builder::new()
             .name("lunchbox-emulator-update-batch".into())
             .spawn(move || {
-                let mut succeeded = 0usize;
-                let mut failed = 0usize;
-                for (index, update) in selected {
-                    let started_thread = qt_thread.clone();
-                    let _ = started_thread.queue(move |mut model| {
-                        model.as_mut().mark_updating(index);
-                    });
-                    let result =
+                let outcome = run_cancellable_batch(
+                    selected,
+                    &cancellation,
+                    |(index, _)| {
+                        let started_thread = qt_thread.clone();
+                        let index = *index;
+                        let _ = started_thread.queue(move |mut model| {
+                            model.as_mut().mark_updating(index);
+                        });
+                    },
+                    |(_, update)| {
                         emulator_manager::perform_action(&update.row, ManagedAction::Update)
-                            .map_err(|error| format!("{error:#}"));
-                    if result.is_ok() {
-                        succeeded += 1;
-                    } else {
-                        failed += 1;
-                    }
-                    let completed_thread = qt_thread.clone();
-                    let _ = completed_thread.queue(move |mut model| {
-                        model.as_mut().finish_update(index, result);
-                    });
-                }
+                            .map_err(|error| format!("{error:#}"))
+                    },
+                    |(index, _), result| {
+                        let completed_thread = qt_thread.clone();
+                        let _ = completed_thread.queue(move |mut model| {
+                            model.as_mut().finish_update(index, result);
+                        });
+                    },
+                );
                 let _ = qt_thread.queue(move |mut model| {
-                    model.as_mut().finish_batch(succeeded, failed);
+                    model.as_mut().finish_batch(outcome);
                 });
             });
         if let Err(error) = spawn {
+            self.as_ref()
+                .rust()
+                .batch_cancel
+                .store(false, Ordering::Release);
             self.as_mut().set_busy(false);
+            self.as_mut().set_batch_running(false);
+            self.as_mut().set_cancel_requested(false);
             self.as_mut().set_message(qstring(format!(
                 "Could not start emulator updates: {error}"
             )));
@@ -630,18 +683,20 @@ impl qobject::EmulatorUpdateModel {
         self.as_mut().bump_revision();
     }
 
-    fn finish_batch(mut self: Pin<&mut Self>, succeeded: usize, failed: usize) {
+    fn finish_batch(mut self: Pin<&mut Self>, outcome: BatchOutcome) {
+        self.as_ref()
+            .rust()
+            .batch_cancel
+            .store(false, Ordering::Release);
         self.as_mut().set_busy(false);
-        let message = if failed == 0 {
-            format!(
-                "Updated {succeeded} emulator installation{}. Refresh to verify installed versions.",
-                plural(succeeded)
-            )
-        } else {
-            format!("Updated {succeeded}; {failed} failed. Failed rows retain their error details.")
-        };
-        self.as_mut().set_message(qstring(message));
-        println!("LUNCHBOX_EMULATOR_UPDATE_BATCH succeeded={succeeded} failed={failed}");
+        self.as_mut().set_batch_running(false);
+        self.as_mut().set_cancel_requested(false);
+        self.as_mut()
+            .set_message(qstring(batch_completion_message(outcome)));
+        println!(
+            "LUNCHBOX_EMULATOR_UPDATE_BATCH succeeded={} failed={} skipped={}",
+            outcome.succeeded, outcome.failed, outcome.skipped
+        );
     }
 
     fn row(&self, index: i32) -> Option<&UpdateRow> {
@@ -734,6 +789,63 @@ fn update_inventory_message(actionable: usize, pinned: usize) -> String {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct BatchOutcome {
+    succeeded: usize,
+    failed: usize,
+    skipped: usize,
+}
+
+fn run_cancellable_batch<T>(
+    items: Vec<T>,
+    cancellation: &AtomicBool,
+    mut on_start: impl FnMut(&T),
+    mut perform: impl FnMut(&T) -> Result<String, String>,
+    mut on_finish: impl FnMut(T, Result<String, String>),
+) -> BatchOutcome {
+    let total = items.len();
+    let mut outcome = BatchOutcome::default();
+    for (position, item) in items.into_iter().enumerate() {
+        if cancellation.load(Ordering::Acquire) {
+            outcome.skipped = total.saturating_sub(position);
+            break;
+        }
+        on_start(&item);
+        let result = perform(&item);
+        if result.is_ok() {
+            outcome.succeeded += 1;
+        } else {
+            outcome.failed += 1;
+        }
+        on_finish(item, result);
+    }
+    outcome
+}
+
+fn batch_completion_message(outcome: BatchOutcome) -> String {
+    if outcome.skipped > 0 {
+        return format!(
+            "Stopped after the current update. Updated {}; {} failed; {} selected update{} remain.",
+            outcome.succeeded,
+            outcome.failed,
+            outcome.skipped,
+            plural(outcome.skipped)
+        );
+    }
+    if outcome.failed == 0 {
+        format!(
+            "Updated {} emulator installation{}. Refresh to verify installed versions.",
+            outcome.succeeded,
+            plural(outcome.succeeded)
+        )
+    } else {
+        format!(
+            "Updated {}; {} failed. Failed rows retain their error details.",
+            outcome.succeeded, outcome.failed
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -797,6 +909,38 @@ mod tests {
         assert_eq!(
             update_inventory_message(0, 2),
             "No actionable emulator updates; 2 available updates pinned."
+        );
+    }
+
+    #[test]
+    fn cancellation_stops_before_the_next_update_and_preserves_the_remainder() {
+        let cancellation = AtomicBool::new(false);
+        let mut started = Vec::new();
+        let mut finished = Vec::new();
+        let outcome = run_cancellable_batch(
+            vec![1, 2, 3],
+            &cancellation,
+            |item| started.push(*item),
+            |item| Ok(format!("updated {item}")),
+            |item, result| {
+                finished.push((item, result.unwrap()));
+                cancellation.store(true, Ordering::Release);
+            },
+        );
+
+        assert_eq!(started, vec![1]);
+        assert_eq!(finished, vec![(1, "updated 1".to_owned())]);
+        assert_eq!(
+            outcome,
+            BatchOutcome {
+                succeeded: 1,
+                failed: 0,
+                skipped: 2,
+            }
+        );
+        assert_eq!(
+            batch_completion_message(outcome),
+            "Stopped after the current update. Updated 1; 0 failed; 2 selected updates remain."
         );
     }
 }

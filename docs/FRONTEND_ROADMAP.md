@@ -341,7 +341,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   prompts; external package managers remain explicitly unaffected.
   Available-version-only presentation checks every exact installed backend,
   presents current-to-available versions, and applies explicitly selected rows
-  sequentially with per-row outcomes. Lifecycle cancellation/recovery remains.
+  sequentially with per-row outcomes. Durable lifecycle journaling,
+  cross-process mutation serialization, restart reconciliation, compact recent
+  activity, and stop-after-current batch cancellation are native. Lunchbox
+  deliberately does not claim provider-native cancellation in the middle of an
+  external package-manager transaction; Windows and macOS mutation remain
+  release-host gates.
   Firmware/BIOS validation before game launch is also native.
 - Dedicated Daphne runtime, TeknoParrot, and non-eXo PC launch profiles.
 - Finish the native controller slice with attached-hardware InputPlumber
