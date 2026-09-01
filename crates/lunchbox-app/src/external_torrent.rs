@@ -7,6 +7,7 @@ use anyhow::{Context, Result, bail};
 use lava_torrent::torrent::v1::Torrent;
 use sha2::{Digest, Sha256};
 
+use crate::download_plan::DownloadPlan;
 use crate::qbittorrent::{self, EnqueueRequest};
 use crate::settings::{
     AppSettings, ManualTorrentSourceReceipt, RegisteredTorrentCatalog, RegisteredTorrentMember,
@@ -409,6 +410,7 @@ pub(crate) fn queue_manual_torrent(
     association: CanonicalGameAssociation,
     offer: ManualTorrentOffer,
     selected_index: usize,
+    download_plan: Option<DownloadPlan>,
     register_for_platform: bool,
 ) -> Result<ManualTorrentQueueResult> {
     validate_association(&association)?;
@@ -417,6 +419,7 @@ pub(crate) fn queue_manual_torrent(
         .get(selected_index)
         .context("choose an exact file from the reviewed torrent")?
         .clone();
+    validate_reviewed_download_plan(&offer, &selected, download_plan.as_ref())?;
     let source_locator = if offer.externally_managed {
         format!("qbittorrent-existing:sha256:{}", offer.torrent_sha256)
     } else {
@@ -441,7 +444,7 @@ pub(crate) fn queue_manual_torrent(
             torrent_bytes: offer.torrent_bytes.clone(),
             selected_file_index: selected.index,
             selected_file_path: selected.path.clone(),
-            download_plan: None,
+            download_plan,
             adopt_existing_torrent: offer.externally_managed,
         },
     )?;
@@ -479,6 +482,32 @@ pub(crate) fn queue_manual_torrent(
         platform_registered,
         platform_registration_error,
     })
+}
+
+fn validate_reviewed_download_plan(
+    offer: &ManualTorrentOffer,
+    selected: &ReviewedTorrentFile,
+    download_plan: Option<&DownloadPlan>,
+) -> Result<()> {
+    let Some(plan) = download_plan else {
+        return Ok(());
+    };
+    plan.validate()
+        .context("validating the reviewed payload set")?;
+    if plan.representative_index != selected.index as usize {
+        bail!("the reviewed payload set no longer matches the selected torrent member");
+    }
+    for member in &plan.members {
+        let reviewed = offer
+            .files
+            .iter()
+            .find(|file| file.index as usize == member.index)
+            .context("the reviewed payload set refers to a missing torrent member")?;
+        if reviewed.path != member.torrent_path || reviewed.byte_size != member.byte_size {
+            bail!("the reviewed payload set no longer matches the inspected torrent metadata");
+        }
+    }
+    Ok(())
 }
 
 fn reviewed_file(index: usize, path: String, signed_size: i64) -> Result<ReviewedTorrentFile> {
@@ -597,6 +626,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::download_plan::DownloadPlanMember;
 
     struct MockResponse {
         body: String,
@@ -691,6 +721,48 @@ mod tests {
                     byte_size: 6,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn reviewed_payload_set_must_match_every_inspected_member_exactly() {
+        let offer =
+            inspect_torrent_bytes(&probe_fixture_torrent_bytes(), "review.torrent").unwrap();
+        let mut plan = DownloadPlan {
+            version: 1,
+            kind: "optical_multidisc".to_owned(),
+            display_name: "Sample Game".to_owned(),
+            playlist_filename: "Sample Game.m3u".to_owned(),
+            representative_index: 0,
+            members: vec![
+                DownloadPlanMember {
+                    index: 0,
+                    torrent_path: offer.files[0].path.clone(),
+                    target_relative_path: "Sample Game (Disc 1).rom".to_owned(),
+                    byte_size: offer.files[0].byte_size,
+                    disc_index: Some(1),
+                    playlist_entry: true,
+                    role: "disc".to_owned(),
+                },
+                DownloadPlanMember {
+                    index: 1,
+                    torrent_path: offer.files[1].path.clone(),
+                    target_relative_path: "Sample Game (Disc 2).rom".to_owned(),
+                    byte_size: offer.files[1].byte_size,
+                    disc_index: Some(2),
+                    playlist_entry: true,
+                    role: "disc".to_owned(),
+                },
+            ],
+        };
+
+        validate_reviewed_download_plan(&offer, &offer.files[0], Some(&plan)).unwrap();
+        plan.members[1].torrent_path = "Game/Unreviewed.rom".to_owned();
+        assert!(
+            validate_reviewed_download_plan(&offer, &offer.files[0], Some(&plan))
+                .unwrap_err()
+                .to_string()
+                .contains("inspected torrent metadata")
         );
     }
 
@@ -828,6 +900,7 @@ mod tests {
             association.clone(),
             offer,
             0,
+            None,
             true,
         )
         .unwrap();

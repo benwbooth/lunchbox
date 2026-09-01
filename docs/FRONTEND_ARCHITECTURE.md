@@ -690,9 +690,13 @@ offline root never becomes missing or removable.
 `--manual-torrent-ui-probe --screenshot-output=PATH` opens Super Mario Bros. by
 its exact preserved UUID, creates and parses a real two-file `.torrent` through
 the production worker, verifies the locked association, v1 info hash, safe file
-inventory, native `.torrent` import entry point, loaded-qBittorrent picker, and
-second-file selection, then captures the native review dialog. The same dialog
-can enumerate exportable v1 torrents already loaded in the configured
+inventory, absence of a guessed selection when title similarity is weak, native
+`.torrent` import entry point, loaded-qBittorrent picker, and second-file
+selection, then captures the native review dialog. The same dialog uses the
+Minerva title/region/version ranker to put strong matches first and suggest the
+best exact payload, preserves optical multi-disc and eXo dependency sets, and
+provides an asynchronous filename search without changing source member indices.
+It can enumerate exportable v1 torrents already loaded in the configured
 qBittorrent instance. Listing and metadata review are read-only. Confirming a
 game download or collection source imports the torrent into Lunchbox management
 by assigning its `lunchbox` category; Lunchbox also persists the validated

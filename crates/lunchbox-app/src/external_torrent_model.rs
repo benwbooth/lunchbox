@@ -13,11 +13,16 @@ pub mod qobject {
         #[qproperty(bool, busy)]
         #[qproperty(bool, existing_loading)]
         #[qproperty(bool, importing_existing)]
+        #[qproperty(bool, filter_busy)]
         #[qproperty(bool, ready)]
         #[qproperty(bool, collection_mode)]
         #[qproperty(bool, register_for_platform)]
         #[qproperty(i32, file_count)]
+        #[qproperty(i32, filtered_file_count)]
+        #[qproperty(i32, filtered_revision)]
         #[qproperty(i32, selected_index)]
+        #[qproperty(i32, selected_file_count)]
+        #[qproperty(bool, suggested_selection)]
         #[qproperty(i32, revision)]
         #[qproperty(i32, queued_revision)]
         #[qproperty(i32, registered_revision)]
@@ -31,6 +36,8 @@ pub mod qobject {
         #[qproperty(QString, info_hash)]
         #[qproperty(QString, total_size)]
         #[qproperty(QString, download_scope)]
+        #[qproperty(QString, file_filter)]
+        #[qproperty(QString, selection_summary)]
         #[qproperty(QString, message)]
         #[qproperty(QString, queued_job_id)]
         #[qproperty(QString, existing_message)]
@@ -70,6 +77,9 @@ pub mod qobject {
         fn select_file(self: Pin<&mut ExternalTorrentModel>, index: i32);
 
         #[qinvokable]
+        fn filter_files(self: Pin<&mut ExternalTorrentModel>, query: QString);
+
+        #[qinvokable]
         fn set_platform_registration(self: Pin<&mut ExternalTorrentModel>, enabled: bool);
 
         #[qinvokable]
@@ -88,6 +98,18 @@ pub mod qobject {
         fn file_size_at(self: &ExternalTorrentModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn filtered_file_index_at(self: &ExternalTorrentModel, row: i32) -> i32;
+
+        #[qinvokable]
+        fn filtered_row_for_file_index(self: &ExternalTorrentModel, index: i32) -> i32;
+
+        #[qinvokable]
+        fn file_selected_at(self: &ExternalTorrentModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn file_match_label_at(self: &ExternalTorrentModel, index: i32) -> QString;
+
+        #[qinvokable]
         fn existing_name_at(self: &ExternalTorrentModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -98,25 +120,33 @@ pub mod qobject {
 }
 
 use std::pin::Pin;
+use std::sync::Arc;
 
 use anyhow::Context;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QUrl};
 
+use crate::download_plan::DownloadPlan;
 use crate::external_torrent::{
     self, CanonicalGameAssociation, CollectionTorrentAssociation, ManualTorrentOffer,
     ReviewedTorrentFile,
 };
+use crate::game_details::{ReleasePreferences, TorrentFileCandidate};
 
 pub struct ExternalTorrentModelRust {
     busy: bool,
     existing_loading: bool,
     importing_existing: bool,
+    filter_busy: bool,
     ready: bool,
     collection_mode: bool,
     register_for_platform: bool,
     file_count: i32,
+    filtered_file_count: i32,
+    filtered_revision: i32,
     selected_index: i32,
+    selected_file_count: i32,
+    suggested_selection: bool,
     revision: i32,
     queued_revision: i32,
     registered_revision: i32,
@@ -130,13 +160,22 @@ pub struct ExternalTorrentModelRust {
     info_hash: QString,
     total_size: QString,
     download_scope: QString,
+    file_filter: QString,
+    selection_summary: QString,
     message: QString,
     queued_job_id: QString,
     existing_message: QString,
     association: Option<CanonicalGameAssociation>,
     collection_association: Option<CollectionTorrentAssociation>,
     offer: Option<ManualTorrentOffer>,
+    display_order: Arc<Vec<usize>>,
+    searchable_paths: Arc<Vec<String>>,
+    filtered_file_indices: Vec<usize>,
+    ranked_file_indices: Vec<usize>,
+    selected_file_indices: Vec<usize>,
+    selected_download_plan: Option<DownloadPlan>,
     generation: u64,
+    filter_generation: u64,
     existing_generation: u64,
     existing_torrents: Vec<crate::qbittorrent::ExistingTorrentSummary>,
     probe_fixture_path: Option<std::path::PathBuf>,
@@ -148,11 +187,16 @@ impl Default for ExternalTorrentModelRust {
             busy: false,
             existing_loading: false,
             importing_existing: false,
+            filter_busy: false,
             ready: false,
             collection_mode: false,
             register_for_platform: false,
             file_count: 0,
+            filtered_file_count: 0,
+            filtered_revision: 0,
             selected_index: -1,
+            selected_file_count: 0,
+            suggested_selection: false,
             revision: 0,
             queued_revision: 0,
             registered_revision: 0,
@@ -166,6 +210,8 @@ impl Default for ExternalTorrentModelRust {
             info_hash: QString::default(),
             total_size: QString::default(),
             download_scope: QString::from("Selected file only"),
+            file_filter: QString::default(),
+            selection_summary: QString::default(),
             message: QString::from(
                 "Choose a lawful .torrent file, then review its exact contents before anything is downloaded.",
             ),
@@ -174,7 +220,14 @@ impl Default for ExternalTorrentModelRust {
             association: None,
             collection_association: None,
             offer: None,
+            display_order: Arc::new(Vec::new()),
+            searchable_paths: Arc::new(Vec::new()),
+            filtered_file_indices: Vec::new(),
+            ranked_file_indices: Vec::new(),
+            selected_file_indices: Vec::new(),
+            selected_download_plan: None,
             generation: 0,
+            filter_generation: 0,
             existing_generation: 0,
             existing_torrents: Vec::new(),
             probe_fixture_path: None,
@@ -184,7 +237,16 @@ impl Default for ExternalTorrentModelRust {
 
 struct InspectionResult {
     offer: ManualTorrentOffer,
-    download_entire_torrent: bool,
+    ranked_candidates: Vec<TorrentFileCandidate>,
+}
+
+struct ReviewState {
+    display_order: Vec<usize>,
+    ranked_file_indices: Vec<usize>,
+    selected_file_indices: Vec<usize>,
+    selected_index: i32,
+    selected_download_plan: Option<DownloadPlan>,
+    selection_summary: String,
 }
 
 fn qstring(value: impl AsRef<str>) -> QString {
@@ -296,6 +358,7 @@ impl qobject::ExternalTorrentModel {
         let magnet_uri = magnet_uri.to_string();
         let platform = self.as_ref().game_platform().to_string();
         let collection_mode = *self.as_ref().collection_mode();
+        let game_title = self.as_ref().rust().review_game_title();
         let previous_offer = self.as_mut().rust_mut().offer.take();
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         let generation = self.as_ref().rust().generation;
@@ -327,11 +390,7 @@ impl qobject::ExternalTorrentModel {
                         &platform,
                         collection_mode,
                     )?;
-                    Ok(InspectionResult {
-                        offer,
-                        download_entire_torrent: !collection_mode
-                            && settings.download_entire_torrent,
-                    })
+                    prepare_inspection_result(offer, game_title.as_deref(), &settings)
                 })()
                 .map_err(|error| format!("{error:#}"));
                 let _ = qt_thread.queue(move |mut model| {
@@ -428,6 +487,7 @@ impl qobject::ExternalTorrentModel {
             return;
         };
         let previous_offer = self.as_mut().rust_mut().offer.take();
+        let game_title = self.as_ref().rust().review_game_title();
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         let generation = self.as_ref().rust().generation;
         self.as_mut().reset_offer();
@@ -456,10 +516,7 @@ impl qobject::ExternalTorrentModel {
                         &summary.info_hash,
                         &summary.name,
                     )?;
-                    Ok(InspectionResult {
-                        offer,
-                        download_entire_torrent: false,
-                    })
+                    prepare_inspection_result(offer, game_title.as_deref(), &settings)
                 })()
                 .map_err(|error| format!("{error:#}"));
                 let _ = qt_thread.queue(move |mut model| {
@@ -519,6 +576,7 @@ impl qobject::ExternalTorrentModel {
             return;
         }
         let previous_offer = self.as_mut().rust_mut().offer.take();
+        let game_title = self.as_ref().rust().review_game_title();
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         let generation = self.as_ref().rust().generation;
         self.as_mut().reset_offer();
@@ -542,10 +600,7 @@ impl qobject::ExternalTorrentModel {
                         .context("removing the previous unqueued magnet review")?;
                     }
                     let offer = external_torrent::inspect_torrent_file(&path)?;
-                    Ok(InspectionResult {
-                        offer,
-                        download_entire_torrent: settings.download_entire_torrent,
-                    })
+                    prepare_inspection_result(offer, game_title.as_deref(), &settings)
                 })()
                 .map_err(|error| format!("{error:#}"));
                 let _ = qt_thread.queue(move |mut model| {
@@ -573,9 +628,25 @@ impl qobject::ExternalTorrentModel {
                 let offer = result.offer;
                 let file_count = offer.files.len();
                 let collection_mode = *self.as_ref().collection_mode();
+                let review = build_review_state(&offer, result.ranked_candidates, collection_mode);
+                let searchable_paths = offer
+                    .files
+                    .iter()
+                    .map(|file| file.path.to_lowercase())
+                    .collect::<Vec<_>>();
+                let selected_count = review.selected_file_indices.len();
                 self.as_mut()
                     .set_file_count(i32::try_from(file_count).unwrap_or(i32::MAX));
-                self.as_mut().set_selected_index(0);
+                self.as_mut().set_filtered_file_count(
+                    i32::try_from(review.display_order.len()).unwrap_or(i32::MAX),
+                );
+                self.as_mut().set_selected_index(review.selected_index);
+                self.as_mut()
+                    .set_selected_file_count(i32::try_from(selected_count).unwrap_or(i32::MAX));
+                self.as_mut()
+                    .set_suggested_selection(!collection_mode && review.selected_index >= 0);
+                self.as_mut()
+                    .set_selection_summary(qstring(&review.selection_summary));
                 self.as_mut()
                     .set_source_file_name(qstring(&offer.source_file_name));
                 self.as_mut().set_source_kind(qstring(&offer.source_kind));
@@ -589,11 +660,13 @@ impl qobject::ExternalTorrentModel {
                     )));
                 self.as_mut()
                     .set_download_scope(qstring(if collection_mode {
-                        "Indexed source · downloads on demand"
-                    } else if result.download_entire_torrent {
-                        "Entire torrent · required by Settings"
+                        "Indexed source · downloads on demand".to_owned()
+                    } else if selected_count > 1 {
+                        format!("{selected_count} related files selected")
+                    } else if selected_count == 1 {
+                        "Selected file only".to_owned()
                     } else {
-                        "Selected file only"
+                        "Choose an exact payload".to_owned()
                     }));
                 self.as_mut().set_message(qstring(if collection_mode {
                     if offer.externally_managed {
@@ -608,19 +681,34 @@ impl qobject::ExternalTorrentModel {
                         )
                     }
                 } else {
-                    if offer.externally_managed {
+                    if review.selected_index < 0 {
                         format!(
-                            "Reviewed {file_count} safe {}. Queue imports the torrent into Lunchbox management and selects this game's exact payload.",
+                            "Reviewed {file_count} safe {}. No title match was strong enough to select automatically; search or choose the exact payload.",
+                            if file_count == 1 { "file" } else { "files" }
+                        )
+                    } else if offer.externally_managed {
+                        format!(
+                            "Reviewed {file_count} safe {}. Lunchbox put the Minerva-ranked match first; review it before Queue imports the exact selection.",
                             if file_count == 1 { "file" } else { "files" }
                         )
                     } else {
                         format!(
-                            "Reviewed {file_count} safe {}. Choose the exact payload for this game.",
+                            "Reviewed {file_count} safe {}. Lunchbox put the Minerva-ranked match first; review the suggested exact payload before Queue.",
                             if file_count == 1 { "file" } else { "files" }
                         )
                     }
                 }));
-                self.as_mut().rust_mut().offer = Some(offer);
+                {
+                    let mut rust = self.as_mut().rust_mut();
+                    rust.display_order = Arc::new(review.display_order.clone());
+                    rust.searchable_paths = Arc::new(searchable_paths);
+                    rust.filtered_file_indices = review.display_order;
+                    rust.ranked_file_indices = review.ranked_file_indices;
+                    rust.selected_file_indices = review.selected_file_indices;
+                    rust.selected_download_plan = review.selected_download_plan;
+                    rust.offer = Some(offer);
+                }
+                self.as_mut().bump_filtered_revision();
                 self.as_mut().bump_revision();
                 self.as_mut().set_ready(true);
             }
@@ -644,7 +732,73 @@ impl qobject::ExternalTorrentModel {
             return;
         }
         self.as_mut().set_selected_index(index);
+        self.as_mut().set_selected_file_count(1);
+        self.as_mut().set_suggested_selection(false);
+        self.as_mut().set_selection_summary(qstring(
+            "Exact file selected manually. Queue will download only this reviewed payload.",
+        ));
+        self.as_mut()
+            .set_download_scope(qstring("Selected file only"));
+        self.as_mut().rust_mut().selected_file_indices = vec![usize::try_from(index).unwrap()];
+        self.as_mut().rust_mut().selected_download_plan = None;
         self.as_mut().bump_revision();
+    }
+
+    pub fn filter_files(mut self: Pin<&mut Self>, query: QString) {
+        if !*self.as_ref().ready() {
+            return;
+        }
+        let query = query.to_string().chars().take(512).collect::<String>();
+        self.as_mut().set_file_filter(qstring(&query));
+        self.as_mut().rust_mut().filter_generation =
+            self.as_ref().rust().filter_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().filter_generation;
+        let terms = query
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .filter(|term| !term.is_empty())
+            .collect::<Vec<_>>();
+        if terms.is_empty() {
+            let indices = self.as_ref().rust().display_order.as_ref().clone();
+            let count = indices.len();
+            self.as_mut().rust_mut().filtered_file_indices = indices;
+            self.as_mut()
+                .set_filtered_file_count(i32::try_from(count).unwrap_or(i32::MAX));
+            self.as_mut().set_filter_busy(false);
+            self.as_mut().bump_filtered_revision();
+            return;
+        }
+
+        let display_order = Arc::clone(&self.as_ref().rust().display_order);
+        let searchable_paths = Arc::clone(&self.as_ref().rust().searchable_paths);
+        self.as_mut().set_filter_busy(true);
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-torrent-file-filter".to_owned())
+            .spawn(move || {
+                let indices = filter_display_order(&display_order, &searchable_paths, &terms);
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_file_filter(generation, indices);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_filter_busy(false);
+            self.as_mut().set_message(qstring(format!(
+                "Could not search torrent contents: {error}"
+            )));
+        }
+    }
+
+    fn finish_file_filter(mut self: Pin<&mut Self>, generation: u64, indices: Vec<usize>) {
+        if generation != self.as_ref().rust().filter_generation {
+            return;
+        }
+        let count = indices.len();
+        self.as_mut().rust_mut().filtered_file_indices = indices;
+        self.as_mut()
+            .set_filtered_file_count(i32::try_from(count).unwrap_or(i32::MAX));
+        self.as_mut().set_filter_busy(false);
+        self.as_mut().bump_filtered_revision();
     }
 
     pub fn set_platform_registration(mut self: Pin<&mut Self>, enabled: bool) {
@@ -680,6 +834,7 @@ impl qobject::ExternalTorrentModel {
         ));
         let association = self.as_ref().rust().association.clone();
         let register_for_platform = *self.as_ref().register_for_platform();
+        let download_plan = self.as_ref().rust().selected_download_plan.clone();
         let generation = self.as_ref().rust().generation;
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
@@ -698,6 +853,7 @@ impl qobject::ExternalTorrentModel {
                         association,
                         offer,
                         selected_index,
+                        download_plan,
                         register_for_platform,
                     )
                 })()
@@ -856,6 +1012,52 @@ impl qobject::ExternalTorrentModel {
             .unwrap_or_default()
     }
 
+    pub fn filtered_file_index_at(&self, row: i32) -> i32 {
+        usize::try_from(row)
+            .ok()
+            .and_then(|row| self.rust().filtered_file_indices.get(row).copied())
+            .and_then(|index| i32::try_from(index).ok())
+            .unwrap_or(-1)
+    }
+
+    pub fn filtered_row_for_file_index(&self, index: i32) -> i32 {
+        let Ok(index) = usize::try_from(index) else {
+            return -1;
+        };
+        self.rust()
+            .filtered_file_indices
+            .iter()
+            .position(|candidate| *candidate == index)
+            .and_then(|row| i32::try_from(row).ok())
+            .unwrap_or(-1)
+    }
+
+    pub fn file_selected_at(&self, index: i32) -> bool {
+        usize::try_from(index)
+            .ok()
+            .is_some_and(|index| self.rust().selected_file_indices.contains(&index))
+    }
+
+    pub fn file_match_label_at(&self, index: i32) -> QString {
+        let Ok(index) = usize::try_from(index) else {
+            return QString::default();
+        };
+        if self.rust().selected_file_indices.contains(&index) {
+            if *self.selected_index() == i32::try_from(index).unwrap_or(-1) {
+                return qstring(if *self.suggested_selection() {
+                    "BEST MATCH"
+                } else {
+                    "REVIEWED SELECTION"
+                });
+            }
+            return qstring("RELATED FILE");
+        }
+        if self.rust().ranked_file_indices.contains(&index) {
+            return qstring("TITLE MATCH");
+        }
+        QString::default()
+    }
+
     pub fn existing_name_at(&self, index: i32) -> QString {
         usize::try_from(index)
             .ok()
@@ -891,11 +1093,27 @@ impl qobject::ExternalTorrentModel {
     }
 
     fn reset_offer(mut self: Pin<&mut Self>) {
-        self.as_mut().rust_mut().offer = None;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.offer = None;
+            rust.display_order = Arc::new(Vec::new());
+            rust.searchable_paths = Arc::new(Vec::new());
+            rust.filtered_file_indices.clear();
+            rust.ranked_file_indices.clear();
+            rust.selected_file_indices.clear();
+            rust.selected_download_plan = None;
+            rust.filter_generation = rust.filter_generation.wrapping_add(1);
+        }
         self.as_mut().set_ready(false);
         self.as_mut().set_importing_existing(false);
+        self.as_mut().set_filter_busy(false);
         self.as_mut().set_file_count(0);
+        self.as_mut().set_filtered_file_count(0);
         self.as_mut().set_selected_index(-1);
+        self.as_mut().set_selected_file_count(0);
+        self.as_mut().set_suggested_selection(false);
+        self.as_mut().set_file_filter(QString::default());
+        self.as_mut().set_selection_summary(QString::default());
         self.as_mut().set_source_file_name(QString::default());
         self.as_mut().set_source_kind(qstring("file"));
         self.as_mut().set_torrent_name(QString::default());
@@ -904,6 +1122,7 @@ impl qobject::ExternalTorrentModel {
         self.as_mut()
             .set_download_scope(qstring("Selected file only"));
         self.as_mut().set_queued_job_id(QString::default());
+        self.as_mut().bump_filtered_revision();
         self.as_mut().bump_revision();
     }
 
@@ -930,6 +1149,11 @@ impl qobject::ExternalTorrentModel {
         let revision = self.as_ref().revision().saturating_add(1);
         self.as_mut().set_revision(revision);
     }
+
+    fn bump_filtered_revision(mut self: Pin<&mut Self>) {
+        let revision = self.as_ref().filtered_revision().saturating_add(1);
+        self.as_mut().set_filtered_revision(revision);
+    }
 }
 
 impl ExternalTorrentModelRust {
@@ -940,6 +1164,170 @@ impl ExternalTorrentModelRust {
     fn has_review_target(&self) -> bool {
         self.association.is_some() || self.collection_association.is_some()
     }
+
+    fn review_game_title(&self) -> Option<String> {
+        self.association
+            .as_ref()
+            .map(|association| association.title.clone())
+    }
+}
+
+fn prepare_inspection_result(
+    offer: ManualTorrentOffer,
+    game_title: Option<&str>,
+    settings: &crate::settings::AppSettings,
+) -> anyhow::Result<InspectionResult> {
+    let ranked_candidates = if let Some(game_title) = game_title {
+        let files = offer
+            .files
+            .iter()
+            .map(|file| TorrentFileCandidate {
+                index: file.index as usize,
+                filename: file.path.clone(),
+                byte_size: file.byte_size,
+                match_score: 0.0,
+                matched_title: String::new(),
+                region: String::new(),
+                version: String::new(),
+                download_plan: None,
+            })
+            .collect();
+        crate::game_details::rank_file_candidates(
+            files,
+            game_title,
+            &[],
+            &ReleasePreferences {
+                region_priority: settings.region_priority.clone(),
+                version_preference: settings.version_preference.clone(),
+            },
+        )?
+    } else {
+        Vec::new()
+    };
+    Ok(InspectionResult {
+        offer,
+        ranked_candidates,
+    })
+}
+
+fn build_review_state(
+    offer: &ManualTorrentOffer,
+    ranked_candidates: Vec<TorrentFileCandidate>,
+    collection_mode: bool,
+) -> ReviewState {
+    let positions_by_torrent_index = offer
+        .files
+        .iter()
+        .enumerate()
+        .map(|(position, file)| (file.index as usize, position))
+        .collect::<std::collections::HashMap<_, _>>();
+    let position_for_torrent_index =
+        |torrent_index: usize| positions_by_torrent_index.get(&torrent_index).copied();
+    let mut seen_file_indices = vec![false; offer.files.len()];
+    let mut ranked_file_indices = Vec::with_capacity(ranked_candidates.len());
+    for candidate in &ranked_candidates {
+        if let Some(index) = position_for_torrent_index(candidate.index)
+            && !seen_file_indices[index]
+        {
+            seen_file_indices[index] = true;
+            ranked_file_indices.push(index);
+        }
+    }
+    let mut display_order = ranked_file_indices.clone();
+    for index in 0..offer.files.len() {
+        if !seen_file_indices[index] {
+            display_order.push(index);
+        }
+    }
+    if collection_mode {
+        return ReviewState {
+            display_order,
+            ranked_file_indices,
+            selected_file_indices: Vec::new(),
+            selected_index: -1,
+            selected_download_plan: None,
+            selection_summary: "All safe members will be indexed; no payload downloads now."
+                .to_owned(),
+        };
+    }
+    let Some(best) = ranked_candidates.first() else {
+        return ReviewState {
+            display_order,
+            ranked_file_indices,
+            selected_file_indices: Vec::new(),
+            selected_index: -1,
+            selected_download_plan: None,
+            selection_summary:
+                "No strong title match found. Search or select the exact game payload.".to_owned(),
+        };
+    };
+    let Some(selected_position) = position_for_torrent_index(best.index) else {
+        return ReviewState {
+            display_order,
+            ranked_file_indices,
+            selected_file_indices: Vec::new(),
+            selected_index: -1,
+            selected_download_plan: None,
+            selection_summary:
+                "No strong title match found. Search or select the exact game payload.".to_owned(),
+        };
+    };
+    let mut selected_file_indices = vec![selected_position];
+    if let Some(plan) = best.download_plan.as_ref() {
+        for member in &plan.members {
+            if let Some(index) = position_for_torrent_index(member.index)
+                && !selected_file_indices.contains(&index)
+            {
+                selected_file_indices.push(index);
+            }
+        }
+    }
+    let mut prioritized_display_order = Vec::with_capacity(display_order.len());
+    let mut prioritized = vec![false; offer.files.len()];
+    for index in &selected_file_indices {
+        if !prioritized[*index] {
+            prioritized[*index] = true;
+            prioritized_display_order.push(*index);
+        }
+    }
+    for index in display_order {
+        if !prioritized[index] {
+            prioritized[index] = true;
+            prioritized_display_order.push(index);
+        }
+    }
+    let selection_summary = if selected_file_indices.len() > 1 {
+        format!(
+            "Best title match selected with {} required related files. Review before queueing.",
+            selected_file_indices.len()
+        )
+    } else {
+        "Best title match selected automatically. Review before queueing.".to_owned()
+    };
+    ReviewState {
+        display_order: prioritized_display_order,
+        ranked_file_indices,
+        selected_file_indices,
+        selected_index: i32::try_from(selected_position).unwrap_or(-1),
+        selected_download_plan: best.download_plan.clone(),
+        selection_summary,
+    }
+}
+
+fn filter_display_order(
+    display_order: &[usize],
+    searchable_paths: &[String],
+    terms: &[String],
+) -> Vec<usize> {
+    display_order
+        .iter()
+        .copied()
+        .filter(|index| {
+            searchable_paths
+                .get(*index)
+                .is_some_and(|path| terms.iter().all(|term| path.contains(term)))
+        })
+        .collect()
 }
 
 fn normalized_collection_platform(value: &str) -> String {
@@ -959,5 +1347,120 @@ impl Drop for ExternalTorrentModelRust {
                 let _ = std::fs::remove_dir(parent);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn offer(files: &[(u32, &str, u64)]) -> ManualTorrentOffer {
+        ManualTorrentOffer {
+            source_file_name: "collection.torrent".to_owned(),
+            source_kind: "file".to_owned(),
+            source_label: "collection.torrent".to_owned(),
+            torrent_name: "Collection".to_owned(),
+            torrent_sha256: "0".repeat(64),
+            info_hash: "1".repeat(40),
+            total_bytes: files.iter().map(|(_, _, size)| size).sum(),
+            files: files
+                .iter()
+                .map(|(index, path, byte_size)| ReviewedTorrentFile {
+                    index: *index,
+                    path: (*path).to_owned(),
+                    byte_size: *byte_size,
+                })
+                .collect(),
+            torrent_bytes: Vec::new(),
+            magnet_review_created: false,
+            externally_managed: false,
+        }
+    }
+
+    #[test]
+    fn minerva_ranker_selects_the_best_exact_game_payload_by_default() {
+        let offer = offer(&[
+            (0, "Docs/readme.txt", 10),
+            (7, "NES/Other Game (USA).zip", 20),
+            (9, "NES/Faxanadu (USA).zip", 30),
+        ]);
+        let result = prepare_inspection_result(
+            offer.clone(),
+            Some("Faxanadu"),
+            &crate::settings::AppSettings::default(),
+        )
+        .unwrap();
+        let state = build_review_state(&offer, result.ranked_candidates, false);
+
+        assert_eq!(state.selected_index, 2);
+        assert_eq!(state.selected_file_indices, [2]);
+        assert_eq!(state.display_order[0], 2);
+        assert!(state.selection_summary.contains("selected automatically"));
+    }
+
+    #[test]
+    fn weak_title_similarity_never_guesses_a_default_payload() {
+        let offer = offer(&[
+            (0, "Docs/readme.txt", 10),
+            (1, "Switch/Completely Different Game.nsp", 20),
+        ]);
+        let result = prepare_inspection_result(
+            offer.clone(),
+            Some("Super Mario Odyssey"),
+            &crate::settings::AppSettings::default(),
+        )
+        .unwrap();
+        let state = build_review_state(&offer, result.ranked_candidates, false);
+
+        assert_eq!(state.selected_index, -1);
+        assert!(state.selected_file_indices.is_empty());
+        assert!(state.selection_summary.contains("No strong title match"));
+    }
+
+    #[test]
+    fn multidisc_default_keeps_every_disc_sidecar_and_m3u_plan() {
+        let offer = offer(&[
+            (0, "Docs/readme.txt", 10),
+            (10, "Sony/Final Fantasy VII (USA) (Disc 1).cue", 100),
+            (
+                11,
+                "Sony/Final Fantasy VII (USA) (Disc 1) (Track 01).bin",
+                1_000,
+            ),
+            (12, "Sony/Final Fantasy VII (USA) (Disc 2).cue", 200),
+            (
+                13,
+                "Sony/Final Fantasy VII (USA) (Disc 2) (Track 01).bin",
+                2_000,
+            ),
+        ]);
+        let result = prepare_inspection_result(
+            offer.clone(),
+            Some("Final Fantasy VII"),
+            &crate::settings::AppSettings::default(),
+        )
+        .unwrap();
+        let state = build_review_state(&offer, result.ranked_candidates, false);
+        let plan = state.selected_download_plan.as_ref().unwrap();
+
+        assert_eq!(state.selected_index, 1);
+        assert_eq!(state.selected_file_indices, [1, 2, 3, 4]);
+        assert_eq!(plan.kind, "optical_multidisc");
+        assert_eq!(plan.playlist_filename, "Final Fantasy VII (USA).m3u");
+        assert_eq!(plan.members.len(), 4);
+    }
+
+    #[test]
+    fn filename_filter_preserves_ranked_display_order_and_source_positions() {
+        let order = vec![2, 0, 3, 1];
+        let paths = vec![
+            "switch/super mario odyssey.nsp".to_owned(),
+            "docs/readme.txt".to_owned(),
+            "switch/mario kart 8 deluxe.nsp".to_owned(),
+            "switch/super mario 3d world.nsp".to_owned(),
+        ];
+        let terms = vec!["mario".to_owned(), "switch".to_owned()];
+
+        assert_eq!(filter_display_order(&order, &paths, &terms), [2, 0, 3]);
     }
 }

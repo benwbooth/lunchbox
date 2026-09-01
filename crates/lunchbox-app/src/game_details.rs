@@ -2121,7 +2121,7 @@ fn registered_torrent_info_hash(locator: &str) -> Result<&str> {
     Ok(info_hash)
 }
 
-fn rank_file_candidates(
+pub(crate) fn rank_file_candidates(
     files: Vec<TorrentFileCandidate>,
     game_title: &str,
     alternate_titles: &[AlternateTitle],

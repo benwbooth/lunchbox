@@ -2455,6 +2455,12 @@ ApplicationWindow {
             } else if (!externalTorrentPlatformSource.visible) {
                 failure = "platform source control visibility"
                 failureCode = 29
+            } else if (externalTorrent.selected_index !== -1) {
+                failure = "weak match was selected automatically"
+                failureCode = 30
+            } else if (externalTorrent.filtered_file_count !== 2) {
+                failure = "filtered source index"
+                failureCode = 31
             }
             if (failure.length > 0) {
                 console.error("LUNCHBOX_MANUAL_TORRENT_UI_FAILED check="
@@ -15670,139 +15676,16 @@ ApplicationWindow {
                     }
                 }
 
-                Rectangle {
+                TorrentPayloadPicker {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: 150
-                    radius: 10
-                    color: "#0e141d"
-                    border.color: root.line
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 1
-                        spacing: 0
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 36
-                            color: "#151d29"
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 14
-                                anchors.rightMargin: 14
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: externalTorrent.ready
-                                          ? (externalTorrent.collection_mode
-                                             ? "FILES AVAILABLE ON DEMAND"
-                                             : "SELECT THE EXACT GAME PAYLOAD")
-                                          : "TORRENT CONTENTS"
-                                    color: root.muted
-                                    font.pixelSize: 9
-                                    font.weight: Font.Bold
-                                    font.letterSpacing: 0.9
-                                }
-                                Text {
-                                    visible: externalTorrent.ready
-                                    text: externalTorrent.collection_mode
-                                          ? "Adding this source downloads nothing"
-                                          : "Nothing downloads until Queue"
-                                    color: "#6f7c8f"
-                                    font.pixelSize: 8
-                                }
-                            }
-                        }
-                        ListView {
-                            id: externalTorrentFiles
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            clip: true
-                            spacing: 2
-                            model: externalTorrent.file_count
-                            ScrollBar.vertical: ScrollBar {
-                                policy: ScrollBar.AsNeeded
-                            }
-                            delegate: ItemDelegate {
-                                id: torrentFileRow
-                                required property int index
-                                property int offerRevision: externalTorrent.revision
-                                width: ListView.view.width
-                                height: 58
-                                highlighted: !externalTorrent.collection_mode
-                                             && externalTorrent.selected_index === index
-                                enabled: !externalTorrent.busy
-                                onClicked: {
-                                    if (!externalTorrent.collection_mode)
-                                        externalTorrent.select_file(index)
-                                }
-                                background: Rectangle {
-                                    color: torrentFileRow.highlighted ? "#263342"
-                                                                       : torrentFileRow.hovered
-                                                                         ? "#18212d"
-                                                                         : "transparent"
-                                    border.color: torrentFileRow.highlighted
-                                                  ? root.accent : "transparent"
-                                    border.width: torrentFileRow.highlighted ? 1 : 0
-                                }
-                                contentItem: RowLayout {
-                                    spacing: 10
-                                    RadioButton {
-                                        visible: !externalTorrent.collection_mode
-                                        checked: externalTorrent.selected_index
-                                                 === torrentFileRow.index
-                                        onClicked: externalTorrent.select_file(
-                                                       torrentFileRow.index)
-                                    }
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        spacing: 2
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: {
-                                                torrentFileRow.offerRevision
-                                                return externalTorrent.file_path_at(
-                                                            torrentFileRow.index)
-                                            }
-                                            color: root.ink
-                                            font.pixelSize: 10
-                                            font.weight: Font.Medium
-                                            elide: Text.ElideMiddle
-                                        }
-                                        Text {
-                                            text: {
-                                                torrentFileRow.offerRevision
-                                                return externalTorrent.file_size_at(
-                                                            torrentFileRow.index)
-                                            }
-                                            color: root.muted
-                                            font.pixelSize: 9
-                                        }
-                                    }
-                                    Text {
-                                        visible: externalTorrent.collection_mode
-                                                 || torrentFileRow.highlighted
-                                        text: externalTorrent.collection_mode
-                                              ? "INDEXED" : "REVIEWED SELECTION"
-                                        color: externalTorrent.collection_mode
-                                               ? root.accentCool : root.accent
-                                        font.pixelSize: 8
-                                        font.weight: Font.Bold
-                                    }
-                                }
-                            }
-                            Text {
-                                anchors.centerIn: parent
-                                width: parent.width - 50
-                                visible: externalTorrent.file_count === 0
-                                text: externalTorrent.busy
-                                      ? "Reading torrent metadata…"
-                                      : "Import a .torrent file, choose one already loaded in qBittorrent, or paste a magnet link to inspect exact paths and sizes."
-                                color: root.muted
-                                font.pixelSize: 11
-                                horizontalAlignment: Text.AlignHCenter
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-                    }
+                    torrent: externalTorrent
+                    ink: root.ink
+                    muted: root.muted
+                    accent: root.accent
+                    accentCool: root.accentCool
+                    line: root.line
                 }
 
                 Rectangle {
@@ -15898,7 +15781,9 @@ ApplicationWindow {
                         onClicked: externalTorrentDialog.close()
                     }
                     Button {
-                        Layout.preferredWidth: externalTorrent.importing_existing ? 232 : 176
+                        property bool queuesPayloadSet: externalTorrent.selected_file_count > 1
+                        Layout.preferredWidth: externalTorrent.importing_existing ? 232
+                                               : queuesPayloadSet ? 196 : 176
                         Layout.preferredHeight: 36
                         text: externalTorrent.busy ? "WORKING…"
                               : externalTorrent.collection_mode
@@ -15908,10 +15793,16 @@ ApplicationWindow {
                                 : externalTorrent.importing_existing
                                   ? externalTorrent.register_for_platform
                                     ? "IMPORT + QUEUE + ADD SOURCE"
-                                    : "IMPORT + QUEUE FILE"
+                                    : queuesPayloadSet
+                                      ? "IMPORT + QUEUE SET"
+                                      : "IMPORT + QUEUE FILE"
                                 : externalTorrent.register_for_platform
-                                  ? "QUEUE FILE + ADD SOURCE"
-                                  : "QUEUE REVIEWED FILE"
+                                  ? queuesPayloadSet
+                                    ? "QUEUE SET + ADD SOURCE"
+                                    : "QUEUE FILE + ADD SOURCE"
+                                  : queuesPayloadSet
+                                    ? "QUEUE REVIEWED SET"
+                                    : "QUEUE REVIEWED FILE"
                         enabled: externalTorrent.ready
                                  && (externalTorrent.collection_mode
                                      || externalTorrent.selected_index >= 0)

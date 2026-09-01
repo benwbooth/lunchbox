@@ -96,6 +96,7 @@ fn main() {
                 "qml/SidebarNavButton.qml",
                 "qml/SettingsNavButton.qml",
                 "qml/StatusPill.qml",
+                "qml/TorrentPayloadPicker.qml",
                 "qml/ViewportCardGeometry.qml",
                 "qml/Main.qml",
             ]),
