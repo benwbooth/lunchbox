@@ -21,6 +21,7 @@ TestCase {
         property int filterCalls: 0
         property int inspectedIndex: -1
         property string inspectedHash: ""
+        property bool holdInspectionBusy: false
 
         function hashFor(index) {
             return index.toString(16).padStart(40, "0")
@@ -63,6 +64,7 @@ TestCase {
             inspectedIndex = index
             inspectedHash = existing_info_hash_at(index)
             existing_selected_info_hash = inspectedHash
+            busy = holdInspectionBusy
         }
     }
 
@@ -92,6 +94,8 @@ TestCase {
         torrentModel.filterCalls = 0
         torrentModel.inspectedIndex = -1
         torrentModel.inspectedHash = ""
+        torrentModel.holdInspectionBusy = false
+        torrentModel.busy = false
         picker.reset()
         wait(20)
         torrentModel.filterCalls = 0
@@ -144,6 +148,24 @@ TestCase {
         torrentModel.existing_filter_revision += 1
         torrentModel.existing_revision += 1
         compare(picker.highlightedRow, 17321)
+    }
+
+    function test_click_closes_results_while_real_inspection_is_busy() {
+        torrentModel.holdInspectionBusy = true
+        const button = findChild(picker, "loadedTorrentDropdownButton")
+        mouseClick(button, button.width / 2, button.height / 2)
+
+        const popup = findChild(picker, "loadedTorrentPopup")
+        tryVerify(() => popup.opened)
+        picker.chooseRow(0)
+
+        compare(torrentModel.inspectedIndex, 0)
+        tryVerify(() => !popup.opened)
+        verify(!popup.visible)
+        torrentModel.busy = false
+        wait(20)
+        verify(!popup.opened)
+        verify(!popup.visible)
     }
 
     function test_filtered_row_selection_keeps_original_source_index() {

@@ -62,16 +62,18 @@ Rectangle {
         torrentSearch.text = torrent.existing_name_at(sourceIndex)
         torrentPopup.close()
         torrentSearch.focus = false
+
+        // ItemDelegate emits clicked after the pointer release, so inspection can
+        // start synchronously. Keeping this behind callLater left a frame where
+        // the popup could remain in the overlay or regain focus on a real model.
+        torrent.inspect_existing_torrent(sourceIndex)
+        torrentPopup.close()
+        if (!torrent.busy)
+            selectionInProgress = false
+
         Qt.callLater(function() {
-            // Finish the pointer event before beginning inspection. Otherwise a
-            // release can land on the search field after the popup disappears and
-            // immediately reopen the results on some Qt platform plugins.
             torrentPopup.close()
-            torrent.inspect_existing_torrent(sourceIndex)
-            if (!torrent.busy) {
-                torrentPopup.close()
-                selectionInProgress = false
-            }
+            torrentSearch.focus = false
         })
     }
 

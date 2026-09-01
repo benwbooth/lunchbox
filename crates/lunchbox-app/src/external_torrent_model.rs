@@ -1639,6 +1639,51 @@ mod tests {
     }
 
     #[test]
+    fn live_mig_shape_selects_the_game_image_and_not_card_metadata() {
+        let root = "MIG Switch Game Collection/Super Mario RPG Legend of the Seven Stars.xci";
+        let offer = offer(&[
+            (
+                4400,
+                &format!("{root}/Super Mario RPG Legend of the Seven Stars (Card ID Set).bin"),
+                12,
+            ),
+            (
+                4401,
+                &format!("{root}/Super Mario RPG Legend of the Seven Stars (Card UID).bin"),
+                64,
+            ),
+            (
+                4402,
+                &format!("{root}/Super Mario RPG Legend of the Seven Stars (Certificate).bin"),
+                512,
+            ),
+            (
+                4403,
+                &format!("{root}/Super Mario RPG Legend of the Seven Stars (Initial Data).bin"),
+                512,
+            ),
+            (
+                4404,
+                &format!("{root}/Super Mario RPG Legend of the Seven Stars.xci"),
+                7_260_093_952,
+            ),
+        ]);
+        let result = prepare_inspection_result(
+            offer.clone(),
+            Some("Super Mario Bros RPG"),
+            Some("Nintendo - Nintendo Switch"),
+            &crate::settings::AppSettings::default(),
+        )
+        .unwrap();
+        let state = build_review_state(&offer, result.ranked_candidates, false);
+
+        assert_eq!(state.selected_index, 4);
+        assert_eq!(state.selected_file_indices, [4]);
+        assert_eq!(state.display_order[0], 4);
+        assert!(offer.files[state.display_order[0]].path.ends_with(".xci"));
+    }
+
+    #[test]
     fn weak_title_similarity_never_guesses_a_default_payload() {
         let offer = offer(&[
             (0, "Docs/readme.txt", 10),

@@ -2225,10 +2225,8 @@ fn platform_payload_tier(platform: Option<&str>, candidate: &TorrentFileCandidat
     let Some(platform) = platform else {
         return Some(0);
     };
-    if !matches!(
-        catalog::normalize_platform_key(platform).as_str(),
-        "nintendo-switch" | "switch"
-    ) {
+    let platform_key = catalog::normalize_platform_key(platform);
+    if !platform_key.split('-').any(|part| part == "switch") {
         return Some(0);
     }
 
@@ -2252,14 +2250,40 @@ fn platform_payload_tier(platform: Option<&str>, candidate: &TorrentFileCandidat
 }
 
 fn is_known_auxiliary_payload(candidate: &TorrentFileCandidate) -> bool {
-    if candidate.byte_size > 4 * 1024 {
-        return false;
-    }
-    let extension = Path::new(&candidate.filename)
+    let path = Path::new(&candidate.filename);
+    let extension = path
         .extension()
         .and_then(|extension| extension.to_str())
-        .unwrap_or_default();
-    if !extension.eq_ignore_ascii_case("bin") {
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    // MIG dumps place card metadata beside the image inside a directory whose
+    // name itself ends in .xci/.nsp. Only the actual image is launchable. This
+    // structural rule remains valid when a dump omits the usual marker names.
+    let nested_below_game_image = path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| Path::new(name).extension())
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|parent_extension| {
+            matches!(parent_extension.as_str(), "xci" | "nsp" | "nsz" | "xcz")
+                && extension != parent_extension
+        });
+    if nested_below_game_image {
+        return true;
+    }
+
+    if extension != "bin" {
+        return false;
+    }
+
+    // A 12-byte exact-title file is metadata, never a playable ROM. Keep this
+    // deliberately below even the smallest historical cartridge payloads.
+    if candidate.byte_size < 128 {
+        return true;
+    }
+    if candidate.byte_size > 4 * 1024 {
         return false;
     }
     let filename = candidate.filename.to_ascii_lowercase();
@@ -2873,6 +2897,27 @@ mod tests {
                 .iter()
                 .all(|candidate| candidate.byte_size > 4 * 1024)
         );
+    }
+
+    #[test]
+    fn nested_mig_sidecar_without_a_known_label_is_not_a_game_payload() {
+        let root = "MIG Switch/Super Mario RPG.xci";
+        let mut sidecar = candidate(0, &format!("{root}/Super Mario RPG data.bin"));
+        sidecar.byte_size = 512;
+        let mut game_image = candidate(1, &format!("{root}/Super Mario RPG.xci"));
+        game_image.byte_size = 7_260_093_952;
+
+        let ranked = rank_file_candidates_for_platform(
+            vec![sidecar, game_image],
+            "Super Mario RPG",
+            &[],
+            &preferences("USA", "latest"),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(ranked.len(), 1);
+        assert_eq!(ranked[0].index, 1);
     }
 
     #[test]
