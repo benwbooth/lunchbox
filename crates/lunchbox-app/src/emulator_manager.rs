@@ -225,7 +225,7 @@ struct GitHubAsset {
     digest: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct SourceMetadata {
     #[serde(default)]
     archive_format: String,
@@ -235,6 +235,12 @@ struct SourceMetadata {
     asset_terms: Vec<String>,
     #[serde(default)]
     executable_candidates: Vec<String>,
+    #[serde(default)]
+    asset_terms_by_arch: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    supported_arches: Vec<String>,
+    #[serde(default)]
+    release_api: String,
     #[serde(default)]
     runtime: String,
 }
@@ -325,7 +331,7 @@ pub fn load_managed_emulators() -> Result<Vec<ManagedEmulator>> {
             emulator_id: source.emulator_id,
             name: source.name,
             host_system_slug: source.host_system_slug,
-            source_label: manager_label(&source.manager).to_owned(),
+            source_label: source_label(&source.manager, &source.metadata_json),
             manager_available: manager_available(&source.manager, &source.metadata_json),
             manager: source.manager,
             package_id: source.package_id,
@@ -526,7 +532,7 @@ pub fn load_available_emulator_updates() -> Result<EmulatorUpdateInventory> {
             emulator_id: source.emulator_id,
             name: source.name,
             host_system_slug: source.host_system_slug,
-            source_label: manager_label(&source.manager).to_owned(),
+            source_label: source_label(&source.manager, &source.metadata_json),
             manager_available: manager_available(&source.manager, &source.metadata_json),
             manager: source.manager,
             package_id: source.package_id,
@@ -1014,6 +1020,19 @@ fn validate_source(source: &InstallSource) -> Result<()> {
     if !metadata.is_object() {
         bail!("emulator install source metadata must be a JSON object");
     }
+    let metadata: SourceMetadata = serde_json::from_value(metadata)
+        .context("parsing emulator install source metadata fields")?;
+    if !metadata.release_api.is_empty() && !metadata.release_api.starts_with("https://") {
+        bail!("managed release APIs must use HTTPS");
+    }
+    if metadata
+        .supported_arches
+        .iter()
+        .chain(metadata.asset_terms_by_arch.keys())
+        .any(|architecture| !matches!(architecture.as_str(), "x86_64" | "aarch64"))
+    {
+        bail!("managed release metadata contains an unsupported architecture");
+    }
     Ok(())
 }
 
@@ -1110,6 +1129,26 @@ fn manager_label(manager: &str) -> &'static str {
     }
 }
 
+fn source_label(manager: &str, metadata_json: &str) -> String {
+    let metadata: SourceMetadata = serde_json::from_str(metadata_json).unwrap_or_default();
+    if !metadata.release_api.is_empty() {
+        return if manager == "appimage" {
+            "Official AppImage".to_owned()
+        } else {
+            "Official release".to_owned()
+        };
+    }
+    manager_label(manager).to_owned()
+}
+
+fn source_supports_current_architecture(metadata: &SourceMetadata) -> bool {
+    metadata.supported_arches.is_empty()
+        || metadata
+            .supported_arches
+            .iter()
+            .any(|architecture| architecture == env::consts::ARCH)
+}
+
 fn summarize_emulator_names(names: &BTreeSet<String>) -> String {
     let Some(first) = names.iter().next() else {
         return "Unknown emulator".to_owned();
@@ -1136,13 +1175,25 @@ fn update_source_label(row: &ManagedEmulator) -> String {
 }
 
 fn manager_available(manager: &str, metadata_json: &str) -> bool {
+    let metadata: SourceMetadata = serde_json::from_str(metadata_json).unwrap_or_default();
+    if !source_supports_current_architecture(&metadata) {
+        return false;
+    }
     match manager {
         "flatpak" => cfg!(target_os = "linux") && command_path("flatpak").is_ok(),
-        "appimage" => cfg!(all(target_os = "linux", target_arch = "x86_64")),
+        "appimage" => {
+            cfg!(target_os = "linux") && matches!(env::consts::ARCH, "x86_64" | "aarch64")
+        }
         "nix" => cfg!(target_os = "linux") && command_path("nix").is_ok(),
-        "github" => cfg!(target_os = "linux"),
+        "github" => {
+            cfg!(any(
+                target_os = "linux",
+                target_os = "windows",
+                target_os = "macos"
+            )) && (metadata.archive_format != "dmg"
+                || (cfg!(target_os = "macos") && command_path("hdiutil").is_ok()))
+        }
         "direct" => {
-            let metadata: SourceMetadata = serde_json::from_str(metadata_json).unwrap_or_default();
             cfg!(target_os = "linux")
                 && (metadata.runtime != "wine"
                     || (command_path("wine").is_ok() || command_path("wine64").is_ok()))
@@ -1455,14 +1506,14 @@ impl UpdateChecks {
                         "the installed release version could not be determined".to_owned(),
                     );
                 }
-                let result = self
-                    .github
-                    .entry(row.package_id.clone())
-                    .or_insert_with(|| {
-                        github_latest_release(&row.package_id)
-                            .map(|release| normalize_version(&release.tag_name))
-                            .map_err(|error| format!("{error:#}"))
-                    });
+                let metadata: SourceMetadata =
+                    serde_json::from_str(&row.metadata_json).unwrap_or_default();
+                let release_key = format!("{}|{}", row.package_id, metadata.release_api);
+                let result = self.github.entry(release_key).or_insert_with(|| {
+                    managed_latest_release(&row.package_id, &metadata)
+                        .map(|release| normalize_version(&release.tag_name))
+                        .map_err(|error| format!("{error:#}"))
+                });
                 match result {
                     Ok(available) if versions_match(&row.version, available) => {
                         UpdateCheckResult::Current
@@ -2010,7 +2061,7 @@ fn write_program_manifest(manifest: &ManagedProgramManifest) -> Result<()> {
 
 fn install_github_program(row: &ManagedEmulator) -> Result<String> {
     let metadata: SourceMetadata = serde_json::from_str(&row.metadata_json)?;
-    let release = github_latest_release(&row.package_id)?;
+    let release = managed_latest_release(&row.package_id, &metadata)?;
     let asset = select_release_asset(&release, &metadata)?;
     let version = normalize_version(&release.tag_name);
     let root = program_root(&row.emulator_id, &row.manager)?;
@@ -2032,6 +2083,10 @@ fn install_github_program(row: &ManagedEmulator) -> Result<String> {
         extract_zip(&archive, &payload_root)?;
     } else if asset.name.to_ascii_lowercase().ends_with(".tar.gz") {
         extract_tar_gz(&archive, &payload_root)?;
+    } else if asset.name.to_ascii_lowercase().ends_with(".dmg")
+        || metadata.archive_format.eq_ignore_ascii_case("dmg")
+    {
+        extract_dmg(&archive, &payload_root)?;
     } else {
         bail!("unsupported managed release asset {}", asset.name);
     }
@@ -2045,7 +2100,15 @@ fn install_github_program(row: &ManagedEmulator) -> Result<String> {
     remove_exact_tree_if_present(&staging)?;
     let final_executable = version_root.join(executable.strip_prefix(&payload_root)?);
     let update_transport = if row.manager == "appimage" {
-        appimage_update_transport(&final_executable).unwrap_or_else(|| "github-release".to_owned())
+        appimage_update_transport(&final_executable).unwrap_or_else(|| {
+            if metadata.release_api.is_empty() {
+                "github-release".to_owned()
+            } else {
+                "official-release".to_owned()
+            }
+        })
+    } else if !metadata.release_api.is_empty() {
+        "official-release".to_owned()
     } else {
         "github-release".to_owned()
     };
@@ -2071,7 +2134,8 @@ fn update_appimage(row: &ManagedEmulator) -> Result<String> {
         && appimage_update_transport(&executable).is_some()
         && let Ok(updated) = run_appimage_update(&executable)
     {
-        if let Ok(release) = github_latest_release(&row.package_id) {
+        let metadata: SourceMetadata = serde_json::from_str(&row.metadata_json)?;
+        if let Ok(release) = managed_latest_release(&row.package_id, &metadata) {
             manifest.version = normalize_version(&release.tag_name);
         }
         manifest.executable_path = updated.to_string_lossy().into_owned();
@@ -2230,25 +2294,50 @@ fn github_latest_release(repository: &str) -> Result<GitHubRelease> {
     serde_json::from_str(&text).context("parsing GitHub release metadata")
 }
 
+fn managed_latest_release(repository: &str, metadata: &SourceMetadata) -> Result<GitHubRelease> {
+    if metadata.release_api.is_empty() {
+        return github_latest_release(repository);
+    }
+    if !metadata.release_api.starts_with("https://") {
+        bail!("managed release APIs must use HTTPS");
+    }
+    let text = download_text(&metadata.release_api, 4 * 1024 * 1024)?;
+    serde_json::from_str(&text).context("parsing official release metadata")
+}
+
 fn select_release_asset<'a>(
     release: &'a GitHubRelease,
     metadata: &SourceMetadata,
 ) -> Result<&'a GitHubAsset> {
+    if !source_supports_current_architecture(metadata) {
+        bail!(
+            "the reviewed release source does not support host architecture {}",
+            env::consts::ARCH
+        );
+    }
+    let mut reviewed_terms = metadata.asset_terms.clone();
+    if let Some(architecture_terms) = metadata.asset_terms_by_arch.get(env::consts::ARCH) {
+        reviewed_terms.extend(architecture_terms.iter().cloned());
+    }
     release
         .assets
         .iter()
         .filter(|asset| {
             let name = asset.name.to_ascii_lowercase();
-            let format_matches = if metadata.archive_payload == "appimage" {
-                name.ends_with(".appimage") || name.contains("appimage")
-            } else if metadata.archive_format == "zip" {
-                name.ends_with(".zip")
-            } else {
-                true
-            };
+            let format_matches =
+                if metadata.archive_payload == "appimage" && metadata.archive_format == "tar.gz" {
+                    name.ends_with(".tar.gz") && name.contains("appimage")
+                } else if metadata.archive_payload == "appimage" {
+                    name.ends_with(".appimage")
+                } else if metadata.archive_format == "zip" {
+                    name.ends_with(".zip")
+                } else if metadata.archive_format == "dmg" {
+                    name.ends_with(".dmg")
+                } else {
+                    true
+                };
             format_matches
-                && metadata
-                    .asset_terms
+                && reviewed_terms
                     .iter()
                     .all(|term| name.contains(&term.to_ascii_lowercase()))
         })
@@ -2418,6 +2507,60 @@ fn extract_tar_gz(archive_path: &Path, output_root: &Path) -> Result<()> {
             .context("extracting managed emulator tar archive")?;
     }
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn extract_dmg(archive_path: &Path, output_root: &Path) -> Result<()> {
+    let mountpoint = archive_path.with_extension(format!("mount-{}", std::process::id()));
+    remove_exact_tree_if_present(&mountpoint)?;
+    fs::create_dir_all(&mountpoint)?;
+    let attach = host_command(command_path("hdiutil")?)
+        .args(["attach", "-nobrowse", "-readonly", "-mountpoint"])
+        .arg(&mountpoint)
+        .arg(archive_path)
+        .output()
+        .context("mounting managed emulator DMG")?;
+    if let Err(error) = require_output(attach, "DMG mount") {
+        let _ = remove_exact_tree_if_present(&mountpoint);
+        return Err(error);
+    }
+
+    let copied = (|| -> Result<()> {
+        let applications = fs::read_dir(&mountpoint)?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.eq_ignore_ascii_case("Eden.app"))
+            })
+            .collect::<Vec<_>>();
+        let [application] = applications.as_slice() else {
+            bail!("official Eden DMG must contain exactly one Eden.app bundle");
+        };
+        let target = output_root.join("Eden.app");
+        let output = host_command(command_path("ditto")?)
+            .arg(application)
+            .arg(&target)
+            .output()
+            .context("copying Eden application bundle")?;
+        require_output(output, "Eden application copy")?;
+        Ok(())
+    })();
+
+    let detach = host_command(command_path("hdiutil")?)
+        .args(["detach", "-force"])
+        .arg(&mountpoint)
+        .output()
+        .context("unmounting managed emulator DMG")
+        .and_then(|output| require_output(output, "DMG unmount"));
+    let _ = remove_exact_tree_if_present(&mountpoint);
+    copied.and(detach)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn extract_dmg(_archive_path: &Path, _output_root: &Path) -> Result<()> {
+    bail!("managed DMG installation is available only on macOS")
 }
 
 fn find_managed_executable(root: &Path, metadata: &SourceMetadata) -> Result<PathBuf> {
@@ -2766,6 +2909,51 @@ mod tests {
         assert_eq!(
             select_release_asset(&release, &metadata).unwrap().name,
             "hypseus-singe_v3.0.1_AppImage.tar.gz"
+        );
+    }
+
+    #[test]
+    fn official_eden_release_selects_the_host_appimage_not_its_zsync() {
+        let release = GitHubRelease {
+            tag_name: "v0.2.1".into(),
+            assets: vec![
+                GitHubAsset {
+                    name: "Eden-Linux-amd64-clang-pgo.AppImage.zsync".into(),
+                    browser_download_url: "https://stable.eden-emu.dev/update.zsync".into(),
+                    size: 0,
+                    digest: None,
+                },
+                GitHubAsset {
+                    name: "Eden-Linux-v0.2.1-amd64-clang-pgo.AppImage".into(),
+                    browser_download_url: "https://stable.eden-emu.dev/eden.AppImage".into(),
+                    size: 0,
+                    digest: None,
+                },
+                GitHubAsset {
+                    name: "Eden-Linux-v0.2.1-aarch64-clang-pgo.AppImage".into(),
+                    browser_download_url: "https://stable.eden-emu.dev/eden-arm.AppImage".into(),
+                    size: 0,
+                    digest: None,
+                },
+            ],
+        };
+        let metadata = SourceMetadata {
+            archive_payload: "appimage".into(),
+            asset_terms: vec!["eden-linux".into(), "clang".into(), "pgo".into()],
+            asset_terms_by_arch: BTreeMap::from([(
+                env::consts::ARCH.to_owned(),
+                vec!["amd64".into()],
+            )]),
+            supported_arches: vec![env::consts::ARCH.to_owned()],
+            release_api: "https://git.eden-emu.dev/api/v1/releases/latest".into(),
+            ..SourceMetadata::default()
+        };
+
+        let selected = select_release_asset(&release, &metadata).unwrap();
+        assert_eq!(selected.name, "Eden-Linux-v0.2.1-amd64-clang-pgo.AppImage");
+        assert_eq!(
+            source_label("appimage", &serde_json::to_string(&metadata).unwrap()),
+            "Official AppImage"
         );
     }
 

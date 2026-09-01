@@ -161,7 +161,6 @@ pub mod qobject {
         #[qproperty(QString, firmware_setup_action)]
         #[qproperty(QString, firmware_setup_label)]
         #[qproperty(bool, switch_prod_keys_ready)]
-        #[qproperty(bool, switch_title_keys_ready)]
         #[qproperty(bool, switch_firmware_ready)]
         #[qproperty(i32, registered_torrent_source_count)]
         #[qproperty(i32, bundle_count)]
@@ -710,7 +709,6 @@ pub struct GameDetailsModelRust {
     firmware_setup_action: QString,
     firmware_setup_label: QString,
     switch_prod_keys_ready: bool,
-    switch_title_keys_ready: bool,
     switch_firmware_ready: bool,
     registered_torrent_source_count: i32,
     bundle_count: i32,
@@ -929,7 +927,6 @@ impl Default for GameDetailsModelRust {
             firmware_setup_action: QString::from("review"),
             firmware_setup_label: QString::from("SET UP EMULATOR"),
             switch_prod_keys_ready: false,
-            switch_title_keys_ready: false,
             switch_firmware_ready: false,
             registered_torrent_source_count: 0,
             bundle_count: 0,
@@ -4935,7 +4932,6 @@ impl qobject::GameDetailsModel {
         self.as_mut()
             .set_firmware_setup_label(QString::from("SET UP EMULATOR"));
         self.as_mut().set_switch_prod_keys_ready(false);
-        self.as_mut().set_switch_title_keys_ready(false);
         self.as_mut().set_switch_firmware_ready(false);
     }
 
@@ -5066,9 +5062,7 @@ impl qobject::GameDetailsModel {
         self.as_mut()
             .set_firmware_setup_label(QString::from("SET UP EMULATOR"));
         self.as_mut()
-            .set_switch_prod_keys_ready(package_ready("prod.keys"));
-        self.as_mut()
-            .set_switch_title_keys_ready(package_ready("title.keys"));
+            .set_switch_prod_keys_ready(package_ready("switch-keys.zip"));
         self.as_mut()
             .set_switch_firmware_ready(package_ready("switch-firmware.zip"));
         if (has_cli_flag("--firmware-probe") || has_cli_flag("--firmware-ui-probe"))

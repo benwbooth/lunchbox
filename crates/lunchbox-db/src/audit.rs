@@ -220,8 +220,10 @@ pub fn audit_connection(connection: &Connection) -> Result<AuditReport> {
             OR instr(p.package_id, char(9))>0
             OR (p.manager='winget' AND p.host_system_slug<>'windows')
             OR (p.manager='homebrew' AND p.host_system_slug<>'macos')
-            OR (p.manager IN ('flatpak','appimage','nix','github','direct')
+            OR (p.manager IN ('flatpak','appimage','nix','direct')
                 AND p.host_system_slug<>'linux')
+            OR (p.manager='github'
+                AND p.host_system_slug NOT IN ('linux','windows','macos'))
             OR (p.manager='flatpak' AND (instr(p.package_id,'.')=0 OR p.package_id LIKE '-%'))
             OR (p.manager='appimage' AND (
                 instr(p.package_id,'/')=0

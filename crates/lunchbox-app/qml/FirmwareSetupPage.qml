@@ -139,7 +139,7 @@ Rectangle {
                             anchors.fill: parent
                             anchors.margins: 14
                             text: page.switchSetup
-                                  ? "Use prod.keys, optional title.keys, and firmware dumped from a Nintendo Switch you own. Lunchbox first checks the emulator's active profile, then validates any selected file before storing or syncing it."
+                                  ? "Use keys and firmware dumped from a Nintendo Switch you own. The keys selector accepts prod.keys directly or a ZIP containing prod.keys and optional title.keys. Lunchbox checks the emulator's active profile before asking for either package."
                                   : "Use firmware acquired lawfully for hardware you own. Lunchbox validates managed packages before storing or syncing them."
                             color: page.muted
                             font.pixelSize: 11
@@ -156,26 +156,18 @@ Rectangle {
                         Repeater {
                             model: [
                                 {
-                                    name: "PROD.KEYS",
-                                    packageName: "prod.keys",
-                                    description: "Console decryption keys · choose the exact prod.keys file from your own dump",
-                                    current: page.nextPackageLower.endsWith(".keys"),
+                                    name: "KEYS PACKAGE",
+                                    packageName: "switch-keys.zip",
+                                    description: "Choose prod.keys directly or a ZIP containing prod.keys and optional title.keys",
+                                    current: page.nextPackageLower === "switch-keys.zip",
                                     complete: page.detailsModel.switch_prod_keys_ready,
                                     required: true
-                                },
-                                {
-                                    name: "TITLE.KEYS",
-                                    packageName: "title.keys",
-                                    description: "Optional ticket-derived keys · useful for titles that require them",
-                                    current: false,
-                                    complete: page.detailsModel.switch_title_keys_ready,
-                                    required: false
                                 },
                                 {
                                     name: "SWITCH FIRMWARE",
                                     packageName: "switch-firmware.zip",
                                     description: "System firmware · choose a ZIP containing the dumped NCA files",
-                                    current: page.nextPackageLower.endsWith(".zip"),
+                                    current: page.nextPackageLower === "switch-firmware.zip",
                                     complete: page.detailsModel.switch_firmware_ready,
                                     required: true
                                 }

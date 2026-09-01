@@ -1530,14 +1530,15 @@ ApplicationWindow {
                             ? gameDetails.firmware_next_package
                           : "required firmware package"
         const lowerName = packageName.toLowerCase()
-        const keyPackage = lowerName.endsWith(".keys")
+        const keyPackage = lowerName === "switch-keys.zip"
+                           || lowerName.endsWith(".keys")
         const archivePackage = lowerName.endsWith(".zip")
         const selected = nativeFileDialog.pick_open_file(
                            "Choose " + packageName + " from your own console dump",
-                           keyPackage ? "Nintendo Switch key files"
+                           keyPackage ? "Nintendo Switch key packages"
                                       : archivePackage ? "Firmware archives"
                                                        : "Firmware packages",
-                           keyPackage ? "keys"
+                           keyPackage ? "keys,zip"
                                       : archivePackage ? "zip"
                                                        : "zip,keys,xml,bin,rom,dat")
         if (root.selectedNativeFile(selected))

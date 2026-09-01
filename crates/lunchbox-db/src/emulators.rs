@@ -656,4 +656,27 @@ mod tests {
         };
         assert!(validate_row(&shifted_core).is_err());
     }
+
+    #[test]
+    fn eden_has_reviewed_install_sources_for_each_desktop_host() {
+        let catalog: InstallSourceCatalog = serde_json::from_str(INSTALL_SOURCES_JSON).unwrap();
+        let eden = catalog
+            .sources
+            .iter()
+            .filter(|source| source.emulator == "Eden")
+            .collect::<Vec<_>>();
+        assert_eq!(eden.len(), 3);
+        assert_eq!(
+            eden.iter()
+                .map(|source| source.host.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["linux", "macos", "windows"])
+        );
+        assert!(eden.iter().all(|source| {
+            source.package_id == "eden-emu/eden"
+                && source.metadata["release_api"]
+                    .as_str()
+                    .is_some_and(|url| url.starts_with("https://git.eden-emu.dev/api/"))
+        }));
+    }
 }

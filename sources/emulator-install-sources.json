@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-08-28",
+  "reviewed_at": "2026-09-01",
   "sources": [
     { "emulator": "Ares", "host": "linux", "manager": "nix", "package_id": "ares" },
     { "emulator": "ares", "host": "linux", "manager": "nix", "package_id": "ares" },
@@ -30,6 +30,57 @@
     { "emulator": "VICE (xpet)", "host": "linux", "manager": "nix", "package_id": "vice" },
     { "emulator": "VICE (xvic)", "host": "linux", "manager": "nix", "package_id": "vice" },
     { "emulator": "xemu", "host": "linux", "manager": "nix", "package_id": "xemu" },
+
+    {
+      "emulator": "Eden",
+      "host": "linux",
+      "manager": "appimage",
+      "package_id": "eden-emu/eden",
+      "metadata": {
+        "release_api": "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases/latest",
+        "archive_payload": "appimage",
+        "asset_terms": ["eden-linux", "clang", "pgo"],
+        "asset_terms_by_arch": {
+          "x86_64": ["amd64"],
+          "aarch64": ["aarch64"]
+        },
+        "supported_arches": ["x86_64", "aarch64"],
+        "executable_candidates": ["Eden"],
+        "update_strategy": "appimage_then_official_release"
+      }
+    },
+    {
+      "emulator": "Eden",
+      "host": "windows",
+      "manager": "github",
+      "package_id": "eden-emu/eden",
+      "metadata": {
+        "release_api": "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases/latest",
+        "archive_format": "zip",
+        "asset_terms": ["eden-windows", "msvc", "standard"],
+        "asset_terms_by_arch": {
+          "x86_64": ["amd64"],
+          "aarch64": ["arm64"]
+        },
+        "supported_arches": ["x86_64", "aarch64"],
+        "executable_candidates": ["eden"],
+        "update_strategy": "replace_from_official_release"
+      }
+    },
+    {
+      "emulator": "Eden",
+      "host": "macos",
+      "manager": "github",
+      "package_id": "eden-emu/eden",
+      "metadata": {
+        "release_api": "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases/latest",
+        "archive_format": "dmg",
+        "asset_terms": ["eden-macos"],
+        "supported_arches": ["aarch64"],
+        "executable_candidates": ["eden"],
+        "update_strategy": "replace_from_official_release"
+      }
+    },
 
     {
       "emulator": "Mesen",

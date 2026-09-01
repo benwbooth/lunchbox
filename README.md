@@ -342,7 +342,9 @@ chooses one deterministic source per emulator, and installs, updates, or
 removes only exact package identities. Linux supports user Flatpaks, a
 Lunchbox-only Nix profile, self-updating AppImages with reviewed GitHub-release
 fallbacks, GitHub archives, and reviewed official downloads such as Altirra
-under an isolated Wine prefix. Windows uses winget and macOS uses Homebrew;
+under an isolated Wine prefix. Eden uses its official stable-release API for
+Linux AppImages, Windows ZIPs, and Apple-silicon macOS DMGs. Other Windows
+packages use winget and other macOS packages use Homebrew;
 Snap is deliberately unsupported. Lunchbox records ownership receipts and
 never removes an externally managed runtime. Exact RetroArch core slugs from
 the canonical emulator/platform catalog are installed from the host-specific
@@ -362,7 +364,7 @@ IDs; macOS consumes Homebrew's structured outdated inventory. A failed source
 check is reported as a warning and never converted into a false update.
 
 Firmware is resolved for the selected runtime and core, rather than from one
-global folder per platform. The canonical catalog carries 127 reviewed rules
+global folder per platform. The canonical catalog carries 124 reviewed rules
 and 19 exact sources recovered from the legacy Lunchbox design, including
 required and optional packages, HLE fallbacks, launch-scoped MAME files, and
 manual-only dumps. The game-details card can download exact Minerva packages,
@@ -374,10 +376,11 @@ copying to native RetroArch, DuckStation, PCSX2, Dolphin, Flycast, openMSX,
 MAME, 86Box, PCem, and other reviewed runtime layouts on Linux, Windows, and
 macOS. Manual-only firmware opens a dedicated native folder with instructions;
 Lunchbox never bundles firmware or silently substitutes a different package.
-Nintendo Switch is an explicit user-owned import workflow: Lunchbox validates
-the structure of `prod.keys` and the recognizable NCA inventory in a firmware
-ZIP, then installs them into the active Eden, Ryubing, or Torzu profile. It does
-not find or download Switch keys or firmware.
+Nintendo Switch is an explicit user-owned import workflow: Lunchbox accepts a
+raw `prod.keys` file or one keys ZIP containing `prod.keys` and optional
+`title.keys`, validates the key structure and the recognizable NCA inventory in
+a separate firmware ZIP, then installs them into the active Eden, Ryubing, or
+Torzu profile. It does not find or download Switch keys or firmware.
 
 Configure qBittorrent and both sides of its filesystem mapping in the native,
 full-window Settings section. Its persistent section rail links directly to

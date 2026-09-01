@@ -26,6 +26,7 @@ const MAX_FIRMWARE_FILES: usize = 250_000;
 const MAX_GITHUB_RELEASE_BYTES: u64 = 4 * 1024 * 1024;
 const FIRMWARE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const SWITCH_KEYS_MAX_BYTES: u64 = 8 * 1024 * 1024;
+const SWITCH_KEYS_PACKAGE: &str = "switch-keys.zip";
 const SWITCH_FIRMWARE_PACKAGE: &str = "switch-firmware.zip";
 
 #[derive(Debug, Deserialize)]
@@ -347,8 +348,9 @@ fn managed_runtime_target_ready(rule: &FirmwareRuleRow, target: &Path) -> bool {
         return false;
     }
     match (rule.source_id.as_str(), rule.package_name.as_str()) {
-        ("manual:nintendo-switch-keys", "prod.keys") => validate_switch_prod_keys(target).is_ok(),
-        ("manual:nintendo-switch-keys", "title.keys") => validate_switch_title_keys(target).is_ok(),
+        ("manual:nintendo-switch-keys", SWITCH_KEYS_PACKAGE) => {
+            validate_switch_prod_keys(&target.join("prod.keys")).is_ok()
+        }
         ("manual:nintendo-switch-firmware", SWITCH_FIRMWARE_PACKAGE) => {
             validate_switch_firmware_directory(target).is_ok()
         }
@@ -567,10 +569,13 @@ pub fn import_and_sync(statuses: &[FirmwareStatus], selected_path: &Path) -> Res
         .file_name()
         .and_then(|name| name.to_str())
         .context("the selected firmware package name is not valid Unicode")?;
+    let selected_is_switch_keys = selected_name.eq_ignore_ascii_case("prod.keys")
+        || (selected_name.to_ascii_lowercase().ends_with(".zip")
+            && switch_key_zip_contains_prod_keys(selected_path).unwrap_or(false));
     let candidates = statuses
         .iter()
         .filter(|status| status.target_strategy != "manual_import" && !status.imported)
-        .filter(|status| firmware_selection_matches(status, selected_name))
+        .filter(|status| firmware_selection_matches(status, selected_name, selected_is_switch_keys))
         .collect::<Vec<_>>();
     if candidates.is_empty() {
         let mut expected = statuses
@@ -599,7 +604,18 @@ pub fn import_and_sync(statuses: &[FirmwareStatus], selected_path: &Path) -> Res
     }
     let selected = candidates[0];
     validate_managed_firmware_selection(selected, selected_path)?;
-    let receipt = import_package(&selected.source_id, &selected.package_name, selected_path)?;
+    let normalized_keys = (selected.package_name == SWITCH_KEYS_PACKAGE)
+        .then(|| normalize_switch_key_package(selected_path))
+        .transpose()?;
+    let package_path = normalized_keys
+        .as_ref()
+        .map(|(_, package)| package.as_path())
+        .unwrap_or(selected_path);
+    let imported = import_package(&selected.source_id, &selected.package_name, package_path);
+    if let Some((staging, _)) = normalized_keys.as_ref() {
+        let _ = fs::remove_dir_all(staging);
+    }
+    let receipt = imported?;
     let synced = sync_matching_statuses(statuses, std::slice::from_ref(&receipt))?;
     Ok(format!(
         "Imported {} ({} file{}){}.",
@@ -617,11 +633,22 @@ pub fn import_and_sync(statuses: &[FirmwareStatus], selected_path: &Path) -> Res
     ))
 }
 
-fn firmware_selection_matches(status: &FirmwareStatus, selected_name: &str) -> bool {
+fn firmware_selection_matches(
+    status: &FirmwareStatus,
+    selected_name: &str,
+    selected_is_switch_keys: bool,
+) -> bool {
+    if status.source_id == "manual:nintendo-switch-keys"
+        && status.package_name == SWITCH_KEYS_PACKAGE
+    {
+        return selected_is_switch_keys;
+    }
+    if status.source_id == "manual:nintendo-switch-firmware"
+        && status.package_name == SWITCH_FIRMWARE_PACKAGE
+    {
+        return !selected_is_switch_keys && selected_name.to_ascii_lowercase().ends_with(".zip");
+    }
     status.package_name.eq_ignore_ascii_case(selected_name)
-        || (status.target_strategy == "managed_import"
-            && status.package_name == SWITCH_FIRMWARE_PACKAGE
-            && selected_name.to_ascii_lowercase().ends_with(".zip"))
 }
 
 fn validate_managed_firmware_selection(
@@ -632,8 +659,9 @@ fn validate_managed_firmware_selection(
         return Ok(());
     }
     match (status.source_id.as_str(), status.package_name.as_str()) {
-        ("manual:nintendo-switch-keys", "prod.keys") => validate_switch_prod_keys(selected_path),
-        ("manual:nintendo-switch-keys", "title.keys") => validate_switch_title_keys(selected_path),
+        ("manual:nintendo-switch-keys", SWITCH_KEYS_PACKAGE) => {
+            read_switch_key_package(selected_path).map(|_| ())
+        }
         ("manual:nintendo-switch-firmware", SWITCH_FIRMWARE_PACKAGE) => {
             validate_switch_firmware_zip(selected_path)
         }
@@ -643,12 +671,142 @@ fn validate_managed_firmware_selection(
     }
 }
 
+struct SwitchKeyPackage {
+    prod_keys: Vec<u8>,
+    title_keys: Option<Vec<u8>>,
+}
+
+fn switch_key_zip_contains_prod_keys(path: &Path) -> Result<bool> {
+    let file = File::open(path)?;
+    let mut archive = zip::ZipArchive::new(file).context("opening Switch keys ZIP")?;
+    if archive.len() > 128 {
+        bail!("Switch keys ZIP contains too many entries");
+    }
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index)?;
+        let relative = entry
+            .enclosed_name()
+            .context("Switch keys ZIP contains an unsafe path")?;
+        if relative
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case("prod.keys"))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn read_switch_key_package(path: &Path) -> Result<SwitchKeyPackage> {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("Switch key package name is not valid Unicode")?;
+    let package = if name.eq_ignore_ascii_case("prod.keys") {
+        let metadata = fs::metadata(path)?;
+        if metadata.len() == 0 || metadata.len() > SWITCH_KEYS_MAX_BYTES {
+            bail!("prod.keys must be a non-empty text file smaller than 8 MiB");
+        }
+        SwitchKeyPackage {
+            prod_keys: fs::read(path)?,
+            title_keys: None,
+        }
+    } else if name.to_ascii_lowercase().ends_with(".zip") {
+        let file = File::open(path)?;
+        let mut archive = zip::ZipArchive::new(file).context("opening Switch keys ZIP")?;
+        if archive.len() > 128 {
+            bail!("Switch keys ZIP contains too many entries");
+        }
+        let mut prod_keys = None;
+        let mut title_keys = None;
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index)?;
+            let relative = entry
+                .enclosed_name()
+                .context("Switch keys ZIP contains an unsafe path")?;
+            if entry.is_dir() {
+                continue;
+            }
+            let Some(file_name) = relative.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let destination = if file_name.eq_ignore_ascii_case("prod.keys") {
+                &mut prod_keys
+            } else if file_name.eq_ignore_ascii_case("title.keys") {
+                &mut title_keys
+            } else {
+                continue;
+            };
+            if destination.is_some() {
+                bail!("Switch keys ZIP contains duplicate {file_name} entries");
+            }
+            if entry.size() == 0 || entry.size() > SWITCH_KEYS_MAX_BYTES {
+                bail!("Switch keys ZIP contains an invalid {file_name} entry");
+            }
+            let mut bytes = Vec::with_capacity(entry.size() as usize);
+            entry
+                .by_ref()
+                .take(SWITCH_KEYS_MAX_BYTES + 1)
+                .read_to_end(&mut bytes)?;
+            if bytes.len() as u64 > SWITCH_KEYS_MAX_BYTES {
+                bail!("Switch keys ZIP contains an oversized {file_name} entry");
+            }
+            *destination = Some(bytes);
+        }
+        SwitchKeyPackage {
+            prod_keys: prod_keys.context("Switch keys ZIP does not contain prod.keys")?,
+            title_keys,
+        }
+    } else {
+        bail!("choose a prod.keys file or a ZIP containing prod.keys");
+    };
+
+    validate_switch_prod_keys_bytes(&package.prod_keys)?;
+    if let Some(title_keys) = package.title_keys.as_deref() {
+        validate_switch_title_keys_bytes(title_keys)?;
+    }
+    Ok(package)
+}
+
+fn normalize_switch_key_package(selected_path: &Path) -> Result<(PathBuf, PathBuf)> {
+    let package = read_switch_key_package(selected_path)?;
+    let store = firmware_package_store()?;
+    fs::create_dir_all(&store)?;
+    let staging = store.join(format!(".switch-keys-input-{}", Uuid::new_v4()));
+    fs::create_dir(&staging)?;
+    let archive_path = staging.join(SWITCH_KEYS_PACKAGE);
+    let normalized = (|| -> Result<()> {
+        let file = File::create(&archive_path)?;
+        let mut archive = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        archive.start_file("prod.keys", options)?;
+        archive.write_all(&package.prod_keys)?;
+        if let Some(title_keys) = package.title_keys.as_deref() {
+            archive.start_file("title.keys", options)?;
+            archive.write_all(title_keys)?;
+        }
+        archive.finish()?;
+        Ok(())
+    })();
+    if let Err(error) = normalized {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    Ok((staging, archive_path))
+}
+
 fn validate_switch_prod_keys(path: &Path) -> Result<()> {
     let metadata = fs::metadata(path)?;
     if metadata.len() == 0 || metadata.len() > SWITCH_KEYS_MAX_BYTES {
         bail!("prod.keys must be a non-empty text file smaller than 8 MiB");
     }
-    let contents = fs::read_to_string(path).context("prod.keys is not valid UTF-8 text")?;
+    validate_switch_prod_keys_bytes(&fs::read(path)?)
+}
+
+fn validate_switch_prod_keys_bytes(bytes: &[u8]) -> Result<()> {
+    let contents = std::str::from_utf8(bytes).context("prod.keys is not valid UTF-8 text")?;
     let mut valid_entries = 0usize;
     let mut has_header_key = false;
     let mut has_master_key = false;
@@ -687,7 +845,11 @@ fn validate_switch_title_keys(path: &Path) -> Result<()> {
     if metadata.len() == 0 || metadata.len() > SWITCH_KEYS_MAX_BYTES {
         bail!("title.keys must be a non-empty text file smaller than 8 MiB");
     }
-    let contents = fs::read_to_string(path).context("title.keys is not valid UTF-8 text")?;
+    validate_switch_title_keys_bytes(&fs::read(path)?)
+}
+
+fn validate_switch_title_keys_bytes(bytes: &[u8]) -> Result<()> {
+    let contents = std::str::from_utf8(bytes).context("title.keys is not valid UTF-8 text")?;
     let mut valid_entries = 0usize;
     for line in contents.lines() {
         let line = line.trim();
@@ -1379,6 +1541,9 @@ fn sync_status(
     verify_package_receipt(package, store)?;
     let target = PathBuf::from(&status.target_path);
     match status.install_mode.as_str() {
+        "merge_tree" if status.source_id == "manual:nintendo-switch-keys" => {
+            copy_switch_key_package(Path::new(&package.extracted_root), &target)?;
+        }
         "copy_archive" => atomic_copy(Path::new(&package.archive_path), &target)?,
         "merge_tree" if status.source_id == "manual:nintendo-switch-firmware" => {
             copy_switch_firmware_tree(Path::new(&package.extracted_root), &target)?;
@@ -1402,6 +1567,22 @@ fn sync_status(
         synced_at: crate::settings::unix_timestamp(),
     })?;
     Ok(true)
+}
+
+fn copy_switch_key_package(source: &Path, target: &Path) -> Result<()> {
+    let prod_keys = source.join("prod.keys");
+    validate_switch_prod_keys(&prod_keys)
+        .context("imported Switch keys package no longer contains valid prod.keys")?;
+    fs::create_dir_all(target)?;
+    atomic_copy(&prod_keys, &target.join("prod.keys"))?;
+
+    let title_keys = source.join("title.keys");
+    if title_keys.is_file() {
+        validate_switch_title_keys(&title_keys)
+            .context("imported Switch keys package contains invalid title.keys")?;
+        atomic_copy(&title_keys, &target.join("title.keys"))?;
+    }
+    Ok(())
 }
 
 fn copy_switch_firmware_tree(source: &Path, target: &Path) -> Result<()> {
@@ -1922,6 +2103,35 @@ mod tests {
     }
 
     #[test]
+    fn switch_key_zip_combines_prod_and_optional_title_keys() {
+        let temporary = tempfile::tempdir().unwrap();
+        let mut prod_lines = vec![format!("header_key = {}", "a1".repeat(16))];
+        for index in 0..7 {
+            prod_lines.push(format!("master_key_{index:02x} = {}", "b2".repeat(16)));
+        }
+        let prod = prod_lines.join("\n");
+        let title = format!("{} = {}", "12".repeat(16), "ab".repeat(16));
+        let keys_zip = temporary.path().join("console-keys.zip");
+        write_zip(
+            &keys_zip,
+            &[
+                ("dump/prod.keys", prod.as_bytes()),
+                ("title.keys", title.as_bytes()),
+            ],
+        );
+
+        assert!(switch_key_zip_contains_prod_keys(&keys_zip).unwrap());
+        let package = read_switch_key_package(&keys_zip).unwrap();
+        assert_eq!(package.prod_keys, prod.as_bytes());
+        assert_eq!(package.title_keys.as_deref(), Some(title.as_bytes()));
+
+        let invalid = temporary.path().join("title-only.zip");
+        write_zip(&invalid, &[("title.keys", title.as_bytes())]);
+        assert!(!switch_key_zip_contains_prod_keys(&invalid).unwrap());
+        assert!(read_switch_key_package(&invalid).is_err());
+    }
+
+    #[test]
     fn switch_runtime_readiness_detects_valid_files_without_lunchbox_receipts() {
         let temporary = tempfile::tempdir().unwrap();
         let prod_keys = temporary.path().join("prod.keys");
@@ -1959,8 +2169,12 @@ mod tests {
             notes: String::new(),
         };
         assert!(managed_runtime_target_ready(
-            &rule("manual:nintendo-switch-keys", "prod.keys", "copy_archive"),
-            &prod_keys
+            &rule(
+                "manual:nintendo-switch-keys",
+                SWITCH_KEYS_PACKAGE,
+                "merge_tree"
+            ),
+            temporary.path()
         ));
         assert!(managed_runtime_target_ready(
             &rule(

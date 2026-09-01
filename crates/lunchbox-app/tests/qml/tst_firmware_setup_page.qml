@@ -22,14 +22,13 @@ TestCase {
                 property int firmware_missing_count: 2
                 property bool can_launch: false
                 property bool firmware_busy: false
-                property string firmware_summary: "prod.keys and Switch firmware are required."
-                property string firmware_next_package: "prod.keys"
+                property string firmware_summary: "Switch keys and firmware are required."
+                property string firmware_next_package: "switch-keys.zip"
                 property string firmware_setup_action: "choose"
                 property string firmware_setup_label: "SET UP EMULATOR"
                 property bool switch_prod_keys_ready: false
-                property bool switch_title_keys_ready: false
                 property bool switch_firmware_ready: false
-                property string launch_status: "Next: CHOOSE prod.keys."
+                property string launch_status: "Next: CHOOSE switch-keys.zip."
             }
 
             Lunchbox.FirmwareSetupPage {
@@ -61,34 +60,30 @@ TestCase {
         const host = createTemporaryObject(pageComponent, testCase)
         verify(host)
         const packageLabel = findChild(host.page, "firmwareNextPackage")
-        const action = findChild(host.page, "firmwarePackageAction-prod.keys")
+        const action = findChild(host.page, "firmwarePackageAction-switch-keys.zip")
         verify(packageLabel)
         verify(action)
-        compare(packageLabel.text, "prod.keys")
+        compare(packageLabel.text, "switch-keys.zip")
         compare(action.text, "CHOOSE FILE")
         action.click()
         compare(host.chooseSpy.count, 1)
-        compare(host.chooseSpy.signalArguments[0][0], "prod.keys")
+        compare(host.chooseSpy.signalArguments[0][0], "switch-keys.zip")
     }
 
-    function test_switch_setup_has_independent_optional_title_keys_selector() {
+    function test_switch_setup_uses_one_keys_selector_for_prod_and_title_keys() {
         const host = createTemporaryObject(pageComponent, testCase)
         verify(host)
         host.details.switch_prod_keys_ready = true
         wait(0)
-        const prodAction = findChild(host.page, "firmwarePackageAction-prod.keys")
-        const titleAction = findChild(host.page, "firmwarePackageAction-title.keys")
+        const keysAction = findChild(host.page,
+                                     "firmwarePackageAction-switch-keys.zip")
         const firmwareAction = findChild(host.page,
                                          "firmwarePackageAction-switch-firmware.zip")
-        verify(prodAction)
-        verify(titleAction)
+        verify(keysAction)
         verify(firmwareAction)
-        compare(prodAction.selectorAvailable, false)
-        compare(titleAction.selectorAvailable, true)
+        compare(keysAction.selectorAvailable, false)
         compare(firmwareAction.selectorAvailable, true)
-        titleAction.click()
-        compare(host.chooseSpy.count, 1)
-        compare(host.chooseSpy.signalArguments[0][0], "title.keys")
+        compare(findChild(host.page, "firmwarePackageAction-title.keys"), null)
     }
 
     function test_completed_setup_turns_the_primary_action_into_play() {
