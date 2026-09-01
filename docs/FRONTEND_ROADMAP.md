@@ -160,6 +160,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   provenance. Unmatched and ambiguous files remain local-only unless the user
   explicitly links one through canonical/alternate-title search; reviewed links
   restore only against unchanged path, archive member, size, MD5, and SHA-1.
+  Review-first startup/daily/weekly checks are native: they reuse those saved
+  scopes in the background, compare against exact imported evidence, publish no
+  mutations, and route only changed collections into the ordinary review UI.
 - Stable-UUID favorites plus manual and smart collections with native
   create/edit/delete, sidebar counts and navigation, exact per-game membership,
   preserved manual order, confirmed bulk visible-result changes, composable
@@ -254,8 +257,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   progress, cancellation, exact/ambiguous reporting, idempotent rescans,
   resumable native-metadata-validated hash cache, exact duplicate/change audit,
   named extension-scoped scan profiles, sequential cross-root **Scan all**,
-  bounded durable scan history, and missing-file management view with optional
-  background schedules. The Library Audit now retains the newest 100 complete
+  bounded durable scan history, review-first automatic collection checks, and
+  missing-file management. The Library Audit now retains the newest 100 complete
   exact-summary baselines, rejects cancelled/partial work from history, compares
   every status count against the immediately prior complete run, and presents a
   virtualized keyboard/pointer history view without retaining another copy of

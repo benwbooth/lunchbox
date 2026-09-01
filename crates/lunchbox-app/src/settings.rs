@@ -5534,6 +5534,39 @@ fn migrate(connection: &Connection) -> Result<()> {
              ON rom_scan_runs(finished_at DESC, id DESC);
          CREATE INDEX IF NOT EXISTS rom_scan_runs_profile
              ON rom_scan_runs(profile_id, finished_at DESC) WHERE profile_id<>'';
+         CREATE TABLE IF NOT EXISTS rom_scan_schedule (
+             singleton INTEGER PRIMARY KEY CHECK (singleton=1),
+             cadence TEXT NOT NULL CHECK (
+                 cadence IN ('manual', 'startup', 'daily', 'weekly')
+             ),
+             active_run_id TEXT NOT NULL CHECK (length(active_run_id) <= 64),
+             last_started_at INTEGER NOT NULL CHECK (last_started_at >= 0),
+             last_finished_at INTEGER NOT NULL CHECK (last_finished_at >= 0),
+             next_due_at INTEGER NOT NULL CHECK (next_due_at >= 0),
+             last_outcome TEXT NOT NULL CHECK (
+                 last_outcome IN (
+                     'never', 'running', 'completed', 'cancelled',
+                     'failed', 'interrupted'
+                 )
+             ),
+             profile_count INTEGER NOT NULL CHECK (profile_count >= 0),
+             total_files INTEGER NOT NULL CHECK (total_files >= 0),
+             review_profile_ids_json TEXT NOT NULL CHECK (
+                 length(review_profile_ids_json) BETWEEN 2 AND 8192
+             ),
+             error_text TEXT NOT NULL CHECK (length(error_text) <= 4096),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+             CHECK (last_finished_at=0 OR last_finished_at >= last_started_at),
+             CHECK (
+                 (last_outcome='running' AND length(active_run_id)=36)
+                 OR (last_outcome<>'running' AND active_run_id='')
+             )
+         );
+         INSERT OR IGNORE INTO rom_scan_schedule (
+             singleton, cadence, active_run_id, last_started_at,
+             last_finished_at, next_due_at, last_outcome, profile_count,
+             total_files, review_profile_ids_json, error_text, updated_at
+         ) VALUES (1, 'manual', '', 0, 0, 0, 'never', 0, 0, '[]', '', 0);
          CREATE TABLE IF NOT EXISTS library_audit_runs (
              sequence INTEGER PRIMARY KEY AUTOINCREMENT,
              id TEXT NOT NULL UNIQUE CHECK (length(id) BETWEEN 1 AND 64),

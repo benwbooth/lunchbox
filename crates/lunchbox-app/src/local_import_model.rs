@@ -17,6 +17,7 @@ pub mod qobject {
         #[qproperty(bool, matching)]
         #[qproperty(bool, profile_busy)]
         #[qproperty(bool, batch_scanning)]
+        #[qproperty(bool, schedule_busy)]
         #[qproperty(QString, directory)]
         #[qproperty(QString, message)]
         #[qproperty(QString, match_message)]
@@ -43,6 +44,13 @@ pub mod qobject {
         #[qproperty(QString, batch_profile_name)]
         #[qproperty(i32, history_count)]
         #[qproperty(i32, history_revision)]
+        #[qproperty(QString, schedule_cadence)]
+        #[qproperty(QString, schedule_status)]
+        #[qproperty(QString, schedule_last_run)]
+        #[qproperty(QString, schedule_next_run)]
+        #[qproperty(i32, schedule_review_profile_count)]
+        #[qproperty(bool, scheduled_review_empty)]
+        #[qproperty(i32, schedule_revision)]
         #[qproperty(i32, revision)]
         #[qproperty(i32, match_revision)]
         #[qproperty(i32, match_candidate_count)]
@@ -81,6 +89,18 @@ pub mod qobject {
 
         #[qinvokable]
         fn start_profile_scan_batch(self: Pin<&mut LocalImportModel>);
+
+        #[qinvokable]
+        fn set_scan_schedule(self: Pin<&mut LocalImportModel>, cadence: QString);
+
+        #[qinvokable]
+        fn run_scheduled_scan_now(self: Pin<&mut LocalImportModel>);
+
+        #[qinvokable]
+        fn start_scheduled_review(self: Pin<&mut LocalImportModel>) -> i32;
+
+        #[qinvokable]
+        fn scheduled_review_profile_name_at(self: &LocalImportModel, index: i32) -> QString;
 
         #[qinvokable]
         fn start_scan(
@@ -227,7 +247,7 @@ use cxx_qt_lib::{QString, QUrl};
 use crate::catalog;
 use crate::local_import::{
     self, ManualMatchCandidate, MatchState, RomImportProfile, RomScanRun, RomScanRunContext,
-    ScanOutput, ScanProgress, ScanResult,
+    RomScanSchedule, ScanOutput, ScanProgress, ScanResult,
 };
 
 struct CompletedScan {
@@ -239,10 +259,12 @@ struct LocalImportInitialization {
     platforms: Vec<String>,
     profiles: Vec<RomImportProfile>,
     history: Vec<RomScanRun>,
+    schedule: RomScanSchedule,
 }
 
 struct ProfileBatchCompletion {
     history: Option<Vec<RomScanRun>>,
+    schedule: Option<RomScanSchedule>,
     processed: usize,
     total_files: usize,
     exact_matches: usize,
@@ -250,6 +272,7 @@ struct ProfileBatchCompletion {
     other_results: usize,
     failures: usize,
     cancelled: bool,
+    review_profile_ids: Vec<String>,
     warnings: Vec<String>,
 }
 
@@ -261,6 +284,7 @@ pub struct LocalImportModelRust {
     matching: bool,
     profile_busy: bool,
     batch_scanning: bool,
+    schedule_busy: bool,
     directory: QString,
     message: QString,
     match_message: QString,
@@ -287,6 +311,13 @@ pub struct LocalImportModelRust {
     batch_profile_name: QString,
     history_count: i32,
     history_revision: i32,
+    schedule_cadence: QString,
+    schedule_status: QString,
+    schedule_last_run: QString,
+    schedule_next_run: QString,
+    schedule_review_profile_count: i32,
+    scheduled_review_empty: bool,
+    schedule_revision: i32,
     revision: i32,
     match_revision: i32,
     match_candidate_count: i32,
@@ -294,6 +325,7 @@ pub struct LocalImportModelRust {
     platforms: Vec<String>,
     profiles: Vec<RomImportProfile>,
     history: Vec<RomScanRun>,
+    schedule: RomScanSchedule,
     profile_root_override: Option<PathBuf>,
     output: Option<ScanOutput>,
     visible_indices: Vec<usize>,
@@ -302,6 +334,9 @@ pub struct LocalImportModelRust {
     match_result_index: Option<usize>,
     match_candidates: Vec<ManualMatchCandidate>,
     match_generation: u64,
+    schedule_generation: u64,
+    schedule_startup_checked: bool,
+    scheduled_review_profile_id: Option<String>,
 }
 
 impl Default for LocalImportModelRust {
@@ -317,6 +352,7 @@ impl Default for LocalImportModelRust {
             matching: false,
             profile_busy: false,
             batch_scanning: false,
+            schedule_busy: false,
             directory,
             message: QString::from("Choose a ROM folder to scan your existing collection."),
             match_message: QString::from(
@@ -345,6 +381,13 @@ impl Default for LocalImportModelRust {
             batch_profile_name: QString::default(),
             history_count: 0,
             history_revision: 0,
+            schedule_cadence: QString::from("manual"),
+            schedule_status: QString::from("Automatic collection scans are off."),
+            schedule_last_run: QString::from("No scheduled scan has run yet"),
+            schedule_next_run: QString::from("Manual scans only"),
+            schedule_review_profile_count: 0,
+            scheduled_review_empty: false,
+            schedule_revision: 0,
             revision: 0,
             match_revision: 0,
             match_candidate_count: 0,
@@ -352,6 +395,7 @@ impl Default for LocalImportModelRust {
             platforms: Vec::new(),
             profiles: Vec::new(),
             history: Vec::new(),
+            schedule: RomScanSchedule::default(),
             profile_root_override: None,
             output: None,
             visible_indices: Vec::new(),
@@ -360,6 +404,9 @@ impl Default for LocalImportModelRust {
             match_result_index: None,
             match_candidates: Vec::new(),
             match_generation: 0,
+            schedule_generation: 0,
+            schedule_startup_checked: false,
+            scheduled_review_profile_id: None,
         }
     }
 }
@@ -370,6 +417,10 @@ fn qstring(value: impl AsRef<str>) -> QString {
 
 fn import_profile_probe() -> bool {
     std::env::args().any(|argument| argument == "--import-profile-ui-probe")
+}
+
+fn automated_probe_run() -> bool {
+    std::env::args().any(|argument| argument.contains("probe"))
 }
 
 fn saturating_i32(value: usize) -> i32 {
@@ -411,6 +462,7 @@ impl qobject::LocalImportModel {
                         platforms: local_import::load_platform_names(&discovery_path)?,
                         profiles: local_import::load_import_profiles(&state_path)?,
                         history: local_import::load_scan_runs(&state_path)?,
+                        schedule: local_import::load_scan_schedule(&state_path)?,
                     })
                 })()
                 .map_err(|error| error.to_string());
@@ -439,6 +491,7 @@ impl qobject::LocalImportModel {
                 self.as_mut().rust_mut().platforms = initialization.platforms;
                 self.as_mut().rust_mut().profiles = initialization.profiles;
                 self.as_mut().rust_mut().history = initialization.history;
+                self.as_mut().apply_schedule(initialization.schedule);
                 self.as_mut().set_platform_count(saturating_i32(count));
                 self.as_mut()
                     .set_profile_count(saturating_i32(profile_count));
@@ -456,6 +509,9 @@ impl qobject::LocalImportModel {
                 self.as_mut().set_message(qstring(
                     "Choose a ROM folder. Exact matches use SHA-1 and MD5; filenames are never accepted as identity.",
                 ));
+                if !automated_probe_run() && profile_count > 0 {
+                    self.as_mut().request_scheduled_scan(false);
+                }
             }
             Err(error) => {
                 if import_profile_probe() {
@@ -663,14 +719,16 @@ impl qobject::LocalImportModel {
         let spawn = std::thread::Builder::new()
             .name("lunchbox-import-profile-delete".into())
             .spawn(move || {
-                let result = (|| -> anyhow::Result<(Vec<RomImportProfile>, String)> {
-                    local_import::delete_import_profile(&state_path, &profile.id)?;
-                    Ok((
-                        local_import::load_import_profiles(&state_path)?,
-                        profile.name,
-                    ))
-                })()
-                .map_err(|error| error.to_string());
+                let result =
+                    (|| -> anyhow::Result<(Vec<RomImportProfile>, RomScanSchedule, String)> {
+                        local_import::delete_import_profile(&state_path, &profile.id)?;
+                        Ok((
+                            local_import::load_import_profiles(&state_path)?,
+                            local_import::load_scan_schedule(&state_path)?,
+                            profile.name,
+                        ))
+                    })()
+                    .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_profile_delete(result);
                 });
@@ -685,16 +743,17 @@ impl qobject::LocalImportModel {
 
     fn finish_profile_delete(
         mut self: Pin<&mut Self>,
-        result: Result<(Vec<RomImportProfile>, String), String>,
+        result: Result<(Vec<RomImportProfile>, RomScanSchedule, String), String>,
     ) {
         self.as_mut().set_profile_busy(false);
         match result {
-            Ok((profiles, removed_name)) => {
+            Ok((profiles, schedule, removed_name)) => {
                 let count = profiles.len();
                 self.as_mut().rust_mut().profiles = profiles;
                 self.as_mut().set_profile_count(saturating_i32(count));
                 self.as_mut().set_active_profile_index(-1);
                 self.as_mut().bump_profile_revision();
+                self.as_mut().apply_schedule(schedule);
                 self.as_mut().set_message(qstring(format!(
                     "Removed scan profile ‘{removed_name}’. No ROMs or collection records were changed."
                 )));
@@ -705,29 +764,253 @@ impl qobject::LocalImportModel {
         }
     }
 
+    pub fn set_scan_schedule(mut self: Pin<&mut Self>, cadence: QString) {
+        if *self.as_ref().busy() || *self.as_ref().profile_busy() || *self.as_ref().schedule_busy()
+        {
+            return;
+        }
+        let state_path = match crate::settings::state_database_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.as_mut().set_schedule_status(qstring(format!(
+                    "Could not locate Lunchbox state for scan scheduling: {error}"
+                )));
+                return;
+            }
+        };
+        let cadence = cadence.to_string();
+        self.as_mut().rust_mut().schedule_generation =
+            self.as_ref().rust().schedule_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().schedule_generation;
+        self.as_mut().set_schedule_busy(true);
+        self.as_mut()
+            .set_schedule_status(qstring("Saving automatic scan schedule…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-rom-schedule-save".into())
+            .spawn(move || {
+                let result = local_import::save_scan_schedule(
+                    &state_path,
+                    &cadence,
+                    crate::settings::unix_timestamp(),
+                )
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_schedule_save(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_schedule_busy(false);
+            self.as_mut().set_schedule_status(qstring(format!(
+                "Could not start scan-schedule save: {error}"
+            )));
+        }
+    }
+
+    fn finish_schedule_save(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<RomScanSchedule, String>,
+    ) {
+        if generation != self.as_ref().rust().schedule_generation {
+            return;
+        }
+        self.as_mut().set_schedule_busy(false);
+        match result {
+            Ok(schedule) => self.as_mut().apply_schedule(schedule),
+            Err(error) => self.as_mut().set_schedule_status(qstring(format!(
+                "Could not save the automatic scan schedule: {error}"
+            ))),
+        }
+    }
+
+    pub fn run_scheduled_scan_now(mut self: Pin<&mut Self>) {
+        self.as_mut().request_scheduled_scan(true);
+    }
+
+    fn request_scheduled_scan(mut self: Pin<&mut Self>, force: bool) {
+        if *self.as_ref().busy() || *self.as_ref().profile_busy() || *self.as_ref().schedule_busy()
+        {
+            return;
+        }
+        if !force {
+            if self.as_ref().rust().schedule_startup_checked {
+                return;
+            }
+            self.as_mut().rust_mut().schedule_startup_checked = true;
+            if !local_import::scan_schedule_is_due(
+                &self.as_ref().rust().schedule,
+                crate::settings::unix_timestamp(),
+            ) {
+                return;
+            }
+        }
+        if self.as_ref().rust().profiles.is_empty() {
+            self.as_mut().set_schedule_status(qstring(
+                "Save at least one scan profile before running an automatic collection check.",
+            ));
+            return;
+        }
+        let state_path = match crate::settings::state_database_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.as_mut().set_schedule_status(qstring(format!(
+                    "Could not locate Lunchbox state for scan scheduling: {error}"
+                )));
+                return;
+            }
+        };
+        self.as_mut().rust_mut().schedule_generation =
+            self.as_ref().rust().schedule_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().schedule_generation;
+        self.as_mut().set_schedule_busy(true);
+        self.as_mut()
+            .set_schedule_status(qstring("Preparing the saved collections check…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-rom-schedule-claim".into())
+            .spawn(move || {
+                let result = local_import::claim_scan_schedule(
+                    &state_path,
+                    force,
+                    crate::settings::unix_timestamp(),
+                )
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_schedule_claim(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_schedule_busy(false);
+            self.as_mut().set_schedule_status(qstring(format!(
+                "Could not start the scheduled collection check: {error}"
+            )));
+        }
+    }
+
+    fn finish_schedule_claim(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<Option<RomScanSchedule>, String>,
+    ) {
+        if generation != self.as_ref().rust().schedule_generation {
+            return;
+        }
+        self.as_mut().set_schedule_busy(false);
+        match result {
+            Ok(Some(schedule)) => {
+                let run_id = schedule.active_run_id.clone();
+                self.as_mut().apply_schedule(schedule);
+                self.as_mut().start_profile_scan_batch_inner(Some(run_id));
+            }
+            Ok(None) => {
+                let schedule = self.as_ref().rust().schedule.clone();
+                self.as_mut().apply_schedule(schedule);
+            }
+            Err(error) => self.as_mut().set_schedule_status(qstring(format!(
+                "Could not claim the scheduled collection check: {error}"
+            ))),
+        }
+    }
+
+    pub fn start_scheduled_review(mut self: Pin<&mut Self>) -> i32 {
+        if *self.as_ref().busy() || *self.as_ref().profile_busy() || *self.as_ref().schedule_busy()
+        {
+            return -1;
+        }
+        let review = self
+            .as_ref()
+            .rust()
+            .schedule
+            .review_profile_ids
+            .iter()
+            .find_map(|profile_id| {
+                self.as_ref()
+                    .rust()
+                    .profiles
+                    .iter()
+                    .enumerate()
+                    .find(|(_, profile)| profile.id == *profile_id)
+                    .map(|(index, profile)| (index, profile.clone()))
+            });
+        let Some((index, profile)) = review else {
+            self.as_mut().set_schedule_status(qstring(
+                "No saved collection currently needs scheduled-scan review.",
+            ));
+            return -1;
+        };
+        self.as_mut().rust_mut().profile_root_override = Some(profile.root.clone());
+        self.as_mut()
+            .set_directory(qstring(profile.root.to_string_lossy()));
+        self.as_mut()
+            .set_active_profile_index(saturating_i32(index));
+        self.as_mut().start_scan_inner(
+            qstring(profile.platform_hint),
+            qstring(local_import::format_extension_filter(&profile.extensions)),
+            profile.checksums_enabled,
+            Some(profile.id),
+        );
+        if !*self.as_ref().scanning() {
+            return -1;
+        }
+        saturating_i32(index)
+    }
+
+    pub fn scheduled_review_profile_name_at(&self, index: i32) -> QString {
+        let Some(index) = usize::try_from(index).ok() else {
+            return QString::default();
+        };
+        self.rust()
+            .schedule
+            .review_profile_ids
+            .iter()
+            .filter_map(|profile_id| {
+                self.rust()
+                    .profiles
+                    .iter()
+                    .find(|profile| profile.id == *profile_id)
+            })
+            .nth(index)
+            .map(|profile| qstring(&profile.name))
+            .unwrap_or_default()
+    }
+
     pub fn start_profile_scan_batch(mut self: Pin<&mut Self>) {
+        self.as_mut().start_profile_scan_batch_inner(None);
+    }
+
+    fn start_profile_scan_batch_inner(mut self: Pin<&mut Self>, schedule_run_id: Option<String>) {
         if *self.as_ref().busy() || *self.as_ref().profile_busy() {
+            if schedule_run_id.is_some() {
+                self.as_mut().fail_unstarted_scheduled_scan(
+                    schedule_run_id.as_deref(),
+                    "Another collection operation prevented the automatic scan from starting.",
+                );
+            }
             return;
         }
         let profiles = self.as_ref().rust().profiles.clone();
         if profiles.is_empty() {
-            self.as_mut().set_message(qstring(
-                "Save at least one ROM scan profile before scanning every collection.",
-            ));
+            let message = "Save at least one ROM scan profile before scanning every collection.";
+            self.as_mut().set_message(qstring(message));
+            self.as_mut()
+                .fail_unstarted_scheduled_scan(schedule_run_id.as_deref(), message);
             return;
         }
         let Some(discovery_path) = catalog::requested_discovery_database_path() else {
-            self.as_mut().set_message(qstring(
-                "A discovery games database is required for local ROM import.",
-            ));
+            let message = "A discovery games database is required for local ROM import.";
+            self.as_mut().set_message(qstring(message));
+            self.as_mut()
+                .fail_unstarted_scheduled_scan(schedule_run_id.as_deref(), message);
             return;
         };
         let state_path = match crate::settings::state_database_path() {
             Ok(path) => path,
             Err(error) => {
-                self.as_mut().set_message(qstring(format!(
-                    "Could not locate Lunchbox state for ROM import: {error}"
-                )));
+                let message = format!("Could not locate Lunchbox state for ROM import: {error}");
+                self.as_mut().set_message(qstring(&message));
+                self.as_mut()
+                    .fail_unstarted_scheduled_scan(schedule_run_id.as_deref(), &message);
                 return;
             }
         };
@@ -752,6 +1035,7 @@ impl qobject::LocalImportModel {
         )));
 
         let qt_thread = self.as_ref().qt_thread();
+        let recovery_run_id = schedule_run_id.clone();
         let spawn = std::thread::Builder::new()
             .name("lunchbox-rom-profile-batch".into())
             .spawn(move || {
@@ -761,6 +1045,7 @@ impl qobject::LocalImportModel {
                     let profile_total = profiles.len();
                     let mut completion = ProfileBatchCompletion {
                         history: None,
+                        schedule: None,
                         processed: 0,
                         total_files: 0,
                         exact_matches: 0,
@@ -768,6 +1053,7 @@ impl qobject::LocalImportModel {
                         other_results: 0,
                         failures: 0,
                         cancelled: false,
+                        review_profile_ids: Vec::new(),
                         warnings: Vec::new(),
                     };
                     for (index, profile) in profiles.iter().enumerate() {
@@ -808,6 +1094,23 @@ impl qobject::LocalImportModel {
                                 Ok(output)
                             })
                             .map_err(|error| error.to_string());
+                        let needs_review = match scan.as_ref() {
+                            Ok(output) if output.cancelled => false,
+                            Ok(output) => match local_import::scan_output_requires_review(
+                                &state_path,
+                                output,
+                            ) {
+                                Ok(needs_review) => needs_review,
+                                Err(error) => {
+                                    completion.warnings.push(format!(
+                                        "Could not compare ‘{}’ with its imported collection: {error}",
+                                        profile.name
+                                    ));
+                                    true
+                                }
+                            },
+                            Err(_) => true,
+                        };
                         let context = RomScanRunContext::for_profile(
                             profile,
                             batch_id.clone(),
@@ -835,6 +1138,22 @@ impl qobject::LocalImportModel {
                                 profile.name
                             )),
                         }
+                        if needs_review
+                            && !completion.review_profile_ids.contains(&profile.id)
+                        {
+                            if completion.review_profile_ids.len()
+                                < local_import::MAX_SCHEDULE_REVIEW_PROFILES
+                            {
+                                completion.review_profile_ids.push(profile.id.clone());
+                            } else if !completion.warnings.iter().any(|warning| {
+                                warning.contains("review reminder limit")
+                            }) {
+                                completion.warnings.push(format!(
+                                    "The automatic review reminder limit is {}; additional collections remain available through Scan all.",
+                                    local_import::MAX_SCHEDULE_REVIEW_PROFILES
+                                ));
+                            }
+                        }
                         completion.processed = position;
                         if scan.as_ref().is_err() {
                             completion.failures = completion.failures.saturating_add(1);
@@ -857,6 +1176,68 @@ impl qobject::LocalImportModel {
                     Ok(completion)
                 })()
                 .map_err(|error| error.to_string());
+                let result = match (result, schedule_run_id.as_deref()) {
+                    (Ok(mut completion), Some(run_id)) => {
+                        let outcome = if completion.cancelled {
+                            "cancelled"
+                        } else if completion.failures > 0 {
+                            "failed"
+                        } else {
+                            "completed"
+                        };
+                        let error_text = completion
+                            .warnings
+                            .join(" ")
+                            .chars()
+                            .take(4096)
+                            .collect::<String>();
+                        match local_import::complete_scan_schedule(
+                            &state_path,
+                            run_id,
+                            outcome,
+                            completion.processed,
+                            completion.total_files,
+                            &completion.review_profile_ids,
+                            &error_text,
+                            crate::settings::unix_timestamp(),
+                        ) {
+                            Ok(schedule) => completion.schedule = Some(schedule),
+                            Err(error) => completion.warnings.push(format!(
+                                "Could not finalize the automatic scan schedule: {error}"
+                            )),
+                        }
+                        Ok(completion)
+                    }
+                    (Ok(completion), None) => Ok(completion),
+                    (Err(error), Some(run_id)) => {
+                        let error_text = error.chars().take(4096).collect::<String>();
+                        let schedule = local_import::complete_scan_schedule(
+                            &state_path,
+                            run_id,
+                            "failed",
+                            0,
+                            0,
+                            &[],
+                            &error_text,
+                            crate::settings::unix_timestamp(),
+                        )
+                        .ok();
+                        Ok(ProfileBatchCompletion {
+                            history: local_import::load_scan_runs(&state_path).ok(),
+                            schedule,
+                            processed: 0,
+                            total_files: 0,
+                            exact_matches: 0,
+                            reviewed_matches: 0,
+                            other_results: 0,
+                            failures: 1,
+                            cancelled: false,
+                            review_profile_ids: Vec::new(),
+                            warnings: vec![error],
+                        })
+                    }
+                    (Err(error), None) => Err(error),
+                };
                 let _ = qt_thread.queue(move |mut model| {
                     model.as_mut().finish_profile_scan_batch(generation, result);
                 });
@@ -866,9 +1247,41 @@ impl qobject::LocalImportModel {
             self.as_mut().set_scanning(false);
             self.as_mut().set_batch_scanning(false);
             self.as_mut().rust_mut().cancel = None;
-            self.as_mut().set_message(qstring(format!(
-                "Could not start saved-collection scan: {error}"
-            )));
+            let message = format!("Could not start saved-collection scan: {error}");
+            self.as_mut().set_message(qstring(&message));
+            self.as_mut()
+                .fail_unstarted_scheduled_scan(recovery_run_id.as_deref(), &message);
+        }
+    }
+
+    fn fail_unstarted_scheduled_scan(
+        mut self: Pin<&mut Self>,
+        run_id: Option<&str>,
+        message: &str,
+    ) {
+        let Some(run_id) = run_id else {
+            return;
+        };
+        let result = crate::settings::state_database_path()
+            .map_err(|error| error.to_string())
+            .and_then(|state_path| {
+                local_import::complete_scan_schedule(
+                    &state_path,
+                    run_id,
+                    "failed",
+                    0,
+                    0,
+                    &[],
+                    &message.chars().take(4096).collect::<String>(),
+                    crate::settings::unix_timestamp(),
+                )
+                .map_err(|error| error.to_string())
+            });
+        match result {
+            Ok(schedule) => self.as_mut().apply_schedule(schedule),
+            Err(error) => self.as_mut().set_schedule_status(qstring(format!(
+                "{message} The schedule could not be finalized: {error}"
+            ))),
         }
     }
 
@@ -920,6 +1333,9 @@ impl qobject::LocalImportModel {
         self.as_mut().set_batch_profile_name(QString::default());
         match result {
             Ok(completion) => {
+                if let Some(schedule) = completion.schedule.clone() {
+                    self.as_mut().apply_schedule(schedule);
+                }
                 self.as_mut()
                     .set_batch_completed_count(saturating_i32(completion.processed));
                 if let Some(history) = completion.history {
@@ -971,6 +1387,19 @@ impl qobject::LocalImportModel {
         extensions: QString,
         checksums_enabled: bool,
     ) {
+        self.as_mut()
+            .start_scan_inner(platform, extensions, checksums_enabled, None);
+    }
+
+    fn start_scan_inner(
+        mut self: Pin<&mut Self>,
+        platform: QString,
+        extensions: QString,
+        checksums_enabled: bool,
+        scheduled_review_profile_id: Option<String>,
+    ) {
+        self.as_mut().rust_mut().scheduled_review_profile_id = None;
+        self.as_mut().set_scheduled_review_empty(false);
         if *self.as_ref().busy() || *self.as_ref().profile_busy() {
             return;
         }
@@ -1030,6 +1459,7 @@ impl qobject::LocalImportModel {
             },
             |profile| RomScanRunContext::for_profile(&profile, String::new(), 0, 0),
         );
+        self.as_mut().rust_mut().scheduled_review_profile_id = scheduled_review_profile_id;
 
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         let generation = self.as_ref().rust().generation;
@@ -1098,6 +1528,8 @@ impl qobject::LocalImportModel {
             self.as_mut().set_busy(false);
             self.as_mut().set_scanning(false);
             self.as_mut().rust_mut().cancel = None;
+            self.as_mut().rust_mut().scheduled_review_profile_id = None;
+            self.as_mut().set_scheduled_review_empty(false);
             self.as_mut()
                 .set_message(qstring(format!("Could not start ROM scanner: {error}")));
         }
@@ -1145,6 +1577,7 @@ impl qobject::LocalImportModel {
             }
             Err(error) => Some(error),
         };
+        let keep_scheduled_review = result.scan.as_ref().is_ok_and(|output| !output.cancelled);
         match result.scan {
             Ok(output) => {
                 let total = output.results.len();
@@ -1187,6 +1620,13 @@ impl qobject::LocalImportModel {
                 ));
                 self.as_mut().set_result_count(saturating_i32(total));
                 self.as_mut().set_selected_count(saturating_i32(selected));
+                let scheduled_review_empty =
+                    self.as_ref().rust().scheduled_review_profile_id.is_some()
+                        && !cancelled
+                        && walk_errors == 0
+                        && total == 0;
+                self.as_mut()
+                    .set_scheduled_review_empty(scheduled_review_empty);
                 self.as_mut().set_current_file(QString::default());
                 self.as_mut().bump_revision();
                 let mut message = if cancelled {
@@ -1218,6 +1658,10 @@ impl qobject::LocalImportModel {
                 self.as_mut()
                     .set_message(qstring(format!("ROM scan failed: {error}.{suffix}")));
             }
+        }
+        if !keep_scheduled_review {
+            self.as_mut().rust_mut().scheduled_review_profile_id = None;
+            self.as_mut().set_scheduled_review_empty(false);
         }
     }
 
@@ -1348,7 +1792,12 @@ impl qobject::LocalImportModel {
             .iter()
             .filter(|result| result.selected)
             .count();
-        if selected == 0 {
+        let applying_empty_scheduled_review = selected == 0
+            && *self.as_ref().scheduled_review_empty()
+            && output.results.is_empty()
+            && !output.cancelled
+            && output.walk_errors == 0;
+        if selected == 0 && !applying_empty_scheduled_review {
             self.as_mut()
                 .set_message(qstring("Select at least one readable ROM to import."));
             return;
@@ -1356,7 +1805,11 @@ impl qobject::LocalImportModel {
         self.as_mut().set_busy(true);
         self.as_mut().set_importing(true);
         self.as_mut()
-            .set_message(qstring(format!("Importing {selected} selected ROMs…")));
+            .set_message(qstring(if applying_empty_scheduled_review {
+                "Applying the reviewed missing-file changes…".to_owned()
+            } else {
+                format!("Importing {selected} selected ROMs…")
+            }));
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
             .name("lunchbox-rom-import".into())
@@ -1379,11 +1832,27 @@ impl qobject::LocalImportModel {
         self.as_mut().set_importing(false);
         match result {
             Ok(count) => {
+                let scheduled_review_resolved =
+                    self.as_ref().rust().output.as_ref().is_some_and(|output| {
+                        !output.cancelled
+                            && output.walk_errors == 0
+                            && output.results.iter().all(|result| {
+                                result.selected
+                                    && !matches!(result.match_state, MatchState::Error(_))
+                            })
+                    });
                 let revision = self.as_ref().collection_revision().wrapping_add(1);
                 self.as_mut().set_collection_revision(revision);
                 self.as_mut().set_message(qstring(format!(
                     "Imported {count} ROM files. Exact and explicitly reviewed matches now leave the Minerva ‘not installed’ view; local-only files remain visible in My Collection."
                 )));
+                if scheduled_review_resolved
+                    && let Some(profile_id) =
+                        self.as_mut().rust_mut().scheduled_review_profile_id.take()
+                {
+                    self.as_mut().set_scheduled_review_empty(false);
+                    self.as_mut().dismiss_completed_schedule_review(profile_id);
+                }
             }
             Err(error) => self
                 .as_mut()
@@ -1936,6 +2405,88 @@ impl qobject::LocalImportModel {
         ));
     }
 
+    fn apply_schedule(mut self: Pin<&mut Self>, schedule: RomScanSchedule) {
+        let review_count = schedule
+            .review_profile_ids
+            .iter()
+            .filter(|profile_id| {
+                self.as_ref()
+                    .rust()
+                    .profiles
+                    .iter()
+                    .any(|profile| profile.id == **profile_id)
+            })
+            .count();
+        let now = crate::settings::unix_timestamp();
+        let status = scan_schedule_status(&schedule, review_count);
+        let last_run = scan_schedule_last_run(&schedule, now);
+        let next_run = scan_schedule_next_run(&schedule, now);
+        self.as_mut()
+            .set_schedule_cadence(qstring(&schedule.cadence));
+        self.as_mut().set_schedule_status(qstring(status));
+        self.as_mut().set_schedule_last_run(qstring(last_run));
+        self.as_mut().set_schedule_next_run(qstring(next_run));
+        self.as_mut()
+            .set_schedule_review_profile_count(saturating_i32(review_count));
+        self.as_mut().rust_mut().schedule = schedule;
+        self.as_mut().bump_schedule_revision();
+    }
+
+    fn dismiss_completed_schedule_review(mut self: Pin<&mut Self>, profile_id: String) {
+        let state_path = match crate::settings::state_database_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.as_mut().set_schedule_status(qstring(format!(
+                    "The collection was reviewed, but its reminder could not be updated: {error}"
+                )));
+                return;
+            }
+        };
+        self.as_mut().rust_mut().schedule_generation =
+            self.as_ref().rust().schedule_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().schedule_generation;
+        self.as_mut().set_schedule_busy(true);
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-rom-schedule-review".into())
+            .spawn(move || {
+                let result = local_import::dismiss_scan_schedule_review_profile(
+                    &state_path,
+                    &profile_id,
+                    crate::settings::unix_timestamp(),
+                )
+                .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_schedule_review_dismiss(generation, result);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_schedule_busy(false);
+            self.as_mut().set_schedule_status(qstring(format!(
+                "The collection was reviewed, but its reminder could not be updated: {error}"
+            )));
+        }
+    }
+
+    fn finish_schedule_review_dismiss(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        result: Result<RomScanSchedule, String>,
+    ) {
+        if generation != self.as_ref().rust().schedule_generation {
+            return;
+        }
+        self.as_mut().set_schedule_busy(false);
+        match result {
+            Ok(schedule) => self.as_mut().apply_schedule(schedule),
+            Err(error) => self.as_mut().set_schedule_status(qstring(format!(
+                "The collection was reviewed, but its reminder could not be updated: {error}"
+            ))),
+        }
+    }
+
     fn bump_revision(mut self: Pin<&mut Self>) {
         let revision = self.as_ref().revision().wrapping_add(1);
         self.as_mut().set_revision(revision);
@@ -1954,6 +2505,101 @@ impl qobject::LocalImportModel {
     fn bump_history_revision(mut self: Pin<&mut Self>) {
         let revision = self.as_ref().history_revision().wrapping_add(1);
         self.as_mut().set_history_revision(revision);
+    }
+
+    fn bump_schedule_revision(mut self: Pin<&mut Self>) {
+        let revision = self.as_ref().schedule_revision().wrapping_add(1);
+        self.as_mut().set_schedule_revision(revision);
+    }
+}
+
+fn relative_scan_time(timestamp: i64, now: i64, future: bool) -> String {
+    let seconds = if future {
+        timestamp.saturating_sub(now)
+    } else {
+        now.saturating_sub(timestamp)
+    };
+    if seconds < 60 {
+        return if future {
+            "in under a minute".to_owned()
+        } else {
+            "just now".to_owned()
+        };
+    }
+    let (amount, unit) = if seconds < 60 * 60 {
+        (seconds / 60, "minute")
+    } else if seconds < 24 * 60 * 60 {
+        (seconds / (60 * 60), "hour")
+    } else {
+        (seconds / (24 * 60 * 60), "day")
+    };
+    let suffix = if amount == 1 { "" } else { "s" };
+    if future {
+        format!("in {amount} {unit}{suffix}")
+    } else {
+        format!("{amount} {unit}{suffix} ago")
+    }
+}
+
+fn scan_schedule_status(schedule: &RomScanSchedule, review_count: usize) -> String {
+    if schedule.last_outcome == "running" {
+        return "Checking saved collections in the background. Keep browsing while Lunchbox verifies them."
+            .to_owned();
+    }
+    if review_count > 0 {
+        return format!(
+            "{review_count} saved collection{} ha{} files that need review. Nothing was imported automatically.",
+            if review_count == 1 { "" } else { "s" },
+            if review_count == 1 { "s" } else { "ve" },
+        );
+    }
+    match schedule.last_outcome.as_str() {
+        "completed" => {
+            "The last automatic check found no unresolved collection changes.".to_owned()
+        }
+        "cancelled" => "The last automatic collection check was cancelled.".to_owned(),
+        "failed" | "interrupted" => {
+            if schedule.error_text.is_empty() {
+                "The last automatic collection check needs attention.".to_owned()
+            } else {
+                format!(
+                    "The last automatic collection check needs attention: {}",
+                    schedule.error_text
+                )
+            }
+        }
+        _ if schedule.cadence == "manual" => {
+            "Automatic collection checks are off. Manual scans remain available.".to_owned()
+        }
+        _ => "Automatic collection checks are ready.".to_owned(),
+    }
+}
+
+fn scan_schedule_last_run(schedule: &RomScanSchedule, now: i64) -> String {
+    if schedule.last_finished_at <= 0 {
+        return "No scheduled scan has run yet".to_owned();
+    }
+    format!(
+        "Last check {} · {} files across {} collection{}",
+        relative_scan_time(schedule.last_finished_at, now, false),
+        schedule.total_files,
+        schedule.profile_count,
+        if schedule.profile_count == 1 { "" } else { "s" },
+    )
+}
+
+fn scan_schedule_next_run(schedule: &RomScanSchedule, now: i64) -> String {
+    if schedule.last_outcome == "running" {
+        return "Scan in progress".to_owned();
+    }
+    match schedule.cadence.as_str() {
+        "startup" => "Next check when Lunchbox starts".to_owned(),
+        "daily" | "weekly" if schedule.next_due_at <= now => "Next check is due now".to_owned(),
+        "daily" | "weekly" => format!(
+            "Next check {}",
+            relative_scan_time(schedule.next_due_at, now, true)
+        ),
+        _ => "Manual scans only".to_owned(),
     }
 }
 
@@ -2056,6 +2702,40 @@ mod tests {
             match_rank(&MatchState::Reviewed(MatchIdentityFixture::identity()))
                 < match_rank(&MatchState::Ambiguous(2))
         );
+    }
+
+    #[test]
+    fn schedule_copy_distinguishes_manual_due_running_and_review_states() {
+        let manual = RomScanSchedule::default();
+        assert_eq!(
+            scan_schedule_status(&manual, 0),
+            "Automatic collection checks are off. Manual scans remain available."
+        );
+        assert_eq!(scan_schedule_next_run(&manual, 100), "Manual scans only");
+
+        let mut daily = RomScanSchedule {
+            cadence: "daily".to_owned(),
+            next_due_at: 100,
+            last_outcome: "completed".to_owned(),
+            last_started_at: 40,
+            last_finished_at: 50,
+            profile_count: 2,
+            total_files: 12,
+            ..RomScanSchedule::default()
+        };
+        assert_eq!(scan_schedule_next_run(&daily, 100), "Next check is due now");
+        assert_eq!(
+            scan_schedule_status(&daily, 2),
+            "2 saved collections have files that need review. Nothing was imported automatically."
+        );
+        assert_eq!(
+            scan_schedule_last_run(&daily, 110),
+            "Last check 1 minute ago · 12 files across 2 collections"
+        );
+
+        daily.last_outcome = "running".to_owned();
+        assert_eq!(scan_schedule_next_run(&daily, 100), "Scan in progress");
+        assert!(scan_schedule_status(&daily, 0).contains("background"));
     }
 
     struct MatchIdentityFixture;

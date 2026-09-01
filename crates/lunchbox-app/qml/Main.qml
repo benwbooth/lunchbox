@@ -9987,6 +9987,8 @@ ApplicationWindow {
             SidebarNavButton {
                 label: "Import ROMs"
                 glyph: "+"
+                count: localImport.schedule_review_profile_count > 0
+                       ? localImport.schedule_review_profile_count.toString() : ""
                 onClicked: root.openImportDialog()
             }
             SidebarNavButton {
@@ -16474,6 +16476,12 @@ ApplicationWindow {
                 romScanHistoryDialog.open()
             }
 
+            function reviewScheduledCollection() {
+                const profileIndex = localImport.start_scheduled_review()
+                if (profileIndex >= 0)
+                    syncProfileControls(profileIndex)
+            }
+
             function finishProfileBatchProbe() {
                 const valid = localImport.batch_completed_count === 2
                            && localImport.history_count >= 2
@@ -16702,6 +16710,18 @@ ApplicationWindow {
                             ToolTip.text: "Remove this scan profile; ROMs are never deleted"
                         }
                     }
+                }
+
+                RomScanScheduleCard {
+                    Layout.fillWidth: true
+                    scanModel: localImport
+                    ink: root.ink
+                    muted: root.muted
+                    accent: root.accent
+                    accentCool: root.accentCool
+                    panelRaised: "#111824"
+                    line: root.line
+                    onReviewRequested: importDialog.reviewScheduledCollection()
                 }
 
                 RowLayout {
@@ -17098,9 +17118,14 @@ ApplicationWindow {
                     onClicked: importDialog.close()
                 }
                 HeaderButton {
-                    text: localImport.importing ? "Importing…" : "Import " + localImport.selected_count
+                    text: localImport.importing ? "Importing…"
+                          : localImport.scheduled_review_empty
+                            ? "Apply reviewed changes"
+                            : "Import " + localImport.selected_count
                     active: true
-                    enabled: !localImport.busy && localImport.selected_count > 0
+                    enabled: !localImport.busy
+                             && (localImport.selected_count > 0
+                                 || localImport.scheduled_review_empty)
                     onClicked: localImport.import_selected()
                 }
                 }

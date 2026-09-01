@@ -1245,15 +1245,43 @@ mod tests {
     fn profile_round_trip_is_staged_and_restores_exact_state() {
         let directory = TempDir::new().unwrap();
         let state = state_fixture(&directory);
+        let import_profile = crate::local_import::save_import_profile(
+            &state,
+            "Portable ROMs",
+            &directory.path().join("portable roms"),
+            "Nintendo Entertainment System",
+            "nes,zip",
+            true,
+        )
+        .unwrap();
+        crate::local_import::save_scan_schedule(&state, "daily", 100).unwrap();
+        let claimed = crate::local_import::claim_scan_schedule(&state, true, 101)
+            .unwrap()
+            .unwrap();
+        crate::local_import::complete_scan_schedule(
+            &state,
+            &claimed.active_run_id,
+            "completed",
+            1,
+            4,
+            std::slice::from_ref(&import_profile.id),
+            "",
+            102,
+        )
+        .unwrap();
         let archive = directory.path().join("portable.lunchbox-profile");
         let exported = export_profile(&state, &archive).unwrap();
         assert_eq!(exported.collections, 1);
+        assert_eq!(exported.import_profiles, 1);
         assert_eq!(inspect_profile(&archive).unwrap(), exported);
 
         let store = SettingsStore::at(&state).unwrap();
         let mut changed = store.load().unwrap();
         changed.qbittorrent_host = "changed.example.test".to_owned();
         store.save(&changed).unwrap();
+        crate::local_import::save_scan_schedule(&state, "manual", 200).unwrap();
+        crate::local_import::dismiss_scan_schedule_review_profile(&state, &import_profile.id, 201)
+            .unwrap();
 
         let staged = stage_restore(&state, &archive).unwrap();
         assert_eq!(staged, exported);
@@ -1276,6 +1304,13 @@ mod tests {
                 .qbittorrent_host,
             "backup.example.test"
         );
+        let restored_schedule = crate::local_import::load_scan_schedule(&state).unwrap();
+        assert_eq!(restored_schedule.cadence, "daily");
+        assert_eq!(
+            restored_schedule.review_profile_ids,
+            vec![import_profile.id]
+        );
+        assert_eq!(restored_schedule.last_outcome, "completed");
         let restored_collections = SettingsStore::at(&state)
             .unwrap()
             .user_collections()

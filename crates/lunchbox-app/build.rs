@@ -96,6 +96,7 @@ fn main() {
                 "qml/MediaRetryController.qml",
                 "qml/NativeTextArea.qml",
                 "qml/RomDownloadStatus.qml",
+                "qml/RomScanScheduleCard.qml",
                 "qml/RetryingMediaPlayer.qml",
                 "qml/ScreenScraperSettings.qml",
                 "qml/SecretField.qml",

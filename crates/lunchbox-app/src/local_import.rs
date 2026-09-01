@@ -29,6 +29,10 @@ const FALLBACK_ROM_EXTENSIONS: &[&str] = &[
 ];
 const ARCHIVE_EXTENSIONS: &[&str] = &["zip", "7z", "rar"];
 const MANUAL_MATCH_METHOD: &str = "manual user selection";
+const DAILY_SCAN_INTERVAL_SECONDS: i64 = 24 * 60 * 60;
+const WEEKLY_SCAN_INTERVAL_SECONDS: i64 = 7 * DAILY_SCAN_INTERVAL_SECONDS;
+const STALE_SCAN_RUN_SECONDS: i64 = 6 * 60 * 60;
+pub(crate) const MAX_SCHEDULE_REVIEW_PROFILES: usize = 128;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MatchIdentity {
@@ -156,6 +160,39 @@ pub struct RomScanRun {
     pub cache_reused_files: usize,
     pub content_read_files: usize,
     pub error_text: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RomScanSchedule {
+    pub cadence: String,
+    pub active_run_id: String,
+    pub last_started_at: i64,
+    pub last_finished_at: i64,
+    pub next_due_at: i64,
+    pub last_outcome: String,
+    pub profile_count: usize,
+    pub total_files: usize,
+    pub review_profile_ids: Vec<String>,
+    pub error_text: String,
+    pub updated_at: i64,
+}
+
+impl Default for RomScanSchedule {
+    fn default() -> Self {
+        Self {
+            cadence: "manual".to_owned(),
+            active_run_id: String::new(),
+            last_started_at: 0,
+            last_finished_at: 0,
+            next_due_at: 0,
+            last_outcome: "never".to_owned(),
+            profile_count: 0,
+            total_files: 0,
+            review_profile_ids: Vec::new(),
+            error_text: String::new(),
+            updated_at: 0,
+        }
+    }
 }
 
 impl RomScanRunContext {
@@ -573,6 +610,452 @@ pub fn load_import_profiles(state_path: &Path) -> Result<Vec<RomImportProfile>> 
     Ok(profiles)
 }
 
+fn validate_scan_cadence(cadence: &str) -> Result<()> {
+    if matches!(cadence, "manual" | "startup" | "daily" | "weekly") {
+        Ok(())
+    } else {
+        bail!("unsupported ROM scan cadence {cadence:?}")
+    }
+}
+
+fn scan_cadence_interval(cadence: &str) -> i64 {
+    match cadence {
+        "daily" => DAILY_SCAN_INTERVAL_SECONDS,
+        "weekly" => WEEKLY_SCAN_INTERVAL_SECONDS,
+        _ => 0,
+    }
+}
+
+fn next_scan_due_at(cadence: &str, finished_at: i64) -> i64 {
+    finished_at.saturating_add(scan_cadence_interval(cadence))
+}
+
+fn decode_review_profile_ids(encoded: &str) -> Result<Vec<String>> {
+    let ids = serde_json::from_str::<Vec<String>>(encoded)
+        .context("decoding scheduled ROM scan review collections")?;
+    if ids.len() > MAX_SCHEDULE_REVIEW_PROFILES {
+        bail!(
+            "scheduled ROM scan review contains more than {MAX_SCHEDULE_REVIEW_PROFILES} collections"
+        );
+    }
+    let mut seen = HashSet::new();
+    for id in &ids {
+        if Uuid::parse_str(id).is_err() || !seen.insert(id.clone()) {
+            bail!("scheduled ROM scan review contains an invalid or duplicate profile ID");
+        }
+    }
+    Ok(ids)
+}
+
+fn encode_review_profile_ids(ids: &[String]) -> Result<String> {
+    if ids.len() > MAX_SCHEDULE_REVIEW_PROFILES {
+        bail!(
+            "scheduled ROM scan review contains more than {MAX_SCHEDULE_REVIEW_PROFILES} collections"
+        );
+    }
+    let mut seen = HashSet::new();
+    for id in ids {
+        if Uuid::parse_str(id).is_err() || !seen.insert(id.clone()) {
+            bail!("scheduled ROM scan review contains an invalid or duplicate profile ID");
+        }
+    }
+    let encoded = serde_json::to_string(ids)?;
+    if encoded.len() > 8192 {
+        bail!("scheduled ROM scan review is too large to store safely");
+    }
+    Ok(encoded)
+}
+
+fn read_scan_schedule(connection: &Connection) -> Result<RomScanSchedule> {
+    let (
+        cadence,
+        active_run_id,
+        last_started_at,
+        last_finished_at,
+        next_due_at,
+        last_outcome,
+        profile_count,
+        total_files,
+        review_profile_ids_json,
+        error_text,
+        updated_at,
+    ) = connection.query_row(
+        "SELECT cadence, active_run_id, last_started_at, last_finished_at,
+                next_due_at, last_outcome, profile_count, total_files,
+                review_profile_ids_json, error_text, updated_at
+         FROM rom_scan_schedule WHERE singleton=1",
+        [],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, i64>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+                row.get::<_, i64>(10)?,
+            ))
+        },
+    )?;
+    validate_scan_cadence(&cadence)?;
+    if !matches!(
+        last_outcome.as_str(),
+        "never" | "running" | "completed" | "cancelled" | "failed" | "interrupted"
+    ) || last_started_at < 0
+        || last_finished_at < 0
+        || next_due_at < 0
+        || updated_at < 0
+        || (last_finished_at != 0 && last_finished_at < last_started_at)
+        || error_text.chars().count() > 4096
+    {
+        bail!("scheduled ROM scan state is internally inconsistent");
+    }
+    if (last_outcome == "running" && Uuid::parse_str(&active_run_id).is_err())
+        || (last_outcome != "running" && !active_run_id.is_empty())
+    {
+        bail!("scheduled ROM scan active-run identity is inconsistent");
+    }
+    Ok(RomScanSchedule {
+        cadence,
+        active_run_id,
+        last_started_at,
+        last_finished_at,
+        next_due_at,
+        last_outcome,
+        profile_count: nonnegative_usize(profile_count)?,
+        total_files: nonnegative_usize(total_files)?,
+        review_profile_ids: decode_review_profile_ids(&review_profile_ids_json)?,
+        error_text,
+        updated_at,
+    })
+}
+
+pub fn load_scan_schedule(state_path: &Path) -> Result<RomScanSchedule> {
+    let store = SettingsStore::at(state_path)?;
+    read_scan_schedule(&store.connection()?)
+}
+
+pub fn save_scan_schedule(state_path: &Path, cadence: &str, now: i64) -> Result<RomScanSchedule> {
+    let cadence = cadence.trim().to_ascii_lowercase();
+    validate_scan_cadence(&cadence)?;
+    if now < 0 {
+        bail!("scheduled ROM scan time cannot be negative");
+    }
+    let store = SettingsStore::at(state_path)?;
+    let mut connection = store.connection()?;
+    let transaction =
+        connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let current = read_scan_schedule(&transaction)?;
+    let next_due_at = if cadence == current.cadence {
+        current.next_due_at
+    } else if matches!(cadence.as_str(), "daily" | "weekly") {
+        next_scan_due_at(&cadence, now)
+    } else {
+        0
+    };
+    transaction.execute(
+        "UPDATE rom_scan_schedule
+         SET cadence=?1, next_due_at=?2, updated_at=?3
+         WHERE singleton=1",
+        params![cadence, next_due_at, now],
+    )?;
+    let schedule = read_scan_schedule(&transaction)?;
+    transaction.commit()?;
+    Ok(schedule)
+}
+
+pub fn scan_schedule_is_due(schedule: &RomScanSchedule, now: i64) -> bool {
+    if schedule.last_outcome == "running" {
+        return false;
+    }
+    match schedule.cadence.as_str() {
+        "startup" => true,
+        "daily" | "weekly" => now >= schedule.next_due_at,
+        _ => false,
+    }
+}
+
+pub fn claim_scan_schedule(
+    state_path: &Path,
+    force: bool,
+    now: i64,
+) -> Result<Option<RomScanSchedule>> {
+    if now < 0 {
+        bail!("scheduled ROM scan time cannot be negative");
+    }
+    let store = SettingsStore::at(state_path)?;
+    let mut connection = store.connection()?;
+    let transaction =
+        connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let mut current = read_scan_schedule(&transaction)?;
+    if current.last_outcome == "running" {
+        if now.saturating_sub(current.last_started_at) < STALE_SCAN_RUN_SECONDS {
+            transaction.commit()?;
+            return Ok(None);
+        }
+        transaction.execute(
+            "UPDATE rom_scan_schedule
+             SET active_run_id='', last_finished_at=?1, last_outcome='interrupted',
+                 error_text='The previous scheduled scan did not finish.', updated_at=?1
+             WHERE singleton=1",
+            [now],
+        )?;
+        current = read_scan_schedule(&transaction)?;
+    }
+    if !force && !scan_schedule_is_due(&current, now) {
+        transaction.commit()?;
+        return Ok(None);
+    }
+    let run_id = Uuid::new_v4().to_string();
+    transaction.execute(
+        "UPDATE rom_scan_schedule
+         SET active_run_id=?1, last_started_at=?2, last_finished_at=0,
+             last_outcome='running', profile_count=0, total_files=0,
+             error_text='', updated_at=?2
+         WHERE singleton=1",
+        params![run_id, now],
+    )?;
+    let claimed = read_scan_schedule(&transaction)?;
+    transaction.commit()?;
+    Ok(Some(claimed))
+}
+
+pub fn complete_scan_schedule(
+    state_path: &Path,
+    run_id: &str,
+    outcome: &str,
+    profile_count: usize,
+    total_files: usize,
+    review_profile_ids: &[String],
+    error_text: &str,
+    now: i64,
+) -> Result<RomScanSchedule> {
+    if Uuid::parse_str(run_id).is_err() {
+        bail!("a valid scheduled ROM scan run ID is required");
+    }
+    if !matches!(outcome, "completed" | "cancelled" | "failed") {
+        bail!("unsupported scheduled ROM scan outcome {outcome:?}");
+    }
+    if error_text.chars().count() > 4096 || now < 0 {
+        bail!("scheduled ROM scan completion is too large or has an invalid time");
+    }
+    let store = SettingsStore::at(state_path)?;
+    let mut connection = store.connection()?;
+    let transaction =
+        connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let current = read_scan_schedule(&transaction)?;
+    if current.last_outcome != "running" || current.active_run_id != run_id {
+        bail!("the scheduled ROM scan run is no longer active");
+    }
+    let mut retained_review_profile_ids = if outcome == "completed" {
+        Vec::new()
+    } else {
+        current.review_profile_ids.clone()
+    };
+    for profile_id in review_profile_ids {
+        if !retained_review_profile_ids.contains(profile_id) {
+            retained_review_profile_ids.push(profile_id.clone());
+        }
+    }
+    let review_profile_ids_json = encode_review_profile_ids(&retained_review_profile_ids)?;
+    let next_due_at = next_scan_due_at(&current.cadence, now);
+    transaction.execute(
+        "UPDATE rom_scan_schedule
+         SET active_run_id='', last_finished_at=?1, next_due_at=?2,
+             last_outcome=?3, profile_count=?4, total_files=?5,
+             review_profile_ids_json=?6, error_text=?7, updated_at=?1
+         WHERE singleton=1",
+        params![
+            now,
+            next_due_at,
+            outcome,
+            usize_to_i64(profile_count),
+            usize_to_i64(total_files),
+            review_profile_ids_json,
+            error_text,
+        ],
+    )?;
+    let schedule = read_scan_schedule(&transaction)?;
+    transaction.commit()?;
+    Ok(schedule)
+}
+
+pub fn dismiss_scan_schedule_review_profile(
+    state_path: &Path,
+    profile_id: &str,
+    now: i64,
+) -> Result<RomScanSchedule> {
+    if Uuid::parse_str(profile_id).is_err() || now < 0 {
+        bail!("a valid scheduled ROM scan review profile is required");
+    }
+    let store = SettingsStore::at(state_path)?;
+    let mut connection = store.connection()?;
+    let transaction =
+        connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let mut schedule = read_scan_schedule(&transaction)?;
+    schedule
+        .review_profile_ids
+        .retain(|candidate| candidate != profile_id);
+    let encoded = encode_review_profile_ids(&schedule.review_profile_ids)?;
+    transaction.execute(
+        "UPDATE rom_scan_schedule
+         SET review_profile_ids_json=?1, updated_at=?2 WHERE singleton=1",
+        params![encoded, now],
+    )?;
+    let schedule = read_scan_schedule(&transaction)?;
+    transaction.commit()?;
+    Ok(schedule)
+}
+
+#[derive(Debug)]
+struct StoredRomEvidence {
+    relative_path: PathBuf,
+    relative_path_encoding: String,
+    relative_path_bytes: Vec<u8>,
+    archive_member: String,
+    file_size: u64,
+    modified_unix_ns: Option<i64>,
+    md5: String,
+    sha1: String,
+    game_uid: String,
+    launchbox_db_id: i64,
+    match_state: String,
+    included: bool,
+    availability: String,
+}
+
+fn scan_evidence_key(
+    path_encoding: &str,
+    path_bytes: &[u8],
+    archive_member: &str,
+) -> (String, Vec<u8>, String) {
+    (
+        path_encoding.to_owned(),
+        path_bytes.to_vec(),
+        archive_member.to_owned(),
+    )
+}
+
+fn stored_evidence_is_in_scan_scope(evidence: &StoredRomEvidence, extensions: &[String]) -> bool {
+    if extensions.is_empty() {
+        return true;
+    }
+    let extension = if evidence.archive_member.is_empty() {
+        evidence
+            .relative_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+    } else {
+        Path::new(&evidence.archive_member)
+            .extension()
+            .and_then(|extension| extension.to_str())
+    };
+    extension
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|extension| extensions.contains(&extension))
+}
+
+/// Returns true only when a review-first background scan differs from the
+/// collection state that the user previously imported. Hash/title suggestions
+/// never publish state here; the result merely drives an actionable reminder.
+pub fn scan_output_requires_review(state_path: &Path, output: &ScanOutput) -> Result<bool> {
+    if output.cancelled || output.walk_errors > 0 {
+        return Ok(true);
+    }
+    let store = SettingsStore::at(state_path)?;
+    let connection = store.connection()?;
+    let encoded_root = encode_path(&output.root);
+    let root_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, &encoded_root.bytes).to_string();
+    let mut statement = connection.prepare(
+        "SELECT relative_path_display, relative_path_bytes, relative_path_encoding,
+                archive_member, file_size, modified_unix_ns, upper(md5), upper(sha1),
+                coalesce(game_uid, ''), launchbox_db_id, match_state,
+                included, availability
+         FROM local_rom_files WHERE root_id=?1",
+    )?;
+    let rows = statement.query_map([&root_id], |row| {
+        let display = row.get::<_, String>(0)?;
+        let bytes = row.get::<_, Vec<u8>>(1)?;
+        let encoding = row.get::<_, String>(2)?;
+        Ok(StoredRomEvidence {
+            relative_path: decode_path(bytes.clone(), &encoding, display),
+            relative_path_encoding: encoding,
+            relative_path_bytes: bytes,
+            archive_member: row.get(3)?,
+            file_size: u64::try_from(row.get::<_, i64>(4)?).unwrap_or_default(),
+            modified_unix_ns: row.get(5)?,
+            md5: row.get(6)?,
+            sha1: row.get(7)?,
+            game_uid: row.get(8)?,
+            launchbox_db_id: row.get(9)?,
+            match_state: row.get(10)?,
+            included: row.get(11)?,
+            availability: row.get(12)?,
+        })
+    })?;
+    let mut stored = HashMap::new();
+    for row in rows {
+        let evidence = row?;
+        let key = scan_evidence_key(
+            &evidence.relative_path_encoding,
+            &evidence.relative_path_bytes,
+            &evidence.archive_member,
+        );
+        if stored.insert(key, evidence).is_some() {
+            bail!("local ROM state contains duplicate path evidence for one collection");
+        }
+    }
+
+    let mut scanned = HashSet::new();
+    for result in &output.results {
+        let (game_uid, launchbox_db_id) = match &result.match_state {
+            MatchState::Exact(identity) | MatchState::Reviewed(identity) => {
+                (identity.game_uid.as_str(), identity.launchbox_db_id)
+            }
+            MatchState::Ambiguous(_) | MatchState::Unmatched | MatchState::InventoryOnly => ("", 0),
+            MatchState::Error(_) => return Ok(true),
+        };
+        let relative = encode_path(&result.relative_path);
+        let key = scan_evidence_key(relative.encoding, &relative.bytes, &result.archive_member);
+        scanned.insert(key.clone());
+        let Some(evidence) = stored.get(&key) else {
+            return Ok(true);
+        };
+        let digests_match = (result.md5.is_empty()
+            || evidence.md5.eq_ignore_ascii_case(&result.md5))
+            && (result.sha1.is_empty() || evidence.sha1.eq_ignore_ascii_case(&result.sha1));
+        let metadata_matches_without_hashes = !result.md5.is_empty()
+            || !result.sha1.is_empty()
+            || evidence.modified_unix_ns == result.modified_unix_ns;
+        if !evidence.included
+            || evidence.availability != "present"
+            || evidence.file_size != result.file_size
+            || !digests_match
+            || !metadata_matches_without_hashes
+            || evidence.match_state != result.match_state.key()
+            || evidence.game_uid != game_uid
+            || evidence.launchbox_db_id != launchbox_db_id
+        {
+            return Ok(true);
+        }
+    }
+
+    Ok(stored.values().any(|evidence| {
+        evidence.included
+            && evidence.availability == "present"
+            && stored_evidence_is_in_scan_scope(evidence, &output.extension_filter)
+            && !scanned.contains(&scan_evidence_key(
+                &evidence.relative_path_encoding,
+                &evidence.relative_path_bytes,
+                &evidence.archive_member,
+            ))
+    }))
+}
+
 pub fn save_import_profile(
     state_path: &Path,
     name: &str,
@@ -626,12 +1109,24 @@ pub fn delete_import_profile(state_path: &Path, id: &str) -> Result<()> {
         bail!("a valid stable ROM scan profile ID is required");
     }
     let store = SettingsStore::at(state_path)?;
-    let removed = store
-        .connection()?
-        .execute("DELETE FROM rom_import_profiles WHERE id=?1", [id])?;
+    let mut connection = store.connection()?;
+    let transaction =
+        connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let removed = transaction.execute("DELETE FROM rom_import_profiles WHERE id=?1", [id])?;
     if removed != 1 {
         bail!("the selected ROM scan profile no longer exists");
     }
+    let mut schedule = read_scan_schedule(&transaction)?;
+    schedule
+        .review_profile_ids
+        .retain(|candidate| candidate != id);
+    let review_profile_ids_json = encode_review_profile_ids(&schedule.review_profile_ids)?;
+    transaction.execute(
+        "UPDATE rom_scan_schedule
+         SET review_profile_ids_json=?1, updated_at=?2 WHERE singleton=1",
+        params![review_profile_ids_json, settings::unix_timestamp()],
+    )?;
+    transaction.commit()?;
     Ok(())
 }
 
@@ -3402,9 +3897,226 @@ mod tests {
         assert!(!updated.checksums_enabled);
         assert_eq!(load_import_profiles(&state).unwrap(), vec![updated.clone()]);
 
+        let scheduled = claim_scan_schedule(&state, true, 100).unwrap().unwrap();
+        complete_scan_schedule(
+            &state,
+            &scheduled.active_run_id,
+            "completed",
+            1,
+            1,
+            std::slice::from_ref(&updated.id),
+            "",
+            101,
+        )
+        .unwrap();
+        assert_eq!(
+            load_scan_schedule(&state).unwrap().review_profile_ids,
+            [updated.id.clone()]
+        );
+
         delete_import_profile(&state, &updated.id).unwrap();
         assert!(load_import_profiles(&state).unwrap().is_empty());
+        assert!(
+            load_scan_schedule(&state)
+                .unwrap()
+                .review_profile_ids
+                .is_empty()
+        );
         assert!(delete_import_profile(&state, &updated.id).is_err());
+    }
+
+    #[test]
+    fn scheduled_scans_claim_once_complete_and_preserve_exact_review_profiles() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("state.db");
+        let initial = load_scan_schedule(&state).unwrap();
+        assert_eq!(initial, RomScanSchedule::default());
+
+        let configured = save_scan_schedule(&state, "daily", 1_000).unwrap();
+        assert_eq!(configured.cadence, "daily");
+        assert_eq!(configured.next_due_at, 1_000 + DAILY_SCAN_INTERVAL_SECONDS);
+        assert!(!scan_schedule_is_due(&configured, 1_001));
+        assert!(scan_schedule_is_due(
+            &configured,
+            1_000 + DAILY_SCAN_INTERVAL_SECONDS
+        ));
+
+        assert!(claim_scan_schedule(&state, false, 1_001).unwrap().is_none());
+        let claimed = claim_scan_schedule(&state, false, 1_000 + DAILY_SCAN_INTERVAL_SECONDS)
+            .unwrap()
+            .unwrap();
+        assert_eq!(claimed.last_outcome, "running");
+        assert!(Uuid::parse_str(&claimed.active_run_id).is_ok());
+        assert!(
+            claim_scan_schedule(&state, true, 1_000 + DAILY_SCAN_INTERVAL_SECONDS + 1,)
+                .unwrap()
+                .is_none()
+        );
+
+        let first_profile = Uuid::new_v4().to_string();
+        let second_profile = Uuid::new_v4().to_string();
+        let completed = complete_scan_schedule(
+            &state,
+            &claimed.active_run_id,
+            "completed",
+            3,
+            47,
+            &[first_profile.clone(), second_profile.clone()],
+            "",
+            1_000 + DAILY_SCAN_INTERVAL_SECONDS + 20,
+        )
+        .unwrap();
+        assert_eq!(completed.last_outcome, "completed");
+        assert_eq!(completed.profile_count, 3);
+        assert_eq!(completed.total_files, 47);
+        assert_eq!(
+            completed.review_profile_ids,
+            vec![first_profile.clone(), second_profile.clone()]
+        );
+        assert_eq!(
+            completed.next_due_at,
+            completed.last_finished_at + DAILY_SCAN_INTERVAL_SECONDS
+        );
+
+        let reviewed = dismiss_scan_schedule_review_profile(
+            &state,
+            &first_profile,
+            completed.last_finished_at + 1,
+        )
+        .unwrap();
+        assert_eq!(reviewed.review_profile_ids.len(), 1);
+        assert!(!reviewed.review_profile_ids.contains(&first_profile));
+        assert_eq!(load_scan_schedule(&state).unwrap(), reviewed);
+
+        let third_profile = Uuid::new_v4().to_string();
+        let retry = claim_scan_schedule(&state, true, reviewed.last_finished_at + 2)
+            .unwrap()
+            .unwrap();
+        assert_eq!(retry.review_profile_ids, [second_profile.clone()]);
+        let cancelled = complete_scan_schedule(
+            &state,
+            &retry.active_run_id,
+            "cancelled",
+            1,
+            10,
+            std::slice::from_ref(&third_profile),
+            "Cancelled after the first collection.",
+            reviewed.last_finished_at + 3,
+        )
+        .unwrap();
+        assert_eq!(
+            cancelled.review_profile_ids,
+            [second_profile, third_profile]
+        );
+    }
+
+    #[test]
+    fn scheduled_review_detects_only_real_collection_differences() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("games.db");
+        let state = directory.path().join("state.db");
+        let root = directory.path().join("roms");
+        fs::create_dir(&root).unwrap();
+        let content = b"exact-rom-content";
+        discovery_fixture(&discovery, content);
+        fs::write(root.join("Exact Game.nes"), content).unwrap();
+        let cancelled = AtomicBool::new(false);
+        let first = scan_directory(
+            &discovery,
+            &root,
+            "Nintendo Entertainment System",
+            true,
+            &cancelled,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+
+        assert!(scan_output_requires_review(&state, &first).unwrap());
+        assert_eq!(commit_scan_to(&state, &first).unwrap(), 1);
+        assert!(!scan_output_requires_review(&state, &first).unwrap());
+
+        fs::write(root.join("Another Exact Game.nes"), content).unwrap();
+        let with_new_file = scan_directory(
+            &discovery,
+            &root,
+            "Nintendo Entertainment System",
+            true,
+            &cancelled,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert!(scan_output_requires_review(&state, &with_new_file).unwrap());
+
+        fs::remove_file(root.join("Another Exact Game.nes")).unwrap();
+        fs::write(root.join("Local Only.nes"), b"user-owned-local-only-rom").unwrap();
+        let mut with_local_only = scan_directory(
+            &discovery,
+            &root,
+            "Nintendo Entertainment System",
+            true,
+            &cancelled,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert!(scan_output_requires_review(&state, &with_local_only).unwrap());
+        with_local_only
+            .results
+            .iter_mut()
+            .filter(|result| matches!(result.match_state, MatchState::Unmatched))
+            .for_each(|result| result.selected = true);
+        assert_eq!(commit_scan_to(&state, &with_local_only).unwrap(), 2);
+        assert!(!scan_output_requires_review(&state, &with_local_only).unwrap());
+
+        fs::remove_file(root.join("Local Only.nes")).unwrap();
+        fs::remove_file(root.join("Exact Game.nes")).unwrap();
+        let missing_file = scan_directory(
+            &discovery,
+            &root,
+            "Nintendo Entertainment System",
+            true,
+            &cancelled,
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        assert!(scan_output_requires_review(&state, &missing_file).unwrap());
+        assert_eq!(commit_scan_to(&state, &missing_file).unwrap(), 0);
+        assert!(!scan_output_requires_review(&state, &missing_file).unwrap());
+    }
+
+    #[test]
+    fn startup_and_manual_scan_cadences_are_explicit_and_stale_runs_recover() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("state.db");
+
+        let startup = save_scan_schedule(&state, "startup", 10).unwrap();
+        assert!(scan_schedule_is_due(&startup, 10));
+        let first = claim_scan_schedule(&state, false, 10).unwrap().unwrap();
+        let recovered = claim_scan_schedule(&state, false, 10 + STALE_SCAN_RUN_SECONDS)
+            .unwrap()
+            .unwrap();
+        assert_ne!(first.active_run_id, recovered.active_run_id);
+        assert_eq!(recovered.last_outcome, "running");
+        complete_scan_schedule(
+            &state,
+            &recovered.active_run_id,
+            "cancelled",
+            0,
+            0,
+            &[],
+            "Cancelled by the user.",
+            10 + STALE_SCAN_RUN_SECONDS + 1,
+        )
+        .unwrap();
+
+        let manual = save_scan_schedule(&state, "manual", 20_000).unwrap();
+        assert!(!scan_schedule_is_due(&manual, i64::MAX));
+        assert!(
+            claim_scan_schedule(&state, false, 20_000)
+                .unwrap()
+                .is_none()
+        );
+        assert!(claim_scan_schedule(&state, true, 20_000).unwrap().is_some());
+        assert!(save_scan_schedule(&state, "hourly", 20_000).is_err());
     }
 
     #[test]

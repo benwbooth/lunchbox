@@ -397,6 +397,16 @@ The initial implementation enforces this shape:
   set, and checksum policy. Profile reads and writes stay on named workers.
   Editing loaded controls detaches them into a visible one-time scope rather
   than silently changing the saved profile.
+  A singleton schedule record supports manual, startup, daily, and weekly
+  review-first checks. The worker claims one UUID run transactionally, scans
+  saved profiles sequentially, and compares each result with the exact imported
+  path/member/size/hash/stable-ID evidence before publishing only a reminder.
+  It never imports or removes records. Completed runs replace the reminder set;
+  failed and cancelled runs preserve prior unresolved profiles, stale active
+  runs recover as interrupted, and deleting a profile removes only its dead
+  reminder in the same transaction. Successful full review/import dismisses the
+  corresponding reminder. Cadence, run state, and reminders remain inside the
+  verified portable profile snapshot.
   Successfully read CRC32/MD5/SHA-1 records are committed incrementally to the
   writable state database, so a cancelled scan resumes from every completed
   regular file or archive. Reuse requires the same lossless path, stable native

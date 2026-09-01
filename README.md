@@ -409,6 +409,14 @@ history records the profile snapshot, exact scope, batch position, outcome,
 counts, errors, and cached/read work for up to 200 runs. A historical profile
 can be loaded for an ordinary detailed rescan and review; deleting the profile
 does not erase its audit trail.
+Saved profiles can also be checked at startup, daily, or weekly. These checks
+run off the GUI thread and never import, relink, remove, or launch anything.
+Lunchbox compares each completed scan with the exact previously imported path,
+archive member, size, hash, and stable game identity, then raises a compact
+review badge only for real differences. Failed or cancelled checks preserve
+older reminders, and a reminder clears only after the corresponding collection
+is successfully reviewed and imported. The cadence and pending reviews are
+included in portable profile backups.
 Completed regular-file and archive-member hashes are retained in per-user state,
 including results completed before cancellation. A later scan reuses them only
 when the lossless native path, stable filesystem identity, size, and operating-
