@@ -36,6 +36,7 @@ mod media;
 mod media_acquisition;
 mod media_audit;
 pub mod media_audit_model;
+mod media_repair_batch;
 mod platform_process;
 mod profile_backup;
 mod provider_image;
@@ -166,7 +167,12 @@ pub fn run() -> i32 {
         Err(error) => eprintln!("LUNCHBOX_PROFILE_RESTORE_FAILED error={error:#}"),
     }
 
-    if std::env::args().any(|argument| argument == "--hover-preview-ui-probe") {
+    if std::env::args().any(|argument| {
+        matches!(
+            argument.as_str(),
+            "--hover-preview-ui-probe" | "--hover-artwork-transition-ui-probe"
+        )
+    }) {
         match hover_preview::prepare_ui_probe() {
             Ok(Some(path)) => println!("LUNCHBOX_HOVER_PREVIEW_SEEDED path={path:?}"),
             Ok(None) => println!("LUNCHBOX_HOVER_PREVIEW_DOWNLOAD_PROBE clean_cache=true"),
@@ -227,6 +233,16 @@ pub fn run() -> i32 {
             Ok(evidence) => println!("LUNCHBOX_EMULATOR_RECOVERY_SEEDED {evidence}"),
             Err(error) => {
                 eprintln!("LUNCHBOX_EMULATOR_RECOVERY_UI_FAILED seed error={error:#}");
+                return 1;
+            }
+        }
+    }
+
+    if std::env::args().any(|argument| argument == "--media-repair-recovery-ui-probe") {
+        match media_repair_batch::seed_media_repair_recovery_probe() {
+            Ok(evidence) => println!("LUNCHBOX_MEDIA_REPAIR_RECOVERY_SEEDED {evidence}"),
+            Err(error) => {
+                eprintln!("LUNCHBOX_MEDIA_REPAIR_RECOVERY_UI_FAILED seed error={error:#}");
                 return 1;
             }
         }

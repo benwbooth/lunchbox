@@ -24,6 +24,7 @@ pub fn prepare_ui_probe() -> Result<Option<PathBuf>> {
     let media_root =
         crate::catalog::requested_path("--media-directory", "LUNCHBOX_MEDIA_DIRECTORY")
             .context("the hover-preview UI probe requires an explicit --media-directory")?;
+    prepare_artwork_fixture(&media_root)?;
     let Some(fixture) =
         crate::catalog::requested_path("--preview-video-fixture", "LUNCHBOX_PREVIEW_VIDEO_FIXTURE")
     else {
@@ -63,6 +64,46 @@ pub fn prepare_ui_probe() -> Result<Option<PathBuf>> {
         )
     })?;
     let target = target_directory.join(format!("video.{extension}"));
+    publish_probe_fixture(&fixture, &target)?;
+    Ok(Some(target))
+}
+
+fn prepare_artwork_fixture(media_root: &Path) -> Result<Option<PathBuf>> {
+    let Some(fixture) = crate::catalog::requested_path(
+        "--preview-artwork-fixture",
+        "LUNCHBOX_PREVIEW_ARTWORK_FIXTURE",
+    ) else {
+        return Ok(None);
+    };
+    let metadata = fixture
+        .metadata()
+        .with_context(|| format!("inspecting artwork fixture {}", fixture.display()))?;
+    if !metadata.is_file() || metadata.len() == 0 {
+        bail!("artwork fixture must be a non-empty regular file");
+    }
+    if metadata.len() > 16 * 1024 * 1024 {
+        bail!("artwork fixture must be at most 16 MiB");
+    }
+    let extension = fixture
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .context("artwork fixture requires a supported image extension")?;
+    if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp") {
+        bail!("artwork fixture has an unsupported image extension");
+    }
+
+    // This probe's catalog fixture resolves Super Mario Bros. to database ID
+    // 140. Publish a deterministic local cover so the QML transition gate can
+    // prove that the same decoded texture survives expansion and collapse.
+    let target_directory = media_root.join("lb-140").join("local");
+    fs::create_dir_all(&target_directory).with_context(|| {
+        format!(
+            "creating hover artwork probe directory {}",
+            target_directory.display()
+        )
+    })?;
+    let target = target_directory.join(format!("box-front.{extension}"));
     publish_probe_fixture(&fixture, &target)?;
     Ok(Some(target))
 }

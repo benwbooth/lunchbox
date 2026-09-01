@@ -231,8 +231,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   exact artwork categories off-thread with cancellation, keeps hundreds of
   thousands of results virtualized, separates exact LibRetro repairs from
   records requiring provider review, and uses a confirmed bounded two-worker
-  repair queue with no cross-category substitution. Atomic completed files
-  survive interruption; unresolved provider misses and failures remain visible.
+  repair queue with no cross-category substitution. Every selected exact record
+  is journaled transactionally before provider work starts, a stable
+  cross-process lease prevents two Lunchbox instances from mutating one batch,
+  and restart recovery preserves completed results while offering explicit
+  Resume or Discard controls for the remaining records. Unresolved provider
+  misses and failures remain visible.
 
 ## Collection management
 
@@ -300,10 +304,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   saved credentials, only an opened game or a pointer hover that survives the
   500-ms intent gate enters the bounded automatic video queue; visibility and
   keyboard traversal remain artwork-only.
-- Extend the implemented whole-library missing-media audit and bounded bulk
-  LibRetro repair queue with durable pending-batch restart recovery, multi-
-  provider bulk review, supplemental video/manual categories, and scheduled
-  unattended maintenance. Durable media-source priority, per-game candidate
+- Extend the implemented whole-library missing-media audit and durable bounded
+  bulk repair queue with multi-provider bulk review, supplemental video/manual
+  categories, and scheduled unattended maintenance. Durable media-source priority, per-game candidate
   rotation, immediate off-thread reindexing, and safe explicit LibRetro
   replacement are native.
 - Extend the responsive game details and native video/fullscreen/manual/3D-box/

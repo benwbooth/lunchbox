@@ -271,6 +271,9 @@ pub mod qobject {
         fn report_hover_preview_ui_probe(self: &LibraryModel);
 
         #[qinvokable]
+        fn report_hover_artwork_transition_ui_probe(self: &LibraryModel);
+
+        #[qinvokable]
         fn report_hover_preview_ui_failure(self: &LibraryModel, detail: QString);
 
         #[qinvokable]
@@ -1120,7 +1123,12 @@ impl Default for LibraryModelRust {
             ),
             hover_preview_loading: false,
             hover_preview_probe: std::env::args().any(|argument| {
-                argument == "--hover-preview-ui-probe" || argument == "--emumovies-auto-ui-probe"
+                matches!(
+                    argument.as_str(),
+                    "--hover-preview-ui-probe"
+                        | "--hover-artwork-transition-ui-probe"
+                        | "--emumovies-auto-ui-probe"
+                )
             }),
             media_directory: QString::default(),
             media_loading: false,
@@ -3405,6 +3413,12 @@ impl qobject::LibraryModel {
                 self.hover_preview_source().to_string(),
                 self.hover_preview_url().to_string()
             );
+        }
+    }
+
+    pub fn report_hover_artwork_transition_ui_probe(&self) {
+        if *self.hover_preview_probe() {
+            println!("LUNCHBOX_HOVER_ARTWORK_TRANSITION_UI_READY");
         }
     }
 

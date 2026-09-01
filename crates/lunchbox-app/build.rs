@@ -84,6 +84,7 @@ fn main() {
                 "qml/LaunchCommandPreview.qml",
                 "qml/MetadataField.qml",
                 "qml/MediaDownloadStatus.qml",
+                "qml/MediaRepairRecoveryBanner.qml",
                 "qml/NativeTextArea.qml",
                 "qml/RomDownloadStatus.qml",
                 "qml/ScreenScraperSettings.qml",

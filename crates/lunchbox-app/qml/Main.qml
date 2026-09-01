@@ -15,7 +15,7 @@ ApplicationWindow {
            || webArtworkUiProbe || onboardingUiProbe
            || collectionUiProbe || smartCollectionUiProbe
            || collectionPresentationUiProbe || libraryAuditUiProbe || firmwareAuditUiProbe
-           || mediaAuditUiProbe
+           || mediaAuditUiProbe || mediaRepairRecoveryUiProbe
            || installManagementUiProbe
            || downloadRecoveryUiProbe
            || variantUiProbe || relatedGamesUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
@@ -29,7 +29,7 @@ ApplicationWindow {
             || webArtworkUiProbe || onboardingUiProbe
             || collectionUiProbe || smartCollectionUiProbe
             || collectionPresentationUiProbe || libraryAuditUiProbe || firmwareAuditUiProbe
-            || mediaAuditUiProbe
+            || mediaAuditUiProbe || mediaRepairRecoveryUiProbe
             || installManagementUiProbe
             || downloadRecoveryUiProbe
             || variantUiProbe || relatedGamesUiProbe || metadataUiProbe || tagsUiProbe || retroarchShaderUiProbe
@@ -170,6 +170,12 @@ ApplicationWindow {
     property string hoverPreviewPlaybackError: ""
     property int hoverPreviewProbeStage: 0
     property bool hoverPreviewIntentGateVerified: false
+    readonly property bool hoverPreviewArtworkProbe: root.argumentValue(
+                                                           "--preview-artwork-fixture").length > 0
+    property var hoverPreviewArtworkTile: null
+    property real hoverPreviewArtworkDecodeWidth: 0
+    property real hoverPreviewArtworkDecodeHeight: 0
+    property bool hoverPreviewArtworkExpansionVerified: false
     property bool soundtrackProbeStarted: false
     property bool downloadHistoryTriggered: false
     property bool downloadRecoveryProbeTriggered: false
@@ -307,13 +313,16 @@ ApplicationWindow {
     readonly property bool listFilterUiProbe: Qt.application.arguments.indexOf("--list-filter-ui-probe") >= 0
     readonly property bool alphabetUiProbe: Qt.application.arguments.indexOf("--alphabet-ui-probe") >= 0
     readonly property bool emuMoviesAutoUiProbe: Qt.application.arguments.indexOf("--emumovies-auto-ui-probe") >= 0
+    readonly property bool hoverArtworkTransitionUiProbe: Qt.application.arguments.indexOf("--hover-artwork-transition-ui-probe") >= 0
     readonly property bool hoverPreviewUiProbe: Qt.application.arguments.indexOf("--hover-preview-ui-probe") >= 0
+                                                || hoverArtworkTransitionUiProbe
                                                 || emuMoviesAutoUiProbe
     readonly property bool libraryAuditCleanupUiProbe: Qt.application.arguments.indexOf("--library-audit-cleanup-ui-probe") >= 0
     readonly property bool libraryAuditUiProbe: Qt.application.arguments.indexOf("--library-audit-ui-probe") >= 0
                                                   || libraryAuditCleanupUiProbe
     readonly property bool firmwareAuditUiProbe: Qt.application.arguments.indexOf("--firmware-audit-ui-probe") >= 0
     readonly property bool mediaAuditUiProbe: Qt.application.arguments.indexOf("--media-audit-ui-probe") >= 0
+    readonly property bool mediaRepairRecoveryUiProbe: Qt.application.arguments.indexOf("--media-repair-recovery-ui-probe") >= 0
     readonly property bool downloadUiProbe: Qt.application.arguments.indexOf("--download-ui-probe") >= 0
     readonly property bool downloadStatusUiProbe: Qt.application.arguments.indexOf("--download-status-ui-probe") >= 0
     readonly property bool manualTorrentUiProbe: Qt.application.arguments.indexOf("--manual-torrent-ui-probe") >= 0
@@ -647,6 +656,17 @@ ApplicationWindow {
     function openLaunchProfileManager() {
         launchProfileManagerDialog.open()
         launchProfileManager.initialize()
+    }
+
+    function beginMediaAuditProbe() {
+        if (!root.mediaAuditUiProbe || root.mediaAuditProbeArmed
+                || !library.ready || !mediaAudit.initialized || mediaAudit.busy)
+            return
+        root.mediaAuditProbeArmed = true
+        mediaAuditScope.currentIndex = 1
+        mediaAuditKind.currentIndex = 0
+        mediaAuditDialog.open()
+        mediaAudit.start_audit("catalog", "box-front")
     }
 
     function enterCouchMode() {
@@ -1706,6 +1726,106 @@ ApplicationWindow {
         }
     }
 
+    Timer {
+        id: hoverPreviewArtworkExpansionTimer
+        interval: 70
+        repeat: false
+        onTriggered: {
+            if (!root.hoverPreviewArtworkProbe
+                    || root.hoverPreviewProbeStage !== 1)
+                return
+            const tile = root.hoverPreviewArtworkTile
+            if (!tile || tile.previewArtworkStatus !== Image.Ready
+                    || tile.previewArtworkOpacity < 0.999
+                    || tile.previewArtworkDecodeWidth
+                       !== root.hoverPreviewArtworkDecodeWidth
+                    || tile.previewArtworkDecodeHeight
+                       !== root.hoverPreviewArtworkDecodeHeight
+                    || tile.previewCardExpansion <= 1.001
+                    || tile.previewCardExpansion
+                       >= tile.previewCardMaximumExpansion - 0.001) {
+                const detail = "artwork disappeared while expanding status="
+                               + (tile ? tile.previewArtworkStatus : -1)
+                               + " opacity="
+                               + (tile ? tile.previewArtworkOpacity : -1)
+                               + " decode="
+                               + (tile ? tile.previewArtworkDecodeWidth : -1)
+                               + "x"
+                               + (tile ? tile.previewArtworkDecodeHeight : -1)
+                               + " expected="
+                               + root.hoverPreviewArtworkDecodeWidth + "x"
+                               + root.hoverPreviewArtworkDecodeHeight
+                               + " expansion="
+                               + (tile ? tile.previewCardExpansion : -1)
+                console.error("LUNCHBOX_HOVER_PREVIEW_UI_FAILED " + detail)
+                library.report_hover_preview_ui_failure(detail)
+                Qt.exit(2)
+                return
+            }
+            root.hoverPreviewArtworkExpansionVerified = true
+            console.warn("LUNCHBOX_HOVER_ARTWORK_EXPANSION_READY opacity="
+                         + tile.previewArtworkOpacity + " decode="
+                         + tile.previewArtworkDecodeWidth + "x"
+                         + tile.previewArtworkDecodeHeight + " expansion="
+                         + tile.previewCardExpansion)
+            if (root.hoverArtworkTransitionUiProbe) {
+                root.hoverPreviewProbeStage = 3
+                root.disarmGridPreview(tile)
+                hoverPreviewArtworkCollapseTimer.restart()
+            }
+        }
+    }
+
+    Timer {
+        id: hoverPreviewArtworkCollapseTimer
+        interval: 70
+        repeat: false
+        onTriggered: {
+            if (!root.hoverPreviewArtworkProbe
+                    || root.hoverPreviewProbeStage !== 3)
+                return
+            const tile = root.hoverPreviewArtworkTile
+            if (!tile || !root.hoverPreviewArtworkExpansionVerified
+                    || tile.previewArtworkStatus !== Image.Ready
+                    || tile.previewArtworkOpacity < 0.999
+                    || tile.previewArtworkDecodeWidth
+                       !== root.hoverPreviewArtworkDecodeWidth
+                    || tile.previewArtworkDecodeHeight
+                       !== root.hoverPreviewArtworkDecodeHeight
+                    || tile.previewCardExpansion <= 1.001
+                    || tile.previewCardExpansion
+                       >= tile.previewCardMaximumExpansion - 0.001) {
+                const detail = "artwork disappeared while collapsing status="
+                               + (tile ? tile.previewArtworkStatus : -1)
+                               + " opacity="
+                               + (tile ? tile.previewArtworkOpacity : -1)
+                               + " decode="
+                               + (tile ? tile.previewArtworkDecodeWidth : -1)
+                               + "x"
+                               + (tile ? tile.previewArtworkDecodeHeight : -1)
+                               + " expected="
+                               + root.hoverPreviewArtworkDecodeWidth + "x"
+                               + root.hoverPreviewArtworkDecodeHeight
+                               + " expansion="
+                               + (tile ? tile.previewCardExpansion : -1)
+                console.error("LUNCHBOX_HOVER_PREVIEW_UI_FAILED " + detail)
+                library.report_hover_preview_ui_failure(detail)
+                Qt.exit(2)
+                return
+            }
+            console.warn("LUNCHBOX_HOVER_ARTWORK_COLLAPSE_READY opacity="
+                         + tile.previewArtworkOpacity + " decode="
+                         + tile.previewArtworkDecodeWidth + "x"
+                         + tile.previewArtworkDecodeHeight + " expansion="
+                         + tile.previewCardExpansion)
+            if (root.hoverArtworkTransitionUiProbe)
+                library.report_hover_artwork_transition_ui_probe()
+            else
+                library.report_hover_preview_ui_probe()
+            Qt.quit()
+        }
+    }
+
     AudioOutput {
         id: hoverPreviewAudio
         muted: root.hoverPreviewAudioMuted
@@ -1784,10 +1904,22 @@ ApplicationWindow {
                     hoverPreviewArmProbeTimer.restart()
                     return
                 }
+                if (root.hoverPreviewArtworkProbe
+                        && (tile.previewArtworkStatus !== Image.Ready
+                            || tile.previewArtworkSource.length === 0)) {
+                    hoverPreviewArmProbeTimer.restart()
+                    return
+                }
                 tile.forceActiveFocus()
+                root.hoverPreviewArtworkTile = tile
+                root.hoverPreviewArtworkDecodeWidth = tile.previewArtworkDecodeWidth
+                root.hoverPreviewArtworkDecodeHeight = tile.previewArtworkDecodeHeight
+                root.hoverPreviewArtworkExpansionVerified = false
                 root.armGridPreview(tile)
                 root.hoverPreviewIntentGateVerified = false
                 hoverPreviewIntentProbeTimer.restart()
+                if (root.hoverPreviewArtworkProbe)
+                    hoverPreviewArtworkExpansionTimer.restart()
             })
         }
     }
@@ -1853,6 +1985,12 @@ ApplicationWindow {
                          + tile.previewCardWidth + "x"
                          + tile.previewCardHeight)
             const reportReady = function() {
+                if (root.hoverPreviewArtworkProbe) {
+                    root.hoverPreviewProbeStage = 3
+                    root.disarmGridPreview(root.hoverPreviewArtworkTile)
+                    hoverPreviewArtworkCollapseTimer.restart()
+                    return
+                }
                 library.report_hover_preview_ui_probe()
                 Qt.quit()
             }
@@ -2317,6 +2455,7 @@ ApplicationWindow {
 
     MediaAuditModel {
         id: mediaAudit
+        Component.onCompleted: initialize()
     }
 
     FirmwareAuditView {
@@ -2730,13 +2869,7 @@ ApplicationWindow {
                 else if (library.filter_probe)
                     library.apply_filter("mario", "", "downloadable")
                 else if (root.mediaAuditUiProbe) {
-                    if (!root.mediaAuditProbeArmed) {
-                        root.mediaAuditProbeArmed = true
-                        mediaAuditScope.currentIndex = 1
-                        mediaAuditKind.currentIndex = 0
-                        mediaAuditDialog.open()
-                        mediaAudit.start_audit("catalog", "box-front")
-                    }
+                    root.beginMediaAuditProbe()
                 }
                 else if (root.firmwareAuditUiProbe) {
                     if (!root.firmwareAuditProbeArmed) {
@@ -5430,6 +5563,16 @@ ApplicationWindow {
 
     Connections {
         target: mediaAudit
+        function onInitializedChanged() {
+            if (!mediaAudit.initialized)
+                return
+            if (root.mediaRepairRecoveryUiProbe) {
+                mediaAuditDialog.open()
+                mediaRepairRecoveryReadyTimer.restart()
+            } else {
+                root.beginMediaAuditProbe()
+            }
+        }
         function onMedia_revisionChanged() {
             if (mediaAudit.media_revision > 0)
                 library.refresh_media()
@@ -5456,6 +5599,47 @@ ApplicationWindow {
             if (mediaAudit.entry_count > 0)
                 mediaAudit.toggle_selected(0)
             mediaAuditScreenshotTimer.restart()
+        }
+    }
+
+    Timer {
+        id: mediaRepairRecoveryReadyTimer
+        interval: 450
+        repeat: false
+        onTriggered: {
+            const ready = mediaAudit.verify_recovery_probe(mediaAuditDialog.visible)
+            if (!ready) {
+                Qt.exit(2)
+                return
+            }
+            if (root.screenshotOutput.length === 0) {
+                Qt.quit()
+                return
+            }
+            mediaAuditDialog.contentItem.parent.grabToImage(function(result) {
+                if (!result.saveToFile(root.screenshotOutput)) {
+                    console.error("LUNCHBOX_MEDIA_REPAIR_RECOVERY_UI_FAILED screenshot="
+                                  + root.screenshotOutput)
+                    Qt.exit(2)
+                    return
+                }
+                console.log("LUNCHBOX_MEDIA_REPAIR_RECOVERY_SCREENSHOT_READY path="
+                            + root.screenshotOutput)
+                Qt.quit()
+            })
+        }
+    }
+
+    Timer {
+        interval: 10000
+        running: root.mediaRepairRecoveryUiProbe
+        repeat: false
+        onTriggered: {
+            console.error("LUNCHBOX_MEDIA_REPAIR_RECOVERY_UI_FAILED timeout initialized="
+                          + mediaAudit.initialized + " recovery="
+                          + mediaAudit.recovery_available + " message="
+                          + mediaAudit.message)
+            Qt.exit(2)
         }
     }
 
@@ -8374,6 +8558,12 @@ ApplicationWindow {
             readonly property real previewCardViewportY: cardGeometry.viewportY
             readonly property real previewCardWidth: cardGeometry.cardWidth
             readonly property real previewCardHeight: cardGeometry.cardHeight
+            readonly property real previewCardMaximumExpansion: cardGeometry.maximumExpansion
+            readonly property int previewArtworkStatus: coverImage.status
+            readonly property real previewArtworkOpacity: coverImage.opacity
+            readonly property real previewArtworkDecodeWidth: coverImage.sourceSize.width
+            readonly property real previewArtworkDecodeHeight: coverImage.sourceSize.height
+            readonly property string previewArtworkSource: coverImage.source.toString()
             readonly property bool previewRequested: root.hoverPreviewTile === tile
                                                      && root.hoverPreviewPendingGameId === gameId
             readonly property bool previewActive: previewRequested
@@ -8564,8 +8754,7 @@ ApplicationWindow {
                     height: parent.height - 79 * card.expansion
                     radius: 9 * card.expansion
                     artworkPresent: tile.previewActive
-                                    || (coverImage.source.toString().length > 0
-                                        && coverImage.status !== Image.Error)
+                                    || coverImage.status === Image.Ready
                     fallbackColor: root.accentFor(tile.gameTitle)
                     clip: true
 
@@ -8576,14 +8765,28 @@ ApplicationWindow {
                         source: tile.artworkUrl
                         asynchronous: true
                         cache: true
+                        retainWhileLoading: true
                         mipmap: true
                         autoTransform: true
                         fillMode: root.wideArtwork(library.artwork_type)
                                   ? Image.PreserveAspectCrop : Image.PreserveAspectFit
-                        sourceSize.width: Math.max(1, Math.round(width * 2))
-                        sourceSize.height: Math.max(1, Math.round(height * 2))
-                        opacity: status === Image.Ready && !tile.previewActive ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 130 } }
+                        // Never bind decode size to animated card geometry.
+                        // Changing sourceSize on every zoom frame makes Qt
+                        // discard and reload the texture, producing a black
+                        // flash during both expansion and collapse. Decode
+                        // once for the largest possible card and retain the
+                        // prior texture if the URL itself changes.
+                        sourceSize.width: Math.max(1, Math.min(
+                            4096, Math.round((cardGeometry.baseWidth - 18)
+                                             * cardGeometry.maximumExpansion * 2)))
+                        sourceSize.height: Math.max(1, Math.min(
+                            4096, Math.round((cardGeometry.baseHeight - 79)
+                                             * cardGeometry.maximumExpansion * 2)))
+                        // Keep the cover opaque underneath the video. When a
+                        // preview stops, VideoOutput can clear immediately;
+                        // fading the cover in afterward exposed the black mat.
+                        opacity: source.toString().length > 0
+                                 && status !== Image.Error ? 1 : 0
                     }
 
                     VideoOutput {
@@ -14515,6 +14718,13 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 12
 
+            MediaRepairRecoveryBanner {
+                auditModel: mediaAudit
+                ink: root.ink
+                muted: root.muted
+                accent: root.accent
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
@@ -14523,7 +14733,7 @@ ApplicationWindow {
                     Layout.preferredWidth: 190
                     textRole: "label"
                     valueRole: "value"
-                    enabled: !mediaAudit.busy
+                    enabled: !mediaAudit.busy && !mediaAudit.recovery_available
                     Accessible.name: "Media audit scope"
                     model: [
                         { label: "My Collection", value: "collection" },
@@ -14535,7 +14745,7 @@ ApplicationWindow {
                     Layout.preferredWidth: 190
                     textRole: "label"
                     valueRole: "value"
-                    enabled: !mediaAudit.busy
+                    enabled: !mediaAudit.busy && !mediaAudit.recovery_available
                     Accessible.name: "Media category"
                     model: root.artworkChoices
                 }
@@ -14550,7 +14760,9 @@ ApplicationWindow {
                 }
                 HeaderButton {
                     text: mediaAudit.busy ? "Cancel" : "Run audit"
-                    active: !mediaAudit.busy
+                    active: !mediaAudit.busy && !mediaAudit.recovery_available
+                    enabled: mediaAudit.busy || !mediaAudit.recovery_available
+                    visible: mediaAudit.busy || !mediaAudit.recovery_available
                     Accessible.name: mediaAudit.busy ? "Cancel media work" : "Run missing media audit"
                     onClicked: {
                         if (mediaAudit.busy)
@@ -14567,7 +14779,7 @@ ApplicationWindow {
                 spacing: 9
                 AuditMetric {
                     Layout.fillWidth: true
-                    label: "Examined"
+                    label: mediaAudit.recovery_available ? "Batch records" : "Examined"
                     value: mediaAudit.examined_count
                     tone: "#69b7ff"
                 }
@@ -14922,14 +15134,17 @@ ApplicationWindow {
                 anchors.leftMargin: 18
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 9
+                visible: !mediaAudit.recovery_available
                 HeaderButton {
                     text: "Select repairable"
                     enabled: mediaAudit.repairable_count > 0 && !mediaAudit.busy
+                             && !mediaAudit.recovery_available
                     onClicked: mediaAudit.select_visible(true)
                 }
                 HeaderButton {
                     text: "Clear selection"
                     enabled: mediaAudit.selected_count > 0 && !mediaAudit.busy
+                             && !mediaAudit.recovery_available
                     onClicked: mediaAudit.select_visible(false)
                 }
                 HeaderButton {
@@ -14938,6 +15153,7 @@ ApplicationWindow {
                           : "Repair selected"
                     active: mediaAudit.selected_count > 0
                     enabled: mediaAudit.selected_count > 0 && !mediaAudit.busy
+                             && !mediaAudit.recovery_available
                     Accessible.name: "Repair selected exact artwork"
                     onClicked: mediaAuditRepairConfirmDialog.open()
                 }

@@ -507,6 +507,18 @@ the complete audit, filter, selection, capture, and clean exit took 2.8 seconds.
 The empty-cache run classified 114,258 rows as exact LibRetro repairs and
 189,302 as explicit provider review, proving that unsupported platforms and
 media categories are not silently presented as downloadable.
+Confirmed Missing Media repairs are also durable. SQLite stores the batch and
+each exact stable game UUID before a request enters the provider queue, records
+each outcome before Qt advances, and permits only one active batch. A stable
+state-adjacent file lease serializes work across Lunchbox processes. After an
+unclean exit, only abandoned `running` items return to `pending`; successful,
+unavailable, and failed results remain terminal. Startup checks this journal
+off the GUI thread and presents a compact Resume/Discard banner without making
+network requests. `--media-repair-recovery-ui-probe --state-database EMPTY_PATH
+--screenshot-output PATH` seeds one genuinely running exact record, exercises
+the production recovery transaction, renders the restored Missing Media view,
+and emits `LUNCHBOX_MEDIA_REPAIR_RECOVERY_UI_READY` only when Rust and QML agree
+on its identity and state.
 `--favorite-probe --state-database EMPTY_PATH` selects a real catalog game,
 persists it through the native Qt action, prints `LUNCHBOX_FAVORITE_READY_MS`,
 and exits only after the worker reports success. `--favorite-ui-probe` leaves
@@ -894,6 +906,17 @@ the live grid bounds. The probe deliberately does not use
 Qt Quick's item grab: an Xvfb clock can remain at zero without a working
 hardware backend, and a grab cannot prove that a video texture itself rendered.
 Visual acceptance of the live texture remains a release-host check.
+Grid covers decode once at the largest possible hover-card size instead of
+rebinding `Image.sourceSize` to animated geometry. Qt retains that texture while
+loading, and the cover stays opaque underneath the video layer so stopping a
+preview cannot expose the artwork mat. The independent
+`--hover-artwork-transition-ui-probe --preview-artwork-fixture PATH
+--media-directory EMPTY_PATH` gate publishes a bounded real image fixture,
+samples the ordinary card during both the 150-ms expansion and collapse, and
+prints `LUNCHBOX_HOVER_ARTWORK_TRANSITION_UI_READY` only while the image remains
+`Ready`, fully opaque, and at the same decode size in both directions. It exits
+before the 500-ms video intent gate, keeping image-transition regressions
+independent from host codec availability.
 `--emumovies-auto-ui-probe --media-directory EMPTY_PATH` runs the same complete
 grid-hover and playback gate without seeding a fixture. It loads the saved
 operating-system credential, proves the tile has not started a preview halfway

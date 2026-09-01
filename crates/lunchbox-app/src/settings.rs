@@ -5380,6 +5380,54 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS media_provider_game_links_provider_id
              ON media_provider_game_links(provider, provider_game_id);
+         CREATE TABLE IF NOT EXISTS media_repair_batches (
+             id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 64),
+             scope TEXT NOT NULL CHECK (scope IN ('collection', 'catalog')),
+             artwork_kind TEXT NOT NULL CHECK (
+                 artwork_kind IN (
+                     'box-front', 'box-back', 'box-3d', 'screenshot',
+                     'title-screen', 'fanart', 'clear-logo'
+                 )
+             ),
+             status TEXT NOT NULL CHECK (
+                 status IN ('pending', 'running', 'completed', 'cancelled', 'failed')
+             ),
+             detail TEXT NOT NULL CHECK (length(detail) <= 4096),
+             created_at INTEGER NOT NULL CHECK (created_at >= 0),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= created_at)
+         );
+         CREATE UNIQUE INDEX IF NOT EXISTS media_repair_batches_active
+             ON media_repair_batches((1))
+             WHERE status IN ('pending', 'running');
+         CREATE TABLE IF NOT EXISTS media_repair_items (
+             batch_id TEXT NOT NULL REFERENCES media_repair_batches(id) ON DELETE CASCADE,
+             position INTEGER NOT NULL CHECK (position >= 0),
+             game_uid TEXT NOT NULL CHECK (length(game_uid) BETWEEN 1 AND 512),
+             launchbox_db_id INTEGER NOT NULL CHECK (launchbox_db_id > 0),
+             title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 512),
+             platform TEXT NOT NULL CHECK (length(platform) BETWEEN 1 AND 512),
+             local INTEGER NOT NULL CHECK (local IN (0, 1)),
+             downloadable INTEGER NOT NULL CHECK (downloadable IN (0, 1)),
+             artwork_kind TEXT NOT NULL CHECK (
+                 artwork_kind IN (
+                     'box-front', 'box-back', 'box-3d', 'screenshot',
+                     'title-screen', 'fanart', 'clear-logo'
+                 )
+             ),
+             request_detail TEXT NOT NULL CHECK (length(request_detail) <= 4096),
+             status TEXT NOT NULL CHECK (
+                 status IN (
+                     'pending', 'running', 'succeeded', 'unavailable',
+                     'failed', 'cancelled'
+                 )
+             ),
+             outcome_detail TEXT NOT NULL CHECK (length(outcome_detail) <= 4096),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+             PRIMARY KEY (batch_id, position),
+             UNIQUE (batch_id, game_uid)
+         );
+         CREATE INDEX IF NOT EXISTS media_repair_items_status
+             ON media_repair_items(batch_id, status, position);
          CREATE TABLE IF NOT EXISTS media_transfers (
              game_uid TEXT NOT NULL,
              launchbox_db_id INTEGER NOT NULL DEFAULT 0,
@@ -9500,6 +9548,8 @@ mod tests {
             "retained_torrent_metadata",
             "emulator_update_pins",
             "emulator_lifecycle_operations",
+            "media_repair_batches",
+            "media_repair_items",
         ] {
             let migrated: Option<i64> = connection
                 .query_row(
