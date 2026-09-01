@@ -1235,19 +1235,7 @@ impl qobject::ExternalTorrentModel {
         usize::try_from(index)
             .ok()
             .and_then(|index| self.rust().existing_torrents.get(index))
-            .map(|torrent| {
-                let percent = (torrent.progress * 100.0).round();
-                let category = if torrent.category.trim().is_empty() {
-                    "uncategorized"
-                } else {
-                    torrent.category.as_str()
-                };
-                qstring(format!(
-                    "{percent:.0}% · {} · {} · {category}",
-                    crate::game_details::format_bytes(torrent.size),
-                    torrent.state
-                ))
-            })
+            .map(|torrent| qstring(existing_torrent_detail(torrent)))
             .unwrap_or_default()
     }
 
@@ -1584,6 +1572,26 @@ fn existing_torrent_search_text(torrent: &crate::qbittorrent::ExistingTorrentSum
         torrent.name, torrent.info_hash, torrent.category, torrent.state, torrent.save_path,
     )
     .to_lowercase()
+}
+
+fn existing_torrent_detail(torrent: &crate::qbittorrent::ExistingTorrentSummary) -> String {
+    let percent = (torrent.progress * 100.0).round();
+    let selected_size = crate::game_details::format_bytes(torrent.size);
+    let total_size = crate::game_details::format_bytes(torrent.total_size);
+    let size_summary = if torrent.size < torrent.total_size {
+        format!("{total_size} total · {selected_size} currently selected")
+    } else {
+        total_size
+    };
+    let category = if torrent.category.trim().is_empty() {
+        "uncategorized"
+    } else {
+        torrent.category.as_str()
+    };
+    format!(
+        "{percent:.0}% · {size_summary} · {} · {category}",
+        torrent.state
+    )
 }
 
 fn filter_existing_torrent_indices(searchable_text: &[String], query: &str) -> Vec<usize> {
@@ -1977,6 +1985,7 @@ mod tests {
                 state: "pausedUP".to_owned(),
                 progress: 1.0,
                 size: index,
+                total_size: index.saturating_mul(2),
                 save_path: format!("/srv/torrents/{index:05}"),
             })
             .collect::<Vec<_>>();
@@ -2000,6 +2009,25 @@ mod tests {
         assert_eq!(
             filter_existing_torrent_indices(&searchable, "").len(),
             20_000
+        );
+    }
+
+    #[test]
+    fn loaded_torrent_detail_distinguishes_selected_sidecar_from_total_payload() {
+        let torrent = crate::qbittorrent::ExistingTorrentSummary {
+            info_hash: "1".repeat(40),
+            name: "MIG Switch Game Collection".to_owned(),
+            category: "switch".to_owned(),
+            state: "pausedDL".to_owned(),
+            progress: 0.0,
+            size: 12,
+            total_size: 7_260_093_952,
+            save_path: "/downloads".to_owned(),
+        };
+
+        assert_eq!(
+            existing_torrent_detail(&torrent),
+            "0% · 6.8 GiB total · 12 B currently selected · pausedDL · switch"
         );
     }
 }

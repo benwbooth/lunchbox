@@ -13,12 +13,19 @@ Rectangle {
     property color line: "#2b3647"
     property int highlightedRow: -1
     property bool selectionInProgress: false
+    property bool resultsRequested: false
+
+    function closeResults() {
+        resultsRequested = false
+        torrentPopup.close()
+        torrentPopup.visible = false
+        torrentSearch.focus = false
+    }
 
     function reset(restoreResults) {
         searchDelay.stop()
         selectionInProgress = false
-        torrentPopup.close()
-        torrentPopup.visible = false
+        closeResults()
         torrentSearch.text = ""
         highlightedRow = -1
         if (restoreResults === undefined || restoreResults)
@@ -29,6 +36,7 @@ Rectangle {
         if (selectionInProgress || !enabled || torrent.existing_loading
                 || torrent.existing_count === 0)
             return
+        resultsRequested = true
         torrentPopup.open()
         if (highlightedRow < 0 && torrent.existing_filtered_count > 0)
             highlightedRow = 0
@@ -66,32 +74,29 @@ Rectangle {
         // Hide the overlay before model inspection can disable or relayout the
         // picker. Popup.close() alone is asynchronous on some real Wayland
         // compositors even when the transition is empty.
-        torrentPopup.close()
-        torrentPopup.visible = false
-        torrent.inspect_existing_torrent(sourceIndex)
-        if (!torrent.busy)
-            selectionInProgress = false
-
+        closeResults()
         Qt.callLater(function() {
-            torrentPopup.close()
-            torrentPopup.visible = false
-            torrentSearch.focus = false
+            root.closeResults()
+            root.torrent.inspect_existing_torrent(sourceIndex)
+            if (!root.torrent.busy)
+                root.selectionInProgress = false
         })
     }
 
     implicitHeight: 42
     radius: 8
     color: "#0f1722"
-    border.color: torrentSearch.activeFocus || torrentPopup.opened
+    border.color: torrentSearch.activeFocus
+                  || (root.resultsRequested && torrentPopup.opened)
                   ? root.accent : root.line
     enabled: !torrent.busy && !torrent.existing_loading
     onVisibleChanged: {
         if (!visible)
-            torrentPopup.close()
+            closeResults()
     }
     onEnabledChanged: {
         if (!enabled)
-            torrentPopup.close()
+            closeResults()
     }
 
     Timer {
@@ -116,8 +121,7 @@ Rectangle {
 
         function onBusyChanged() {
             if (!root.torrent.busy && root.selectionInProgress) {
-                torrentPopup.close()
-                torrentSearch.focus = false
+                root.closeResults()
                 root.selectionInProgress = false
             }
         }
@@ -181,7 +185,7 @@ Rectangle {
                         root.chooseRow(root.highlightedRow)
                     event.accepted = true
                 } else if (event.key === Qt.Key_Escape && torrentPopup.opened) {
-                    torrentPopup.close()
+                    root.closeResults()
                     event.accepted = true
                 }
             }
@@ -199,11 +203,12 @@ Rectangle {
             Layout.preferredWidth: 42
             Layout.fillHeight: true
             enabled: root.enabled && root.torrent.existing_count > 0
-            text: torrentPopup.opened ? "▴" : "▾"
-            Accessible.name: torrentPopup.opened
+            text: root.resultsRequested && torrentPopup.opened ? "▴" : "▾"
+            Accessible.name: root.resultsRequested && torrentPopup.opened
                              ? "Close loaded torrent results"
                              : "Show loaded torrents"
-            onClicked: torrentPopup.opened ? torrentPopup.close() : root.openResults()
+            onClicked: root.resultsRequested && torrentPopup.opened
+                       ? root.closeResults() : root.openResults()
             background: Rectangle {
                 color: dropdownButton.down ? "#344156"
                        : dropdownButton.hovered ? "#273346" : "transparent"
@@ -235,14 +240,17 @@ Rectangle {
         width: root.width
         height: Math.min(430, Math.max(76,
                          root.torrent.existing_filtered_count * 62 + 38))
-        enabled: !root.selectionInProgress
-        opacity: root.selectionInProgress ? 0 : 1
+        enabled: root.resultsRequested && !root.selectionInProgress
+        opacity: root.resultsRequested && !root.selectionInProgress ? 1 : 0
         padding: 1
         focus: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         enter: Transition {}
         exit: Transition {}
-        onClosed: torrentSearch.focus = false
+        onClosed: {
+            root.resultsRequested = false
+            torrentSearch.focus = false
+        }
 
         background: Rectangle {
             color: "#111923"

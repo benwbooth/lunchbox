@@ -86,7 +86,10 @@ pub struct ExistingTorrentSummary {
     pub category: String,
     pub state: String,
     pub progress: f64,
+    /// Bytes currently selected for download in qBittorrent.
     pub size: u64,
+    /// Complete payload size, including files currently marked unwanted.
+    pub total_size: u64,
     pub save_path: String,
 }
 
@@ -107,6 +110,8 @@ struct TorrentInfo {
     downloaded: u64,
     #[serde(default)]
     size: u64,
+    #[serde(default)]
+    total_size: u64,
     #[serde(default)]
     save_path: String,
 }
@@ -435,6 +440,7 @@ impl QbittorrentClient {
                 state: torrent.state,
                 progress: torrent.progress.clamp(0.0, 1.0),
                 size: torrent.size,
+                total_size: torrent.total_size.max(torrent.size),
                 save_path: torrent.save_path,
             })
             .collect::<Vec<_>>();

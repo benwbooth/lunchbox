@@ -161,21 +161,27 @@ TestCase {
         mouseClick(button, button.width / 2, button.height / 2)
 
         const popup = findChild(picker, "loadedTorrentPopup")
+        const list = findChild(picker, "loadedTorrentList")
         tryVerify(() => popup.opened)
-        picker.chooseRow(0)
+        const row = findChild(list, "loadedTorrentRow-0")
+        tryVerify(() => row !== null && row.visible && row.enabled)
+        wait(20)
+        mouseClick(row, row.width / 2, row.height / 2)
 
+        tryCompare(torrentModel, "inspectedIndex", 0)
         tryVerify(() => !popup.opened)
         verify(!popup.visible)
         compare(popup.opacity, 0)
         verify(!popup.enabled)
-        tryCompare(torrentModel, "inspectedIndex", 0)
+        verify(!picker.resultsRequested)
         verify(!torrentModel.popupOpenWhenInspected)
         torrentModel.busy = false
         wait(20)
         verify(!popup.opened)
         verify(!popup.visible)
-        compare(popup.opacity, 1)
-        verify(popup.enabled)
+        compare(popup.opacity, 0)
+        verify(!popup.enabled)
+        verify(!picker.resultsRequested)
     }
 
     function test_filtered_row_selection_keeps_original_source_index() {
