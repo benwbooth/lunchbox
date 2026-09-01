@@ -14,6 +14,8 @@ pub mod qobject {
         #[qproperty(QString, game_platform)]
         #[qproperty(i32, file_count)]
         #[qproperty(i32, selected_file)]
+        #[qproperty(i32, selected_file_count)]
+        #[qproperty(QString, operation_label)]
         #[qproperty(i32, candidate_count)]
         #[qproperty(i32, selected_candidate)]
         #[qproperty(i32, history_count)]
@@ -44,6 +46,15 @@ pub mod qobject {
         fn select_file(self: Pin<&mut CollectionIdentityModel>, index: i32);
 
         #[qinvokable]
+        fn toggle_file(self: Pin<&mut CollectionIdentityModel>, index: i32);
+
+        #[qinvokable]
+        fn select_all_files(self: Pin<&mut CollectionIdentityModel>);
+
+        #[qinvokable]
+        fn clear_file_selection(self: Pin<&mut CollectionIdentityModel>);
+
+        #[qinvokable]
         fn select_candidate(self: Pin<&mut CollectionIdentityModel>, index: i32);
 
         #[qinvokable]
@@ -60,6 +71,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn file_detail_at(self: &CollectionIdentityModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn file_selected_at(self: &CollectionIdentityModel, index: i32) -> bool;
 
         #[qinvokable]
         fn candidate_title_at(self: &CollectionIdentityModel, index: i32) -> QString;
@@ -103,6 +117,8 @@ pub struct CollectionIdentityModelRust {
     game_platform: QString,
     file_count: i32,
     selected_file: i32,
+    selected_file_count: i32,
+    operation_label: QString,
     candidate_count: i32,
     selected_candidate: i32,
     history_count: i32,
@@ -113,6 +129,7 @@ pub struct CollectionIdentityModelRust {
     last_game_platform: QString,
     last_launchbox_db_id: i64,
     files: Vec<ImportedGameFile>,
+    selected_files: Vec<bool>,
     candidates: Vec<ManualMatchCandidate>,
     history: Vec<IdentityEvent>,
 }
@@ -168,9 +185,15 @@ impl qobject::CollectionIdentityModel {
             Ok(files) => {
                 self.as_mut().rust_mut().files = files;
                 let count = saturating_i32(self.as_ref().rust().files.len());
+                self.as_mut().rust_mut().selected_files =
+                    vec![false; self.as_ref().rust().files.len()];
+                if count > 0 {
+                    self.as_mut().rust_mut().selected_files[0] = true;
+                }
                 self.as_mut().set_file_count(count);
                 self.as_mut()
                     .set_selected_file(if count > 0 { 0 } else { -1 });
+                self.as_mut().refresh_selection_state();
                 self.as_mut().refresh_history();
                 self.as_mut().set_message(qstring(if count > 0 {
                     "Choose an exact catalog game below. No ROM data will be moved or changed."
@@ -180,8 +203,10 @@ impl qobject::CollectionIdentityModel {
             }
             Err(error) => {
                 self.as_mut().rust_mut().files.clear();
+                self.as_mut().rust_mut().selected_files.clear();
                 self.as_mut().set_file_count(0);
                 self.as_mut().set_selected_file(-1);
+                self.as_mut().refresh_selection_state();
                 self.as_mut().rust_mut().history.clear();
                 self.as_mut().set_history_count(0);
                 self.as_mut().set_message(qstring(format!(
@@ -235,6 +260,56 @@ impl qobject::CollectionIdentityModel {
         self.as_mut().bump_revision();
     }
 
+    pub fn toggle_file(mut self: Pin<&mut Self>, index: i32) {
+        let Some(index) = usize_index(index, self.as_ref().rust().selected_files.len()) else {
+            return;
+        };
+        let selected = !self.as_ref().rust().selected_files[index];
+        self.as_mut().rust_mut().selected_files[index] = selected;
+        self.as_mut().set_selected_file(index as i32);
+        self.as_mut().set_selected_candidate(-1);
+        self.as_mut().refresh_selection_state();
+        self.as_mut().refresh_history();
+        self.as_mut().set_message(qstring(if selected {
+            "ROM association added to the reviewed operation. Select the exact target game."
+        } else {
+            "ROM association removed from the reviewed operation."
+        }));
+        self.as_mut().bump_revision();
+    }
+
+    pub fn select_all_files(mut self: Pin<&mut Self>) {
+        self.as_mut()
+            .rust_mut()
+            .selected_files
+            .iter_mut()
+            .for_each(|selected| *selected = true);
+        if !self.as_ref().rust().files.is_empty() {
+            self.as_mut().set_selected_file(0);
+        }
+        self.as_mut().set_selected_candidate(-1);
+        self.as_mut().refresh_selection_state();
+        self.as_mut().refresh_history();
+        self.as_mut().set_message(qstring(
+            "All imported ROM associations are selected. Review one exact target before merging.",
+        ));
+        self.as_mut().bump_revision();
+    }
+
+    pub fn clear_file_selection(mut self: Pin<&mut Self>) {
+        self.as_mut()
+            .rust_mut()
+            .selected_files
+            .iter_mut()
+            .for_each(|selected| *selected = false);
+        self.as_mut().set_selected_candidate(-1);
+        self.as_mut().refresh_selection_state();
+        self.as_mut().set_message(qstring(
+            "Select one or more imported ROM associations to relink, split, or merge.",
+        ));
+        self.as_mut().bump_revision();
+    }
+
     pub fn select_candidate(mut self: Pin<&mut Self>, index: i32) {
         if usize_index(index, self.as_ref().rust().candidates.len()).is_none() {
             return;
@@ -247,14 +322,21 @@ impl qobject::CollectionIdentityModel {
     }
 
     pub fn relink_selected(mut self: Pin<&mut Self>) {
-        let Some(file_index) = usize_index(
-            *self.as_ref().selected_file(),
-            self.as_ref().rust().files.len(),
-        ) else {
-            self.as_mut()
-                .set_message(qstring("Select an imported ROM first."));
+        let selected_files = self
+            .as_ref()
+            .rust()
+            .files
+            .iter()
+            .zip(&self.as_ref().rust().selected_files)
+            .filter(|(_, selected)| **selected)
+            .map(|(file, _)| file.clone())
+            .collect::<Vec<_>>();
+        if selected_files.is_empty() {
+            self.as_mut().set_message(qstring(
+                "Select at least one imported ROM association first.",
+            ));
             return;
-        };
+        }
         let Some(candidate_index) = usize_index(
             *self.as_ref().selected_candidate(),
             self.as_ref().rust().candidates.len(),
@@ -263,22 +345,25 @@ impl qobject::CollectionIdentityModel {
                 .set_message(qstring("Select the exact target game first."));
             return;
         };
-        let file = self.as_ref().rust().files[file_index].clone();
         let candidate = self.as_ref().rust().candidates[candidate_index].clone();
         let current_game_uid = self.as_ref().game_uid().to_string();
+        let file_ids = selected_files
+            .iter()
+            .map(|file| file.id.clone())
+            .collect::<Vec<_>>();
         let result = crate::settings::state_database_path().and_then(|state_path| {
             let discovery_path = crate::catalog::requested_discovery_database_path()
                 .ok_or_else(|| anyhow::anyhow!("the discovery games database is unavailable"))?;
-            collection_identity::relink_imported_file(
+            collection_identity::relink_imported_files(
                 &state_path,
                 &discovery_path,
-                &file.id,
+                &file_ids,
                 &current_game_uid,
                 &candidate.identity.game_uid,
             )
         });
         match result {
-            Ok(_) => {
+            Ok(operation) => {
                 self.as_mut()
                     .set_last_game_uid(qstring(&candidate.identity.game_uid));
                 self.as_mut()
@@ -295,8 +380,15 @@ impl qobject::CollectionIdentityModel {
                     qstring(&candidate.identity.platform),
                 );
                 self.as_mut().set_message(qstring(format!(
-                    "Relinked {} to {}. The ROM file was not modified.",
-                    file.file_name, candidate.identity.title
+                    "{} {} ROM association{} to {}. No files were moved or modified.",
+                    match operation.kind.as_str() {
+                        "merge" => "Merged",
+                        "split" => "Split",
+                        _ => "Relinked",
+                    },
+                    selected_files.len(),
+                    if selected_files.len() == 1 { "" } else { "s" },
+                    candidate.identity.title
                 )));
             }
             Err(error) => self
@@ -376,6 +468,11 @@ impl qobject::CollectionIdentityModel {
             .unwrap_or_default()
     }
 
+    pub fn file_selected_at(&self, index: i32) -> bool {
+        usize_index(index, self.rust().selected_files.len())
+            .is_some_and(|index| self.rust().selected_files[index])
+    }
+
     pub fn candidate_title_at(&self, index: i32) -> QString {
         self.candidate(index)
             .map(|candidate| qstring(&candidate.identity.title))
@@ -415,9 +512,28 @@ impl qobject::CollectionIdentityModel {
                 let from = event.from_title.as_deref().unwrap_or("Unlinked");
                 let to = event.to_title.as_deref().unwrap_or("Unlinked");
                 if event.kind == "undo" {
-                    qstring(format!("Restored {to}"))
+                    qstring(if event.operation_item_count > 1 {
+                        format!(
+                            "Restored {} ROM associations to {to}",
+                            event.operation_item_count
+                        )
+                    } else {
+                        format!("Restored {to}")
+                    })
                 } else if event.reverted {
                     qstring(format!("{from} → {to} · undone"))
+                } else if event.operation_item_count > 1 {
+                    qstring(format!(
+                        "{} {} ROM associations · {from} → {to}",
+                        match event.operation_kind.as_str() {
+                            "merge" => "Merged",
+                            "split" => "Split",
+                            _ => "Relinked",
+                        },
+                        event.operation_item_count
+                    ))
+                } else if event.operation_kind == "split" {
+                    qstring(format!("Split 1 ROM association · {from} → {to}"))
                 } else {
                     qstring(format!("{from} → {to}"))
                 }
@@ -429,8 +545,14 @@ impl qobject::CollectionIdentityModel {
         self.history_event(index)
             .map(|event| {
                 qstring(format!(
-                    "{} → {} · exact file identity preserved",
-                    event.from_platform, event.to_platform
+                    "{} → {} · exact file identity preserved{}",
+                    event.from_platform,
+                    event.to_platform,
+                    if event.operation_item_count > 1 {
+                        " · atomic group undo"
+                    } else {
+                        ""
+                    }
                 ))
             })
             .unwrap_or_default()
@@ -470,6 +592,32 @@ impl qobject::CollectionIdentityModel {
         self.as_mut().rust_mut().history = history;
         let count = saturating_i32(self.as_ref().rust().history.len());
         self.as_mut().set_history_count(count);
+    }
+
+    fn refresh_selection_state(mut self: Pin<&mut Self>) {
+        let selected_count = self
+            .as_ref()
+            .rust()
+            .selected_files
+            .iter()
+            .filter(|selected| **selected)
+            .count();
+        self.as_mut()
+            .set_selected_file_count(saturating_i32(selected_count));
+        let total = self.as_ref().rust().files.len();
+        let label = if selected_count == 0 {
+            "SELECT ROMS".to_owned()
+        } else if selected_count < total {
+            format!(
+                "SPLIT {selected_count} ROM{}",
+                if selected_count == 1 { "" } else { "S" }
+            )
+        } else if selected_count > 1 {
+            format!("MERGE {selected_count} ROMS")
+        } else {
+            "RELINK ROM".to_owned()
+        };
+        self.as_mut().set_operation_label(qstring(label));
     }
 
     fn bump_revision(mut self: Pin<&mut Self>) {

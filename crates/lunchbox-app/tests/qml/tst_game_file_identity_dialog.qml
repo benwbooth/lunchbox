@@ -23,6 +23,8 @@ TestCase {
                 property string game_platform: "Source Platform"
                 property int file_count: 1
                 property int selected_file: 0
+                property int selected_file_count: 1
+                property string operation_label: "RELINK ROM"
                 property int candidate_count: 2
                 property int selected_candidate: -1
                 property int history_count: 1
@@ -39,12 +41,26 @@ TestCase {
                 }
                 function search_targets(query, platform) { searchCalls += 1 }
                 function select_file(index) { selected_file = index }
+                function toggle_file(index) {
+                    selected_file_count = selected_file_count === 0 ? 1 : 0
+                    operation_label = selected_file_count > 0 ? "RELINK ROM" : "SELECT ROMS"
+                }
+                function select_all_files() {
+                    selected_file_count = file_count
+                    operation_label = file_count > 1 ? "MERGE " + file_count + " ROMS"
+                                                   : "RELINK ROM"
+                }
+                function clear_file_selection() {
+                    selected_file_count = 0
+                    operation_label = "SELECT ROMS"
+                }
                 function select_candidate(index) { selected_candidate = index }
                 function relink_selected() { relinkCalls += 1 }
                 function undo_at(index) { undoIndex = index }
                 function file_label_at(index) { return "source-game.bin" }
                 function file_path_at(index) { return "/roms/source-game.bin" }
                 function file_detail_at(index) { return "4.0 GiB · reviewed · present" }
+                function file_selected_at(index) { return index < selected_file_count }
                 function candidate_title_at(index) {
                     return index === 0 ? "Target Game" : "Target Game Deluxe"
                 }
@@ -116,5 +132,32 @@ TestCase {
         verify(undo)
         mouseClick(undo, undo.width / 2, undo.height / 2)
         compare(host.model.undoIndex, 0)
+    }
+
+    function test_group_merge_requires_a_second_explicit_confirmation() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.model.file_count = 3
+        host.identityDialog.begin(host.model.game_uid,
+                                  host.model.game_title,
+                                  host.model.game_platform)
+        tryVerify(() => host.identityDialog.visible)
+
+        const selectAll = findChild(host.identityDialog, "identitySelectAllFiles")
+        verify(selectAll)
+        selectAll.clicked()
+        compare(host.model.selected_file_count, 3)
+        compare(host.model.operation_label, "MERGE 3 ROMS")
+
+        const candidates = findChild(host.identityDialog, "identityCandidateList")
+        tryVerify(() => candidates.itemAtIndex(0) !== null)
+        candidates.itemAtIndex(0).clicked()
+        const confirm = findChild(host.identityDialog, "confirmIdentityRelinkButton")
+        verify(confirm.enabled)
+        confirm.clicked()
+        compare(host.model.relinkCalls, 0)
+        verify(host.identityDialog.batchConfirmArmed)
+        confirm.clicked()
+        compare(host.model.relinkCalls, 1)
     }
 }

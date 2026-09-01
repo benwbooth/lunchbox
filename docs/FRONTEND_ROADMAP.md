@@ -271,13 +271,14 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   presentation, name/value search, and cold-start recovery all preserve the
   exact stable game UUID.
 - Exact-ID relinking of user-imported ROM records is native. The game-details
-  action searches canonical and alternate catalog titles without accepting a
-  fuzzy identity, requires an explicit stable-UUID target review, changes no ROM
-  path or bytes, and records the complete before/after identity in an append-only
-  event log. Undo is allowed only while the exact file evidence and current
-  identity still match the event, so newer work cannot be overwritten. Extend
-  this foundation with reviewed non-destructive merge and split tools; managed
-  torrent installs remain outside the relink workflow.
+  manager searches canonical and alternate catalog titles without accepting a
+  fuzzy identity and requires explicit stable-UUID target review. It can select
+  one, some, or all associations from the current exact game, so relink, split,
+  and merge are one consistent reviewed operation. No ROM path or byte changes.
+  Grouped changes use one transaction and append-only operation journal; grouped
+  undo first validates every original path, archive member, size, digest, and
+  current identity, then restores all records or none. Managed torrent installs
+  remain outside this workflow.
 - Exact-view bulk library editing is native: the reviewed current-filter UUID
   snapshot can apply or restore one supported categorical metadata override, or
   add/remove a case-insensitive set of tags without replacing unrelated tags.

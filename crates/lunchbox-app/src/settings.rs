@@ -5554,9 +5554,14 @@ fn migrate(connection: &Connection) -> Result<()> {
              sequence INTEGER PRIMARY KEY AUTOINCREMENT,
              id TEXT NOT NULL UNIQUE CHECK (length(id) = 36),
              event_kind TEXT NOT NULL CHECK (event_kind IN ('relink', 'undo')),
+             operation_id TEXT CHECK (operation_id IS NULL OR length(operation_id) = 36),
+             operation_kind TEXT CHECK (
+                 operation_kind IS NULL OR operation_kind IN ('relink', 'merge', 'split', 'undo')
+             ),
              file_id TEXT NOT NULL CHECK (length(file_id) = 36),
              file_path_display TEXT NOT NULL CHECK (length(file_path_display) <= 8192),
              archive_member TEXT NOT NULL CHECK (length(archive_member) <= 8192),
+             file_size INTEGER CHECK (file_size IS NULL OR file_size >= 0),
              sha1 TEXT NOT NULL CHECK (length(sha1) IN (0, 40)),
              md5 TEXT NOT NULL CHECK (length(md5) IN (0, 32)),
              from_game_uid TEXT,
@@ -6112,6 +6117,34 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !local_rom_match_state_allows_reviewed(connection)? {
         migrate_local_rom_match_state(connection)?;
     }
+    if !column_exists(connection, "collection_identity_events", "operation_id")? {
+        connection.execute(
+            "ALTER TABLE collection_identity_events
+             ADD COLUMN operation_id TEXT
+             CHECK (operation_id IS NULL OR length(operation_id) = 36)",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "collection_identity_events", "operation_kind")? {
+        connection.execute(
+            "ALTER TABLE collection_identity_events
+             ADD COLUMN operation_kind TEXT
+             CHECK (operation_kind IS NULL OR operation_kind IN ('relink', 'merge', 'split', 'undo'))",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "collection_identity_events", "file_size")? {
+        connection.execute(
+            "ALTER TABLE collection_identity_events
+             ADD COLUMN file_size INTEGER CHECK (file_size IS NULL OR file_size >= 0)",
+            [],
+        )?;
+    }
+    connection.execute_batch(
+        "CREATE INDEX IF NOT EXISTS collection_identity_events_operation
+             ON collection_identity_events(operation_id, sequence)
+             WHERE operation_id IS NOT NULL;",
+    )?;
     if !column_exists(connection, "download_jobs", "launchbox_db_id")? {
         connection.execute(
             "ALTER TABLE download_jobs ADD COLUMN launchbox_db_id INTEGER NOT NULL DEFAULT 0",
@@ -10347,6 +10380,86 @@ mod tests {
                 .unwrap();
             assert_eq!(exists, Some(1));
         }
+    }
+
+    #[test]
+    fn older_identity_event_schema_adds_atomic_group_evidence() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE collection_identity_events (
+                     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                     id TEXT NOT NULL UNIQUE,
+                     event_kind TEXT NOT NULL,
+                     file_id TEXT NOT NULL,
+                     file_path_display TEXT NOT NULL,
+                     archive_member TEXT NOT NULL,
+                     sha1 TEXT NOT NULL,
+                     md5 TEXT NOT NULL,
+                     from_game_uid TEXT,
+                     from_launchbox_db_id INTEGER NOT NULL,
+                     from_title TEXT,
+                     from_platform TEXT NOT NULL,
+                     from_match_state TEXT NOT NULL,
+                     from_match_method TEXT NOT NULL,
+                     to_game_uid TEXT,
+                     to_launchbox_db_id INTEGER NOT NULL,
+                     to_title TEXT,
+                     to_platform TEXT NOT NULL,
+                     to_match_state TEXT NOT NULL,
+                     to_match_method TEXT NOT NULL,
+                     reverts_event_id TEXT,
+                     occurred_at INTEGER NOT NULL
+                 );
+                 INSERT INTO collection_identity_events (
+                     id, event_kind, file_id, file_path_display, archive_member,
+                     sha1, md5, from_game_uid, from_launchbox_db_id, from_title,
+                     from_platform, from_match_state, from_match_method,
+                     to_game_uid, to_launchbox_db_id, to_title, to_platform,
+                     to_match_state, to_match_method, occurred_at
+                 ) VALUES (
+                     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'relink',
+                     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '/roms/Game.bin', '',
+                     '', '', NULL, 0, NULL, 'System', 'unmatched', 'not checked',
+                     'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 1, 'Game', 'System',
+                     'reviewed', 'manual user selection', 1
+                 );",
+            )
+            .unwrap();
+        drop(connection);
+
+        SettingsStore::at(&path).unwrap();
+        SettingsStore::at(&path).unwrap();
+        let connection = Connection::open(path).unwrap();
+        for column in ["operation_id", "operation_kind", "file_size"] {
+            assert!(column_exists(&connection, "collection_identity_events", column).unwrap());
+        }
+        let legacy_evidence = connection
+            .query_row(
+                "SELECT operation_id, operation_kind, file_size
+                 FROM collection_identity_events WHERE sequence=1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(legacy_evidence, (None, None, None));
+        let operation_index: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_schema
+                 WHERE type='index' AND name='collection_identity_events_operation'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(operation_index, 1);
     }
 
     #[test]

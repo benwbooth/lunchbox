@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
@@ -9,6 +10,7 @@ use crate::local_import::{self, MatchIdentity};
 use crate::settings::{SettingsStore, unix_timestamp};
 
 const MANUAL_MATCH_METHOD: &str = "manual user selection";
+const MAX_IDENTITY_OPERATION_FILES: usize = 512;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ImportedGameFile {
@@ -33,6 +35,9 @@ pub struct ImportedGameFile {
 pub struct IdentityEvent {
     pub id: String,
     pub kind: String,
+    pub operation_id: Option<String>,
+    pub operation_kind: String,
+    pub operation_item_count: usize,
     pub file_id: String,
     pub file_path_display: String,
     pub archive_member: String,
@@ -48,6 +53,13 @@ pub struct IdentityEvent {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IdentityOperation {
+    pub id: String,
+    pub kind: String,
+    pub events: Vec<IdentityEvent>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct StoredIdentity {
     game_uid: Option<String>,
     launchbox_db_id: i64,
@@ -60,6 +72,7 @@ struct StoredIdentity {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct StoredEvent {
     event: IdentityEvent,
+    file_size: Option<u64>,
     sha1: String,
     md5: String,
     from: StoredIdentity,
@@ -92,6 +105,7 @@ pub fn search_targets(
     local_import::search_manual_match_candidates(discovery_path, query, platform)
 }
 
+#[cfg(test)]
 pub fn relink_imported_file(
     state_path: &Path,
     discovery_path: &Path,
@@ -99,7 +113,42 @@ pub fn relink_imported_file(
     expected_game_uid: &str,
     target_game_uid: &str,
 ) -> Result<IdentityEvent> {
-    validate_uuid(file_id, "imported file identity")?;
+    let operation = relink_imported_files(
+        state_path,
+        discovery_path,
+        &[file_id.to_owned()],
+        expected_game_uid,
+        target_game_uid,
+    )?;
+    operation
+        .events
+        .into_iter()
+        .next()
+        .context("the ROM identity operation produced no event")
+}
+
+pub fn relink_imported_files(
+    state_path: &Path,
+    discovery_path: &Path,
+    file_ids: &[String],
+    expected_game_uid: &str,
+    target_game_uid: &str,
+) -> Result<IdentityOperation> {
+    if file_ids.is_empty() {
+        bail!("select at least one imported ROM identity");
+    }
+    if file_ids.len() > MAX_IDENTITY_OPERATION_FILES {
+        bail!(
+            "one identity operation may contain at most {MAX_IDENTITY_OPERATION_FILES} imported ROMs"
+        );
+    }
+    let mut unique_file_ids = HashSet::with_capacity(file_ids.len());
+    for file_id in file_ids {
+        validate_uuid(file_id, "imported file identity")?;
+        if !unique_file_ids.insert(file_id.as_str()) {
+            bail!("the identity operation repeats an imported ROM");
+        }
+    }
     validate_game_uid(expected_game_uid)?;
     validate_game_uid(target_game_uid)?;
     if expected_game_uid == target_game_uid {
@@ -109,21 +158,50 @@ pub fn relink_imported_file(
     let store = SettingsStore::at(state_path)?;
     let mut connection = store.connection()?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let current = transaction
+    let source_file_count: usize = transaction
         .query_row(
-            "SELECT id, path_display, archive_member, file_name, display_title, platform,
-                    file_size, sha1, md5, game_uid, launchbox_db_id, matched_title,
-                    match_state, match_method, availability
-             FROM local_rom_files WHERE id=?1 AND included=1",
-            [file_id],
-            imported_file_from_row,
-        )
-        .optional()?
-        .context("the imported ROM is no longer available for identity maintenance")?;
-    if current.game_uid.as_deref() != Some(expected_game_uid) {
-        bail!("the imported ROM identity changed; reopen the manager before relinking it");
+            "SELECT count(*) FROM local_rom_files WHERE game_uid=?1 AND included=1",
+            [expected_game_uid],
+            |row| row.get::<_, i64>(0),
+        )?
+        .try_into()
+        .context("the imported ROM count is too large")?;
+    let target_file_count: usize = transaction
+        .query_row(
+            "SELECT count(*) FROM local_rom_files WHERE game_uid=?1 AND included=1",
+            [target_game_uid],
+            |row| row.get::<_, i64>(0),
+        )?
+        .try_into()
+        .context("the target ROM count is too large")?;
+    let operation_kind = if file_ids.len() < source_file_count {
+        "split"
+    } else if file_ids.len() > 1 || target_file_count > 0 {
+        "merge"
+    } else {
+        "relink"
+    };
+    let operation_id = Uuid::new_v4().to_string();
+    let mut current_files = Vec::with_capacity(file_ids.len());
+    for file_id in file_ids {
+        let current = transaction
+            .query_row(
+                "SELECT id, path_display, archive_member, file_name, display_title, platform,
+                        file_size, sha1, md5, game_uid, launchbox_db_id, matched_title,
+                        match_state, match_method, availability
+                 FROM local_rom_files WHERE id=?1 AND included=1",
+                [file_id],
+                imported_file_from_row,
+            )
+            .optional()?
+            .context("an imported ROM is no longer available for identity maintenance")?;
+        if current.game_uid.as_deref() != Some(expected_game_uid) {
+            bail!(
+                "an imported ROM identity changed; reopen the manager before changing this group"
+            );
+        }
+        current_files.push(current);
     }
-    let from = identity_from_file(&current);
     let to = StoredIdentity {
         game_uid: Some(target.game_uid.clone()),
         launchbox_db_id: target.launchbox_db_id,
@@ -132,28 +210,46 @@ pub fn relink_imported_file(
         match_state: "reviewed".to_owned(),
         match_method: MANUAL_MATCH_METHOD.to_owned(),
     };
-    let changed = transaction.execute(
-        "UPDATE local_rom_files
-         SET game_uid=?2, launchbox_db_id=?3, matched_title=?4, platform=?5,
-             match_state=?6, match_method=?7
-         WHERE id=?1 AND game_uid=?8",
-        params![
-            file_id,
-            to.game_uid,
-            to.launchbox_db_id,
-            to.title,
-            to.platform,
-            to.match_state,
-            to.match_method,
-            expected_game_uid,
-        ],
-    )?;
-    if changed != 1 {
-        bail!("the imported ROM identity changed before the relink could be committed");
+    let mut events = Vec::with_capacity(current_files.len());
+    for current in &current_files {
+        let from = identity_from_file(current);
+        let changed = transaction.execute(
+            "UPDATE local_rom_files
+             SET game_uid=?2, launchbox_db_id=?3, matched_title=?4, platform=?5,
+                 match_state=?6, match_method=?7
+             WHERE id=?1 AND game_uid=?8",
+            params![
+                current.id,
+                to.game_uid,
+                to.launchbox_db_id,
+                to.title,
+                to.platform,
+                to.match_state,
+                to.match_method,
+                expected_game_uid,
+            ],
+        )?;
+        if changed != 1 {
+            bail!("an imported ROM identity changed before the group could be committed");
+        }
+        events.push(insert_event(
+            &transaction,
+            "relink",
+            current,
+            &from,
+            &to,
+            None,
+            Some(&operation_id),
+            operation_kind,
+            current_files.len(),
+        )?);
     }
-    let event = insert_event(&transaction, "relink", &current, &from, &to, None)?;
     transaction.commit()?;
-    Ok(event)
+    Ok(IdentityOperation {
+        id: operation_id,
+        kind: operation_kind.to_owned(),
+        events,
+    })
 }
 
 pub fn identity_history_for_file(state_path: &Path, file_id: &str) -> Result<Vec<IdentityEvent>> {
@@ -166,7 +262,13 @@ pub fn identity_history_for_file(state_path: &Path, file_id: &str) -> Result<Vec
                 e.to_game_uid, e.to_title, e.to_platform, e.reverts_event_id,
                 e.occurred_at,
                 EXISTS(SELECT 1 FROM collection_identity_events u
-                       WHERE u.reverts_event_id=e.id)
+                       WHERE u.reverts_event_id=e.id),
+                e.operation_id, coalesce(e.operation_kind, e.event_kind),
+                CASE WHEN e.operation_id IS NULL THEN 1 ELSE (
+                    SELECT count(*) FROM collection_identity_events grouped
+                    WHERE grouped.operation_id=e.operation_id
+                      AND grouped.event_kind=e.event_kind
+                ) END
          FROM collection_identity_events e
          WHERE e.file_id=?1
          ORDER BY e.sequence DESC LIMIT 100",
@@ -187,61 +289,95 @@ pub fn undo_relink(state_path: &Path, event_id: &str) -> Result<IdentityEvent> {
     if stored.event.kind != "relink" || stored.event.reverts_event_id.is_some() {
         bail!("only an original ROM relink can be undone");
     }
-    let already_reverted: bool = transaction.query_row(
-        "SELECT EXISTS(SELECT 1 FROM collection_identity_events WHERE reverts_event_id=?1)",
-        [event_id],
-        |row| row.get(0),
-    )?;
-    if already_reverted {
-        bail!("this ROM relink has already been undone");
+    let stored_events = if let Some(operation_id) = stored.event.operation_id.as_deref() {
+        load_stored_operation(&transaction, operation_id)?
+    } else {
+        vec![stored]
+    };
+    if stored_events.is_empty() {
+        bail!("the ROM identity operation no longer has any events");
     }
-    let current = transaction
-        .query_row(
-            "SELECT id, path_display, archive_member, file_name, display_title, platform,
-                    file_size, sha1, md5, game_uid, launchbox_db_id, matched_title,
-                    match_state, match_method, availability
-             FROM local_rom_files WHERE id=?1 AND included=1",
-            [&stored.event.file_id],
-            imported_file_from_row,
-        )
-        .optional()?
-        .context("the imported ROM no longer exists, so its relink cannot be undone")?;
-    if current.path_display != stored.event.file_path_display
-        || current.archive_member != stored.event.archive_member
-        || current.sha1 != stored.sha1
-        || current.md5 != stored.md5
-        || identity_from_file(&current) != stored.to
-    {
-        bail!("the imported ROM changed after this relink; undo was stopped to protect newer work");
+    let mut current_files = Vec::with_capacity(stored_events.len());
+    for item in &stored_events {
+        if item.event.kind != "relink" || item.event.reverts_event_id.is_some() {
+            bail!("only an original ROM identity operation can be undone");
+        }
+        let already_reverted: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM collection_identity_events WHERE reverts_event_id=?1)",
+            [&item.event.id],
+            |row| row.get(0),
+        )?;
+        if already_reverted {
+            bail!("this ROM identity operation has already been undone");
+        }
+        let current = transaction
+            .query_row(
+                "SELECT id, path_display, archive_member, file_name, display_title, platform,
+                        file_size, sha1, md5, game_uid, launchbox_db_id, matched_title,
+                        match_state, match_method, availability
+                 FROM local_rom_files WHERE id=?1 AND included=1",
+                [&item.event.file_id],
+                imported_file_from_row,
+            )
+            .optional()?
+            .context(
+                "an imported ROM no longer exists, so the identity operation cannot be undone",
+            )?;
+        if current.path_display != item.event.file_path_display
+            || current.archive_member != item.event.archive_member
+            || item.file_size.is_some_and(|size| current.file_size != size)
+            || current.sha1 != item.sha1
+            || current.md5 != item.md5
+            || identity_from_file(&current) != item.to
+        {
+            bail!(
+                "an imported ROM changed after this identity operation; undo was stopped before changing any records"
+            );
+        }
+        current_files.push(current);
     }
-    let changed = transaction.execute(
-        "UPDATE local_rom_files
-         SET game_uid=?2, launchbox_db_id=?3, matched_title=?4, platform=?5,
-             match_state=?6, match_method=?7
-         WHERE id=?1",
-        params![
-            current.id,
-            stored.from.game_uid,
-            stored.from.launchbox_db_id,
-            stored.from.title,
-            stored.from.platform,
-            stored.from.match_state,
-            stored.from.match_method,
-        ],
-    )?;
-    if changed != 1 {
-        bail!("the imported ROM disappeared before undo could be committed");
+    let undo_operation_id = Uuid::new_v4().to_string();
+    let mut undo_events = Vec::with_capacity(stored_events.len());
+    for (item, current) in stored_events.iter().zip(&current_files) {
+        let changed = transaction.execute(
+            "UPDATE local_rom_files
+             SET game_uid=?2, launchbox_db_id=?3, matched_title=?4, platform=?5,
+                 match_state=?6, match_method=?7
+             WHERE id=?1",
+            params![
+                current.id,
+                item.from.game_uid,
+                item.from.launchbox_db_id,
+                item.from.title,
+                item.from.platform,
+                item.from.match_state,
+                item.from.match_method,
+            ],
+        )?;
+        if changed != 1 {
+            bail!("an imported ROM disappeared before undo could be committed");
+        }
+        undo_events.push(insert_event(
+            &transaction,
+            "undo",
+            current,
+            &item.to,
+            &item.from,
+            Some(&item.event.id),
+            Some(&undo_operation_id),
+            "undo",
+            stored_events.len(),
+        )?);
     }
-    let event = insert_event(
-        &transaction,
-        "undo",
-        &current,
-        &stored.to,
-        &stored.from,
-        Some(event_id),
-    )?;
     transaction.commit()?;
-    Ok(event)
+    let requested_index = stored_events
+        .iter()
+        .position(|item| item.event.id == event_id)
+        .unwrap_or_default();
+    undo_events
+        .into_iter()
+        .nth(requested_index)
+        .context("the ROM identity undo produced no event")
 }
 
 fn load_exact_catalog_target(discovery_path: &Path, game_uid: &str) -> Result<MatchIdentity> {
@@ -304,26 +440,34 @@ fn insert_event(
     from: &StoredIdentity,
     to: &StoredIdentity,
     reverts_event_id: Option<&str>,
+    operation_id: Option<&str>,
+    operation_kind: &str,
+    operation_item_count: usize,
 ) -> Result<IdentityEvent> {
     let id = Uuid::new_v4().to_string();
     let occurred_at = unix_timestamp();
+    let file_size = i64::try_from(file.file_size).context("the imported ROM is too large")?;
     transaction.execute(
         "INSERT INTO collection_identity_events (
-             id, event_kind, file_id, file_path_display, archive_member, sha1, md5,
+             id, event_kind, operation_id, operation_kind,
+             file_id, file_path_display, archive_member, file_size, sha1, md5,
              from_game_uid, from_launchbox_db_id, from_title, from_platform,
              from_match_state, from_match_method,
              to_game_uid, to_launchbox_db_id, to_title, to_platform,
              to_match_state, to_match_method, reverts_event_id, occurred_at
          ) VALUES (
              ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-             ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+             ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
          )",
         params![
             id,
             kind,
+            operation_id,
+            operation_kind,
             file.id,
             file.path_display,
             file.archive_member,
+            file_size,
             file.sha1,
             file.md5,
             from.game_uid,
@@ -345,6 +489,9 @@ fn insert_event(
     Ok(IdentityEvent {
         id,
         kind: kind.to_owned(),
+        operation_id: operation_id.map(str::to_owned),
+        operation_kind: operation_kind.to_owned(),
+        operation_item_count,
         file_id: file.id.clone(),
         file_path_display: file.path_display.clone(),
         archive_member: file.archive_member.clone(),
@@ -366,62 +513,105 @@ fn load_stored_event(
 ) -> Result<Option<StoredEvent>> {
     transaction
         .query_row(
-            "SELECT id, event_kind, file_id, file_path_display, archive_member, sha1, md5,
+            "SELECT id, event_kind, file_id, file_path_display, archive_member, file_size, sha1, md5,
                     from_game_uid, from_launchbox_db_id, from_title, from_platform,
                     from_match_state, from_match_method,
                     to_game_uid, to_launchbox_db_id, to_title, to_platform,
-                    to_match_state, to_match_method, reverts_event_id, occurred_at
+                    to_match_state, to_match_method, reverts_event_id, occurred_at,
+                    operation_id, coalesce(operation_kind, event_kind),
+                    CASE WHEN operation_id IS NULL THEN 1 ELSE (
+                        SELECT count(*) FROM collection_identity_events grouped
+                        WHERE grouped.operation_id=collection_identity_events.operation_id
+                          AND grouped.event_kind=collection_identity_events.event_kind
+                    ) END
              FROM collection_identity_events WHERE id=?1",
             [event_id],
-            |row| {
-                let kind: String = row.get(1)?;
-                let reverts_event_id: Option<String> = row.get(19)?;
-                Ok(StoredEvent {
-                    event: IdentityEvent {
-                        id: row.get(0)?,
-                        kind,
-                        file_id: row.get(2)?,
-                        file_path_display: row.get(3)?,
-                        archive_member: row.get(4)?,
-                        from_game_uid: row.get(7)?,
-                        from_title: row.get(9)?,
-                        from_platform: row.get(10)?,
-                        to_game_uid: row.get(13)?,
-                        to_title: row.get(15)?,
-                        to_platform: row.get(16)?,
-                        reverts_event_id,
-                        occurred_at: row.get(20)?,
-                        reverted: false,
-                    },
-                    sha1: row.get(5)?,
-                    md5: row.get(6)?,
-                    from: StoredIdentity {
-                        game_uid: row.get(7)?,
-                        launchbox_db_id: row.get(8)?,
-                        title: row.get(9)?,
-                        platform: row.get(10)?,
-                        match_state: row.get(11)?,
-                        match_method: row.get(12)?,
-                    },
-                    to: StoredIdentity {
-                        game_uid: row.get(13)?,
-                        launchbox_db_id: row.get(14)?,
-                        title: row.get(15)?,
-                        platform: row.get(16)?,
-                        match_state: row.get(17)?,
-                        match_method: row.get(18)?,
-                    },
-                })
-            },
+            stored_event_from_row,
         )
         .optional()
         .context("loading the exact ROM identity event")
+}
+
+fn load_stored_operation(
+    transaction: &rusqlite::Transaction<'_>,
+    operation_id: &str,
+) -> Result<Vec<StoredEvent>> {
+    validate_uuid(operation_id, "identity operation")?;
+    let mut statement = transaction.prepare(
+        "SELECT id, event_kind, file_id, file_path_display, archive_member, file_size, sha1, md5,
+                from_game_uid, from_launchbox_db_id, from_title, from_platform,
+                from_match_state, from_match_method,
+                to_game_uid, to_launchbox_db_id, to_title, to_platform,
+                to_match_state, to_match_method, reverts_event_id, occurred_at,
+                operation_id, coalesce(operation_kind, event_kind),
+                (SELECT count(*) FROM collection_identity_events grouped
+                 WHERE grouped.operation_id=collection_identity_events.operation_id
+                   AND grouped.event_kind=collection_identity_events.event_kind)
+         FROM collection_identity_events
+         WHERE operation_id=?1 AND event_kind='relink'
+         ORDER BY sequence",
+    )?;
+    statement
+        .query_map([operation_id], stored_event_from_row)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .context("loading the complete ROM identity operation")
+}
+
+fn stored_event_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredEvent> {
+    let kind: String = row.get(1)?;
+    let reverts_event_id: Option<String> = row.get(20)?;
+    let file_size = row
+        .get::<_, Option<i64>>(5)?
+        .and_then(|size| size.try_into().ok());
+    Ok(StoredEvent {
+        event: IdentityEvent {
+            id: row.get(0)?,
+            kind,
+            operation_id: row.get(22)?,
+            operation_kind: row.get(23)?,
+            operation_item_count: row.get::<_, i64>(24)?.try_into().unwrap_or_default(),
+            file_id: row.get(2)?,
+            file_path_display: row.get(3)?,
+            archive_member: row.get(4)?,
+            from_game_uid: row.get(8)?,
+            from_title: row.get(10)?,
+            from_platform: row.get(11)?,
+            to_game_uid: row.get(14)?,
+            to_title: row.get(16)?,
+            to_platform: row.get(17)?,
+            reverts_event_id,
+            occurred_at: row.get(21)?,
+            reverted: false,
+        },
+        file_size,
+        sha1: row.get(6)?,
+        md5: row.get(7)?,
+        from: StoredIdentity {
+            game_uid: row.get(8)?,
+            launchbox_db_id: row.get(9)?,
+            title: row.get(10)?,
+            platform: row.get(11)?,
+            match_state: row.get(12)?,
+            match_method: row.get(13)?,
+        },
+        to: StoredIdentity {
+            game_uid: row.get(14)?,
+            launchbox_db_id: row.get(15)?,
+            title: row.get(16)?,
+            platform: row.get(17)?,
+            match_state: row.get(18)?,
+            match_method: row.get(19)?,
+        },
+    })
 }
 
 fn event_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<IdentityEvent> {
     Ok(IdentityEvent {
         id: row.get(0)?,
         kind: row.get(1)?,
+        operation_id: row.get(14)?,
+        operation_kind: row.get(15)?,
+        operation_item_count: row.get::<_, i64>(16)?.try_into().unwrap_or_default(),
         file_id: row.get(2)?,
         file_path_display: row.get(3)?,
         archive_member: row.get(4)?,
@@ -455,6 +645,7 @@ mod tests {
     const TARGET_ID: &str = "22222222-2222-4222-8222-222222222222";
     const THIRD_ID: &str = "33333333-3333-4333-8333-333333333333";
     const FILE_ID: &str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const SECOND_FILE_ID: &str = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     const ROOT_ID: &str = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
     fn fixture() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
@@ -528,6 +719,31 @@ mod tests {
             .unwrap();
         drop(games);
         (directory, state, discovery)
+    }
+
+    fn insert_second_source_file(state: &Path) {
+        let store = SettingsStore::at(state).unwrap();
+        store
+            .connection()
+            .unwrap()
+            .execute(
+                "INSERT INTO local_rom_files (
+                 id, root_id, path_display, path_bytes, path_encoding,
+                 relative_path_display, relative_path_bytes, relative_path_encoding,
+                 file_name, archive_member, display_title, platform, file_size,
+                 modified_unix_ns, crc32, md5, sha1, game_uid, launchbox_db_id,
+                 matched_title, match_state, match_method, included, availability, imported_at
+             ) VALUES (
+                 ?1, ?2, '/roms/game-alt.bin', X'2F726F6D732F67616D652D616C742E62696E', 'unix_bytes',
+                 'game-alt.bin', X'67616D652D616C742E62696E', 'unix_bytes', 'game-alt.bin', '',
+                 'Source Game Alt', 'Source Platform', 8192, 2, '87654321',
+                 '22222222222222222222222222222222',
+                 '2222222222222222222222222222222222222222', ?3, 10,
+                 'Source Game', 'exact', 'SHA-1 + MD5', 1, 'present', 2
+             )",
+                params![SECOND_FILE_ID, ROOT_ID, SOURCE_ID],
+            )
+            .unwrap();
     }
 
     #[test]
@@ -611,6 +827,107 @@ mod tests {
                 .to_string()
                 .contains("changed")
         );
+        assert_eq!(imported_files_for_game(&state, THIRD_ID).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn grouped_merge_and_undo_are_atomic_and_preserve_every_file() {
+        let (_directory, state, discovery) = fixture();
+        insert_second_source_file(&state);
+        let before = imported_files_for_game(&state, SOURCE_ID).unwrap();
+        let operation = relink_imported_files(
+            &state,
+            &discovery,
+            &[FILE_ID.to_owned(), SECOND_FILE_ID.to_owned()],
+            SOURCE_ID,
+            TARGET_ID,
+        )
+        .unwrap();
+        assert_eq!(operation.kind, "merge");
+        assert_eq!(operation.events.len(), 2);
+        assert!(
+            operation
+                .events
+                .iter()
+                .all(|event| event.operation_id.as_deref() == Some(operation.id.as_str()))
+        );
+        assert!(
+            operation
+                .events
+                .iter()
+                .all(|event| event.operation_item_count == 2)
+        );
+        let merged = imported_files_for_game(&state, TARGET_ID).unwrap();
+        assert_eq!(merged.len(), 2);
+        assert_eq!(
+            merged
+                .iter()
+                .map(|file| (&file.id, &file.sha1))
+                .collect::<Vec<_>>(),
+            before
+                .iter()
+                .map(|file| (&file.id, &file.sha1))
+                .collect::<Vec<_>>()
+        );
+
+        let undo = undo_relink(&state, &operation.events[1].id).unwrap();
+        assert_eq!(undo.operation_kind, "undo");
+        assert_eq!(undo.operation_item_count, 2);
+        assert_eq!(imported_files_for_game(&state, SOURCE_ID).unwrap().len(), 2);
+        assert!(
+            imported_files_for_game(&state, TARGET_ID)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            undo_relink(&state, &operation.events[0].id)
+                .unwrap_err()
+                .to_string()
+                .contains("already")
+        );
+    }
+
+    #[test]
+    fn grouped_split_and_undo_fail_closed_before_any_partial_change() {
+        let (_directory, state, discovery) = fixture();
+        insert_second_source_file(&state);
+        let split = relink_imported_files(
+            &state,
+            &discovery,
+            &[FILE_ID.to_owned()],
+            SOURCE_ID,
+            TARGET_ID,
+        )
+        .unwrap();
+        assert_eq!(split.kind, "split");
+        assert_eq!(imported_files_for_game(&state, SOURCE_ID).unwrap().len(), 1);
+        assert_eq!(imported_files_for_game(&state, TARGET_ID).unwrap().len(), 1);
+        undo_relink(&state, &split.events[0].id).unwrap();
+        assert_eq!(imported_files_for_game(&state, SOURCE_ID).unwrap().len(), 2);
+
+        let merge = relink_imported_files(
+            &state,
+            &discovery,
+            &[FILE_ID.to_owned(), SECOND_FILE_ID.to_owned()],
+            SOURCE_ID,
+            TARGET_ID,
+        )
+        .unwrap();
+        SettingsStore::at(&state)
+            .unwrap()
+            .connection()
+            .unwrap()
+            .execute(
+                "UPDATE local_rom_files
+                 SET game_uid=?2, launchbox_db_id=30, matched_title='Third Game'
+                 WHERE id=?1",
+                params![SECOND_FILE_ID, THIRD_ID],
+            )
+            .unwrap();
+        let error = undo_relink(&state, &merge.events[0].id).unwrap_err();
+        assert!(error.to_string().contains("before changing any records"));
+        assert_eq!(imported_files_for_game(&state, SOURCE_ID).unwrap().len(), 0);
+        assert_eq!(imported_files_for_game(&state, TARGET_ID).unwrap().len(), 1);
         assert_eq!(imported_files_for_game(&state, THIRD_ID).unwrap().len(), 1);
     }
 }

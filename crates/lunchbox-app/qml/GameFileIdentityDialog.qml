@@ -18,11 +18,13 @@ Dialog {
     property color accentCool: "#62d7c6"
     property bool samePlatformOnly: true
     property bool historyExpanded: false
+    property bool batchConfirmArmed: false
 
     function begin(gameUid, title, platform) {
         identityModel.load_game(gameUid, title, platform)
         targetSearch.text = title
         samePlatformOnly = true
+        batchConfirmArmed = false
         identityModel.search_targets(title, platform)
         open()
         targetSearch.forceActiveFocus()
@@ -106,7 +108,7 @@ Dialog {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: dialog.identityModel.file_count > 1 ? 112 : 82
+            Layout.preferredHeight: dialog.identityModel.file_count > 1 ? 124 : 86
             radius: 11
             color: "#0d141e"
             border.color: dialog.line
@@ -121,18 +123,68 @@ Dialog {
                     Text {
                         Layout.fillWidth: true
                         text: dialog.identityModel.file_count > 1
-                              ? "CHOOSE IMPORTED FILE" : "IMPORTED FILE"
+                              ? "CHOOSE ROM ASSOCIATIONS" : "IMPORTED ROM ASSOCIATION"
                         color: dialog.muted
                         font.pixelSize: 8
                         font.weight: Font.Bold
                         font.letterSpacing: 0.8
                     }
                     Text {
-                        text: dialog.identityModel.file_count + " RECORD"
-                              + (dialog.identityModel.file_count === 1 ? "" : "S")
+                        text: dialog.identityModel.selected_file_count + " OF "
+                              + dialog.identityModel.file_count + " SELECTED"
                         color: dialog.accentCool
                         font.pixelSize: 8
                         font.weight: Font.Bold
+                    }
+                    Button {
+                        objectName: "identitySelectAllFiles"
+                        visible: dialog.identityModel.file_count > 1
+                        text: "ALL"
+                        Accessible.name: "Select all imported ROM associations"
+                        implicitWidth: 44
+                        implicitHeight: 24
+                        onClicked: {
+                            dialog.batchConfirmArmed = false
+                            dialog.identityModel.select_all_files()
+                        }
+                        background: Rectangle {
+                            radius: 6
+                            color: parent.down ? "#253244" : "#17202d"
+                            border.color: dialog.line
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: dialog.ink
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+                    Button {
+                        objectName: "identityClearFiles"
+                        visible: dialog.identityModel.file_count > 1
+                        text: "NONE"
+                        Accessible.name: "Clear imported ROM selection"
+                        implicitWidth: 52
+                        implicitHeight: 24
+                        onClicked: {
+                            dialog.batchConfirmArmed = false
+                            dialog.identityModel.clear_file_selection()
+                        }
+                        background: Rectangle {
+                            radius: 6
+                            color: parent.down ? "#253244" : "#17202d"
+                            border.color: dialog.line
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: dialog.muted
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
                 }
 
@@ -156,36 +208,63 @@ Dialog {
                     delegate: Button {
                         id: fileButton
                         required property int index
+                        property bool chosen: dialog.identityModel.selected_file_count >= 0
+                                              && dialog.identityModel.file_selected_at(index)
+                        objectName: "identityFileButton-" + index
                         width: Math.min(360, Math.max(210, fileList.width * 0.47))
                         height: 50
                         text: dialog.identityModel.file_label_at(fileButton.index)
-                        onClicked: dialog.identityModel.select_file(fileButton.index)
+                        Accessible.name: fileButton.text + (fileButton.chosen
+                                         ? ", selected" : ", not selected")
+                        onClicked: {
+                            dialog.batchConfirmArmed = false
+                            dialog.identityModel.select_file(fileButton.index)
+                            dialog.identityModel.toggle_file(fileButton.index)
+                        }
                         ToolTip.visible: hovered
                         ToolTip.text: dialog.identityModel.file_path_at(fileButton.index)
                         background: Rectangle {
                             radius: 8
-                            color: fileButton.index === dialog.identityModel.selected_file
+                            color: fileButton.chosen
                                    ? "#1b3131" : fileButton.down ? "#253244" : "#17202d"
-                            border.color: fileButton.index === dialog.identityModel.selected_file
+                            border.color: fileButton.chosen
                                           ? dialog.accentCool : dialog.line
                         }
-                        contentItem: Column {
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 2
-                            Text {
-                                width: parent.width
-                                text: fileButton.text
-                                color: dialog.ink
-                                font.pixelSize: 10
-                                font.weight: Font.DemiBold
-                                elide: Text.ElideMiddle
+                        contentItem: RowLayout {
+                            spacing: 8
+                            Rectangle {
+                                Layout.preferredWidth: 18
+                                Layout.preferredHeight: 18
+                                radius: 5
+                                color: fileButton.chosen ? dialog.accentCool : "transparent"
+                                border.color: fileButton.chosen ? dialog.accentCool : dialog.muted
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: fileButton.chosen
+                                    text: "✓"
+                                    color: "#071713"
+                                    font.pixelSize: 11
+                                    font.weight: Font.Bold
+                                }
                             }
-                            Text {
-                                width: parent.width
-                                text: dialog.identityModel.file_detail_at(fileButton.index)
-                                color: dialog.muted
-                                font.pixelSize: 8
-                                elide: Text.ElideRight
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: fileButton.text
+                                    color: dialog.ink
+                                    font.pixelSize: 10
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideMiddle
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: dialog.identityModel.file_detail_at(fileButton.index)
+                                    color: dialog.muted
+                                    font.pixelSize: 8
+                                    elide: Text.ElideRight
+                                }
                             }
                         }
                     }
@@ -279,7 +358,10 @@ Dialog {
                     objectName: "identityCandidateRow-" + index
                     width: candidateList.width
                     height: 64
-                    onClicked: dialog.identityModel.select_candidate(candidateRow.index)
+                    onClicked: {
+                        dialog.batchConfirmArmed = false
+                        dialog.identityModel.select_candidate(candidateRow.index)
+                    }
                     background: Rectangle {
                         color: candidateRow.index === dialog.identityModel.selected_candidate
                                ? "#1b3131" : candidateRow.hovered ? "#151f2c" : "transparent"
@@ -355,7 +437,10 @@ Dialog {
                     Text {
                         Layout.fillWidth: true
                         text: dialog.identityModel.selected_candidate >= 0
-                              ? "REVIEW EXACT TARGET" : "SELECT A TARGET ABOVE"
+                              ? dialog.identityModel.selected_file_count + " ROM ASSOCIATION"
+                                + (dialog.identityModel.selected_file_count === 1 ? "" : "S")
+                                + " · REVIEW EXACT TARGET"
+                              : "SELECT A TARGET ABOVE"
                         color: dialog.identityModel.selected_candidate >= 0
                                ? dialog.accentCool : dialog.muted
                         font.pixelSize: 8
@@ -387,23 +472,38 @@ Dialog {
                 }
                 Button {
                     objectName: "confirmIdentityRelinkButton"
-                    Layout.preferredWidth: 154
+                    Layout.preferredWidth: 182
                     Layout.preferredHeight: 40
-                    text: "RELINK ROM"
-                    enabled: dialog.identityModel.selected_file >= 0
+                    text: dialog.batchConfirmArmed
+                          ? "CONFIRM " + dialog.identityModel.operation_label
+                          : dialog.identityModel.operation_label
+                    Accessible.name: text
+                    enabled: dialog.identityModel.selected_file_count > 0
                              && dialog.identityModel.selected_candidate >= 0
-                    onClicked: dialog.identityModel.relink_selected()
+                    onClicked: {
+                        const isGrouped = dialog.identityModel.selected_file_count > 1
+                                || dialog.identityModel.selected_file_count
+                                   < dialog.identityModel.file_count
+                        if (isGrouped && !dialog.batchConfirmArmed) {
+                            dialog.batchConfirmArmed = true
+                            return
+                        }
+                        dialog.batchConfirmArmed = false
+                        dialog.identityModel.relink_selected()
+                    }
                     background: Rectangle {
                         radius: 8
                         color: !parent.enabled ? "#202835"
                                : parent.down ? "#257f71" : "#2da58f"
                         border.color: parent.enabled ? "#63dbc6" : dialog.line
                     }
-                    contentItem: Text {
-                        text: parent.text
-                        color: parent.enabled ? "#071713" : dialog.muted
-                        font.pixelSize: 9
-                        font.weight: Font.Bold
+                        contentItem: Text {
+                            text: parent.text
+                            color: parent.enabled ? "#071713" : dialog.muted
+                            font.pixelSize: 9
+                            minimumPixelSize: 7
+                            fontSizeMode: Text.Fit
+                            font.weight: Font.Bold
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
