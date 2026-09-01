@@ -1,6 +1,8 @@
 mod arcade;
 mod arcade_download;
 mod catalog;
+mod collection_identity;
+pub mod collection_identity_model;
 mod collections;
 mod controllers;
 mod couch_theme;

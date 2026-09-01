@@ -5550,6 +5550,43 @@ fn migrate(connection: &Connection) -> Result<()> {
              ON local_rom_files(game_uid) WHERE game_uid IS NOT NULL;
          CREATE INDEX IF NOT EXISTS local_rom_files_visible
              ON local_rom_files(included, availability);
+         CREATE TABLE IF NOT EXISTS collection_identity_events (
+             sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+             id TEXT NOT NULL UNIQUE CHECK (length(id) = 36),
+             event_kind TEXT NOT NULL CHECK (event_kind IN ('relink', 'undo')),
+             file_id TEXT NOT NULL CHECK (length(file_id) = 36),
+             file_path_display TEXT NOT NULL CHECK (length(file_path_display) <= 8192),
+             archive_member TEXT NOT NULL CHECK (length(archive_member) <= 8192),
+             sha1 TEXT NOT NULL CHECK (length(sha1) IN (0, 40)),
+             md5 TEXT NOT NULL CHECK (length(md5) IN (0, 32)),
+             from_game_uid TEXT,
+             from_launchbox_db_id INTEGER NOT NULL CHECK (from_launchbox_db_id >= 0),
+             from_title TEXT,
+             from_platform TEXT NOT NULL,
+             from_match_state TEXT NOT NULL CHECK (
+                 from_match_state IN (
+                     'exact', 'reviewed', 'ambiguous', 'unmatched', 'inventory_only', 'error'
+                 )
+             ),
+             from_match_method TEXT NOT NULL,
+             to_game_uid TEXT,
+             to_launchbox_db_id INTEGER NOT NULL CHECK (to_launchbox_db_id >= 0),
+             to_title TEXT,
+             to_platform TEXT NOT NULL,
+             to_match_state TEXT NOT NULL CHECK (
+                 to_match_state IN (
+                     'exact', 'reviewed', 'ambiguous', 'unmatched', 'inventory_only', 'error'
+                 )
+             ),
+             to_match_method TEXT NOT NULL,
+             reverts_event_id TEXT REFERENCES collection_identity_events(id),
+             occurred_at INTEGER NOT NULL CHECK (occurred_at >= 0)
+         );
+         CREATE INDEX IF NOT EXISTS collection_identity_events_file
+             ON collection_identity_events(file_id, sequence DESC);
+         CREATE UNIQUE INDEX IF NOT EXISTS collection_identity_events_single_undo
+             ON collection_identity_events(reverts_event_id)
+             WHERE reverts_event_id IS NOT NULL;
          CREATE TABLE IF NOT EXISTS local_rom_hash_cache (
              root_id TEXT NOT NULL,
              path_display TEXT NOT NULL,

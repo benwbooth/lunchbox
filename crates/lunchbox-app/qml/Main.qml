@@ -2574,6 +2574,40 @@ ApplicationWindow {
         id: libraryAudit
     }
 
+    CollectionIdentityModel {
+        id: collectionIdentity
+    }
+
+    Connections {
+        target: collectionIdentity
+        function onChange_revisionChanged() {
+            if (collectionIdentity.change_revision <= 0
+                    || collectionIdentity.last_game_uid.length === 0)
+                return
+            library.reload()
+            const databaseId = library.database_id_for_game(
+                                   collectionIdentity.last_game_uid)
+            root.openGame(collectionIdentity.last_game_uid,
+                          databaseId > 0 ? databaseId
+                                         : collectionIdentity.last_launchbox_db_id,
+                          collectionIdentity.last_game_title,
+                          collectionIdentity.last_game_platform,
+                          true, false)
+        }
+    }
+
+    GameFileIdentityDialog {
+        id: gameFileIdentityDialog
+        identityModel: collectionIdentity
+        ink: root.ink
+        muted: root.muted
+        panel: "#111822"
+        panelRaised: root.panelRaised
+        line: root.line
+        accent: root.accent
+        accentCool: root.accentCool
+    }
+
     LibraryAuditHistory {
         id: libraryAuditHistoryDialog
         auditModel: libraryAudit
@@ -12888,8 +12922,7 @@ ApplicationWindow {
                                 width: parent.width
                                 spacing: 8
                                 Button {
-                                    width: gameDetails.managed_install_present
-                                           ? (parent.width - 8) / 2 : parent.width
+                                    width: (parent.width - 8) / 2
                                     height: 34
                                     text: "OPEN FOLDER"
                                     enabled: gameDetails.selected_local_directory_url.toString().length > 0
@@ -12906,6 +12939,32 @@ ApplicationWindow {
                                     contentItem: Text {
                                         text: parent.text
                                         color: parent.enabled ? "#c7d1df" : root.muted
+                                        font: parent.font
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+                                Button {
+                                    width: (parent.width - 8) / 2
+                                    height: 34
+                                    visible: !gameDetails.managed_install_present
+                                    text: "MANAGE IDENTITY"
+                                    enabled: !gameDetails.install_management_busy
+                                             && gameDetails.game_id.length > 0
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    onClicked: gameFileIdentityDialog.begin(
+                                                   gameDetails.game_id,
+                                                   gameDetails.title,
+                                                   gameDetails.platform)
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: parent.down ? "#24433f" : "#1d3433"
+                                        border.color: parent.enabled ? "#3d756b" : root.line
+                                    }
+                                    contentItem: Text {
+                                        text: parent.text
+                                        color: parent.enabled ? "#94e2d4" : root.muted
                                         font: parent.font
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter

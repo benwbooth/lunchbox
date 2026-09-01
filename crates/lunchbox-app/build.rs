@@ -62,6 +62,7 @@ fn main() {
                 "qml/CatalogLinkButton.qml",
                 "qml/ClearableSearchField.qml",
                 "qml/CollectionMetric.qml",
+                "qml/GameFileIdentityDialog.qml",
                 "qml/CollectionMemberPresentationDialog.qml",
                 "qml/CouchAudioSettings.qml",
                 "qml/CouchBackgroundMusic.qml",
@@ -111,6 +112,7 @@ fn main() {
     .qt_module("QuickControls2")
     .qt_module("Quick3D")
     .qt_module("Multimedia")
+    .file("src/collection_identity_model.rs")
     .file("src/download_queue_model.rs")
     .file("src/emumovies_model.rs")
     .file("src/emulator_manager_model.rs")
