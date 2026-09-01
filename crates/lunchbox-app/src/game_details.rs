@@ -2219,6 +2219,9 @@ pub(crate) fn rank_file_candidates_for_platform(
 }
 
 fn platform_payload_tier(platform: Option<&str>, candidate: &TorrentFileCandidate) -> Option<u8> {
+    if is_known_auxiliary_payload(candidate) {
+        return None;
+    }
     let Some(platform) = platform else {
         return Some(0);
     };
@@ -2246,6 +2249,28 @@ fn platform_payload_tier(platform: Option<&str>, candidate: &TorrentFileCandidat
         "zip" | "7z" | "rar" => Some(2),
         _ => None,
     }
+}
+
+fn is_known_auxiliary_payload(candidate: &TorrentFileCandidate) -> bool {
+    if candidate.byte_size > 4 * 1024 {
+        return false;
+    }
+    let extension = Path::new(&candidate.filename)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default();
+    if !extension.eq_ignore_ascii_case("bin") {
+        return false;
+    }
+    let filename = candidate.filename.to_ascii_lowercase();
+    [
+        "(card id set)",
+        "(card uid)",
+        "(certificate)",
+        "(initial data)",
+    ]
+    .iter()
+    .any(|marker| filename.contains(marker))
 }
 
 fn file_match_score(filename: &str, query: &str, query_tokens: &[&str]) -> f64 {
@@ -2802,6 +2827,52 @@ mod tests {
         assert_eq!(ranked.len(), 1);
         assert_eq!(ranked[0].index, 1);
         assert!(ranked[0].filename.ends_with(".xci"));
+    }
+
+    #[test]
+    fn mig_card_metadata_never_becomes_an_automatic_game_payload() {
+        let root = "MIG Switch Game Collection/Super Mario RPG Legend of the Seven Stars.xci";
+        let mut card_id = candidate(
+            4400,
+            &format!("{root}/Super Mario RPG Legend of the Seven Stars (Card ID Set).bin"),
+        );
+        card_id.byte_size = 12;
+        let mut card_uid = candidate(
+            4401,
+            &format!("{root}/Super Mario RPG Legend of the Seven Stars (Card UID).bin"),
+        );
+        card_uid.byte_size = 64;
+        let mut certificate = candidate(
+            4402,
+            &format!("{root}/Super Mario RPG Legend of the Seven Stars (Certificate).bin"),
+        );
+        certificate.byte_size = 512;
+        let mut initial_data = candidate(
+            4403,
+            &format!("{root}/Super Mario RPG Legend of the Seven Stars (Initial Data).bin"),
+        );
+        initial_data.byte_size = 512;
+        let mut game_image = candidate(
+            4404,
+            &format!("{root}/Super Mario RPG Legend of the Seven Stars.xci"),
+        );
+        game_image.byte_size = 7_260_093_952;
+
+        let ranked = rank_file_candidates_for_platform(
+            vec![card_id, card_uid, certificate, initial_data, game_image],
+            "Super Mario RPG",
+            &[],
+            &preferences("USA", "latest"),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(ranked.first().map(|candidate| candidate.index), Some(4404));
+        assert!(
+            ranked
+                .iter()
+                .all(|candidate| candidate.byte_size > 4 * 1024)
+        );
     }
 
     #[test]

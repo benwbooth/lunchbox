@@ -57,12 +57,21 @@ Rectangle {
         if (sourceIndex < 0)
             return
         selectionInProgress = true
+        searchDelay.stop()
         highlightedRow = row
         torrentSearch.text = torrent.existing_name_at(sourceIndex)
         torrentPopup.close()
-        torrent.inspect_existing_torrent(sourceIndex)
+        torrentSearch.focus = false
         Qt.callLater(function() {
-            selectionInProgress = false
+            // Finish the pointer event before beginning inspection. Otherwise a
+            // release can land on the search field after the popup disappears and
+            // immediately reopen the results on some Qt platform plugins.
+            torrentPopup.close()
+            torrent.inspect_existing_torrent(sourceIndex)
+            if (!torrent.busy) {
+                torrentPopup.close()
+                selectionInProgress = false
+            }
         })
     }
 
@@ -99,6 +108,14 @@ Rectangle {
             if (root.torrent.existing_selected_info_hash.length === 0)
                 torrentSearch.text = ""
             root.syncHighlight()
+        }
+
+        function onBusyChanged() {
+            if (!root.torrent.busy && root.selectionInProgress) {
+                torrentPopup.close()
+                torrentSearch.focus = false
+                root.selectionInProgress = false
+            }
         }
     }
 

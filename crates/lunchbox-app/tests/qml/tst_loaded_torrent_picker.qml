@@ -131,7 +131,7 @@ TestCase {
         mouseClick(row, row.width / 2, row.height / 2)
 
         const popup = findChild(picker, "loadedTorrentPopup")
-        compare(torrentModel.inspectedIndex, 17321)
+        tryCompare(torrentModel, "inspectedIndex", 17321)
         compare(torrentModel.inspectedHash, torrentModel.hashFor(17321))
         compare(torrentModel.existing_selected_info_hash, torrentModel.hashFor(17321))
         compare(search.text, "Super Mario Odyssey Complete")
@@ -154,7 +154,7 @@ TestCase {
         compare(picker.highlightedRow, 0)
         picker.chooseRow(0)
 
-        compare(torrentModel.inspectedIndex, 17321)
+        tryCompare(torrentModel, "inspectedIndex", 17321)
         compare(torrentModel.inspectedHash, torrentModel.hashFor(17321))
     }
 }
