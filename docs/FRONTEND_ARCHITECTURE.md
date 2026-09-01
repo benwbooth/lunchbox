@@ -905,6 +905,20 @@ wiring outside the composition root, while `MediaRetryController.qml` owns the
 tested reload policy. Deterministic QML tests cover reload, exhaustion, success
 reset, and source replacement.
 
+The box-art video surface remains behind the opaque cover until its
+`QVideoSink` delivers a decoded frame; `PlayingState` alone is not treated as
+render readiness. Keeping the requested sink visible behind the cover lets
+backends that stop producing frames for hidden or zero-opacity outputs complete
+the handoff. The artwork therefore remains the presentation during expansion,
+decoder startup, stop, and collapse instead of exposing Qt's black clear
+frame. Once the 500-ms intent gate has elapsed, a selected card also reuses the
+same exact local video URL already resolved by the game-details model while the
+hover cache lookup completes. A successful cache lookup clears any stale
+per-session EmuMovies miss, and a download completion forces a new cache scan
+even when an older scan is still in flight. `HoverPreviewPresentation.qml`
+owns and tests the resolved-source and first-frame handoff outside the
+composition root.
+
 `--hover-preview-ui-probe --preview-video-fixture PATH --media-directory
 EMPTY_PATH` requires an explicit non-empty video fixture of at most 64 MiB,
 publishes it idempotently under the stable Super Mario Bros. cache identity,
@@ -912,8 +926,10 @@ loads the complete catalog, forces the grid presentation, focuses that exact
 UUID, and exercises the ordinary delay, worker lookup, and shared player. It
 puts the card against a viewport edge and prints
 `LUNCHBOX_HOVER_PREVIEW_UI_READY` only after Qt reports a video track, the
-fixture duration, `PlayingState`, and a genuinely enlarged card wholly inside
-the live grid bounds. The probe deliberately does not use
+fixture duration, `PlayingState`, a decoded-frame handoff, and a genuinely
+enlarged card wholly inside the live grid bounds. The first-frame assertion is
+a rendered-host gate; a headless backend whose video clock remains at zero is
+expected not to claim success. The probe deliberately does not use
 Qt Quick's item grab: an Xvfb clock can remain at zero without a working
 hardware backend, and a grab cannot prove that a video texture itself rendered.
 Visual acceptance of the live texture remains a release-host check.

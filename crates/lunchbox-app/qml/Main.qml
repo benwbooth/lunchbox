@@ -1183,9 +1183,12 @@ ApplicationWindow {
         if (tile && root.hoverPreviewTile !== tile)
             return
         hoverPreviewDelay.stop()
-        hoverPreviewPlayer.stop()
         root.hoverPreviewAudioMuted = true
         root.hoverPreviewPlaying = false
+        // Hide the video surface before stop() clears its last frame. Some
+        // Qt multimedia backends otherwise expose the surface's black clear
+        // frame while the card is animating back to its resting size.
+        hoverPreviewPlayer.stop()
         root.hoverPreviewPendingGameId = ""
         root.hoverPreviewTile = null
         root.hoverPreviewPlaybackError = ""
@@ -1835,9 +1838,7 @@ ApplicationWindow {
     RetryingMediaPlayer {
         id: hoverPreviewPlayer
         source: root.hoverPreviewTile
-                && library.hover_preview_game_id
-                   === root.hoverPreviewPendingGameId
-                ? library.hover_preview_url : ""
+                ? root.hoverPreviewTile.previewResolvedVideoUrl : ""
         activeAudioTrack: root.hoverPreviewAudioMuted ? -1 : 0
         audioOutput: root.hoverPreviewAudioMuted ? null : hoverPreviewAudio
         videoOutput: root.hoverPreviewTile
@@ -1929,12 +1930,14 @@ ApplicationWindow {
         interval: 420
         repeat: false
         onTriggered: {
+            const tile = root.hoverPreviewTile
             if (!root.hoverPreviewUiProbe || !root.hoverPreviewPlaying
                     || !root.hoverPreviewIntentGateVerified
                     || library.hover_preview_game_id
                        !== "9697a5eb-e0b4-4f24-8d43-672701414ee7"
                     || library.hover_preview_source.length === 0
-                    || !root.hoverPreviewTile
+                    || !tile
+                    || !tile.previewActive
                     || !hoverPreviewPlayer.hasVideo
                     || hoverPreviewPlayer.duration < 1) {
                 const detail = "playback game="
@@ -1944,14 +1947,14 @@ ApplicationWindow {
                                + root.hoverPreviewPlaybackError + " hasVideo="
                                + hoverPreviewPlayer.hasVideo + " duration="
                                + hoverPreviewPlayer.duration + " position="
-                               + hoverPreviewPlayer.position
+                               + hoverPreviewPlayer.position + " frameReady="
+                               + (tile ? tile.previewActive : false)
                 console.error("LUNCHBOX_HOVER_PREVIEW_UI_FAILED " + detail)
                 library.report_hover_preview_ui_failure(detail)
                 Qt.exit(2)
                 return
             }
             const grid = gameViewLoader.item
-            const tile = root.hoverPreviewTile
             const margin = 8
             const epsilon = 1
             const cardRight = tile.previewCardViewportX
@@ -8566,9 +8569,10 @@ ApplicationWindow {
             readonly property string previewArtworkSource: coverImage.source.toString()
             readonly property bool previewRequested: root.hoverPreviewTile === tile
                                                      && root.hoverPreviewPendingGameId === gameId
-            readonly property bool previewActive: previewRequested
-                                                  && root.hoverPreviewPlaying
-                                                  && library.hover_preview_game_id === gameId
+            readonly property bool previewActive: previewPresentation.videoVisible
+            readonly property url previewResolvedVideoUrl: previewPresentation.resolvedUrl
+            readonly property string previewResolvedVideoSource:
+                previewPresentation.resolvedSource
             readonly property string previewQueueState: {
                 library.media_pending_count
                 library.media_active_title
@@ -8602,6 +8606,26 @@ ApplicationWindow {
             property url artworkUrl: {
                 mediaRevision
                 return library.artwork_url(gameDatabaseId, library.artwork_type)
+            }
+            HoverPreviewPresentation {
+                id: previewPresentation
+                previewRequested: tile.previewRequested
+                playbackPlaying: root.hoverPreviewPlaying
+                                 && library.hover_preview_game_id === tile.gameId
+                fetchedUrl: library.hover_preview_game_id === tile.gameId
+                            ? library.hover_preview_url : ""
+                fetchedSource: library.hover_preview_game_id === tile.gameId
+                               ? library.hover_preview_source : ""
+                // The detail pane and card resolve the same stable game ID.
+                // Once the hover intent gate has populated hover_preview_game_id,
+                // reuse the already-indexed local detail video instead of
+                // showing a stale provider miss while another cache scan runs.
+                detailFallbackEligible: library.hover_preview_game_id === tile.gameId
+                                        && root.selectedGameId === tile.gameId
+                                        && gameDetails.game_id === tile.gameId
+                                        && gameDetails.video_available
+                detailUrl: gameDetails.video_url
+                detailSource: gameDetails.video_source
             }
             property string artworkSource: {
                 mediaRevision
@@ -8787,17 +8811,30 @@ ApplicationWindow {
                         // fading the cover in afterward exposed the black mat.
                         opacity: source.toString().length > 0
                                  && status !== Image.Error ? 1 : 0
+                        // Cover the live video sink until it has delivered its
+                        // first decoded frame, and cover it again before stop.
+                        z: tile.previewActive ? 0 : 1
                     }
 
                     VideoOutput {
                         id: tileVideoOutput
                         anchors.fill: parent
                         fillMode: VideoOutput.PreserveAspectCrop
+                        // Keep the sink alive behind the opaque cover while it
+                        // decodes. Hidden and zero-opacity outputs stop
+                        // receiving frames on some multimedia backends.
                         visible: tile.previewRequested
-                        opacity: tile.previewActive ? 1 : 0
-                        layer.enabled: tile.previewRequested
+                        opacity: 1
+                        z: 0
+                        layer.enabled: visible
                         layer.smooth: true
-                        Behavior on opacity { NumberAnimation { duration: 170 } }
+                    }
+
+                    Connections {
+                        target: tileVideoOutput.videoSink
+                        function onVideoFrameChanged(frame) {
+                            previewPresentation.acceptDecodedFrame()
+                        }
                     }
 
                     Rectangle {
@@ -8813,8 +8850,8 @@ ApplicationWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             width: parent.width - 54 * card.expansion
                             text: "VIDEO  ·  "
-                                  + (library.hover_preview_source.length > 0
-                                     ? library.hover_preview_source.toUpperCase()
+                                  + (tile.previewResolvedVideoSource.length > 0
+                                     ? tile.previewResolvedVideoSource.toUpperCase()
                                      : "LOCAL CACHE")
                             color: root.ink
                             font.pixelSize: Math.round(9 * card.expansion)
@@ -8834,6 +8871,7 @@ ApplicationWindow {
                         running: tile.previewRequested
                                  && library.hover_preview_game_id === tile.gameId
                                  && library.hover_preview_loading
+                                 && tile.previewResolvedVideoUrl.toString().length === 0
                         visible: running
                     }
 
@@ -8846,7 +8884,7 @@ ApplicationWindow {
                         visible: tile.previewRequested
                                  && library.hover_preview_game_id === tile.gameId
                                  && !library.hover_preview_loading
-                                 && library.hover_preview_url.toString().length === 0
+                                 && tile.previewResolvedVideoUrl.toString().length === 0
                                  && root.hoverPreviewPlaybackError.length === 0
                         color: library.media_setup_required ? "#e13a2b22" : "#dd111924"
                         Text {

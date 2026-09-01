@@ -80,6 +80,7 @@ fn main() {
                 "qml/GameSoundtrackCard.qml",
                 "qml/HeaderButton.qml",
                 "qml/HorizontalWheelHandler.qml",
+                "qml/HoverPreviewPresentation.qml",
                 "qml/InlineProgressBar.qml",
                 "qml/LaunchCommandPreview.qml",
                 "qml/MetadataField.qml",

@@ -1596,6 +1596,10 @@ fn automatic_video_default_message(state: &str) -> &'static str {
     }
 }
 
+fn clear_stale_automatic_video_miss(unavailable: &mut HashSet<String>, game_uid: &str) -> bool {
+    unavailable.remove(game_uid)
+}
+
 fn bounded_automatic_video_error(error: &str) -> String {
     const MAX_CHARS: usize = 220;
     let normalized = error.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -3234,7 +3238,15 @@ impl qobject::LibraryModel {
     }
 
     pub fn request_hover_preview(mut self: Pin<&mut Self>, game_uid: QString) {
-        let game_uid = game_uid.to_string();
+        self.as_mut()
+            .request_hover_preview_inner(game_uid.to_string(), false);
+    }
+
+    fn request_hover_preview_inner(
+        mut self: Pin<&mut Self>,
+        game_uid: String,
+        force_cache_refresh: bool,
+    ) {
         let Some(game_index) = self
             .as_ref()
             .rust()
@@ -3268,7 +3280,8 @@ impl qobject::LibraryModel {
                 "LUNCHBOX_HOVER_PREVIEW_UI_LOOKUP game_uid={game_uid:?} database_id={launchbox_db_id}"
             );
         }
-        if self.as_ref().hover_preview_game_id().to_string() == game_uid
+        if !force_cache_refresh
+            && self.as_ref().hover_preview_game_id().to_string() == game_uid
             && (*self.as_ref().hover_preview_loading()
                 || !self.as_ref().hover_preview_url().is_empty())
         {
@@ -3331,6 +3344,18 @@ impl qobject::LibraryModel {
         self.as_mut().set_hover_preview_loading(false);
         match result {
             Ok(Some(preview)) => {
+                clear_stale_automatic_video_miss(
+                    &mut self.as_mut().rust_mut().automatic_video_unavailable,
+                    &game_uid,
+                );
+                self.as_mut()
+                    .rust_mut()
+                    .automatic_video_terminal
+                    .insert(game_uid.clone());
+                self.as_mut().rust_mut().automatic_video_messages.insert(
+                    game_uid.clone(),
+                    "The cached gameplay video is ready for box-art playback.".to_owned(),
+                );
                 if *self.as_ref().hover_preview_probe() {
                     println!(
                         "LUNCHBOX_HOVER_PREVIEW_UI_FOUND game_uid={game_uid:?} source={:?} path={:?}",
@@ -3924,6 +3949,10 @@ impl qobject::LibraryModel {
 
         match outcome {
             AutomaticVideoOutcome::Ready { path, downloaded } => {
+                clear_stale_automatic_video_miss(
+                    &mut self.as_mut().rust_mut().automatic_video_unavailable,
+                    &request.game_uid,
+                );
                 self.as_mut()
                     .rust_mut()
                     .automatic_video_terminal
@@ -3949,7 +3978,7 @@ impl qobject::LibraryModel {
                 self.as_mut().set_media_revision(revision);
                 if self.as_ref().hover_preview_game_id().to_string() == request.game_uid {
                     self.as_mut()
-                        .request_hover_preview(qstring(&request.game_uid));
+                        .request_hover_preview_inner(request.game_uid.clone(), true);
                 }
                 println!(
                     "LUNCHBOX_VISIBLE_VIDEO_READY game_uid={:?} downloaded={} path={:?}",
@@ -7081,6 +7110,30 @@ mod tests {
         assert!(!bounded.contains('\n'));
         assert_eq!(bounded.chars().count(), 220);
         assert!(bounded.ends_with('…'));
+    }
+
+    #[test]
+    fn cached_video_replaces_a_stale_provider_miss() {
+        let mut terminal = HashSet::from(["game".to_owned()]);
+        let mut unavailable = HashSet::from(["game".to_owned()]);
+
+        clear_stale_automatic_video_miss(&mut unavailable, "game");
+        terminal.insert("game".to_owned());
+
+        assert!(terminal.contains("game"));
+        assert!(!unavailable.contains("game"));
+        assert_eq!(
+            automatic_video_state_for(
+                true,
+                true,
+                None,
+                &HashSet::new(),
+                &terminal,
+                &unavailable,
+                "game",
+            ),
+            "ready"
+        );
     }
 
     #[test]
