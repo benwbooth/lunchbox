@@ -26,14 +26,19 @@ TestCase {
 
         verify(!presentation.frameReady)
         verify(!presentation.videoVisible)
+        verify(presentation.artworkLayer > presentation.videoLayer)
+        verify(presentation.overlayLayer > presentation.artworkLayer)
 
         presentation.acceptDecodedFrame()
         verify(presentation.frameReady)
         verify(presentation.videoVisible)
+        compare(presentation.artworkLayer, presentation.videoLayer)
+        verify(presentation.overlayLayer > presentation.videoLayer)
 
         presentation.previewRequested = false
         verify(!presentation.frameReady)
         verify(!presentation.videoVisible)
+        verify(presentation.overlayLayer > presentation.artworkLayer)
     }
 
     function test_selected_detail_video_is_an_immediate_cache_fallback() {

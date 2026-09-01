@@ -30,8 +30,9 @@ TestCase {
                 property int selectedIndex: -1
                 property int inspectedIndex: -1
                 property int queuedIndex: -1
+                property int candidateCount: 3
 
-                function download_candidate_count() { return 3 }
+                function download_candidate_count() { return candidateCount }
                 function download_candidate_source_at(index) {
                     return index < 2 ? "No-Intro · Nintendo Entertainment System"
                                      : "FinalBurn Neo"
@@ -80,10 +81,17 @@ TestCase {
                 signalName: "closeRequested"
             }
 
+            SignalSpy {
+                id: importSpy
+                target: downloadScreen
+                signalName: "importTorrentRequested"
+            }
+
             property alias detailsState: detailsState
             property alias downloadScreen: downloadScreen
             property alias configureSpy: configureSpy
             property alias closeSpy: closeSpy
+            property alias importSpy: importSpy
         }
     }
 
@@ -126,5 +134,20 @@ TestCase {
         compare(host.closeSpy.count, 0)
         verify(host.downloadScreen.handleNavigation("back"))
         compare(host.closeSpy.count, 1)
+    }
+
+    function test_empty_download_state_imports_a_torrent() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.detailsState.candidateCount = 0
+        host.detailsState.detail_revision += 1
+        tryCompare(host.downloadScreen, "candidateCount", 0)
+        compare(host.downloadScreen.selectedCandidate, -1)
+        verify(host.downloadScreen.handleNavigation("accept"))
+        compare(host.importSpy.count, 1)
+
+        host.detailsState.torrent_loading = true
+        verify(host.downloadScreen.handleNavigation("accept"))
+        compare(host.importSpy.count, 1)
     }
 }

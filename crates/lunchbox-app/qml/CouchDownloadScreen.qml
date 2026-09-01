@@ -48,6 +48,7 @@ FocusScope {
 
     signal closeRequested()
     signal configureRequested()
+    signal importTorrentRequested()
 
     visible: active
     focus: active
@@ -139,7 +140,10 @@ FocusScope {
                 if (selectedCandidate >= 0)
                     candidateList.positionViewAtBeginning()
             } else if (action === "accept") {
-                beginReview()
+                if (candidateCount > 0)
+                    beginReview()
+                else if (!details.torrent_loading)
+                    importTorrentRequested()
             } else {
                 return false
             }
@@ -426,18 +430,49 @@ FocusScope {
                     }
                 }
 
-                Text {
+                Column {
                     anchors.centerIn: parent
                     width: Math.min(parent.width - 80, 620)
                     visible: screen.candidateCount === 0
-                    text: screen.details.torrent_loading
-                          ? "Checking the available preservation sets…"
-                          : "No matching download is available for this exact release."
-                    color: screen.mutedColor
-                    font.pixelSize: 16
-                    font.weight: Font.Medium
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
+                    spacing: 18
+
+                    Text {
+                        width: parent.width
+                        text: screen.details.torrent_loading
+                              ? "Checking the available preservation sets…"
+                              : "No matching download is available for this exact release. Import a torrent to review and select only this game's file."
+                        color: screen.mutedColor
+                        font.pixelSize: 16
+                        font.weight: Font.Medium
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.min(390, parent.width)
+                        height: 58
+                        visible: !screen.details.torrent_loading
+                        radius: Math.max(10, screen.cardRadius - 5)
+                        color: importHover.hovered
+                               ? Qt.lighter(screen.accentColor, 1.08)
+                               : screen.accentColor
+                        border.color: screen.inkColor
+                        border.width: 2
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "IMPORT TORRENT"
+                            color: "#1b140c"
+                            font.pixelSize: 13
+                            font.weight: Font.Black
+                            font.letterSpacing: 0.9
+                        }
+                        HoverHandler { id: importHover }
+                        TapHandler {
+                            onTapped: screen.importTorrentRequested()
+                        }
+                    }
                 }
             }
         }

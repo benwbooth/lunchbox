@@ -133,6 +133,8 @@ Item {
     signal settingsRequested(string section)
     signal launchRequested()
     signal downloadsRequested()
+    signal torrentImportRequested(string gameId, int databaseId, string title,
+                                  string platform)
 
     visible: active
     focus: active
@@ -2090,6 +2092,13 @@ Item {
         onConfigureRequested: {
             view.downloadOverlayOpen = false
             view.settingsRequested("qbittorrent")
+        }
+        onImportTorrentRequested: {
+            view.downloadOverlayOpen = false
+            view.torrentImportRequested(view.selectedGameId,
+                                        view.selectedDatabaseId,
+                                        view.selectedTitle,
+                                        view.selectedPlatform)
         }
     }
 

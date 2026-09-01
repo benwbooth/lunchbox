@@ -23,6 +23,13 @@ QtObject {
                                           && playbackPlaying
                                           && frameReady
                                           && resolvedUrl.toString().length > 0
+    // The video output must remain rendered while it warms up or some Qt
+    // multimedia backends never deliver a first frame. Keep the opaque cover
+    // above that live sink until a frame arrives, and reserve a higher layer
+    // for badges and actions so artwork can never cover the card controls.
+    readonly property int videoLayer: 0
+    readonly property int artworkLayer: videoVisible ? videoLayer : videoLayer + 1
+    readonly property int overlayLayer: videoLayer + 2
 
     onPreviewRequestedChanged: {
         if (!previewRequested)

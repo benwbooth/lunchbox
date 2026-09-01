@@ -1461,6 +1461,18 @@ ApplicationWindow {
         externalTorrentDialog.open()
     }
 
+    function openTorrentForGame(gameId, databaseId, title, platform) {
+        if (!gameId || gameId.length === 0 || !title || title.length === 0
+                || !platform || platform.length === 0)
+            return
+        externalTorrent.begin_review(gameId, databaseId, title, platform)
+        // A game-level Import action should land on the native file picker
+        // route. The same review surface still exposes qBittorrent and magnet
+        // sources when those are more convenient.
+        externalTorrentDialog.sourceMode = 1
+        externalTorrentDialog.open()
+    }
+
     function reviewDownloadedCollection(directory, platform) {
         localImport.choose_directory_path(directory)
         importDialogLoader.active = true
@@ -1725,6 +1737,21 @@ ApplicationWindow {
                 Qt.exit(2)
                 return
             }
+            const tile = root.hoverPreviewTile
+            if (!tile
+                    || tile.previewStatusLayer <= tile.previewArtworkLayer
+                    || tile.previewFavoriteLayer <= tile.previewArtworkLayer) {
+                const detail = "card controls are below warmup artwork artwork="
+                               + (tile ? tile.previewArtworkLayer : -1)
+                               + " status="
+                               + (tile ? tile.previewStatusLayer : -1)
+                               + " favorite="
+                               + (tile ? tile.previewFavoriteLayer : -1)
+                console.error("LUNCHBOX_HOVER_PREVIEW_UI_FAILED " + detail)
+                library.report_hover_preview_ui_failure(detail)
+                Qt.exit(2)
+                return
+            }
             root.hoverPreviewIntentGateVerified = true
         }
     }
@@ -1938,6 +1965,10 @@ ApplicationWindow {
                     || library.hover_preview_source.length === 0
                     || !tile
                     || !tile.previewActive
+                    || tile.previewStatusLayer <= tile.previewArtworkLayer
+                    || tile.previewStatusLayer <= tile.previewVideoLayer
+                    || tile.previewFavoriteLayer <= tile.previewArtworkLayer
+                    || tile.previewFavoriteLayer <= tile.previewVideoLayer
                     || !hoverPreviewPlayer.hasVideo
                     || hoverPreviewPlayer.duration < 1) {
                 const detail = "playback game="
@@ -1949,6 +1980,11 @@ ApplicationWindow {
                                + hoverPreviewPlayer.duration + " position="
                                + hoverPreviewPlayer.position + " frameReady="
                                + (tile ? tile.previewActive : false)
+                               + " layers="
+                               + (tile ? tile.previewVideoLayer : -1) + "/"
+                               + (tile ? tile.previewArtworkLayer : -1) + "/"
+                               + (tile ? tile.previewStatusLayer : -1) + "/"
+                               + (tile ? tile.previewFavoriteLayer : -1)
                 console.error("LUNCHBOX_HOVER_PREVIEW_UI_FAILED " + detail)
                 library.report_hover_preview_ui_failure(detail)
                 Qt.exit(2)
@@ -8567,6 +8603,10 @@ ApplicationWindow {
             readonly property real previewArtworkDecodeWidth: coverImage.sourceSize.width
             readonly property real previewArtworkDecodeHeight: coverImage.sourceSize.height
             readonly property string previewArtworkSource: coverImage.source.toString()
+            readonly property real previewVideoLayer: tileVideoOutput.z
+            readonly property real previewArtworkLayer: coverImage.z
+            readonly property real previewStatusLayer: previewStatus.z
+            readonly property real previewFavoriteLayer: favoriteButton.z
             readonly property bool previewRequested: root.hoverPreviewTile === tile
                                                      && root.hoverPreviewPendingGameId === gameId
             readonly property bool previewActive: previewPresentation.videoVisible
@@ -8813,7 +8853,7 @@ ApplicationWindow {
                                  && status !== Image.Error ? 1 : 0
                         // Cover the live video sink until it has delivered its
                         // first decoded frame, and cover it again before stop.
-                        z: tile.previewActive ? 0 : 1
+                        z: previewPresentation.artworkLayer
                     }
 
                     VideoOutput {
@@ -8825,7 +8865,7 @@ ApplicationWindow {
                         // receiving frames on some multimedia backends.
                         visible: tile.previewRequested
                         opacity: 1
-                        z: 0
+                        z: previewPresentation.videoLayer
                         layer.enabled: visible
                         layer.smooth: true
                     }
@@ -8838,6 +8878,7 @@ ApplicationWindow {
                     }
 
                     Rectangle {
+                        z: previewPresentation.overlayLayer
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
@@ -8865,6 +8906,7 @@ ApplicationWindow {
                     }
 
                     BusyIndicator {
+                        z: previewPresentation.overlayLayer
                         anchors.centerIn: parent
                         width: 44 * card.expansion
                         height: 44 * card.expansion
@@ -8877,6 +8919,7 @@ ApplicationWindow {
 
                     Rectangle {
                         id: previewStatus
+                        z: previewPresentation.overlayLayer
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
@@ -8916,6 +8959,7 @@ ApplicationWindow {
                     }
 
                     Rectangle {
+                        z: previewPresentation.overlayLayer
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
@@ -8941,6 +8985,7 @@ ApplicationWindow {
                     }
 
                     Text {
+                        z: previewPresentation.overlayLayer
                         anchors.centerIn: parent
                         width: parent.width - 28 * card.expansion
                         text: tile.gameTitle.length > 0 ? tile.gameTitle.charAt(0).toUpperCase() : "?"
@@ -8956,6 +9001,7 @@ ApplicationWindow {
                         visible: coverImage.status !== Image.Ready && !tile.previewActive
                     }
                     Rectangle {
+                        z: previewPresentation.overlayLayer
                         visible: tile.availabilityBadge.length > 0
                         anchors.top: parent.top
                         anchors.right: parent.right
@@ -8989,6 +9035,8 @@ ApplicationWindow {
                         }
                     }
                     RoundButton {
+                        id: favoriteButton
+                        z: previewPresentation.overlayLayer
                         anchors.left: parent.left
                         anchors.top: parent.top
                         anchors.margins: 8 * card.expansion
@@ -9020,7 +9068,7 @@ ApplicationWindow {
                         anchors.margins: 8 * card.expansion
                         width: 40 * card.expansion
                         height: 40 * card.expansion
-                        z: 20
+                        z: previewPresentation.overlayLayer
                         visible: tile.gameLocal
                                  || tile.downloadJobState === "IMPORTED"
                         enabled: root.pendingCardLaunchGameId !== tile.gameId
@@ -9050,6 +9098,7 @@ ApplicationWindow {
                         ToolTip.text: "Play " + tile.gameTitle
                     }
                     RoundButton {
+                        z: previewPresentation.overlayLayer
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
                         anchors.margins: 8 * card.expansion
@@ -9594,6 +9643,10 @@ ApplicationWindow {
         onDownloadsRequested: {
             root.exitCouchMode()
             downloadsDrawer.open()
+        }
+        onTorrentImportRequested: function(gameId, databaseId, title, platform) {
+            root.exitCouchMode()
+            root.openTorrentForGame(gameId, databaseId, title, platform)
         }
     }
 
@@ -13115,23 +13168,94 @@ ApplicationWindow {
                             root.downloadAlternativesExpanded = !root.downloadAlternativesExpanded
                     }
 
+                    Item {
+                        id: minervaSourceState
+                        width: 1
+                        height: 0
+                        property int revision: gameDetails.detail_revision
+                        readonly property bool revealed:
+                            root.selectedDownloadJobIndex < 0
+                            || root.downloadAlternativesExpanded
+                        readonly property int count: {
+                            revision
+                            return gameDetails.download_source_count()
+                        }
+                    }
+                    Rectangle {
+                        visible: minervaSourceState.revealed
+                                 && !gameDetails.loading
+                                 && !gameDetails.torrent_loading
+                                 && minervaSourceState.count === 0
+                                 && gameDetails.game_id.length > 0
+                        width: parent.width
+                        height: visible ? noDownloadColumn.implicitHeight + 28 : 0
+                        radius: 11
+                        color: "#171f2b"
+                        border.color: root.accent
+
+                        Column {
+                            id: noDownloadColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 14
+                            spacing: 9
+                            Text {
+                                width: parent.width
+                                text: "NO DOWNLOAD FOUND"
+                                color: root.accent
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                                font.letterSpacing: 1.1
+                            }
+                            Text {
+                                width: parent.width
+                                text: "Minerva and your registered sources do not contain an exact match. Import a torrent to review its files and attach the right game without downloading the entire torrent."
+                                color: root.muted
+                                font.pixelSize: 11
+                                lineHeight: 1.25
+                                wrapMode: Text.WordWrap
+                            }
+                            Button {
+                                width: parent.width
+                                height: 40
+                                text: "IMPORT A TORRENT FOR THIS GAME"
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                onClicked: root.openTorrentForGame(
+                                               gameDetails.game_id,
+                                               root.selectedDatabaseId,
+                                               gameDetails.title,
+                                               gameDetails.platform)
+                                background: Rectangle {
+                                    radius: 8
+                                    color: parent.down ? "#d68d36" : root.accent
+                                    border.color: "#ffc579"
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: "#1b140c"
+                                    font: parent.font
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+                        }
+                    }
                     Button {
                         width: parent.width
-                        height: 38
+                        height: 36
                         visible: !gameDetails.loading
+                                 && minervaSourceState.count > 0
                                  && gameDetails.game_id.length > 0
-                                 && root.selectedDatabaseId >= 0
-                        text: "ADD TORRENT FOR THIS GAME"
+                        text: "ADD ANOTHER TORRENT SOURCE"
                         font.pixelSize: 9
                         font.weight: Font.Bold
-                        onClicked: {
-                            externalTorrent.begin_review(
-                                        gameDetails.game_id,
-                                        root.selectedDatabaseId,
-                                        gameDetails.title,
-                                        gameDetails.platform)
-                            externalTorrentDialog.open()
-                        }
+                        onClicked: root.openTorrentForGame(
+                                       gameDetails.game_id,
+                                       root.selectedDatabaseId,
+                                       gameDetails.title,
+                                       gameDetails.platform)
                         background: Rectangle {
                             radius: 8
                             color: parent.down ? "#28364a" : "#1b2532"
@@ -13146,20 +13270,6 @@ ApplicationWindow {
                         }
                         ToolTip.visible: hovered
                         ToolTip.text: "Review one torrent, select this game's exact file, and optionally reuse the torrent for other games on " + gameDetails.platform + "."
-                    }
-
-                    Item {
-                        id: minervaSourceState
-                        width: 1
-                        height: 0
-                        property int revision: gameDetails.detail_revision
-                        readonly property bool revealed:
-                            root.selectedDownloadJobIndex < 0
-                            || root.downloadAlternativesExpanded
-                        readonly property int count: {
-                            revision
-                            return gameDetails.download_source_count()
-                        }
                     }
                     Rectangle {
                         visible: minervaSourceState.revealed
