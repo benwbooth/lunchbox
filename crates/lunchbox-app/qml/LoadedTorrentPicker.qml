@@ -13,10 +13,12 @@ Rectangle {
     property color line: "#2b3647"
     property int highlightedRow: -1
     property bool selectionInProgress: false
+    property int pendingSourceIndex: -1
 
     function reset(restoreResults) {
         searchDelay.stop()
         selectionInProgress = false
+        pendingSourceIndex = -1
         torrentPopup.close()
         torrentSearch.text = ""
         highlightedRow = -1
@@ -57,24 +59,27 @@ Rectangle {
         if (sourceIndex < 0)
             return
         selectionInProgress = true
+        pendingSourceIndex = sourceIndex
         searchDelay.stop()
         highlightedRow = row
         torrentSearch.text = torrent.existing_name_at(sourceIndex)
-        torrentPopup.close()
         torrentSearch.focus = false
-
-        // ItemDelegate emits clicked after the pointer release, so inspection can
-        // start synchronously. Keeping this behind callLater left a frame where
-        // the popup could remain in the overlay or regain focus on a real model.
-        torrent.inspect_existing_torrent(sourceIndex)
         torrentPopup.close()
+
+        // Popup.closed normally dispatches the inspection. Direct function calls
+        // made while the popup is already closed still need to work.
+        if (!torrentPopup.opened && !torrentPopup.visible)
+            beginPendingInspection()
+    }
+
+    function beginPendingInspection() {
+        if (pendingSourceIndex < 0)
+            return
+        const sourceIndex = pendingSourceIndex
+        pendingSourceIndex = -1
+        torrent.inspect_existing_torrent(sourceIndex)
         if (!torrent.busy)
             selectionInProgress = false
-
-        Qt.callLater(function() {
-            torrentPopup.close()
-            torrentSearch.focus = false
-        })
     }
 
     implicitHeight: 42
@@ -236,6 +241,12 @@ Rectangle {
         padding: 1
         focus: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        enter: Transition {}
+        exit: Transition {}
+        onClosed: {
+            root.beginPendingInspection()
+            torrentSearch.focus = false
+        }
 
         background: Rectangle {
             color: "#111923"

@@ -22,6 +22,7 @@ TestCase {
         property int inspectedIndex: -1
         property string inspectedHash: ""
         property bool holdInspectionBusy: false
+        property bool popupOpenWhenInspected: false
 
         function hashFor(index) {
             return index.toString(16).padStart(40, "0")
@@ -61,6 +62,9 @@ TestCase {
             existing_filter_revision += 1
         }
         function inspect_existing_torrent(index) {
+            const popup = findChild(picker, "loadedTorrentPopup")
+            popupOpenWhenInspected = popup !== null
+                    && (popup.opened || popup.visible)
             inspectedIndex = index
             inspectedHash = existing_info_hash_at(index)
             existing_selected_info_hash = inspectedHash
@@ -95,6 +99,7 @@ TestCase {
         torrentModel.inspectedIndex = -1
         torrentModel.inspectedHash = ""
         torrentModel.holdInspectionBusy = false
+        torrentModel.popupOpenWhenInspected = false
         torrentModel.busy = false
         picker.reset()
         wait(20)
@@ -159,9 +164,10 @@ TestCase {
         tryVerify(() => popup.opened)
         picker.chooseRow(0)
 
-        compare(torrentModel.inspectedIndex, 0)
         tryVerify(() => !popup.opened)
         verify(!popup.visible)
+        tryCompare(torrentModel, "inspectedIndex", 0)
+        verify(!torrentModel.popupOpenWhenInspected)
         torrentModel.busy = false
         wait(20)
         verify(!popup.opened)

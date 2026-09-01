@@ -2218,7 +2218,10 @@ pub(crate) fn rank_file_candidates_for_platform(
     Ok(candidates)
 }
 
-fn platform_payload_tier(platform: Option<&str>, candidate: &TorrentFileCandidate) -> Option<u8> {
+pub(crate) fn platform_payload_tier(
+    platform: Option<&str>,
+    candidate: &TorrentFileCandidate,
+) -> Option<u8> {
     if is_known_auxiliary_payload(candidate) {
         return None;
     }

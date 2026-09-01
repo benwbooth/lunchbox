@@ -776,7 +776,13 @@ impl qobject::ExternalTorrentModel {
                 let offer = result.offer;
                 let file_count = offer.files.len();
                 let collection_mode = *self.as_ref().collection_mode();
-                let review = build_review_state(&offer, result.ranked_candidates, collection_mode);
+                let platform = self.as_ref().game_platform().to_string();
+                let review = build_review_state(
+                    &offer,
+                    result.ranked_candidates,
+                    collection_mode,
+                    Some(&platform),
+                );
                 let searchable_paths = offer
                     .files
                     .iter()
@@ -1400,6 +1406,7 @@ fn build_review_state(
     offer: &ManualTorrentOffer,
     ranked_candidates: Vec<TorrentFileCandidate>,
     collection_mode: bool,
+    platform: Option<&str>,
 ) -> ReviewState {
     let positions_by_torrent_index = offer
         .files
@@ -1409,6 +1416,30 @@ fn build_review_state(
         .collect::<std::collections::HashMap<_, _>>();
     let position_for_torrent_index =
         |torrent_index: usize| positions_by_torrent_index.get(&torrent_index).copied();
+    // Ranking and review are separate trust boundaries. Revalidate the actual
+    // torrent member here so a stale, malformed, or future ranking result can
+    // never automatically select tiny MIG card metadata instead of a playable
+    // Switch image.
+    let ranked_candidates = ranked_candidates
+        .into_iter()
+        .filter(|candidate| {
+            position_for_torrent_index(candidate.index)
+                .and_then(|position| offer.files.get(position))
+                .is_some_and(|file| {
+                    let actual = TorrentFileCandidate {
+                        index: file.index as usize,
+                        filename: file.path.clone(),
+                        byte_size: file.byte_size,
+                        match_score: 0.0,
+                        matched_title: String::new(),
+                        region: String::new(),
+                        version: String::new(),
+                        download_plan: None,
+                    };
+                    crate::game_details::platform_payload_tier(platform, &actual).is_some()
+                })
+        })
+        .collect::<Vec<_>>();
     let mut seen_file_indices = vec![false; offer.files.len()];
     let mut ranked_file_indices = Vec::with_capacity(ranked_candidates.len());
     for candidate in &ranked_candidates {
@@ -1606,7 +1637,12 @@ mod tests {
             &crate::settings::AppSettings::default(),
         )
         .unwrap();
-        let state = build_review_state(&offer, result.ranked_candidates, false);
+        let state = build_review_state(
+            &offer,
+            result.ranked_candidates,
+            false,
+            Some("Nintendo Entertainment System"),
+        );
 
         assert_eq!(state.selected_index, 2);
         assert_eq!(state.selected_file_indices, [2]);
@@ -1631,7 +1667,12 @@ mod tests {
             &crate::settings::AppSettings::default(),
         )
         .unwrap();
-        let state = build_review_state(&offer, result.ranked_candidates, false);
+        let state = build_review_state(
+            &offer,
+            result.ranked_candidates,
+            false,
+            Some("Nintendo Switch"),
+        );
 
         assert_eq!(state.selected_index, 1);
         assert_eq!(state.selected_file_indices, [1]);
@@ -1675,12 +1716,54 @@ mod tests {
             &crate::settings::AppSettings::default(),
         )
         .unwrap();
-        let state = build_review_state(&offer, result.ranked_candidates, false);
+        let state = build_review_state(
+            &offer,
+            result.ranked_candidates,
+            false,
+            Some("Nintendo - Nintendo Switch"),
+        );
 
         assert_eq!(state.selected_index, 4);
         assert_eq!(state.selected_file_indices, [4]);
         assert_eq!(state.display_order[0], 4);
         assert!(offer.files[state.display_order[0]].path.ends_with(".xci"));
+    }
+
+    #[test]
+    fn review_boundary_rejects_a_stale_sidecar_ranking_before_default_selection() {
+        let offer = offer(&[
+            (4400, "Super Mario RPG (Card ID Set).bin", 12),
+            (4404, "Super Mario RPG.xci", 7_260_093_952),
+        ]);
+        let stale_rank = vec![
+            TorrentFileCandidate {
+                index: 4400,
+                filename: offer.files[0].path.clone(),
+                byte_size: offer.files[0].byte_size,
+                match_score: 1.0,
+                matched_title: "Super Mario RPG".to_owned(),
+                region: String::new(),
+                version: String::new(),
+                download_plan: None,
+            },
+            TorrentFileCandidate {
+                index: 4404,
+                filename: offer.files[1].path.clone(),
+                byte_size: offer.files[1].byte_size,
+                match_score: 0.9,
+                matched_title: "Super Mario RPG".to_owned(),
+                region: String::new(),
+                version: String::new(),
+                download_plan: None,
+            },
+        ];
+
+        let state = build_review_state(&offer, stale_rank, false, Some("Nintendo Switch"));
+
+        assert_eq!(state.selected_index, 1);
+        assert_eq!(state.selected_file_indices, [1]);
+        assert_eq!(state.display_order[0], 1);
+        assert_eq!(state.ranked_file_indices, [1]);
     }
 
     #[test]
@@ -1696,7 +1779,12 @@ mod tests {
             &crate::settings::AppSettings::default(),
         )
         .unwrap();
-        let state = build_review_state(&offer, result.ranked_candidates, false);
+        let state = build_review_state(
+            &offer,
+            result.ranked_candidates,
+            false,
+            Some("Nintendo Switch"),
+        );
 
         assert_eq!(state.selected_index, -1);
         assert!(state.selected_file_indices.is_empty());
@@ -1727,7 +1815,12 @@ mod tests {
             &crate::settings::AppSettings::default(),
         )
         .unwrap();
-        let state = build_review_state(&offer, result.ranked_candidates, false);
+        let state = build_review_state(
+            &offer,
+            result.ranked_candidates,
+            false,
+            Some("Sony PlayStation"),
+        );
         let plan = state.selected_download_plan.as_ref().unwrap();
 
         assert_eq!(state.selected_index, 1);
