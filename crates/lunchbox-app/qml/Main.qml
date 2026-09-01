@@ -11055,6 +11055,7 @@ ApplicationWindow {
                         line: root.line
                         accentCool: root.accentCool
                         onPlayRequested: gameDetails.launch_game()
+                        onCancelLaunchRequested: gameDetails.cancel_launch()
                         onSetupRequested: {
                             if (gameDetails.emulator_option_count === 0)
                                 root.openEmulatorManagerForPlatform(gameDetails.platform)

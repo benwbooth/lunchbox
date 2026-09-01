@@ -4,6 +4,8 @@ use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use anyhow::{Context, Result, anyhow, bail};
 use rusqlite::params_from_iter;
@@ -956,20 +958,67 @@ pub fn build_rom_launch_plan(
     )
 }
 
+#[cfg(test)]
 pub fn build_rom_launch_plan_with_customization(
     rom_path: &Path,
     platform: &str,
     option: &RomEmulatorOption,
     customization: &crate::settings::ResolvedLaunchCustomization,
 ) -> Result<LaunchPlan> {
+    build_rom_launch_plan_with_customization_and_cancellation(
+        rom_path,
+        platform,
+        option,
+        customization,
+        &Arc::new(AtomicBool::new(false)),
+    )
+}
+
+pub fn build_rom_launch_plan_with_customization_and_cancellation(
+    rom_path: &Path,
+    platform: &str,
+    option: &RomEmulatorOption,
+    customization: &crate::settings::ResolvedLaunchCustomization,
+    cancelled: &Arc<AtomicBool>,
+) -> Result<LaunchPlan> {
     if !rom_path.is_file() {
         bail!("local game file is missing: {}", rom_path.display());
     }
+    let prepared = crate::rom_launch_preparation::prepare_for_launch(
+        rom_path,
+        is_arcade_family_platform(platform),
+        cancelled,
+    )?;
+    let outcome = build_prepared_rom_launch_plan(
+        &prepared.path,
+        platform,
+        option,
+        customization,
+        &prepared.access_roots,
+    );
+    match outcome {
+        Ok(mut plan) => {
+            plan.cleanup_paths.extend(prepared.cleanup_paths);
+            Ok(plan)
+        }
+        Err(error) => {
+            cleanup_after_launch(&prepared.cleanup_paths);
+            Err(error)
+        }
+    }
+}
+
+fn build_prepared_rom_launch_plan(
+    rom_path: &Path,
+    platform: &str,
+    option: &RomEmulatorOption,
+    customization: &crate::settings::ResolvedLaunchCustomization,
+    access_roots: &[PathBuf],
+) -> Result<LaunchPlan> {
     let mut current_directory = rom_path
         .parent()
         .map(Path::to_path_buf)
         .context("local game file has no containing directory")?;
-    let (program, mut prefix_arguments) = command_prefix(&option.executable, &current_directory)?;
     let mut template_values = BTreeMap::from([(
         "file".to_owned(),
         LaunchTemplateValue::Path(rom_path.to_path_buf()),
@@ -1084,6 +1133,8 @@ pub fn build_rom_launch_plan_with_customization(
             &option.executable,
         )?;
     }
+    let (program, mut prefix_arguments) =
+        command_prefix_with_access_roots(&option.executable, &current_directory, access_roots)?;
     prefix_arguments.extend(arguments);
 
     Ok(LaunchPlan {
@@ -1114,7 +1165,11 @@ pub fn spawn_launch_plan(plan: &LaunchPlan) -> Result<Child> {
 
 pub fn cleanup_after_launch(paths: &[PathBuf]) {
     for path in paths {
-        let _ = fs::remove_file(path);
+        if path.is_dir() && crate::rom_launch_preparation::cleanup_owned_path(path) {
+            let _ = fs::remove_dir_all(path);
+        } else {
+            let _ = fs::remove_file(path);
+        }
     }
 }
 
@@ -1942,21 +1997,30 @@ fn command_prefix(
     executable: &EmulatorExecutable,
     install_root: &Path,
 ) -> Result<(PathBuf, Vec<OsString>)> {
+    command_prefix_with_access_roots(executable, install_root, &[])
+}
+
+fn command_prefix_with_access_roots(
+    executable: &EmulatorExecutable,
+    install_root: &Path,
+    access_roots: &[PathBuf],
+) -> Result<(PathBuf, Vec<OsString>)> {
     match executable {
         EmulatorExecutable::Native(path) => Ok((path.clone(), Vec::new())),
         EmulatorExecutable::Flatpak { command, app_id } => {
-            let mount = flatpak_mount_point(install_root)?;
-            Ok((
-                command.clone(),
-                vec![
-                    OsString::from("run"),
-                    OsString::from(format!(
-                        "--filesystem={}",
-                        map_path_for_flatpak(&mount).display()
-                    )),
-                    OsString::from(app_id),
-                ],
-            ))
+            let mut mounts = BTreeSet::new();
+            mounts.insert(map_path_for_flatpak(&flatpak_mount_point(install_root)?));
+            for access_root in access_roots {
+                mounts.insert(map_path_for_flatpak(&flatpak_mount_point(access_root)?));
+            }
+            let mut arguments = vec![OsString::from("run")];
+            arguments.extend(
+                mounts
+                    .into_iter()
+                    .map(|mount| OsString::from(format!("--filesystem={}", mount.display()))),
+            );
+            arguments.push(OsString::from(app_id));
+            Ok((command.clone(), arguments))
         }
         EmulatorExecutable::Wine {
             command,
@@ -2737,6 +2801,8 @@ fn extract_dosbox_branch_lines<'a>(lines: &'a [&'a str]) -> Vec<&'a str> {
 mod tests {
     use super::*;
     use rusqlite::Connection;
+    use std::fs::File;
+    use std::io::Write;
     use tempfile::TempDir;
 
     fn prepared(root: &Path, collection: ExoCollection, config: &str) -> PreparedInstall {
@@ -3223,6 +3289,90 @@ del *.rom
         assert_eq!(plan.arguments[4], "-L");
         assert_eq!(plan.arguments[5], core.as_os_str());
         assert_eq!(plan.arguments[6], rom.as_os_str());
+    }
+
+    #[test]
+    fn multi_disc_archive_playlist_is_prepared_and_cleaned_after_launch() {
+        let temp = TempDir::new().unwrap();
+        let archive_path = temp.path().join("Disc 1.zip");
+        let file = File::create(&archive_path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file(
+                "Game (Disc 1).cue",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        archive
+            .write_all(b"FILE \"Game (Disc 1).bin\" BINARY\n")
+            .unwrap();
+        archive
+            .start_file(
+                "Game (Disc 1).bin",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        archive.write_all(b"disc").unwrap();
+        archive.finish().unwrap();
+        let playlist = temp.path().join("Game.m3u");
+        fs::write(&playlist, "Disc 1.zip\n").unwrap();
+        let option = RomEmulatorOption {
+            emulator_id: "native-id".to_owned(),
+            emulator_name: "Native Emulator".to_owned(),
+            runtime_kind: EmulatorRuntimeKind::Standalone,
+            core_name: String::new(),
+            executable: EmulatorExecutable::Native(PathBuf::from("/bin/emulator")),
+            core_path: None,
+            recommended: true,
+        };
+
+        let plan = build_rom_launch_plan(&playlist, "Sony PlayStation", &option).unwrap();
+        assert_eq!(plan.cleanup_paths.len(), 1);
+        let generated = PathBuf::from(&plan.arguments[0]);
+        assert!(generated.is_file());
+        assert!(
+            fs::read_to_string(&generated)
+                .unwrap()
+                .contains("Game (Disc 1).cue")
+        );
+        let session = plan.cleanup_paths[0].clone();
+        cleanup_after_launch(&plan.cleanup_paths);
+        assert!(!session.exists());
+    }
+
+    #[test]
+    fn flatpak_playlist_mounts_each_external_disc_directory() {
+        let temp = TempDir::new().unwrap();
+        let playlist_directory = temp.path().join("playlists");
+        let disc_directory = temp.path().join("discs");
+        fs::create_dir_all(&playlist_directory).unwrap();
+        fs::create_dir_all(&disc_directory).unwrap();
+        let disc = disc_directory.join("Game (Disc 1).chd");
+        fs::write(&disc, b"disc").unwrap();
+        let playlist = playlist_directory.join("Game.m3u");
+        fs::write(&playlist, format!("{}\n", disc.display())).unwrap();
+        let option = RomEmulatorOption {
+            emulator_id: "retroarch-id".to_owned(),
+            emulator_name: "Beetle PSX".to_owned(),
+            runtime_kind: EmulatorRuntimeKind::RetroArch,
+            core_name: "mednafen_psx_hw".to_owned(),
+            executable: EmulatorExecutable::Flatpak {
+                command: PathBuf::from("/usr/bin/flatpak"),
+                app_id: "org.libretro.RetroArch".to_owned(),
+            },
+            core_path: Some(temp.path().join("mednafen_psx_hw_libretro.so")),
+            recommended: true,
+        };
+
+        let plan = build_rom_launch_plan(&playlist, "Sony PlayStation", &option).unwrap();
+        let arguments = plan
+            .arguments
+            .iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert!(arguments.contains(&format!("--filesystem={}", playlist_directory.display())));
+        assert!(arguments.contains(&format!("--filesystem={}", disc_directory.display())));
+        assert!(arguments.contains(&"org.libretro.RetroArch".to_owned()));
     }
 
     #[test]

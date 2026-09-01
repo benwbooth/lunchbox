@@ -776,7 +776,10 @@ Item {
                 launchStatusOverlayOpen = false
                 openOverlay("menu")
             } else if (action === "accept") {
-                closeLaunchStatus()
+                if (details.launch_busy)
+                    details.cancel_launch()
+                else
+                    closeLaunchStatus()
             } else {
                 return false
             }
@@ -2123,12 +2126,15 @@ Item {
         dangerColor: view.danger
         cardRadius: view.cardRadius
         inputHint: view.gamepad.connected_count > 0
-                   ? view.gamepad.button_label("accept") + "  CLOSE   ·   "
+                   ? view.gamepad.button_label("accept")
+                     + (view.details.launch_busy ? "  CANCEL   ·   " : "  CLOSE   ·   ")
                      + view.gamepad.button_label("details") + "  DESKTOP DETAILS   ·   "
                      + view.gamepad.button_label("menu") + "  GAME MENU   ·   "
                      + view.gamepad.button_label("back") + "  CLOSE"
-                   : "ENTER  CLOSE   ·   D  DESKTOP DETAILS   ·   M  GAME MENU   ·   ESC  CLOSE"
+                   : (view.details.launch_busy ? "ENTER  CANCEL   ·   " : "ENTER  CLOSE   ·   ")
+                     + "D  DESKTOP DETAILS   ·   M  GAME MENU   ·   ESC  CLOSE"
         onCloseRequested: view.closeLaunchStatus()
+        onCancelRequested: view.details.cancel_launch()
         onDetailsRequested: {
             view.launchCompletionPending = false
             view.launchStatusOverlayOpen = false

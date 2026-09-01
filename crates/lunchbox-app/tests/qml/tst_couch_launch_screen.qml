@@ -94,4 +94,15 @@ TestCase {
         compare(host.launchScreen.formatElapsed(65), "01:05")
         compare(host.launchScreen.formatElapsed(3661), "1:01:01")
     }
+
+    function test_cancelled_launch_is_not_reported_as_a_session() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.detailsState.launch_busy = false
+        host.detailsState.launch_status =
+                "Launch cancelled. Temporary preparation files were removed."
+        tryCompare(host.launchScreen, "phase", "cancelled")
+        compare(host.launchScreen.phaseEyebrow, "LAUNCH CANCELLED")
+        compare(host.launchScreen.phaseHeadline, "Launch preparation stopped")
+    }
 }

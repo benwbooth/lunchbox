@@ -75,7 +75,12 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   numeric/alphabetic/Roman disc markers, primary-image selection, common CUE,
   CCD, MDS and GDI sidecars, exact-member confirmation, aggregate progress,
   preserved relative layout, safe retry, and last-step M3U publication are
-  native.
+  native. Local M3U libraries can also launch when their entries are still in
+  ZIP, 7z, or RAR containers: a bounded pure-Rust worker requires one
+  unambiguous launch entry per archive, stages its control files and companions,
+  publishes a temporary exact playlist, grants every required Flatpak path,
+  and removes the owned session after exit or cancellation. Arcade ROM-set
+  archives retain their direct-file contract.
 - eXoDOS, eXoWin3x, and eXoWin9x related archives are represented as one
   durable acquisition plan with exact game-data/metadata/utility dependencies,
   legacy DOS language priority, role-aware confirmation, aggregate progress,
@@ -323,6 +328,9 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Generic local-ROM RetroArch and standalone discovery/launch are native, with
   multi-file selection and exact per-game/platform stable-ID/core defaults.
   Linux Flatpak RetroArch plus real core/content loading is runtime-verified.
+  Archive and multi-disc preparation stays off the Qt thread and has explicit
+  cancellation in both Desktop and Couch Mode; cancellation is never recorded
+  as a play session or shown as a launch failure.
 - Exact game/platform/all-platform launch profiles are native for ordinary ROM
   and prepared eXo plans. Their contextual editor exposes independently
   inherited extra arguments and replacement templates; the bounded compiler

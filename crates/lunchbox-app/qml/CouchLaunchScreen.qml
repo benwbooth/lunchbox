@@ -28,12 +28,17 @@ Item {
     readonly property bool launchFailed:
         !details.launch_busy && !details.game_running
         && details.launch_status.indexOf("Could not launch") === 0
+    readonly property bool launchCancelled:
+        !details.launch_busy && !details.game_running
+        && details.launch_status.indexOf("Launch cancelled") === 0
     readonly property string phase: details.launch_busy ? "starting"
                                           : details.game_running ? "running"
-                                          : launchFailed ? "failed" : "complete"
+                                          : launchFailed ? "failed"
+                                          : launchCancelled ? "cancelled" : "complete"
     readonly property string phaseEyebrow: phase === "starting" ? "NOW LAUNCHING"
                                                  : phase === "running" ? "NOW PLAYING"
                                                  : phase === "failed" ? "LAUNCH FAILED"
+                                                 : phase === "cancelled" ? "LAUNCH CANCELLED"
                                                                       : "WELCOME BACK"
     readonly property string phaseHeadline: phase === "starting"
         ? "Preparing your game"
@@ -41,6 +46,8 @@ Item {
           ? "The emulator is running"
           : phase === "failed"
             ? "The game could not be started"
+            : phase === "cancelled"
+              ? "Launch preparation stopped"
             : details.activity_busy
               ? "Saving your play session"
               : "Session complete"
@@ -67,6 +74,7 @@ Item {
     }
 
     signal closeRequested()
+    signal cancelRequested()
     signal detailsRequested()
     signal menuRequested()
 
@@ -310,6 +318,8 @@ Item {
                         ? "Your emulator is in the foreground. This screen keeps the exact game and session context ready when you return."
                         : screen.phase === "failed"
                           ? "Review the launch status below, then open Desktop Details to fix the exact emulator, firmware, or command profile."
+                          : screen.phase === "cancelled"
+                            ? "Temporary launch files were removed. Your library and original game files were left unchanged."
                           : screen.details.activity_busy
                             ? "The emulator has closed. Play time and the final session result are being committed now."
                             : "Your play activity is saved. Continue browsing, inspect the session, or choose another release."
@@ -405,7 +415,8 @@ Item {
                         text: screen.phase === "running"
                               ? "ACTIVE  " + screen.formatElapsed(screen.runningSeconds)
                               : screen.phase === "complete" ? screen.details.play_time.toUpperCase()
-                              : screen.phase === "failed" ? "ACTION REQUIRED" : "PREPARING"
+                              : screen.phase === "failed" ? "ACTION REQUIRED"
+                              : screen.phase === "cancelled" ? "STOPPED" : "PREPARING"
                         color: screen.phaseColor
                         font.pixelSize: 9
                         font.weight: Font.Bold
@@ -474,17 +485,27 @@ Item {
                            : screen.withAlpha(screen.accentColor, 0.79)
                     border.color: screen.accentColor
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Return to Browsing"
+                    Accessible.name: screen.phase === "starting"
+                                     ? "Cancel launch preparation"
+                                     : "Return to Browsing"
                     CrispText {
                         anchors.centerIn: parent
-                        text: "RETURN TO BROWSING"
+                        text: screen.phase === "starting"
+                              ? "CANCEL PREPARATION" : "RETURN TO BROWSING"
                         color: screen.backgroundColor
                         font.pixelSize: 10
                         font.weight: Font.Bold
                         font.letterSpacing: 0.65
                     }
                     HoverHandler { id: returnHover }
-                    TapHandler { onTapped: screen.closeRequested() }
+                    TapHandler {
+                        onTapped: {
+                            if (screen.phase === "starting")
+                                screen.cancelRequested()
+                            else
+                                screen.closeRequested()
+                        }
+                    }
                 }
             }
         }

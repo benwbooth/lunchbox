@@ -323,6 +323,9 @@ pub mod qobject {
         fn launch_game(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
+        fn cancel_launch(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
         fn select_local_file(self: Pin<&mut GameDetailsModel>, index: i32);
 
         #[qinvokable]
@@ -715,6 +718,7 @@ pub struct GameDetailsModelRust {
     launch_generation: u64,
     activity_load_generation: u64,
     preparation_cancel: Option<Arc<AtomicBool>>,
+    launch_cancel: Option<Arc<AtomicBool>>,
     database_id: i64,
     local_file_path: PathBuf,
     local_file_paths: Vec<PathBuf>,
@@ -920,6 +924,7 @@ impl Default for GameDetailsModelRust {
             launch_generation: 0,
             activity_load_generation: 0,
             preparation_cancel: None,
+            launch_cancel: None,
             database_id: 0,
             local_file_path: PathBuf::new(),
             local_file_paths: Vec::new(),
@@ -1279,6 +1284,14 @@ struct LaunchStarted {
     command_summary: String,
     tracking_warning: Option<String>,
     activity_recorded: bool,
+}
+
+struct LaunchCleanupGuard(Vec<PathBuf>);
+
+impl Drop for LaunchCleanupGuard {
+    fn drop(&mut self) {
+        crate::emulator::cleanup_after_launch(&self.0);
+    }
 }
 
 struct SupplementalMediaRefresh {
@@ -4831,10 +4844,21 @@ impl qobject::GameDetailsModel {
         let activity_platform = self.as_ref().platform().to_string();
         let activity_database_id = self.as_ref().rust().database_id;
         let rom_probe = is_local_launch_probe();
+        let preparing_archived_playlist = matches!(
+            &launch_input,
+            LaunchInput::Rom { path, .. }
+                if path.extension().and_then(|value| value.to_str())
+                    .is_some_and(|value| value.eq_ignore_ascii_case("m3u"))
+        );
+        let launch_cancel = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().launch_cancel = Some(Arc::clone(&launch_cancel));
         self.as_mut().set_launch_busy(true);
-        self.as_mut().set_launch_status(qstring(
-            "Building the exact launch plan and preparing writable runtime files…",
-        ));
+        self.as_mut()
+            .set_launch_status(qstring(if preparing_archived_playlist {
+                "Preparing the multi-disc playlist and any compressed disc images…"
+            } else {
+                "Building the exact launch plan and preparing writable runtime files…"
+            }));
 
         let qt_thread = self.as_ref().qt_thread();
         let started_thread = qt_thread.clone();
@@ -4842,6 +4866,9 @@ impl qobject::GameDetailsModel {
             .name("lunchbox-emulator-launch".into())
             .spawn(move || {
                 let launch = (|| -> anyhow::Result<(Result<(), String>, Option<String>, bool)> {
+                    if launch_cancel.load(AtomicOrdering::Relaxed) {
+                        anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
+                    }
                     let plan = match &launch_input {
                         LaunchInput::Prepared {
                             install,
@@ -4876,17 +4903,22 @@ impl qobject::GameDetailsModel {
                                     option.runtime_kind.key(),
                                     &option.core_name,
                                 )?;
-                            crate::emulator::build_rom_launch_plan_with_customization(
+                            crate::emulator::build_rom_launch_plan_with_customization_and_cancellation(
                                 path,
                                 platform,
                                 option,
                                 &customization,
+                                &launch_cancel,
                             )?
                         }
                     };
                     let emulator_name = plan.emulator_name.clone();
                     let command_summary = plan.command_summary();
                     let cleanup_paths = plan.cleanup_paths.clone();
+                    let _cleanup_guard = LaunchCleanupGuard(cleanup_paths);
+                    if launch_cancel.load(AtomicOrdering::Relaxed) {
+                        anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
+                    }
                     let controller_settings = crate::settings::SettingsStore::open_default()
                         .and_then(|store| store.load())
                         .context("loading controller mapping settings")?;
@@ -4901,13 +4933,10 @@ impl qobject::GameDetailsModel {
                         session: controller_session,
                         warning: controller_warning,
                     } = controller_activation;
-                    let mut child = match crate::emulator::spawn_launch_plan(&plan) {
-                        Ok(child) => child,
-                        Err(error) => {
-                            crate::emulator::cleanup_after_launch(&cleanup_paths);
-                            return Err(error);
-                        }
-                    };
+                    if launch_cancel.load(AtomicOrdering::Relaxed) {
+                        anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
+                    }
+                    let mut child = crate::emulator::spawn_launch_plan(&plan)?;
                     let process_id = child.id();
                     let play_started = Instant::now();
                     let play_session =
@@ -4964,7 +4993,6 @@ impl qobject::GameDetailsModel {
                         false
                     };
                     let status = child.wait();
-                    crate::emulator::cleanup_after_launch(&cleanup_paths);
                     drop(controller_session);
                     let status = status.context("waiting for the emulator process")?;
                     let outcome = if probe_terminated {
@@ -5023,10 +5051,23 @@ impl qobject::GameDetailsModel {
                 }
             });
         if let Err(error) = spawn_result {
+            self.as_mut().rust_mut().launch_cancel = None;
             self.as_mut().set_launch_busy(false);
             self.as_mut().set_launch_status(qstring(format!(
                 "Could not start emulator launch worker: {error}"
             )));
+        }
+    }
+
+    pub fn cancel_launch(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().launch_busy() {
+            return;
+        }
+        if let Some(cancel) = self.as_ref().rust().launch_cancel.as_ref() {
+            cancel.store(true, AtomicOrdering::Relaxed);
+            self.as_mut().set_launch_status(qstring(
+                "Cancelling launch preparation and removing temporary files…",
+            ));
         }
     }
 
@@ -5036,6 +5077,7 @@ impl qobject::GameDetailsModel {
         {
             return;
         }
+        self.as_mut().rust_mut().launch_cancel = None;
         self.as_mut().set_launch_busy(false);
         self.as_mut().set_game_running(true);
         self.as_mut()
@@ -5079,6 +5121,7 @@ impl qobject::GameDetailsModel {
         {
             return;
         }
+        self.as_mut().rust_mut().launch_cancel = None;
         self.as_mut().set_launch_busy(false);
         self.as_mut().set_game_running(false);
         let base_status = match exit {
@@ -5116,10 +5159,17 @@ impl qobject::GameDetailsModel {
         {
             return;
         }
+        self.as_mut().rust_mut().launch_cancel = None;
         self.as_mut().set_launch_busy(false);
         self.as_mut().set_game_running(false);
-        self.as_mut()
-            .set_launch_status(qstring(format!("Could not launch this game: {error}")));
+        if error.contains(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR) {
+            self.as_mut().set_launch_status(qstring(
+                "Launch cancelled. Temporary preparation files were removed.",
+            ));
+        } else {
+            self.as_mut()
+                .set_launch_status(qstring(format!("Could not launch this game: {error}")));
+        }
         if is_emulator_launch_probe() {
             eprintln!("LUNCHBOX_EMULATOR_FAILED error={error:?}");
         }
@@ -5213,6 +5263,10 @@ impl qobject::GameDetailsModel {
     }
 
     fn invalidate_launch_state(mut self: Pin<&mut Self>) {
+        if let Some(cancel) = self.as_ref().rust().launch_cancel.as_ref() {
+            cancel.store(true, AtomicOrdering::Relaxed);
+        }
+        self.as_mut().rust_mut().launch_cancel = None;
         self.as_mut().rust_mut().launch_generation =
             self.as_ref().rust().launch_generation.wrapping_add(1);
         self.as_mut().set_launch_discovery_busy(false);

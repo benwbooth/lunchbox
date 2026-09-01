@@ -43,6 +43,7 @@ mod provider_image;
 mod qbittorrent;
 mod region_priority;
 mod retroarch_shaders;
+mod rom_launch_preparation;
 mod screenscraper;
 pub mod screenscraper_model;
 mod settings;

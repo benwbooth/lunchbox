@@ -25,6 +25,7 @@ Rectangle {
     required property color accentCool
 
     signal playRequested()
+    signal cancelLaunchRequested()
     signal setupRequested()
     signal manageEmulatorsRequested()
     signal emulatorSelected(int index)
@@ -207,17 +208,22 @@ Rectangle {
         }
 
         Button {
+            id: launchAction
+            objectName: "launchAction"
             width: parent.width
             height: 48
-            text: hero.launchBusy ? "STARTING…"
+            text: hero.launchBusy ? "CANCEL PREPARATION"
                   : hero.gameRunning ? "GAME IS RUNNING"
                   : hero.canLaunch ? "▶  PLAY"
                   : hero.emulatorMissing ? "INSTALL AN EMULATOR" : "RECHECK PLAY SETUP"
-            enabled: !hero.launchBusy && !hero.gameRunning && !hero.discoveryBusy
+            enabled: hero.launchBusy
+                     || (!hero.gameRunning && !hero.discoveryBusy)
             font.pixelSize: 12
             font.weight: Font.Bold
             onClicked: {
-                if (hero.canLaunch)
+                if (hero.launchBusy)
+                    hero.cancelLaunchRequested()
+                else if (hero.canLaunch)
                     hero.playRequested()
                 else
                     hero.setupRequested()
@@ -225,8 +231,13 @@ Rectangle {
             background: Rectangle {
                 radius: 9
                 color: parent.enabled
-                       ? (parent.down ? "#238153" : "#2cad6d") : "#244337"
-                border.color: parent.enabled ? "#75e2a5" : hero.line
+                       ? (hero.launchBusy
+                          ? (parent.down ? "#8f5228" : "#ba6c32")
+                          : (parent.down ? "#238153" : "#2cad6d"))
+                       : "#244337"
+                border.color: parent.enabled
+                              ? (hero.launchBusy ? "#f0ac65" : "#75e2a5")
+                              : hero.line
             }
             contentItem: Text {
                 text: parent.text

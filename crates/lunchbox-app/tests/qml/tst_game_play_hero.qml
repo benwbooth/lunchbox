@@ -61,4 +61,20 @@ TestCase {
         verify(hero.emulatorMissing)
         verify(hero.local)
     }
+
+    function test_launch_preparation_can_be_cancelled() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            launchBusy: true
+        })
+        verify(hero)
+        let cancelled = false
+        hero.cancelLaunchRequested.connect(function() { cancelled = true })
+        const action = findChild(hero, "launchAction")
+        verify(action)
+        compare(action.text, "CANCEL PREPARATION")
+        verify(action.enabled)
+        action.clicked()
+        verify(cancelled)
+        verify(hero.launchBusy)
+    }
 }
