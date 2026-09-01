@@ -51,6 +51,8 @@ pub mod settings_model;
 mod steamgriddb;
 pub mod steamgriddb_model;
 mod tags;
+mod watched_torrent;
+pub mod watched_torrent_model;
 pub mod web_artwork_model;
 
 use std::sync::OnceLock;

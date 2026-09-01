@@ -358,7 +358,7 @@ impl qobject::ExternalTorrentModel {
     }
 
     pub fn set_collection_platform(mut self: Pin<&mut Self>, platform: QString) {
-        if *self.as_ref().busy() || *self.as_ref().ready() || !*self.as_ref().collection_mode() {
+        if *self.as_ref().busy() || !*self.as_ref().collection_mode() {
             return;
         }
         let platform = normalized_collection_platform(&platform.to_string());

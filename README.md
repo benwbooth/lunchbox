@@ -211,9 +211,14 @@ whole-torrent preference. The reviewed source-file name, torrent SHA-256, info
 hash, exact catalog association, selected member, and resulting job remain
 durable. Magnet metadata is resolved through configured qBittorrent under a
 short bounded review operation and the temporary metadata-only torrent is
-removed after registration; the original magnet URI is not retained. Watched
-folders and authorized provider adapters remain planned. See [external torrent
-providers](docs/EXTERNAL_TORRENT_PROVIDERS.md).
+removed after registration; the original magnet URI is not retained. Downloads
+settings also provide a watched torrent inbox. A bounded background scan finds
+`.torrent` files recursively without following symlinks, leaves malformed files
+visible with an error, and marks an exact info hash as added only after the user has
+selected its platform in the same source-review dialog. Scanning and rescanning
+never queue payload, remove source files, or infer catalog identity. Local
+provider manifests and authorized provider adapters remain planned. See
+[external torrent providers](docs/EXTERNAL_TORRENT_PROVIDERS.md).
 
 The details header also opens a native metadata editor for display title,
 description, release date, developer, publisher, genre, players, rating, age

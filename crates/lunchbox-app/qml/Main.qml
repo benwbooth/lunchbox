@@ -1462,6 +1462,15 @@ ApplicationWindow {
         externalTorrentDialog.open()
     }
 
+    function reviewWatchedTorrent(source) {
+        if (!source || source.toString().length === 0)
+            return
+        externalTorrent.begin_collection_review("Unassigned platform")
+        externalTorrentDialog.sourceMode = 1
+        externalTorrentDialog.open()
+        externalTorrent.inspect_file(source)
+    }
+
     function openTorrentForGame(gameId, databaseId, title, platform) {
         if (!gameId || gameId.length === 0 || !title || title.length === 0
                 || !platform || platform.length === 0)
@@ -2347,6 +2356,7 @@ ApplicationWindow {
             root.finishOnboardingWhenSaved()
             if (appSettings.message.indexOf("Settings saved.") === 0) {
                 library.refresh_media()
+                watchedTorrents.refresh()
                 if (root.settingsMediaPriorityUiProbe
                         && root.settingsMediaPriorityTriggered) {
                     settingsScroll.contentItem.contentY = Math.max(
@@ -2398,6 +2408,10 @@ ApplicationWindow {
         id: externalTorrent
     }
 
+    WatchedTorrentModel {
+        id: watchedTorrents
+    }
+
     Connections {
         target: externalTorrent
         function onQueued_revisionChanged() {
@@ -2410,6 +2424,7 @@ ApplicationWindow {
         function onRegistered_revisionChanged() {
             if (externalTorrent.registered_revision <= 0)
                 return
+            watchedTorrents.refresh()
             externalTorrentDialog.close()
             if (root.selectedGameId.length > 0
                     && gameDetails.game_id === root.selectedGameId) {
@@ -6448,7 +6463,17 @@ ApplicationWindow {
             emuMovies.initialize()
             downloadQueue.initialize()
             localImport.initialize()
+            watchedTorrents.initialize()
         }
+    }
+
+    Timer {
+        interval: 30000
+        running: watchedTorrents.initialized
+                 && watchedTorrents.directory.length > 0
+                 && !root.isProbeRun()
+        repeat: true
+        onTriggered: watchedTorrents.refresh()
     }
 
     Timer {
@@ -15413,7 +15438,7 @@ ApplicationWindow {
                         id: externalTorrentPlatform
                         visible: externalTorrent.collection_mode
                         Layout.preferredWidth: 250
-                        enabled: !externalTorrent.busy && !externalTorrent.ready
+                        enabled: !externalTorrent.busy
                         model: {
                             const values = ["Auto-detect platform"]
                             const revision = localImport.platform_count
@@ -15790,7 +15815,9 @@ ApplicationWindow {
                                     : "QUEUE REVIEWED FILE"
                         enabled: externalTorrent.ready
                                  && (externalTorrent.collection_mode
-                                     || externalTorrent.selected_index >= 0)
+                                     ? externalTorrent.game_platform
+                                       !== "Unassigned platform"
+                                     : externalTorrent.selected_index >= 0)
                                  && !externalTorrent.busy
                         font.pixelSize: externalTorrent.importing_existing
                                         && externalTorrent.register_for_platform ? 8 : 9
@@ -19223,6 +19250,22 @@ ApplicationWindow {
                     color: root.muted
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                WatchedTorrentInbox {
+                    Layout.fillWidth: true
+                    settingsModel: appSettings
+                    inboxModel: watchedTorrents
+                    ink: root.ink
+                    muted: root.muted
+                    line: root.line
+                    panel: "#0f151f"
+                    accent: root.accent
+                    accentCool: root.accentCool
+                    onReviewRequested: function(source) {
+                        root.reviewWatchedTorrent(source)
+                    }
                 }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }

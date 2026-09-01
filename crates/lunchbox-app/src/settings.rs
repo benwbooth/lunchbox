@@ -73,6 +73,7 @@ pub struct AppSettings {
     pub qbittorrent_container_rom_directory: String,
     pub torrent_library_directory: PathBuf,
     pub qbittorrent_container_torrent_library_directory: String,
+    pub watched_torrent_directory: PathBuf,
     pub download_entire_torrent: bool,
     pub file_link_mode: String,
     pub seeding_policy: String,
@@ -112,6 +113,7 @@ impl Default for AppSettings {
             qbittorrent_container_rom_directory: String::new(),
             torrent_library_directory: PathBuf::new(),
             qbittorrent_container_torrent_library_directory: String::new(),
+            watched_torrent_directory: PathBuf::new(),
             download_entire_torrent: false,
             file_link_mode: "symlink".to_owned(),
             seeding_policy: "follow_client".to_owned(),
@@ -1812,7 +1814,8 @@ impl SettingsStore {
                         qbittorrent_username, rom_directory,
                         qbittorrent_container_rom_directory, torrent_library_directory,
                         qbittorrent_container_torrent_library_directory,
-                        download_entire_torrent, file_link_mode, seeding_policy,
+                        watched_torrent_directory, download_entire_torrent,
+                        file_link_mode, seeding_policy,
                         preferred_region, version_preference, region_priority_json,
                         controller_mapping_json, media_provider_priority_json,
                         onboarding_complete
@@ -1821,7 +1824,7 @@ impl SettingsStore {
                 |row| {
                     let port = row.get::<_, i64>(1)?;
                     Ok(AppSettings {
-                        onboarding_complete: row.get(16)?,
+                        onboarding_complete: row.get(17)?,
                         qbittorrent_host: row.get(0)?,
                         qbittorrent_port: u16::try_from(port).unwrap_or_default(),
                         qbittorrent_use_https: row.get(2)?,
@@ -1830,32 +1833,33 @@ impl SettingsStore {
                         qbittorrent_container_rom_directory: row.get(5)?,
                         torrent_library_directory: PathBuf::from(row.get::<_, String>(6)?),
                         qbittorrent_container_torrent_library_directory: row.get(7)?,
-                        download_entire_torrent: row.get(8)?,
-                        file_link_mode: row.get(9)?,
-                        seeding_policy: row.get(10)?,
-                        preferred_region: row.get(11)?,
-                        version_preference: row.get(12)?,
-                        region_priority: serde_json::from_str(&row.get::<_, String>(13)?).map_err(
+                        watched_torrent_directory: PathBuf::from(row.get::<_, String>(8)?),
+                        download_entire_torrent: row.get(9)?,
+                        file_link_mode: row.get(10)?,
+                        seeding_policy: row.get(11)?,
+                        preferred_region: row.get(12)?,
+                        version_preference: row.get(13)?,
+                        region_priority: serde_json::from_str(&row.get::<_, String>(14)?).map_err(
                             |error| {
-                                rusqlite::Error::FromSqlConversionFailure(
-                                    13,
-                                    rusqlite::types::Type::Text,
-                                    Box::new(error),
-                                )
-                            },
-                        )?,
-                        controller_mapping: serde_json::from_str(&row.get::<_, String>(14)?)
-                            .map_err(|error| {
                                 rusqlite::Error::FromSqlConversionFailure(
                                     14,
                                     rusqlite::types::Type::Text,
                                     Box::new(error),
                                 )
+                            },
+                        )?,
+                        controller_mapping: serde_json::from_str(&row.get::<_, String>(15)?)
+                            .map_err(|error| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    15,
+                                    rusqlite::types::Type::Text,
+                                    Box::new(error),
+                                )
                             })?,
-                        media_provider_priority: serde_json::from_str(&row.get::<_, String>(15)?)
+                        media_provider_priority: serde_json::from_str(&row.get::<_, String>(16)?)
                             .map_err(|error| {
                             rusqlite::Error::FromSqlConversionFailure(
-                                15,
+                                16,
                                 rusqlite::types::Type::Text,
                                 Box::new(error),
                             )
@@ -1888,11 +1892,12 @@ impl SettingsStore {
                  qbittorrent_username, rom_directory,
                  qbittorrent_container_rom_directory, torrent_library_directory,
                  qbittorrent_container_torrent_library_directory,
-                 download_entire_torrent, file_link_mode, seeding_policy,
+                 watched_torrent_directory, download_entire_torrent,
+                 file_link_mode, seeding_policy,
                  preferred_region, version_preference, region_priority_json,
                  controller_mapping_json, media_provider_priority_json,
                  onboarding_complete
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
              ON CONFLICT(id) DO UPDATE SET
                  qbittorrent_host=excluded.qbittorrent_host,
                  qbittorrent_port=excluded.qbittorrent_port,
@@ -1902,6 +1907,7 @@ impl SettingsStore {
                  qbittorrent_container_rom_directory=excluded.qbittorrent_container_rom_directory,
                  torrent_library_directory=excluded.torrent_library_directory,
                  qbittorrent_container_torrent_library_directory=excluded.qbittorrent_container_torrent_library_directory,
+                 watched_torrent_directory=excluded.watched_torrent_directory,
                  download_entire_torrent=excluded.download_entire_torrent,
                  file_link_mode=excluded.file_link_mode,
                  seeding_policy=excluded.seeding_policy,
@@ -1920,6 +1926,7 @@ impl SettingsStore {
                 settings.qbittorrent_container_rom_directory,
                 path_text(&settings.torrent_library_directory),
                 settings.qbittorrent_container_torrent_library_directory,
+                path_text(&settings.watched_torrent_directory),
                 settings.download_entire_torrent,
                 settings.file_link_mode,
                 settings.seeding_policy,
@@ -4855,6 +4862,7 @@ fn migrate(connection: &Connection) -> Result<()> {
              qbittorrent_container_rom_directory TEXT NOT NULL,
              torrent_library_directory TEXT NOT NULL,
              qbittorrent_container_torrent_library_directory TEXT NOT NULL,
+             watched_torrent_directory TEXT NOT NULL DEFAULT '',
              download_entire_torrent INTEGER NOT NULL CHECK (download_entire_torrent IN (0, 1)),
              file_link_mode TEXT NOT NULL CHECK (
                  file_link_mode IN ('symlink', 'hardlink', 'reflink', 'copy', 'leave_in_place')
@@ -5867,6 +5875,12 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !column_exists(connection, "app_settings", "seeding_policy")? {
         connection.execute(
             "ALTER TABLE app_settings ADD COLUMN seeding_policy TEXT NOT NULL DEFAULT 'follow_client' CHECK (seeding_policy IN ('follow_client', 'pause_after_import'))",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "app_settings", "watched_torrent_directory")? {
+        connection.execute(
+            "ALTER TABLE app_settings ADD COLUMN watched_torrent_directory TEXT NOT NULL DEFAULT ''",
             [],
         )?;
     }
@@ -7126,6 +7140,7 @@ mod tests {
             qbittorrent_container_rom_directory: "/client/roms".into(),
             torrent_library_directory: PathBuf::from("/native/downloads"),
             qbittorrent_container_torrent_library_directory: "/downloads".into(),
+            watched_torrent_directory: PathBuf::from("/native/torrents/inbox"),
             download_entire_torrent: true,
             file_link_mode: "hardlink".into(),
             seeding_policy: "pause_after_import".into(),
@@ -9514,6 +9529,7 @@ mod tests {
         assert_eq!(settings.preferred_region, "USA");
         assert!(settings.region_priority.is_empty());
         assert_eq!(settings.version_preference, "latest");
+        assert!(settings.watched_torrent_directory.as_os_str().is_empty());
         assert!(settings.onboarding_complete);
         assert_eq!(
             settings.media_provider_priority,

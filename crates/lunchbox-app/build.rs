@@ -99,6 +99,7 @@ fn main() {
                 "qml/StatusPill.qml",
                 "qml/TorrentPayloadPicker.qml",
                 "qml/ViewportCardGeometry.qml",
+                "qml/WatchedTorrentInbox.qml",
                 "qml/Main.qml",
             ]),
     )
@@ -125,6 +126,7 @@ fn main() {
     .file("src/settings_model.rs")
     .file("src/steamgriddb_model.rs")
     .file("src/web_artwork_model.rs")
+    .file("src/watched_torrent_model.rs")
     .build();
 }
 
