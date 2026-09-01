@@ -12,6 +12,7 @@ Rectangle {
     property color accentCool: "#62dac8"
     property color line: "#2b3647"
     property int highlightedRow: -1
+    property string rangeAnchorHash: ""
     property bool selectionInProgress: false
     property bool resultsRequested: false
 
@@ -28,6 +29,7 @@ Rectangle {
         closeResults()
         torrentSearch.text = ""
         highlightedRow = -1
+        rangeAnchorHash = ""
         if (restoreResults === undefined || restoreResults)
             torrent.filter_existing_torrents("")
     }
@@ -92,6 +94,29 @@ Rectangle {
             if (!root.torrent.busy)
                 root.selectionInProgress = false
         })
+    }
+
+    function toggleCheckbox(row, modifiers) {
+        const sourceIndex = torrent.existing_filtered_index_at(row)
+        if (sourceIndex < 0)
+            return
+        const sourceHash = torrent.existing_info_hash_at(sourceIndex)
+        const shouldSelect = !torrent.existing_selected_at(sourceIndex)
+        const anchorRow = rangeAnchorHash.length > 0
+                ? torrent.existing_filtered_row_for_info_hash(rangeAnchorHash) : -1
+        if ((modifiers & Qt.ShiftModifier) !== 0 && anchorRow >= 0) {
+            const first = Math.min(anchorRow, row)
+            const last = Math.max(anchorRow, row)
+            for (let filteredRow = first; filteredRow <= last; ++filteredRow) {
+                const candidate = torrent.existing_filtered_index_at(filteredRow)
+                if (candidate >= 0)
+                    torrent.set_existing_torrent_selected(candidate, shouldSelect)
+            }
+        } else {
+            torrent.set_existing_torrent_selected(sourceIndex, shouldSelect)
+        }
+        highlightedRow = row
+        rangeAnchorHash = sourceHash
     }
 
     implicitHeight: 42
@@ -252,7 +277,7 @@ Rectangle {
         width: root.width
         height: Math.min(430, Math.max(76,
                          root.torrent.existing_filtered_count * 62 + 38
-                         + (root.torrent.collection_mode ? 52 : 0)))
+                         + 52))
         enabled: root.resultsRequested && !root.selectionInProgress
         opacity: root.resultsRequested && !root.selectionInProgress ? 1 : 0
         padding: 1
@@ -300,8 +325,8 @@ Rectangle {
 
                     Text {
                         text: root.torrent.collection_mode
-                              ? "↑↓  MOVE   ENTER  TOGGLE"
-                              : "↑↓  SELECT   ENTER  OPEN"
+                              ? "ROW/ENTER  TOGGLE   SHIFT+CHECK  RANGE"
+                              : "ROW  OPEN GAME   CHECK  ADD PLATFORM"
                         color: "#657287"
                         font.pixelSize: 8
                     }
@@ -321,7 +346,7 @@ Rectangle {
                 maximumFlickVelocity: 8500
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                delegate: ItemDelegate {
+                delegate: Item {
                     id: torrentRow
                     required property int index
                     property int filterRevision: root.torrent.existing_filter_revision
@@ -334,24 +359,22 @@ Rectangle {
                         listRevision
                         return root.torrent.existing_info_hash_at(sourceIndex)
                     }
-                    property bool selected: sourceHash.length > 0
-                                            && (root.torrent.collection_mode
-                                                ? root.torrent.existing_selected_at(sourceIndex)
-                                                : sourceHash === root.torrent.existing_selected_info_hash)
+                    property bool batchSelected: sourceHash.length > 0
+                                                 && root.torrent.existing_selected_at(sourceIndex)
+                    property bool exactSelected: sourceHash.length > 0
+                                                 && sourceHash === root.torrent.existing_selected_info_hash
+                    property bool selected: batchSelected || exactSelected
 
                     objectName: "loadedTorrentRow-" + sourceIndex
                     width: ListView.view.width
                     height: 62
-                    highlighted: index === root.highlightedRow || selected
+                    property bool highlighted: index === root.highlightedRow || selected
+                    property bool hovered: torrentRowMouse.containsMouse
                     enabled: sourceIndex >= 0 && !root.torrent.busy
                     Accessible.name: root.torrent.existing_name_at(sourceIndex)
-                    onHoveredChanged: {
-                        if (hovered)
-                            root.highlightedRow = index
-                    }
-                    onClicked: root.chooseRow(index)
 
-                    background: Rectangle {
+                    Rectangle {
+                        anchors.fill: parent
                         color: torrentRow.selected ? "#213a39"
                                : torrentRow.highlighted ? "#263342"
                                : torrentRow.hovered ? "#18212d" : "transparent"
@@ -361,26 +384,46 @@ Rectangle {
                         border.width: torrentRow.highlighted ? 1 : 0
                     }
 
-                    contentItem: RowLayout {
+                    MouseArea {
+                        id: torrentRowMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onEntered: root.highlightedRow = torrentRow.index
+                        onClicked: root.chooseRow(torrentRow.index)
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
                         anchors.leftMargin: 12
                         anchors.rightMargin: 12
                         spacing: 10
 
                         Rectangle {
-                            visible: root.torrent.collection_mode
-                            Layout.preferredWidth: visible ? 20 : 0
-                            Layout.preferredHeight: visible ? 20 : 0
+                            id: torrentCheckbox
+                            objectName: "loadedTorrentCheckbox-" + torrentRow.sourceIndex
+                            Layout.preferredWidth: 20
+                            Layout.preferredHeight: 20
                             radius: 5
-                            color: torrentRow.selected ? root.accentCool : "transparent"
-                            border.color: torrentRow.selected ? root.accentCool : "#657287"
+                            color: torrentRow.batchSelected ? root.accentCool : "transparent"
+                            border.color: torrentRow.batchSelected ? root.accentCool : "#657287"
                             border.width: 1
                             Text {
                                 anchors.centerIn: parent
                                 text: "✓"
-                                visible: torrentRow.selected
+                                visible: torrentRow.batchSelected
                                 color: "#10201d"
                                 font.pixelSize: 12
                                 font.weight: Font.Bold
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                anchors.margins: -7
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: mouse => root.toggleCheckbox(
+                                               torrentRow.index,
+                                               mouse.modifiers
+                                               | Qt.application.keyboardModifiers)
                             }
                         }
 
@@ -435,9 +478,8 @@ Rectangle {
             }
 
             Rectangle {
-                visible: root.torrent.collection_mode
                 Layout.fillWidth: true
-                Layout.preferredHeight: visible ? 52 : 0
+                Layout.preferredHeight: 52
                 color: "#151f2c"
                 border.color: root.line
 
@@ -450,7 +492,9 @@ Rectangle {
                     Text {
                         objectName: "loadedTorrentSelectedCount"
                         Layout.fillWidth: true
-                        text: root.torrent.existing_selected_count + " SELECTED"
+                        text: root.torrent.existing_selected_count + " PLATFORM "
+                              + (root.torrent.existing_selected_count === 1
+                                 ? "SOURCE" : "SOURCES")
                         color: root.torrent.existing_selected_count > 0
                                ? root.accentCool : root.muted
                         font.pixelSize: 9

@@ -9822,18 +9822,9 @@ ApplicationWindow {
             anchors.leftMargin: 22
             anchors.verticalCenter: parent.verticalCenter
             spacing: 11
-            Rectangle {
+            AppIcon {
                 width: 35
                 height: 35
-                radius: 10
-                color: root.accent
-                Text {
-                    anchors.centerIn: parent
-                    text: "L"
-                    color: "#18120b"
-                    font.pixelSize: 20
-                    font.weight: Font.Black
-                }
             }
             Column {
                 anchors.verticalCenter: parent.verticalCenter
@@ -15815,8 +15806,9 @@ ApplicationWindow {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: externalTorrent.collection_mode ? 0 : 64
+                    Layout.preferredHeight: visible ? 64 : 0
                     visible: !externalTorrent.collection_mode
+                             && externalTorrent.batch_source_count === 0
                     radius: 9
                     color: "#111923"
                     border.color: root.line
@@ -15875,11 +15867,16 @@ ApplicationWindow {
                     }
                     Button {
                         property bool queuesPayloadSet: externalTorrent.selected_file_count > 1
+                        property bool registersBatch: externalTorrent.batch_source_count > 0
                         Layout.preferredWidth: externalTorrent.batch_valid_count > 0 ? 190
                                                : externalTorrent.importing_existing ? 232
                                                : queuesPayloadSet ? 196 : 176
                         Layout.preferredHeight: 36
                         text: externalTorrent.busy ? "WORKING…"
+                              : registersBatch
+                                ? "ADD " + externalTorrent.batch_valid_count
+                                  + (externalTorrent.batch_valid_count === 1
+                                     ? " SOURCE" : " SOURCES")
                               : externalTorrent.collection_mode
                                 ? externalTorrent.batch_valid_count > 0
                                   ? "ADD " + externalTorrent.batch_valid_count
@@ -15902,7 +15899,8 @@ ApplicationWindow {
                                     ? "QUEUE REVIEWED SET"
                                     : "QUEUE REVIEWED FILE"
                         enabled: externalTorrent.ready
-                                 && (externalTorrent.collection_mode
+                                 && (registersBatch
+                                     || externalTorrent.collection_mode
                                      ? externalTorrent.game_platform
                                        !== "Unassigned platform"
                                      : externalTorrent.selected_index >= 0)
@@ -15911,7 +15909,7 @@ ApplicationWindow {
                                         && externalTorrent.register_for_platform ? 8 : 9
                         font.weight: Font.Bold
                         onClicked: {
-                            if (externalTorrent.collection_mode)
+                            if (registersBatch || externalTorrent.collection_mode)
                                 externalTorrent.register_source()
                             else
                                 externalTorrent.queue_selected()

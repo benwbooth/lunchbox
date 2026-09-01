@@ -1191,18 +1191,9 @@ Item {
         anchors.topMargin: 34
         spacing: 13
 
-        Rectangle {
+        AppIcon {
             width: 40
             height: 40
-            radius: Math.max(8, view.cardRadius - 4)
-            color: view.accent
-            Text {
-                anchors.centerIn: parent
-                text: "L"
-                color: view.background
-                font.pixelSize: 23
-                font.weight: Font.Black
-            }
         }
         Column {
             anchors.verticalCenter: parent.verticalCenter
@@ -1797,18 +1788,9 @@ Item {
             anchors.topMargin: 42
             spacing: 13
 
-            Rectangle {
+            AppIcon {
                 width: 42
                 height: 42
-                radius: Math.max(9, view.cardRadius - 3)
-                color: view.accent
-                Text {
-                    anchors.centerIn: parent
-                    text: "L"
-                    color: view.background
-                    font.pixelSize: 21
-                    font.weight: Font.Black
-                }
             }
             Column {
                 anchors.verticalCenter: parent.verticalCenter

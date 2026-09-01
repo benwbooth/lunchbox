@@ -57,6 +57,7 @@ fn main() {
             .qml_files([
                 "qml/AcceleratedWheelHandler.qml",
                 "qml/AlphabetRail.qml",
+                "qml/AppIcon.qml",
                 "qml/ArtworkMat.qml",
                 "qml/AuditMetric.qml",
                 "qml/CatalogLinkButton.qml",
@@ -145,8 +146,10 @@ fn generate_platform_resources() -> PathBuf {
         PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
     let icon_directory = manifest_directory.join("../../assets/platforms");
     let search_icon = manifest_directory.join("qml/icons/search.svg");
+    let app_icon = manifest_directory.join("../../assets/lunchbox.svg");
     println!("cargo:rerun-if-changed={}", icon_directory.display());
     println!("cargo:rerun-if-changed={}", search_icon.display());
+    println!("cargo:rerun-if-changed={}", app_icon.display());
 
     let mut icons = fs::read_dir(&icon_directory)
         .unwrap_or_else(|error| {
@@ -174,8 +177,9 @@ fn generate_platform_resources() -> PathBuf {
     qrc.push_str("  </qresource>\n");
     writeln!(
         qrc,
-        "  <qresource prefix=\"/qt/qml/Lunchbox/qml/icons\">\n    <file alias=\"search.svg\">{}</file>\n  </qresource>",
-        search_icon.display()
+        "  <qresource prefix=\"/qt/qml/Lunchbox/qml/icons\">\n    <file alias=\"search.svg\">{}</file>\n    <file alias=\"lunchbox.svg\">{}</file>\n  </qresource>",
+        search_icon.display(),
+        app_icon.display()
     )
     .expect("writing search icon resource manifest");
     qrc.push_str("</RCC>\n");

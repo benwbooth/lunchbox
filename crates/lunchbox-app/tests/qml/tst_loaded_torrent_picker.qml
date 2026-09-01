@@ -62,12 +62,15 @@ TestCase {
             return selectedHashes.indexOf(existing_info_hash_at(index)) >= 0
         }
         function toggle_existing_torrent(index) {
+            set_existing_torrent_selected(index, !existing_selected_at(index))
+        }
+        function set_existing_torrent_selected(index, selected) {
             const hash = existing_info_hash_at(index)
             const updated = selectedHashes.slice()
             const position = updated.indexOf(hash)
-            if (position >= 0)
+            if (!selected && position >= 0)
                 updated.splice(position, 1)
-            else
+            else if (selected && position < 0)
                 updated.push(hash)
             selectedHashes = updated
         }
@@ -242,6 +245,41 @@ TestCase {
         compare(torrentModel.existing_selected_count, 2)
         verify(popup.opened)
         compare(torrentModel.inspectedIndex, -1)
+
+        const review = findChild(picker, "loadedTorrentReviewSelected")
+        verify(review !== null && review.enabled)
+        mouseClick(review, review.width / 2, review.height / 2)
+        tryCompare(torrentModel, "batchReviewCalls", 1)
+        tryVerify(() => !popup.opened)
+    }
+
+    function test_game_mode_checkboxes_select_platform_sources_with_shift_range() {
+        torrentModel.collection_mode = false
+        torrentModel.existing_count = 4
+        torrentModel.existing_filtered_count = 4
+        const button = findChild(picker, "loadedTorrentDropdownButton")
+        mouseClick(button, button.width / 2, button.height / 2)
+
+        const popup = findChild(picker, "loadedTorrentPopup")
+        const list = findChild(picker, "loadedTorrentList")
+        tryVerify(() => popup.opened)
+        const firstRow = findChild(list, "loadedTorrentRow-0")
+        const secondRow = findChild(list, "loadedTorrentRow-1")
+        tryVerify(() => firstRow !== null && secondRow !== null)
+        const first = findChild(firstRow, "loadedTorrentCheckbox-0")
+        const second = findChild(secondRow, "loadedTorrentCheckbox-1")
+        verify(first !== null && second !== null)
+        mouseClick(first, first.width / 2, first.height / 2)
+        compare(torrentModel.existing_selected_count, 1)
+        compare(torrentModel.inspectedIndex, -1)
+        verify(popup.opened)
+        picker.toggleCheckbox(1, Qt.ShiftModifier)
+
+        compare(torrentModel.existing_selected_count, 2)
+        verify(torrentModel.existing_selected_at(0))
+        verify(torrentModel.existing_selected_at(1))
+        compare(torrentModel.inspectedIndex, -1)
+        verify(popup.opened)
 
         const review = findChild(picker, "loadedTorrentReviewSelected")
         verify(review !== null && review.enabled)

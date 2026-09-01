@@ -62,7 +62,7 @@ pub mod web_artwork_model;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
+use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 
 static PROCESS_STARTED: OnceLock<Instant> = OnceLock::new();
 static WEB_ARTWORK_PROBE_FIXTURE: OnceLock<std::path::PathBuf> = OnceLock::new();
@@ -434,14 +434,24 @@ pub fn run() -> i32 {
     initialize_qt();
 
     let mut application = QGuiApplication::new();
+    QGuiApplication::set_desktop_file_name(&QString::from("io.github.benwbooth.Lunchbox"));
+    let mut application_ref = application
+        .as_mut()
+        .expect("Qt did not construct a QGuiApplication");
+    application_ref
+        .as_mut()
+        .set_application_name(&QString::from("Lunchbox"));
+    application_ref
+        .as_mut()
+        .set_organization_name(&QString::from("Lunchbox"));
+    application_ref
+        .as_mut()
+        .set_organization_domain(&QString::from("github.com/benwbooth"));
     let mut engine = QQmlApplicationEngine::new();
     let engine = engine
         .as_mut()
         .expect("Qt did not construct a QQmlApplicationEngine");
     engine.load(&QUrl::from("qrc:/qt/qml/Lunchbox/qml/Main.qml"));
 
-    application
-        .as_mut()
-        .expect("Qt did not construct a QGuiApplication")
-        .exec()
+    application_ref.exec()
 }

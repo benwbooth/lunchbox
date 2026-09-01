@@ -83,6 +83,13 @@ pub mod qobject {
         fn toggle_existing_torrent(self: Pin<&mut ExternalTorrentModel>, index: i32);
 
         #[qinvokable]
+        fn set_existing_torrent_selected(
+            self: Pin<&mut ExternalTorrentModel>,
+            index: i32,
+            selected: bool,
+        );
+
+        #[qinvokable]
         fn clear_existing_selection(self: Pin<&mut ExternalTorrentModel>);
 
         #[qinvokable]
@@ -372,7 +379,9 @@ impl qobject::ExternalTorrentModel {
         }
         self.as_mut().schedule_current_offer_cleanup();
         self.as_mut().rust_mut().association = Some(association.clone());
-        self.as_mut().rust_mut().collection_association = None;
+        self.as_mut().rust_mut().collection_association = Some(CollectionTorrentAssociation {
+            platform: association.platform.clone(),
+        });
         self.as_mut().set_collection_mode(false);
         self.as_mut().set_register_for_platform(false);
         self.as_mut().set_game_title(qstring(association.title));
@@ -745,7 +754,7 @@ impl qobject::ExternalTorrentModel {
     }
 
     pub fn toggle_existing_torrent(mut self: Pin<&mut Self>, index: i32) {
-        if *self.as_ref().busy() || !*self.as_ref().collection_mode() {
+        if *self.as_ref().busy() || self.as_ref().rust().collection_association.is_none() {
             return;
         }
         let info_hash = usize::try_from(index).ok().and_then(|index| {
@@ -758,20 +767,65 @@ impl qobject::ExternalTorrentModel {
         let Some(info_hash) = info_hash else {
             return;
         };
-        let selected = &mut self.as_mut().rust_mut().existing_selected_info_hashes;
-        if let Some(position) = selected
+        let should_select = !self
+            .as_ref()
+            .rust()
+            .existing_selected_info_hashes
             .iter()
-            .position(|candidate| candidate == &info_hash)
+            .any(|candidate| candidate == &info_hash);
+        self.as_mut()
+            .set_existing_torrent_selected(index, should_select);
+    }
+
+    pub fn set_existing_torrent_selected(
+        mut self: Pin<&mut Self>,
+        index: i32,
+        should_select: bool,
+    ) {
+        if *self.as_ref().busy() || self.as_ref().rust().collection_association.is_none() {
+            return;
+        }
+        let info_hash = usize::try_from(index).ok().and_then(|index| {
+            self.as_ref()
+                .rust()
+                .existing_torrents
+                .get(index)
+                .map(|torrent| torrent.info_hash.clone())
+        });
+        let Some(info_hash) = info_hash else {
+            return;
+        };
+        let current_position = self
+            .as_ref()
+            .rust()
+            .existing_selected_info_hashes
+            .iter()
+            .position(|candidate| candidate == &info_hash);
+        if should_select
+            && current_position.is_none()
+            && self.as_ref().rust().existing_selected_info_hashes.len() >= MAX_BATCH_TORRENTS
         {
-            selected.remove(position);
-        } else if selected.len() >= MAX_BATCH_TORRENTS {
             self.as_mut().set_message(qstring(format!(
                 "Select at most {MAX_BATCH_TORRENTS} torrents in one review batch."
             )));
             return;
-        } else {
-            selected.push(info_hash);
         }
+        match (should_select, current_position) {
+            (true, None) => self
+                .as_mut()
+                .rust_mut()
+                .existing_selected_info_hashes
+                .push(info_hash),
+            (false, Some(position)) => {
+                self.as_mut()
+                    .rust_mut()
+                    .existing_selected_info_hashes
+                    .remove(position);
+            }
+            _ => return,
+        }
+        self.as_mut()
+            .set_existing_selected_info_hash(QString::default());
         self.as_mut().reset_batch_reviews();
         self.as_mut().reset_offer();
         self.as_mut().sync_existing_selection_properties();
@@ -799,10 +853,7 @@ impl qobject::ExternalTorrentModel {
     }
 
     pub fn inspect_selected_existing_torrents(mut self: Pin<&mut Self>) {
-        if *self.as_ref().busy()
-            || !*self.as_ref().collection_mode()
-            || !self.as_ref().rust().has_review_target()
-        {
+        if *self.as_ref().busy() || self.as_ref().rust().collection_association.is_none() {
             return;
         }
         let selected_hashes = self
@@ -1322,7 +1373,11 @@ impl qobject::ExternalTorrentModel {
     }
 
     pub fn register_source(mut self: Pin<&mut Self>) {
-        if *self.as_ref().busy() || !*self.as_ref().ready() || !*self.as_ref().collection_mode() {
+        let has_batch = !self.as_ref().rust().batch_reviews.is_empty();
+        if *self.as_ref().busy()
+            || !*self.as_ref().ready()
+            || (!*self.as_ref().collection_mode() && !has_batch)
+        {
             return;
         }
         let Some(association) = self.as_ref().rust().collection_association.clone() else {
