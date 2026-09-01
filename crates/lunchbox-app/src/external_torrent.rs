@@ -284,11 +284,64 @@ pub(crate) fn register_collection_torrent(
     register_reviewed_torrent_catalog(store, association, &offer)
 }
 
+pub(crate) fn register_collection_torrents(
+    settings: &AppSettings,
+    password: &str,
+    store: &SettingsStore,
+    association: CollectionTorrentAssociation,
+    offers: Vec<ManualTorrentOffer>,
+) -> Result<usize> {
+    validate_label(&association.platform, "torrent source platform", 512)?;
+    if association.platform == "Unassigned platform" {
+        bail!("choose the platform represented by these torrents before adding the sources");
+    }
+    if offers.is_empty() {
+        bail!("review at least one torrent before adding platform sources");
+    }
+
+    let registered_at = unix_timestamp();
+    let catalogs = offers
+        .iter()
+        .map(|offer| reviewed_torrent_catalog(&association, offer, registered_at))
+        .collect::<Result<Vec<_>>>()?;
+
+    // Adoption only changes qBittorrent ownership/category; payload files are
+    // not selected or started. All retained catalogs are then committed in one
+    // SQLite transaction so a validation or storage error cannot leave a
+    // partially indexed platform batch.
+    for offer in &offers {
+        if offer.externally_managed {
+            qbittorrent::adopt_existing_torrent(settings, password, &offer.info_hash)
+                .with_context(|| {
+                    format!(
+                        "importing qBittorrent torrent {} into Lunchbox management",
+                        offer.torrent_name
+                    )
+                })?;
+        }
+        if offer.source_kind == "magnet" && offer.magnet_review_created {
+            discard_unqueued_magnet_review(settings, password, offer)
+                .context("removing a metadata-only magnet review from qBittorrent")?;
+        }
+    }
+    let source_ids = store.register_torrent_catalogs(&catalogs)?;
+    Ok(source_ids.len())
+}
+
 fn register_reviewed_torrent_catalog(
     store: &SettingsStore,
     association: CollectionTorrentAssociation,
     offer: &ManualTorrentOffer,
 ) -> Result<i64> {
+    let catalog = reviewed_torrent_catalog(&association, offer, unix_timestamp())?;
+    store.register_torrent_catalog(&catalog)
+}
+
+fn reviewed_torrent_catalog(
+    association: &CollectionTorrentAssociation,
+    offer: &ManualTorrentOffer,
+    registered_at: i64,
+) -> Result<RegisteredTorrentCatalog> {
     validate_label(&association.platform, "torrent source platform", 512)?;
     if association.platform == "Unassigned platform" {
         bail!("choose the platform represented by this torrent before adding the source");
@@ -303,9 +356,9 @@ fn register_reviewed_torrent_catalog(
             title_key: crate::game_details::torrent_member_title_key(&file.path),
         })
         .collect::<Vec<_>>();
-    store.register_torrent_catalog(&RegisteredTorrentCatalog {
+    Ok(RegisteredTorrentCatalog {
         platform_key: crate::catalog::normalize_platform_key(&association.platform),
-        platform: association.platform,
+        platform: association.platform.clone(),
         source_kind: offer.source_kind.clone(),
         source_label: offer.source_label.clone(),
         source_file_name: offer.source_file_name.clone(),
@@ -315,7 +368,7 @@ fn register_reviewed_torrent_catalog(
         torrent_bytes: offer.torrent_bytes.clone(),
         total_bytes: offer.total_bytes,
         members,
-        registered_at: unix_timestamp(),
+        registered_at,
     })
 }
 
@@ -1030,6 +1083,72 @@ mod tests {
                 .unwrap()
                 .len(),
             2
+        );
+    }
+
+    #[test]
+    fn reviewed_collection_batch_registers_all_sources_atomically() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let first =
+            inspect_torrent_bytes(&probe_fixture_torrent_bytes(), "volume-1.torrent").unwrap();
+        let mut second_torrent = Torrent::read_from_bytes(&probe_fixture_torrent_bytes()).unwrap();
+        second_torrent.name = "Sample Pack Volume 2".to_owned();
+        let mut second_bytes = Vec::new();
+        second_torrent.write_into(&mut second_bytes).unwrap();
+        let second = inspect_torrent_bytes(&second_bytes, "volume-2.torrent").unwrap();
+        assert_ne!(first.info_hash, second.info_hash);
+
+        let count = register_collection_torrents(
+            &AppSettings::default(),
+            "",
+            &store,
+            CollectionTorrentAssociation {
+                platform: "Nintendo Switch".to_owned(),
+            },
+            vec![first.clone(), second.clone()],
+        )
+        .unwrap();
+        assert_eq!(count, 2);
+        let sources = store
+            .registered_torrent_sources_for_platform("nintendo-switch")
+            .unwrap();
+        assert_eq!(sources.len(), 2);
+        assert!(
+            sources
+                .iter()
+                .any(|source| source.info_hash == first.info_hash)
+        );
+        assert!(
+            sources
+                .iter()
+                .any(|source| source.info_hash == second.info_hash)
+        );
+        assert!(store.jobs().unwrap().is_empty());
+    }
+
+    #[test]
+    fn duplicate_collection_batch_is_rejected_without_partial_catalogs() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let offer =
+            inspect_torrent_bytes(&probe_fixture_torrent_bytes(), "duplicate.torrent").unwrap();
+        let error = register_collection_torrents(
+            &AppSettings::default(),
+            "",
+            &store,
+            CollectionTorrentAssociation {
+                platform: "Nintendo Switch".to_owned(),
+            },
+            vec![offer.clone(), offer],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("duplicate info hash"));
+        assert!(
+            store
+                .registered_torrent_sources_for_platform("nintendo-switch")
+                .unwrap()
+                .is_empty()
         );
     }
 }

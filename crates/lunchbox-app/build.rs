@@ -105,6 +105,7 @@ fn main() {
                 "qml/SettingsNavButton.qml",
                 "qml/StatusPill.qml",
                 "qml/TorrentPayloadPicker.qml",
+                "qml/TorrentSourceBatchReview.qml",
                 "qml/ViewportCardGeometry.qml",
                 "qml/WatchedTorrentInbox.qml",
                 "qml/Main.qml",

@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use lava_torrent::torrent::v1::Torrent;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -4416,70 +4416,32 @@ impl SettingsStore {
         &self,
         catalog: &RegisteredTorrentCatalog,
     ) -> Result<i64> {
-        validate_registered_torrent_catalog(catalog)?;
-        let mut connection = self.connection()?;
-        let transaction = connection.transaction()?;
-        transaction.execute(
-            "INSERT INTO registered_torrent_catalogs (
-                 platform, platform_key, source_kind, source_label,
-                 source_file_name, torrent_name, torrent_sha256, info_hash,
-                 torrent_bytes, file_count, total_bytes, registered_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
-             ON CONFLICT(info_hash) DO UPDATE SET
-                 platform=excluded.platform,
-                 platform_key=excluded.platform_key,
-                 source_kind=excluded.source_kind,
-                 source_label=excluded.source_label,
-                 source_file_name=excluded.source_file_name,
-                 torrent_name=excluded.torrent_name,
-                 torrent_sha256=excluded.torrent_sha256,
-                 torrent_bytes=excluded.torrent_bytes,
-                 file_count=excluded.file_count,
-                 total_bytes=excluded.total_bytes,
-                 registered_at=excluded.registered_at,
-                 managed_by_provider_id=''",
-            params![
-                catalog.platform,
-                catalog.platform_key,
-                catalog.source_kind,
-                catalog.source_label,
-                catalog.source_file_name,
-                catalog.torrent_name,
-                catalog.torrent_sha256.to_ascii_lowercase(),
-                catalog.info_hash.to_ascii_lowercase(),
-                catalog.torrent_bytes,
-                i64::try_from(catalog.members.len()).context("torrent file count is too large")?,
-                i64::try_from(catalog.total_bytes).context("torrent payload is too large")?,
-                catalog.registered_at,
-            ],
-        )?;
-        let source_id = transaction.query_row(
-            "SELECT id FROM registered_torrent_catalogs WHERE info_hash=?1",
-            [catalog.info_hash.to_ascii_lowercase()],
-            |row| row.get::<_, i64>(0),
-        )?;
-        transaction.execute(
-            "DELETE FROM registered_torrent_members WHERE source_id=?1",
-            [source_id],
-        )?;
-        {
-            let mut insert = transaction.prepare(
-                "INSERT INTO registered_torrent_members (
-                     source_id, file_index, file_path, byte_size, title_key
-                 ) VALUES (?1, ?2, ?3, ?4, ?5)",
-            )?;
-            for member in &catalog.members {
-                insert.execute(params![
-                    source_id,
-                    i64::from(member.index),
-                    member.path,
-                    i64::try_from(member.byte_size).context("torrent member is too large")?,
-                    member.title_key,
-                ])?;
+        let mut source_ids = self.register_torrent_catalogs(std::slice::from_ref(catalog))?;
+        Ok(source_ids.remove(0))
+    }
+
+    pub(crate) fn register_torrent_catalogs(
+        &self,
+        catalogs: &[RegisteredTorrentCatalog],
+    ) -> Result<Vec<i64>> {
+        if catalogs.is_empty() {
+            bail!("at least one reviewed torrent catalog is required");
+        }
+        let mut info_hashes = HashSet::with_capacity(catalogs.len());
+        for catalog in catalogs {
+            validate_registered_torrent_catalog(catalog)?;
+            if !info_hashes.insert(catalog.info_hash.to_ascii_lowercase()) {
+                bail!("reviewed torrent batch contains a duplicate info hash");
             }
         }
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let mut source_ids = Vec::with_capacity(catalogs.len());
+        for catalog in catalogs {
+            source_ids.push(upsert_registered_torrent_catalog(&transaction, catalog)?);
+        }
         transaction.commit()?;
-        Ok(source_id)
+        Ok(source_ids)
     }
 
     pub(crate) fn registered_torrent_sources_for_platform(
@@ -7399,6 +7361,72 @@ pub(crate) fn unix_timestamp() -> i64 {
 
 fn path_text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+fn upsert_registered_torrent_catalog(
+    transaction: &Transaction<'_>,
+    catalog: &RegisteredTorrentCatalog,
+) -> Result<i64> {
+    transaction.execute(
+        "INSERT INTO registered_torrent_catalogs (
+             platform, platform_key, source_kind, source_label,
+             source_file_name, torrent_name, torrent_sha256, info_hash,
+             torrent_bytes, file_count, total_bytes, registered_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+         ON CONFLICT(info_hash) DO UPDATE SET
+             platform=excluded.platform,
+             platform_key=excluded.platform_key,
+             source_kind=excluded.source_kind,
+             source_label=excluded.source_label,
+             source_file_name=excluded.source_file_name,
+             torrent_name=excluded.torrent_name,
+             torrent_sha256=excluded.torrent_sha256,
+             torrent_bytes=excluded.torrent_bytes,
+             file_count=excluded.file_count,
+             total_bytes=excluded.total_bytes,
+             registered_at=excluded.registered_at,
+             managed_by_provider_id=''",
+        params![
+            catalog.platform,
+            catalog.platform_key,
+            catalog.source_kind,
+            catalog.source_label,
+            catalog.source_file_name,
+            catalog.torrent_name,
+            catalog.torrent_sha256.to_ascii_lowercase(),
+            catalog.info_hash.to_ascii_lowercase(),
+            catalog.torrent_bytes,
+            i64::try_from(catalog.members.len()).context("torrent file count is too large")?,
+            i64::try_from(catalog.total_bytes).context("torrent payload is too large")?,
+            catalog.registered_at,
+        ],
+    )?;
+    let source_id = transaction.query_row(
+        "SELECT id FROM registered_torrent_catalogs WHERE info_hash=?1",
+        [catalog.info_hash.to_ascii_lowercase()],
+        |row| row.get::<_, i64>(0),
+    )?;
+    transaction.execute(
+        "DELETE FROM registered_torrent_members WHERE source_id=?1",
+        [source_id],
+    )?;
+    {
+        let mut insert = transaction.prepare(
+            "INSERT INTO registered_torrent_members (
+                 source_id, file_index, file_path, byte_size, title_key
+             ) VALUES (?1, ?2, ?3, ?4, ?5)",
+        )?;
+        for member in &catalog.members {
+            insert.execute(params![
+                source_id,
+                i64::from(member.index),
+                member.path,
+                i64::try_from(member.byte_size).context("torrent member is too large")?,
+                member.title_key,
+            ])?;
+        }
+    }
+    Ok(source_id)
 }
 
 fn validate_download_source_kind(source_kind: &str) -> Result<()> {

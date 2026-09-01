@@ -10,6 +10,7 @@ TestCase {
     QtObject {
         id: torrentModel
         property bool busy: false
+        property bool collection_mode: false
         property bool existing_loading: false
         property bool existing_filter_busy: false
         property int existing_count: 20000
@@ -17,12 +18,15 @@ TestCase {
         property int existing_filter_revision: 1
         property int existing_revision: 1
         property string existing_selected_info_hash: ""
+        property int existing_selected_count: selectedHashes.length
+        property var selectedHashes: []
         property string query: ""
         property int filterCalls: 0
         property int inspectedIndex: -1
         property string inspectedHash: ""
         property bool holdInspectionBusy: false
         property bool popupOpenWhenInspected: false
+        property int batchReviewCalls: 0
 
         function hashFor(index) {
             return index.toString(16).padStart(40, "0")
@@ -53,6 +57,26 @@ TestCase {
         }
         function existing_info_hash_at(index) {
             return index >= 0 ? hashFor(index) : ""
+        }
+        function existing_selected_at(index) {
+            return selectedHashes.indexOf(existing_info_hash_at(index)) >= 0
+        }
+        function toggle_existing_torrent(index) {
+            const hash = existing_info_hash_at(index)
+            const updated = selectedHashes.slice()
+            const position = updated.indexOf(hash)
+            if (position >= 0)
+                updated.splice(position, 1)
+            else
+                updated.push(hash)
+            selectedHashes = updated
+        }
+        function clear_existing_selection() {
+            selectedHashes = []
+        }
+        function inspect_selected_existing_torrents() {
+            batchReviewCalls += 1
+            busy = holdInspectionBusy
         }
         function filter_existing_torrents(value) {
             filterCalls += 1
@@ -94,12 +118,15 @@ TestCase {
         torrentModel.existing_count = 20000
         torrentModel.existing_filtered_count = 20000
         torrentModel.existing_selected_info_hash = ""
+        torrentModel.collection_mode = false
+        torrentModel.selectedHashes = []
         torrentModel.query = ""
         torrentModel.filterCalls = 0
         torrentModel.inspectedIndex = -1
         torrentModel.inspectedHash = ""
         torrentModel.holdInspectionBusy = false
         torrentModel.popupOpenWhenInspected = false
+        torrentModel.batchReviewCalls = 0
         torrentModel.busy = false
         picker.reset()
         wait(20)
@@ -194,5 +221,32 @@ TestCase {
 
         tryCompare(torrentModel, "inspectedIndex", 17321)
         compare(torrentModel.inspectedHash, torrentModel.hashFor(17321))
+    }
+
+    function test_collection_mode_selects_multiple_sources_before_review() {
+        torrentModel.collection_mode = true
+        torrentModel.existing_count = 3
+        torrentModel.existing_filtered_count = 3
+        const button = findChild(picker, "loadedTorrentDropdownButton")
+        mouseClick(button, button.width / 2, button.height / 2)
+
+        const popup = findChild(picker, "loadedTorrentPopup")
+        const list = findChild(picker, "loadedTorrentList")
+        tryVerify(() => popup.opened)
+        const first = findChild(list, "loadedTorrentRow-0")
+        const second = findChild(list, "loadedTorrentRow-1")
+        tryVerify(() => first !== null && second !== null)
+        mouseClick(first, first.width / 2, first.height / 2)
+        mouseClick(second, second.width / 2, second.height / 2)
+
+        compare(torrentModel.existing_selected_count, 2)
+        verify(popup.opened)
+        compare(torrentModel.inspectedIndex, -1)
+
+        const review = findChild(picker, "loadedTorrentReviewSelected")
+        verify(review !== null && review.enabled)
+        mouseClick(review, review.width / 2, review.height / 2)
+        tryCompare(torrentModel, "batchReviewCalls", 1)
+        tryVerify(() => !popup.opened)
     }
 }

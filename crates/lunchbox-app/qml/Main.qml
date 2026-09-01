@@ -15692,8 +15692,9 @@ ApplicationWindow {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: externalTorrent.ready ? 68 : 0
+                    Layout.preferredHeight: visible ? 68 : 0
                     visible: externalTorrent.ready
+                             && externalTorrent.batch_source_count === 0
                     radius: 9
                     color: "#111923"
                     border.color: root.line
@@ -15756,8 +15757,22 @@ ApplicationWindow {
 
                 TorrentPayloadPicker {
                     Layout.fillWidth: true
+                    Layout.fillHeight: visible
+                    Layout.minimumHeight: visible ? 150 : 0
+                    visible: externalTorrent.batch_source_count === 0
+                    torrent: externalTorrent
+                    ink: root.ink
+                    muted: root.muted
+                    accent: root.accent
+                    accentCool: root.accentCool
+                    line: root.line
+                }
+
+                TorrentSourceBatchReview {
+                    Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.minimumHeight: 150
+                    Layout.minimumHeight: visible ? 180 : 0
+                    visible: externalTorrent.batch_source_count > 0
                     torrent: externalTorrent
                     ink: root.ink
                     muted: root.muted
@@ -15860,12 +15875,17 @@ ApplicationWindow {
                     }
                     Button {
                         property bool queuesPayloadSet: externalTorrent.selected_file_count > 1
-                        Layout.preferredWidth: externalTorrent.importing_existing ? 232
+                        Layout.preferredWidth: externalTorrent.batch_valid_count > 0 ? 190
+                                               : externalTorrent.importing_existing ? 232
                                                : queuesPayloadSet ? 196 : 176
                         Layout.preferredHeight: 36
                         text: externalTorrent.busy ? "WORKING…"
                               : externalTorrent.collection_mode
-                                ? externalTorrent.importing_existing
+                                ? externalTorrent.batch_valid_count > 0
+                                  ? "ADD " + externalTorrent.batch_valid_count
+                                    + (externalTorrent.batch_valid_count === 1
+                                       ? " SOURCE" : " SOURCES")
+                                  : externalTorrent.importing_existing
                                   ? "IMPORT + ADD SOURCE"
                                   : "ADD SOURCE"
                                 : externalTorrent.importing_existing

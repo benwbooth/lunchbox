@@ -53,6 +53,12 @@ Rectangle {
     }
 
     function syncHighlight() {
+        if (torrent.collection_mode) {
+            if (highlightedRow >= torrent.existing_filtered_count)
+                highlightedRow = torrent.existing_filtered_count > 0 ? 0 : -1
+            Qt.callLater(revealHighlight)
+            return
+        }
         const selectedRow = torrent.existing_filtered_row_for_info_hash(
                                   torrent.existing_selected_info_hash)
         highlightedRow = selectedRow >= 0
@@ -65,6 +71,11 @@ Rectangle {
         const sourceIndex = torrent.existing_filtered_index_at(row)
         if (sourceIndex < 0)
             return
+        if (torrent.collection_mode) {
+            highlightedRow = row
+            torrent.toggle_existing_torrent(sourceIndex)
+            return
+        }
         selectionInProgress = true
         searchDelay.stop()
         highlightedRow = row
@@ -114,7 +125,8 @@ Rectangle {
         }
 
         function onExisting_revisionChanged() {
-            if (root.torrent.existing_selected_info_hash.length === 0)
+            if (!root.torrent.collection_mode
+                    && root.torrent.existing_selected_info_hash.length === 0)
                 torrentSearch.text = ""
             root.syncHighlight()
         }
@@ -239,7 +251,8 @@ Rectangle {
         y: root.height + 5
         width: root.width
         height: Math.min(430, Math.max(76,
-                         root.torrent.existing_filtered_count * 62 + 38))
+                         root.torrent.existing_filtered_count * 62 + 38
+                         + (root.torrent.collection_mode ? 52 : 0)))
         enabled: root.resultsRequested && !root.selectionInProgress
         opacity: root.resultsRequested && !root.selectionInProgress ? 1 : 0
         padding: 1
@@ -286,7 +299,9 @@ Rectangle {
                     }
 
                     Text {
-                        text: "↑↓  SELECT   ENTER  OPEN"
+                        text: root.torrent.collection_mode
+                              ? "↑↓  MOVE   ENTER  TOGGLE"
+                              : "↑↓  SELECT   ENTER  OPEN"
                         color: "#657287"
                         font.pixelSize: 8
                     }
@@ -320,7 +335,9 @@ Rectangle {
                         return root.torrent.existing_info_hash_at(sourceIndex)
                     }
                     property bool selected: sourceHash.length > 0
-                                            && sourceHash === root.torrent.existing_selected_info_hash
+                                            && (root.torrent.collection_mode
+                                                ? root.torrent.existing_selected_at(sourceIndex)
+                                                : sourceHash === root.torrent.existing_selected_info_hash)
 
                     objectName: "loadedTorrentRow-" + sourceIndex
                     width: ListView.view.width
@@ -348,6 +365,24 @@ Rectangle {
                         anchors.leftMargin: 12
                         anchors.rightMargin: 12
                         spacing: 10
+
+                        Rectangle {
+                            visible: root.torrent.collection_mode
+                            Layout.preferredWidth: visible ? 20 : 0
+                            Layout.preferredHeight: visible ? 20 : 0
+                            radius: 5
+                            color: torrentRow.selected ? root.accentCool : "transparent"
+                            border.color: torrentRow.selected ? root.accentCool : "#657287"
+                            border.width: 1
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✓"
+                                visible: torrentRow.selected
+                                color: "#10201d"
+                                font.pixelSize: 12
+                                font.weight: Font.Bold
+                            }
+                        }
 
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -396,6 +431,75 @@ Rectangle {
                     font.pixelSize: 10
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
+                }
+            }
+
+            Rectangle {
+                visible: root.torrent.collection_mode
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? 52 : 0
+                color: "#151f2c"
+                border.color: root.line
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 10
+                    spacing: 8
+
+                    Text {
+                        objectName: "loadedTorrentSelectedCount"
+                        Layout.fillWidth: true
+                        text: root.torrent.existing_selected_count + " SELECTED"
+                        color: root.torrent.existing_selected_count > 0
+                               ? root.accentCool : root.muted
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                    }
+
+                    Button {
+                        objectName: "loadedTorrentClearSelection"
+                        Layout.preferredWidth: 72
+                        Layout.preferredHeight: 32
+                        text: "CLEAR"
+                        enabled: root.torrent.existing_selected_count > 0
+                        onClicked: root.torrent.clear_existing_selection()
+                    }
+
+                    Button {
+                        id: reviewSelectedButton
+                        objectName: "loadedTorrentReviewSelected"
+                        Layout.preferredWidth: 146
+                        Layout.preferredHeight: 32
+                        text: root.torrent.existing_selected_count === 1
+                              ? "REVIEW 1 SOURCE"
+                              : "REVIEW " + root.torrent.existing_selected_count + " SOURCES"
+                        enabled: root.torrent.existing_selected_count > 0
+                        font.pixelSize: 8
+                        font.weight: Font.Bold
+                        onClicked: {
+                            root.selectionInProgress = true
+                            root.closeResults()
+                            Qt.callLater(function() {
+                                root.torrent.inspect_selected_existing_torrents()
+                                if (!root.torrent.busy)
+                                    root.selectionInProgress = false
+                            })
+                        }
+                        background: Rectangle {
+                            radius: 7
+                            color: reviewSelectedButton.enabled
+                                   ? (reviewSelectedButton.down ? "#d68d36" : root.accent)
+                                   : "#26313e"
+                        }
+                        contentItem: Text {
+                            text: reviewSelectedButton.text
+                            color: reviewSelectedButton.enabled ? "#1b140c" : root.muted
+                            font: reviewSelectedButton.font
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
                 }
             }
         }

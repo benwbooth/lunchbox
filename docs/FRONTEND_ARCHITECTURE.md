@@ -713,8 +713,14 @@ category, state, save-path, and exact-info-hash terms to a generation-guarded
 Rust worker, while a virtualized popup instantiates only visible rows. Filter
 results preserve the immutable source index, and opening a result resolves the
 exact v1 info hash again; duplicate or similar display names therefore cannot
-change identity. Refresh preserves a selection only when that exact hash still
-exists. Listing and metadata review are read-only. Confirming a
+change identity. Platform-source setup supports an explicit bounded multi-select
+by exact info hash. Search never clears the selected set, refresh retains only
+hashes that still exist, and one review action exports every selected metadata
+record off the UI thread. Valid and rejected torrents remain individually
+visible; adding the reviewed batch commits every valid retained catalog in one
+SQLite transaction without selecting or downloading ROM payloads. Single-game
+selection remains one-at-a-time and closes the popup immediately. Listing and
+metadata review are read-only. Confirming a
 game download or collection source imports the torrent into Lunchbox management
 by assigning its `lunchbox` category; Lunchbox also persists the validated
 `.torrent` metadata and exact member inventory so a later on-demand selection
