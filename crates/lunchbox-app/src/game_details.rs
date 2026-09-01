@@ -1550,7 +1550,13 @@ pub fn load_torrent_files(
         return Ok(candidates);
     }
 
-    rank_file_candidates(files, game_title, alternate_titles, preferences)
+    rank_file_candidates_for_platform(
+        files,
+        game_title,
+        alternate_titles,
+        preferences,
+        Some(&bundle.provider_platform),
+    )
 }
 
 fn registered_torrent_plan_files(
@@ -2121,11 +2127,22 @@ fn registered_torrent_info_hash(locator: &str) -> Result<&str> {
     Ok(info_hash)
 }
 
+#[cfg(test)]
 pub(crate) fn rank_file_candidates(
     files: Vec<TorrentFileCandidate>,
     game_title: &str,
     alternate_titles: &[AlternateTitle],
     preferences: &ReleasePreferences,
+) -> Result<Vec<TorrentFileCandidate>> {
+    rank_file_candidates_for_platform(files, game_title, alternate_titles, preferences, None)
+}
+
+pub(crate) fn rank_file_candidates_for_platform(
+    files: Vec<TorrentFileCandidate>,
+    game_title: &str,
+    alternate_titles: &[AlternateTitle],
+    preferences: &ReleasePreferences,
+    platform: Option<&str>,
 ) -> Result<Vec<TorrentFileCandidate>> {
     let queries = lookup_titles(game_title, alternate_titles)
         .into_iter()
@@ -2157,13 +2174,14 @@ pub(crate) fn rank_file_candidates(
                 }
             }
             (file.region, file.version) = release_labels(&file.filename);
-            (file.match_score >= 0.35).then_some(file)
+            (file.match_score >= 0.35 && platform_payload_tier(platform, &file).is_some())
+                .then_some(file)
         })
         .collect::<Vec<_>>();
     candidates.sort_by(|left, right| {
-        right
-            .match_score
-            .total_cmp(&left.match_score)
+        platform_payload_tier(platform, left)
+            .cmp(&platform_payload_tier(platform, right))
+            .then_with(|| right.match_score.total_cmp(&left.match_score))
             .then_with(|| release_preference_order(left, right, preferences))
             .then_with(|| {
                 exo_primary_priority(&left.filename)
@@ -2198,6 +2216,36 @@ pub(crate) fn rank_file_candidates(
     });
     candidates.truncate(MAX_FILE_CANDIDATES);
     Ok(candidates)
+}
+
+fn platform_payload_tier(platform: Option<&str>, candidate: &TorrentFileCandidate) -> Option<u8> {
+    let Some(platform) = platform else {
+        return Some(0);
+    };
+    if !matches!(
+        catalog::normalize_platform_key(platform).as_str(),
+        "nintendo-switch" | "switch"
+    ) {
+        return Some(0);
+    }
+
+    // A Switch catalog association is stronger than a filename label: only formats an
+    // emulator can plausibly launch may become the automatic payload. This prevents tiny
+    // metadata or padding files with an exact title from beating an actual game image.
+    if candidate.byte_size < 1_024 {
+        return None;
+    }
+    let extension = Path::new(&candidate.filename)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "xci" | "nsp" | "nsz" | "xcz" => Some(0),
+        "nro" | "nso" => Some(1),
+        "zip" | "7z" | "rar" => Some(2),
+        _ => None,
+    }
 }
 
 fn file_match_score(filename: &str, query: &str, query_tokens: &[&str]) -> f64 {
@@ -2733,6 +2781,44 @@ mod tests {
         assert_eq!(ranked[0].index, 0);
         assert_eq!(ranked[0].match_score, 1.0);
         assert_eq!(ranked[0].matched_title, "Super Mario Land");
+    }
+
+    #[test]
+    fn switch_ranking_prefers_a_launchable_image_over_a_tiny_exact_name() {
+        let mut tiny_bin = candidate(0, "Super Mario Bros. RPG.bin");
+        tiny_bin.byte_size = 12;
+        let mut game_image = candidate(1, "Super Mario RPG [0100BC0018138000].xci");
+        game_image.byte_size = 8 * 1024 * 1024 * 1024;
+
+        let ranked = rank_file_candidates_for_platform(
+            vec![tiny_bin, game_image],
+            "Super Mario Bros. RPG",
+            &[],
+            &preferences("USA", "latest"),
+            Some("Nintendo Switch"),
+        )
+        .unwrap();
+
+        assert_eq!(ranked.len(), 1);
+        assert_eq!(ranked[0].index, 1);
+        assert!(ranked[0].filename.ends_with(".xci"));
+    }
+
+    #[test]
+    fn switch_payload_format_never_establishes_title_identity() {
+        let mut unrelated = candidate(0, "Completely Different Game.xci");
+        unrelated.byte_size = 8 * 1024 * 1024 * 1024;
+
+        let ranked = rank_file_candidates_for_platform(
+            vec![unrelated],
+            "Super Mario Bros. RPG",
+            &[],
+            &preferences("USA", "latest"),
+            Some("Nintendo Switch"),
+        )
+        .unwrap();
+
+        assert!(ranked.is_empty());
     }
 
     #[test]

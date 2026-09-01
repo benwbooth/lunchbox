@@ -22,9 +22,10 @@ use crate::settings::{self, SettingsStore};
 const FALLBACK_ROM_EXTENSIONS: &[&str] = &[
     "7z", "a26", "a52", "a78", "atr", "atx", "bin", "car", "cas", "chd", "cia", "ciso", "col",
     "cso", "cue", "dsi", "fds", "fig", "gba", "gbc", "gcm", "gcz", "gen", "gg", "int", "iso",
-    "j64", "jag", "lnx", "md", "m3u", "n64", "nds", "nes", "ngc", "ngp", "pbp", "pce", "pkg",
-    "rar", "rvz", "sfc", "sgb", "sgx", "smc", "smd", "sms", "swc", "unf", "unh", "unif", "v64",
-    "vec", "wad", "wbfs", "ws", "wsc", "xex", "xfd", "z64", "zip", "32x", "3ds",
+    "j64", "jag", "lnx", "md", "m3u", "n64", "nds", "nes", "ngc", "ngp", "nro", "nso", "nsp",
+    "nsz", "pbp", "pce", "pkg", "rar", "rvz", "sfc", "sgb", "sgx", "smc", "smd", "sms", "swc",
+    "unf", "unh", "unif", "v64", "vec", "wad", "wbfs", "ws", "wsc", "xci", "xcz", "xex", "xfd",
+    "z64", "zip", "32x", "3ds",
 ];
 const ARCHIVE_EXTENSIONS: &[&str] = &["zip", "7z", "rar"];
 const MANUAL_MATCH_METHOD: &str = "manual user selection";

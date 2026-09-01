@@ -12,9 +12,11 @@ Rectangle {
     property color accentCool: "#62dac8"
     property color line: "#2b3647"
     property int highlightedRow: -1
+    property bool selectionInProgress: false
 
     function reset(restoreResults) {
         searchDelay.stop()
+        selectionInProgress = false
         torrentPopup.close()
         torrentSearch.text = ""
         highlightedRow = -1
@@ -23,7 +25,8 @@ Rectangle {
     }
 
     function openResults() {
-        if (!enabled || torrent.existing_loading || torrent.existing_count === 0)
+        if (selectionInProgress || !enabled || torrent.existing_loading
+                || torrent.existing_count === 0)
             return
         torrentPopup.open()
         if (highlightedRow < 0 && torrent.existing_filtered_count > 0)
@@ -53,10 +56,14 @@ Rectangle {
         const sourceIndex = torrent.existing_filtered_index_at(row)
         if (sourceIndex < 0)
             return
+        selectionInProgress = true
         highlightedRow = row
         torrentSearch.text = torrent.existing_name_at(sourceIndex)
         torrentPopup.close()
         torrent.inspect_existing_torrent(sourceIndex)
+        Qt.callLater(function() {
+            selectionInProgress = false
+        })
     }
 
     implicitHeight: 42

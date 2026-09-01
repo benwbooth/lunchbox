@@ -432,7 +432,12 @@ impl qobject::ExternalTorrentModel {
                         &platform,
                         collection_mode,
                     )?;
-                    prepare_inspection_result(offer, game_title.as_deref(), &settings)
+                    prepare_inspection_result(
+                        offer,
+                        game_title.as_deref(),
+                        Some(&platform),
+                        &settings,
+                    )
                 })()
                 .map_err(|error| format!("{error:#}"));
                 let _ = qt_thread.queue(move |mut model| {
@@ -619,6 +624,7 @@ impl qobject::ExternalTorrentModel {
             .set_existing_selected_info_hash(qstring(&summary.info_hash));
         let previous_offer = self.as_mut().rust_mut().offer.take();
         let game_title = self.as_ref().rust().review_game_title();
+        let platform = self.as_ref().game_platform().to_string();
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         let generation = self.as_ref().rust().generation;
         self.as_mut().reset_offer();
@@ -647,7 +653,12 @@ impl qobject::ExternalTorrentModel {
                         &summary.info_hash,
                         &summary.name,
                     )?;
-                    prepare_inspection_result(offer, game_title.as_deref(), &settings)
+                    prepare_inspection_result(
+                        offer,
+                        game_title.as_deref(),
+                        Some(&platform),
+                        &settings,
+                    )
                 })()
                 .map_err(|error| format!("{error:#}"));
                 let _ = qt_thread.queue(move |mut model| {
@@ -708,6 +719,7 @@ impl qobject::ExternalTorrentModel {
         }
         let previous_offer = self.as_mut().rust_mut().offer.take();
         let game_title = self.as_ref().rust().review_game_title();
+        let platform = self.as_ref().game_platform().to_string();
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         let generation = self.as_ref().rust().generation;
         self.as_mut().reset_offer();
@@ -731,7 +743,12 @@ impl qobject::ExternalTorrentModel {
                         .context("removing the previous unqueued magnet review")?;
                     }
                     let offer = external_torrent::inspect_torrent_file(&path)?;
-                    prepare_inspection_result(offer, game_title.as_deref(), &settings)
+                    prepare_inspection_result(
+                        offer,
+                        game_title.as_deref(),
+                        Some(&platform),
+                        &settings,
+                    )
                 })()
                 .map_err(|error| format!("{error:#}"));
                 let _ = qt_thread.queue(move |mut model| {
@@ -1342,6 +1359,7 @@ impl ExternalTorrentModelRust {
 fn prepare_inspection_result(
     offer: ManualTorrentOffer,
     game_title: Option<&str>,
+    platform: Option<&str>,
     settings: &crate::settings::AppSettings,
 ) -> anyhow::Result<InspectionResult> {
     let ranked_candidates = if let Some(game_title) = game_title {
@@ -1359,7 +1377,7 @@ fn prepare_inspection_result(
                 download_plan: None,
             })
             .collect();
-        crate::game_details::rank_file_candidates(
+        crate::game_details::rank_file_candidates_for_platform(
             files,
             game_title,
             &[],
@@ -1367,6 +1385,7 @@ fn prepare_inspection_result(
                 region_priority: settings.region_priority.clone(),
                 version_preference: settings.version_preference.clone(),
             },
+            platform,
         )?
     } else {
         Vec::new()
@@ -1583,6 +1602,7 @@ mod tests {
         let result = prepare_inspection_result(
             offer.clone(),
             Some("Faxanadu"),
+            Some("Nintendo Entertainment System"),
             &crate::settings::AppSettings::default(),
         )
         .unwrap();
@@ -1595,6 +1615,30 @@ mod tests {
     }
 
     #[test]
+    fn switch_review_selects_the_xci_instead_of_a_tiny_exact_bin() {
+        let offer = offer(&[
+            (0, "Super Mario Bros. RPG.bin", 12),
+            (
+                4,
+                "Switch/Super Mario RPG [0100BC0018138000].xci",
+                8 * 1024 * 1024 * 1024,
+            ),
+        ]);
+        let result = prepare_inspection_result(
+            offer.clone(),
+            Some("Super Mario Bros. RPG"),
+            Some("Nintendo Switch"),
+            &crate::settings::AppSettings::default(),
+        )
+        .unwrap();
+        let state = build_review_state(&offer, result.ranked_candidates, false);
+
+        assert_eq!(state.selected_index, 1);
+        assert_eq!(state.selected_file_indices, [1]);
+        assert_eq!(state.display_order[0], 1);
+    }
+
+    #[test]
     fn weak_title_similarity_never_guesses_a_default_payload() {
         let offer = offer(&[
             (0, "Docs/readme.txt", 10),
@@ -1603,6 +1647,7 @@ mod tests {
         let result = prepare_inspection_result(
             offer.clone(),
             Some("Super Mario Odyssey"),
+            Some("Nintendo Switch"),
             &crate::settings::AppSettings::default(),
         )
         .unwrap();
@@ -1633,6 +1678,7 @@ mod tests {
         let result = prepare_inspection_result(
             offer.clone(),
             Some("Final Fantasy VII"),
+            Some("Sony PlayStation"),
             &crate::settings::AppSettings::default(),
         )
         .unwrap();
@@ -1691,10 +1737,7 @@ mod tests {
             [17_321]
         );
         assert_eq!(
-            filter_existing_torrent_indices(
-                &searchable,
-                "archive /srv/torrents/00042 switch",
-            ),
+            filter_existing_torrent_indices(&searchable, "archive /srv/torrents/00042 switch",),
             [42]
         );
         assert_eq!(
