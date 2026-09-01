@@ -296,22 +296,26 @@ fn status_for_rule(
         }
     });
     let package_key = (rule.source_id.clone(), rule.package_name.clone());
+    let runtime_target_ready = target_path
+        .as_deref()
+        .is_some_and(|target| managed_runtime_target_ready(rule, target));
     let imported = if rule.target_strategy == "manual_import" {
         directory_contains_files(&runtime_path)
     } else {
-        packages.contains_key(&package_key)
+        packages.contains_key(&package_key) || runtime_target_ready
     };
     let runtime_text = runtime_path.to_string_lossy().into_owned();
-    let synced = target_path.as_ref().is_some_and(|target| {
-        installs
-            .get(&(rule.rule_key.clone(), runtime_text.clone()))
-            .is_some_and(|receipt| {
-                receipt.source_id == rule.source_id
-                    && receipt.package_name == rule.package_name
-                    && Path::new(&receipt.target_path) == target
-                    && target.exists()
-            })
-    });
+    let synced = runtime_target_ready
+        || target_path.as_ref().is_some_and(|target| {
+            installs
+                .get(&(rule.rule_key.clone(), runtime_text.clone()))
+                .is_some_and(|receipt| {
+                    receipt.source_id == rule.source_id
+                        && receipt.package_name == rule.package_name
+                        && Path::new(&receipt.target_path) == target
+                        && target.exists()
+                })
+        });
 
     Ok(FirmwareStatus {
         rule_key: rule.rule_key.clone(),
@@ -336,6 +340,20 @@ fn status_for_rule(
             .unwrap_or_default(),
         notes: rule.notes.clone(),
     })
+}
+
+fn managed_runtime_target_ready(rule: &FirmwareRuleRow, target: &Path) -> bool {
+    if rule.target_strategy != "managed_import" {
+        return false;
+    }
+    match (rule.source_id.as_str(), rule.package_name.as_str()) {
+        ("manual:nintendo-switch-keys", "prod.keys") => validate_switch_prod_keys(target).is_ok(),
+        ("manual:nintendo-switch-keys", "title.keys") => validate_switch_title_keys(target).is_ok(),
+        ("manual:nintendo-switch-firmware", SWITCH_FIRMWARE_PACKAGE) => {
+            validate_switch_firmware_directory(target).is_ok()
+        }
+        _ => false,
+    }
 }
 
 fn target_root_for_rule(runtime_root: &Path, rule: &FirmwareRuleRow) -> Option<PathBuf> {
@@ -613,10 +631,15 @@ fn validate_managed_firmware_selection(
     if status.target_strategy != "managed_import" {
         return Ok(());
     }
-    match status.source_id.as_str() {
-        "manual:nintendo-switch-keys" => validate_switch_prod_keys(selected_path),
-        "manual:nintendo-switch-firmware" => validate_switch_firmware_zip(selected_path),
-        source => bail!("managed firmware source {source} has no validator"),
+    match (status.source_id.as_str(), status.package_name.as_str()) {
+        ("manual:nintendo-switch-keys", "prod.keys") => validate_switch_prod_keys(selected_path),
+        ("manual:nintendo-switch-keys", "title.keys") => validate_switch_title_keys(selected_path),
+        ("manual:nintendo-switch-firmware", SWITCH_FIRMWARE_PACKAGE) => {
+            validate_switch_firmware_zip(selected_path)
+        }
+        (source, package) => {
+            bail!("managed firmware source {source} package {package} has no validator")
+        }
     }
 }
 
@@ -657,6 +680,80 @@ fn validate_switch_prod_keys(path: &Path) -> Result<()> {
         bail!("prod.keys does not contain the expected Switch production-key structure");
     }
     Ok(())
+}
+
+fn validate_switch_title_keys(path: &Path) -> Result<()> {
+    let metadata = fs::metadata(path)?;
+    if metadata.len() == 0 || metadata.len() > SWITCH_KEYS_MAX_BYTES {
+        bail!("title.keys must be a non-empty text file smaller than 8 MiB");
+    }
+    let contents = fs::read_to_string(path).context("title.keys is not valid UTF-8 text")?;
+    let mut valid_entries = 0usize;
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((rights_id, title_key)) = line.split_once('=') else {
+            bail!("title.keys contains a malformed non-comment line");
+        };
+        let rights_id = rights_id.trim();
+        let title_key = title_key.trim();
+        if rights_id.len() != 32
+            || title_key.len() != 32
+            || !rights_id.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !title_key.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            bail!("title.keys contains an invalid rights ID or title key");
+        }
+        valid_entries += 1;
+    }
+    if valid_entries == 0 {
+        bail!("title.keys does not contain any title-key entries");
+    }
+    Ok(())
+}
+
+fn validate_switch_firmware_directory(path: &Path) -> Result<()> {
+    if !path.is_dir() {
+        bail!("Switch firmware directory does not exist");
+    }
+    let mut nca_count = 0usize;
+    let mut total_nca_bytes = 0u64;
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(content_id) = file_name
+            .to_ascii_lowercase()
+            .strip_suffix(".nca")
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+        let size = entry.metadata()?.len();
+        if content_id.len() != 32
+            || !content_id.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || size == 0
+        {
+            continue;
+        }
+        nca_count += 1;
+        total_nca_bytes = total_nca_bytes.saturating_add(size);
+        if nca_count >= 10 && total_nca_bytes >= 1024 * 1024 {
+            return Ok(());
+        }
+        if nca_count >= MAX_FIRMWARE_FILES {
+            break;
+        }
+    }
+    bail!("Switch firmware directory does not contain a recognizable installed NCA set")
 }
 
 fn validate_switch_firmware_zip(path: &Path) -> Result<()> {
@@ -1794,6 +1891,16 @@ mod tests {
         fs::write(&keys, "not a production key file").unwrap();
         assert!(validate_switch_prod_keys(&keys).is_err());
 
+        let title_keys = temporary.path().join("title.keys");
+        fs::write(
+            &title_keys,
+            format!("{} = {}", "12".repeat(16), "ab".repeat(16)),
+        )
+        .unwrap();
+        validate_switch_title_keys(&title_keys).unwrap();
+        fs::write(&title_keys, "not a title key file").unwrap();
+        assert!(validate_switch_title_keys(&title_keys).is_err());
+
         let firmware = temporary.path().join("my-console-firmware.zip");
         let file = File::create(&firmware).unwrap();
         let mut archive = zip::ZipWriter::new(file);
@@ -1812,6 +1919,57 @@ mod tests {
         let unrelated = temporary.path().join("unrelated.zip");
         write_zip(&unrelated, &[("readme.txt", b"not firmware")]);
         assert!(validate_switch_firmware_zip(&unrelated).is_err());
+    }
+
+    #[test]
+    fn switch_runtime_readiness_detects_valid_files_without_lunchbox_receipts() {
+        let temporary = tempfile::tempdir().unwrap();
+        let prod_keys = temporary.path().join("prod.keys");
+        let mut key_lines = vec![format!("header_key = {}", "a1".repeat(16))];
+        for index in 0..7 {
+            key_lines.push(format!("master_key_{index:02x} = {}", "b2".repeat(16)));
+        }
+        fs::write(&prod_keys, key_lines.join("\n")).unwrap();
+
+        let firmware_directory = temporary.path().join("registered");
+        fs::create_dir(&firmware_directory).unwrap();
+        for index in 0..10 {
+            fs::write(
+                firmware_directory.join(format!("{index:032x}.nca")),
+                vec![index as u8; 128 * 1024],
+            )
+            .unwrap();
+        }
+
+        let rule = |source: &str, package: &str, install_mode: &str| FirmwareRuleRow {
+            rule_key: package.to_owned(),
+            runtime_kind: "ryubing".to_owned(),
+            runtime_name: "Ryubing (Ryujinx fork)".to_owned(),
+            source_id: source.to_owned(),
+            source_transport: "manual".to_owned(),
+            source_url: String::new(),
+            torrent_file: String::new(),
+            path_prefix: String::new(),
+            package_name: package.to_owned(),
+            target_subdir: String::new(),
+            install_mode: install_mode.to_owned(),
+            target_strategy: "managed_import".to_owned(),
+            required: true,
+            supports_hle_fallback: false,
+            notes: String::new(),
+        };
+        assert!(managed_runtime_target_ready(
+            &rule("manual:nintendo-switch-keys", "prod.keys", "copy_archive"),
+            &prod_keys
+        ));
+        assert!(managed_runtime_target_ready(
+            &rule(
+                "manual:nintendo-switch-firmware",
+                SWITCH_FIRMWARE_PACKAGE,
+                "merge_tree"
+            ),
+            &firmware_directory
+        ));
     }
 
     #[test]

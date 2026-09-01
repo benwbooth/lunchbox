@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-08-27",
+  "reviewed_at": "2026-09-01",
   "provenance": {
     "origin": "Lunchbox legacy/electron firmware implementation",
     "license": "MIT",
@@ -755,6 +755,20 @@
       "target_strategy": "managed_import"
     },
     {
+      "rule_key": "eden:Eden:Nintendo Switch:title-keys",
+      "runtime_kind": "eden",
+      "runtime_name": "Eden",
+      "platform_name": "Nintendo Switch",
+      "source": "manual:nintendo-switch-keys",
+      "source_package_name": "title.keys",
+      "target_subdir": "keys",
+      "install_mode": "copy_archive",
+      "required": false,
+      "notes": "Optionally import title.keys dumped from the user's own Nintendo Switch for titles that need ticket-derived keys.",
+      "supports_hle_fallback": true,
+      "target_strategy": "managed_import"
+    },
+    {
       "rule_key": "eden:Eden:Nintendo Switch:firmware",
       "runtime_kind": "eden",
       "runtime_name": "Eden",
@@ -783,6 +797,20 @@
       "target_strategy": "managed_import"
     },
     {
+      "rule_key": "ryubing:Ryubing:Nintendo Switch:title-keys",
+      "runtime_kind": "ryubing",
+      "runtime_name": "Ryubing (Ryujinx fork)",
+      "platform_name": "Nintendo Switch",
+      "source": "manual:nintendo-switch-keys",
+      "source_package_name": "title.keys",
+      "target_subdir": "system",
+      "install_mode": "copy_archive",
+      "required": false,
+      "notes": "Optionally import title.keys dumped from the user's own Nintendo Switch for titles that need ticket-derived keys.",
+      "supports_hle_fallback": true,
+      "target_strategy": "managed_import"
+    },
+    {
       "rule_key": "ryubing:Ryubing:Nintendo Switch:firmware",
       "runtime_kind": "ryubing",
       "runtime_name": "Ryubing (Ryujinx fork)",
@@ -808,6 +836,20 @@
       "required": true,
       "notes": "Import prod.keys dumped from the user's own Nintendo Switch. Lunchbox validates the key-file structure and installs it into Torzu's active profile.",
       "supports_hle_fallback": false,
+      "target_strategy": "managed_import"
+    },
+    {
+      "rule_key": "torzu:Torzu:Nintendo Switch:title-keys",
+      "runtime_kind": "torzu",
+      "runtime_name": "Torzu (yuzu fork)",
+      "platform_name": "Nintendo Switch",
+      "source": "manual:nintendo-switch-keys",
+      "source_package_name": "title.keys",
+      "target_subdir": "keys",
+      "install_mode": "copy_archive",
+      "required": false,
+      "notes": "Optionally import title.keys dumped from the user's own Nintendo Switch for titles that need ticket-derived keys.",
+      "supports_hle_fallback": true,
       "target_strategy": "managed_import"
     },
     {

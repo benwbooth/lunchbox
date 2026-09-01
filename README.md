@@ -362,7 +362,7 @@ IDs; macOS consumes Homebrew's structured outdated inventory. A failed source
 check is reported as a warning and never converted into a false update.
 
 Firmware is resolved for the selected runtime and core, rather than from one
-global folder per platform. The canonical catalog carries 124 reviewed rules
+global folder per platform. The canonical catalog carries 127 reviewed rules
 and 19 exact sources recovered from the legacy Lunchbox design, including
 required and optional packages, HLE fallbacks, launch-scoped MAME files, and
 manual-only dumps. The game-details card can download exact Minerva packages,

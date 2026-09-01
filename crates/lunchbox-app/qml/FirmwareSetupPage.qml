@@ -18,6 +18,7 @@ Rectangle {
 
     signal closeRequested()
     signal primaryActionRequested()
+    signal choosePackageRequested(string packageName)
     signal refreshRequested()
     signal openFolderRequested()
     signal manageEmulatorsRequested()
@@ -138,7 +139,7 @@ Rectangle {
                             anchors.fill: parent
                             anchors.margins: 14
                             text: page.switchSetup
-                                  ? "Use prod.keys and firmware dumped from a Nintendo Switch you own. Lunchbox validates each selected file before storing or syncing it; it never treats an arbitrary file as keys or firmware."
+                                  ? "Use prod.keys, optional title.keys, and firmware dumped from a Nintendo Switch you own. Lunchbox first checks the emulator's active profile, then validates any selected file before storing or syncing it."
                                   : "Use firmware acquired lawfully for hardware you own. Lunchbox validates managed packages before storing or syncing them."
                             color: page.muted
                             font.pixelSize: 11
@@ -156,17 +157,27 @@ Rectangle {
                             model: [
                                 {
                                     name: "PROD.KEYS",
+                                    packageName: "prod.keys",
                                     description: "Console decryption keys · choose the exact prod.keys file from your own dump",
                                     current: page.nextPackageLower.endsWith(".keys"),
-                                    complete: page.ready
-                                              || (page.nextPackageLower.endsWith(".zip")
-                                                  && page.detailsModel.firmware_missing_count === 1)
+                                    complete: page.detailsModel.switch_prod_keys_ready,
+                                    required: true
+                                },
+                                {
+                                    name: "TITLE.KEYS",
+                                    packageName: "title.keys",
+                                    description: "Optional ticket-derived keys · useful for titles that require them",
+                                    current: false,
+                                    complete: page.detailsModel.switch_title_keys_ready,
+                                    required: false
                                 },
                                 {
                                     name: "SWITCH FIRMWARE",
+                                    packageName: "switch-firmware.zip",
                                     description: "System firmware · choose a ZIP containing the dumped NCA files",
                                     current: page.nextPackageLower.endsWith(".zip"),
-                                    complete: page.ready
+                                    complete: page.detailsModel.switch_firmware_ready,
+                                    required: true
                                 }
                             ]
 
@@ -174,7 +185,7 @@ Rectangle {
                                 id: requirement
                                 required property var modelData
                                 width: setupContents.width
-                                height: 78
+                                height: 88
                                 radius: 11
                                 color: modelData.current ? "#2b241b" : "#141d29"
                                 border.width: modelData.current ? 2 : 1
@@ -221,11 +232,38 @@ Rectangle {
                                     }
                                     Text {
                                         text: requirement.modelData.complete ? "READY"
-                                              : requirement.modelData.current ? "NEXT" : "PENDING"
+                                              : requirement.modelData.current ? "NEXT"
+                                              : requirement.modelData.required ? "MISSING"
+                                                                               : "OPTIONAL"
                                         color: requirement.modelData.complete ? page.accentCool
                                                : requirement.modelData.current ? page.accent : page.muted
                                         font.pixelSize: 9
                                         font.weight: Font.Bold
+                                    }
+                                    Button {
+                                        objectName: "firmwarePackageAction-"
+                                                    + requirement.modelData.packageName
+                                        readonly property bool selectorAvailable:
+                                            !requirement.modelData.complete
+                                        visible: selectorAvailable
+                                        Layout.preferredWidth: visible ? 150 : 0
+                                        Layout.preferredHeight: 36
+                                        text: requirement.modelData.current
+                                              && page.detailsModel.firmware_setup_action === "sync"
+                                              ? "SYNC NOW"
+                                              : "CHOOSE FILE"
+                                        enabled: !page.detailsModel.firmware_busy
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                        onClicked: {
+                                            if (requirement.modelData.current
+                                                    && page.detailsModel.firmware_setup_action
+                                                       === "sync")
+                                                page.primaryActionRequested()
+                                            else
+                                                page.choosePackageRequested(
+                                                    requirement.modelData.packageName)
+                                        }
                                     }
                                 }
                             }
@@ -233,8 +271,9 @@ Rectangle {
                     }
 
                     Rectangle {
+                        visible: !page.switchSetup || page.ready
                         width: parent.width
-                        height: currentActionColumn.implicitHeight + 30
+                        height: visible ? currentActionColumn.implicitHeight + 30 : 0
                         radius: 12
                         color: page.panelRaised
                         border.width: 2

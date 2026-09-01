@@ -1523,9 +1523,11 @@ ApplicationWindow {
             library.import_collection(selected)
     }
 
-    function chooseFirmwarePackage() {
-        const packageName = gameDetails.firmware_next_package.length > 0
-                          ? gameDetails.firmware_next_package
+    function chooseFirmwarePackage(requestedPackage) {
+        const packageName = requestedPackage && requestedPackage.length > 0
+                          ? requestedPackage
+                          : gameDetails.firmware_next_package.length > 0
+                            ? gameDetails.firmware_next_package
                           : "required firmware package"
         const lowerName = packageName.toLowerCase()
         const keyPackage = lowerName.endsWith(".keys")
@@ -1554,6 +1556,8 @@ ApplicationWindow {
     }
 
     function openFirmwareSetupPage() {
+        if (gameDetails.firmware_missing_count <= 0)
+            return
         if (gameDetails.firmware_rule_count > 0)
             firmwareSetupPage.open()
         else
@@ -2792,6 +2796,9 @@ ApplicationWindow {
             accentCool: root.accentCool
             onCloseRequested: firmwareSetupPage.close()
             onPrimaryActionRequested: root.performFirmwareSetupAction()
+            onChoosePackageRequested: function(packageName) {
+                root.chooseFirmwarePackage(packageName)
+            }
             onRefreshRequested: gameDetails.refresh_emulators()
             onOpenFolderRequested: gameDetails.open_firmware_directory()
             onManageEmulatorsRequested: {
