@@ -9954,8 +9954,6 @@ ApplicationWindow {
                 enabled: library.ready && library.filtered_count > 0
                          && !library.bulk_metadata_busy
                 onClicked: bulkMetadataEditor.openForScope()
-                ToolTip.visible: hovered
-                ToolTip.text: "Edit one field for every game in the current filtered view"
             }
             SidebarNavButton {
                 label: "BIOS & Firmware"
