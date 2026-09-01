@@ -13,13 +13,12 @@ Rectangle {
     property color line: "#2b3647"
     property int highlightedRow: -1
     property bool selectionInProgress: false
-    property int pendingSourceIndex: -1
 
     function reset(restoreResults) {
         searchDelay.stop()
         selectionInProgress = false
-        pendingSourceIndex = -1
         torrentPopup.close()
+        torrentPopup.visible = false
         torrentSearch.text = ""
         highlightedRow = -1
         if (restoreResults === undefined || restoreResults)
@@ -59,27 +58,25 @@ Rectangle {
         if (sourceIndex < 0)
             return
         selectionInProgress = true
-        pendingSourceIndex = sourceIndex
         searchDelay.stop()
         highlightedRow = row
         torrentSearch.text = torrent.existing_name_at(sourceIndex)
         torrentSearch.focus = false
+
+        // Hide the overlay before model inspection can disable or relayout the
+        // picker. Popup.close() alone is asynchronous on some real Wayland
+        // compositors even when the transition is empty.
         torrentPopup.close()
-
-        // Popup.closed normally dispatches the inspection. Direct function calls
-        // made while the popup is already closed still need to work.
-        if (!torrentPopup.opened && !torrentPopup.visible)
-            beginPendingInspection()
-    }
-
-    function beginPendingInspection() {
-        if (pendingSourceIndex < 0)
-            return
-        const sourceIndex = pendingSourceIndex
-        pendingSourceIndex = -1
+        torrentPopup.visible = false
         torrent.inspect_existing_torrent(sourceIndex)
         if (!torrent.busy)
             selectionInProgress = false
+
+        Qt.callLater(function() {
+            torrentPopup.close()
+            torrentPopup.visible = false
+            torrentSearch.focus = false
+        })
     }
 
     implicitHeight: 42
@@ -238,15 +235,14 @@ Rectangle {
         width: root.width
         height: Math.min(430, Math.max(76,
                          root.torrent.existing_filtered_count * 62 + 38))
+        enabled: !root.selectionInProgress
+        opacity: root.selectionInProgress ? 0 : 1
         padding: 1
         focus: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         enter: Transition {}
         exit: Transition {}
-        onClosed: {
-            root.beginPendingInspection()
-            torrentSearch.focus = false
-        }
+        onClosed: torrentSearch.focus = false
 
         background: Rectangle {
             color: "#111923"

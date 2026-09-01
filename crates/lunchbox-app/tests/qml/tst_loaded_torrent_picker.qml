@@ -166,12 +166,16 @@ TestCase {
 
         tryVerify(() => !popup.opened)
         verify(!popup.visible)
+        compare(popup.opacity, 0)
+        verify(!popup.enabled)
         tryCompare(torrentModel, "inspectedIndex", 0)
         verify(!torrentModel.popupOpenWhenInspected)
         torrentModel.busy = false
         wait(20)
         verify(!popup.opened)
         verify(!popup.visible)
+        compare(popup.opacity, 1)
+        verify(popup.enabled)
     }
 
     function test_filtered_row_selection_keeps_original_source_index() {

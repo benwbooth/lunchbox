@@ -279,6 +279,7 @@ struct ReviewState {
     selected_file_indices: Vec<usize>,
     selected_index: i32,
     selected_download_plan: Option<DownloadPlan>,
+    reviewable_file_count: usize,
     selection_summary: String,
 }
 
@@ -837,18 +838,20 @@ impl qobject::ExternalTorrentModel {
                 } else {
                     if review.selected_index < 0 {
                         format!(
-                            "Reviewed {file_count} safe {}. No title match was strong enough to select automatically; search or choose the exact payload.",
-                            if file_count == 1 { "file" } else { "files" }
+                            "Reviewed {file_count} safe {} and found {} playable candidate{}. No title match was strong enough to select automatically; search or choose the exact payload.",
+                            if file_count == 1 { "file" } else { "files" },
+                            review.reviewable_file_count,
+                            if review.reviewable_file_count == 1 { "" } else { "s" },
                         )
                     } else if offer.externally_managed {
                         format!(
-                            "Reviewed {file_count} safe {}. Lunchbox put the Minerva-ranked match first; review it before Queue imports the exact selection.",
-                            if file_count == 1 { "file" } else { "files" }
+                            "Reviewed {file_count} safe {} and excluded non-playable sidecars. Lunchbox put the playable match first; review it before Queue imports the exact selection.",
+                            if file_count == 1 { "file" } else { "files" },
                         )
                     } else {
                         format!(
-                            "Reviewed {file_count} safe {}. Lunchbox put the Minerva-ranked match first; review the suggested exact payload before Queue.",
-                            if file_count == 1 { "file" } else { "files" }
+                            "Reviewed {file_count} safe {} and excluded non-playable sidecars. Lunchbox put the playable match first; review the suggested exact payload before Queue.",
+                            if file_count == 1 { "file" } else { "files" },
                         )
                     }
                 }));
@@ -1450,9 +1453,33 @@ fn build_review_state(
             ranked_file_indices.push(index);
         }
     }
+    let reviewable_file = offer
+        .files
+        .iter()
+        .map(|file| {
+            if collection_mode {
+                return true;
+            }
+            let candidate = TorrentFileCandidate {
+                index: file.index as usize,
+                filename: file.path.clone(),
+                byte_size: file.byte_size,
+                match_score: 0.0,
+                matched_title: String::new(),
+                region: String::new(),
+                version: String::new(),
+                download_plan: None,
+            };
+            crate::game_details::platform_payload_tier(platform, &candidate).is_some()
+        })
+        .collect::<Vec<_>>();
+    let reviewable_file_count = reviewable_file
+        .iter()
+        .filter(|reviewable| **reviewable)
+        .count();
     let mut display_order = ranked_file_indices.clone();
     for index in 0..offer.files.len() {
-        if !seen_file_indices[index] {
+        if reviewable_file[index] && !seen_file_indices[index] {
             display_order.push(index);
         }
     }
@@ -1463,6 +1490,7 @@ fn build_review_state(
             selected_file_indices: Vec::new(),
             selected_index: -1,
             selected_download_plan: None,
+            reviewable_file_count,
             selection_summary: "All safe members will be indexed; no payload downloads now."
                 .to_owned(),
         };
@@ -1474,6 +1502,7 @@ fn build_review_state(
             selected_file_indices: Vec::new(),
             selected_index: -1,
             selected_download_plan: None,
+            reviewable_file_count,
             selection_summary:
                 "No strong title match found. Search or select the exact game payload.".to_owned(),
         };
@@ -1485,6 +1514,7 @@ fn build_review_state(
             selected_file_indices: Vec::new(),
             selected_index: -1,
             selected_download_plan: None,
+            reviewable_file_count,
             selection_summary:
                 "No strong title match found. Search or select the exact game payload.".to_owned(),
         };
@@ -1527,6 +1557,7 @@ fn build_review_state(
         selected_file_indices,
         selected_index: i32::try_from(selected_position).unwrap_or(-1),
         selected_download_plan: best.download_plan.clone(),
+        reviewable_file_count,
         selection_summary,
     }
 }
@@ -1676,7 +1707,8 @@ mod tests {
 
         assert_eq!(state.selected_index, 1);
         assert_eq!(state.selected_file_indices, [1]);
-        assert_eq!(state.display_order[0], 1);
+        assert_eq!(state.display_order, [1]);
+        assert_eq!(state.reviewable_file_count, 1);
     }
 
     #[test]
@@ -1725,8 +1757,91 @@ mod tests {
 
         assert_eq!(state.selected_index, 4);
         assert_eq!(state.selected_file_indices, [4]);
-        assert_eq!(state.display_order[0], 4);
+        assert_eq!(state.display_order, [4]);
+        assert_eq!(state.reviewable_file_count, 1);
         assert!(offer.files[state.display_order[0]].path.ends_with(".xci"));
+    }
+
+    #[test]
+    fn parsed_mig_torrent_exposes_only_the_playable_xci_for_game_review() {
+        use lava_torrent::torrent::v1::{File, Torrent};
+
+        let root = "MIG Switch Game Collection/Super Mario RPG Legend of the Seven Stars.xci";
+        let torrent = Torrent {
+            announce: None,
+            announce_list: None,
+            length: 0,
+            files: Some(vec![
+                File {
+                    length: 12,
+                    path: std::path::PathBuf::from(format!(
+                        "{root}/Super Mario RPG Legend of the Seven Stars (Card ID Set).bin"
+                    )),
+                    extra_fields: None,
+                },
+                File {
+                    length: 64,
+                    path: std::path::PathBuf::from(format!(
+                        "{root}/Super Mario RPG Legend of the Seven Stars (Card UID).bin"
+                    )),
+                    extra_fields: None,
+                },
+                File {
+                    length: 512,
+                    path: std::path::PathBuf::from(format!(
+                        "{root}/Super Mario RPG Legend of the Seven Stars (Certificate).bin"
+                    )),
+                    extra_fields: None,
+                },
+                File {
+                    length: 512,
+                    path: std::path::PathBuf::from(format!(
+                        "{root}/Super Mario RPG Legend of the Seven Stars (Initial Data).bin"
+                    )),
+                    extra_fields: None,
+                },
+                File {
+                    length: 7_260_093_952,
+                    path: std::path::PathBuf::from(format!(
+                        "{root}/Super Mario RPG Legend of the Seven Stars.xci"
+                    )),
+                    extra_fields: None,
+                },
+            ]),
+            name: "MIG Switch Game Collection".to_owned(),
+            // One synthetic piece is sufficient for this parser/review test;
+            // production torrents retain their real piece geometry.
+            piece_length: 8_000_000_000,
+            // lava_torrent represents valid UTF-8 byte strings as text while
+            // parsing. A real SHA-1 piece hash is arbitrary bytes, so keep the
+            // fixture non-UTF-8 to exercise the torrent byte-string path.
+            pieces: vec![vec![0xff; 20]],
+            extra_fields: None,
+            extra_info_fields: None,
+        };
+        let mut bytes = Vec::new();
+        torrent.write_into(&mut bytes).unwrap();
+        let offer = external_torrent::inspect_torrent_bytes(&bytes, "mig-switch.torrent").unwrap();
+        let result = prepare_inspection_result(
+            offer.clone(),
+            Some("Super Mario Bros RPG"),
+            Some("Nintendo Switch"),
+            &crate::settings::AppSettings::default(),
+        )
+        .unwrap();
+        let state = build_review_state(
+            &offer,
+            result.ranked_candidates,
+            false,
+            Some("Nintendo Switch"),
+        );
+
+        assert_eq!(offer.files.len(), 5);
+        assert_eq!(state.reviewable_file_count, 1);
+        assert_eq!(state.display_order, [4]);
+        assert_eq!(state.selected_file_indices, [4]);
+        assert!(offer.files[4].path.ends_with(".xci"));
+        assert_eq!(offer.files[4].byte_size, 7_260_093_952);
     }
 
     #[test]
