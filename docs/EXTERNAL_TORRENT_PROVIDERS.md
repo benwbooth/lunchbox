@@ -115,6 +115,59 @@ Telegram channel. Platform support is still separate from download availability:
 emulator/runtime compatibility, user-owned keys or firmware, legal content
 ownership, safe import, and exact launch configuration remain independent gates.
 
+## Implemented local provider manifest
+
+Downloads settings can import a versioned JSON manifest stored beside lawful,
+user-managed `.torrent` files. This is a bulk metadata-indexing route, not a
+download operation: the normal exact-game Get review and qBittorrent queue remain
+the only route from an indexed member to a payload transfer.
+
+```json
+{
+  "format": "lunchbox-local-torrent-provider",
+  "schema_version": 1,
+  "provider": {
+    "id": "my-switch-library",
+    "name": "My Switch Library",
+    "catalog_version": "2026.09",
+    "authorization": "user-managed",
+    "terms_url": "https://example.com/terms"
+  },
+  "offers": [
+    {
+      "id": "volume-1",
+      "name": "Volume 1",
+      "platform": "Nintendo Switch",
+      "torrent_path": "torrents/volume-1.torrent"
+    }
+  ]
+}
+```
+
+Provider and offer IDs are stable lowercase ASCII identifiers. Each offer has
+one explicit platform and one portable forward-slash relative path ending in
+`.torrent`. Paths cannot escape the manifest directory, and neither the manifest
+nor referenced torrent may be a symlink. Optional SHA-256 and v1-info-hash
+receipts are verified exactly when present. Unknown fields are rejected so a
+misspelled security or provenance field cannot be silently ignored.
+
+One manifest is limited to 1 MiB, 256 offers, 64 MiB of aggregate torrent
+metadata, and 500,000 indexed members. The existing bounded torrent parser still
+enforces per-source size, count, path, duplicate, case-ambiguity, and
+cross-platform filename rules. Import is one SQLite transaction. Reimport is
+idempotent; changing an offer ID, platform, info hash, or torrent receipt requires
+an explicit `catalog_version` change.
+
+The settings card lists installed providers, versions, offer counts, source
+paths, and optional terms links. Resync rereads and revalidates the exact local
+manifest. Remove deletes only provider-owned Lunchbox catalog metadata. It never
+deletes the JSON manifest, `.torrent` files, qBittorrent jobs, or ROM payloads.
+If the same torrent was later re-registered manually, that explicit review
+relinquishes manifest ownership and removing the provider preserves the source.
+No provider labels or member filenames create or merge canonical game records;
+only exact normalized titles already attached to a catalog game can surface a
+review candidate.
+
 ## Delivery order
 
 1. **Complete:** exact-game manual `.torrent` and v1 magnet intake with
@@ -128,7 +181,9 @@ ownership, safe import, and exact launch configuration remain independent gates.
    and torrent SHA-256 before the unchanged inbox copy is removed. Identical
    archived metadata is reused, naming collisions are deterministic, nested
    archives are excluded from scans, and payload files are never moved.
-4. A local provider manifest for user-managed, lawful catalogs.
+4. **Complete:** versioned local provider manifests for user-managed, lawful
+   catalogs, with native import/resync/removal management, bounded exact receipt
+   validation, transactional ownership, and no payload queueing.
 5. A documented adapter SDK with capability, terms, authentication, rate-limit,
    and revocation metadata.
 6. Individual source adapters only after legal/terms review and real integration

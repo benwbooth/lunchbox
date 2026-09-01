@@ -85,6 +85,7 @@ fn main() {
                 "qml/InlineProgressBar.qml",
                 "qml/LaunchCommandPreview.qml",
                 "qml/LoadedTorrentPicker.qml",
+                "qml/LocalProviderManifests.qml",
                 "qml/MetadataField.qml",
                 "qml/MediaDownloadStatus.qml",
                 "qml/MediaRepairRecoveryBanner.qml",
@@ -122,6 +123,7 @@ fn main() {
     .file("src/library_model.rs")
     .file("src/media_audit_model.rs")
     .file("src/local_import_model.rs")
+    .file("src/local_provider_manifest_model.rs")
     .file("src/screenscraper_model.rs")
     .file("src/settings_model.rs")
     .file("src/steamgriddb_model.rs")

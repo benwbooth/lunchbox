@@ -4125,7 +4125,8 @@ impl SettingsStore {
                  torrent_bytes=excluded.torrent_bytes,
                  file_count=excluded.file_count,
                  total_bytes=excluded.total_bytes,
-                 registered_at=excluded.registered_at",
+                 registered_at=excluded.registered_at,
+                 managed_by_provider_id=''",
             params![
                 catalog.platform,
                 catalog.platform_key,
@@ -5057,7 +5058,10 @@ fn migrate(connection: &Connection) -> Result<()> {
              torrent_bytes BLOB NOT NULL CHECK (length(torrent_bytes) BETWEEN 1 AND 16777216),
              file_count INTEGER NOT NULL CHECK (file_count BETWEEN 1 AND 100000),
              total_bytes INTEGER NOT NULL CHECK (total_bytes > 0),
-             registered_at INTEGER NOT NULL CHECK (registered_at >= 0)
+             registered_at INTEGER NOT NULL CHECK (registered_at >= 0),
+             managed_by_provider_id TEXT NOT NULL DEFAULT '' CHECK (
+                 length(managed_by_provider_id) <= 80
+             )
          );
          CREATE INDEX IF NOT EXISTS registered_torrent_catalogs_platform
              ON registered_torrent_catalogs(platform_key, registered_at DESC);
@@ -5072,6 +5076,39 @@ fn migrate(connection: &Connection) -> Result<()> {
          );
          CREATE INDEX IF NOT EXISTS registered_torrent_members_title
              ON registered_torrent_members(source_id, title_key, file_index);
+         CREATE TABLE IF NOT EXISTS local_provider_manifests (
+             provider_id TEXT PRIMARY KEY CHECK (length(provider_id) BETWEEN 1 AND 80),
+             display_name TEXT NOT NULL CHECK (length(display_name) BETWEEN 1 AND 120),
+             catalog_version TEXT NOT NULL CHECK (length(catalog_version) BETWEEN 1 AND 80),
+             authorization TEXT NOT NULL CHECK (authorization='user-managed'),
+             terms_url TEXT NOT NULL CHECK (length(terms_url) <= 2048),
+             manifest_path_display TEXT NOT NULL CHECK (
+                 length(manifest_path_display) BETWEEN 1 AND 32768
+             ),
+             manifest_path_bytes BLOB NOT NULL CHECK (
+                 length(manifest_path_bytes) BETWEEN 1 AND 32768
+             ),
+             manifest_path_encoding TEXT NOT NULL CHECK (
+                 manifest_path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
+             ),
+             manifest_sha256 TEXT NOT NULL CHECK (length(manifest_sha256)=64),
+             offer_count INTEGER NOT NULL CHECK (offer_count BETWEEN 1 AND 256),
+             imported_at INTEGER NOT NULL CHECK (imported_at >= 0)
+         );
+         CREATE TABLE IF NOT EXISTS local_provider_manifest_offers (
+             provider_id TEXT NOT NULL REFERENCES local_provider_manifests(provider_id)
+                 ON DELETE CASCADE,
+             offer_id TEXT NOT NULL CHECK (length(offer_id) BETWEEN 1 AND 120),
+             info_hash TEXT NOT NULL REFERENCES registered_torrent_catalogs(info_hash)
+                 ON DELETE RESTRICT,
+             torrent_sha256 TEXT NOT NULL CHECK (length(torrent_sha256)=64),
+             platform TEXT NOT NULL CHECK (length(platform) BETWEEN 1 AND 512),
+             platform_key TEXT NOT NULL CHECK (length(platform_key) BETWEEN 1 AND 512),
+             PRIMARY KEY (provider_id, offer_id),
+             UNIQUE (provider_id, info_hash)
+         );
+         CREATE INDEX IF NOT EXISTS local_provider_manifest_offers_hash
+             ON local_provider_manifest_offers(info_hash, provider_id);
          CREATE TABLE IF NOT EXISTS retained_torrent_metadata (
              info_hash TEXT PRIMARY KEY CHECK (length(info_hash)=40),
              torrent_sha256 TEXT NOT NULL CHECK (length(torrent_sha256)=64),
@@ -5904,6 +5941,16 @@ fn migrate(connection: &Connection) -> Result<()> {
     )? {
         connection.execute(
             "ALTER TABLE app_settings ADD COLUMN watched_torrent_archive_directory TEXT NOT NULL DEFAULT ''",
+            [],
+        )?;
+    }
+    if !column_exists(
+        connection,
+        "registered_torrent_catalogs",
+        "managed_by_provider_id",
+    )? {
+        connection.execute(
+            "ALTER TABLE registered_torrent_catalogs ADD COLUMN managed_by_provider_id TEXT NOT NULL DEFAULT '' CHECK (length(managed_by_provider_id) <= 80)",
             [],
         )?;
     }
@@ -6907,7 +6954,9 @@ fn registered_torrent_summary_from_row(
     })
 }
 
-fn validate_registered_torrent_catalog(catalog: &RegisteredTorrentCatalog) -> Result<()> {
+pub(crate) fn validate_registered_torrent_catalog(
+    catalog: &RegisteredTorrentCatalog,
+) -> Result<()> {
     fn validate_text(value: &str, label: &str, limit: usize) -> Result<()> {
         if value.trim().is_empty() || value.chars().count() > limit {
             bail!("{label} must contain between 1 and {limit} characters");
@@ -9588,6 +9637,14 @@ mod tests {
         );
         assert!(column_exists(&connection, "app_settings", "onboarding_complete").unwrap());
         assert!(column_exists(&connection, "sidebar_preferences", "details_width").unwrap());
+        assert!(
+            column_exists(
+                &connection,
+                "registered_torrent_catalogs",
+                "managed_by_provider_id"
+            )
+            .unwrap()
+        );
         let prepared_table: Option<i64> = connection
             .query_row(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='prepared_game_installs'",
@@ -9601,6 +9658,8 @@ mod tests {
             "game_activity",
             "play_sessions",
             "manual_torrent_sources",
+            "local_provider_manifests",
+            "local_provider_manifest_offers",
             "retained_torrent_metadata",
             "emulator_update_pins",
             "emulator_lifecycle_operations",
@@ -9616,6 +9675,55 @@ mod tests {
                 .optional()
                 .unwrap();
             assert_eq!(migrated, Some(1), "missing migrated table {table}");
+        }
+    }
+
+    #[test]
+    fn older_registered_torrent_schema_adds_local_provider_ownership() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE registered_torrent_catalogs (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     platform TEXT NOT NULL CHECK (length(platform) BETWEEN 1 AND 512),
+                     platform_key TEXT NOT NULL CHECK (length(platform_key) BETWEEN 1 AND 512),
+                     source_kind TEXT NOT NULL CHECK (source_kind IN ('file', 'magnet')),
+                     source_label TEXT NOT NULL CHECK (length(source_label) BETWEEN 1 AND 4096),
+                     source_file_name TEXT NOT NULL CHECK (length(source_file_name) BETWEEN 1 AND 1024),
+                     torrent_name TEXT NOT NULL CHECK (length(torrent_name) BETWEEN 1 AND 1024),
+                     torrent_sha256 TEXT NOT NULL CHECK (length(torrent_sha256)=64),
+                     info_hash TEXT NOT NULL UNIQUE CHECK (length(info_hash)=40),
+                     torrent_bytes BLOB NOT NULL CHECK (length(torrent_bytes) BETWEEN 1 AND 16777216),
+                     file_count INTEGER NOT NULL CHECK (file_count BETWEEN 1 AND 100000),
+                     total_bytes INTEGER NOT NULL CHECK (total_bytes > 0),
+                     registered_at INTEGER NOT NULL CHECK (registered_at >= 0)
+                 );",
+            )
+            .unwrap();
+        drop(connection);
+
+        SettingsStore::at(&path).unwrap();
+        let connection = Connection::open(path).unwrap();
+        assert!(
+            column_exists(
+                &connection,
+                "registered_torrent_catalogs",
+                "managed_by_provider_id"
+            )
+            .unwrap()
+        );
+        for table in ["local_provider_manifests", "local_provider_manifest_offers"] {
+            let exists: Option<i64> = connection
+                .query_row(
+                    "SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert_eq!(exists, Some(1));
         }
     }
 

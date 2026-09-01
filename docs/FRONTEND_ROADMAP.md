@@ -131,6 +131,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   complete-inventory review, exact platform/title indexing, no payload at
   registration, and selective per-game queueing through the normal Get review.
   Magnet URIs are not persisted.
+- Versioned local provider manifests for bulk user-managed lawful catalogs:
+  native JSON selection, portable relative paths, optional exact hash receipts,
+  aggregate parser bounds, immutable same-version offers, transactional
+  import/resync/removal ownership, and zero payload queueing. Explicit manual
+  source review takes ownership so provider removal cannot erase that source.
 - Unified native Find Artwork workflow for SteamGridDB, IGDB, authorized
   ScreenScraper WebAPI v2, EmuMovies FTP, and explicit Web
   artwork with
@@ -272,8 +277,8 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   into the GUI process.
 - Extend the implemented provider-neutral exact-game and reusable-source intake,
   bounded watched-folder `.torrent` discovery, exact-hash opt-in source archival,
-  and v1-magnet intake with local user-managed provider manifests and then
-  authorized catalog adapters.
+  v1-magnet intake, and local user-managed provider manifests with authorized
+  catalog adapters.
   External offers must retain source provenance and never establish or merge a
   canonical game identity. A direct NSW Torrent Library adapter is not planned
   unless its operators provide documented rights, terms, and an authorized API;

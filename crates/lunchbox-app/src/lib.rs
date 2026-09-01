@@ -32,6 +32,8 @@ pub mod library_model;
 mod list_view;
 mod local_import;
 pub mod local_import_model;
+mod local_provider_manifest;
+pub mod local_provider_manifest_model;
 mod media;
 mod media_acquisition;
 mod media_audit;

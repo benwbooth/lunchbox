@@ -222,8 +222,13 @@ Lunchbox copies the exact `.torrent` bytes with collision-safe naming, reopens
 the copy to verify both the v1 info hash and SHA-256 receipt, and only then
 removes that unchanged inbox copy. Repeated imports reuse an identical archived
 copy, a nested archive is excluded from scanning, and ROM payload is never
-moved. Local provider manifests and authorized provider adapters remain planned. See
-[external torrent providers](docs/EXTERNAL_TORRENT_PROVIDERS.md).
+moved. The same Downloads section imports versioned local provider manifests to
+index up to 256 explicitly platformed `.torrent` catalogs in one transaction.
+Every relative path and optional hash receipt is validated, resync requires a
+catalog-version bump when offers change, and removal affects only manifest-owned
+Lunchbox metadata. It never queues payloads or deletes manifests, torrent files,
+qBittorrent jobs, or ROMs. Authorized network provider adapters remain planned.
+See [external torrent providers](docs/EXTERNAL_TORRENT_PROVIDERS.md).
 
 The details header also opens a native metadata editor for display title,
 description, release date, developer, publisher, genre, players, rating, age

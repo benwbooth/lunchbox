@@ -2414,6 +2414,26 @@ ApplicationWindow {
         id: watchedTorrents
     }
 
+    LocalProviderManifestModel {
+        id: localProviderManifests
+    }
+
+    Connections {
+        target: localProviderManifests
+        function onCatalog_revisionChanged() {
+            if (localProviderManifests.catalog_revision <= 0)
+                return
+            if (root.selectedGameId.length > 0
+                    && gameDetails.game_id === root.selectedGameId) {
+                gameDetails.select_game(root.selectedGameId,
+                                        gameDetails.title,
+                                        gameDetails.platform,
+                                        gameDetails.local,
+                                        gameDetails.downloadable)
+            }
+        }
+    }
+
     Connections {
         target: externalTorrent
         function onQueued_revisionChanged() {
@@ -6472,6 +6492,7 @@ ApplicationWindow {
             downloadQueue.initialize()
             localImport.initialize()
             watchedTorrents.initialize()
+            localProviderManifests.initialize()
         }
     }
 
@@ -19275,6 +19296,18 @@ ApplicationWindow {
                     onReviewRequested: function(source) {
                         root.reviewWatchedTorrent(source)
                     }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                LocalProviderManifests {
+                    Layout.fillWidth: true
+                    manifestModel: localProviderManifests
+                    ink: root.ink
+                    muted: root.muted
+                    line: root.line
+                    panel: "#0f151f"
+                    accent: root.accent
+                    accentCool: root.accentCool
                 }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
