@@ -18,6 +18,7 @@ use crate::local_import::{
 use crate::settings::{self, SettingsStore};
 
 const MAX_AUDIT_RECORDS: usize = 500_000;
+const MAX_AUDIT_HISTORY: usize = 100;
 const FIXTURE_MARKER: &str = ".lunchbox-library-audit-fixture";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -113,11 +114,36 @@ pub struct LibraryAuditOutput {
     pub availability_changes: usize,
     pub warnings: Vec<String>,
     pub cancelled: bool,
+    pub history: Vec<LibraryAuditRun>,
 }
 
 impl LibraryAuditOutput {
     pub fn issue_count(&self) -> usize {
         self.entries.len().saturating_sub(self.healthy_count)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LibraryAuditRun {
+    pub id: String,
+    pub finished_at: i64,
+    pub root_count: usize,
+    pub scanned_root_count: usize,
+    pub total_entry_count: usize,
+    pub healthy_count: usize,
+    pub missing_count: usize,
+    pub changed_count: usize,
+    pub duplicate_count: usize,
+    pub untracked_count: usize,
+    pub unavailable_count: usize,
+    pub unreadable_count: usize,
+    pub availability_changes: usize,
+    pub warning_count: usize,
+}
+
+impl LibraryAuditRun {
+    pub fn issue_count(&self) -> usize {
+        self.total_entry_count.saturating_sub(self.healthy_count)
     }
 }
 
@@ -345,7 +371,184 @@ pub fn audit_local_collection(
         completed_roots: scanned_root_count,
         ..LibraryAuditProgress::default()
     });
+    output.history = if output.cancelled || output.root_count == 0 {
+        load_audit_runs(state_path)?
+    } else {
+        record_audit_run(state_path, &output)?
+    };
     Ok(output)
+}
+
+fn record_audit_run(
+    state_path: &Path,
+    output: &LibraryAuditOutput,
+) -> Result<Vec<LibraryAuditRun>> {
+    if output.cancelled || output.root_count == 0 {
+        bail!("only completed audits with at least one root can be recorded");
+    }
+    let run = LibraryAuditRun {
+        id: Uuid::new_v4().to_string(),
+        finished_at: settings::unix_timestamp(),
+        root_count: output.root_count,
+        scanned_root_count: output.scanned_root_count,
+        total_entry_count: output.entries.len(),
+        healthy_count: output.healthy_count,
+        missing_count: output.missing_count,
+        changed_count: output.changed_count,
+        duplicate_count: output.duplicate_count,
+        untracked_count: output.untracked_count,
+        unavailable_count: output.unavailable_count,
+        unreadable_count: output.unreadable_count,
+        availability_changes: output.availability_changes,
+        warning_count: output.warnings.len(),
+    };
+    validate_audit_run(&run)?;
+
+    let store = SettingsStore::at(state_path)?;
+    let mut connection = store.connection()?;
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO library_audit_runs (
+             id, finished_at, root_count, scanned_root_count, total_entry_count,
+             healthy_count, missing_count, changed_count, duplicate_count,
+             untracked_count, unavailable_count, unreadable_count,
+             availability_changes, warning_count
+         ) VALUES (
+             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
+         )",
+        params![
+            run.id,
+            run.finished_at,
+            usize_to_i64(run.root_count),
+            usize_to_i64(run.scanned_root_count),
+            usize_to_i64(run.total_entry_count),
+            usize_to_i64(run.healthy_count),
+            usize_to_i64(run.missing_count),
+            usize_to_i64(run.changed_count),
+            usize_to_i64(run.duplicate_count),
+            usize_to_i64(run.untracked_count),
+            usize_to_i64(run.unavailable_count),
+            usize_to_i64(run.unreadable_count),
+            usize_to_i64(run.availability_changes),
+            usize_to_i64(run.warning_count),
+        ],
+    )?;
+    transaction.execute(
+        "DELETE FROM library_audit_runs
+         WHERE id IN (
+             SELECT id FROM library_audit_runs
+             ORDER BY finished_at DESC, sequence DESC
+             LIMIT -1 OFFSET ?1
+         )",
+        [usize_to_i64(MAX_AUDIT_HISTORY)],
+    )?;
+    let history = load_audit_runs_on(&transaction)?;
+    transaction.commit()?;
+    Ok(history)
+}
+
+pub fn load_audit_runs(state_path: &Path) -> Result<Vec<LibraryAuditRun>> {
+    let store = SettingsStore::at(state_path)?;
+    let connection = store.connection()?;
+    load_audit_runs_on(&connection)
+}
+
+fn load_audit_runs_on(connection: &Connection) -> Result<Vec<LibraryAuditRun>> {
+    let mut statement = connection.prepare(
+        "SELECT id, finished_at, root_count, scanned_root_count, total_entry_count,
+                healthy_count, missing_count, changed_count, duplicate_count,
+                untracked_count, unavailable_count, unreadable_count,
+                availability_changes, warning_count
+         FROM library_audit_runs
+         ORDER BY finished_at DESC, sequence DESC
+         LIMIT ?1",
+    )?;
+    let rows = statement.query_map([usize_to_i64(MAX_AUDIT_HISTORY)], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, i64>(5)?,
+            row.get::<_, i64>(6)?,
+            row.get::<_, i64>(7)?,
+            row.get::<_, i64>(8)?,
+            row.get::<_, i64>(9)?,
+            row.get::<_, i64>(10)?,
+            row.get::<_, i64>(11)?,
+            row.get::<_, i64>(12)?,
+            row.get::<_, i64>(13)?,
+        ))
+    })?;
+    let mut history = Vec::new();
+    for row in rows {
+        let (
+            id,
+            finished_at,
+            root_count,
+            scanned_root_count,
+            total_entry_count,
+            healthy_count,
+            missing_count,
+            changed_count,
+            duplicate_count,
+            untracked_count,
+            unavailable_count,
+            unreadable_count,
+            availability_changes,
+            warning_count,
+        ) = row?;
+        let run = LibraryAuditRun {
+            id,
+            finished_at,
+            root_count: nonnegative_usize(root_count)?,
+            scanned_root_count: nonnegative_usize(scanned_root_count)?,
+            total_entry_count: nonnegative_usize(total_entry_count)?,
+            healthy_count: nonnegative_usize(healthy_count)?,
+            missing_count: nonnegative_usize(missing_count)?,
+            changed_count: nonnegative_usize(changed_count)?,
+            duplicate_count: nonnegative_usize(duplicate_count)?,
+            untracked_count: nonnegative_usize(untracked_count)?,
+            unavailable_count: nonnegative_usize(unavailable_count)?,
+            unreadable_count: nonnegative_usize(unreadable_count)?,
+            availability_changes: nonnegative_usize(availability_changes)?,
+            warning_count: nonnegative_usize(warning_count)?,
+        };
+        validate_audit_run(&run)?;
+        history.push(run);
+    }
+    Ok(history)
+}
+
+fn validate_audit_run(run: &LibraryAuditRun) -> Result<()> {
+    let status_total = run
+        .healthy_count
+        .saturating_add(run.missing_count)
+        .saturating_add(run.changed_count)
+        .saturating_add(run.duplicate_count)
+        .saturating_add(run.untracked_count)
+        .saturating_add(run.unavailable_count)
+        .saturating_add(run.unreadable_count);
+    if Uuid::parse_str(&run.id).is_err()
+        || run.finished_at < 0
+        || run.scanned_root_count > run.root_count
+        || status_total != run.total_entry_count
+    {
+        bail!(
+            "library audit history row {} is internally inconsistent",
+            run.id
+        );
+    }
+    Ok(())
+}
+
+fn usize_to_i64(value: usize) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
+}
+
+fn nonnegative_usize(value: i64) -> Result<usize> {
+    usize::try_from(value).context("library audit history contains an invalid negative count")
 }
 
 pub fn remove_missing_records(state_path: &Path, file_ids: &[String]) -> Result<usize> {
@@ -579,20 +782,22 @@ pub fn library_audit_fixture_probe() -> Result<String> {
         || output.untracked_count != 1
         || output.unavailable_count != 0
         || output.unreadable_count != 0
+        || output.history.len() != 1
     {
         bail!(
-            "audit fixture produced unexpected counts: healthy={} missing={} changed={} duplicate={} new={} unavailable={} unreadable={}",
+            "audit fixture produced unexpected counts: healthy={} missing={} changed={} duplicate={} new={} unavailable={} unreadable={} history={}",
             output.healthy_count,
             output.missing_count,
             output.changed_count,
             output.duplicate_count,
             output.untracked_count,
             output.unavailable_count,
-            output.unreadable_count
+            output.unreadable_count,
+            output.history.len()
         );
     }
     Ok(format!(
-        "roots={} entries={} healthy={} missing={} changed={} duplicates={} new={} availability_changes={} state={:?}",
+        "roots={} entries={} healthy={} missing={} changed={} duplicates={} new={} availability_changes={} history={} state={:?}",
         output.root_count,
         output.entries.len(),
         output.healthy_count,
@@ -601,6 +806,7 @@ pub fn library_audit_fixture_probe() -> Result<String> {
         output.duplicate_count,
         output.untracked_count,
         output.availability_changes,
+        output.history.len(),
         state_path
     ))
 }
@@ -780,6 +986,9 @@ mod tests {
         assert_eq!(output.untracked_count, 1);
         assert_eq!(output.unavailable_count, 0);
         assert_eq!(output.availability_changes, 1);
+        assert_eq!(output.history.len(), 1);
+        assert_eq!(output.history[0].issue_count(), 5);
+        assert_eq!(output.history[0].missing_count, 1);
         let preserved_files = [
             "Healthy.nes",
             "Duplicate One.nes",
@@ -816,6 +1025,11 @@ mod tests {
         .unwrap();
         assert_eq!(refreshed.missing_count, 0);
         assert_eq!(refreshed.entries.len(), 5);
+        assert_eq!(refreshed.history.len(), 2);
+        assert_eq!(refreshed.history[0].missing_count, 0);
+        assert_eq!(refreshed.history[0].issue_count(), 4);
+        assert_eq!(refreshed.history[1].missing_count, 1);
+        assert_eq!(refreshed.history[1].issue_count(), 5);
     }
 
     #[test]
@@ -839,5 +1053,38 @@ mod tests {
         assert_eq!(output.missing_count, 0);
         assert_eq!(output.availability_changes, 0);
         assert!(output.entries.iter().all(|entry| !entry.removable()));
+    }
+
+    #[test]
+    fn audit_history_is_bounded_and_cancelled_runs_never_replace_the_baseline() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("state.db");
+        SettingsStore::at(&state).unwrap();
+        let mut output = LibraryAuditOutput {
+            root_count: 1,
+            scanned_root_count: 1,
+            entries: vec![LibraryAuditEntry {
+                file_id: Uuid::new_v4().to_string(),
+                root_path: directory.path().into(),
+                path: directory.path().join("Game.rom"),
+                file_name: "Game.rom".into(),
+                archive_member: String::new(),
+                title: "Game".into(),
+                platform: "Platform".into(),
+                status: LibraryAuditStatus::Healthy,
+                detail: "Verified".into(),
+            }],
+            healthy_count: 1,
+            ..LibraryAuditOutput::default()
+        };
+        for _ in 0..MAX_AUDIT_HISTORY.saturating_add(7) {
+            output.history = record_audit_run(&state, &output).unwrap();
+        }
+        assert_eq!(output.history.len(), MAX_AUDIT_HISTORY);
+        assert_eq!(load_audit_runs(&state).unwrap().len(), MAX_AUDIT_HISTORY);
+
+        output.cancelled = true;
+        assert!(record_audit_run(&state, &output).is_err());
+        assert_eq!(load_audit_runs(&state).unwrap().len(), MAX_AUDIT_HISTORY);
     }
 }

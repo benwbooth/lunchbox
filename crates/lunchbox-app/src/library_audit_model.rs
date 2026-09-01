@@ -30,6 +30,10 @@ pub mod qobject {
         #[qproperty(i32, untracked_count)]
         #[qproperty(i32, unavailable_count)]
         #[qproperty(i32, unreadable_count)]
+        #[qproperty(i32, history_count)]
+        #[qproperty(bool, comparison_available)]
+        #[qproperty(i32, issue_delta)]
+        #[qproperty(QString, comparison_summary)]
         #[qproperty(i32, selected_missing_count)]
         #[qproperty(i32, revision)]
         #[qproperty(i32, collection_revision)]
@@ -96,6 +100,21 @@ pub mod qobject {
 
         #[qinvokable]
         fn entry_root_url_at(self: &LibraryAuditModel, index: i32) -> QUrl;
+
+        #[qinvokable]
+        fn history_finished_at(self: &LibraryAuditModel, index: i32) -> i64;
+
+        #[qinvokable]
+        fn history_total_count_at(self: &LibraryAuditModel, index: i32) -> i32;
+
+        #[qinvokable]
+        fn history_issue_count_at(self: &LibraryAuditModel, index: i32) -> i32;
+
+        #[qinvokable]
+        fn history_summary_at(self: &LibraryAuditModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn history_comparison_at(self: &LibraryAuditModel, index: i32) -> QString;
     }
 
     impl cxx_qt::Threading for LibraryAuditModel {}
@@ -135,6 +154,10 @@ pub struct LibraryAuditModelRust {
     untracked_count: i32,
     unavailable_count: i32,
     unreadable_count: i32,
+    history_count: i32,
+    comparison_available: bool,
+    issue_delta: i32,
+    comparison_summary: QString,
     selected_missing_count: i32,
     revision: i32,
     collection_revision: i32,
@@ -174,6 +197,12 @@ impl Default for LibraryAuditModelRust {
             untracked_count: 0,
             unavailable_count: 0,
             unreadable_count: 0,
+            history_count: 0,
+            comparison_available: false,
+            issue_delta: 0,
+            comparison_summary: qstring(
+                "Run the audit twice to compare maintenance trends over time.",
+            ),
             selected_missing_count: 0,
             revision: 0,
             collection_revision: 0,
@@ -343,6 +372,23 @@ impl qobject::LibraryAuditModel {
                     .set_unavailable_count(saturating_i32(output.unavailable_count));
                 self.as_mut()
                     .set_unreadable_count(saturating_i32(output.unreadable_count));
+                self.as_mut()
+                    .set_history_count(saturating_i32(output.history.len()));
+                if let (Some(current), Some(previous)) =
+                    (output.history.first(), output.history.get(1))
+                {
+                    let issue_delta = signed_delta(current.issue_count(), previous.issue_count());
+                    self.as_mut().set_comparison_available(true);
+                    self.as_mut().set_issue_delta(issue_delta);
+                    self.as_mut()
+                        .set_comparison_summary(qstring(comparison_sentence(current, previous)));
+                } else {
+                    self.as_mut().set_comparison_available(false);
+                    self.as_mut().set_issue_delta(0);
+                    self.as_mut().set_comparison_summary(qstring(
+                        "This is the first retained complete audit; the next run will show what changed.",
+                    ));
+                }
                 self.as_mut().rust_mut().selected_missing.clear();
                 self.as_mut().set_selected_missing_count(0);
                 self.as_mut().rust_mut().output = Some(Arc::new(output));
@@ -648,10 +694,66 @@ impl qobject::LibraryAuditModel {
             .unwrap_or_default()
     }
 
+    pub fn history_finished_at(&self, index: i32) -> i64 {
+        self.history_run(index)
+            .map(|run| run.finished_at)
+            .unwrap_or_default()
+    }
+
+    pub fn history_total_count_at(&self, index: i32) -> i32 {
+        self.history_run(index)
+            .map(|run| saturating_i32(run.total_entry_count))
+            .unwrap_or_default()
+    }
+
+    pub fn history_issue_count_at(&self, index: i32) -> i32 {
+        self.history_run(index)
+            .map(|run| saturating_i32(run.issue_count()))
+            .unwrap_or_default()
+    }
+
+    pub fn history_summary_at(&self, index: i32) -> QString {
+        self.history_run(index)
+            .map(|run| {
+                qstring(format!(
+                    "{} healthy · {} missing · {} changed · {} duplicate · {} new · {} offline",
+                    run.healthy_count,
+                    run.missing_count,
+                    run.changed_count.saturating_add(run.unreadable_count),
+                    run.duplicate_count,
+                    run.untracked_count,
+                    run.unavailable_count,
+                ))
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn history_comparison_at(&self, index: i32) -> QString {
+        let Ok(index) = usize::try_from(index) else {
+            return QString::default();
+        };
+        let Some(output) = self.rust().output.as_ref() else {
+            return QString::default();
+        };
+        let Some(current) = output.history.get(index) else {
+            return QString::default();
+        };
+        output
+            .history
+            .get(index.saturating_add(1))
+            .map(|previous| qstring(comparison_sentence(current, previous)))
+            .unwrap_or_else(|| qstring("Oldest retained baseline"))
+    }
+
     fn visible_entry(&self, index: i32) -> Option<&LibraryAuditEntry> {
         let index = usize::try_from(index).ok()?;
         let output_index = *self.rust().visible_indices.get(index)?;
         self.rust().output.as_ref()?.entries.get(output_index)
+    }
+
+    fn history_run(&self, index: i32) -> Option<&library_audit::LibraryAuditRun> {
+        let index = usize::try_from(index).ok()?;
+        self.rust().output.as_ref()?.history.get(index)
     }
 
     fn update_selected_count(mut self: Pin<&mut Self>) {
@@ -666,6 +768,55 @@ impl qobject::LibraryAuditModel {
     }
 }
 
+fn signed_delta(current: usize, previous: usize) -> i32 {
+    let current = i64::try_from(current).unwrap_or(i64::MAX);
+    let previous = i64::try_from(previous).unwrap_or(i64::MAX);
+    i32::try_from(current.saturating_sub(previous)).unwrap_or_else(|_| {
+        if current >= previous {
+            i32::MAX
+        } else {
+            i32::MIN
+        }
+    })
+}
+
+fn comparison_sentence(
+    current: &library_audit::LibraryAuditRun,
+    previous: &library_audit::LibraryAuditRun,
+) -> String {
+    let delta = signed_delta(current.issue_count(), previous.issue_count());
+    let trend = match delta.cmp(&0) {
+        std::cmp::Ordering::Less => format!(
+            "{} fewer maintenance {} than the previous complete audit",
+            delta.unsigned_abs(),
+            if delta == -1 { "issue" } else { "issues" }
+        ),
+        std::cmp::Ordering::Greater => format!(
+            "{} more maintenance {} than the previous complete audit",
+            delta,
+            if delta == 1 { "issue" } else { "issues" }
+        ),
+        std::cmp::Ordering::Equal => {
+            "No net change in maintenance issues since the previous complete audit".to_owned()
+        }
+    };
+    format!(
+        "{trend} · missing {:+} · changed {:+} · duplicate {:+} · new {:+} · offline {:+}",
+        signed_delta(current.missing_count, previous.missing_count),
+        signed_delta(
+            current
+                .changed_count
+                .saturating_add(current.unreadable_count),
+            previous
+                .changed_count
+                .saturating_add(previous.unreadable_count),
+        ),
+        signed_delta(current.duplicate_count, previous.duplicate_count),
+        signed_delta(current.untracked_count, previous.untracked_count),
+        signed_delta(current.unavailable_count, previous.unavailable_count),
+    )
+}
+
 fn status_rank(status: LibraryAuditStatus) -> u8 {
     match status {
         LibraryAuditStatus::Unavailable => 0,
@@ -675,5 +826,44 @@ fn status_rank(status: LibraryAuditStatus) -> u8 {
         LibraryAuditStatus::Duplicate => 4,
         LibraryAuditStatus::Untracked => 5,
         LibraryAuditStatus::Healthy => 6,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(issue_count: usize) -> library_audit::LibraryAuditRun {
+        library_audit::LibraryAuditRun {
+            id: uuid::Uuid::new_v4().to_string(),
+            finished_at: 1,
+            root_count: 1,
+            scanned_root_count: 1,
+            total_entry_count: 20,
+            healthy_count: 20usize.saturating_sub(issue_count),
+            missing_count: issue_count,
+            changed_count: 0,
+            duplicate_count: 0,
+            untracked_count: 0,
+            unavailable_count: 0,
+            unreadable_count: 0,
+            availability_changes: 0,
+            warning_count: 0,
+        }
+    }
+
+    #[test]
+    fn audit_comparison_reports_better_equal_and_worse_trends_without_losing_signs() {
+        let better = comparison_sentence(&run(2), &run(5));
+        assert!(better.starts_with("3 fewer maintenance issues"));
+        assert!(better.contains("missing -3"));
+
+        let equal = comparison_sentence(&run(5), &run(5));
+        assert!(equal.starts_with("No net change"));
+        assert!(equal.contains("missing +0"));
+
+        let worse = comparison_sentence(&run(7), &run(5));
+        assert!(worse.starts_with("2 more maintenance issues"));
+        assert!(worse.contains("missing +2"));
     }
 }

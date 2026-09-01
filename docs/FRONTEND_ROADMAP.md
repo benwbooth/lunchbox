@@ -255,7 +255,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   resumable native-metadata-validated hash cache, exact duplicate/change audit,
   named extension-scoped scan profiles, sequential cross-root **Scan all**,
   bounded durable scan history, and missing-file management view with optional
-  background schedules and per-run comparison tools.
+  background schedules. The Library Audit now retains the newest 100 complete
+  exact-summary baselines, rejects cancelled/partial work from history, compares
+  every status count against the immediately prior complete run, and presents a
+  virtualized keyboard/pointer history view without retaining another copy of
+  every ROM path or hash.
 - Extend native ZIP/7z/RAR member inspection and manual matching review with
   multidisc grouping, patches, and alternate-version management.
 - Durable per-game tags are native: stable IDs, case-insensitive normalization,

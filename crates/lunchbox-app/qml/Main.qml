@@ -2574,6 +2574,18 @@ ApplicationWindow {
         id: libraryAudit
     }
 
+    LibraryAuditHistory {
+        id: libraryAuditHistoryDialog
+        auditModel: libraryAudit
+        ink: root.ink
+        muted: root.muted
+        panel: "#111822"
+        panelRaised: root.panelRaised
+        line: root.line
+        accent: root.accent
+        accentCool: root.accentCool
+    }
+
     FirmwareAuditModel {
         id: firmwareAudit
     }
@@ -5601,13 +5613,18 @@ ApplicationWindow {
                                      && libraryAudit.changed_count === 1
                                      && libraryAudit.duplicate_count === 2
                                      && libraryAudit.untracked_count === 1
+                                     && libraryAudit.history_count >= 3
+                                     && libraryAudit.comparison_available
+                                     && libraryAudit.issue_delta === -1
                 if (!cleanupValid) {
                     console.error("LUNCHBOX_LIBRARY_AUDIT_CLEANUP_UI_FAILED entries="
                                   + libraryAudit.total_entry_count + " missing="
                                   + libraryAudit.missing_count + " changed="
                                   + libraryAudit.changed_count + " duplicates="
                                   + libraryAudit.duplicate_count + " new="
-                                  + libraryAudit.untracked_count)
+                                  + libraryAudit.untracked_count + " history="
+                                  + libraryAudit.history_count + " delta="
+                                  + libraryAudit.issue_delta)
                     Qt.exit(2)
                     return
                 }
@@ -5622,6 +5639,9 @@ ApplicationWindow {
                           && libraryAudit.untracked_count === 1
                           && libraryAudit.unavailable_count === 0
                           && libraryAudit.unreadable_count === 0
+                          && libraryAudit.history_count >= 2
+                          && libraryAudit.comparison_available
+                          && libraryAudit.issue_delta === 0
             if (!valid) {
                 console.error("LUNCHBOX_LIBRARY_AUDIT_UI_FAILED healthy="
                               + libraryAudit.healthy_count + " missing="
@@ -5630,7 +5650,9 @@ ApplicationWindow {
                               + libraryAudit.duplicate_count + " new="
                               + libraryAudit.untracked_count + " offline="
                               + libraryAudit.unavailable_count + " unreadable="
-                              + libraryAudit.unreadable_count)
+                              + libraryAudit.unreadable_count + " history="
+                              + libraryAudit.history_count + " delta="
+                              + libraryAudit.issue_delta)
                 Qt.exit(2)
                 return
             }
@@ -14492,9 +14514,80 @@ ApplicationWindow {
                 }
                 AuditMetric {
                     Layout.fillWidth: true
-                    label: "Roots offline"
+                    label: "Offline files"
                     value: libraryAudit.unavailable_count
                     tone: "#ff7a88"
+                }
+            }
+
+            Rectangle {
+                objectName: "libraryAuditComparisonBanner"
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? 56 : 0
+                visible: libraryAudit.history_count > 0 && !libraryAudit.auditing
+                radius: 10
+                color: libraryAudit.comparison_available
+                       ? Qt.rgba((libraryAudit.issue_delta <= 0
+                                  ? root.accentCool : root.accent).r,
+                                 (libraryAudit.issue_delta <= 0
+                                  ? root.accentCool : root.accent).g,
+                                 (libraryAudit.issue_delta <= 0
+                                  ? root.accentCool : root.accent).b, 0.09)
+                       : "#151d29"
+                border.color: libraryAudit.comparison_available
+                              ? (libraryAudit.issue_delta <= 0
+                                 ? "#315c54" : "#6f5230")
+                              : root.line
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 14
+                    anchors.rightMargin: 10
+                    spacing: 11
+
+                    Text {
+                        text: libraryAudit.comparison_available
+                              ? (libraryAudit.issue_delta < 0 ? "↓"
+                                 : libraryAudit.issue_delta > 0 ? "↑" : "=")
+                              : "●"
+                        color: libraryAudit.comparison_available
+                               ? (libraryAudit.issue_delta <= 0
+                                  ? root.accentCool : root.accent)
+                               : root.muted
+                        font.pixelSize: 17
+                        font.weight: Font.Bold
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
+                        Text {
+                            text: libraryAudit.comparison_available
+                                  ? "SINCE THE PREVIOUS COMPLETE AUDIT"
+                                  : "FIRST TRUSTED AUDIT BASELINE"
+                            color: libraryAudit.comparison_available
+                                   ? (libraryAudit.issue_delta <= 0
+                                      ? root.accentCool : root.accent)
+                                   : root.muted
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.8
+                        }
+                        Text {
+                            objectName: "libraryAuditComparisonSummary"
+                            Layout.fillWidth: true
+                            text: libraryAudit.comparison_summary
+                            color: root.ink
+                            font.pixelSize: 10
+                            elide: Text.ElideRight
+                        }
+                    }
+                    HeaderButton {
+                        objectName: "libraryAuditHistoryButton"
+                        text: "History (" + libraryAudit.history_count + ")"
+                        implicitWidth: 112
+                        Accessible.name: "Open Library Audit history"
+                        onClicked: libraryAuditHistoryDialog.open()
+                    }
                 }
             }
 
@@ -14523,7 +14616,7 @@ ApplicationWindow {
                         { label: "Duplicates", value: "duplicate" },
                         { label: "New files", value: "untracked" },
                         { label: "Unreadable", value: "unreadable" },
-                        { label: "Roots offline", value: "unavailable" },
+                        { label: "Offline files", value: "unavailable" },
                         { label: "Healthy", value: "healthy" }
                     ]
                     onActivated: libraryAuditFilterDelay.restart()

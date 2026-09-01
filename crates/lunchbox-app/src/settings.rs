@@ -5476,6 +5476,32 @@ fn migrate(connection: &Connection) -> Result<()> {
              ON rom_scan_runs(finished_at DESC, id DESC);
          CREATE INDEX IF NOT EXISTS rom_scan_runs_profile
              ON rom_scan_runs(profile_id, finished_at DESC) WHERE profile_id<>'';
+         CREATE TABLE IF NOT EXISTS library_audit_runs (
+             sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+             id TEXT NOT NULL UNIQUE CHECK (length(id) BETWEEN 1 AND 64),
+             finished_at INTEGER NOT NULL CHECK (finished_at >= 0),
+             root_count INTEGER NOT NULL CHECK (root_count >= 0),
+             scanned_root_count INTEGER NOT NULL CHECK (
+                 scanned_root_count BETWEEN 0 AND root_count
+             ),
+             total_entry_count INTEGER NOT NULL CHECK (total_entry_count >= 0),
+             healthy_count INTEGER NOT NULL CHECK (healthy_count >= 0),
+             missing_count INTEGER NOT NULL CHECK (missing_count >= 0),
+             changed_count INTEGER NOT NULL CHECK (changed_count >= 0),
+             duplicate_count INTEGER NOT NULL CHECK (duplicate_count >= 0),
+             untracked_count INTEGER NOT NULL CHECK (untracked_count >= 0),
+             unavailable_count INTEGER NOT NULL CHECK (unavailable_count >= 0),
+             unreadable_count INTEGER NOT NULL CHECK (unreadable_count >= 0),
+             availability_changes INTEGER NOT NULL CHECK (availability_changes >= 0),
+             warning_count INTEGER NOT NULL CHECK (warning_count >= 0),
+             CHECK (
+                 healthy_count + missing_count + changed_count + duplicate_count
+                 + untracked_count + unavailable_count + unreadable_count
+                 = total_entry_count
+             )
+         );
+         CREATE INDEX IF NOT EXISTS library_audit_runs_finished
+             ON library_audit_runs(finished_at DESC, sequence DESC);
          CREATE TABLE IF NOT EXISTS local_rom_files (
              id TEXT PRIMARY KEY,
              root_id TEXT NOT NULL REFERENCES local_collection_roots(id) ON DELETE CASCADE,
