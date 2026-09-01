@@ -359,8 +359,16 @@ Rectangle {
                         listRevision
                         return root.torrent.existing_info_hash_at(sourceIndex)
                     }
-                    property bool batchSelected: sourceHash.length > 0
-                                                 && root.torrent.existing_selected_at(sourceIndex)
+                    property bool batchSelected: {
+                        // existing_selected_at() is a C++ invokable, so QML
+                        // cannot discover its internal selection dependency.
+                        // Observe the model's explicit revision or the real
+                        // UI can keep painting the old unchecked state even
+                        // though the Rust selection changed successfully.
+                        listRevision
+                        return sourceHash.length > 0
+                                && root.torrent.existing_selected_at(sourceIndex)
+                    }
                     property bool exactSelected: sourceHash.length > 0
                                                  && sourceHash === root.torrent.existing_selected_info_hash
                     property bool selected: batchSelected || exactSelected

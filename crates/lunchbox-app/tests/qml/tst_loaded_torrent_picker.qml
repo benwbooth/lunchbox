@@ -18,7 +18,7 @@ TestCase {
         property int existing_filter_revision: 1
         property int existing_revision: 1
         property string existing_selected_info_hash: ""
-        property int existing_selected_count: selectedHashes.length
+        property int existing_selected_count: 0
         property var selectedHashes: []
         property string query: ""
         property int filterCalls: 0
@@ -66,16 +66,20 @@ TestCase {
         }
         function set_existing_torrent_selected(index, selected) {
             const hash = existing_info_hash_at(index)
-            const updated = selectedHashes.slice()
-            const position = updated.indexOf(hash)
+            const position = selectedHashes.indexOf(hash)
             if (!selected && position >= 0)
-                updated.splice(position, 1)
+                selectedHashes.splice(position, 1)
             else if (selected && position < 0)
-                updated.push(hash)
-            selectedHashes = updated
+                selectedHashes.push(hash)
+            existing_selected_count = selectedHashes.length
+            // Match the C++ model: its invokable owns non-QML state and only
+            // the explicit revision tells delegates to query it again.
+            existing_revision += 1
         }
         function clear_existing_selection() {
-            selectedHashes = []
+            selectedHashes.splice(0, selectedHashes.length)
+            existing_selected_count = 0
+            existing_revision += 1
         }
         function inspect_selected_existing_torrents() {
             batchReviewCalls += 1
@@ -123,6 +127,7 @@ TestCase {
         torrentModel.existing_selected_info_hash = ""
         torrentModel.collection_mode = false
         torrentModel.selectedHashes = []
+        torrentModel.existing_selected_count = 0
         torrentModel.query = ""
         torrentModel.filterCalls = 0
         torrentModel.inspectedIndex = -1
@@ -271,6 +276,7 @@ TestCase {
         verify(first !== null && second !== null)
         mouseClick(first, first.width / 2, first.height / 2)
         compare(torrentModel.existing_selected_count, 1)
+        tryVerify(() => firstRow.batchSelected)
         compare(torrentModel.inspectedIndex, -1)
         verify(popup.opened)
         picker.toggleCheckbox(1, Qt.ShiftModifier)

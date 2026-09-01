@@ -1,6 +1,65 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="64" fill="#ffb454"/>
-  <path fill="#18120b" d="M75 51h45v112h67v42H75z"/>
-  <circle cx="180" cy="76" r="13" fill="#18120b"/>
-  <circle cx="211" cy="107" r="13" fill="#18120b"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Retro metal lunchbox with a gamepad emblem">
+  <defs>
+    <linearGradient id="handleMetal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8f3df"/>
+      <stop offset="0.32" stop-color="#aebbc0"/>
+      <stop offset="0.58" stop-color="#667680"/>
+      <stop offset="1" stop-color="#d9e0dc"/>
+    </linearGradient>
+    <linearGradient id="caseMetal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff7dc"/>
+      <stop offset="0.18" stop-color="#bcc8c8"/>
+      <stop offset="0.48" stop-color="#71818a"/>
+      <stop offset="0.72" stop-color="#dce4df"/>
+      <stop offset="1" stop-color="#7a8990"/>
+    </linearGradient>
+    <linearGradient id="paint" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#ffba4d"/>
+      <stop offset="0.48" stop-color="#f27935"/>
+      <stop offset="1" stop-color="#d94745"/>
+    </linearGradient>
+    <linearGradient id="badge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#203744"/>
+      <stop offset="1" stop-color="#101a24"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Heavy chrome handle, drawn behind the case. -->
+  <path d="M79 80V57c0-18 14-32 32-32h34c18 0 32 14 32 32v23"
+        fill="none" stroke="#15232d" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M79 80V57c0-18 14-32 32-32h34c18 0 32 14 32 32v23"
+        fill="none" stroke="url(#handleMetal)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M105 37h46" fill="none" stroke="#ffffff" stroke-opacity="0.48" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Latches sit above the stamped body like an old metal school lunchbox. -->
+  <g stroke="#15232d" stroke-width="6" stroke-linejoin="round">
+    <path d="M49 67h34v32H49z" fill="url(#caseMetal)"/>
+    <path d="M173 67h34v32h-34z" fill="url(#caseMetal)"/>
+  </g>
+  <path d="M57 76h18v13H57zm124 0h18v13h-18z" fill="#273943"/>
+
+  <!-- Rounded steel shell and inset painted panel. -->
+  <rect x="17" y="80" width="222" height="156" rx="27" fill="#14232d"/>
+  <rect x="24" y="87" width="208" height="142" rx="21" fill="url(#caseMetal)"/>
+  <rect x="36" y="99" width="184" height="118" rx="13" fill="url(#paint)" stroke="#5a3130" stroke-width="5"/>
+  <path d="M42 113h172" stroke="#ffe59a" stroke-opacity="0.58" stroke-width="5" stroke-linecap="round"/>
+  <path d="M42 202h172" stroke="#9c2f43" stroke-opacity="0.52" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- A little stamped-metal wear without muddying the silhouette. -->
+  <path d="M53 129l21-12m-15 78l24-12m107-61l14-8m-20 86l19-11" stroke="#fff2c7" stroke-opacity="0.28" stroke-width="4" stroke-linecap="round"/>
+  <g fill="#4f6068" stroke="#f6f0d9" stroke-width="2">
+    <circle cx="38" cy="101" r="5"/>
+    <circle cx="218" cy="101" r="5"/>
+    <circle cx="38" cy="215" r="5"/>
+    <circle cx="218" cy="215" r="5"/>
+  </g>
+
+  <!-- Recessed badge and clean gamepad mark. -->
+  <path d="M77 137c5-17 19-27 36-27h30c17 0 31 10 36 27l12 38c4 13-10 24-22 16l-22-15h-38l-22 15c-12 8-26-3-22-16z"
+        fill="url(#badge)" stroke="#f9e8b8" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M96 136v29m-14-14h29" stroke="#f7f1dc" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="157" cy="142" r="7" fill="#57d7cc"/>
+  <circle cx="174" cy="157" r="7" fill="#f8df64"/>
+  <circle cx="126" cy="166" r="4" fill="#aebbc0"/>
+  <circle cx="140" cy="166" r="4" fill="#aebbc0"/>
 </svg>
