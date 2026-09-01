@@ -23,6 +23,7 @@ const EMUMOVIES_KEYRING_ACCOUNT: &str = "emumovies-credentials";
 const SCREENSCRAPER_KEYRING_ACCOUNT: &str = "screenscraper-credentials";
 const MAX_RETAINED_TORRENT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_EMULATOR_LIFECYCLE_HISTORY: usize = 200;
+const MAX_GAME_TAGS: usize = 32;
 static STORE_INITIALIZATION: Mutex<()> = Mutex::new(());
 pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
     "South",
@@ -429,7 +430,7 @@ pub struct GameMetadataOverride {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BulkMetadataGame {
+pub struct BulkGameIdentity {
     pub game_uid: String,
     pub launchbox_db_id: i64,
     pub canonical_title: String,
@@ -440,6 +441,13 @@ pub struct BulkMetadataGame {
 pub struct BulkMetadataOutcome {
     pub targeted: usize,
     pub changed: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BulkTagOutcome {
+    pub targeted: usize,
+    pub changed_games: usize,
+    pub changed_memberships: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -694,8 +702,8 @@ pub fn parse_game_tags(input: &str) -> Result<Vec<String>> {
             tags.push(name);
         }
     }
-    if tags.len() > 32 {
-        bail!("a game can have at most 32 tags");
+    if tags.len() > MAX_GAME_TAGS {
+        bail!("a game can have at most {MAX_GAME_TAGS} tags");
     }
     tags.sort_by_cached_key(|name| normalized_tag_name(name));
     Ok(tags)
@@ -2259,7 +2267,7 @@ impl SettingsStore {
 
     pub fn apply_bulk_game_metadata(
         &self,
-        games: &[BulkMetadataGame],
+        games: &[BulkGameIdentity],
         field: &str,
         value: Option<&str>,
     ) -> Result<BulkMetadataOutcome> {
@@ -2283,25 +2291,7 @@ impl SettingsStore {
         field.assign(&mut validation, value.clone());
         validation.validate()?;
 
-        if games.is_empty() {
-            bail!("bulk metadata editing requires at least one exact game identity");
-        }
-        if games.len() > 500_000 {
-            bail!("bulk metadata operation contains too many games");
-        }
-        let mut unique = HashSet::with_capacity(games.len());
-        let mut validated = Vec::with_capacity(games.len());
-        for game in games {
-            validate_metadata_identity(
-                &game.game_uid,
-                game.launchbox_db_id,
-                &game.canonical_title,
-                &game.platform,
-            )?;
-            if unique.insert(game.game_uid.clone()) {
-                validated.push(game);
-            }
-        }
+        let validated = validate_bulk_games(games)?;
 
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;
@@ -2328,6 +2318,125 @@ impl SettingsStore {
         Ok(BulkMetadataOutcome {
             targeted: validated.len(),
             changed,
+        })
+    }
+
+    pub fn apply_bulk_game_tags(
+        &self,
+        games: &[BulkGameIdentity],
+        tag_input: &str,
+        remove: bool,
+    ) -> Result<BulkTagOutcome> {
+        let tag_names = parse_game_tags(tag_input)?;
+        if tag_names.is_empty() {
+            bail!("enter at least one tag for a bulk tag operation");
+        }
+        let validated = validate_bulk_games(games)?;
+
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let requested_tags = tag_names
+            .into_iter()
+            .map(|name| {
+                let normalized = normalized_tag_name(&name);
+                let id = transaction
+                    .query_row(
+                        "SELECT id FROM user_tags WHERE normalized_name=?1",
+                        [&normalized],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()?
+                    .unwrap_or_else(|| stable_tag_id(&normalized));
+                Ok((id, name, normalized))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        if !remove {
+            let requested_ids = requested_tags
+                .iter()
+                .map(|(id, _, _)| id.clone())
+                .collect::<HashSet<_>>();
+            let memberships_by_game = {
+                let mut membership_statement = transaction
+                    .prepare("SELECT game_uid, tag_id FROM game_tags ORDER BY game_uid")?;
+                let rows = membership_statement.query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?;
+                let mut memberships = HashMap::<String, HashSet<String>>::new();
+                for row in rows {
+                    let (game_uid, tag_id) = row?;
+                    memberships.entry(game_uid).or_default().insert(tag_id);
+                }
+                memberships
+            };
+            let no_memberships = HashSet::new();
+            for game in &validated {
+                let current = memberships_by_game
+                    .get(&game.game_uid)
+                    .unwrap_or(&no_memberships);
+                let added = requested_ids.difference(current).count();
+                if current.len().saturating_add(added) > MAX_GAME_TAGS {
+                    bail!(
+                        "adding these tags would give {} more than {MAX_GAME_TAGS} tags",
+                        game.canonical_title
+                    );
+                }
+            }
+        }
+
+        let timestamp = unix_timestamp();
+        if !remove {
+            for (id, name, normalized) in &requested_tags {
+                transaction.execute(
+                    "INSERT INTO user_tags (
+                         id, name, normalized_name, created_at, updated_at
+                     ) VALUES (?1, ?2, ?3, ?4, ?4)
+                     ON CONFLICT(normalized_name) DO UPDATE SET updated_at=excluded.updated_at",
+                    params![id, name, normalized, timestamp],
+                )?;
+            }
+        }
+
+        let mut changed_games = 0usize;
+        let mut changed_memberships = 0usize;
+        for game in &validated {
+            let mut game_changed = false;
+            for (tag_id, _, _) in &requested_tags {
+                let changed = if remove {
+                    transaction.execute(
+                        "DELETE FROM game_tags WHERE tag_id=?1 AND game_uid=?2",
+                        params![tag_id, game.game_uid],
+                    )?
+                } else {
+                    transaction.execute(
+                        "INSERT OR IGNORE INTO game_tags (tag_id, game_uid, added_at)
+                         VALUES (?1, ?2, ?3)",
+                        params![tag_id, game.game_uid, timestamp],
+                    )?
+                };
+                if changed > 0 {
+                    game_changed = true;
+                    changed_memberships = changed_memberships.saturating_add(changed);
+                }
+            }
+            if game_changed {
+                changed_games = changed_games.saturating_add(1);
+            }
+        }
+        if remove {
+            transaction.execute(
+                "DELETE FROM user_tags
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM game_tags gt WHERE gt.tag_id=user_tags.id
+                 )",
+                [],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(BulkTagOutcome {
+            targeted: validated.len(),
+            changed_games,
+            changed_memberships,
         })
     }
 
@@ -6505,6 +6614,29 @@ fn validate_metadata_identity(
     Ok(())
 }
 
+fn validate_bulk_games(games: &[BulkGameIdentity]) -> Result<Vec<&BulkGameIdentity>> {
+    if games.is_empty() {
+        bail!("bulk editing requires at least one exact game identity");
+    }
+    if games.len() > 500_000 {
+        bail!("bulk edit contains too many games");
+    }
+    let mut unique = HashSet::with_capacity(games.len());
+    let mut validated = Vec::with_capacity(games.len());
+    for game in games {
+        validate_metadata_identity(
+            &game.game_uid,
+            game.launchbox_db_id,
+            &game.canonical_title,
+            &game.platform,
+        )?;
+        if unique.insert(game.game_uid.as_str()) {
+            validated.push(game);
+        }
+    }
+    Ok(validated)
+}
+
 fn save_game_metadata_override_on(
     connection: &Connection,
     game_uid: &str,
@@ -8333,13 +8465,13 @@ mod tests {
     #[test]
     fn bulk_metadata_edits_exact_identities_and_restores_only_the_selected_field() {
         let (_directory, store) = store();
-        let first = BulkMetadataGame {
+        let first = BulkGameIdentity {
             game_uid: "bulk-metroid".into(),
             launchbox_db_id: 101,
             canonical_title: "Metroid".into(),
             platform: "Nintendo Entertainment System".into(),
         };
-        let second = BulkMetadataGame {
+        let second = BulkGameIdentity {
             game_uid: "bulk-mario".into(),
             launchbox_db_id: 102,
             canonical_title: "Super Mario Bros.".into(),
@@ -8417,13 +8549,13 @@ mod tests {
     #[test]
     fn bulk_metadata_rejects_invalid_scope_before_writing_any_record() {
         let (_directory, store) = store();
-        let valid = BulkMetadataGame {
+        let valid = BulkGameIdentity {
             game_uid: "bulk-valid".into(),
             launchbox_db_id: 201,
             canonical_title: "Valid Game".into(),
             platform: "Nintendo Switch".into(),
         };
-        let invalid = BulkMetadataGame {
+        let invalid = BulkGameIdentity {
             game_uid: "bulk-invalid".into(),
             launchbox_db_id: 202,
             canonical_title: String::new(),
@@ -8443,6 +8575,174 @@ mod tests {
                 .apply_bulk_game_metadata(&[valid], "unsupported", Some("value"))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn bulk_tags_add_remove_and_repeat_without_rewriting_other_profile_data() {
+        let (_directory, store) = store();
+        let first = BulkGameIdentity {
+            game_uid: "bulk-tag-metroid".into(),
+            launchbox_db_id: 301,
+            canonical_title: "Metroid".into(),
+            platform: "Nintendo Entertainment System".into(),
+        };
+        let second = BulkGameIdentity {
+            game_uid: "bulk-tag-mario".into(),
+            launchbox_db_id: 302,
+            canonical_title: "Super Mario Bros.".into(),
+            platform: "Nintendo Entertainment System".into(),
+        };
+        let metadata = GameMetadataOverride {
+            notes: Some("Preserve me".into()),
+            ..GameMetadataOverride::default()
+        };
+        store
+            .save_game_metadata_and_tags(
+                &first.game_uid,
+                first.launchbox_db_id,
+                &first.canonical_title,
+                &first.platform,
+                &metadata,
+                "Existing, Shared",
+            )
+            .unwrap();
+        store
+            .save_game_metadata_and_tags(
+                &second.game_uid,
+                second.launchbox_db_id,
+                &second.canonical_title,
+                &second.platform,
+                &GameMetadataOverride::default(),
+                "Shared",
+            )
+            .unwrap();
+
+        let added = store
+            .apply_bulk_game_tags(
+                &[first.clone(), second.clone(), first.clone()],
+                "New, shared, NEW",
+                false,
+            )
+            .unwrap();
+        assert_eq!(
+            added,
+            BulkTagOutcome {
+                targeted: 2,
+                changed_games: 2,
+                changed_memberships: 2,
+            }
+        );
+        assert_eq!(
+            store.game_tags(&first.game_uid).unwrap(),
+            vec!["Existing", "New", "Shared"]
+        );
+        assert_eq!(
+            store.game_tags(&second.game_uid).unwrap(),
+            vec!["New", "Shared"]
+        );
+        assert_eq!(
+            store.game_metadata_override(&first.game_uid).unwrap(),
+            metadata
+        );
+
+        let repeated = store
+            .apply_bulk_game_tags(&[first.clone(), second.clone()], "new, SHARED", false)
+            .unwrap();
+        assert_eq!(repeated.changed_games, 0);
+        assert_eq!(repeated.changed_memberships, 0);
+
+        let removed = store
+            .apply_bulk_game_tags(&[first.clone(), second.clone()], "Shared, Missing", true)
+            .unwrap();
+        assert_eq!(
+            removed,
+            BulkTagOutcome {
+                targeted: 2,
+                changed_games: 2,
+                changed_memberships: 2,
+            }
+        );
+        assert_eq!(
+            store.game_tags(&first.game_uid).unwrap(),
+            vec!["Existing", "New"]
+        );
+        assert_eq!(store.game_tags(&second.game_uid).unwrap(), vec!["New"]);
+        assert!(
+            store
+                .all_user_tags()
+                .unwrap()
+                .tags
+                .iter()
+                .all(|tag| tag.name != "Shared")
+        );
+
+        let repeated_remove = store
+            .apply_bulk_game_tags(&[first, second], "Shared", true)
+            .unwrap();
+        assert_eq!(repeated_remove.changed_games, 0);
+        assert_eq!(repeated_remove.changed_memberships, 0);
+    }
+
+    #[test]
+    fn bulk_tag_preflight_rejects_an_overflowing_or_invalid_scope_atomically() {
+        let (_directory, store) = store();
+        let full = BulkGameIdentity {
+            game_uid: "bulk-tag-full".into(),
+            launchbox_db_id: 401,
+            canonical_title: "Full Tag Game".into(),
+            platform: "Nintendo Switch".into(),
+        };
+        let empty = BulkGameIdentity {
+            game_uid: "bulk-tag-empty".into(),
+            launchbox_db_id: 402,
+            canonical_title: "Empty Tag Game".into(),
+            platform: "Nintendo Switch".into(),
+        };
+        let existing = (0..MAX_GAME_TAGS)
+            .map(|index| format!("tag {index}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        store
+            .save_game_metadata_and_tags(
+                &full.game_uid,
+                full.launchbox_db_id,
+                &full.canonical_title,
+                &full.platform,
+                &GameMetadataOverride::default(),
+                &existing,
+            )
+            .unwrap();
+
+        assert!(
+            store
+                .apply_bulk_game_tags(&[empty.clone(), full.clone()], "Overflow", false)
+                .is_err()
+        );
+        assert!(store.game_tags(&empty.game_uid).unwrap().is_empty());
+        assert_eq!(
+            store.game_tags(&full.game_uid).unwrap().len(),
+            MAX_GAME_TAGS
+        );
+        assert!(
+            store
+                .all_user_tags()
+                .unwrap()
+                .tags
+                .iter()
+                .all(|tag| tag.name != "Overflow")
+        );
+
+        let invalid = BulkGameIdentity {
+            canonical_title: String::new(),
+            ..empty.clone()
+        };
+        assert!(
+            store
+                .apply_bulk_game_tags(&[empty.clone(), invalid], "Would Partially Write", false)
+                .is_err()
+        );
+        assert!(store.game_tags(&empty.game_uid).unwrap().is_empty());
+        assert!(store.apply_bulk_game_tags(&[empty], "", false).is_err());
     }
 
     #[test]

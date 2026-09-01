@@ -268,11 +268,13 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   exact stable game UUID.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.
-- Exact-view bulk metadata editing is native for supported categorical fields:
-  the reviewed current-filter UUID snapshot is validated before one transaction,
-  applies or restores only the selected override, and refreshes the live library
-  off-thread. Extend the collection-wide summary with cross-collection
-  comparison/reporting tools and bulk tag operations.
+- Exact-view bulk library editing is native: the reviewed current-filter UUID
+  snapshot can apply or restore one supported categorical metadata override, or
+  add/remove a case-insensitive set of tags without replacing unrelated tags.
+  The complete scope and per-game 32-tag limit are validated before one
+  transaction, duplicate UUIDs and memberships are idempotent, orphaned tags are
+  cleaned after removals, and the live library refreshes off-thread. Extend the
+  collection-wide summary with cross-collection comparison/reporting tools.
 
 ## Download-first experience
 

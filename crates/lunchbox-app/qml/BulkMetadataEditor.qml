@@ -4,9 +4,9 @@ import QtQuick.Layouts
 
 Dialog {
     id: root
-    objectName: "bulkMetadataEditor"
+    objectName: "bulkLibraryEditor"
 
-    required property var metadataModel
+    required property var libraryModel
     property int visibleGameCount: 0
     property string scopeLabel: "Current library view"
     property color ink: "#edf3f8"
@@ -18,13 +18,21 @@ Dialog {
     property color accentCool: "#62d7c6"
     property bool reviewing: false
     property bool submitted: false
-    readonly property bool restoreMode: actionCombo.currentValue === "restore"
+    readonly property bool tagMode: modeCombo.currentValue === "tags"
+    readonly property bool restoreMode: !tagMode
+                                        && actionCombo.currentValue === "restore"
+    readonly property bool removeTagMode: tagMode
+                                          && actionCombo.currentValue === "remove"
     readonly property string fieldKey: fieldCombo.currentValue || "developer"
     readonly property string fieldLabel: fieldCombo.currentText || "Developer"
     readonly property bool canReview: visibleGameCount > 0
-                                           && !metadataModel.bulk_metadata_busy
+                                           && !libraryModel.bulk_edit_busy
                                            && (restoreMode
                                                || valueField.text.trim().length > 0)
+    readonly property var modeChoices: [
+        { key: "metadata", label: "Metadata" },
+        { key: "tags", label: "Tags" }
+    ]
     readonly property var fieldChoices: [
         { key: "developer", label: "Developer" },
         { key: "publisher", label: "Publisher" },
@@ -38,14 +46,19 @@ Dialog {
         { key: "players", label: "Players" },
         { key: "version", label: "Version" }
     ]
-    readonly property var actionChoices: [
+    readonly property var metadataActionChoices: [
         { key: "set", label: "Set one value" },
         { key: "restore", label: "Restore catalog value" }
+    ]
+    readonly property var tagActionChoices: [
+        { key: "add", label: "Add tags" },
+        { key: "remove", label: "Remove tags" }
     ]
 
     function openForScope() {
         reviewing = false
         submitted = false
+        modeCombo.currentIndex = 0
         fieldCombo.currentIndex = 0
         actionCombo.currentIndex = 0
         valueField.clear()
@@ -56,10 +69,10 @@ Dialog {
     modal: true
     focus: true
     width: Math.min(720, parent ? parent.width - 48 : 720)
-    height: Math.min(620, parent ? parent.height - 48 : 620)
+    height: Math.min(680, parent ? parent.height - 48 : 680)
     padding: 22
-    closePolicy: metadataModel.bulk_metadata_busy ? Popup.NoAutoClose
-                                                  : Popup.CloseOnEscape
+    closePolicy: libraryModel.bulk_edit_busy ? Popup.NoAutoClose
+                                             : Popup.CloseOnEscape
 
     background: Rectangle {
         color: root.panel
@@ -83,7 +96,7 @@ Dialog {
 
             Text {
                 width: parent.width
-                text: "BULK EDIT METADATA"
+                text: "BULK EDIT LIBRARY"
                 color: root.ink
                 font.pixelSize: 17
                 font.weight: Font.Bold
@@ -141,6 +154,29 @@ Dialog {
             spacing: 12
 
             Text {
+                text: "EDIT"
+                color: root.accent
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 1.1
+            }
+            ComboBox {
+                id: modeCombo
+                objectName: "bulkEditType"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 42
+                model: root.modeChoices
+                textRole: "label"
+                valueRole: "key"
+                onActivated: {
+                    actionCombo.currentIndex = 0
+                    valueField.clear()
+                    root.submitted = false
+                }
+            }
+
+            Text {
+                visible: !root.tagMode
                 text: "FIELD"
                 color: root.accent
                 font.pixelSize: 9
@@ -150,6 +186,7 @@ Dialog {
             ComboBox {
                 id: fieldCombo
                 objectName: "bulkMetadataField"
+                visible: !root.tagMode
                 Layout.fillWidth: true
                 Layout.preferredHeight: 42
                 model: root.fieldChoices
@@ -167,18 +204,19 @@ Dialog {
             }
             ComboBox {
                 id: actionCombo
-                objectName: "bulkMetadataAction"
+                objectName: "bulkEditAction"
                 Layout.fillWidth: true
                 Layout.preferredHeight: 42
-                model: root.actionChoices
+                model: root.tagMode ? root.tagActionChoices
+                                    : root.metadataActionChoices
                 textRole: "label"
                 valueRole: "key"
                 onActivated: root.submitted = false
             }
 
             Text {
-                visible: !root.restoreMode
-                text: "VALUE"
+                visible: root.tagMode || !root.restoreMode
+                text: root.tagMode ? "TAGS" : "VALUE"
                 color: root.accent
                 font.pixelSize: 9
                 font.weight: Font.Bold
@@ -186,17 +224,20 @@ Dialog {
             }
             TextField {
                 id: valueField
-                objectName: "bulkMetadataValue"
-                visible: !root.restoreMode
+                objectName: "bulkEditValue"
+                visible: root.tagMode || !root.restoreMode
                 Layout.fillWidth: true
                 Layout.preferredHeight: 44
-                maximumLength: root.fieldKey === "players" ? 100
+                maximumLength: root.tagMode ? 2048
+                               : root.fieldKey === "players" ? 100
                                : root.fieldKey === "age_rating" ? 100
                                : root.fieldKey === "genre"
                                  || root.fieldKey === "series"
                                  || root.fieldKey === "developer"
                                  || root.fieldKey === "publisher" ? 1000 : 500
-                placeholderText: "Enter the value for every visible game"
+                placeholderText: root.tagMode
+                                 ? "Comma-separated tags"
+                                 : "Enter the value for every visible game"
                 selectByMouse: true
                 onTextEdited: root.submitted = false
                 onAccepted: {
@@ -207,7 +248,11 @@ Dialog {
 
             Text {
                 Layout.fillWidth: true
-                text: root.restoreMode
+                text: root.tagMode
+                      ? (root.removeTagMode
+                         ? "Only matching tag memberships will be removed. Other tags and all metadata stay intact."
+                         : "Tags are added without replacing existing tags. Names are reused case-insensitively, with at most 32 tags per game.")
+                      : root.restoreMode
                       ? "Only the " + root.fieldLabel.toLowerCase()
                         + " override will be removed. Every other personal edit stays intact."
                       : "This creates one personal " + root.fieldLabel.toLowerCase()
@@ -244,7 +289,10 @@ Dialog {
                     spacing: 7
                     Text {
                         Layout.fillWidth: true
-                        text: root.restoreMode
+                        text: root.tagMode
+                              ? (root.removeTagMode ? "Remove tags ‘" : "Add tags ‘")
+                                + valueField.text.trim() + "’"
+                              : root.restoreMode
                               ? "Restore catalog " + root.fieldLabel.toLowerCase()
                               : "Set " + root.fieldLabel.toLowerCase() + " to ‘"
                                 + valueField.text.trim() + "’"
@@ -290,14 +338,14 @@ Dialog {
                 BusyIndicator {
                     Layout.preferredWidth: 24
                     Layout.preferredHeight: 24
-                    running: root.metadataModel.bulk_metadata_busy
+                    running: root.libraryModel.bulk_edit_busy
                     visible: running
                 }
                 Text {
                     id: operationMessage
-                    objectName: "bulkMetadataMessage"
+                    objectName: "bulkEditMessage"
                     Layout.fillWidth: true
-                    text: root.metadataModel.bulk_metadata_message
+                    text: root.libraryModel.bulk_edit_message
                     color: root.submitted ? root.accentCool : root.muted
                     font.pixelSize: 10
                     elide: Text.ElideRight
@@ -322,10 +370,10 @@ Dialog {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 9
             HeaderButton {
-                objectName: "bulkMetadataCancel"
+                objectName: "bulkEditCancel"
                 width: 104
                 text: root.reviewing ? "Back" : "Cancel"
-                enabled: !root.metadataModel.bulk_metadata_busy
+                enabled: !root.libraryModel.bulk_edit_busy
                 onClicked: {
                     if (root.reviewing) {
                         root.reviewing = false
@@ -335,7 +383,7 @@ Dialog {
                 }
             }
             HeaderButton {
-                objectName: "bulkMetadataReview"
+                objectName: "bulkEditReview"
                 width: 138
                 visible: !root.reviewing
                 text: "Review change"
@@ -344,16 +392,21 @@ Dialog {
                 onClicked: root.reviewing = true
             }
             HeaderButton {
-                objectName: "bulkMetadataApply"
+                objectName: "bulkEditApply"
                 width: 138
                 visible: root.reviewing
-                text: root.metadataModel.bulk_metadata_busy ? "Applying…" : "Apply to view"
+                text: root.libraryModel.bulk_edit_busy ? "Applying…" : "Apply to view"
                 active: true
                 enabled: root.canReview
                 onClicked: {
                     root.submitted = true
-                    root.metadataModel.apply_bulk_metadata(
-                                root.fieldKey, valueField.text, root.restoreMode)
+                    if (root.tagMode) {
+                        root.libraryModel.apply_bulk_tags(
+                                    valueField.text, root.removeTagMode)
+                    } else {
+                        root.libraryModel.apply_bulk_metadata(
+                                    root.fieldKey, valueField.text, root.restoreMode)
+                    }
                 }
             }
         }

@@ -62,8 +62,8 @@ pub mod qobject {
         #[qproperty(bool, media_setup_required)]
         #[qproperty(QString, favorite_message)]
         #[qproperty(QString, collection_message)]
-        #[qproperty(bool, bulk_metadata_busy)]
-        #[qproperty(QString, bulk_metadata_message)]
+        #[qproperty(bool, bulk_edit_busy)]
+        #[qproperty(QString, bulk_edit_message)]
         #[qproperty(bool, startup_probe)]
         #[qproperty(bool, catalog_probe)]
         #[qproperty(bool, filter_probe)]
@@ -176,6 +176,9 @@ pub mod qobject {
             value: QString,
             restore: bool,
         );
+
+        #[qinvokable]
+        fn apply_bulk_tags(self: Pin<&mut LibraryModel>, tags: QString, remove: bool);
 
         #[qinvokable]
         fn select_tag_filter(self: Pin<&mut LibraryModel>, tag: QString);
@@ -743,10 +746,10 @@ use crate::media::{
     ArtworkKind, MediaAsset, MediaFetchOutcome, MediaFetchQueue, MediaFetchRequest, MediaIndex,
 };
 use crate::settings::{
-    BulkMetadataGame, BulkMetadataOutcome, CollectionMemberPresentation, CouchModePreferences,
-    GameCustomField, GameMetadataOverride, LibraryPreferences, LibrarySessionPreferences,
-    PlayActivity, SettingsStore, SidebarPreferences, UserCollection, UserCollections, UserTag,
-    UserTags, couch_collection_id,
+    BulkGameIdentity, BulkMetadataOutcome, BulkTagOutcome, CollectionMemberPresentation,
+    CouchModePreferences, GameCustomField, GameMetadataOverride, LibraryPreferences,
+    LibrarySessionPreferences, PlayActivity, SettingsStore, SidebarPreferences, UserCollection,
+    UserCollections, UserTag, UserTags, couch_collection_id,
 };
 
 type RoleNames = QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
@@ -1028,8 +1031,8 @@ pub struct LibraryModelRust {
     activity_revision: i32,
     media_revision: i32,
     metadata_revision: i32,
-    bulk_metadata_busy: bool,
-    bulk_metadata_message: QString,
+    bulk_edit_busy: bool,
+    bulk_edit_message: QString,
     tag_count: i32,
     tag_revision: i32,
     platform_revision: i32,
@@ -1249,8 +1252,8 @@ impl Default for LibraryModelRust {
             activity_revision: 0,
             media_revision: 0,
             metadata_revision: 0,
-            bulk_metadata_busy: false,
-            bulk_metadata_message: qstring(
+            bulk_edit_busy: false,
+            bulk_edit_message: qstring(
                 "Bulk edits use the exact games visible in the current library view.",
             ),
             tag_count: 0,
@@ -1324,6 +1327,20 @@ impl Default for LibraryModelRust {
 
 fn qstring(value: impl AsRef<str>) -> QString {
     QString::from(value.as_ref())
+}
+
+fn bulk_edit_games(model: &LibraryModelRust) -> Vec<BulkGameIdentity> {
+    model
+        .filtered_indices
+        .iter()
+        .filter_map(|index| model.catalog.games.get(*index))
+        .map(|game| BulkGameIdentity {
+            game_uid: game.id.clone(),
+            launchbox_db_id: game.launchbox_db_id,
+            canonical_title: game.title.clone(),
+            platform: game.platform.clone(),
+        })
+        .collect()
 }
 
 fn metadata_display_title<'a>(
@@ -1846,28 +1863,12 @@ impl qobject::LibraryModel {
         value: QString,
         restore: bool,
     ) {
-        if !*self.as_ref().ready()
-            || *self.as_ref().loading()
-            || *self.as_ref().bulk_metadata_busy()
-        {
+        if !*self.as_ref().ready() || *self.as_ref().loading() || *self.as_ref().bulk_edit_busy() {
             return;
         }
-        let catalog = Arc::clone(&self.as_ref().rust().catalog);
-        let games = self
-            .as_ref()
-            .rust()
-            .filtered_indices
-            .iter()
-            .filter_map(|index| catalog.games.get(*index))
-            .map(|game| BulkMetadataGame {
-                game_uid: game.id.clone(),
-                launchbox_db_id: game.launchbox_db_id,
-                canonical_title: game.title.clone(),
-                platform: game.platform.clone(),
-            })
-            .collect::<Vec<_>>();
+        let games = bulk_edit_games(self.as_ref().rust());
         if games.is_empty() {
-            self.as_mut().set_bulk_metadata_message(qstring(
+            self.as_mut().set_bulk_edit_message(qstring(
                 "There are no visible games to edit in the current view.",
             ));
             return;
@@ -1876,8 +1877,8 @@ impl qobject::LibraryModel {
         let field = field.to_string();
         let value = (!restore).then(|| value.to_string());
         let target_count = games.len();
-        self.as_mut().set_bulk_metadata_busy(true);
-        self.as_mut().set_bulk_metadata_message(qstring(format!(
+        self.as_mut().set_bulk_edit_busy(true);
+        self.as_mut().set_bulk_edit_message(qstring(format!(
             "Applying this exact-ID edit to {target_count} visible games…"
         )));
         let qt_thread = self.as_ref().qt_thread();
@@ -1901,10 +1902,10 @@ impl qobject::LibraryModel {
     }
 
     fn finish_bulk_metadata(mut self: Pin<&mut Self>, result: Result<BulkMetadataOutcome, String>) {
-        self.as_mut().set_bulk_metadata_busy(false);
+        self.as_mut().set_bulk_edit_busy(false);
         match result {
             Ok(outcome) => {
-                self.as_mut().set_bulk_metadata_message(qstring(format!(
+                self.as_mut().set_bulk_edit_message(qstring(format!(
                     "Updated {} of {} exact game records.",
                     outcome.changed, outcome.targeted
                 )));
@@ -1912,7 +1913,75 @@ impl qobject::LibraryModel {
             }
             Err(error) => {
                 let message = format!("Bulk metadata edit failed: {error}");
-                self.as_mut().set_bulk_metadata_message(qstring(&message));
+                self.as_mut().set_bulk_edit_message(qstring(&message));
+                self.as_mut().set_status_message(qstring(message));
+            }
+        }
+    }
+
+    pub fn apply_bulk_tags(mut self: Pin<&mut Self>, tags: QString, remove: bool) {
+        if !*self.as_ref().ready() || *self.as_ref().loading() || *self.as_ref().bulk_edit_busy() {
+            return;
+        }
+        let games = bulk_edit_games(self.as_ref().rust());
+        if games.is_empty() {
+            self.as_mut().set_bulk_edit_message(qstring(
+                "There are no visible games to edit in the current view.",
+            ));
+            return;
+        }
+
+        let tags = tags.to_string();
+        let target_count = games.len();
+        self.as_mut().set_bulk_edit_busy(true);
+        self.as_mut().set_bulk_edit_message(qstring(format!(
+            "{} tags across {target_count} exact visible games…",
+            if remove { "Removing" } else { "Adding" }
+        )));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-bulk-tags".into())
+            .spawn(move || {
+                let result = SettingsStore::open_default()
+                    .and_then(|store| store.apply_bulk_game_tags(&games, &tags, remove))
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_bulk_tags(remove, result);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().finish_bulk_tags(
+                remove,
+                Err(format!("could not start bulk tag worker: {error}")),
+            );
+        }
+    }
+
+    fn finish_bulk_tags(
+        mut self: Pin<&mut Self>,
+        remove: bool,
+        result: Result<BulkTagOutcome, String>,
+    ) {
+        self.as_mut().set_bulk_edit_busy(false);
+        match result {
+            Ok(outcome) => {
+                self.as_mut().set_bulk_edit_message(qstring(format!(
+                    "{} {} tag membership{} across {} of {} exact game records.",
+                    if remove { "Removed" } else { "Added" },
+                    outcome.changed_memberships,
+                    if outcome.changed_memberships == 1 {
+                        ""
+                    } else {
+                        "s"
+                    },
+                    outcome.changed_games,
+                    outcome.targeted,
+                )));
+                self.as_mut().refresh_metadata();
+            }
+            Err(error) => {
+                let message = format!("Bulk tag edit failed: {error}");
+                self.as_mut().set_bulk_edit_message(qstring(&message));
                 self.as_mut().set_status_message(qstring(message));
             }
         }

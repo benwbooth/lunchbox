@@ -9949,11 +9949,11 @@ ApplicationWindow {
                 }
             }
             SidebarNavButton {
-                label: "Bulk Edit Metadata"
+                label: "Bulk Edit Library"
                 glyph: "✎"
                 enabled: library.ready && library.filtered_count > 0
-                         && !library.bulk_metadata_busy
-                onClicked: bulkMetadataEditor.openForScope()
+                         && !library.bulk_edit_busy
+                onClicked: bulkLibraryEditor.openForScope()
             }
             SidebarNavButton {
                 label: "BIOS & Firmware"
@@ -13566,9 +13566,9 @@ ApplicationWindow {
     }
 
     BulkMetadataEditor {
-        id: bulkMetadataEditor
+        id: bulkLibraryEditor
         anchors.centerIn: parent
-        metadataModel: library
+        libraryModel: library
         visibleGameCount: library.filtered_count
         scopeLabel: root.platformHeading()
         ink: root.ink
