@@ -23660,6 +23660,25 @@ ApplicationWindow {
         }
     }
 
+    MetadataEnrichmentDialog {
+        id: metadataEnrichmentDialog
+        igdbModel: igdb
+        screenScraperModel: screenScraper
+        gameDetailsModel: gameDetails
+        canonicalTitle: library.canonical_title_for_game(gameDetails.game_id)
+        ink: root.ink
+        muted: root.muted
+        panel: root.panel
+        panelRaised: root.panelRaised
+        line: root.line
+        accent: root.accent
+        accentCool: root.accentCool
+        onSettingsRequested: function(section) {
+            gameDetails.close_metadata_editor()
+            root.openSettingsFor(section)
+        }
+    }
+
     Dialog {
         id: metadataDialog
         parent: Overlay.overlay
@@ -24435,6 +24454,15 @@ ApplicationWindow {
                 anchors.leftMargin: 22
                 anchors.rightMargin: 22
                 spacing: 10
+                Button {
+                    text: "Review online metadata"
+                    visible: gameDetails.database_id > 0
+                    enabled: !gameDetails.metadata_busy
+                    flat: true
+                    onClicked: metadataEnrichmentDialog.openReview()
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Compare fields from an exact IGDB or ScreenScraper record"
+                }
                 Button {
                     text: "Restore catalog values"
                     visible: gameDetails.metadata_has_override

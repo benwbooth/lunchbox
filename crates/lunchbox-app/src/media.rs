@@ -2347,6 +2347,7 @@ mod tests {
             cover: None,
             screenshots: Vec::new(),
             artworks: Vec::new(),
+            ..crate::igdb::GameCandidate::default()
         };
 
         assert!(igdb_platform_matches(&switch_game, "Nintendo Switch"));

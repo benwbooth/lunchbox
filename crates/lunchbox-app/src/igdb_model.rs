@@ -75,6 +75,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn artwork_detail_at(self: &IgdbModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn selected_metadata_value(self: &IgdbModel, field: QString) -> QString;
     }
 
     impl cxx_qt::Threading for IgdbModel {}
@@ -106,7 +109,7 @@ pub struct IgdbModelRust {
     published_revision: i32,
     games: Vec<GameCandidate>,
     artwork: Vec<ArtworkCandidate>,
-    selected_game_id: Option<i64>,
+    selected_game: Option<GameCandidate>,
     generation: u64,
 }
 
@@ -129,7 +132,7 @@ impl Default for IgdbModelRust {
             published_revision: 0,
             games: Vec::new(),
             artwork: Vec::new(),
-            selected_game_id: None,
+            selected_game: None,
             generation: 0,
         }
     }
@@ -138,6 +141,7 @@ impl Default for IgdbModelRust {
 enum BeginResult {
     Linked {
         link: MediaProviderGameLink,
+        game: GameCandidate,
         artwork: Vec<ArtworkCandidate>,
     },
     Search(Vec<GameCandidate>),
@@ -151,7 +155,7 @@ fn saturating_i32(value: usize) -> i32 {
     i32::try_from(value).unwrap_or(i32::MAX)
 }
 
-fn effective_credentials(
+pub(crate) fn effective_credentials(
     entered_client_id: String,
     entered_client_secret: String,
 ) -> anyhow::Result<(String, String)> {
@@ -373,7 +377,7 @@ impl qobject::IgdbModel {
         let kind = requested_kind(&artwork_type.to_string());
         self.as_mut().rust_mut().games.clear();
         self.as_mut().rust_mut().artwork.clear();
-        self.as_mut().rust_mut().selected_game_id = None;
+        self.as_mut().rust_mut().selected_game = None;
         self.as_mut().set_database_id(database_id);
         self.as_mut().set_query(qstring(&title));
         self.as_mut().set_artwork_type(qstring(kind.key()));
@@ -401,8 +405,13 @@ impl qobject::IgdbModel {
                             .provider_game_id
                             .parse::<i64>()
                             .map_err(|_| anyhow::anyhow!("saved IGDB game ID is invalid"))?;
-                        let artwork = client.artwork_for_game(game_id, kind)?;
-                        Ok(BeginResult::Linked { link, artwork })
+                        let game = client.game(game_id)?;
+                        let artwork = client.artwork_for_candidate(&game, kind)?;
+                        Ok(BeginResult::Linked {
+                            link,
+                            game,
+                            artwork,
+                        })
                     } else {
                         Ok(BeginResult::Search(client.search_games(&title)?))
                     }
@@ -429,10 +438,13 @@ impl qobject::IgdbModel {
         }
         self.as_mut().set_busy(false);
         match result {
-            Ok(BeginResult::Linked { link, artwork }) => {
+            Ok(BeginResult::Linked {
+                link,
+                game,
+                artwork,
+            }) => {
                 let count = artwork.len();
-                self.as_mut().rust_mut().selected_game_id =
-                    link.provider_game_id.parse::<i64>().ok();
+                self.as_mut().rust_mut().selected_game = Some(game);
                 self.as_mut().rust_mut().artwork = artwork;
                 self.as_mut()
                     .set_selected_game_name(qstring(&link.provider_game_name));
@@ -485,7 +497,7 @@ impl qobject::IgdbModel {
         let generation = self.as_ref().rust().generation;
         self.as_mut().rust_mut().games.clear();
         self.as_mut().rust_mut().artwork.clear();
-        self.as_mut().rust_mut().selected_game_id = None;
+        self.as_mut().rust_mut().selected_game = None;
         self.as_mut().set_query(qstring(&query));
         self.as_mut().set_selected_game_name(QString::default());
         self.as_mut().set_game_count(0);
@@ -564,7 +576,7 @@ impl qobject::IgdbModel {
                     let (client_id, client_secret) =
                         effective_credentials(String::new(), String::new())?;
                     let client = Client::new(client_id, client_secret)?;
-                    let artwork = client.artwork_for_game(game.id, kind)?;
+                    let artwork = client.artwork_for_candidate(&game, kind)?;
                     SettingsStore::open_default()?.save_media_provider_game_link(
                         &MediaProviderGameLink {
                             provider: PROVIDER.to_owned(),
@@ -600,7 +612,7 @@ impl qobject::IgdbModel {
         match result {
             Ok((game, artwork)) => {
                 let count = artwork.len();
-                self.as_mut().rust_mut().selected_game_id = Some(game.id);
+                self.as_mut().rust_mut().selected_game = Some(game.clone());
                 self.as_mut().rust_mut().artwork = artwork;
                 self.as_mut().rust_mut().games.clear();
                 self.as_mut().set_selected_game_name(qstring(&game.name));
@@ -628,7 +640,13 @@ impl qobject::IgdbModel {
         }
         let kind = requested_kind(&artwork_type.to_string());
         self.as_mut().set_artwork_type(qstring(kind.key()));
-        let Some(game_id) = self.as_ref().rust().selected_game_id else {
+        let Some(game_id) = self
+            .as_ref()
+            .rust()
+            .selected_game
+            .as_ref()
+            .map(|game| game.id)
+        else {
             self.as_mut().bump_revision();
             return;
         };
@@ -815,6 +833,14 @@ impl qobject::IgdbModel {
                 };
                 qstring(format!("{} · {}{}", artwork.id, artwork.source, dimensions))
             })
+            .unwrap_or_default()
+    }
+
+    pub fn selected_metadata_value(&self, field: QString) -> QString {
+        self.rust()
+            .selected_game
+            .as_ref()
+            .map(|game| qstring(game.metadata_value(&field.to_string())))
             .unwrap_or_default()
     }
 

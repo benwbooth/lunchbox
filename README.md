@@ -234,6 +234,12 @@ The details header also opens a native metadata editor for display title,
 description, release date, developer, publisher, genre, players, rating, age
 rating, release type, cooperative-play status, personal notes, per-game tags,
 and ordered custom fields.
+Its **Review online metadata** action searches IGDB or an authorized
+ScreenScraper account, requires the user to choose an exact provider record,
+and presents a side-by-side field comparison before changing the editor.
+Missing values are preselected while conflicting local values remain untouched
+unless explicitly selected; saving still uses the same all-or-nothing profile
+transaction.
 Edits are durable per stable game UUID in the writable profile database and
 immediately update desktop search, sorting, collections, details, and Couch
 Mode. Tags appear as clickable chips, compose with the other library filters,

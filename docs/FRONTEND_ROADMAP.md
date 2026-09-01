@@ -324,8 +324,15 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 ## Metadata and media
 
-- Canonical-game metadata enrichment with provenance and per-field conflict
-  review.
+- Extend the implemented reviewed online metadata workflow for IGDB and
+  authorization-gated ScreenScraper. It searches provider records without
+  accepting title similarity as identity, persists only the exact record the
+  user chooses, and compares title, description, release date, developer,
+  publisher, genre, players, and normalized five-point rating field by field.
+  Missing local values are selected by default; conflicts require an explicit
+  opt-in and flow through the existing atomic game-profile editor. Remaining
+  work is durable per-field source history, bulk enrichment review, and more
+  authorized metadata providers.
 - Extend the implemented exact Minerva manual acquisition, durable visible
   progress/cancellation, validated atomic cache publication, native cached
   manual/video bundle, cached grid preview, and ported legacy EmuMovies FTP

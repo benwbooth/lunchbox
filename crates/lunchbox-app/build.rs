@@ -91,6 +91,7 @@ fn main() {
                 "qml/LoadedTorrentPicker.qml",
                 "qml/LocalProviderManifests.qml",
                 "qml/MetadataField.qml",
+                "qml/MetadataEnrichmentDialog.qml",
                 "qml/MediaDownloadStatus.qml",
                 "qml/MediaRepairRecoveryBanner.qml",
                 "qml/MediaRetryController.qml",

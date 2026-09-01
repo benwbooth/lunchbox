@@ -16,12 +16,24 @@ const DEFAULT_IMAGE_BASE_URL: &str = "https://images.igdb.com/igdb/image/upload"
 
 static TOKEN_CACHE: OnceLock<Mutex<HashMap<String, CachedToken>>> = OnceLock::new();
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct GameCandidate {
     pub id: i64,
     pub name: String,
     #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub storyline: Option<String>,
+    #[serde(default)]
+    pub rating: Option<f64>,
+    #[serde(default)]
+    pub aggregated_rating: Option<f64>,
+    #[serde(default)]
     pub first_release_date: Option<i64>,
+    #[serde(default)]
+    pub genres: Vec<Genre>,
+    #[serde(default)]
+    pub involved_companies: Vec<InvolvedCompany>,
     #[serde(default)]
     pub platforms: Vec<Platform>,
     #[serde(default)]
@@ -30,6 +42,85 @@ pub struct GameCandidate {
     pub screenshots: Vec<Image>,
     #[serde(default)]
     pub artworks: Vec<Image>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct Genre {
+    #[serde(default)]
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct InvolvedCompany {
+    #[serde(default)]
+    pub company: Option<Company>,
+    #[serde(default)]
+    pub developer: bool,
+    #[serde(default)]
+    pub publisher: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct Company {
+    #[serde(default)]
+    pub name: String,
+}
+
+impl GameCandidate {
+    pub fn metadata_value(&self, field: &str) -> String {
+        match field.trim() {
+            "title" => self.name.trim().to_owned(),
+            "description" => self
+                .summary
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    self.storyline
+                        .as_deref()
+                        .filter(|value| !value.trim().is_empty())
+                })
+                .map(str::trim)
+                .unwrap_or_default()
+                .to_owned(),
+            "release_date" => self
+                .first_release_date
+                .and_then(|timestamp| chrono::DateTime::from_timestamp(timestamp, 0))
+                .map(|value| value.date_naive().format("%Y-%m-%d").to_string())
+                .unwrap_or_default(),
+            "developer" => self.company_names(|company| company.developer),
+            "publisher" => self.company_names(|company| company.publisher),
+            "genre" => joined_unique(self.genres.iter().map(|genre| genre.name.as_str())),
+            "players" => String::new(),
+            "rating" => self
+                .aggregated_rating
+                .or(self.rating)
+                .filter(|value| value.is_finite() && (0.0..=100.0).contains(value))
+                .map(|value| format!("{:.1}", value / 20.0))
+                .unwrap_or_default(),
+            _ => String::new(),
+        }
+    }
+
+    fn company_names(&self, include: impl Fn(&InvolvedCompany) -> bool) -> String {
+        joined_unique(self.involved_companies.iter().filter_map(|involved| {
+            include(involved).then_some(involved.company.as_ref()?.name.as_str())
+        }))
+    }
+}
+
+fn joined_unique<'a>(values: impl IntoIterator<Item = &'a str>) -> String {
+    let mut output = Vec::new();
+    for value in values {
+        let value = value.trim();
+        if !value.is_empty()
+            && !output
+                .iter()
+                .any(|stored: &&str| stored.eq_ignore_ascii_case(value))
+        {
+            output.push(value);
+        }
+    }
+    output.join(", ")
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -158,6 +249,14 @@ impl Client {
         kind: ArtworkKind,
     ) -> Result<Vec<ArtworkCandidate>> {
         let game = self.game(game_id)?;
+        self.artwork_for_candidate(&game, kind)
+    }
+
+    pub(crate) fn artwork_for_candidate(
+        &self,
+        game: &GameCandidate,
+        kind: ArtworkKind,
+    ) -> Result<Vec<ArtworkCandidate>> {
         let (images, source, thumbnail_size, full_size): (
             Vec<Image>,
             &'static str,
@@ -165,15 +264,15 @@ impl Client {
             &'static str,
         ) = match kind {
             ArtworkKind::BoxFront => (
-                game.cover.into_iter().collect(),
+                game.cover.clone().into_iter().collect(),
                 "cover",
                 "cover_big",
                 "cover_big_2x",
             ),
             ArtworkKind::Fanart => {
-                let mut images = game.artworks;
+                let mut images = game.artworks.clone();
                 let artwork_count = images.len();
-                images.extend(game.screenshots);
+                images.extend(game.screenshots.clone());
                 return Ok(images
                     .into_iter()
                     .enumerate()
@@ -191,7 +290,12 @@ impl Client {
                     })
                     .collect());
             }
-            ArtworkKind::Screenshot => (game.screenshots, "screenshot", "screenshot_med", "1080p"),
+            ArtworkKind::Screenshot => (
+                game.screenshots.clone(),
+                "screenshot",
+                "screenshot_med",
+                "1080p",
+            ),
             ArtworkKind::BoxBack
             | ArtworkKind::Box3d
             | ArtworkKind::TitleScreen
@@ -351,7 +455,7 @@ fn configured_url(variable: &str, default: &str) -> String {
 }
 
 fn game_fields() -> &'static str {
-    "id,name,first_release_date,platforms.name,platforms.abbreviation,cover.image_id,cover.width,cover.height,screenshots.image_id,screenshots.width,screenshots.height,artworks.image_id,artworks.width,artworks.height"
+    "id,name,summary,storyline,rating,aggregated_rating,first_release_date,genres.name,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,platforms.name,platforms.abbreviation,cover.image_id,cover.width,cover.height,screenshots.image_id,screenshots.width,screenshots.height,artworks.image_id,artworks.width,artworks.height"
 }
 
 fn escape_apicalypse_string(value: &str) -> String {
@@ -484,7 +588,7 @@ mod tests {
 
     #[test]
     fn oauth_search_and_artwork_use_reviewable_stable_ids() {
-        let game = br#"[{"id":7346,"name":"Super Mario Bros.","first_release_date":-141177600,"platforms":[{"name":"Nintendo Entertainment System","abbreviation":"NES"}],"cover":{"id":11,"image_id":"co1abc","width":264,"height":374},"screenshots":[{"id":12,"image_id":"sc1abc","width":1280,"height":720}],"artworks":[{"id":13,"image_id":"ar1abc","width":1920,"height":1080}]}]"#;
+        let game = br#"[{"id":7346,"name":"Super Mario Bros.","summary":"Rescue the Mushroom Kingdom.","rating":86.0,"first_release_date":-141177600,"genres":[{"name":"Platform"}],"involved_companies":[{"company":{"name":"Nintendo R&D4"},"developer":true,"publisher":false},{"company":{"name":"Nintendo"},"developer":false,"publisher":true}],"platforms":[{"name":"Nintendo Entertainment System","abbreviation":"NES"}],"cover":{"id":11,"image_id":"co1abc","width":264,"height":374},"screenshots":[{"id":12,"image_id":"sc1abc","width":1280,"height":720}],"artworks":[{"id":13,"image_id":"ar1abc","width":1920,"height":1080}]}]"#;
         let (address, requests, worker) = mock_server(vec![
             MockResponse {
                 content_type: "application/json",
@@ -504,6 +608,15 @@ mod tests {
         let client = test_client(address);
         let games = client.search_games("Super \"Mario\"").unwrap();
         assert_eq!(games[0].id, 7346);
+        assert_eq!(
+            games[0].metadata_value("description"),
+            "Rescue the Mushroom Kingdom."
+        );
+        assert_eq!(games[0].metadata_value("release_date"), "1965-07-12");
+        assert_eq!(games[0].metadata_value("developer"), "Nintendo R&D4");
+        assert_eq!(games[0].metadata_value("publisher"), "Nintendo");
+        assert_eq!(games[0].metadata_value("genre"), "Platform");
+        assert_eq!(games[0].metadata_value("rating"), "4.3");
         let artwork = client.artwork_for_game(7346, ArtworkKind::Fanart).unwrap();
         assert_eq!(artwork.len(), 2);
         assert_eq!(artwork[0].id, "ar1abc");

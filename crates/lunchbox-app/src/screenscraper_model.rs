@@ -83,6 +83,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn artwork_detail_at(self: &ScreenScraperModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn selected_metadata_value(self: &ScreenScraperModel, field: QString) -> QString;
     }
 
     impl cxx_qt::Threading for ScreenScraperModel {}
@@ -759,6 +762,14 @@ impl qobject::ScreenScraperModel {
                     }
                 ))
             })
+            .unwrap_or_default()
+    }
+
+    pub fn selected_metadata_value(&self, field: QString) -> QString {
+        self.rust()
+            .selected_game
+            .as_ref()
+            .map(|game| qstring(game.metadata_value(&field.to_string())))
             .unwrap_or_default()
     }
 

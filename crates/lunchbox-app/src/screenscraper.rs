@@ -17,10 +17,30 @@ const MAX_API_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
 pub struct GameCandidate {
     pub id: i64,
     pub name: String,
+    pub description: String,
     pub developer: String,
     pub publisher: String,
     pub release_date: String,
+    pub genre: String,
+    pub players: String,
+    pub rating: String,
     media: Vec<MediaEntry>,
+}
+
+impl GameCandidate {
+    pub fn metadata_value(&self, field: &str) -> &str {
+        match field.trim() {
+            "title" => &self.name,
+            "description" => &self.description,
+            "release_date" => &self.release_date,
+            "developer" => &self.developer,
+            "publisher" => &self.publisher,
+            "genre" => &self.genre,
+            "players" => &self.players,
+            "rating" => &self.rating,
+            _ => "",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -47,6 +67,20 @@ struct TextValue {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+struct SynopsisText {
+    #[serde(default)]
+    langue: String,
+    #[serde(default)]
+    text: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+struct GenrePayload {
+    #[serde(default)]
+    noms: Vec<LocalizedText>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
 struct MediaEntry {
     #[serde(rename = "type", default)]
     media_type: String,
@@ -63,11 +97,19 @@ struct GamePayload {
     #[serde(default)]
     noms: Vec<LocalizedText>,
     #[serde(default)]
+    synopsis: Vec<SynopsisText>,
+    #[serde(default)]
     developpeur: Option<TextValue>,
     #[serde(default)]
     editeur: Option<TextValue>,
     #[serde(default)]
     dates: Vec<LocalizedText>,
+    #[serde(default)]
+    genres: Vec<GenrePayload>,
+    #[serde(default)]
+    joueurs: Option<TextValue>,
+    #[serde(default)]
+    note: Option<TextValue>,
     #[serde(default)]
     medias: Vec<MediaEntry>,
 }
@@ -424,6 +466,7 @@ fn game_candidate(payload: GamePayload) -> Option<GameCandidate> {
     Some(GameCandidate {
         id,
         name,
+        description: preferred_synopsis(&payload.synopsis).unwrap_or_default(),
         developer: payload
             .developpeur
             .map(|value| value.text.trim().to_owned())
@@ -433,8 +476,51 @@ fn game_candidate(payload: GamePayload) -> Option<GameCandidate> {
             .map(|value| value.text.trim().to_owned())
             .unwrap_or_default(),
         release_date: preferred_text(&payload.dates).unwrap_or_default(),
+        genre: joined_unique(
+            payload
+                .genres
+                .iter()
+                .filter_map(|genre| preferred_text(&genre.noms)),
+        ),
+        players: payload
+            .joueurs
+            .map(|value| value.text.trim().to_owned())
+            .unwrap_or_default(),
+        rating: payload
+            .note
+            .and_then(|value| value.text.trim().parse::<f64>().ok())
+            .filter(|value| value.is_finite() && (0.0..=20.0).contains(value))
+            .map(|value| format!("{:.1}", value / 4.0))
+            .unwrap_or_default(),
         media: payload.medias,
     })
+}
+
+fn preferred_synopsis(values: &[SynopsisText]) -> Option<String> {
+    values
+        .iter()
+        .filter(|value| !value.text.trim().is_empty())
+        .min_by_key(|value| match value.langue.to_ascii_lowercase().as_str() {
+            "en" => 0,
+            "" => 1,
+            _ => 2,
+        })
+        .map(|value| value.text.trim().to_owned())
+}
+
+fn joined_unique(values: impl IntoIterator<Item = String>) -> String {
+    let mut output = Vec::new();
+    for value in values {
+        let value = value.trim();
+        if !value.is_empty()
+            && !output
+                .iter()
+                .any(|stored: &String| stored.eq_ignore_ascii_case(value))
+        {
+            output.push(value.to_owned());
+        }
+    }
+    output.join(", ")
 }
 
 fn preferred_text(values: &[LocalizedText]) -> Option<String> {
@@ -578,8 +664,11 @@ mod tests {
         let body = r#"{
           "response": {"jeux": [
             {"id":"3","noms":[{"region":"jp","text":"スーパーマリオ"},{"region":"us","text":"Super Mario Bros."}],
+             "synopsis":[{"langue":"fr","text":"Description française"},{"langue":"en","text":"The Mushroom Kingdom needs a hero."}],
              "developpeur":{"text":"Nintendo"},"editeur":{"text":"Nintendo"},
              "dates":[{"region":"us","text":"1985-10-18"}],
+             "genres":[{"noms":[{"region":"en","text":"Platform"}]},{"noms":[{"region":"en","text":"Action"}]}],
+             "joueurs":{"text":"1-2"},"note":{"text":"18"},
              "medias":[
                {"type":"box-2D","url":"https://cdn.example/box-us.png","region":"us"},
                {"type":"box-2D","url":"https://cdn.example/box-jp.png","region":"jp"},
@@ -591,7 +680,11 @@ mod tests {
         assert_eq!(games.len(), 1);
         assert_eq!(games[0].id, 3);
         assert_eq!(games[0].name, "Super Mario Bros.");
+        assert_eq!(games[0].description, "The Mushroom Kingdom needs a hero.");
         assert_eq!(games[0].developer, "Nintendo");
+        assert_eq!(games[0].genre, "Platform, Action");
+        assert_eq!(games[0].players, "1-2");
+        assert_eq!(games[0].rating, "4.5");
         let client = Client::new(credentials()).unwrap();
         let boxes = client
             .artwork_for_game(&games[0], ArtworkKind::BoxFront)
