@@ -68,6 +68,8 @@ pub struct GameDetails {
     pub database_id: i64,
     pub local_file_path: PathBuf,
     pub local_file_paths: Vec<PathBuf>,
+    pub preferred_local_file_path: Option<PathBuf>,
+    pub local_file_preference_stale: bool,
     pub managed_installation: Option<crate::ingest::ManagedInstallationSummary>,
     pub prepared_install: Option<PreparedInstall>,
     pub activity: Option<crate::settings::PlayActivity>,
@@ -1255,9 +1257,17 @@ fn load_native_game_files(
 
     let mut seen = HashSet::new();
     paths.retain(|path| path.is_file() && seen.insert(path.clone()));
-    if let Some(primary) = paths.first() {
-        details.local_file_path = primary.clone();
-    }
+    let preferred = store.preferred_game_rom(&details.id)?;
+    let preferred_index = preferred
+        .as_ref()
+        .and_then(|preferred| paths.iter().position(|path| path == preferred));
+    details.local_file_preference_stale = preferred.is_some() && preferred_index.is_none();
+    details.preferred_local_file_path = preferred;
+    details.local_file_path = preferred_index
+        .and_then(|index| paths.get(index))
+        .or_else(|| paths.first())
+        .cloned()
+        .unwrap_or_default();
     details.local_file_paths = paths;
     Ok(())
 }
@@ -2814,6 +2824,42 @@ mod tests {
             details.local_file_paths,
             vec![details.local_file_path.clone()]
         );
+    }
+
+    #[test]
+    fn exact_preferred_rom_wins_and_a_missing_preference_falls_back_without_guessing() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::settings::SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let game_uid = "58320e65-22b9-4994-89ea-87b8793d5c16";
+        let first = directory.path().join("Game (USA).xci");
+        let preferred = directory.path().join("Game (Europe).xci");
+        fs::write(&first, b"first").unwrap();
+        fs::write(&preferred, b"preferred").unwrap();
+        store.set_preferred_game_rom(game_uid, &preferred).unwrap();
+
+        let mut details = GameDetails {
+            id: game_uid.into(),
+            local: true,
+            local_file_paths: vec![first.clone(), preferred.clone()],
+            ..GameDetails::default()
+        };
+        load_native_game_files(&mut details, &store).unwrap();
+        assert_eq!(details.local_file_path, preferred);
+        assert_eq!(details.preferred_local_file_path, Some(preferred.clone()));
+        assert!(!details.local_file_preference_stale);
+
+        fs::remove_file(&preferred).unwrap();
+        let mut stale = GameDetails {
+            id: game_uid.into(),
+            local: true,
+            local_file_paths: vec![first.clone(), preferred.clone()],
+            ..GameDetails::default()
+        };
+        load_native_game_files(&mut stale, &store).unwrap();
+        assert_eq!(stale.local_file_path, first);
+        assert_eq!(stale.preferred_local_file_path, Some(preferred));
+        assert!(stale.local_file_preference_stale);
+        assert_eq!(stale.local_file_paths, vec![stale.local_file_path.clone()]);
     }
 
     #[test]

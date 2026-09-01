@@ -3483,6 +3483,64 @@ impl SettingsStore {
         Ok(())
     }
 
+    pub fn preferred_game_rom(&self, game_uid: &str) -> Result<Option<PathBuf>> {
+        validate_tag_game_uid(game_uid)?;
+        Ok(self
+            .connection()?
+            .query_row(
+                "SELECT path_display, path_bytes, path_encoding
+                 FROM game_rom_preferences WHERE game_uid=?1",
+                [game_uid],
+                |row| {
+                    Ok(crate::local_import::decode_path(
+                        row.get::<_, Vec<u8>>(1)?,
+                        &row.get::<_, String>(2)?,
+                        row.get::<_, String>(0)?,
+                    ))
+                },
+            )
+            .optional()?)
+    }
+
+    pub fn set_preferred_game_rom(&self, game_uid: &str, path: &Path) -> Result<()> {
+        validate_tag_game_uid(game_uid)?;
+        if path.as_os_str().is_empty() {
+            bail!("a native game file path is required");
+        }
+        let encoded = crate::local_import::encode_path(path);
+        if encoded.display.chars().count() > 8_192 || encoded.bytes.len() > 32_768 {
+            bail!("the native game file path is too long");
+        }
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO game_rom_preferences (
+                 game_uid, path_display, path_bytes, path_encoding, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(game_uid) DO UPDATE SET
+                 path_display=excluded.path_display,
+                 path_bytes=excluded.path_bytes,
+                 path_encoding=excluded.path_encoding,
+                 updated_at=excluded.updated_at",
+            params![
+                game_uid,
+                encoded.display,
+                encoded.bytes,
+                encoded.encoding,
+                unix_timestamp()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_preferred_game_rom(&self, game_uid: &str) -> Result<()> {
+        validate_tag_game_uid(game_uid)?;
+        self.connection()?.execute(
+            "DELETE FROM game_rom_preferences WHERE game_uid=?1",
+            [game_uid],
+        )?;
+        Ok(())
+    }
+
     pub fn set_platform_emulator_preference(
         &self,
         platform: &str,
@@ -5940,6 +5998,19 @@ fn migrate(connection: &Connection) -> Result<()> {
              ),
              core_name TEXT NOT NULL DEFAULT '',
              updated_at INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS game_rom_preferences (
+             game_uid TEXT PRIMARY KEY,
+             path_display TEXT NOT NULL CHECK (
+                 length(path_display) > 0 AND length(path_display) <= 8192
+             ),
+             path_bytes BLOB NOT NULL CHECK (
+                 length(path_bytes) > 0 AND length(path_bytes) <= 32768
+             ),
+             path_encoding TEXT NOT NULL CHECK (
+                 path_encoding IN ('unix_bytes', 'windows_utf16le', 'utf8')
+             ),
+             updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
          );
          CREATE TABLE IF NOT EXISTS platform_emulator_preferences (
              platform_key TEXT PRIMARY KEY,
@@ -9382,6 +9453,48 @@ mod tests {
                 .set_game_emulator_preference("game-one", "mesen-id", "retroarch", "")
                 .is_err()
         );
+    }
+
+    #[test]
+    fn preferred_game_rom_round_trips_an_exact_native_path_and_clears() {
+        let (directory, store) = store();
+        let game_uid = "f5a6eaac-a2f1-4ad5-a8ab-1bc6b5333f33";
+        let path = directory
+            .path()
+            .join("alternate versions")
+            .join("Game (USA).xci");
+
+        assert_eq!(store.preferred_game_rom(game_uid).unwrap(), None);
+        store.set_preferred_game_rom(game_uid, &path).unwrap();
+        assert_eq!(store.preferred_game_rom(game_uid).unwrap(), Some(path));
+
+        store.clear_preferred_game_rom(game_uid).unwrap();
+        assert_eq!(store.preferred_game_rom(game_uid).unwrap(), None);
+        assert!(
+            store
+                .set_preferred_game_rom("", Path::new("game.xci"))
+                .is_err()
+        );
+        assert!(
+            store
+                .set_preferred_game_rom(game_uid, Path::new(""))
+                .is_err()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preferred_game_rom_preserves_non_utf8_native_identity() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let (_directory, store) = store();
+        let game_uid = "28aa5963-45f5-44ef-86c6-820a4e9319c4";
+        let path = PathBuf::from(std::ffi::OsString::from_vec(vec![
+            b'/', b'r', b'o', b'm', b's', b'/', 0xff, b'.', b'b', b'i', b'n',
+        ]));
+
+        store.set_preferred_game_rom(game_uid, &path).unwrap();
+        assert_eq!(store.preferred_game_rom(game_uid).unwrap(), Some(path));
     }
 
     #[test]

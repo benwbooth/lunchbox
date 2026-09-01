@@ -260,8 +260,13 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   every status count against the immediately prior complete run, and presents a
   virtualized keyboard/pointer history view without retaining another copy of
   every ROM path or hash.
-- Extend native ZIP/7z/RAR member inspection and manual matching review with
-  multidisc grouping, patches, and alternate-version management.
+- Alternate-version management is native in Desktop Game Details. Every present
+  exact associated native path is visible in a bounded **Game Versions** list;
+  selecting one changes only the next launch, while an explicit default is
+  persisted losslessly by stable game identity plus exact host-native path.
+  A missing default is retained as unavailable and falls back visibly for the
+  session instead of guessing a replacement. Extend native ZIP/7z/RAR member
+  inspection and manual matching review with multidisc grouping and patches.
 - Durable per-game tags are native: stable IDs, case-insensitive normalization,
   atomic metadata/tag/custom-field saves, clickable details chips, exact library
   filtering, text search, and exact smart-collection rules all share the same

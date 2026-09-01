@@ -163,6 +163,11 @@ pub mod qobject {
         #[qproperty(i32, local_file_count)]
         #[qproperty(i32, selected_local_file)]
         #[qproperty(QUrl, selected_local_directory_url)]
+        #[qproperty(bool, local_file_preference_configured)]
+        #[qproperty(bool, selected_local_file_is_preferred)]
+        #[qproperty(bool, local_file_preference_stale)]
+        #[qproperty(QString, local_file_preference_message)]
+        #[qproperty(i32, local_file_revision)]
         #[qproperty(bool, install_management_busy)]
         #[qproperty(bool, managed_install_present)]
         #[qproperty(bool, managed_install_can_delete)]
@@ -327,6 +332,12 @@ pub mod qobject {
 
         #[qinvokable]
         fn select_local_file(self: Pin<&mut GameDetailsModel>, index: i32);
+
+        #[qinvokable]
+        fn set_selected_local_file_preferred(self: Pin<&mut GameDetailsModel>);
+
+        #[qinvokable]
+        fn clear_local_file_preference(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
         fn uninstall_managed_installation(
@@ -498,6 +509,15 @@ pub mod qobject {
 
         #[qinvokable]
         fn local_file_label_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn local_file_name_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn local_file_path_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn local_file_is_preferred_at(self: &GameDetailsModel, index: i32) -> bool;
 
         #[qinvokable]
         fn emulator_option_label_at(self: &GameDetailsModel, index: i32) -> QString;
@@ -685,6 +705,11 @@ pub struct GameDetailsModelRust {
     local_file_count: i32,
     selected_local_file: i32,
     selected_local_directory_url: QUrl,
+    local_file_preference_configured: bool,
+    selected_local_file_is_preferred: bool,
+    local_file_preference_stale: bool,
+    local_file_preference_message: QString,
+    local_file_revision: i32,
     install_management_busy: bool,
     managed_install_present: bool,
     managed_install_can_delete: bool,
@@ -722,6 +747,7 @@ pub struct GameDetailsModelRust {
     database_id: i64,
     local_file_path: PathBuf,
     local_file_paths: Vec<PathBuf>,
+    preferred_local_file_path: Option<PathBuf>,
     rom_emulator_options: Vec<crate::emulator::RomEmulatorOption>,
     rom_firmware_statuses: Vec<Vec<crate::firmware::FirmwareStatus>>,
     launch_profile_preview_arguments: Vec<String>,
@@ -891,6 +917,11 @@ impl Default for GameDetailsModelRust {
             local_file_count: 0,
             selected_local_file: -1,
             selected_local_directory_url: QUrl::default(),
+            local_file_preference_configured: false,
+            selected_local_file_is_preferred: false,
+            local_file_preference_stale: false,
+            local_file_preference_message: QString::default(),
+            local_file_revision: 0,
             install_management_busy: false,
             managed_install_present: false,
             managed_install_can_delete: false,
@@ -928,6 +959,7 @@ impl Default for GameDetailsModelRust {
             database_id: 0,
             local_file_path: PathBuf::new(),
             local_file_paths: Vec::new(),
+            preferred_local_file_path: None,
             rom_emulator_options: Vec::new(),
             rom_firmware_statuses: Vec::new(),
             launch_profile_preview_arguments: Vec::new(),
@@ -1025,6 +1057,44 @@ fn local_file_url(path: &std::path::Path) -> QUrl {
 
 fn local_directory_url(path: &std::path::Path) -> QUrl {
     path.parent().map(local_file_url).unwrap_or_default()
+}
+
+fn local_file_name(path: &std::path::Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.as_os_str().to_string_lossy().into_owned())
+}
+
+fn local_file_preference_message(
+    preferred: Option<&std::path::Path>,
+    stale: bool,
+    selected: Option<&std::path::Path>,
+    file_count: usize,
+) -> String {
+    if file_count == 0 {
+        return String::new();
+    }
+    if stale {
+        let unavailable = preferred.map(local_file_name).unwrap_or_default();
+        let fallback = selected.map(local_file_name).unwrap_or_default();
+        return format!(
+            "Saved default {unavailable} is unavailable. Using {fallback} for this session."
+        );
+    }
+    if let Some(preferred) = preferred {
+        if selected == Some(preferred) {
+            return "This exact version opens by default.".to_owned();
+        }
+        return format!(
+            "One-off version selected. {} remains the default.",
+            local_file_name(preferred)
+        );
+    }
+    if file_count == 1 {
+        "This is the only available game file.".to_owned()
+    } else {
+        "Automatic selection is active. Choose a version or make one the default.".to_owned()
+    }
 }
 
 fn catalog_url(value: &str) -> QUrl {
@@ -2069,6 +2139,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().rust_mut().database_id = 0;
         self.as_mut().rust_mut().local_file_path = PathBuf::new();
         self.as_mut().rust_mut().local_file_paths.clear();
+        self.as_mut().rust_mut().preferred_local_file_path = None;
         self.as_mut().rust_mut().rom_emulator_options.clear();
         self.as_mut().rust_mut().rom_firmware_statuses.clear();
         self.as_mut().rust_mut().prepared_emulator = None;
@@ -2104,6 +2175,13 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_selected_local_file(-1);
         self.as_mut()
             .set_selected_local_directory_url(QUrl::default());
+        self.as_mut().set_local_file_preference_configured(false);
+        self.as_mut().set_selected_local_file_is_preferred(false);
+        self.as_mut().set_local_file_preference_stale(false);
+        self.as_mut()
+            .set_local_file_preference_message(QString::default());
+        let local_file_revision = self.as_ref().local_file_revision().wrapping_add(1);
+        self.as_mut().set_local_file_revision(local_file_revision);
         self.as_mut().set_install_management_busy(false);
         self.as_mut().set_managed_install_present(false);
         self.as_mut().set_managed_install_can_delete(false);
@@ -2151,6 +2229,22 @@ impl qobject::GameDetailsModel {
                 let prepared_install = details.prepared_install.clone();
                 let local_file_count = details.local_file_paths.len();
                 let local_file_paths = details.local_file_paths.clone();
+                let selected_local_file = local_file_paths
+                    .iter()
+                    .position(|path| path == &details.local_file_path);
+                let selected_local_path =
+                    selected_local_file.and_then(|index| local_file_paths.get(index));
+                let preferred_local_file_path = details.preferred_local_file_path.clone();
+                let local_file_preference_stale = details.local_file_preference_stale;
+                let local_file_preference_message = local_file_preference_message(
+                    preferred_local_file_path.as_deref(),
+                    local_file_preference_stale,
+                    selected_local_path.map(PathBuf::as_path),
+                    local_file_count,
+                );
+                let selected_local_file_is_preferred = selected_local_path.is_some()
+                    && selected_local_path.map(PathBuf::as_path)
+                        == preferred_local_file_path.as_deref();
                 let managed_installation = details.managed_installation.clone();
                 self.as_mut().set_title(qstring(&details.title));
                 self.as_mut().set_description(qstring(&details.description));
@@ -2231,17 +2325,32 @@ impl qobject::GameDetailsModel {
                 self.as_mut().apply_play_activity(activity, details.local);
                 self.as_mut().apply_play_sessions(sessions);
                 self.as_mut().rust_mut().local_file_path = details.local_file_path;
-                let selected_local_directory_url = local_file_paths
-                    .first()
+                let selected_local_directory_url = selected_local_file
+                    .and_then(|index| local_file_paths.get(index))
                     .map(|path| local_directory_url(path))
                     .unwrap_or_default();
                 self.as_mut().rust_mut().local_file_paths = local_file_paths;
+                self.as_mut().rust_mut().preferred_local_file_path =
+                    preferred_local_file_path.clone();
                 self.as_mut()
                     .set_local_file_count(count_i32(local_file_count));
-                self.as_mut()
-                    .set_selected_local_file(if local_file_count == 0 { -1 } else { 0 });
+                self.as_mut().set_selected_local_file(
+                    selected_local_file
+                        .and_then(|index| i32::try_from(index).ok())
+                        .unwrap_or(-1),
+                );
                 self.as_mut()
                     .set_selected_local_directory_url(selected_local_directory_url);
+                self.as_mut()
+                    .set_local_file_preference_configured(preferred_local_file_path.is_some());
+                self.as_mut()
+                    .set_selected_local_file_is_preferred(selected_local_file_is_preferred);
+                self.as_mut()
+                    .set_local_file_preference_stale(local_file_preference_stale);
+                self.as_mut()
+                    .set_local_file_preference_message(qstring(local_file_preference_message));
+                let local_file_revision = self.as_ref().local_file_revision().wrapping_add(1);
+                self.as_mut().set_local_file_revision(local_file_revision);
                 if let Some(managed) = managed_installation {
                     self.as_mut().set_managed_install_present(true);
                     self.as_mut()
@@ -3833,9 +3942,99 @@ impl qobject::GameDetailsModel {
             .set_selected_local_file(i32::try_from(index).unwrap_or(i32::MAX));
         self.as_mut()
             .set_selected_local_directory_url(local_directory_url(&path));
-        self.as_mut().rust_mut().local_file_path = path;
+        self.as_mut().rust_mut().local_file_path = path.clone();
+        let preferred = self.as_ref().rust().preferred_local_file_path.clone();
+        let preference_stale = *self.as_ref().local_file_preference_stale();
+        let local_file_count = self.as_ref().rust().local_file_paths.len();
+        let preference_message = local_file_preference_message(
+            preferred.as_deref(),
+            preference_stale,
+            Some(path.as_path()),
+            local_file_count,
+        );
+        self.as_mut()
+            .set_selected_local_file_is_preferred(preferred.as_ref() == Some(&path));
+        self.as_mut()
+            .set_local_file_preference_message(qstring(preference_message));
+        let local_file_revision = self.as_ref().local_file_revision().wrapping_add(1);
+        self.as_mut().set_local_file_revision(local_file_revision);
         self.as_mut().invalidate_launch_state();
         self.as_mut().refresh_emulators();
+    }
+
+    pub fn set_selected_local_file_preferred(mut self: Pin<&mut Self>) {
+        if *self.as_ref().launch_busy()
+            || *self.as_ref().game_running()
+            || self.as_ref().game_id().is_empty()
+        {
+            return;
+        }
+        let Some(path) = usize::try_from(*self.as_ref().selected_local_file())
+            .ok()
+            .and_then(|index| self.as_ref().rust().local_file_paths.get(index).cloned())
+        else {
+            return;
+        };
+        let game_id = self.as_ref().game_id().to_string();
+        match SettingsStore::open_default()
+            .and_then(|store| store.set_preferred_game_rom(&game_id, &path))
+        {
+            Ok(()) => {
+                self.as_mut().rust_mut().preferred_local_file_path = Some(path.clone());
+                self.as_mut().set_local_file_preference_configured(true);
+                self.as_mut().set_selected_local_file_is_preferred(true);
+                self.as_mut().set_local_file_preference_stale(false);
+                self.as_mut().set_local_file_preference_message(qstring(
+                    "This exact version opens by default.",
+                ));
+                let revision = self.as_ref().local_file_revision().wrapping_add(1);
+                self.as_mut().set_local_file_revision(revision);
+            }
+            Err(error) => self
+                .as_mut()
+                .set_local_file_preference_message(qstring(format!(
+                    "Could not save the default version: {error}"
+                ))),
+        }
+    }
+
+    pub fn clear_local_file_preference(mut self: Pin<&mut Self>) {
+        if *self.as_ref().launch_busy()
+            || *self.as_ref().game_running()
+            || self.as_ref().game_id().is_empty()
+        {
+            return;
+        }
+        let game_id = self.as_ref().game_id().to_string();
+        match SettingsStore::open_default()
+            .and_then(|store| store.clear_preferred_game_rom(&game_id))
+        {
+            Ok(()) => {
+                self.as_mut().rust_mut().preferred_local_file_path = None;
+                self.as_mut().set_local_file_preference_configured(false);
+                self.as_mut().set_selected_local_file_is_preferred(false);
+                self.as_mut().set_local_file_preference_stale(false);
+                let selected = usize::try_from(*self.as_ref().selected_local_file())
+                    .ok()
+                    .and_then(|index| self.as_ref().rust().local_file_paths.get(index).cloned());
+                let local_file_count = self.as_ref().rust().local_file_paths.len();
+                let message = local_file_preference_message(
+                    None,
+                    false,
+                    selected.as_deref(),
+                    local_file_count,
+                );
+                self.as_mut()
+                    .set_local_file_preference_message(qstring(message));
+                let revision = self.as_ref().local_file_revision().wrapping_add(1);
+                self.as_mut().set_local_file_revision(revision);
+            }
+            Err(error) => self
+                .as_mut()
+                .set_local_file_preference_message(qstring(format!(
+                    "Could not clear the default version: {error}"
+                ))),
+        }
     }
 
     pub fn uninstall_managed_installation(mut self: Pin<&mut Self>, delete_owned_files: bool) {
@@ -3899,19 +4098,50 @@ impl qobject::GameDetailsModel {
                 }
                 let remaining = result.remaining_local_paths;
                 let remaining_count = remaining.len();
-                let selected_directory = remaining
-                    .first()
+                let preferred = self.as_ref().rust().preferred_local_file_path.clone();
+                let selected_index = preferred
+                    .as_ref()
+                    .and_then(|preferred| remaining.iter().position(|path| path == preferred))
+                    .or((remaining_count > 0).then_some(0));
+                let preference_stale = preferred
+                    .as_ref()
+                    .is_some_and(|preferred| !remaining.contains(preferred));
+                let selected_path = selected_index
+                    .and_then(|index| remaining.get(index))
+                    .cloned();
+                let selected_directory = selected_path
+                    .as_ref()
                     .map(|path| local_directory_url(path))
                     .unwrap_or_default();
                 self.as_mut().rust_mut().local_file_path =
-                    remaining.first().cloned().unwrap_or_default();
+                    selected_path.clone().unwrap_or_default();
                 self.as_mut().rust_mut().local_file_paths = remaining;
                 self.as_mut()
                     .set_local_file_count(count_i32(remaining_count));
-                self.as_mut()
-                    .set_selected_local_file(if remaining_count == 0 { -1 } else { 0 });
+                self.as_mut().set_selected_local_file(
+                    selected_index
+                        .and_then(|index| i32::try_from(index).ok())
+                        .unwrap_or(-1),
+                );
                 self.as_mut()
                     .set_selected_local_directory_url(selected_directory);
+                self.as_mut()
+                    .set_local_file_preference_stale(preference_stale);
+                self.as_mut().set_selected_local_file_is_preferred(
+                    selected_path
+                        .as_ref()
+                        .is_some_and(|path| preferred.as_ref() == Some(path)),
+                );
+                self.as_mut().set_local_file_preference_message(qstring(
+                    local_file_preference_message(
+                        preferred.as_deref(),
+                        preference_stale,
+                        selected_path.as_deref(),
+                        remaining_count,
+                    ),
+                ));
+                let local_file_revision = self.as_ref().local_file_revision().wrapping_add(1);
+                self.as_mut().set_local_file_revision(local_file_revision);
                 self.as_mut().set_local(remaining_count > 0);
                 self.as_mut().set_managed_install_present(false);
                 self.as_mut().set_managed_install_can_delete(false);
@@ -5749,10 +5979,7 @@ impl qobject::GameDetailsModel {
             .ok()
             .and_then(|index| self.rust().local_file_paths.get(index))
             .map(|path| {
-                let name = path
-                    .file_name()
-                    .map(|name| name.to_string_lossy())
-                    .unwrap_or_else(|| path.as_os_str().to_string_lossy());
+                let name = local_file_name(path);
                 if self.rust().local_file_paths.len() == 1 {
                     qstring(name)
                 } else {
@@ -5760,6 +5987,29 @@ impl qobject::GameDetailsModel {
                 }
             })
             .unwrap_or_default()
+    }
+
+    pub fn local_file_name_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().local_file_paths.get(index))
+            .map(|path| qstring(local_file_name(path)))
+            .unwrap_or_default()
+    }
+
+    pub fn local_file_path_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().local_file_paths.get(index))
+            .map(|path| qstring(path.to_string_lossy()))
+            .unwrap_or_default()
+    }
+
+    pub fn local_file_is_preferred_at(&self, index: i32) -> bool {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().local_file_paths.get(index))
+            .is_some_and(|path| self.rust().preferred_local_file_path.as_ref() == Some(path))
     }
 
     pub fn emulator_option_label_at(&self, index: i32) -> QString {

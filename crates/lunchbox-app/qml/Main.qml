@@ -12845,159 +12845,21 @@ ApplicationWindow {
                     }
 
 
-                    Rectangle {
-                        id: installationFilesCard
+                    GameFilesCard {
                         visible: !gameDetails.loading
                                  && gameDetails.local_file_count > 0
                         width: parent.width
-                        height: installationFilesColumn.implicitHeight + 28
-                        radius: 11
-                        color: "#171f2b"
-                        border.color: gameDetails.managed_install_present
-                                      ? "#4d4650" : root.line
-
-                        Column {
-                            id: installationFilesColumn
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.margins: 14
-                            spacing: 9
-
-                            Row {
-                                width: parent.width
-                                spacing: 8
-                                Text {
-                                    width: parent.width - installationState.width - 8
-                                    text: "GAME FILES"
-                                    color: root.ink
-                                    font.pixelSize: 10
-                                    font.weight: Font.Bold
-                                    font.letterSpacing: 1.1
-                                }
-                                Rectangle {
-                                    id: installationState
-                                    width: installationStateText.implicitWidth + 14
-                                    height: 22
-                                    radius: 7
-                                    color: gameDetails.managed_install_present
-                                           ? "#342a31" : "#202b3a"
-                                    border.color: gameDetails.managed_install_present
-                                                  ? "#745868" : root.line
-                                    Text {
-                                        id: installationStateText
-                                        anchors.centerIn: parent
-                                        text: gameDetails.managed_install_present
-                                              ? "MANAGED" : "IMPORTED"
-                                        color: gameDetails.managed_install_present
-                                               ? "#e8b7cf" : root.muted
-                                        font.pixelSize: 8
-                                        font.weight: Font.Bold
-                                        font.letterSpacing: 0.7
-                                    }
-                                }
-                            }
-
-                            Text {
-                                width: parent.width
-                                text: gameDetails.local_file_label_at(
-                                          Math.max(0, gameDetails.selected_local_file))
-                                color: "#c3ccd8"
-                                font.pixelSize: 10
-                                elide: Text.ElideMiddle
-                            }
-
-                            Text {
-                                width: parent.width
-                                visible: gameDetails.install_management_message.length > 0
-                                text: gameDetails.install_management_message
-                                color: gameDetails.install_management_message.indexOf(
-                                           "Could not") === 0 ? "#ef9b92" : root.muted
-                                font.pixelSize: 9
-                                lineHeight: 1.25
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Row {
-                                width: parent.width
-                                spacing: 8
-                                Button {
-                                    width: (parent.width - 8) / 2
-                                    height: 34
-                                    text: "OPEN FOLDER"
-                                    enabled: gameDetails.selected_local_directory_url.toString().length > 0
-                                             && !gameDetails.install_management_busy
-                                    font.pixelSize: 9
-                                    font.weight: Font.Bold
-                                    onClicked: Qt.openUrlExternally(
-                                                   gameDetails.selected_local_directory_url)
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: parent.down ? "#293748" : "#202b3a"
-                                        border.color: parent.enabled ? "#53647a" : root.line
-                                    }
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: parent.enabled ? "#c7d1df" : root.muted
-                                        font: parent.font
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                                Button {
-                                    width: (parent.width - 8) / 2
-                                    height: 34
-                                    visible: !gameDetails.managed_install_present
-                                    text: "MANAGE IDENTITY"
-                                    enabled: !gameDetails.install_management_busy
-                                             && gameDetails.game_id.length > 0
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                    onClicked: gameFileIdentityDialog.begin(
-                                                   gameDetails.game_id,
-                                                   gameDetails.title,
-                                                   gameDetails.platform)
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: parent.down ? "#24433f" : "#1d3433"
-                                        border.color: parent.enabled ? "#3d756b" : root.line
-                                    }
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: parent.enabled ? "#94e2d4" : root.muted
-                                        font: parent.font
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                                Button {
-                                    width: (parent.width - 8) / 2
-                                    height: 34
-                                    visible: gameDetails.managed_install_present
-                                    text: gameDetails.install_management_busy ? "VERIFYING…"
-                                          : gameDetails.managed_install_can_delete
-                                            ? "UNINSTALL" : "REMOVE FROM LIBRARY"
-                                    enabled: !gameDetails.install_management_busy
-                                             && !gameDetails.launch_busy
-                                             && !gameDetails.game_running
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                    onClicked: installRemovalDialog.open()
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: parent.down ? "#55313a" : "#39252d"
-                                        border.color: parent.enabled ? "#8b5668" : root.line
-                                    }
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: parent.enabled ? "#f1bdc9" : root.muted
-                                        font: parent.font
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                            }
-                        }
+                        detailsModel: gameDetails
+                        ink: root.ink
+                        muted: root.muted
+                        line: root.line
+                        accent: root.accent
+                        accentCool: root.accentCool
+                        onManageIdentityRequested: gameFileIdentityDialog.begin(
+                                                       gameDetails.game_id,
+                                                       gameDetails.title,
+                                                       gameDetails.platform)
+                        onRemoveInstallationRequested: installRemovalDialog.open()
                     }
 
                     Rectangle {
