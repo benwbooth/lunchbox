@@ -9949,6 +9949,15 @@ ApplicationWindow {
                 }
             }
             SidebarNavButton {
+                label: "Bulk Edit Metadata"
+                glyph: "✎"
+                enabled: library.ready && library.filtered_count > 0
+                         && !library.bulk_metadata_busy
+                onClicked: bulkMetadataEditor.openForScope()
+                ToolTip.visible: hovered
+                ToolTip.text: "Edit one field for every game in the current filtered view"
+            }
+            SidebarNavButton {
                 label: "BIOS & Firmware"
                 glyph: "◆"
                 count: firmwareAudit.game_count > 0
@@ -13556,6 +13565,21 @@ ApplicationWindow {
             close()
             gameDetails.queue_file(index)
         }
+    }
+
+    BulkMetadataEditor {
+        id: bulkMetadataEditor
+        anchors.centerIn: parent
+        metadataModel: library
+        visibleGameCount: library.filtered_count
+        scopeLabel: root.platformHeading()
+        ink: root.ink
+        muted: root.muted
+        line: root.line
+        panel: root.panel
+        panelRaised: root.panelRaised
+        accent: root.accent
+        accentCool: root.accentCool
     }
 
     Dialog {

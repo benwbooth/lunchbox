@@ -268,8 +268,11 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
   exact stable game UUID.
 - Non-destructive merge/split/relink tools backed by the database identity event
   log.
-- Extend the native collection-wide summary with bulk metadata editing and
-  cross-collection comparison/reporting tools.
+- Exact-view bulk metadata editing is native for supported categorical fields:
+  the reviewed current-filter UUID snapshot is validated before one transaction,
+  applies or restores only the selected override, and refreshes the live library
+  off-thread. Extend the collection-wide summary with cross-collection
+  comparison/reporting tools and bulk tag operations.
 
 ## Download-first experience
 

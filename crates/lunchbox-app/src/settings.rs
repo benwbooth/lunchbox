@@ -428,6 +428,70 @@ pub struct GameMetadataOverride {
     pub notes: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BulkMetadataGame {
+    pub game_uid: String,
+    pub launchbox_db_id: i64,
+    pub canonical_title: String,
+    pub platform: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BulkMetadataOutcome {
+    pub targeted: usize,
+    pub changed: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BulkMetadataField {
+    Developer,
+    Publisher,
+    Genre,
+    Players,
+    AgeRating,
+    ReleaseType,
+    Series,
+    Region,
+    PlayMode,
+    Version,
+    ReleaseStatus,
+}
+
+impl BulkMetadataField {
+    fn parse(value: &str) -> Result<Self> {
+        match value.trim() {
+            "developer" => Ok(Self::Developer),
+            "publisher" => Ok(Self::Publisher),
+            "genre" => Ok(Self::Genre),
+            "players" => Ok(Self::Players),
+            "age_rating" => Ok(Self::AgeRating),
+            "release_type" => Ok(Self::ReleaseType),
+            "series" => Ok(Self::Series),
+            "region" => Ok(Self::Region),
+            "play_mode" => Ok(Self::PlayMode),
+            "version" => Ok(Self::Version),
+            "release_status" => Ok(Self::ReleaseStatus),
+            _ => bail!("unsupported bulk metadata field"),
+        }
+    }
+
+    fn assign(self, metadata: &mut GameMetadataOverride, value: Option<String>) {
+        match self {
+            Self::Developer => metadata.developer = value,
+            Self::Publisher => metadata.publisher = value,
+            Self::Genre => metadata.genre = value,
+            Self::Players => metadata.players = value,
+            Self::AgeRating => metadata.esrb = value,
+            Self::ReleaseType => metadata.release_type = value,
+            Self::Series => metadata.series = value,
+            Self::Region => metadata.region = value,
+            Self::PlayMode => metadata.play_mode = value,
+            Self::Version => metadata.version = value,
+            Self::ReleaseStatus => metadata.release_status = value,
+        }
+    }
+}
+
 impl GameMetadataOverride {
     pub fn from_effective(canonical: &GameMetadata, effective: &GameMetadata) -> Self {
         Self {
@@ -2190,6 +2254,86 @@ impl SettingsStore {
 
     pub fn all_game_metadata_overrides(&self) -> Result<HashMap<String, GameMetadataOverride>> {
         let connection = self.connection()?;
+        Self::all_game_metadata_overrides_on(&connection)
+    }
+
+    pub fn apply_bulk_game_metadata(
+        &self,
+        games: &[BulkMetadataGame],
+        field: &str,
+        value: Option<&str>,
+    ) -> Result<BulkMetadataOutcome> {
+        let field = BulkMetadataField::parse(field)?;
+        let value = match value {
+            Some(value) => {
+                let value = value.trim();
+                if value.is_empty() {
+                    bail!(
+                        "bulk metadata values cannot be empty; restore the catalog value instead"
+                    );
+                }
+                if value.chars().any(char::is_control) {
+                    bail!("bulk metadata values cannot contain control characters");
+                }
+                Some(value.to_owned())
+            }
+            None => None,
+        };
+        let mut validation = GameMetadataOverride::default();
+        field.assign(&mut validation, value.clone());
+        validation.validate()?;
+
+        if games.is_empty() {
+            bail!("bulk metadata editing requires at least one exact game identity");
+        }
+        if games.len() > 500_000 {
+            bail!("bulk metadata operation contains too many games");
+        }
+        let mut unique = HashSet::with_capacity(games.len());
+        let mut validated = Vec::with_capacity(games.len());
+        for game in games {
+            validate_metadata_identity(
+                &game.game_uid,
+                game.launchbox_db_id,
+                &game.canonical_title,
+                &game.platform,
+            )?;
+            if unique.insert(game.game_uid.clone()) {
+                validated.push(game);
+            }
+        }
+
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let mut overrides = Self::all_game_metadata_overrides_on(&transaction)?;
+        let mut changed = 0usize;
+        for game in &validated {
+            let current = overrides.remove(&game.game_uid).unwrap_or_default();
+            let mut updated = current.clone();
+            field.assign(&mut updated, value.clone());
+            if updated == current {
+                continue;
+            }
+            save_game_metadata_override_on(
+                &transaction,
+                &game.game_uid,
+                game.launchbox_db_id,
+                &game.canonical_title,
+                &game.platform,
+                &updated,
+            )?;
+            changed = changed.saturating_add(1);
+        }
+        transaction.commit()?;
+        Ok(BulkMetadataOutcome {
+            targeted: validated.len(),
+            changed,
+        })
+    }
+
+    fn all_game_metadata_overrides_on(
+        connection: &Connection,
+    ) -> Result<HashMap<String, GameMetadataOverride>> {
         let mut statement = connection.prepare(
             "SELECT game_uid, title, sort_title, description, release_date, developer, publisher,
                     genre, players, rating, esrb, release_type, series, region,
@@ -8183,6 +8327,121 @@ mod tests {
         assert_eq!(
             store.game_metadata_override("stable-metroid-uid").unwrap(),
             GameMetadataOverride::default()
+        );
+    }
+
+    #[test]
+    fn bulk_metadata_edits_exact_identities_and_restores_only_the_selected_field() {
+        let (_directory, store) = store();
+        let first = BulkMetadataGame {
+            game_uid: "bulk-metroid".into(),
+            launchbox_db_id: 101,
+            canonical_title: "Metroid".into(),
+            platform: "Nintendo Entertainment System".into(),
+        };
+        let second = BulkMetadataGame {
+            game_uid: "bulk-mario".into(),
+            launchbox_db_id: 102,
+            canonical_title: "Super Mario Bros.".into(),
+            platform: "Nintendo Entertainment System".into(),
+        };
+        store
+            .save_game_metadata_and_tags(
+                &first.game_uid,
+                first.launchbox_db_id,
+                &first.canonical_title,
+                &first.platform,
+                &GameMetadataOverride {
+                    series: Some("Metroid".into()),
+                    ..GameMetadataOverride::default()
+                },
+                "",
+            )
+            .unwrap();
+        store
+            .save_game_metadata_and_tags(
+                &second.game_uid,
+                second.launchbox_db_id,
+                &second.canonical_title,
+                &second.platform,
+                &GameMetadataOverride {
+                    publisher: Some("Nintendo".into()),
+                    ..GameMetadataOverride::default()
+                },
+                "",
+            )
+            .unwrap();
+
+        let outcome = store
+            .apply_bulk_game_metadata(
+                &[first.clone(), second.clone(), first.clone()],
+                "genre",
+                Some("Action adventure"),
+            )
+            .unwrap();
+        assert_eq!(
+            outcome,
+            BulkMetadataOutcome {
+                targeted: 2,
+                changed: 2
+            }
+        );
+        let first_saved = store.game_metadata_override(&first.game_uid).unwrap();
+        assert_eq!(first_saved.genre.as_deref(), Some("Action adventure"));
+        assert_eq!(first_saved.series.as_deref(), Some("Metroid"));
+        let second_saved = store.game_metadata_override(&second.game_uid).unwrap();
+        assert_eq!(second_saved.genre.as_deref(), Some("Action adventure"));
+        assert_eq!(second_saved.publisher.as_deref(), Some("Nintendo"));
+
+        let unchanged = store
+            .apply_bulk_game_metadata(
+                &[first.clone(), second.clone()],
+                "genre",
+                Some("Action adventure"),
+            )
+            .unwrap();
+        assert_eq!(unchanged.changed, 0);
+
+        let restored = store
+            .apply_bulk_game_metadata(&[first.clone(), second.clone()], "genre", None)
+            .unwrap();
+        assert_eq!(restored.changed, 2);
+        let first_restored = store.game_metadata_override(&first.game_uid).unwrap();
+        assert_eq!(first_restored.genre, None);
+        assert_eq!(first_restored.series.as_deref(), Some("Metroid"));
+        let second_restored = store.game_metadata_override(&second.game_uid).unwrap();
+        assert_eq!(second_restored.genre, None);
+        assert_eq!(second_restored.publisher.as_deref(), Some("Nintendo"));
+    }
+
+    #[test]
+    fn bulk_metadata_rejects_invalid_scope_before_writing_any_record() {
+        let (_directory, store) = store();
+        let valid = BulkMetadataGame {
+            game_uid: "bulk-valid".into(),
+            launchbox_db_id: 201,
+            canonical_title: "Valid Game".into(),
+            platform: "Nintendo Switch".into(),
+        };
+        let invalid = BulkMetadataGame {
+            game_uid: "bulk-invalid".into(),
+            launchbox_db_id: 202,
+            canonical_title: String::new(),
+            platform: "Nintendo Switch".into(),
+        };
+        assert!(
+            store
+                .apply_bulk_game_metadata(&[valid.clone(), invalid], "region", Some("Japan"))
+                .is_err()
+        );
+        assert_eq!(
+            store.game_metadata_override(&valid.game_uid).unwrap(),
+            GameMetadataOverride::default()
+        );
+        assert!(
+            store
+                .apply_bulk_game_metadata(&[valid], "unsupported", Some("value"))
+                .is_err()
         );
     }
 

@@ -70,6 +70,7 @@ fn main() {
                 "qml/CouchLaunchScreen.qml",
                 "qml/CouchModeView.qml",
                 "qml/Box3DViewer.qml",
+                "qml/BulkMetadataEditor.qml",
                 "qml/DownloadReviewDialog.qml",
                 "qml/EmuMoviesTransferStatus.qml",
                 "qml/FilterToggle.qml",
