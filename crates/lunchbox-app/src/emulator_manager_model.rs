@@ -203,8 +203,6 @@ impl qobject::EmulatorManagerModel {
             String,
         >,
     ) {
-        self.as_mut().set_busy(false);
-        self.as_mut().set_busy_index(-1);
         match result {
             Ok((rows, recovered, recent)) => {
                 let detected = rows.len();
@@ -243,6 +241,8 @@ impl qobject::EmulatorManagerModel {
                     .set_message(qstring(format!("Could not load emulator catalog: {error}")));
             }
         }
+        self.as_mut().set_busy(false);
+        self.as_mut().set_busy_index(-1);
     }
 
     pub fn apply_filter(mut self: Pin<&mut Self>, search: QString, status_filter: QString) {
@@ -466,8 +466,6 @@ impl qobject::EmulatorManagerModel {
             String,
         >,
     ) {
-        self.as_mut().set_busy(false);
-        self.as_mut().set_busy_index(-1);
         match result {
             Ok((message, rows, recent)) => {
                 self.as_mut().rust_mut().all_rows = rows;
@@ -483,6 +481,8 @@ impl qobject::EmulatorManagerModel {
                     .set_message(qstring(format!("Emulator operation failed: {error}")));
             }
         }
+        self.as_mut().set_busy(false);
+        self.as_mut().set_busy_index(-1);
     }
 
     fn row(&self, index: i32) -> Option<&ManagedEmulator> {

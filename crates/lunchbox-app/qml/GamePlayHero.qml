@@ -18,6 +18,7 @@ Rectangle {
     required property string preferenceScope
     required property int emulatorOptionCount
     required property int selectedEmulatorOption
+    required property int firmwareMissingCount
     required property var emulatorLabelAt
     required property color ink
     required property color muted
@@ -27,6 +28,7 @@ Rectangle {
     signal playRequested()
     signal cancelLaunchRequested()
     signal setupRequested()
+    signal firmwareSetupRequested()
     signal manageEmulatorsRequested()
     signal emulatorSelected(int index)
     signal saveGameDefaultRequested()
@@ -34,6 +36,8 @@ Rectangle {
     signal clearDefaultRequested()
 
     readonly property bool emulatorMissing: !discoveryBusy && emulatorOptionCount === 0
+    readonly property bool firmwareSetupNeeded: !discoveryBusy
+                                                && firmwareMissingCount > 0
 
     visible: local && !loading
     implicitHeight: contents.implicitHeight + 28
@@ -215,6 +219,7 @@ Rectangle {
             text: hero.launchBusy ? "CANCEL PREPARATION"
                   : hero.gameRunning ? "GAME IS RUNNING"
                   : hero.canLaunch ? "▶  PLAY"
+                  : hero.firmwareSetupNeeded ? "SET UP FIRMWARE"
                   : hero.emulatorMissing ? "INSTALL AN EMULATOR" : "RECHECK PLAY SETUP"
             enabled: hero.launchBusy
                      || (!hero.gameRunning && !hero.discoveryBusy)
@@ -225,6 +230,8 @@ Rectangle {
                     hero.cancelLaunchRequested()
                 else if (hero.canLaunch)
                     hero.playRequested()
+                else if (hero.firmwareSetupNeeded)
+                    hero.firmwareSetupRequested()
                 else
                     hero.setupRequested()
             }

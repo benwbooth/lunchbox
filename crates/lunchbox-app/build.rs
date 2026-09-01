@@ -75,6 +75,7 @@ fn main() {
                 "qml/BulkMetadataEditor.qml",
                 "qml/DownloadReviewDialog.qml",
                 "qml/EmuMoviesTransferStatus.qml",
+                "qml/EmulatorManagerRow.qml",
                 "qml/FilterToggle.qml",
                 "qml/FirmwareAuditView.qml",
                 "qml/FirstRunSetup.qml",

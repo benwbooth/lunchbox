@@ -11181,6 +11181,7 @@ ApplicationWindow {
                         preferenceScope: gameDetails.emulator_preference_scope
                         emulatorOptionCount: gameDetails.emulator_option_count
                         selectedEmulatorOption: gameDetails.selected_emulator_option
+                        firmwareMissingCount: gameDetails.firmware_missing_count
                         emulatorLabelAt: function(index) {
                             return gameDetails.emulator_option_label_at(index)
                         }
@@ -11195,6 +11196,16 @@ ApplicationWindow {
                                 root.openEmulatorManagerForPlatform(gameDetails.platform)
                             else
                                 gameDetails.refresh_emulators()
+                        }
+                        onFirmwareSetupRequested: {
+                            if (gameDetails.firmware_can_sync)
+                                gameDetails.sync_firmware()
+                            else if (gameDetails.firmware_can_download)
+                                gameDetails.download_firmware()
+                            else if (gameDetails.firmware_needs_import)
+                                firmwarePackageDialog.open()
+                            else
+                                firmwareAuditDialog.openAndScan()
                         }
                         onEmulatorSelected: function(index) {
                             gameDetails.select_emulator_option(index)
@@ -21382,136 +21393,20 @@ ApplicationWindow {
                     model: emulatorManager.row_count
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                    delegate: Rectangle {
-                        id: emulatorRow
+                    delegate: EmulatorManagerRow {
                         required property int index
-                        readonly property int modelRevision: emulatorManager.revision
-                        readonly property string emulatorName: emulatorManager.name_at(index)
-                        readonly property string emulatorStatus: emulatorManager.status_at(index)
-                        width: ListView.view.width
-                        height: 78
-                        radius: 10
-                        color: emulatorHover.hovered ? "#1b2330" : "#151c27"
-                        border.color: emulatorStatus === "MANAGED"
-                                      ? "#28584f" : root.line
-
-                        HoverHandler { id: emulatorHover }
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 17
-                            anchors.rightMargin: 14
-                            spacing: 14
-                            Rectangle {
-                                Layout.preferredWidth: 42
-                                Layout.preferredHeight: 42
-                                radius: 11
-                                color: emulatorRow.emulatorStatus === "MANAGED"
-                                       || emulatorRow.emulatorStatus === "INSTALLED"
-                                       ? "#1b3430" : "#292a30"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: emulatorRow.emulatorName.length > 0
-                                          ? emulatorRow.emulatorName.charAt(0).toUpperCase() : "?"
-                                    color: emulatorRow.emulatorStatus === "MANAGED"
-                                           || emulatorRow.emulatorStatus === "INSTALLED"
-                                           ? root.accentCool : root.accent
-                                    font.pixelSize: 18
-                                    font.weight: Font.Black
-                                }
-                            }
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 3
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 9
-                                    Text {
-                                        text: emulatorRow.emulatorName
-                                        color: root.ink
-                                        font.pixelSize: 13
-                                        font.weight: Font.DemiBold
-                                    }
-                                    Rectangle {
-                                        visible: emulatorManager.recommended_at(emulatorRow.index)
-                                        Layout.preferredWidth: recommendedText.implicitWidth + 14
-                                        Layout.preferredHeight: 20
-                                        radius: 6
-                                        color: "#173a2d"
-                                        border.color: "#347259"
-                                        Text {
-                                            id: recommendedText
-                                            anchors.centerIn: parent
-                                            text: "RECOMMENDED"
-                                            color: root.accentCool
-                                            font.pixelSize: 8
-                                            font.weight: Font.Bold
-                                        }
-                                    }
-                                    Rectangle {
-                                        Layout.preferredWidth: sourceText.implicitWidth + 14
-                                        Layout.preferredHeight: 20
-                                        radius: 6
-                                        color: "#202938"
-                                        border.color: root.line
-                                        Text {
-                                            id: sourceText
-                                            anchors.centerIn: parent
-                                            text: emulatorManager.source_at(emulatorRow.index)
-                                            color: "#b7c2d2"
-                                            font.pixelSize: 9
-                                            font.weight: Font.Bold
-                                        }
-                                    }
-                                    Item { Layout.fillWidth: true }
-                                }
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: emulatorManager.detail_at(emulatorRow.index)
-                                    color: root.muted
-                                    font.pixelSize: 10
-                                    elide: Text.ElideRight
-                                }
-                            }
-                            Text {
-                                Layout.preferredWidth: 142
-                                text: emulatorRow.emulatorStatus
-                                color: emulatorRow.emulatorStatus === "MANAGED"
-                                       ? root.accentCool
-                                       : emulatorRow.emulatorStatus === "INSTALLED"
-                                         ? "#b7c2d2" : root.accent
-                                horizontalAlignment: Text.AlignRight
-                                font.pixelSize: 9
-                                font.weight: Font.Bold
-                                font.letterSpacing: 0.6
-                            }
-                            BusyIndicator {
-                                visible: emulatorManager.busy
-                                         && emulatorManager.busy_index === emulatorRow.index
-                                running: visible
-                                Layout.preferredWidth: 26
-                                Layout.preferredHeight: 26
-                            }
-                            HeaderButton {
-                                visible: !emulatorManager.busy
-                                         && emulatorManager.can_install_at(emulatorRow.index)
-                                text: "Install"
-                                active: true
-                                onClicked: emulatorManager.install_at(emulatorRow.index)
-                            }
-                            Button {
-                                visible: !emulatorManager.busy
-                                         && emulatorManager.can_uninstall_at(emulatorRow.index)
-                                text: "Uninstall"
-                                onClicked: {
-                                    root.pendingEmulatorUninstallIndex = emulatorRow.index
-                                    root.pendingEmulatorUninstallName = emulatorRow.emulatorName
-                                    root.pendingEmulatorUninstallConfirmation =
-                                            emulatorManager.uninstall_confirmation_at(
-                                                emulatorRow.index)
-                                    emulatorUninstallDialog.open()
-                                }
-                            }
+                        emulatorModel: emulatorManager
+                        ink: root.ink
+                        muted: root.muted
+                        line: root.line
+                        accent: root.accent
+                        accentCool: root.accentCool
+                        onInstallRequested: rowIndex => emulatorManager.install_at(rowIndex)
+                        onUninstallRequested: (rowIndex, emulatorName, confirmation) => {
+                            root.pendingEmulatorUninstallIndex = rowIndex
+                            root.pendingEmulatorUninstallName = emulatorName
+                            root.pendingEmulatorUninstallConfirmation = confirmation
+                            emulatorUninstallDialog.open()
                         }
                     }
                 }

@@ -87,6 +87,13 @@ impl FirmwareStatus {
             _ => "Firmware source",
         }
     }
+
+    pub fn can_sync(&self) -> bool {
+        self.target_strategy != "manual_import"
+            && self.imported
+            && !self.synced
+            && !self.target_path.is_empty()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1726,6 +1733,8 @@ mod tests {
         assert!(status(true, false, false, false).needs_action());
         assert!(!status(false, true, false, false).needs_action());
         assert!(!status(true, false, true, true).needs_action());
+        assert!(status(true, false, true, false).can_sync());
+        assert!(!status(true, false, true, true).can_sync());
     }
 
     #[test]

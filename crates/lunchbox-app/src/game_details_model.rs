@@ -4827,11 +4827,10 @@ impl qobject::GameDetailsModel {
             return;
         }
         let statuses = self.as_ref().selected_firmware_statuses();
-        if !statuses.iter().any(|status| {
-            status.target_strategy != "manual_import"
-                && status.imported
-                && !status.target_path.is_empty()
-        }) {
+        if !statuses
+            .iter()
+            .any(crate::firmware::FirmwareStatus::can_sync)
+        {
             self.as_mut().set_launch_status(qstring(
                 "No imported package needs runtime sync for this emulator.",
             ));
@@ -4948,11 +4947,9 @@ impl qobject::GameDetailsModel {
                 && !status.imported
                 && status.source_transport != "manual"
         });
-        let can_sync = statuses.iter().any(|status| {
-            status.target_strategy != "manual_import"
-                && status.imported
-                && !status.target_path.is_empty()
-        });
+        let can_sync = statuses
+            .iter()
+            .any(crate::firmware::FirmwareStatus::can_sync);
         let mut sources = statuses
             .iter()
             .map(crate::firmware::FirmwareStatus::source_label)
@@ -4976,14 +4973,17 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_firmware_manual_count(count_i32(manual));
         self.as_mut()
             .set_firmware_optional_count(count_i32(optional));
+        let summary = crate::firmware::summarize(&statuses);
         if missing > 0 {
             self.as_mut().set_can_launch(false);
+            self.as_mut().set_launch_status(qstring(format!(
+                "{summary} Choose Set Up Firmware to continue."
+            )));
         }
         self.as_mut().set_firmware_needs_import(needs_import);
         self.as_mut().set_firmware_can_download(can_download);
         self.as_mut().set_firmware_can_sync(can_sync);
-        self.as_mut()
-            .set_firmware_summary(qstring(crate::firmware::summarize(&statuses)));
+        self.as_mut().set_firmware_summary(qstring(summary));
         self.as_mut()
             .set_firmware_source_summary(qstring(sources.join(" · ")));
         self.as_mut()

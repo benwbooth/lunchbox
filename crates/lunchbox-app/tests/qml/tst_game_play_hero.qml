@@ -23,6 +23,7 @@ TestCase {
             preferenceScope: ""
             emulatorOptionCount: 2
             selectedEmulatorOption: 0
+            firmwareMissingCount: 0
             emulatorLabelAt: function(index) {
                 return index === 0 ? "RetroArch · Mesen" : "Mesen"
             }
@@ -76,5 +77,25 @@ TestCase {
         action.clicked()
         verify(cancelled)
         verify(hero.launchBusy)
+    }
+
+    function test_missing_firmware_has_a_direct_setup_action() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            canLaunch: false,
+            emulatorName: "Ryubing (Ryujinx fork)",
+            emulatorOptionCount: 1,
+            selectedEmulatorOption: 0,
+            firmwareMissingCount: 2,
+            launchStatus: "prod.keys and Switch firmware are required."
+        })
+        verify(hero)
+        verify(hero.firmwareSetupNeeded)
+        let setupRequested = false
+        hero.firmwareSetupRequested.connect(function() { setupRequested = true })
+        const action = findChild(hero, "launchAction")
+        verify(action)
+        compare(action.text, "SET UP FIRMWARE")
+        action.clicked()
+        verify(setupRequested)
     }
 }
