@@ -15343,6 +15343,7 @@ ApplicationWindow {
         onOpened: syncCollectionPlatform()
         onClosed: {
             if (!externalTorrent.busy) {
+                externalQbittorrentTorrent.reset(false)
                 externalTorrent.clear()
                 externalMagnet.text = ""
                 externalTorrentDialog.sourceMode = 0
@@ -15531,33 +15532,16 @@ ApplicationWindow {
                     visible: externalTorrentDialog.sourceMode === 0
                     Layout.preferredHeight: visible ? 42 : 0
                     spacing: 10
-                    ComboBox {
+                    LoadedTorrentPicker {
                         id: externalQbittorrentTorrent
                         Layout.fillWidth: true
                         Layout.preferredHeight: 42
-                        enabled: !externalTorrent.busy
-                                 && !externalTorrent.existing_loading
-                                 && externalTorrent.existing_count > 0
-                        currentIndex: -1
-                        model: {
-                            const revision = externalTorrent.existing_revision
-                            const values = []
-                            for (let index = 0;
-                                 index < externalTorrent.existing_count; ++index) {
-                                values.push(externalTorrent.existing_name_at(index))
-                            }
-                            return values
-                        }
-                        displayText: currentIndex >= 0
-                                     ? currentText
-                                     : externalTorrent.existing_loading
-                                       ? "Checking qBittorrent…"
-                                       : "Import a torrent already loaded in qBittorrent"
-                        onActivated: externalTorrent.inspect_existing_torrent(currentIndex)
-                        ToolTip.visible: hovered
-                        ToolTip.text: currentIndex >= 0
-                                      ? externalTorrent.existing_detail_at(currentIndex)
-                                      : externalTorrent.existing_message
+                        torrent: externalTorrent
+                        ink: root.ink
+                        muted: root.muted
+                        accent: root.accent
+                        accentCool: root.accentCool
+                        line: root.line
                     }
                     Button {
                         id: externalQbittorrentRefreshButton

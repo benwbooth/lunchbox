@@ -697,7 +697,14 @@ Minerva title/region/version ranker to put strong matches first and suggest the
 best exact payload, preserves optical multi-disc and eXo dependency sets, and
 provides an asynchronous filename search without changing source member indices.
 It can enumerate exportable v1 torrents already loaded in the configured
-qBittorrent instance. Listing and metadata review are read-only. Confirming a
+qBittorrent instance. The loaded-torrent control is an autocomplete rather
+than an eager combo-box copy of the library: a 120-ms debounce sends title,
+category, state, save-path, and exact-info-hash terms to a generation-guarded
+Rust worker, while a virtualized popup instantiates only visible rows. Filter
+results preserve the immutable source index, and opening a result resolves the
+exact v1 info hash again; duplicate or similar display names therefore cannot
+change identity. Refresh preserves a selection only when that exact hash still
+exists. Listing and metadata review are read-only. Confirming a
 game download or collection source imports the torrent into Lunchbox management
 by assigning its `lunchbox` category; Lunchbox also persists the validated
 `.torrent` metadata and exact member inventory so a later on-demand selection

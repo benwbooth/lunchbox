@@ -84,6 +84,7 @@ fn main() {
                 "qml/HoverPreviewPresentation.qml",
                 "qml/InlineProgressBar.qml",
                 "qml/LaunchCommandPreview.qml",
+                "qml/LoadedTorrentPicker.qml",
                 "qml/MetadataField.qml",
                 "qml/MediaDownloadStatus.qml",
                 "qml/MediaRepairRecoveryBanner.qml",
