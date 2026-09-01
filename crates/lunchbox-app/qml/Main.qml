@@ -169,6 +169,7 @@ ApplicationWindow {
     property bool hoverPreviewAudioMuted: true
     property string hoverPreviewPlaybackError: ""
     property int hoverPreviewProbeStage: 0
+    property int hoverPreviewPlaybackCycles: 0
     property bool hoverPreviewIntentGateVerified: false
     readonly property bool hoverPreviewArtworkProbe: root.argumentValue(
                                                            "--preview-artwork-fixture").length > 0
@@ -1866,6 +1867,8 @@ ApplicationWindow {
         id: hoverPreviewPlayer
         source: root.hoverPreviewTile
                 ? root.hoverPreviewTile.previewResolvedVideoUrl : ""
+        autoPlay: root.hoverPreviewTile
+                  && root.hoverPreviewTile.previewRequested
         activeAudioTrack: root.hoverPreviewAudioMuted ? -1 : 0
         audioOutput: root.hoverPreviewAudioMuted ? null : hoverPreviewAudio
         videoOutput: root.hoverPreviewTile
@@ -1881,7 +1884,6 @@ ApplicationWindow {
             if (mediaStatus === MediaPlayer.LoadedMedia
                     || mediaStatus === MediaPlayer.BufferedMedia) {
                 position = 0
-                play()
             }
         }
         onPlaybackStateChanged: {
@@ -2023,6 +2025,18 @@ ApplicationWindow {
                          + tile.previewCardViewportY + " "
                          + tile.previewCardWidth + "x"
                          + tile.previewCardHeight)
+            if (!root.hoverPreviewArtworkProbe
+                    && root.hoverPreviewPlaybackCycles === 0) {
+                // A one-shot load misses the real regression: leaving and
+                // returning to an already-cached card can rebind the same
+                // source/output without another LoadedMedia transition.
+                root.hoverPreviewPlaybackCycles = 1
+                root.hoverPreviewProbeStage = 3
+                root.hoverPreviewArtworkTile = tile
+                root.disarmGridPreview(tile)
+                hoverPreviewReplayTimer.restart()
+                return
+            }
             const reportReady = function() {
                 if (root.hoverPreviewArtworkProbe) {
                     root.hoverPreviewProbeStage = 3
@@ -2048,6 +2062,29 @@ ApplicationWindow {
                 }
                 reportReady()
             })
+        }
+    }
+
+    Timer {
+        id: hoverPreviewReplayTimer
+        interval: 160
+        repeat: false
+        onTriggered: {
+            if (!root.hoverPreviewUiProbe || root.hoverPreviewArtworkProbe
+                    || root.hoverPreviewProbeStage !== 3)
+                return
+            const tile = root.hoverPreviewArtworkTile
+            if (!tile) {
+                const detail = "cached replay tile was destroyed before re-entry"
+                console.error("LUNCHBOX_HOVER_PREVIEW_UI_FAILED " + detail)
+                library.report_hover_preview_ui_failure(detail)
+                Qt.exit(2)
+                return
+            }
+            root.hoverPreviewProbeStage = 1
+            root.hoverPreviewIntentGateVerified = false
+            root.armGridPreview(tile)
+            hoverPreviewIntentProbeTimer.restart()
         }
     }
 
@@ -8760,6 +8797,20 @@ ApplicationWindow {
                 }
             }
 
+            Item {
+                id: cardHoverCapture
+                x: card.expanded ? cardGeometry.hoverLocalX : cardGeometry.localX
+                y: card.expanded ? cardGeometry.hoverLocalY : cardGeometry.localY
+                width: card.expanded ? cardGeometry.hoverWidth : cardGeometry.baseWidth
+                height: card.expanded ? cardGeometry.hoverHeight : cardGeometry.baseHeight
+                z: 101
+
+                HoverHandler {
+                    id: cardHover
+                    onHoveredChanged: tile.updatePreviewInterest()
+                }
+            }
+
             Rectangle {
                 id: card
                 readonly property bool expanded: cardHover.hovered
@@ -8777,15 +8828,6 @@ ApplicationWindow {
                               : cardHover.hovered ? "#3a485d" : root.line
                 border.width: tile.previewActive || tile.activeFocus
                               || root.selectedGameId === tile.gameId ? 2 : 1
-
-                // Track the actual expanded card, not only the delegate's
-                // original cell. Otherwise moving the card inward can put the
-                // pointer outside the old cell and repeatedly arm/disarm the
-                // player, which appears as a one-frame video flicker.
-                HoverHandler {
-                    id: cardHover
-                    onHoveredChanged: tile.updatePreviewInterest()
-                }
 
                 ViewportCardGeometry {
                     id: cardGeometry

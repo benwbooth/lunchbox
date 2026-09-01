@@ -927,7 +927,11 @@ UUID, and exercises the ordinary delay, worker lookup, and shared player. It
 puts the card against a viewport edge and prints
 `LUNCHBOX_HOVER_PREVIEW_UI_READY` only after Qt reports a video track, the
 fixture duration, `PlayingState`, a decoded-frame handoff, and a genuinely
-enlarged card wholly inside the live grid bounds. The first-frame assertion is
+enlarged card wholly inside the live grid bounds, then leaves and re-enters the
+same cached card and proves that playback and frame delivery start again. The
+shared player records autoplay intent as soon as a cached source or video
+output is attached, so playback does not depend on observing a new
+`LoadedMedia` transition. The first-frame assertion is
 a rendered-host gate; a headless backend whose video clock remains at zero is
 expected not to claim success. The probe deliberately does not use
 Qt Quick's item grab: an Xvfb clock can remain at zero without a working
@@ -936,7 +940,10 @@ Visual acceptance of the live texture remains a release-host check.
 Grid covers decode once at the largest possible hover-card size instead of
 rebinding `Image.sourceSize` to animated geometry. Qt retains that texture while
 loading, and the cover stays opaque underneath the video layer so stopping a
-preview cannot expose the artwork mat. The independent
+preview cannot expose the artwork mat. Hover capture uses the stable union of
+the resting and fully expanded card rectangles. When a bottom or side card
+moves inward, its animated visual therefore cannot move its own hover boundary
+away from a stationary pointer and trigger a repeated expand/collapse loop. The independent
 `--hover-artwork-transition-ui-probe --preview-artwork-fixture PATH
 --media-directory EMPTY_PATH` gate publishes a bounded real image fixture,
 samples the ordinary card during both the 150-ms expansion and collapse, and

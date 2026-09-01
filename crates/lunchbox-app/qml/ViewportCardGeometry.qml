@@ -27,6 +27,44 @@ QtObject {
                                                  Math.min(2,
                                                           availableWidth / Math.max(1, baseWidth),
                                                           availableHeight / Math.max(1, baseHeight)))
+    readonly property real restingViewportX: tileViewportX
+                                                + (tileWidth - baseWidth) / 2
+    readonly property real restingViewportY: tileViewportY
+                                                + (tileHeight - baseHeight) / 2
+    readonly property real maximumCardWidth: baseWidth * maximumExpansion
+    readonly property real maximumCardHeight: baseHeight * maximumExpansion
+    readonly property real maximumCenteredViewportX: tileViewportX
+                                                       + (tileWidth - maximumCardWidth) / 2
+    readonly property real maximumCenteredViewportY: tileViewportY
+                                                       + (tileHeight - maximumCardHeight) / 2
+    readonly property real maximumViewportX: clampToViewport(
+                                                  maximumCenteredViewportX,
+                                                  maximumCardWidth,
+                                                  viewportWidth,
+                                                  trailingInset)
+    readonly property real maximumViewportY: clampToViewport(
+                                                  maximumCenteredViewportY,
+                                                  maximumCardHeight,
+                                                  viewportHeight, 0)
+    // The hover target must not follow the animated card. At a viewport edge,
+    // inward repositioning can otherwise move the card out from under a
+    // stationary pointer; collapse moves it back and produces an arm/disarm
+    // loop. This stable region is the union of the resting and fully expanded
+    // card rectangles.
+    readonly property real hoverViewportX: Math.min(restingViewportX,
+                                                     maximumViewportX)
+    readonly property real hoverViewportY: Math.min(restingViewportY,
+                                                     maximumViewportY)
+    readonly property real hoverViewportRight: Math.max(
+                                                   restingViewportX + baseWidth,
+                                                   maximumViewportX + maximumCardWidth)
+    readonly property real hoverViewportBottom: Math.max(
+                                                    restingViewportY + baseHeight,
+                                                    maximumViewportY + maximumCardHeight)
+    readonly property real hoverWidth: hoverViewportRight - hoverViewportX
+    readonly property real hoverHeight: hoverViewportBottom - hoverViewportY
+    readonly property real hoverLocalX: hoverViewportX - tileViewportX
+    readonly property real hoverLocalY: hoverViewportY - tileViewportY
     property real expansion: expanded ? maximumExpansion : 1
     readonly property real cardWidth: baseWidth * expansion
     readonly property real cardHeight: baseHeight * expansion

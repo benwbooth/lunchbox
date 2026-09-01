@@ -66,6 +66,20 @@ TestCase {
                      "bottom edge")
     }
 
+    function test_bottom_edge_hover_region_covers_resting_and_expanded_cards() {
+        geometry.tileViewportX = 400
+        geometry.tileViewportY = 700
+
+        verify(geometry.hoverViewportY <= geometry.maximumViewportY,
+               "hover region must start above the inward-shifted expanded card")
+        verify(geometry.hoverViewportBottom
+               >= geometry.restingViewportY + geometry.baseHeight,
+               "hover region must retain the resting card's bottom edge")
+        verify(geometry.hoverViewportY <= geometry.viewportHeight - geometry.margin)
+        verify(geometry.hoverViewportBottom >= geometry.viewportHeight,
+               "a pointer at the clipped bottom row remains inside the stable union")
+    }
+
     function test_resting_bottom_rows_stay_inside_their_own_delegates() {
         geometry.expanded = false
 

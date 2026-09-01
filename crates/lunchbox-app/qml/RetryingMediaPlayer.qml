@@ -20,8 +20,27 @@ QtObject {
     readonly property alias mediaStatus: mediaPlayer.mediaStatus
     readonly property alias playbackState: mediaPlayer.playbackState
     readonly property alias seekable: mediaPlayer.seekable
+    property bool autoPlay: false
 
     signal errorOccurred(int error, string errorString)
+    signal autoPlayRequested(url source)
+
+    onAutoPlayChanged: Qt.callLater(ensureAutoPlay)
+    onVideoOutputChanged: Qt.callLater(ensureAutoPlay)
+
+    function ensureAutoPlay() {
+        const activeSource = retryControllerObject.activeSource
+        if (!autoPlay || activeSource.toString().length === 0
+                || !mediaPlayer.videoOutput
+                || mediaPlayer.playbackState === MediaPlayer.PlayingState)
+            return
+        autoPlayRequested(activeSource)
+        // Calling play while the source is still loading records persistent
+        // playback intent in QMediaPlayer. Waiting only for LoadedMedia loses
+        // that intent when a cached source or VideoOutput is rebound without a
+        // fresh media-status transition.
+        mediaPlayer.play()
+    }
 
     function play() {
         player.play()
@@ -39,6 +58,16 @@ QtObject {
         id: retryControllerObject
     }
 
+    property Connections retryConnections: Connections {
+        target: retryControllerObject
+        function onActiveSourceChanged() {
+            Qt.callLater(root.ensureAutoPlay)
+        }
+        function onRetryScheduled() {
+            Qt.callLater(root.ensureAutoPlay)
+        }
+    }
+
     property MediaPlayer player: MediaPlayer {
         id: mediaPlayer
         source: retryControllerObject.activeSource
@@ -46,11 +75,15 @@ QtObject {
         onSourceChanged: {
             if (source.toString().length === 0)
                 stop()
+            else
+                Qt.callLater(root.ensureAutoPlay)
         }
         onMediaStatusChanged: {
             if (mediaStatus === MediaPlayer.LoadedMedia
-                    || mediaStatus === MediaPlayer.BufferedMedia)
+                    || mediaStatus === MediaPlayer.BufferedMedia) {
                 retryControllerObject.markReady()
+                Qt.callLater(root.ensureAutoPlay)
+            }
         }
         onPlaybackStateChanged: {
             if (playbackState === MediaPlayer.PlayingState)
