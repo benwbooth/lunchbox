@@ -78,6 +78,7 @@ pub struct GameDetails {
     pub video_media_key: String,
     pub video_progress: Option<crate::settings::MediaPlaybackProgress>,
     pub manual_transfer: Option<crate::settings::MediaTransfer>,
+    pub registered_torrent_source_count: usize,
     pub bundles: Vec<MinervaBundle>,
 }
 
@@ -290,6 +291,10 @@ pub fn load(
         }
     }
 
+    let platform_key = catalog::normalize_platform_key(&details.platform);
+    details.registered_torrent_source_count = settings_store
+        .registered_torrent_sources_for_platform(&platform_key)?
+        .len();
     details.bundles = resolve_minerva_bundles(&details)?;
     details
         .bundles

@@ -12,6 +12,7 @@ pub mod qobject {
         #[qml_element]
         #[qproperty(bool, initialized)]
         #[qproperty(bool, onboarding_complete)]
+        #[qproperty(bool, minimize_during_game)]
         #[qproperty(bool, busy)]
         #[qproperty(bool, password_saved)]
         #[qproperty(bool, connection_ok)]
@@ -300,6 +301,7 @@ use crate::settings::{
 pub struct SettingsModelRust {
     initialized: bool,
     onboarding_complete: bool,
+    minimize_during_game: bool,
     busy: bool,
     password_saved: bool,
     connection_ok: bool,
@@ -364,6 +366,7 @@ impl Default for SettingsModelRust {
         Self {
             initialized: false,
             onboarding_complete: false,
+            minimize_during_game: false,
             busy: false,
             password_saved: false,
             connection_ok: false,
@@ -2051,6 +2054,8 @@ impl qobject::SettingsModel {
         self.as_mut()
             .set_download_entire_torrent(settings.download_entire_torrent);
         self.as_mut()
+            .set_minimize_during_game(settings.minimize_during_game);
+        self.as_mut()
             .set_file_link_mode(qstring(settings.file_link_mode));
         self.as_mut()
             .set_seeding_policy(qstring(settings.seeding_policy));
@@ -2076,6 +2081,7 @@ impl qobject::SettingsModel {
             .map_err(|_| "qBittorrent port must be between 1 and 65535".to_owned())?;
         let settings = AppSettings {
             onboarding_complete: *self.onboarding_complete(),
+            minimize_during_game: *self.minimize_during_game(),
             qbittorrent_host: self.qbittorrent_host().to_string(),
             qbittorrent_port: port,
             qbittorrent_use_https: *self.qbittorrent_use_https(),

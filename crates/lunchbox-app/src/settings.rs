@@ -66,6 +66,7 @@ pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppSettings {
     pub onboarding_complete: bool,
+    pub minimize_during_game: bool,
     pub qbittorrent_host: String,
     pub qbittorrent_port: u16,
     pub qbittorrent_use_https: bool,
@@ -107,6 +108,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             onboarding_complete: false,
+            minimize_during_game: false,
             qbittorrent_host: "127.0.0.1".to_owned(),
             qbittorrent_port: 8080,
             qbittorrent_use_https: false,
@@ -1898,13 +1900,14 @@ impl SettingsStore {
                         file_link_mode, seeding_policy,
                         preferred_region, version_preference, region_priority_json,
                         controller_mapping_json, media_provider_priority_json,
-                        onboarding_complete
+                        onboarding_complete, minimize_during_game
                  FROM app_settings WHERE id=1",
                 [],
                 |row| {
                     let port = row.get::<_, i64>(1)?;
                     Ok(AppSettings {
                         onboarding_complete: row.get(18)?,
+                        minimize_during_game: row.get(19)?,
                         qbittorrent_host: row.get(0)?,
                         qbittorrent_port: u16::try_from(port).unwrap_or_default(),
                         qbittorrent_use_https: row.get(2)?,
@@ -1978,8 +1981,8 @@ impl SettingsStore {
                  file_link_mode, seeding_policy,
                  preferred_region, version_preference, region_priority_json,
                  controller_mapping_json, media_provider_priority_json,
-                 onboarding_complete
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+                 onboarding_complete, minimize_during_game
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
              ON CONFLICT(id) DO UPDATE SET
                  qbittorrent_host=excluded.qbittorrent_host,
                  qbittorrent_port=excluded.qbittorrent_port,
@@ -1999,7 +2002,8 @@ impl SettingsStore {
                  region_priority_json=excluded.region_priority_json,
                  controller_mapping_json=excluded.controller_mapping_json,
                  media_provider_priority_json=excluded.media_provider_priority_json,
-                 onboarding_complete=excluded.onboarding_complete",
+                 onboarding_complete=excluded.onboarding_complete,
+                 minimize_during_game=excluded.minimize_during_game",
             params![
                 settings.qbittorrent_host,
                 i64::from(settings.qbittorrent_port),
@@ -2023,6 +2027,7 @@ impl SettingsStore {
                 serde_json::to_string(&settings.media_provider_priority)
                     .context("encoding media provider priority")?,
                 settings.onboarding_complete,
+                settings.minimize_during_game,
             ],
         )?;
         transaction.commit()?;
@@ -5168,6 +5173,9 @@ fn migrate(connection: &Connection) -> Result<()> {
              media_provider_priority_json TEXT NOT NULL DEFAULT '[]',
              onboarding_complete INTEGER NOT NULL DEFAULT 0 CHECK (
                  onboarding_complete IN (0, 1)
+             ),
+             minimize_during_game INTEGER NOT NULL DEFAULT 0 CHECK (
+                 minimize_during_game IN (0, 1)
              )
          );
          CREATE TABLE IF NOT EXISTS library_preferences (
@@ -6404,6 +6412,12 @@ fn migrate(connection: &Connection) -> Result<()> {
         // databases use the CREATE TABLE default above and start incomplete.
         connection.execute(
             "ALTER TABLE app_settings ADD COLUMN onboarding_complete INTEGER NOT NULL DEFAULT 1 CHECK (onboarding_complete IN (0, 1))",
+            [],
+        )?;
+    }
+    if !column_exists(connection, "app_settings", "minimize_during_game")? {
+        connection.execute(
+            "ALTER TABLE app_settings ADD COLUMN minimize_during_game INTEGER NOT NULL DEFAULT 0 CHECK (minimize_during_game IN (0, 1))",
             [],
         )?;
     }
@@ -7718,6 +7732,7 @@ mod tests {
 
         let expected = AppSettings {
             onboarding_complete: true,
+            minimize_during_game: true,
             qbittorrent_host: "media.local".into(),
             qbittorrent_port: 9443,
             qbittorrent_use_https: true,
@@ -10465,6 +10480,7 @@ mod tests {
             column_exists(&connection, "app_settings", "media_provider_priority_json").unwrap()
         );
         assert!(column_exists(&connection, "app_settings", "onboarding_complete").unwrap());
+        assert!(column_exists(&connection, "app_settings", "minimize_during_game").unwrap());
         assert!(column_exists(&connection, "sidebar_preferences", "details_width").unwrap());
         assert!(
             column_exists(

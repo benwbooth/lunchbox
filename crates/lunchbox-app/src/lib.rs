@@ -58,6 +58,7 @@ mod tags;
 mod watched_torrent;
 pub mod watched_torrent_model;
 pub mod web_artwork_model;
+mod window_icon;
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -435,6 +436,7 @@ pub fn run() -> i32 {
 
     let mut application = QGuiApplication::new();
     QGuiApplication::set_desktop_file_name(&QString::from("io.github.benwbooth.Lunchbox"));
+    window_icon::install();
     let mut application_ref = application
         .as_mut()
         .expect("Qt did not construct a QGuiApplication");

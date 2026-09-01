@@ -336,6 +336,7 @@ struct ReviewState {
 struct ExistingTorrentRefresh {
     torrents: Vec<crate::qbittorrent::ExistingTorrentSummary>,
     searchable_text: Arc<Vec<String>>,
+    registered_info_hashes: std::collections::HashSet<String>,
 }
 
 #[derive(Clone)]
@@ -432,6 +433,10 @@ impl qobject::ExternalTorrentModel {
             platform: platform.clone(),
         });
         self.as_mut().set_game_platform(qstring(platform));
+        self.as_mut().reset_existing_selection();
+        self.as_mut().reset_batch_reviews();
+        self.as_mut().reset_offer();
+        self.as_mut().refresh_existing_torrents();
     }
 
     pub fn inspect_file(mut self: Pin<&mut Self>, url: QUrl) {
@@ -520,9 +525,10 @@ impl qobject::ExternalTorrentModel {
     }
 
     pub fn refresh_existing_torrents(mut self: Pin<&mut Self>) {
-        if *self.as_ref().existing_loading() {
-            return;
-        }
+        // A new review target can be chosen while an older qBittorrent query
+        // is still in flight. Start the new query and let the generation guard
+        // discard the stale result; otherwise the new platform can inherit an
+        // empty list and never get its registered sources preselected.
         self.as_mut().rust_mut().existing_generation =
             self.as_ref().rust().existing_generation.wrapping_add(1);
         let generation = self.as_ref().rust().existing_generation;
@@ -535,6 +541,8 @@ impl qobject::ExternalTorrentModel {
         self.as_mut().set_existing_filter_busy(false);
         self.as_mut()
             .set_existing_message(qstring("Checking qBittorrent for torrents you can import…"));
+        let platform_key =
+            crate::catalog::normalize_platform_key(&self.as_ref().game_platform().to_string());
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
             .name("lunchbox-qbittorrent-import-list".to_owned())
@@ -544,6 +552,11 @@ impl qobject::ExternalTorrentModel {
                     let settings = store.load()?;
                     let password = crate::settings::load_password()?.unwrap_or_default();
                     let torrents = crate::qbittorrent::existing_torrents(&settings, &password)?;
+                    let registered_info_hashes = store
+                        .registered_torrent_sources_for_platform(&platform_key)?
+                        .into_iter()
+                        .map(|source| source.info_hash.to_ascii_lowercase())
+                        .collect();
                     let searchable_text = Arc::new(
                         torrents
                             .iter()
@@ -553,6 +566,7 @@ impl qobject::ExternalTorrentModel {
                     Ok(ExistingTorrentRefresh {
                         torrents,
                         searchable_text,
+                        registered_info_hashes,
                     })
                 })()
                 .map_err(|error| format!("{error:#}"));
@@ -592,8 +606,12 @@ impl qobject::ExternalTorrentModel {
                     .collect::<std::collections::HashSet<_>>();
                 {
                     let mut rust = self.as_mut().rust_mut();
-                    rust.existing_selected_info_hashes
-                        .retain(|info_hash| available_hashes.contains(info_hash));
+                    merge_registered_existing_selection(
+                        &mut rust.existing_selected_info_hashes,
+                        &refresh.torrents,
+                        &available_hashes,
+                        &refresh.registered_info_hashes,
+                    );
                     rust.existing_torrents = refresh.torrents;
                     rust.existing_searchable_text = refresh.searchable_text;
                     rust.existing_filtered_indices = (0..count).collect();
@@ -2003,6 +2021,22 @@ fn existing_torrent_search_text(torrent: &crate::qbittorrent::ExistingTorrentSum
     .to_lowercase()
 }
 
+fn merge_registered_existing_selection(
+    selected_info_hashes: &mut Vec<String>,
+    torrents: &[crate::qbittorrent::ExistingTorrentSummary],
+    available_hashes: &std::collections::HashSet<String>,
+    registered_info_hashes: &std::collections::HashSet<String>,
+) {
+    selected_info_hashes.retain(|info_hash| available_hashes.contains(info_hash));
+    for torrent in torrents {
+        if registered_info_hashes.contains(&torrent.info_hash.to_ascii_lowercase())
+            && !selected_info_hashes.contains(&torrent.info_hash)
+        {
+            selected_info_hashes.push(torrent.info_hash.clone());
+        }
+    }
+}
+
 fn existing_torrent_detail(torrent: &crate::qbittorrent::ExistingTorrentSummary) -> String {
     let percent = (torrent.progress * 100.0).round();
     let selected_size = crate::game_details::format_bytes(torrent.size);
@@ -2458,5 +2492,43 @@ mod tests {
             existing_torrent_detail(&torrent),
             "0% · 6.8 GiB total · 12 B currently selected · pausedDL · switch"
         );
+    }
+
+    #[test]
+    fn registered_platform_torrents_are_preselected_when_still_loaded() {
+        let loaded_hash = "A".repeat(40);
+        let removed_hash = "B".repeat(40);
+        let manual_hash = "C".repeat(40);
+        let torrents = [loaded_torrent(&loaded_hash), loaded_torrent(&manual_hash)];
+        let available_hashes = torrents
+            .iter()
+            .map(|torrent| torrent.info_hash.clone())
+            .collect();
+        let registered_info_hashes = [loaded_hash.to_ascii_lowercase(), removed_hash.clone()]
+            .into_iter()
+            .collect();
+        let mut selected = vec![manual_hash.clone(), removed_hash];
+
+        merge_registered_existing_selection(
+            &mut selected,
+            &torrents,
+            &available_hashes,
+            &registered_info_hashes,
+        );
+
+        assert_eq!(selected, [manual_hash, loaded_hash]);
+    }
+
+    fn loaded_torrent(info_hash: &str) -> crate::qbittorrent::ExistingTorrentSummary {
+        crate::qbittorrent::ExistingTorrentSummary {
+            info_hash: info_hash.to_owned(),
+            name: "Platform archive".to_owned(),
+            category: "switch".to_owned(),
+            state: "pausedUP".to_owned(),
+            progress: 1.0,
+            size: 1,
+            total_size: 1,
+            save_path: "/downloads".to_owned(),
+        }
     }
 }

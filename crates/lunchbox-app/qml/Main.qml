@@ -1485,6 +1485,18 @@ ApplicationWindow {
         externalTorrentDialog.open()
     }
 
+    function openPlatformTorrentSourcesForGame(gameId, databaseId, title, platform) {
+        if (!gameId || gameId.length === 0 || !title || title.length === 0
+                || !platform || platform.length === 0)
+            return
+        // This action edits the platform's reusable source set. Collection
+        // mode exposes checkbox selection and preselects every source already
+        // registered for the platform.
+        externalTorrent.begin_collection_review(platform)
+        externalTorrentDialog.sourceMode = 0
+        externalTorrentDialog.open()
+    }
+
     function reviewDownloadedCollection(directory, platform) {
         localImport.choose_directory_path(directory)
         importDialogLoader.active = true
@@ -2149,6 +2161,12 @@ ApplicationWindow {
 
     SettingsModel {
         id: appSettings
+    }
+
+    GameWindowBehavior {
+        applicationWindow: root
+        gameRunning: gameDetails.game_running
+        minimizeEnabled: appSettings.minimize_during_game
     }
 
     EmulatorManagerModel {
@@ -9876,11 +9894,17 @@ ApplicationWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 9
             HeaderButton {
-                text: "▣"
+                text: ""
                 implicitWidth: 42
                 leftPadding: 0
                 rightPadding: 0
                 onClicked: root.enterCouchMode()
+                contentItem: Image {
+                    source: "qrc:/qt/qml/Lunchbox/qml/icons/couch.svg"
+                    sourceSize.width: 24
+                    sourceSize.height: 24
+                    fillMode: Image.PreserveAspectFit
+                }
                 ToolTip.visible: hovered
                 ToolTip.text: "Couch mode"
             }
@@ -11192,12 +11216,34 @@ ApplicationWindow {
                         width: 1
                         height: 0
                         property int revision: gameDetails.detail_revision
-                        readonly property bool revealed:
-                            root.selectedDownloadJobIndex < 0
-                            || root.downloadAlternativesExpanded
                         readonly property int count: {
                             revision
                             return gameDetails.download_source_count()
+                        }
+                    }
+
+                    GameTorrentSources {
+                        width: parent.width
+                        detailsModel: gameDetails
+                        showAddSource: !gameDetails.loading
+                                       && !gameDetails.local
+                                       && gameDetails.game_id.length > 0
+                                       && !(root.selectedDownloadJobIndex >= 0
+                                            && downloadQueue.job_state_at(
+                                                root.selectedDownloadJobIndex)
+                                               === "IMPORTED")
+                        ink: root.ink
+                        muted: root.muted
+                        line: root.line
+                        accent: root.accent
+                        accentCool: root.accentCool
+                        onAddSourceRequested: root.openPlatformTorrentSourcesForGame(
+                                                  gameDetails.game_id,
+                                                  root.selectedDatabaseId,
+                                                  gameDetails.title,
+                                                  gameDetails.platform)
+                        onReviewCandidateRequested: function(candidateIndex) {
+                            downloadReviewDialog.openFor(candidateIndex)
                         }
                     }
 
@@ -11296,34 +11342,6 @@ ApplicationWindow {
                                 }
                             }
                         }
-                    }
-
-                    GameDetailsStatusCard {
-                        width: parent.width
-                        busy: gameDetails.loading || gameDetails.torrent_loading
-                              || gameDetails.prepare_busy
-                              || gameDetails.launch_discovery_busy
-                              || gameDetails.launch_busy
-                        message: gameDetails.message
-                        importTorrentAvailable: !gameDetails.loading
-                                                && !gameDetails.torrent_loading
-                                                && !gameDetails.local
-                                                && gameDetails.game_id.length > 0
-                                                && minervaSourceState.count === 0
-                                                && !(root.selectedDownloadJobIndex >= 0
-                                                     && downloadQueue.job_state_at(
-                                                         root.selectedDownloadJobIndex)
-                                                        === "IMPORTED")
-                        ink: root.ink
-                        muted: root.muted
-                        panel: "#151d29"
-                        line: root.line
-                        accent: root.accent
-                        onImportTorrentRequested: root.openTorrentForGame(
-                                                      gameDetails.game_id,
-                                                      root.selectedDatabaseId,
-                                                      gameDetails.title,
-                                                      gameDetails.platform)
                     }
 
                     Rectangle {
@@ -13222,227 +13240,11 @@ ApplicationWindow {
                             root.downloadAlternativesExpanded = !root.downloadAlternativesExpanded
                     }
 
-                    Button {
-                        width: parent.width
-                        height: 36
-                        visible: !gameDetails.loading
-                                 && minervaSourceState.count > 0
-                                 && gameDetails.game_id.length > 0
-                        text: "ADD ANOTHER TORRENT SOURCE"
-                        font.pixelSize: 9
-                        font.weight: Font.Bold
-                        onClicked: root.openTorrentForGame(
-                                       gameDetails.game_id,
-                                       root.selectedDatabaseId,
-                                       gameDetails.title,
-                                       gameDetails.platform)
-                        background: Rectangle {
-                            radius: 8
-                            color: parent.down ? "#28364a" : "#1b2532"
-                            border.color: root.line
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            color: root.ink
-                            font: parent.font
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        ToolTip.visible: hovered
-                        ToolTip.text: "Review one torrent, select this game's exact file, and optionally reuse the torrent for other games on " + gameDetails.platform + "."
+                    Item {
+                        width: 1
+                        height: romDownloadStatus.visible
+                                ? romDownloadStatus.height + 40 : 18
                     }
-                    Rectangle {
-                        visible: minervaSourceState.revealed
-                                 && !gameDetails.loading
-                                 && (gameDetails.torrent_loading
-                                     || minervaSourceState.count > 0)
-                        width: parent.width
-                        height: 1
-                        color: root.line
-                    }
-                    Text {
-                        visible: minervaSourceState.revealed
-                                 && !gameDetails.loading
-                                 && (gameDetails.torrent_loading
-                                     || minervaSourceState.count > 0)
-                        width: parent.width
-                        text: "TORRENT SOURCES"
-                        color: "#687488"
-                        font.pixelSize: 10
-                        font.weight: Font.Bold
-                        font.letterSpacing: 1.2
-                    }
-                    Text {
-                        visible: minervaSourceState.revealed
-                                 && !gameDetails.loading
-                                 && (gameDetails.torrent_loading
-                                     || minervaSourceState.count > 0)
-                        width: parent.width
-                        text: minervaSourceState.count > 0
-                              ? "Minerva and your registered torrents are searched together. Only exact-title candidates are shown from local sources; review the filename before downloading that individual game."
-                              : "Checking available torrents for matching game files…"
-                        color: root.muted
-                        font.pixelSize: 11
-                        lineHeight: 1.25
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Repeater {
-                        model: minervaSourceState.revealed
-                               ? minervaSourceState.count : 0
-                        delegate: Rectangle {
-                            id: sourceSection
-                            required property int index
-                            property int revision: gameDetails.detail_revision
-                            readonly property int bundleIndex: {
-                                sourceSection.revision
-                                return gameDetails.download_source_bundle_at(
-                                            sourceSection.index)
-                            }
-                            readonly property int candidateCount: {
-                                sourceSection.revision
-                                return gameDetails.bundle_file_count_at(
-                                            sourceSection.bundleIndex)
-                            }
-                            width: detailsPane.width - 40
-                            height: sourceContents.implicitHeight + 24
-                            radius: 10
-                            color: "#141d29"
-                            border.color: sourceSection.index === 0
-                                          && sourceSection.candidateCount > 0
-                                          ? root.accentCool : root.line
-                            Column {
-                                id: sourceContents
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.top: parent.top
-                                anchors.leftMargin: 12
-                                anchors.rightMargin: 12
-                                anchors.topMargin: 12
-                                spacing: 8
-                                RowLayout {
-                                    width: parent.width
-                                    spacing: 8
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: {
-                                            sourceSection.revision
-                                            return gameDetails.bundle_title_at(
-                                                        sourceSection.bundleIndex)
-                                        }
-                                        color: root.ink
-                                        font.pixelSize: 12
-                                        font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
-                                    }
-                                    Rectangle {
-                                        visible: sourceSection.index === 0
-                                                 && sourceSection.candidateCount > 0
-                                        Layout.preferredWidth: bestSourceText.implicitWidth + 14
-                                        Layout.preferredHeight: 20
-                                        radius: 6
-                                        color: "#17342f"
-                                        border.color: root.accentCool
-                                        Text {
-                                            id: bestSourceText
-                                            anchors.centerIn: parent
-                                            text: "BEST SOURCE"
-                                            color: root.accentCool
-                                            font.pixelSize: 8
-                                            font.weight: Font.Bold
-                                            font.letterSpacing: 0.6
-                                        }
-                                    }
-                                }
-                                Text {
-                                    width: parent.width
-                                    text: {
-                                        sourceSection.revision
-                                        return gameDetails.bundle_detail_at(
-                                                    sourceSection.bundleIndex)
-                                    }
-                                    color: root.muted
-                                    font.pixelSize: 10
-                                    elide: Text.ElideRight
-                                }
-
-                                Repeater {
-                                    model: sourceSection.candidateCount
-                                    delegate: Rectangle {
-                                        id: fileRow
-                                        required property int index
-                                        property int revision: gameDetails.detail_revision
-                                        width: sourceContents.width
-                                        height: Math.max(70,
-                                                         fileName.implicitHeight
-                                                         + fileInfo.implicitHeight + 26)
-                                        radius: 8
-                                        color: sourceSection.index === 0
-                                               && fileRow.index === 0
-                                               ? "#172b2a" : "#192330"
-                                        border.color: fileRow.index === 0
-                                                      ? root.accentCool : "#2a3748"
-                                        Column {
-                                            anchors.left: parent.left
-                                            anchors.right: getButton.left
-                                            anchors.leftMargin: 11
-                                            anchors.rightMargin: 9
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            spacing: 4
-                                            Text {
-                                                id: fileName
-                                                width: parent.width
-                                                text: {
-                                                    fileRow.revision
-                                                    return gameDetails.bundle_file_name_at(
-                                                                sourceSection.bundleIndex,
-                                                                fileRow.index)
-                                                }
-                                                color: root.ink
-                                                font.pixelSize: 11
-                                                wrapMode: Text.WrapAnywhere
-                                            }
-                                            Text {
-                                                id: fileInfo
-                                                width: parent.width
-                                                text: {
-                                                    fileRow.revision
-                                                    return gameDetails.bundle_file_detail_at(
-                                                                sourceSection.bundleIndex,
-                                                                fileRow.index)
-                                                }
-                                                color: root.muted
-                                                font.pixelSize: 10
-                                                elide: Text.ElideRight
-                                            }
-                                        }
-                                        HeaderButton {
-                                            id: getButton
-                                            anchors.right: parent.right
-                                            anchors.rightMargin: 9
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: gameDetails.download_busy ? "…" : "GET"
-                                            enabled: !gameDetails.download_busy
-                                                     && sourceSection.candidateCount > 0
-                                            implicitWidth: 62
-                                            implicitHeight: 34
-                                            leftPadding: 8
-                                            rightPadding: 8
-                                            onClicked: {
-                                                const selected = gameDetails.select_bundle_file(
-                                                                   sourceSection.bundleIndex,
-                                                                   fileRow.index)
-                                                if (selected >= 0)
-                                                    downloadReviewDialog.openFor(selected)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Item { width: 1; height: 10 }
                 }
             }
         }
@@ -15804,46 +15606,14 @@ ApplicationWindow {
                     }
                 }
 
-                Rectangle {
+                TorrentPlatformRegistration {
+                    id: externalTorrentPlatformSource
                     Layout.fillWidth: true
                     Layout.preferredHeight: visible ? 64 : 0
-                    visible: !externalTorrent.collection_mode
-                             && externalTorrent.batch_source_count === 0
-                    radius: 9
-                    color: "#111923"
-                    border.color: root.line
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 12
-                        anchors.rightMargin: 12
-                        spacing: 10
-                        CheckBox {
-                            id: externalTorrentPlatformSource
-                            checked: externalTorrent.register_for_platform
-                            enabled: !externalTorrent.busy
-                            onToggled: externalTorrent.set_platform_registration(checked)
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            Text {
-                                Layout.fillWidth: true
-                                text: "USE THIS TORRENT FOR "
-                                      + externalTorrent.game_platform.toUpperCase()
-                                color: root.ink
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                                elide: Text.ElideRight
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Save its metadata and member index in Lunchbox for future exact-title Get results. The source remains usable if its qBittorrent entry is removed."
-                                color: root.muted
-                                font.pixelSize: 9
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-                    }
+                    torrent: externalTorrent
+                    ink: root.ink
+                    muted: root.muted
+                    line: root.line
                 }
 
                 Text {
@@ -18680,6 +18450,10 @@ ApplicationWindow {
                         font.letterSpacing: 1.1
                     }
                     SettingsNavButton {
+                        text: "Game launch"
+                        onClicked: root.positionSettingsItem(gameLaunchSettingsSection)
+                    }
+                    SettingsNavButton {
                         text: "Couch Mode & appearance"
                         onClicked: root.positionSettingsItem(couchAttractSettingsSection)
                     }
@@ -18743,6 +18517,43 @@ ApplicationWindow {
                     x: Math.max(32, (settingsScroll.availableWidth - width) / 2)
                     width: Math.min(1120, settingsScroll.availableWidth - 64)
                     spacing: 11
+
+                ColumnLayout {
+                    id: gameLaunchSettingsSection
+                    Layout.fillWidth: true
+                    spacing: 9
+
+                    Text {
+                        text: "GAME LAUNCH"
+                        color: root.accent
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.2
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "WINDOW BEHAVIOR"
+                        color: root.ink
+                        font.pixelSize: 12
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Lunchbox can leave the desktop clear while an emulator is running, then restore this window to its previous normal, maximized, or Couch Mode state when the emulator exits. A window that was already minimized is left alone."
+                        color: root.muted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    Switch {
+                        objectName: "minimizeDuringGameSwitch"
+                        text: "Minimize Lunchbox while a game is running"
+                        checked: appSettings.minimize_during_game
+                        enabled: appSettings.initialized && !appSettings.busy
+                        onToggled: appSettings.minimize_during_game = checked
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
 
                 ColumnLayout {
                     id: couchAttractSettingsSection

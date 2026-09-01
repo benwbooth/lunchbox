@@ -258,6 +258,29 @@ TestCase {
         tryVerify(() => !popup.opened)
     }
 
+    function test_registered_platform_sources_are_checked_when_picker_opens() {
+        torrentModel.collection_mode = true
+        torrentModel.existing_count = 2
+        torrentModel.existing_filtered_count = 2
+        torrentModel.selectedHashes = [torrentModel.hashFor(0),
+                                       torrentModel.hashFor(1)]
+        torrentModel.existing_selected_count = 2
+        torrentModel.existing_revision += 1
+
+        const button = findChild(picker, "loadedTorrentDropdownButton")
+        mouseClick(button, button.width / 2, button.height / 2)
+
+        const popup = findChild(picker, "loadedTorrentPopup")
+        const list = findChild(picker, "loadedTorrentList")
+        tryVerify(() => popup.opened)
+        const first = findChild(list, "loadedTorrentRow-0")
+        const second = findChild(list, "loadedTorrentRow-1")
+        tryVerify(() => first !== null && second !== null)
+        verify(first.batchSelected)
+        verify(second.batchSelected)
+        compare(torrentModel.existing_selected_count, 2)
+    }
+
     function test_game_mode_checkboxes_select_platform_sources_with_shift_range() {
         torrentModel.collection_mode = false
         torrentModel.existing_count = 4

@@ -157,6 +157,7 @@ pub mod qobject {
         #[qproperty(QString, firmware_source_summary)]
         #[qproperty(QString, firmware_package_summary)]
         #[qproperty(QString, firmware_runtime_path)]
+        #[qproperty(i32, registered_torrent_source_count)]
         #[qproperty(i32, bundle_count)]
         #[qproperty(i32, file_count)]
         #[qproperty(i32, selected_bundle)]
@@ -699,6 +700,7 @@ pub struct GameDetailsModelRust {
     firmware_source_summary: QString,
     firmware_package_summary: QString,
     firmware_runtime_path: QString,
+    registered_torrent_source_count: i32,
     bundle_count: i32,
     file_count: i32,
     selected_bundle: i32,
@@ -911,6 +913,7 @@ impl Default for GameDetailsModelRust {
             firmware_source_summary: QString::default(),
             firmware_package_summary: QString::default(),
             firmware_runtime_path: QString::default(),
+            registered_torrent_source_count: 0,
             bundle_count: 0,
             file_count: 0,
             selected_bundle: -1,
@@ -2151,6 +2154,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().rust_mut().related_games.clear();
         self.as_mut().rust_mut().files.clear();
         self.as_mut().set_bundle_count(0);
+        self.as_mut().set_registered_torrent_source_count(0);
         self.as_mut().set_file_count(0);
         self.as_mut().set_selected_bundle(-1);
         self.as_mut().rust_mut().download_preflight_generation = self
@@ -2407,6 +2411,9 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_prepared(prepared);
                 self.as_mut()
                     .set_prepared_summary(qstring(prepared_summary));
+                self.as_mut().set_registered_torrent_source_count(count_i32(
+                    details.registered_torrent_source_count,
+                ));
                 let bundle_count = details.bundles.len();
                 self.as_mut().rust_mut().bundles = details.bundles;
                 self.as_mut().rust_mut().bundle_candidates =

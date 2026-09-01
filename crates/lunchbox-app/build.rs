@@ -83,6 +83,8 @@ fn main() {
                 "qml/GameFilesCard.qml",
                 "qml/GamePlayHero.qml",
                 "qml/GameSoundtrackCard.qml",
+                "qml/GameTorrentSources.qml",
+                "qml/GameWindowBehavior.qml",
                 "qml/HeaderButton.qml",
                 "qml/HorizontalWheelHandler.qml",
                 "qml/HoverPreviewPresentation.qml",
@@ -106,12 +108,14 @@ fn main() {
                 "qml/SettingsNavButton.qml",
                 "qml/StatusPill.qml",
                 "qml/TorrentPayloadPicker.qml",
+                "qml/TorrentPlatformRegistration.qml",
                 "qml/TorrentSourceBatchReview.qml",
                 "qml/ViewportCardGeometry.qml",
                 "qml/WatchedTorrentInbox.qml",
                 "qml/Main.qml",
             ]),
     )
+    .crate_include_root(Some("include".to_owned()))
     .qrc(platform_resources)
     .qt_module("Quick")
     .qt_module("QuickControls2")
@@ -138,6 +142,7 @@ fn main() {
     .file("src/steamgriddb_model.rs")
     .file("src/web_artwork_model.rs")
     .file("src/watched_torrent_model.rs")
+    .file("src/window_icon.rs")
     .build();
 }
 
@@ -146,9 +151,11 @@ fn generate_platform_resources() -> PathBuf {
         PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
     let icon_directory = manifest_directory.join("../../assets/platforms");
     let search_icon = manifest_directory.join("qml/icons/search.svg");
+    let couch_icon = manifest_directory.join("qml/icons/couch.svg");
     let app_icon = manifest_directory.join("../../assets/lunchbox.svg");
     println!("cargo:rerun-if-changed={}", icon_directory.display());
     println!("cargo:rerun-if-changed={}", search_icon.display());
+    println!("cargo:rerun-if-changed={}", couch_icon.display());
     println!("cargo:rerun-if-changed={}", app_icon.display());
 
     let mut icons = fs::read_dir(&icon_directory)
@@ -177,8 +184,9 @@ fn generate_platform_resources() -> PathBuf {
     qrc.push_str("  </qresource>\n");
     writeln!(
         qrc,
-        "  <qresource prefix=\"/qt/qml/Lunchbox/qml/icons\">\n    <file alias=\"search.svg\">{}</file>\n    <file alias=\"lunchbox.svg\">{}</file>\n  </qresource>",
+        "  <qresource prefix=\"/qt/qml/Lunchbox/qml/icons\">\n    <file alias=\"search.svg\">{}</file>\n    <file alias=\"couch.svg\">{}</file>\n    <file alias=\"lunchbox.svg\">{}</file>\n  </qresource>",
         search_icon.display(),
+        couch_icon.display(),
         app_icon.display()
     )
     .expect("writing search icon resource manifest");
