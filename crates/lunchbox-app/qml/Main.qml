@@ -79,6 +79,7 @@ ApplicationWindow {
     property bool clearAllDownloadHistory: false
     property string pendingRecoveryJobId: ""
     property string pendingRecoveryJobTitle: ""
+    property url pendingWatchedTorrentSource: ""
     property int pendingThemeRemovalIndex: -1
     readonly property bool gridMode: library.view_mode !== "list"
     property bool couchModeActive: false
@@ -1465,6 +1466,7 @@ ApplicationWindow {
     function reviewWatchedTorrent(source) {
         if (!source || source.toString().length === 0)
             return
+        root.pendingWatchedTorrentSource = source
         externalTorrent.begin_collection_review("Unassigned platform")
         externalTorrentDialog.sourceMode = 1
         externalTorrentDialog.open()
@@ -2424,7 +2426,13 @@ ApplicationWindow {
         function onRegistered_revisionChanged() {
             if (externalTorrent.registered_revision <= 0)
                 return
-            watchedTorrents.refresh()
+            if (root.pendingWatchedTorrentSource.toString().length > 0) {
+                watchedTorrents.archive_registered_file(
+                            root.pendingWatchedTorrentSource)
+                root.pendingWatchedTorrentSource = ""
+            } else {
+                watchedTorrents.refresh()
+            }
             externalTorrentDialog.close()
             if (root.selectedGameId.length > 0
                     && gameDetails.game_id === root.selectedGameId) {
@@ -15373,6 +15381,7 @@ ApplicationWindow {
                 externalTorrent.clear()
                 externalMagnet.text = ""
                 externalTorrentDialog.sourceMode = 0
+                root.pendingWatchedTorrentSource = ""
             }
         }
         background: Rectangle {

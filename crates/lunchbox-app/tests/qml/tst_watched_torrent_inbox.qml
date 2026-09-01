@@ -13,15 +13,20 @@ TestCase {
         Window {
             visible: true
             width: 900
-            height: 520
+            height: 650
 
             QtObject {
                 id: settingsState
                 property string watched_torrent_directory: "/tmp/torrent inbox"
+                property string watched_torrent_archive_directory: ""
                 property int chooseCount: 0
+                property string lastChosenField: ""
                 function choose_native_directory(field) {
-                    if (field === "torrent-watch")
+                    if (field === "torrent-watch"
+                            || field === "torrent-watch-archive") {
                         ++chooseCount
+                        lastChosenField = field
+                    }
                 }
             }
 
@@ -99,6 +104,18 @@ TestCase {
         const review = findChild(host.inbox, "watchedTorrentReview-0")
         verify(review)
         compare(review.visible, false)
+    }
+
+    function test_optional_archive_uses_the_native_directory_route() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        const choose = findChild(host.inbox, "watchedTorrentArchiveChoose")
+        verify(choose)
+        verify(choose.enabled)
+        mouseClick(choose, choose.width / 2, choose.height / 2)
+        compare(host.settingsState.chooseCount, 1)
+        compare(host.settingsState.lastChosenField,
+                "torrent-watch-archive")
     }
 
     Component {

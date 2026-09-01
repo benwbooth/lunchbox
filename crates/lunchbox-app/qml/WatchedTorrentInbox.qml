@@ -73,6 +73,51 @@ ColumnLayout {
         }
     }
 
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 5
+        Text {
+            text: "OPTIONAL ADDED-SOURCE ARCHIVE"
+            color: root.muted
+            font.pixelSize: 9
+            font.weight: Font.Bold
+            font.letterSpacing: 0.7
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            TextField {
+                Layout.fillWidth: true
+                readOnly: true
+                placeholderText: "Keep registered .torrent files in the inbox"
+                text: root.settingsModel.watched_torrent_archive_directory
+                ToolTip.visible: hovered && text.length > 0
+                ToolTip.text: text
+            }
+            Button {
+                objectName: "watchedTorrentArchiveChoose"
+                text: "Choose…"
+                enabled: root.settingsModel.watched_torrent_directory.length > 0
+                onClicked: root.settingsModel.choose_native_directory(
+                               "torrent-watch-archive")
+            }
+            Button {
+                text: "Disable"
+                visible: root.settingsModel.watched_torrent_archive_directory.length > 0
+                onClicked: root.settingsModel.watched_torrent_archive_directory = ""
+            }
+        }
+        Text {
+            Layout.fillWidth: true
+            text: root.settingsModel.watched_torrent_archive_directory.length > 0
+                  ? "After Add Source succeeds, Lunchbox verifies the registered info hash, copies the exact metadata safely, then removes only the reviewed inbox copy. An archive nested inside the inbox is excluded from scanning."
+                  : "Leave empty to keep added sources visible in the inbox. No ROM payload is ever moved."
+            color: root.muted
+            font.pixelSize: 9
+            wrapMode: Text.WordWrap
+        }
+    }
+
     Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: 42

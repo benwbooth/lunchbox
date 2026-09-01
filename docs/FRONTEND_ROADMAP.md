@@ -270,9 +270,10 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 
 - Indexed, paged Minerva search without loading the multi-gigabyte hash catalog
   into the GUI process.
-- Extend the implemented provider-neutral exact-game, reusable-source, and
-  bounded idempotent watched-folder `.torrent`/v1-magnet intake with local
-  user-managed provider manifests and then authorized catalog adapters.
+- Extend the implemented provider-neutral exact-game and reusable-source intake,
+  bounded watched-folder `.torrent` discovery, exact-hash opt-in source archival,
+  and v1-magnet intake with local user-managed provider manifests and then
+  authorized catalog adapters.
   External offers must retain source provenance and never establish or merge a
   canonical game identity. A direct NSW Torrent Library adapter is not planned
   unless its operators provide documented rights, terms, and an authorized API;

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -35,6 +36,13 @@ pub(crate) struct WatchedTorrentScan {
     pub invalid_count: usize,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ArchivedTorrent {
+    pub source: PathBuf,
+    pub destination: PathBuf,
+    pub reused_existing: bool,
+}
+
 impl WatchedTorrentScan {
     pub(crate) fn message(&self) -> String {
         if self.root.as_os_str().is_empty() {
@@ -56,13 +64,15 @@ impl WatchedTorrentScan {
 
 pub(crate) fn scan_watched_torrents(
     root: &Path,
+    archive_root: &Path,
     store: &SettingsStore,
 ) -> Result<WatchedTorrentScan> {
-    scan_watched_torrents_cached(root, store, &[])
+    scan_watched_torrents_cached(root, archive_root, store, &[])
 }
 
 pub(crate) fn scan_watched_torrents_cached(
     root: &Path,
+    archive_root: &Path,
     store: &SettingsStore,
     previous: &[WatchedTorrentEntry],
 ) -> Result<WatchedTorrentScan> {
@@ -86,6 +96,7 @@ pub(crate) fn scan_watched_torrents_cached(
             root.display()
         );
     }
+    let archive_root = canonical_archive_for_scan(archive_root, &root)?;
 
     let mut paths = Vec::new();
     let mut pending_directories = vec![(root.clone(), 0_usize)];
@@ -102,6 +113,11 @@ pub(crate) fn scan_watched_torrents_cached(
                 continue;
             }
             if file_type.is_dir() {
+                if archive_root.as_ref().is_some_and(|archive| {
+                    child.path().canonicalize().ok().as_ref() == Some(archive)
+                }) {
+                    continue;
+                }
                 if depth < MAX_WATCH_DEPTH {
                     pending_directories.push((child.path(), depth + 1));
                 }
@@ -171,6 +187,190 @@ pub(crate) fn scan_watched_torrents_cached(
             .count(),
         entries,
     })
+}
+
+fn canonical_archive_for_scan(archive_root: &Path, watched_root: &Path) -> Result<Option<PathBuf>> {
+    if archive_root.as_os_str().is_empty() {
+        return Ok(None);
+    }
+    let archive_root = match archive_root.canonicalize() {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!("opening watched torrent archive {}", archive_root.display())
+            });
+        }
+    };
+    if !archive_root.is_dir() {
+        bail!(
+            "watched torrent archive {} is not a directory",
+            archive_root.display()
+        );
+    }
+    if archive_root == watched_root {
+        bail!("watched torrent inbox and archive must be different folders");
+    }
+    Ok(Some(archive_root))
+}
+
+pub(crate) fn archive_registered_torrent(
+    source: &Path,
+    watched_root: &Path,
+    archive_root: &Path,
+    store: &SettingsStore,
+) -> Result<Option<ArchivedTorrent>> {
+    if archive_root.as_os_str().is_empty() {
+        return Ok(None);
+    }
+    if watched_root.as_os_str().is_empty() {
+        bail!("choose a watched torrent inbox before enabling its archive");
+    }
+    let source_metadata = fs::symlink_metadata(source)
+        .with_context(|| format!("opening watched torrent {}", source.display()))?;
+    if source_metadata.file_type().is_symlink() || !source_metadata.is_file() {
+        bail!("only a regular watched .torrent file can be archived");
+    }
+    if !is_torrent_path(source) {
+        bail!("only watched .torrent metadata can be archived");
+    }
+    let watched_root = watched_root
+        .canonicalize()
+        .with_context(|| format!("opening watched torrent inbox {}", watched_root.display()))?;
+    let source = source
+        .canonicalize()
+        .with_context(|| format!("opening watched torrent {}", source.display()))?;
+    if !source.starts_with(&watched_root) {
+        bail!("the reviewed torrent is outside the configured watched inbox");
+    }
+
+    fs::create_dir_all(archive_root).with_context(|| {
+        format!(
+            "creating watched torrent archive {}",
+            archive_root.display()
+        )
+    })?;
+    let archive_root = archive_root
+        .canonicalize()
+        .with_context(|| format!("opening watched torrent archive {}", archive_root.display()))?;
+    if archive_root == watched_root {
+        bail!("watched torrent inbox and archive must be different folders");
+    }
+    if source.starts_with(&archive_root) {
+        bail!("the reviewed torrent is already inside the configured archive");
+    }
+
+    let offer = external_torrent::inspect_torrent_file(&source)?;
+    if store.registered_torrent_source(&offer.info_hash)?.is_none() {
+        bail!("the torrent is not registered; review and add its exact platform first");
+    }
+    let file_name = source
+        .file_name()
+        .context("watched torrent path has no filename")?;
+    let preferred = archive_root.join(file_name);
+    let destination = choose_archive_destination(&preferred, &archive_root, &offer)?;
+    let reused_existing = destination.exists();
+    if reused_existing {
+        verify_archived_copy(&destination, &offer)?;
+    } else {
+        write_archived_copy(&destination, &offer)?;
+    }
+
+    let current = external_torrent::inspect_torrent_file(&source)
+        .context("rechecking watched torrent before removing its inbox copy")?;
+    if current.info_hash != offer.info_hash || current.torrent_sha256 != offer.torrent_sha256 {
+        bail!("the watched torrent changed during archival; its inbox copy was preserved");
+    }
+    fs::remove_file(&source)
+        .with_context(|| format!("removing archived inbox copy {}", source.display()))?;
+    Ok(Some(ArchivedTorrent {
+        source,
+        destination,
+        reused_existing,
+    }))
+}
+
+fn choose_archive_destination(
+    preferred: &Path,
+    archive_root: &Path,
+    offer: &external_torrent::ManualTorrentOffer,
+) -> Result<PathBuf> {
+    if !preferred.exists() {
+        return Ok(preferred.to_path_buf());
+    }
+    if verify_archived_copy(preferred, offer).is_ok() {
+        return Ok(preferred.to_path_buf());
+    }
+    let stem = preferred
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .map(portable_archive_stem)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "torrent".to_owned());
+    let alternate = archive_root.join(format!("{stem}-{}.torrent", offer.torrent_sha256));
+    if alternate.exists() {
+        verify_archived_copy(&alternate, offer)?;
+    }
+    Ok(alternate)
+}
+
+fn portable_archive_stem(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .take(180)
+        .collect()
+}
+
+fn write_archived_copy(
+    destination: &Path,
+    offer: &external_torrent::ManualTorrentOffer,
+) -> Result<()> {
+    let mut output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)
+        .with_context(|| format!("creating archived torrent {}", destination.display()))?;
+    let result = output
+        .write_all(&offer.torrent_bytes)
+        .with_context(|| format!("writing archived torrent {}", destination.display()))
+        .and_then(|()| {
+            output
+                .sync_all()
+                .with_context(|| format!("syncing archived torrent {}", destination.display()))
+        });
+    drop(output);
+    if result.is_err() {
+        let _ = fs::remove_file(destination);
+        return result;
+    }
+    let result = verify_archived_copy(destination, offer);
+    if result.is_err() {
+        let _ = fs::remove_file(destination);
+    }
+    result
+}
+
+fn verify_archived_copy(
+    destination: &Path,
+    offer: &external_torrent::ManualTorrentOffer,
+) -> Result<()> {
+    let metadata = fs::symlink_metadata(destination)
+        .with_context(|| format!("opening archived torrent {}", destination.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        bail!("the archive destination is not a regular file");
+    }
+    let archived = external_torrent::inspect_torrent_file(destination)?;
+    if archived.info_hash != offer.info_hash || archived.torrent_sha256 != offer.torrent_sha256 {
+        bail!("the archive destination contains different torrent metadata");
+    }
+    Ok(())
 }
 
 fn inspect_entry(
@@ -297,27 +497,11 @@ mod tests {
         fs::write(path, external_torrent::probe_fixture_torrent_bytes()).unwrap();
     }
 
-    #[test]
-    fn watched_scan_is_recursive_skips_symlinks_and_marks_registered_identity() {
-        let directory = tempfile::tempdir().unwrap();
-        let root = directory.path().join("inbox");
-        let nested = root.join("Switch");
-        fs::create_dir_all(&nested).unwrap();
-        let source = nested.join("sample.TORRENT");
-        write_probe(&source);
-        fs::write(root.join("ignore.txt"), b"not torrent metadata").unwrap();
-
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&source, root.join("duplicate.torrent")).unwrap();
-
-        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
-        let first = scan_watched_torrents(&root, &store).unwrap();
-        assert_eq!(first.entries.len(), 1);
-        assert_eq!(first.pending_count, 1);
-        assert_eq!(first.registered_count, 0);
-        assert_eq!(first.entries[0].status, "pending");
-
-        let offer = external_torrent::inspect_torrent_file(&source).unwrap();
+    fn register_probe(
+        store: &SettingsStore,
+        source: &Path,
+    ) -> external_torrent::ManualTorrentOffer {
+        let offer = external_torrent::inspect_torrent_file(source).unwrap();
         store
             .register_torrent_catalog(&RegisteredTorrentCatalog {
                 platform: "Nintendo Switch".into(),
@@ -343,8 +527,33 @@ mod tests {
                 registered_at: unix_timestamp(),
             })
             .unwrap();
+        offer
+    }
 
-        let second = scan_watched_torrents_cached(&root, &store, &first.entries).unwrap();
+    #[test]
+    fn watched_scan_is_recursive_skips_symlinks_and_marks_registered_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("inbox");
+        let nested = root.join("Switch");
+        fs::create_dir_all(&nested).unwrap();
+        let source = nested.join("sample.TORRENT");
+        write_probe(&source);
+        fs::write(root.join("ignore.txt"), b"not torrent metadata").unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&source, root.join("duplicate.torrent")).unwrap();
+
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        let first = scan_watched_torrents(&root, Path::new(""), &store).unwrap();
+        assert_eq!(first.entries.len(), 1);
+        assert_eq!(first.pending_count, 1);
+        assert_eq!(first.registered_count, 0);
+        assert_eq!(first.entries[0].status, "pending");
+
+        register_probe(&store, &source);
+
+        let second =
+            scan_watched_torrents_cached(&root, Path::new(""), &store, &first.entries).unwrap();
         assert_eq!(second.pending_count, 0);
         assert_eq!(second.registered_count, 1);
         assert_eq!(second.entries[0].status, "registered");
@@ -359,9 +568,60 @@ mod tests {
         fs::write(root.join("broken.torrent"), b"not bencode").unwrap();
         let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
 
-        let scan = scan_watched_torrents(&root, &store).unwrap();
+        let scan = scan_watched_torrents(&root, Path::new(""), &store).unwrap();
         assert_eq!(scan.invalid_count, 1);
         assert_eq!(scan.entries[0].status, "invalid");
         assert!(scan.entries[0].detail.contains("could not parse"));
+    }
+
+    #[test]
+    fn registered_metadata_archives_idempotently_and_nested_archive_is_not_scanned() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("inbox");
+        let archive = root.join("added");
+        fs::create_dir_all(&archive).unwrap();
+        let source = root.join("switch collection.torrent");
+        let colliding_destination = archive.join("switch collection.torrent");
+        write_probe(&source);
+        fs::write(&colliding_destination, b"unrelated torrent metadata").unwrap();
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+
+        let error = archive_registered_torrent(&source, &root, &archive, &store).unwrap_err();
+        assert!(error.to_string().contains("not registered"));
+        assert!(source.is_file());
+
+        let offer = register_probe(&store, &source);
+        let first = archive_registered_torrent(&source, &root, &archive, &store)
+            .unwrap()
+            .unwrap();
+        assert!(!first.reused_existing);
+        assert_ne!(first.destination, colliding_destination);
+        assert!(
+            first
+                .destination
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .contains(&offer.torrent_sha256)
+        );
+        assert_eq!(
+            fs::read(&colliding_destination).unwrap(),
+            b"unrelated torrent metadata"
+        );
+        assert!(!source.exists());
+        let archived = external_torrent::inspect_torrent_file(&first.destination).unwrap();
+        assert_eq!(archived.info_hash, offer.info_hash);
+        assert_eq!(archived.torrent_sha256, offer.torrent_sha256);
+
+        write_probe(&source);
+        let repeated = archive_registered_torrent(&source, &root, &archive, &store)
+            .unwrap()
+            .unwrap();
+        assert!(repeated.reused_existing);
+        assert_eq!(repeated.destination, first.destination);
+        assert!(!source.exists());
+
+        let scan = scan_watched_torrents(&root, &archive, &store).unwrap();
+        assert!(scan.entries.is_empty());
     }
 }

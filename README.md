@@ -216,8 +216,13 @@ settings also provide a watched torrent inbox. A bounded background scan finds
 `.torrent` files recursively without following symlinks, leaves malformed files
 visible with an error, and marks an exact info hash as added only after the user has
 selected its platform in the same source-review dialog. Scanning and rescanning
-never queue payload, remove source files, or infer catalog identity. Local
-provider manifests and authorized provider adapters remain planned. See
+never queue payload, remove source files, or infer catalog identity. An optional
+native archive can tidy successfully reviewed sources: after registration,
+Lunchbox copies the exact `.torrent` bytes with collision-safe naming, reopens
+the copy to verify both the v1 info hash and SHA-256 receipt, and only then
+removes that unchanged inbox copy. Repeated imports reuse an identical archived
+copy, a nested archive is excluded from scanning, and ROM payload is never
+moved. Local provider manifests and authorized provider adapters remain planned. See
 [external torrent providers](docs/EXTERNAL_TORRENT_PROVIDERS.md).
 
 The details header also opens a native metadata editor for display title,

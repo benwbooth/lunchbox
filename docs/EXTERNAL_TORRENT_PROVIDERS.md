@@ -122,8 +122,12 @@ ownership, safe import, and exact launch configuration remain independent gates.
 2. **Complete:** reusable `.torrent` and v1 magnet registration with bounded
    metadata resolution, complete-inventory review, exact platform/title lookup,
    and selective per-game queueing.
-3. Idempotent watched-folder intake with archive/move-on-success behavior and
-   duplicate info-hash suppression.
+3. **Complete:** idempotent watched-folder intake with opt-in archive-on-success.
+   Only a reviewed and registered regular `.torrent` inside the configured
+   inbox is copied; the archive is reparsed and verified by exact v1 info hash
+   and torrent SHA-256 before the unchanged inbox copy is removed. Identical
+   archived metadata is reused, naming collisions are deterministic, nested
+   archives are excluded from scans, and payload files are never moved.
 4. A local provider manifest for user-managed, lawful catalogs.
 5. A documented adapter SDK with capability, terms, authentication, rate-limit,
    and revocation metadata.

@@ -32,6 +32,7 @@ pub mod qobject {
         #[qproperty(QString, torrent_library_directory)]
         #[qproperty(QString, qbittorrent_container_torrent_library_directory)]
         #[qproperty(QString, watched_torrent_directory)]
+        #[qproperty(QString, watched_torrent_archive_directory)]
         #[qproperty(bool, download_entire_torrent)]
         #[qproperty(QString, file_link_mode)]
         #[qproperty(QString, seeding_policy)]
@@ -321,6 +322,7 @@ pub struct SettingsModelRust {
     torrent_library_directory: QString,
     qbittorrent_container_torrent_library_directory: QString,
     watched_torrent_directory: QString,
+    watched_torrent_archive_directory: QString,
     download_entire_torrent: bool,
     file_link_mode: QString,
     seeding_policy: QString,
@@ -386,6 +388,7 @@ impl Default for SettingsModelRust {
             torrent_library_directory: QString::default(),
             qbittorrent_container_torrent_library_directory: QString::default(),
             watched_torrent_directory: QString::default(),
+            watched_torrent_archive_directory: QString::default(),
             download_entire_torrent: false,
             file_link_mode: QString::from("symlink"),
             seeding_policy: QString::from("follow_client"),
@@ -1726,6 +1729,7 @@ impl qobject::SettingsModel {
             "rom" => self.as_mut().set_rom_directory(path),
             "torrent" => self.as_mut().set_torrent_library_directory(path),
             "torrent-watch" => self.as_mut().set_watched_torrent_directory(path),
+            "torrent-watch-archive" => self.as_mut().set_watched_torrent_archive_directory(path),
             _ => self
                 .as_mut()
                 .set_message(qstring("Unknown settings directory field.")),
@@ -1738,6 +1742,10 @@ impl qobject::SettingsModel {
             "rom" => self.as_ref().rom_directory().to_string(),
             "torrent" => self.as_ref().torrent_library_directory().to_string(),
             "torrent-watch" => self.as_ref().watched_torrent_directory().to_string(),
+            "torrent-watch-archive" => self
+                .as_ref()
+                .watched_torrent_archive_directory()
+                .to_string(),
             _ => {
                 self.as_mut()
                     .set_message(qstring("Unknown settings directory field."));
@@ -1747,7 +1755,8 @@ impl qobject::SettingsModel {
         let mut dialog = rfd::FileDialog::new().set_title(match field.as_str() {
             "rom" => "Choose ROM library",
             "torrent" => "Choose torrent download library",
-            _ => "Choose watched torrent inbox",
+            "torrent-watch" => "Choose watched torrent inbox",
+            _ => "Choose archive for added torrent metadata",
         });
         if !current.trim().is_empty() {
             dialog = dialog.set_directory(&current);
@@ -1765,6 +1774,9 @@ impl qobject::SettingsModel {
             "torrent-watch" => self
                 .as_mut()
                 .set_watched_torrent_directory(qstring(path.to_string_lossy())),
+            "torrent-watch-archive" => self
+                .as_mut()
+                .set_watched_torrent_archive_directory(qstring(path.to_string_lossy())),
             _ => unreachable!(),
         }
         self.as_mut().set_message(qstring(
@@ -2033,6 +2045,9 @@ impl qobject::SettingsModel {
         self.as_mut().set_watched_torrent_directory(qstring(
             settings.watched_torrent_directory.to_string_lossy(),
         ));
+        self.as_mut().set_watched_torrent_archive_directory(qstring(
+            settings.watched_torrent_archive_directory.to_string_lossy(),
+        ));
         self.as_mut()
             .set_download_entire_torrent(settings.download_entire_torrent);
         self.as_mut()
@@ -2074,6 +2089,9 @@ impl qobject::SettingsModel {
                 .qbittorrent_container_torrent_library_directory()
                 .to_string(),
             watched_torrent_directory: PathBuf::from(self.watched_torrent_directory().to_string()),
+            watched_torrent_archive_directory: PathBuf::from(
+                self.watched_torrent_archive_directory().to_string(),
+            ),
             download_entire_torrent: *self.download_entire_torrent(),
             file_link_mode: self.file_link_mode().to_string(),
             seeding_policy: self.seeding_policy().to_string(),

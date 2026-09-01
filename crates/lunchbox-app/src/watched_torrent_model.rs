@@ -28,6 +28,9 @@ pub mod qobject {
         fn refresh(self: Pin<&mut WatchedTorrentModel>);
 
         #[qinvokable]
+        fn archive_registered_file(self: Pin<&mut WatchedTorrentModel>, source: QUrl);
+
+        #[qinvokable]
         fn file_name_at(self: &WatchedTorrentModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -76,6 +79,8 @@ pub struct WatchedTorrentModelRust {
     entries: Vec<WatchedTorrentEntry>,
     generation: u64,
     refresh_requested: bool,
+    pending_archive: Option<std::path::PathBuf>,
+    archive_notice: Option<String>,
 }
 
 impl Default for WatchedTorrentModelRust {
@@ -95,6 +100,8 @@ impl Default for WatchedTorrentModelRust {
             entries: Vec::new(),
             generation: 0,
             refresh_requested: false,
+            pending_archive: None,
+            archive_notice: None,
         }
     }
 }
@@ -133,6 +140,7 @@ impl qobject::WatchedTorrentModel {
                         let settings = store.load()?;
                         crate::watched_torrent::scan_watched_torrents_cached(
                             &settings.watched_torrent_directory,
+                            &settings.watched_torrent_archive_directory,
                             &store,
                             &previous,
                         )
@@ -147,6 +155,92 @@ impl qobject::WatchedTorrentModel {
             self.as_mut().set_message(qstring(format!(
                 "Could not start watched torrent scan: {error}"
             )));
+        }
+    }
+
+    pub fn archive_registered_file(mut self: Pin<&mut Self>, source: QUrl) {
+        let Some(source) = source
+            .to_local_file()
+            .map(|path| std::path::PathBuf::from(path.to_string()))
+        else {
+            self.as_mut()
+                .set_message(qstring("Choose a local watched .torrent file."));
+            return;
+        };
+        if *self.as_ref().busy() {
+            self.as_mut().rust_mut().pending_archive = Some(source);
+            return;
+        }
+        self.as_mut().start_archive(source);
+    }
+
+    fn start_archive(mut self: Pin<&mut Self>, source: std::path::PathBuf) {
+        self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
+        let generation = self.as_ref().rust().generation;
+        self.as_mut().set_busy(true);
+        self.as_mut()
+            .set_message(qstring("Archiving registered torrent metadata…"));
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn = std::thread::Builder::new()
+            .name("lunchbox-archive-torrent".into())
+            .spawn(move || {
+                let archived = SettingsStore::open_default()
+                    .and_then(|store| {
+                        let settings = store.load()?;
+                        crate::watched_torrent::archive_registered_torrent(
+                            &source,
+                            &settings.watched_torrent_directory,
+                            &settings.watched_torrent_archive_directory,
+                            &store,
+                        )
+                    })
+                    .map_err(|error| error.to_string());
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().finish_archive(generation, archived);
+                });
+            });
+        if let Err(error) = spawn {
+            self.as_mut().set_busy(false);
+            self.as_mut().set_message(qstring(format!(
+                "Could not start torrent archival: {error}"
+            )));
+        }
+    }
+
+    fn finish_archive(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        archived: Result<Option<crate::watched_torrent::ArchivedTorrent>, String>,
+    ) {
+        if generation != self.as_ref().rust().generation {
+            return;
+        }
+        self.as_mut().set_busy(false);
+        match archived {
+            Ok(Some(archived)) => {
+                let source_name = archived
+                    .source
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "torrent metadata".to_owned());
+                let action = if archived.reused_existing {
+                    format!(
+                        "Removed duplicate {source_name}; exact metadata was already archived at {}",
+                        archived.destination.display()
+                    )
+                } else {
+                    format!(
+                        "Archived {source_name} at {}",
+                        archived.destination.display()
+                    )
+                };
+                self.as_mut().rust_mut().archive_notice = Some(action);
+                self.as_mut().refresh();
+            }
+            Ok(None) => self.as_mut().refresh(),
+            Err(error) => self
+                .as_mut()
+                .set_message(qstring(format!("Could not archive added torrent: {error}"))),
         }
     }
 
@@ -171,7 +265,14 @@ impl qobject::WatchedTorrentModel {
                     .set_registered_count(i32::try_from(scan.registered_count).unwrap_or(i32::MAX));
                 self.as_mut()
                     .set_invalid_count(i32::try_from(scan.invalid_count).unwrap_or(i32::MAX));
-                self.as_mut().set_message(qstring(scan.message()));
+                let message = self
+                    .as_mut()
+                    .rust_mut()
+                    .archive_notice
+                    .take()
+                    .map(|notice| format!("{notice} · {}", scan.message()))
+                    .unwrap_or_else(|| scan.message());
+                self.as_mut().set_message(qstring(message));
                 self.as_mut().rust_mut().entries = scan.entries;
                 let next = self.as_ref().revision().wrapping_add(1);
                 self.as_mut().set_revision(next);
@@ -186,7 +287,9 @@ impl qobject::WatchedTorrentModel {
                     .set_message(qstring(format!("Could not scan watched torrents: {error}")));
             }
         }
-        if self.as_ref().rust().refresh_requested {
+        if let Some(source) = self.as_mut().rust_mut().pending_archive.take() {
+            self.as_mut().start_archive(source);
+        } else if self.as_ref().rust().refresh_requested {
             self.as_mut().rust_mut().refresh_requested = false;
             self.as_mut().refresh();
         }
