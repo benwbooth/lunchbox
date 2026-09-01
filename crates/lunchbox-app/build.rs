@@ -51,7 +51,6 @@ fn main() {
 
     CxxQtBuilder::new_qml_module(
         QmlModule::new("Lunchbox")
-            .depend("QtQuick.Dialogs")
             .depend("QtQuick.Layouts")
             .depend("QtMultimedia")
             .qml_files([
@@ -78,6 +77,7 @@ fn main() {
                 "qml/EmulatorManagerRow.qml",
                 "qml/FilterToggle.qml",
                 "qml/FirmwareAuditView.qml",
+                "qml/FirmwareSetupPage.qml",
                 "qml/FirstRunSetup.qml",
                 "qml/GameDownloadStatus.qml",
                 "qml/GameDetailsStatusCard.qml",
@@ -138,6 +138,7 @@ fn main() {
     .file("src/media_audit_model.rs")
     .file("src/local_import_model.rs")
     .file("src/local_provider_manifest_model.rs")
+    .file("src/native_file_dialog.rs")
     .file("src/screenscraper_model.rs")
     .file("src/settings_model.rs")
     .file("src/steamgriddb_model.rs")

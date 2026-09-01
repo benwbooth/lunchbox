@@ -76,4 +76,18 @@ TestCase {
         compare(host.reviewSpy.count, 1)
         compare(host.reviewSpy.signalArguments[0][0], 17)
     }
+
+    function test_installed_game_hides_candidates_until_alternatives_are_expanded() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.sources.installed = true
+        compare(host.sources.shouldShowSources, false)
+        compare(host.sources.height, 0)
+        host.sources.alternativesExpanded = true
+        compare(host.sources.alternativesExpanded, true)
+        compare(host.sources.showAddSource, true)
+        compare(host.sources.matchingSourceCount, 1)
+        compare(host.sources.shouldShowSources, true)
+        verify(findChild(host.sources, "torrentCandidate-0"))
+    }
 }

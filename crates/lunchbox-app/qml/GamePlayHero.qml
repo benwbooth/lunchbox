@@ -19,6 +19,7 @@ Rectangle {
     required property int emulatorOptionCount
     required property int selectedEmulatorOption
     required property int firmwareMissingCount
+    required property string firmwareSetupLabel
     required property var emulatorLabelAt
     required property color ink
     required property color muted
@@ -219,7 +220,7 @@ Rectangle {
             text: hero.launchBusy ? "CANCEL PREPARATION"
                   : hero.gameRunning ? "GAME IS RUNNING"
                   : hero.canLaunch ? "▶  PLAY"
-                  : hero.firmwareSetupNeeded ? "SET UP FIRMWARE"
+                  : hero.firmwareSetupNeeded ? hero.firmwareSetupLabel
                   : hero.emulatorMissing ? "INSTALL AN EMULATOR" : "RECHECK PLAY SETUP"
             enabled: hero.launchBusy
                      || (!hero.gameRunning && !hero.discoveryBusy)

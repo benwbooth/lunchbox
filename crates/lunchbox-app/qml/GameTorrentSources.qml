@@ -7,6 +7,8 @@ Column {
 
     required property var detailsModel
     property bool showAddSource: false
+    property bool installed: false
+    property bool alternativesExpanded: false
     property color ink: "#f4f7fb"
     property color muted: "#95a2b6"
     property color line: "#2b3647"
@@ -20,13 +22,17 @@ Column {
     readonly property int registeredSourceCount:
         detailsModel ? detailsModel.registered_torrent_source_count : 0
     readonly property bool ranking: detailsModel ? detailsModel.torrent_loading : false
+    readonly property bool shouldShowSources:
+        (!installed || alternativesExpanded)
+        && (showAddSource || ranking || matchingSourceCount > 0
+            || registeredSourceCount > 0)
 
     signal addSourceRequested()
     signal reviewCandidateRequested(int candidateIndex)
 
     objectName: "gameTorrentSources"
-    visible: showAddSource || ranking || matchingSourceCount > 0
-             || registeredSourceCount > 0
+    visible: shouldShowSources
+    height: visible ? implicitHeight : 0
     spacing: 9
 
     RowLayout {
@@ -35,7 +41,7 @@ Column {
 
         Text {
             Layout.fillWidth: true
-            text: "TORRENT SOURCES"
+            text: root.installed ? "OTHER TORRENT SOURCES" : "TORRENT SOURCES"
             color: "#687488"
             font.pixelSize: 10
             font.weight: Font.Bold

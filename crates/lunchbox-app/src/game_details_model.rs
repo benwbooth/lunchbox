@@ -157,6 +157,9 @@ pub mod qobject {
         #[qproperty(QString, firmware_source_summary)]
         #[qproperty(QString, firmware_package_summary)]
         #[qproperty(QString, firmware_runtime_path)]
+        #[qproperty(QString, firmware_next_package)]
+        #[qproperty(QString, firmware_setup_action)]
+        #[qproperty(QString, firmware_setup_label)]
         #[qproperty(i32, registered_torrent_source_count)]
         #[qproperty(i32, bundle_count)]
         #[qproperty(i32, file_count)]
@@ -700,6 +703,9 @@ pub struct GameDetailsModelRust {
     firmware_source_summary: QString,
     firmware_package_summary: QString,
     firmware_runtime_path: QString,
+    firmware_next_package: QString,
+    firmware_setup_action: QString,
+    firmware_setup_label: QString,
     registered_torrent_source_count: i32,
     bundle_count: i32,
     file_count: i32,
@@ -913,6 +919,9 @@ impl Default for GameDetailsModelRust {
             firmware_source_summary: QString::default(),
             firmware_package_summary: QString::default(),
             firmware_runtime_path: QString::default(),
+            firmware_next_package: QString::default(),
+            firmware_setup_action: QString::from("review"),
+            firmware_setup_label: QString::from("SET UP FIRMWARE"),
             registered_torrent_source_count: 0,
             bundle_count: 0,
             file_count: 0,
@@ -4911,6 +4920,11 @@ impl qobject::GameDetailsModel {
         self.as_mut()
             .set_firmware_package_summary(QString::default());
         self.as_mut().set_firmware_runtime_path(QString::default());
+        self.as_mut().set_firmware_next_package(QString::default());
+        self.as_mut()
+            .set_firmware_setup_action(QString::from("review"));
+        self.as_mut()
+            .set_firmware_setup_label(QString::from("SET UP FIRMWARE"));
     }
 
     fn update_selected_firmware(mut self: Pin<&mut Self>, index: Option<usize>) {
@@ -4950,6 +4964,31 @@ impl qobject::GameDetailsModel {
         let can_sync = statuses
             .iter()
             .any(crate::firmware::FirmwareStatus::can_sync);
+        let next_action = statuses
+            .iter()
+            .find(|status| status.needs_action() && status.can_sync())
+            .map(|status| ("SYNC", status.package_name.as_str()))
+            .or_else(|| {
+                statuses
+                    .iter()
+                    .find(|status| {
+                        status.needs_action()
+                            && status.target_strategy != "manual_import"
+                            && !status.imported
+                            && status.source_transport != "manual"
+                    })
+                    .map(|status| ("DOWNLOAD", status.package_name.as_str()))
+            })
+            .or_else(|| {
+                statuses
+                    .iter()
+                    .find(|status| {
+                        status.needs_action()
+                            && status.target_strategy != "manual_import"
+                            && !status.imported
+                    })
+                    .map(|status| ("CHOOSE", status.package_name.as_str()))
+            });
         let mut sources = statuses
             .iter()
             .map(crate::firmware::FirmwareStatus::source_label)
@@ -4975,10 +5014,13 @@ impl qobject::GameDetailsModel {
             .set_firmware_optional_count(count_i32(optional));
         let summary = crate::firmware::summarize(&statuses);
         if missing > 0 {
+            let next_step = next_action.map_or_else(
+                || "Review firmware requirements".to_owned(),
+                |(action, package)| format!("{action} {package}"),
+            );
             self.as_mut().set_can_launch(false);
-            self.as_mut().set_launch_status(qstring(format!(
-                "{summary} Choose Set Up Firmware to continue."
-            )));
+            self.as_mut()
+                .set_launch_status(qstring(format!("{summary} Next: {next_step}.")));
         }
         self.as_mut().set_firmware_needs_import(needs_import);
         self.as_mut().set_firmware_can_download(can_download);
@@ -4990,6 +5032,19 @@ impl qobject::GameDetailsModel {
             .set_firmware_package_summary(qstring(packages.join(" · ")));
         self.as_mut()
             .set_firmware_runtime_path(qstring(runtime_path));
+        self.as_mut().set_firmware_next_package(qstring(
+            next_action.map(|(_, package)| package).unwrap_or_default(),
+        ));
+        self.as_mut().set_firmware_setup_action(qstring(
+            next_action
+                .map(|(action, _)| action.to_ascii_lowercase())
+                .unwrap_or_else(|| "review".to_owned()),
+        ));
+        self.as_mut()
+            .set_firmware_setup_label(qstring(next_action.map_or_else(
+                || "REVIEW FIRMWARE".to_owned(),
+                |(action, package)| format!("{action} {}", package.to_uppercase()),
+            )));
         if (has_cli_flag("--firmware-probe") || has_cli_flag("--firmware-ui-probe"))
             && !statuses.is_empty()
         {

@@ -24,6 +24,7 @@ TestCase {
             emulatorOptionCount: 2
             selectedEmulatorOption: 0
             firmwareMissingCount: 0
+            firmwareSetupLabel: "SET UP FIRMWARE"
             emulatorLabelAt: function(index) {
                 return index === 0 ? "RetroArch · Mesen" : "Mesen"
             }
@@ -86,6 +87,7 @@ TestCase {
             emulatorOptionCount: 1,
             selectedEmulatorOption: 0,
             firmwareMissingCount: 2,
+            firmwareSetupLabel: "CHOOSE PROD.KEYS",
             launchStatus: "prod.keys and Switch firmware are required."
         })
         verify(hero)
@@ -94,7 +96,7 @@ TestCase {
         hero.firmwareSetupRequested.connect(function() { setupRequested = true })
         const action = findChild(hero, "launchAction")
         verify(action)
-        compare(action.text, "SET UP FIRMWARE")
+        compare(action.text, "CHOOSE PROD.KEYS")
         action.clicked()
         verify(setupRequested)
     }

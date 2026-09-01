@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtMultimedia
 import Lunchbox
@@ -1248,6 +1247,10 @@ ApplicationWindow {
             return
         }
         root.pendingCardLaunchGameId = ""
+        if (gameDetails.firmware_missing_count > 0) {
+            root.openFirmwareSetupPage()
+            return
+        }
         if (detailScroll.contentItem)
             detailScroll.contentItem.contentY = 0
     }
@@ -1456,6 +1459,107 @@ ApplicationWindow {
         importDialogLoader.item.open()
     }
 
+    function selectedNativeFile(url) {
+        return url && url.toString().length > 0
+    }
+
+    function chooseExternalTorrentFile() {
+        const title = externalTorrent.collection_mode
+                    ? "Choose a lawful torrent source"
+                    : "Choose a lawful torrent for " + externalTorrent.game_title
+        const selected = nativeFileDialog.pick_open_file(
+                           title, "BitTorrent metadata", "torrent")
+        if (root.selectedNativeFile(selected))
+            externalTorrent.inspect_file(selected)
+    }
+
+    function chooseWebArtworkFile() {
+        const selected = nativeFileDialog.pick_open_file(
+                           "Choose artwork for " + webArtwork.selected_game_name,
+                           "Artwork", "png,jpg,jpeg,webp")
+        if (root.selectedNativeFile(selected))
+            webArtwork.import_local_file(selected)
+    }
+
+    function chooseCouchThemeFile() {
+        const selected = nativeFileDialog.pick_open_file(
+                           "Install a declarative Couch Mode theme",
+                           "Lunchbox themes", "lunchbox-theme")
+        if (root.selectedNativeFile(selected))
+            library.install_couch_theme(selected)
+    }
+
+    function chooseProfileBackupFile() {
+        const selected = nativeFileDialog.pick_save_file(
+                           "Create a Lunchbox profile backup",
+                           "Lunchbox profiles", "lunchbox-profile",
+                           "Lunchbox profile.lunchbox-profile")
+        if (root.selectedNativeFile(selected))
+            appSettings.export_profile(selected)
+    }
+
+    function chooseProfileRestoreFile() {
+        const selected = nativeFileDialog.pick_open_file(
+                           "Choose a Lunchbox profile to restore",
+                           "Lunchbox profiles", "lunchbox-profile")
+        if (root.selectedNativeFile(selected))
+            appSettings.inspect_profile(selected)
+    }
+
+    function exportCollection(collectionId, collectionName) {
+        const selected = nativeFileDialog.pick_save_file(
+                           "Export " + collectionName,
+                           "Lunchbox collections", "json",
+                           collectionName + ".lunchbox-collection.json")
+        if (root.selectedNativeFile(selected))
+            library.export_collection(collectionId, selected)
+    }
+
+    function chooseCollectionImportFile() {
+        const selected = nativeFileDialog.pick_open_file(
+                           "Import a Lunchbox collection",
+                           "Lunchbox collections", "json")
+        if (root.selectedNativeFile(selected))
+            library.import_collection(selected)
+    }
+
+    function chooseFirmwarePackage() {
+        const packageName = gameDetails.firmware_next_package.length > 0
+                          ? gameDetails.firmware_next_package
+                          : "required firmware package"
+        const lowerName = packageName.toLowerCase()
+        const keyPackage = lowerName.endsWith(".keys")
+        const archivePackage = lowerName.endsWith(".zip")
+        const selected = nativeFileDialog.pick_open_file(
+                           "Choose " + packageName + " from your own console dump",
+                           keyPackage ? "Nintendo Switch key files"
+                                      : archivePackage ? "Firmware archives"
+                                                       : "Firmware packages",
+                           keyPackage ? "keys"
+                                      : archivePackage ? "zip"
+                                                       : "zip,keys,xml,bin,rom,dat")
+        if (root.selectedNativeFile(selected))
+            gameDetails.import_firmware_package(selected)
+    }
+
+    function performFirmwareSetupAction() {
+        if (gameDetails.firmware_setup_action === "sync")
+            gameDetails.sync_firmware()
+        else if (gameDetails.firmware_setup_action === "download")
+            gameDetails.download_firmware()
+        else if (gameDetails.firmware_setup_action === "choose")
+            root.chooseFirmwarePackage()
+        else
+            firmwareAuditDialog.openAndScan()
+    }
+
+    function openFirmwareSetupPage() {
+        if (gameDetails.firmware_rule_count > 0)
+            firmwareSetupPage.open()
+        else
+            firmwareAuditDialog.openAndScan()
+    }
+
     function openTorrentImport() {
         const platform = root.selectedPlatform.length > 0
                        ? root.selectedPlatform : "Unassigned platform"
@@ -1575,6 +1679,10 @@ ApplicationWindow {
                    ? "fanart" : steamGridDbKind.currentValue
         artworkProviderModel.begin_selection(selectedDatabaseId, gameDetails.title,
                                              gameDetails.platform, kind)
+    }
+
+    NativeFileDialog {
+        id: nativeFileDialog
     }
 
     LibraryModel {
@@ -2658,6 +2766,42 @@ ApplicationWindow {
         accentCool: root.accentCool
         onReviewGame: function(gameUid, databaseId, title, platform) {
             root.openGame(gameUid, databaseId, title, platform, true, false)
+        }
+    }
+
+    Popup {
+        id: firmwareSetupPage
+        parent: Overlay.overlay
+        x: 0
+        y: 0
+        width: root.width
+        height: root.height
+        padding: 0
+        modal: true
+        dim: false
+        closePolicy: Popup.CloseOnEscape
+
+        contentItem: FirmwareSetupPage {
+            detailsModel: gameDetails
+            ink: root.ink
+            muted: root.muted
+            panel: root.panel
+            panelRaised: root.panelRaised
+            line: root.line
+            accent: root.accent
+            accentCool: root.accentCool
+            onCloseRequested: firmwareSetupPage.close()
+            onPrimaryActionRequested: root.performFirmwareSetupAction()
+            onRefreshRequested: gameDetails.refresh_emulators()
+            onOpenFolderRequested: gameDetails.open_firmware_directory()
+            onManageEmulatorsRequested: {
+                firmwareSetupPage.close()
+                root.openEmulatorManagerForPlatform(gameDetails.platform)
+            }
+            onPlayRequested: {
+                firmwareSetupPage.close()
+                gameDetails.launch_game()
+            }
         }
     }
 
@@ -10491,11 +10635,8 @@ ApplicationWindow {
                             leftPadding: 12
                             rightPadding: 12
                             onClicked: {
-                                collectionExportDialog.collectionId =
-                                        root.selectedCollectionId
-                                collectionExportDialog.collectionName =
-                                        root.selectedCollectionName
-                                collectionExportDialog.open()
+                                root.exportCollection(root.selectedCollectionId,
+                                                      root.selectedCollectionName)
                             }
                         }
                         HeaderButton {
@@ -11182,6 +11323,7 @@ ApplicationWindow {
                         emulatorOptionCount: gameDetails.emulator_option_count
                         selectedEmulatorOption: gameDetails.selected_emulator_option
                         firmwareMissingCount: gameDetails.firmware_missing_count
+                        firmwareSetupLabel: gameDetails.firmware_setup_label
                         emulatorLabelAt: function(index) {
                             return gameDetails.emulator_option_label_at(index)
                         }
@@ -11197,16 +11339,7 @@ ApplicationWindow {
                             else
                                 gameDetails.refresh_emulators()
                         }
-                        onFirmwareSetupRequested: {
-                            if (gameDetails.firmware_can_sync)
-                                gameDetails.sync_firmware()
-                            else if (gameDetails.firmware_can_download)
-                                gameDetails.download_firmware()
-                            else if (gameDetails.firmware_needs_import)
-                                firmwarePackageDialog.open()
-                            else
-                                firmwareAuditDialog.openAndScan()
-                        }
+                        onFirmwareSetupRequested: root.openFirmwareSetupPage()
                         onEmulatorSelected: function(index) {
                             gameDetails.select_emulator_option(index)
                         }
@@ -11236,6 +11369,11 @@ ApplicationWindow {
                     GameTorrentSources {
                         width: parent.width
                         detailsModel: gameDetails
+                        installed: gameDetails.local
+                                   || (root.selectedDownloadJobIndex >= 0
+                                       && downloadQueue.job_state_at(
+                                           root.selectedDownloadJobIndex) === "IMPORTED")
+                        alternativesExpanded: root.downloadAlternativesExpanded
                         showAddSource: !gameDetails.loading
                                        && !gameDetails.local
                                        && gameDetails.game_id.length > 0
@@ -13110,129 +13248,6 @@ ApplicationWindow {
                         }
                     }
 
-                    Rectangle {
-                        visible: !gameDetails.loading
-                                 && gameDetails.firmware_rule_count > 0
-                        width: parent.width
-                        height: firmwareCardColumn.implicitHeight + 28
-                        radius: 11
-                        color: gameDetails.firmware_missing_count > 0
-                               ? "#241d1a" : "#142d2a"
-                        border.color: gameDetails.firmware_missing_count > 0
-                                      ? root.accent : root.accentCool
-
-                        Column {
-                            id: firmwareCardColumn
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.margins: 14
-                            spacing: 8
-                            Row {
-                                width: parent.width
-                                spacing: 8
-                                Text {
-                                    width: parent.width - firmwareState.width - 8
-                                    text: "BIOS & FIRMWARE"
-                                    color: gameDetails.firmware_missing_count > 0
-                                           ? root.accent : root.accentCool
-                                    font.pixelSize: 10
-                                    font.weight: Font.Bold
-                                    font.letterSpacing: 1.1
-                                }
-                                Rectangle {
-                                    id: firmwareState
-                                    width: firmwareStateText.implicitWidth + 14
-                                    height: 22
-                                    radius: 7
-                                    color: gameDetails.firmware_missing_count > 0
-                                           ? "#39291e" : "#1d493f"
-                                    border.color: gameDetails.firmware_missing_count > 0
-                                                  ? root.accent : root.accentCool
-                                    Text {
-                                        id: firmwareStateText
-                                        anchors.centerIn: parent
-                                        text: gameDetails.firmware_busy ? "WORKING"
-                                              : gameDetails.firmware_missing_count > 0
-                                                ? "SETUP NEEDED" : "READY"
-                                        color: gameDetails.firmware_missing_count > 0
-                                               ? root.accent : root.accentCool
-                                        font.pixelSize: 8
-                                        font.weight: Font.Bold
-                                    }
-                                }
-                            }
-                            Text {
-                                width: parent.width
-                                text: gameDetails.firmware_summary
-                                color: root.ink
-                                font.pixelSize: 11
-                                lineHeight: 1.25
-                                wrapMode: Text.WordWrap
-                            }
-                            Text {
-                                width: parent.width
-                                visible: gameDetails.firmware_package_summary.length > 0
-                                text: gameDetails.firmware_source_summary + "  ·  "
-                                      + gameDetails.firmware_package_summary
-                                color: root.muted
-                                font.pixelSize: 9
-                                wrapMode: Text.WrapAnywhere
-                            }
-                            Text {
-                                width: parent.width
-                                visible: gameDetails.firmware_runtime_path.length > 0
-                                text: gameDetails.firmware_runtime_path
-                                color: "#718096"
-                                font.pixelSize: 8
-                                elide: Text.ElideMiddle
-                            }
-                            Flow {
-                                width: parent.width
-                                spacing: 8
-                                Button {
-                                    visible: gameDetails.firmware_needs_import
-                                    width: 154
-                                    height: 34
-                                    text: "IMPORT USER FILE"
-                                    enabled: !gameDetails.firmware_busy
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                    onClicked: firmwarePackageDialog.open()
-                                }
-                                Button {
-                                    visible: gameDetails.firmware_can_download
-                                    width: 154
-                                    height: 34
-                                    text: "DOWNLOAD EXACT FILE"
-                                    enabled: !gameDetails.firmware_busy
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                    onClicked: gameDetails.download_firmware()
-                                }
-                                Button {
-                                    visible: gameDetails.firmware_can_sync
-                                    width: 112
-                                    height: 34
-                                    text: "REPAIR SYNC"
-                                    enabled: !gameDetails.firmware_busy
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                    onClicked: gameDetails.sync_firmware()
-                                }
-                                Button {
-                                    width: 112
-                                    height: 34
-                                    text: "OPEN FOLDER"
-                                    enabled: !gameDetails.firmware_busy
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                    onClicked: gameDetails.open_firmware_directory()
-                                }
-                            }
-                        }
-                    }
-
                     GameDownloadStatus {
                         width: parent.width
                         queue: downloadQueue
@@ -13907,11 +13922,11 @@ ApplicationWindow {
                                 text: "Export"
                                 enabled: !library.collection_busy
                                 onClicked: {
-                                    collectionExportDialog.collectionId = library.collection_id_at(
-                                                                            collectionInspector.selectedIndex)
-                                    collectionExportDialog.collectionName = library.collection_name_at(
-                                                                              collectionInspector.selectedIndex)
-                                    collectionExportDialog.open()
+                                    root.exportCollection(
+                                                library.collection_id_at(
+                                                    collectionInspector.selectedIndex),
+                                                library.collection_name_at(
+                                                    collectionInspector.selectedIndex))
                                 }
                             }
                         }
@@ -14086,7 +14101,7 @@ ApplicationWindow {
                 HeaderButton {
                     text: "Import"
                     enabled: !library.collection_busy
-                    onClicked: collectionImportDialog.open()
+                    onClicked: root.chooseCollectionImportFile()
                 }
                 HeaderButton {
                     text: "Edit"
@@ -15388,7 +15403,7 @@ ApplicationWindow {
                         enabled: !externalTorrent.busy
                         font.pixelSize: 9
                         font.weight: Font.Bold
-                        onClicked: externalTorrentFileDialog.open()
+                        onClicked: root.chooseExternalTorrentFile()
                         background: Rectangle {
                             radius: 8
                             color: parent.down ? "#d68d36" : root.accent
@@ -15715,49 +15730,6 @@ ApplicationWindow {
         }
     }
 
-    FileDialog {
-        id: externalTorrentFileDialog
-        title: externalTorrent.collection_mode
-               ? "Choose a lawful torrent source"
-               : "Choose a lawful torrent for " + externalTorrent.game_title
-        fileMode: FileDialog.OpenFile
-        nameFilters: ["BitTorrent metadata (*.torrent)"]
-        onAccepted: externalTorrent.inspect_file(selectedFile)
-    }
-
-    FileDialog {
-        id: webArtworkFileDialog
-        title: "Choose artwork for " + webArtwork.selected_game_name
-        fileMode: FileDialog.OpenFile
-        nameFilters: ["Artwork (*.png *.jpg *.jpeg *.webp)"]
-        onAccepted: webArtwork.import_local_file(selectedFile)
-    }
-
-    FileDialog {
-        id: couchThemeFileDialog
-        title: "Install a declarative Couch Mode theme"
-        fileMode: FileDialog.OpenFile
-        nameFilters: ["Lunchbox themes (*.lunchbox-theme)"]
-        onAccepted: library.install_couch_theme(selectedFile)
-    }
-
-    FileDialog {
-        id: profileBackupFileDialog
-        title: "Create a Lunchbox profile backup"
-        fileMode: FileDialog.SaveFile
-        defaultSuffix: "lunchbox-profile"
-        nameFilters: ["Lunchbox profiles (*.lunchbox-profile)"]
-        onAccepted: appSettings.export_profile(selectedFile)
-    }
-
-    FileDialog {
-        id: profileRestoreFileDialog
-        title: "Choose a Lunchbox profile to restore"
-        fileMode: FileDialog.OpenFile
-        nameFilters: ["Lunchbox profiles (*.lunchbox-profile)"]
-        onAccepted: appSettings.inspect_profile(selectedFile)
-    }
-
     Dialog {
         id: profileRestoreConfirmDialog
         modal: true
@@ -15827,25 +15799,6 @@ ApplicationWindow {
             font.pixelSize: 13
             wrapMode: Text.WordWrap
         }
-    }
-
-    FileDialog {
-        id: collectionExportDialog
-        property string collectionId: ""
-        property string collectionName: ""
-        title: "Export " + collectionName
-        fileMode: FileDialog.SaveFile
-        defaultSuffix: "json"
-        nameFilters: ["Lunchbox collections (*.lunchbox-collection.json)", "JSON files (*.json)"]
-        onAccepted: library.export_collection(collectionId, selectedFile)
-    }
-
-    FileDialog {
-        id: collectionImportDialog
-        title: "Import a Lunchbox collection"
-        fileMode: FileDialog.OpenFile
-        nameFilters: ["Lunchbox collections (*.lunchbox-collection.json *.json)"]
-        onAccepted: library.import_collection(selectedFile)
     }
 
     Dialog {
@@ -16208,14 +16161,6 @@ ApplicationWindow {
             font.pixelSize: 13
             wrapMode: Text.WordWrap
         }
-    }
-
-    FileDialog {
-        id: firmwarePackageDialog
-        title: "Choose the exact firmware package shown in Game Details"
-        fileMode: FileDialog.OpenFile
-        nameFilters: ["Firmware packages (*.zip *.keys *.xml *.bin *.rom *.dat)", "All files (*)"]
-        onAccepted: gameDetails.import_firmware_package(selectedFile)
     }
 
     Loader {
@@ -18193,7 +18138,7 @@ ApplicationWindow {
                                 Button {
                                     text: "Choose local file…"
                                     enabled: !webArtwork.busy
-                                    onClicked: webArtworkFileDialog.open()
+                                    onClicked: root.chooseWebArtworkFile()
                                 }
                                 Item { Layout.fillWidth: true }
                             }
@@ -18761,7 +18706,7 @@ ApplicationWindow {
                         Button {
                             text: library.couch_theme_busy ? "WORKING…" : "INSTALL THEME PACKAGE"
                             enabled: !library.couch_theme_busy
-                            onClicked: couchThemeFileDialog.open()
+                            onClicked: root.chooseCouchThemeFile()
                             Accessible.name: "Install a declarative Couch Mode theme package"
                         }
                         Button {
@@ -20997,7 +20942,7 @@ ApplicationWindow {
                                     enabled: appSettings.initialized
                                              && !appSettings.profile_busy
                                              && !appSettings.profile_restart_required
-                                    onClicked: profileBackupFileDialog.open()
+                                    onClicked: root.chooseProfileBackupFile()
                                     Accessible.name: "Create a portable Lunchbox profile backup"
                                 }
                                 Button {
@@ -21006,7 +20951,7 @@ ApplicationWindow {
                                     enabled: appSettings.initialized
                                              && !appSettings.profile_busy
                                              && !appSettings.profile_restart_required
-                                    onClicked: profileRestoreFileDialog.open()
+                                    onClicked: root.chooseProfileRestoreFile()
                                     Accessible.name: "Inspect and restore a Lunchbox profile backup"
                                 }
                                 Item { Layout.fillWidth: true }
