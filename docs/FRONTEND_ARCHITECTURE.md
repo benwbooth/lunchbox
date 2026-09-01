@@ -698,6 +698,12 @@ game download or collection source imports the torrent into Lunchbox management
 by assigning its `lunchbox` category; Lunchbox also persists the validated
 `.torrent` metadata and exact member inventory so a later on-demand selection
 can recreate a missing qBittorrent entry.
+When exact Minerva and registered-source lookup finishes empty, the status card
+directly beneath the game's play area becomes an actionable **Import torrent for
+this game** callout. It opens the same native review dialog with the exact game
+and platform already locked. The old duplicate callout below the metadata and
+firmware sections is intentionally absent, so a source miss cannot be visible
+without its recovery action or require scrolling through unrelated details.
 Every actual enqueue, including Minerva and a one-game manual import, also
 retains the exact bounded metadata in writable state with SHA-256 and v1-info-
 hash receipts before qBittorrent is mutated. This lifecycle copy is independent

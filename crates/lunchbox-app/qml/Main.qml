@@ -11070,6 +11070,20 @@ ApplicationWindow {
                         }
                     }
 
+                    Item {
+                        id: minervaSourceState
+                        width: 1
+                        height: 0
+                        property int revision: gameDetails.detail_revision
+                        readonly property bool revealed:
+                            root.selectedDownloadJobIndex < 0
+                            || root.downloadAlternativesExpanded
+                        readonly property int count: {
+                            revision
+                            return gameDetails.download_source_count()
+                        }
+                    }
+
                     Flow {
                         width: parent.width
                         spacing: 7
@@ -11167,38 +11181,32 @@ ApplicationWindow {
                         }
                     }
 
-                    Rectangle {
+                    GameDetailsStatusCard {
                         width: parent.width
-                        height: statusMessage.implicitHeight + 22
-                        radius: 9
-                        color: "#151d29"
-                        border.color: root.line
-                        Row {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 11
-                            anchors.rightMargin: 11
-                            spacing: 9
-                            BusyIndicator {
-                                id: statusBusy
-                                width: 18
-                                height: 18
-                                running: gameDetails.loading || gameDetails.torrent_loading
-                                         || gameDetails.prepare_busy
-                                         || gameDetails.launch_discovery_busy
-                                         || gameDetails.launch_busy
-                                visible: running
-                            }
-                            Text {
-                                id: statusMessage
-                                width: parent.width - (statusBusy.visible ? statusBusy.width + 9 : 0)
-                                text: gameDetails.message
-                                color: root.muted
-                                font.pixelSize: 11
-                                wrapMode: Text.WordWrap
-                            }
-                        }
+                        busy: gameDetails.loading || gameDetails.torrent_loading
+                              || gameDetails.prepare_busy
+                              || gameDetails.launch_discovery_busy
+                              || gameDetails.launch_busy
+                        message: gameDetails.message
+                        importTorrentAvailable: !gameDetails.loading
+                                                && !gameDetails.torrent_loading
+                                                && !gameDetails.local
+                                                && gameDetails.game_id.length > 0
+                                                && minervaSourceState.count === 0
+                                                && !(root.selectedDownloadJobIndex >= 0
+                                                     && downloadQueue.job_state_at(
+                                                         root.selectedDownloadJobIndex)
+                                                        === "IMPORTED")
+                        ink: root.ink
+                        muted: root.muted
+                        panel: "#151d29"
+                        line: root.line
+                        accent: root.accent
+                        onImportTorrentRequested: root.openTorrentForGame(
+                                                      gameDetails.game_id,
+                                                      root.selectedDatabaseId,
+                                                      gameDetails.title,
+                                                      gameDetails.platform)
                     }
 
                     Rectangle {
@@ -13210,80 +13218,6 @@ ApplicationWindow {
                             root.downloadAlternativesExpanded = !root.downloadAlternativesExpanded
                     }
 
-                    Item {
-                        id: minervaSourceState
-                        width: 1
-                        height: 0
-                        property int revision: gameDetails.detail_revision
-                        readonly property bool revealed:
-                            root.selectedDownloadJobIndex < 0
-                            || root.downloadAlternativesExpanded
-                        readonly property int count: {
-                            revision
-                            return gameDetails.download_source_count()
-                        }
-                    }
-                    Rectangle {
-                        visible: minervaSourceState.revealed
-                                 && !gameDetails.loading
-                                 && !gameDetails.torrent_loading
-                                 && minervaSourceState.count === 0
-                                 && gameDetails.game_id.length > 0
-                        width: parent.width
-                        height: visible ? noDownloadColumn.implicitHeight + 28 : 0
-                        radius: 11
-                        color: "#171f2b"
-                        border.color: root.accent
-
-                        Column {
-                            id: noDownloadColumn
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.margins: 14
-                            spacing: 9
-                            Text {
-                                width: parent.width
-                                text: "NO DOWNLOAD FOUND"
-                                color: root.accent
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                                font.letterSpacing: 1.1
-                            }
-                            Text {
-                                width: parent.width
-                                text: "Minerva and your registered sources do not contain an exact match. Import a torrent to review its files and attach the right game without downloading the entire torrent."
-                                color: root.muted
-                                font.pixelSize: 11
-                                lineHeight: 1.25
-                                wrapMode: Text.WordWrap
-                            }
-                            Button {
-                                width: parent.width
-                                height: 40
-                                text: "IMPORT A TORRENT FOR THIS GAME"
-                                font.pixelSize: 9
-                                font.weight: Font.Bold
-                                onClicked: root.openTorrentForGame(
-                                               gameDetails.game_id,
-                                               root.selectedDatabaseId,
-                                               gameDetails.title,
-                                               gameDetails.platform)
-                                background: Rectangle {
-                                    radius: 8
-                                    color: parent.down ? "#d68d36" : root.accent
-                                    border.color: "#ffc579"
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: "#1b140c"
-                                    font: parent.font
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                            }
-                        }
-                    }
                     Button {
                         width: parent.width
                         height: 36

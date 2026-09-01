@@ -76,6 +76,7 @@ fn main() {
                 "qml/FirmwareAuditView.qml",
                 "qml/FirstRunSetup.qml",
                 "qml/GameDownloadStatus.qml",
+                "qml/GameDetailsStatusCard.qml",
                 "qml/GamePlayHero.qml",
                 "qml/GameSoundtrackCard.qml",
                 "qml/HeaderButton.qml",
