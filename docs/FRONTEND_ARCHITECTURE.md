@@ -894,6 +894,17 @@ transient failures are retained per stable game identity. Grid and details
 cards therefore never display an unrelated global media result, and the
 hover-card action retries only that exact title or routes a missing account to
 EmuMovies Settings.
+
+Both the shared hover player and the details player retain the legacy bounded
+local-playback recovery policy. A decoder or file-publication race clears the
+failed source and reloads that same exact local URL up to two times without
+showing a transient error. Loading or playing resets the budget, changing games
+cancels a pending retry, and only an exhausted exact source reaches the visible
+playback error state. `RetryingMediaPlayer.qml` keeps the multimedia and retry
+wiring outside the composition root, while `MediaRetryController.qml` owns the
+tested reload policy. Deterministic QML tests cover reload, exhaustion, success
+reset, and source replacement.
+
 `--hover-preview-ui-probe --preview-video-fixture PATH --media-directory
 EMPTY_PATH` requires an explicit non-empty video fixture of at most 64 MiB,
 publishes it idempotently under the stable Super Mario Bros. cache identity,

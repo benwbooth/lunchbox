@@ -1556,7 +1556,7 @@ ApplicationWindow {
         volume: 0.45
     }
 
-    MediaPlayer {
+    RetryingMediaPlayer {
         id: gameVideoPlayer
         property bool resumeApplied: false
         source: !root.couchModeActive && !root.downloadPlanUiProbe
@@ -1832,7 +1832,7 @@ ApplicationWindow {
         volume: 0.34
     }
 
-    MediaPlayer {
+    RetryingMediaPlayer {
         id: hoverPreviewPlayer
         source: root.hoverPreviewTile
                 && library.hover_preview_game_id
