@@ -41,10 +41,6 @@ ApplicationWindow {
     minimumWidth: 1040
     minimumHeight: 680
     title: downloadPlanUiProbe ? "Lunchbox - Download Review Probe" : "Lunchbox"
-    // Set the native window icon explicitly as well as advertising the
-    // desktop file ID. KWin decorations use this value independently from
-    // Plasma's task-manager lookup and otherwise retain Qt's old fallback.
-    icon.source: "qrc:/qt/qml/Lunchbox/qml/icons/lunchbox.svg"
     color: palette.window
     // Keep each host's native UI family (Noto Sans on this KDE session,
     // Segoe UI on Windows, and the system UI font on macOS). Avoid grid-fitting
