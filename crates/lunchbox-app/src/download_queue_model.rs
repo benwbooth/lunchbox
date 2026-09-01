@@ -10,6 +10,7 @@ pub mod qobject {
         #[qml_element]
         #[qproperty(bool, initialized)]
         #[qproperty(bool, busy)]
+        #[qproperty(bool, refreshing)]
         #[qproperty(i32, job_count)]
         #[qproperty(i32, active_count)]
         #[qproperty(i32, finished_count)]
@@ -131,6 +132,7 @@ use crate::settings::{self, DownloadJob, DownloadJobEvent, NewDownloadJob, Setti
 pub struct DownloadQueueModelRust {
     initialized: bool,
     busy: bool,
+    refreshing: bool,
     job_count: i32,
     active_count: i32,
     finished_count: i32,
@@ -148,6 +150,7 @@ pub struct DownloadQueueModelRust {
     jobs: Vec<DownloadJob>,
     history_events: Vec<DownloadJobEvent>,
     history_generation: u64,
+    refresh_generation: u64,
     recovery_ui_probe: bool,
 }
 
@@ -156,6 +159,7 @@ impl Default for DownloadQueueModelRust {
         Self {
             initialized: false,
             busy: false,
+            refreshing: false,
             job_count: 0,
             active_count: 0,
             finished_count: 0,
@@ -173,6 +177,7 @@ impl Default for DownloadQueueModelRust {
             jobs: Vec::new(),
             history_events: Vec::new(),
             history_generation: 0,
+            refresh_generation: 0,
             recovery_ui_probe: std::env::args()
                 .any(|argument| argument == "--download-recovery-ui-probe"),
         }
@@ -207,24 +212,44 @@ impl qobject::DownloadQueueModel {
     }
 
     pub fn refresh(mut self: Pin<&mut Self>) {
-        if *self.as_ref().busy() {
+        if *self.as_ref().busy() || *self.as_ref().refreshing() {
             return;
         }
-        self.as_mut().set_busy(true);
+        self.as_mut().rust_mut().refresh_generation =
+            self.as_ref().rust().refresh_generation.wrapping_add(1);
+        let generation = self.as_ref().rust().refresh_generation;
+        self.as_mut().set_refreshing(true);
         let qt_thread = self.as_ref().qt_thread();
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-download-refresh".into())
             .spawn(move || {
                 let refreshed = refresh_jobs().map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
-                    model.as_mut().finish_refresh(refreshed);
+                    model.as_mut().finish_poll_refresh(generation, refreshed);
                 });
             });
         if let Err(error) = spawn_result {
-            self.as_mut().set_busy(false);
+            self.as_mut().set_refreshing(false);
             self.as_mut().set_message(qstring(format!(
                 "Could not start download refresh: {error}"
             )));
+        }
+    }
+
+    fn finish_poll_refresh(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        refreshed: Result<QueueUpdate, String>,
+    ) {
+        if generation != self.as_ref().rust().refresh_generation {
+            return;
+        }
+        self.as_mut().set_refreshing(false);
+        match refreshed {
+            Ok(update) => self.as_mut().replace_jobs(update),
+            Err(error) => self
+                .as_mut()
+                .set_message(qstring(format!("Could not refresh downloads: {error}"))),
         }
     }
 
@@ -254,6 +279,7 @@ impl qobject::DownloadQueueModel {
         if *self.as_ref().busy() {
             return;
         }
+        self.as_mut().invalidate_poll_refresh();
         let job_id = job_id.to_string();
         let Some(job) = self
             .as_ref()
@@ -299,6 +325,7 @@ impl qobject::DownloadQueueModel {
         if *self.as_ref().busy() {
             return;
         }
+        self.as_mut().invalidate_poll_refresh();
         let job_id = job_id.to_string();
         let active = self
             .as_ref()
@@ -325,6 +352,7 @@ impl qobject::DownloadQueueModel {
         if *self.as_ref().busy() || *self.as_ref().finished_count() == 0 {
             return;
         }
+        self.as_mut().invalidate_poll_refresh();
         self.as_mut().start_history_cleanup(None);
     }
 
@@ -355,6 +383,7 @@ impl qobject::DownloadQueueModel {
         if *self.as_ref().busy() {
             return;
         }
+        self.as_mut().invalidate_poll_refresh();
         let Some(job) = self.as_ref().job(index).cloned() else {
             self.as_mut()
                 .set_message(qstring("The selected download is no longer available."));
@@ -432,6 +461,15 @@ impl qobject::DownloadQueueModel {
             } else {
                 format!("{active} active of {count} downloads")
             }));
+    }
+
+    fn invalidate_poll_refresh(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().refreshing() {
+            return;
+        }
+        self.as_mut().rust_mut().refresh_generation =
+            self.as_ref().rust().refresh_generation.wrapping_add(1);
+        self.as_mut().set_refreshing(false);
     }
 
     pub fn job_id_at(&self, index: i32) -> QString {

@@ -182,6 +182,7 @@ Item {
                         text: "↻"
                         flat: true
                         enabled: status.queue && !status.queue.busy
+                                 && !status.queue.refreshing
                         onClicked: status.queue.refresh()
                         ToolTip.visible: hovered
                         ToolTip.text: "Refresh downloads"
@@ -297,8 +298,11 @@ Item {
                             }
                             Button {
                                 objectName: "importButton-" + downloadRow.index
-                                readonly property bool importAvailable: status.queue
-                                                                        && status.queue.job_can_import(downloadRow.index)
+                                readonly property bool importAvailable: {
+                                    downloadRow.queueRevision
+                                    return status.queue
+                                            && status.queue.job_can_import(downloadRow.index)
+                                }
                                 visible: importAvailable
                                 enabled: status.queue && !status.queue.busy
                                 text: "Review import"
@@ -307,13 +311,25 @@ Item {
                                     status.queue.job_platform_at(downloadRow.index))
                             }
                             Button {
-                                visible: status.queue && status.queue.job_can_pause(downloadRow.index)
+                                objectName: "pauseButton-" + downloadRow.index
+                                readonly property bool actionAvailable: {
+                                    downloadRow.queueRevision
+                                    return status.queue
+                                            && status.queue.job_can_pause(downloadRow.index)
+                                }
+                                visible: actionAvailable
                                 enabled: status.queue && !status.queue.busy
                                 text: "Pause"
                                 onClicked: status.queue.pause_job(downloadRow.index)
                             }
                             Button {
-                                visible: status.queue && status.queue.job_can_resume(downloadRow.index)
+                                objectName: "resumeButton-" + downloadRow.index
+                                readonly property bool actionAvailable: {
+                                    downloadRow.queueRevision
+                                    return status.queue
+                                            && status.queue.job_can_resume(downloadRow.index)
+                                }
+                                visible: actionAvailable
                                 enabled: status.queue && !status.queue.busy
                                 text: "Resume"
                                 onClicked: status.queue.resume_job(downloadRow.index)

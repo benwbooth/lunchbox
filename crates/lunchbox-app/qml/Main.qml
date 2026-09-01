@@ -22856,7 +22856,7 @@ ApplicationWindow {
                     RoundButton {
                         text: "↻"
                         flat: true
-                        enabled: !downloadQueue.busy
+                        enabled: !downloadQueue.busy && !downloadQueue.refreshing
                         onClicked: downloadQueue.refresh()
                     }
                     RoundButton {
