@@ -26,6 +26,7 @@ const MAX_FIRMWARE_FILES: usize = 250_000;
 const MAX_GITHUB_RELEASE_BYTES: u64 = 4 * 1024 * 1024;
 const FIRMWARE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const SWITCH_KEYS_MAX_BYTES: u64 = 8 * 1024 * 1024;
+const SWITCH_KEY_VALUE_MAX_HEX_CHARS: usize = 4096;
 const SWITCH_KEYS_PACKAGE: &str = "switch-keys.zip";
 const SWITCH_FIRMWARE_PACKAGE: &str = "switch-firmware.zip";
 
@@ -824,7 +825,7 @@ fn validate_switch_prod_keys_bytes(bytes: &[u8]) -> Result<()> {
             || !name
                 .bytes()
                 .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-            || !(16..=128).contains(&value.len())
+            || !(16..=SWITCH_KEY_VALUE_MAX_HEX_CHARS).contains(&value.len())
             || value.len() % 2 != 0
             || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
         {
@@ -2067,6 +2068,8 @@ mod tests {
         for index in 0..7 {
             key_lines.push(format!("master_key_{index:02x} = {}", "b2".repeat(16)));
         }
+        key_lines.push(format!("eticket_rsa_keypair = {}", "c3".repeat(528)));
+        key_lines.push(format!("ssl_rsa_key = {}", "d4".repeat(256)));
         fs::write(&keys, key_lines.join("\n")).unwrap();
         validate_switch_prod_keys(&keys).unwrap();
         fs::write(&keys, "not a production key file").unwrap();

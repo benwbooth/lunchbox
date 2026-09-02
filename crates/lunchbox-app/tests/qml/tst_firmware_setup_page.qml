@@ -86,6 +86,16 @@ TestCase {
         compare(findChild(host.page, "firmwarePackageAction-title.keys"), null)
     }
 
+    function test_switch_setup_shows_import_failures() {
+        const host = createTemporaryObject(pageComponent, testCase)
+        verify(host)
+        host.details.launch_status = "Could not import or sync firmware: invalid keys"
+        wait(0)
+        const status = findChild(host.page, "firmwareOperationStatus")
+        verify(status)
+        verify(status.hasStatus)
+    }
+
     function test_completed_setup_turns_the_primary_action_into_play() {
         const host = createTemporaryObject(pageComponent, testCase)
         verify(host)

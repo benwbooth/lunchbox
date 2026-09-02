@@ -263,6 +263,34 @@ Rectangle {
                     }
 
                     Rectangle {
+                        objectName: "firmwareOperationStatus"
+                        readonly property bool hasStatus:
+                            page.switchSetup
+                            && page.detailsModel.launch_status.length > 0
+                        visible: hasStatus
+                        width: parent.width
+                        height: visible ? switchStatusText.implicitHeight + 28 : 0
+                        radius: 10
+                        color: "#151d29"
+                        border.color: page.detailsModel.launch_status.indexOf(
+                                          "Could not") === 0
+                                      ? page.accent : page.line
+
+                        Text {
+                            id: switchStatusText
+                            anchors.fill: parent
+                            anchors.margins: 14
+                            text: page.detailsModel.launch_status
+                            color: page.detailsModel.launch_status.indexOf(
+                                       "Could not") === 0
+                                   ? page.accent : page.muted
+                            font.pixelSize: 10
+                            lineHeight: 1.25
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    Rectangle {
                         visible: !page.switchSetup || page.ready
                         width: parent.width
                         height: visible ? currentActionColumn.implicitHeight + 30 : 0
