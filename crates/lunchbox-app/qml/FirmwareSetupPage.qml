@@ -269,7 +269,8 @@ Rectangle {
                             && page.detailsModel.launch_status.length > 0
                         visible: hasStatus
                         width: parent.width
-                        height: visible ? switchStatusText.implicitHeight + 28 : 0
+                        implicitHeight: switchStatusText.implicitHeight + 28
+                        height: visible ? implicitHeight : 0
                         radius: 10
                         color: "#151d29"
                         border.color: page.detailsModel.launch_status.indexOf(
@@ -278,7 +279,9 @@ Rectangle {
 
                         Text {
                             id: switchStatusText
-                            anchors.fill: parent
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
                             anchors.margins: 14
                             text: page.detailsModel.launch_status
                             color: page.detailsModel.launch_status.indexOf(

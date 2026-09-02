@@ -893,18 +893,12 @@ fn validate_switch_firmware_directory(path: &Path) -> Result<()> {
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        let Some(content_id) = file_name
-            .to_ascii_lowercase()
-            .strip_suffix(".nca")
-            .map(str::to_owned)
-        else {
+        let lowercase_file_name = file_name.to_ascii_lowercase();
+        if switch_nca_content_id(&lowercase_file_name).is_none() {
             continue;
-        };
+        }
         let size = entry.metadata()?.len();
-        if content_id.len() != 32
-            || !content_id.bytes().all(|byte| byte.is_ascii_hexdigit())
-            || size == 0
-        {
+        if size == 0 {
             continue;
         }
         nca_count += 1;
@@ -917,6 +911,14 @@ fn validate_switch_firmware_directory(path: &Path) -> Result<()> {
         }
     }
     bail!("Switch firmware directory does not contain a recognizable installed NCA set")
+}
+
+fn switch_nca_content_id(file_name: &str) -> Option<&str> {
+    let content_id = file_name
+        .strip_suffix(".cnmt.nca")
+        .or_else(|| file_name.strip_suffix(".nca"))?;
+    (content_id.len() == 32 && content_id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then_some(content_id)
 }
 
 fn validate_switch_firmware_zip(path: &Path) -> Result<()> {
@@ -947,13 +949,7 @@ fn validate_switch_firmware_zip(path: &Path) -> Result<()> {
             .and_then(|name| name.to_str())
             .context("Switch firmware ZIP contains a non-Unicode NCA filename")?
             .to_ascii_lowercase();
-        let content_id = file_name
-            .strip_suffix(".nca")
-            .context("Switch firmware ZIP contains an invalid NCA filename")?;
-        if content_id.len() != 32
-            || !content_id.bytes().all(|byte| byte.is_ascii_hexdigit())
-            || entry.size() == 0
-        {
+        if switch_nca_content_id(&file_name).is_none() || entry.size() == 0 {
             bail!("Switch firmware ZIP contains an invalid NCA entry");
         }
         if !nca_names.insert(file_name) {
@@ -2089,6 +2085,22 @@ mod tests {
         let file = File::create(&firmware).unwrap();
         let mut archive = zip::ZipWriter::new(file);
         for index in 0..10 {
+            let suffix = if index % 2 == 0 { ".nca" } else { ".cnmt.nca" };
+            archive
+                .start_file(
+                    format!("dump/{index:032x}{suffix}"),
+                    zip::write::SimpleFileOptions::default(),
+                )
+                .unwrap();
+            archive.write_all(&vec![index as u8; 128 * 1024]).unwrap();
+        }
+        archive.finish().unwrap();
+        validate_switch_firmware_zip(&firmware).unwrap();
+
+        let malformed = temporary.path().join("malformed-firmware.zip");
+        let file = File::create(&malformed).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        for index in 0..10 {
             archive
                 .start_file(
                     format!("dump/{index:032x}.nca"),
@@ -2097,8 +2109,15 @@ mod tests {
                 .unwrap();
             archive.write_all(&vec![index as u8; 128 * 1024]).unwrap();
         }
+        archive
+            .start_file(
+                "dump/not-a-content-id.cnmt.nca",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        archive.write_all(b"invalid").unwrap();
         archive.finish().unwrap();
-        validate_switch_firmware_zip(&firmware).unwrap();
+        assert!(validate_switch_firmware_zip(&malformed).is_err());
 
         let unrelated = temporary.path().join("unrelated.zip");
         write_zip(&unrelated, &[("readme.txt", b"not firmware")]);
