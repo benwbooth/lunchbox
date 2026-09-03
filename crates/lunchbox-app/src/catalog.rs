@@ -9,12 +9,10 @@ use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use rusqlite::{Connection, OpenFlags};
 
-use crate::list_view::{
-    ListColumn, ListColumnFilter, ListMetadata, ListMetadataBuilder, MetadataInput,
-};
+use crate::list_view::{ListColumn, ListColumnFilter, ListMetadata, ListMetadataBuilder};
 use crate::settings::GameMetadataOverride;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Game {
     pub id: String,
     pub launchbox_db_id: i64,
@@ -274,8 +272,7 @@ pub fn load_preview(path: &Path) -> Result<Option<CatalogPreview>> {
         list_metadata.push_empty();
     }
     let mut list_metadata = list_metadata.finish();
-    apply_variant_counts(&games, &mut list_metadata);
-    collapse_release_families(&mut games, &mut list_metadata);
+    apply_release_families(&mut games, &mut list_metadata);
 
     let canonical_aliases = canonical_platform_aliases(&canonical)?;
     let mut platform_statement = discovery.prepare(
@@ -456,8 +453,7 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
     })?;
     let mut platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut list_metadata = list_metadata.finish();
-    apply_variant_counts(&games, &mut list_metadata);
-    collapse_release_families(&mut games, &mut list_metadata);
+    apply_release_families(&mut games, &mut list_metadata);
     apply_grouped_platform_counts(&games, &mut platforms);
 
     Ok(Catalog {
@@ -508,6 +504,15 @@ fn load_discovery_catalog(
     )
 }
 
+/// Reads a nullable text column as a borrowed slice, avoiding a `String`
+/// allocation per row for values that repeat across games.
+fn text_column<'a>(row: &'a rusqlite::Row<'_>, index: usize) -> Option<&'a str> {
+    match row.get_ref(index) {
+        Ok(rusqlite::types::ValueRef::Text(text)) => std::str::from_utf8(text).ok(),
+        _ => None,
+    }
+}
+
 fn load_discovery_catalog_with_native_state(
     canonical: &Connection,
     discovery_path: &Path,
@@ -556,61 +561,46 @@ fn load_discovery_catalog_with_native_state(
          ORDER BY coalesce(nullif(g.sort_title, ''), g.title) COLLATE NOCASE, g.id"
     );
     let mut statement = discovery.prepare(&query)?;
-    let rows = statement.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, i64>(4)?,
-            row.get::<_, Option<String>>(5)?,
-            row.get::<_, Option<String>>(6)?,
-            row.get::<_, Option<String>>(7)?,
-            row.get::<_, Option<i64>>(8)?,
-            MetadataInput {
-                sort_title: row.get(15)?,
-                developer: row.get(9)?,
-                publisher: row.get(10)?,
-                release_date: row.get(11)?,
-                release_year: row.get(12)?,
-                players: row.get(13)?,
-                rating: row.get(14)?,
-                series: row.get(16)?,
-                region: row.get(17)?,
-                play_mode: row.get(18)?,
-                version: row.get(19)?,
-                release_status: row.get(20)?,
-                notes: row.get(21)?,
-                genre: row.get(7)?,
-                esrb: row.get(6)?,
-                release_type: row.get(5)?,
-            },
-        ))
-    })?;
-    for row in rows {
-        let (
-            id,
-            title,
-            platform,
-            status,
-            database_id,
-            release_type,
-            esrb,
-            genre,
-            cooperative,
-            metadata,
-        ) = row?;
+    let mut rows = statement.query([])?;
+    // Platforms repeat across rows; derive their normalized and lowercased
+    // forms once per distinct platform instead of per game.
+    let mut platform_forms: HashMap<String, (String, bool)> = HashMap::new();
+    while let Some(row) = rows.next()? {
+        // Metadata text columns are read as borrowed values and interned
+        // directly; only the per-game identity strings are materialized.
+        let id: String = row.get(0)?;
+        let title: String = row.get(1)?;
+        let platform: String = row.get(2)?;
+        let status: String = row.get(3)?;
+        let database_id: i64 = row.get(4)?;
+        let release_type = text_column(&row, 5);
+        let esrb = text_column(&row, 6);
+        let genre = text_column(&row, 7);
+        let cooperative: Option<i64> = row.get(8)?;
         let local = (database_id > 0 && installed.database_ids.contains(&database_id))
             || installed.game_uids.contains(&id);
-        let minerva_covered = minerva
-            .platform_names
-            .contains(&normalize_platform_key(&platform));
+        let (platform_lower, minerva_covered) = {
+            let entry = platform_forms.entry(platform.clone());
+            let (lower, covered) = entry.or_insert_with(|| {
+                (
+                    platform.to_lowercase(),
+                    minerva
+                        .platform_names
+                        .contains(&normalize_platform_key(&platform)),
+                )
+            });
+            (lower.as_str(), *covered)
+        };
         let non_retail = is_non_retail_game(&title, release_type.as_deref());
         let adult = is_adult_game(&title, esrb.as_deref(), genre.as_deref());
+        let mut search_key = String::with_capacity(title.len() + platform_lower.len() + 1);
+        search_key.extend(title.chars().flat_map(char::to_lowercase));
+        search_key.push('\n');
+        search_key.push_str(platform_lower);
         games.push(Game {
             id,
             launchbox_db_id: database_id,
-            search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+            search_key,
             title,
             platform,
             status,
@@ -620,15 +610,33 @@ fn load_discovery_catalog_with_native_state(
             adult,
             cooperative: cooperative_status(cooperative).to_owned(),
         });
-        list_metadata.push(metadata)?;
+        let release_year: Option<i64> = row.get(12)?;
+        let rating: Option<f64> = row.get(14)?;
+        list_metadata.push_text(
+            text_column(&row, 15),
+            text_column(&row, 9),
+            text_column(&row, 10),
+            text_column(&row, 11),
+            genre.as_deref(),
+            text_column(&row, 13),
+            esrb.as_deref(),
+            release_type.as_deref(),
+            text_column(&row, 16),
+            text_column(&row, 17),
+            text_column(&row, 18),
+            text_column(&row, 19),
+            text_column(&row, 20),
+            text_column(&row, 21),
+            i32::try_from(release_year.unwrap_or_default()).unwrap_or_default(),
+            rating,
+        )?;
     }
     for game in &installed.local_only_games {
         games.push(game.clone());
         list_metadata.push_empty();
     }
     let mut list_metadata = list_metadata.finish();
-    apply_variant_counts(&games, &mut list_metadata);
-    collapse_release_families(&mut games, &mut list_metadata);
+    apply_release_families(&mut games, &mut list_metadata);
 
     let canonical_aliases = canonical_platform_aliases(canonical)?;
     let mut platform_statement = discovery.prepare(
@@ -818,26 +826,10 @@ fn optional_game_column(connection: &Connection, column: &str) -> Result<&'stati
     }
 }
 
-fn apply_variant_counts(games: &[Game], metadata: &mut ListMetadata) {
-    let mut titles = HashMap::<String, HashSet<String>>::new();
-    for game in games {
-        let base = crate::game_details::catalog_release_base(&game.title)
-            .unwrap_or_else(|| game.title.trim().to_owned());
-        let key = format!("{}\0{}", game.platform.to_lowercase(), base.to_lowercase());
-        titles
-            .entry(key)
-            .or_default()
-            .insert(game.title.trim().to_lowercase());
-    }
-    for (index, game) in games.iter().enumerate() {
-        let base = crate::game_details::catalog_release_base(&game.title)
-            .unwrap_or_else(|| game.title.trim().to_owned());
-        let key = format!("{}\0{}", game.platform.to_lowercase(), base.to_lowercase());
-        metadata.set_variant_count(index, titles.get(&key).map(HashSet::len).unwrap_or(1));
-    }
-}
-
-fn collapse_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata) {
+/// Groups release families (same game across regions/versions) in a single
+/// pass, records each family's distinct-title variant count on its
+/// representative row, and collapses the family to that representative.
+fn apply_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata) {
     let mut family_order = Vec::<String>::new();
     let mut family_members = HashMap::<String, Vec<usize>>::new();
     for (index, game) in games.iter().enumerate() {
@@ -851,11 +843,16 @@ fn collapse_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata)
     }
 
     let mut retained = Vec::with_capacity(family_order.len());
-    let mut collapsed = Vec::with_capacity(family_order.len());
-    for key in family_order {
-        let Some(members) = family_members.get(&key) else {
+    for key in &family_order {
+        let Some(members) = family_members.get(key) else {
             continue;
         };
+        // The overwhelming majority of families are single releases; keep
+        // them untouched without ranking or flag merging.
+        if members.len() == 1 {
+            retained.push(members[0]);
+            continue;
+        }
         let representative = members
             .iter()
             .copied()
@@ -863,26 +860,48 @@ fn collapse_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata)
                 representative_rank(&games[*left]).cmp(&representative_rank(&games[*right]))
             })
             .unwrap_or(members[0]);
-        let mut game = games[representative].clone();
-        game.local = members.iter().any(|index| games[*index].local);
-        game.downloadable = members.iter().any(|index| games[*index].downloadable);
-        game.non_retail = members.iter().all(|index| games[*index].non_retail);
-        game.adult = members.iter().any(|index| games[*index].adult);
-        if members
+        let local = members.iter().any(|index| games[*index].local);
+        let downloadable = members.iter().any(|index| games[*index].downloadable);
+        let non_retail = members.iter().all(|index| games[*index].non_retail);
+        let adult = members.iter().any(|index| games[*index].adult);
+        let cooperative = if members
             .iter()
             .any(|index| games[*index].cooperative == "yes")
         {
-            game.cooperative = "yes".to_owned();
-        }
+            Some("yes")
+        } else {
+            None
+        };
+        let mut distinct_titles = HashSet::with_capacity(members.len());
         for index in members {
-            let title = games[*index].title.to_lowercase();
-            if !game.search_key.contains(&title) {
-                game.search_key.push('\n');
-                game.search_key.push_str(&title);
-            }
+            distinct_titles.insert(games[*index].title.trim().to_lowercase());
         }
+        let search_additions: Vec<String> = distinct_titles
+            .iter()
+            .filter(|title| !games[representative].search_key.contains(title.as_str()))
+            .cloned()
+            .collect();
+        let variant_count = distinct_titles.len();
+        let representative_game = &mut games[representative];
+        representative_game.local = local;
+        representative_game.downloadable = downloadable;
+        representative_game.non_retail = non_retail;
+        representative_game.adult = adult;
+        if let Some(cooperative) = cooperative {
+            representative_game.cooperative = cooperative.to_owned();
+        }
+        for title in search_additions {
+            representative_game.search_key.push('\n');
+            representative_game.search_key.push_str(&title);
+        }
+        metadata.set_variant_count(representative, variant_count);
         retained.push(representative);
-        collapsed.push(game);
+    }
+    // Rebuild in place by moving the retained games out, avoiding a clone
+    // of every game in the catalog.
+    let mut collapsed = Vec::with_capacity(retained.len());
+    for index in &retained {
+        collapsed.push(std::mem::take(&mut games[*index]));
     }
     metadata.retain_rows(&retained);
     *games = collapsed;
@@ -1461,6 +1480,7 @@ fn title_sort_key<'a>(game: &'a Game, filter: &'a Filter) -> Cow<'a, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::list_view::MetadataInput;
 
     fn fixture_catalog() -> Catalog {
         Catalog {
@@ -2141,8 +2161,7 @@ mod tests {
             builder.push_empty();
         }
         let mut metadata = builder.finish();
-        apply_variant_counts(&games, &mut metadata);
-        collapse_release_families(&mut games, &mut metadata);
+        apply_release_families(&mut games, &mut metadata);
 
         assert_eq!(games.len(), 3);
         let faxanadu = games

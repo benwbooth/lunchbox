@@ -391,20 +391,87 @@ impl ListMetadataBuilder {
         self.rows.push(MetadataRow::default());
     }
 
+    /// Borrowed-text variant of [`Self::push`] for bulk loads: repeated
+    /// values are interned without allocating an intermediate `String`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn push_text(
+        &mut self,
+        sort_title: Option<&str>,
+        developer: Option<&str>,
+        publisher: Option<&str>,
+        release_date: Option<&str>,
+        genre: Option<&str>,
+        players: Option<&str>,
+        esrb: Option<&str>,
+        release_type: Option<&str>,
+        series: Option<&str>,
+        region: Option<&str>,
+        play_mode: Option<&str>,
+        version: Option<&str>,
+        release_status: Option<&str>,
+        notes: Option<&str>,
+        release_year: i32,
+        rating: Option<f64>,
+    ) -> Result<()> {
+        let row = MetadataRow {
+            sort_title: self.intern_str(sort_title)?,
+            developer: self.intern_str(developer)?,
+            publisher: self.intern_str(publisher)?,
+            release_date: self.intern_str(release_date)?,
+            genre: self.intern_str(genre)?,
+            players: self.intern_str(players)?,
+            esrb: self.intern_str(esrb)?,
+            release_type: self.intern_str(release_type)?,
+            series: self.intern_str(series)?,
+            region: self.intern_str(region)?,
+            play_mode: self.intern_str(play_mode)?,
+            version: self.intern_str(version)?,
+            release_status: self.intern_str(release_status)?,
+            notes: self.intern_str(notes)?,
+            release_year,
+            rating_tenths: rating
+                .filter(|rating| rating.is_finite())
+                .map(|rating| (rating * 10.0).round().clamp(0.0, i16::MAX as f64) as i16)
+                .unwrap_or(i16::MIN),
+            variants: 1,
+        };
+        self.rows.push(row);
+        Ok(())
+    }
+
     fn intern(&mut self, value: Option<String>) -> Result<u32> {
-        let Some(value) = value
-            .map(|value| value.trim().to_owned())
-            .filter(|value| !value.is_empty())
-        else {
+        let Some(value) = value else {
             return Ok(0);
         };
-        if let Some(index) = self.string_indices.get(&value) {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Ok(0);
+        }
+        // Look up by borrow so repeated values never allocate; only a
+        // first-seen value pays for the interned copy.
+        if let Some(index) = self.string_indices.get(trimmed) {
             return Ok(*index);
         }
         let index =
             u32::try_from(self.strings.len()).context("list metadata string table overflow")?;
-        self.strings.push(value.clone().into_boxed_str());
-        self.string_indices.insert(value, index);
+        let owned = trimmed.to_owned();
+        self.strings.push(owned.clone().into_boxed_str());
+        self.string_indices.insert(owned, index);
+        Ok(index)
+    }
+
+    fn intern_str(&mut self, value: Option<&str>) -> Result<u32> {
+        let Some(trimmed) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+            return Ok(0);
+        };
+        if let Some(index) = self.string_indices.get(trimmed) {
+            return Ok(*index);
+        }
+        let index =
+            u32::try_from(self.strings.len()).context("list metadata string table overflow")?;
+        let owned = trimmed.to_owned();
+        self.strings.push(owned.clone().into_boxed_str());
+        self.string_indices.insert(owned, index);
         Ok(index)
     }
 
