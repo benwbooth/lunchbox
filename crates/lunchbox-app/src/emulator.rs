@@ -1864,12 +1864,10 @@ fn build_plan_for_choice(
                     LaunchTemplateValue::Path(options),
                 );
             }
-            if is_dosbox_x(&emulator) {
-                // DOSBox-X otherwise prompts for a working directory on first
-                // run; the plan already starts it inside the prepared install.
-                arguments.push(OsString::from("-set"));
-                arguments.push(OsString::from("dosbox working directory option=noprompt"));
-            }
+            arguments.extend(dosbox_presentation_arguments(
+                &prepared.install_root,
+                &emulator,
+            )?);
             let extra_insert_index = arguments.len();
             (arguments, extra_insert_index)
         }
@@ -1925,10 +1923,10 @@ fn build_plan_for_choice(
                 OsString::from("-nomenu"),
                 OsString::from("-noconsole"),
             ];
-            if is_dosbox_x(&emulator) {
-                arguments.push(OsString::from("-set"));
-                arguments.push(OsString::from("dosbox working directory option=noprompt"));
-            }
+            arguments.extend(dosbox_presentation_arguments(
+                &prepared.install_root,
+                &emulator,
+            )?);
             let extra_insert_index = arguments.len();
             (arguments, extra_insert_index)
         }
@@ -2012,6 +2010,50 @@ fn command_prefix(
 
 fn is_dosbox_x(emulator: &EmulatorChoice) -> bool {
     emulator.name.eq_ignore_ascii_case("DOSBox-X")
+}
+
+/// eXo configs pin a small windowed presentation that current DOSBox-X
+/// builds render at the unscaled game size, and DOSBox applies `-conf`
+/// files in order — so the only reliable way to control presentation is a
+/// final conf of our own. Write it once into the prepared install and
+/// return the `-conf`/`-set` arguments that apply it.
+fn dosbox_presentation_arguments(
+    install_root: &Path,
+    emulator: &EmulatorChoice,
+) -> Result<Vec<OsString>> {
+    let mut arguments = Vec::new();
+    if is_dosbox_x(emulator) {
+        // DOSBox-X otherwise prompts for a working directory on first run;
+        // the plan already starts it inside the prepared install.
+        arguments.push(OsString::from("-set"));
+        arguments.push(OsString::from("dosbox working directory option=noprompt"));
+    }
+    let conf_path = install_root.join(".lunchbox-presentation.conf");
+    let write = || -> Result<()> {
+        if conf_path.is_file() {
+            return Ok(());
+        }
+        fs::write(
+            &conf_path,
+            // The eXo configs request a 1280x960 window that current
+            // DOSBox-X builds ignore; start fullscreen at the desktop
+            // resolution so the game fills the display instead.
+            "[sdl]\nfullscreen=true\nfullresolution=desktop\n",
+        )
+        .with_context(|| format!("writing DOSBox presentation config {}", conf_path.display()))
+    };
+    match write() {
+        Ok(()) => {
+            arguments.push(OsString::from("-conf"));
+            arguments.push(path_argument(&conf_path, emulator));
+        }
+        Err(error) => {
+            // A read-only cache must not block the launch; the game still
+            // starts with the eXo presentation.
+            tracing::warn!("skipping DOSBox presentation override: {error:#}");
+        }
+    }
+    Ok(arguments)
 }
 
 fn command_prefix_with_access_roots(
@@ -3044,10 +3086,21 @@ del *.rom
                 shared.as_os_str().to_owned(),
                 OsString::from("-set"),
                 OsString::from("dosbox working directory option=noprompt"),
+                OsString::from("-conf"),
+                prepared
+                    .install_root
+                    .join(".lunchbox-presentation.conf")
+                    .as_os_str()
+                    .to_owned(),
                 OsString::from("--fullscreen"),
                 OsString::from("--label"),
                 OsString::from("Living Room"),
             ]
+        );
+        let presentation = prepared.install_root.join(".lunchbox-presentation.conf");
+        assert_eq!(
+            fs::read_to_string(&presentation).unwrap(),
+            "[sdl]\nfullscreen=true\nfullresolution=desktop\n"
         );
 
         let replaced = build_plan_for_choice(
