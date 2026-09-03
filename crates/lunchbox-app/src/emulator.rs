@@ -498,7 +498,7 @@ fn prepared_launch_template(kind: &PreparedLaunchKind, emulator_name: &str) -> S
             "--config %{config} -p %{game_path} %{game_id}".to_owned()
         }
         PreparedLaunchKind::Win9xDosboxX { .. } => {
-            "-conf %{config} -conf %{shared_config} -nomenu -noconsole".to_owned()
+            "-conf %{config} -conf %{shared_config} -noconsole".to_owned()
         }
         PreparedLaunchKind::EightySixBox(_) => "-P %{vm_root}".to_owned(),
         PreparedLaunchKind::PcBox(_) if emulator_name.eq_ignore_ascii_case("PCBox") => {
@@ -1924,7 +1924,8 @@ fn build_plan_for_choice(
                 path_argument(&config_path, &emulator),
                 OsString::from("-conf"),
                 path_argument(&shared_options_path, &emulator),
-                OsString::from("-nomenu"),
+                // Keep the window menu bar so the emulator can be operated
+                // and exited without the fullscreen hotkeys.
                 OsString::from("-noconsole"),
             ];
             arguments.extend(dosbox_presentation_arguments(
@@ -2043,7 +2044,7 @@ fn dosbox_presentation_arguments(
         arguments.push(OsString::from("-set"));
         arguments.push(OsString::from("dosbox working directory option=noprompt"));
     }
-    const PRESENTATION_CONF: &str = "[sdl]\nfullscreen=true\nfullresolution=desktop\nwindowresolution=original\noutput=openglnb\n[render]\nscaler=none\n";
+    const PRESENTATION_CONF: &str = "[sdl]\nfullscreen=false\nfullresolution=desktop\nwindowresolution=original\noutput=openglnb\n[render]\nscaler=none\n";
     let conf_path = install_root.join(".lunchbox-presentation.conf");
     let write = || -> Result<()> {
         if fs::read_to_string(&conf_path).ok().as_deref() == Some(PRESENTATION_CONF) {
@@ -2051,9 +2052,9 @@ fn dosbox_presentation_arguments(
         }
         // The eXo configs request a 1280x960 window that current DOSBox-X
         // builds ignore, and their CPU scaler pins the game to a small
-        // non-resizable render. Start fullscreen at the desktop resolution
-        // and let the GPU output scale, so the window also resizes
-        // correctly once fullscreen is toggled off.
+        // non-resizable render. Present through the GPU output instead:
+        // a windowed launch keeps the menu bar, and the game surface
+        // scales as the window is resized.
         fs::write(&conf_path, PRESENTATION_CONF)
             .with_context(|| format!("writing DOSBox presentation config {}", conf_path.display()))
     };
@@ -3115,7 +3116,7 @@ del *.rom
         let presentation = prepared.install_root.join(".lunchbox-presentation.conf");
         assert_eq!(
             fs::read_to_string(&presentation).unwrap(),
-            "[sdl]\nfullscreen=true\nfullresolution=desktop\nwindowresolution=original\noutput=openglnb\n[render]\nscaler=none\n"
+            "[sdl]\nfullscreen=false\nfullresolution=desktop\nwindowresolution=original\noutput=openglnb\n[render]\nscaler=none\n"
         );
 
         let replaced = build_plan_for_choice(
