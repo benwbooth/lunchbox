@@ -652,6 +652,11 @@ ApplicationWindow {
     }
 
     function openEmulatorManagerForPlatform(platform) {
+        // A platform-scoped view must not inherit stale text/status filters
+        // from a previous manager visit, which can silently empty the list.
+        emulatorSearch.text = ""
+        emulatorStatusFilter.currentIndex = 0
+        emulatorManager.apply_filter("", "all")
         emulatorManager.set_platform_scope(platform)
         emulatorManagerDialog.open()
         emulatorManager.initialize()

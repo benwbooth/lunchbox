@@ -2,35 +2,174 @@
   "schema_version": 1,
   "reviewed_at": "2026-09-01",
   "sources": [
-    { "emulator": "Ares", "host": "linux", "manager": "nix", "package_id": "ares" },
-    { "emulator": "ares", "host": "linux", "manager": "nix", "package_id": "ares" },
-    { "emulator": "Atari++", "host": "linux", "manager": "nix", "package_id": "ataripp" },
-    { "emulator": "Atari800", "host": "linux", "manager": "nix", "package_id": "atari800" },
-    { "emulator": "DeSmuME", "host": "linux", "manager": "nix", "package_id": "desmume" },
-    { "emulator": "Dolphin", "host": "linux", "manager": "nix", "package_id": "dolphin-emu" },
-    { "emulator": "DOSBox Staging", "host": "linux", "manager": "nix", "package_id": "dosbox-staging" },
-    { "emulator": "DOSBox-X", "host": "linux", "manager": "nix", "package_id": "dosbox-x" },
-    { "emulator": "DuckStation", "host": "linux", "manager": "nix", "package_id": "duckstation" },
-    { "emulator": "Flycast", "host": "linux", "manager": "nix", "package_id": "flycast" },
-    { "emulator": "FS-UAE", "host": "linux", "manager": "nix", "package_id": "fsuae" },
-    { "emulator": "Hatari", "host": "linux", "manager": "nix", "package_id": "hatari" },
-    { "emulator": "MAME", "host": "linux", "manager": "nix", "package_id": "mame" },
-    { "emulator": "Mednafen", "host": "linux", "manager": "nix", "package_id": "mednafen" },
-    { "emulator": "Mesen", "host": "linux", "manager": "nix", "package_id": "mesen" },
-    { "emulator": "mGBA", "host": "linux", "manager": "nix", "package_id": "mgba" },
-    { "emulator": "melonDS", "host": "linux", "manager": "nix", "package_id": "melonds" },
-    { "emulator": "openMSX", "host": "linux", "manager": "nix", "package_id": "openmsx" },
-    { "emulator": "PCSX2", "host": "linux", "manager": "nix", "package_id": "pcsx2" },
-    { "emulator": "PPSSPP", "host": "linux", "manager": "nix", "package_id": "ppsspp" },
-    { "emulator": "RetroArch", "host": "linux", "manager": "nix", "package_id": "retroarch" },
-    { "emulator": "ScummVM", "host": "linux", "manager": "nix", "package_id": "scummvm" },
-    { "emulator": "Snes9x", "host": "linux", "manager": "nix", "package_id": "snes9x" },
-    { "emulator": "Stella", "host": "linux", "manager": "nix", "package_id": "stella" },
-    { "emulator": "VICE", "host": "linux", "manager": "nix", "package_id": "vice" },
-    { "emulator": "VICE (xpet)", "host": "linux", "manager": "nix", "package_id": "vice" },
-    { "emulator": "VICE (xvic)", "host": "linux", "manager": "nix", "package_id": "vice" },
-    { "emulator": "xemu", "host": "linux", "manager": "nix", "package_id": "xemu" },
-
+    {
+      "emulator": "Ares",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "ares"
+    },
+    {
+      "emulator": "ares",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "ares"
+    },
+    {
+      "emulator": "Atari++",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "ataripp"
+    },
+    {
+      "emulator": "Atari800",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "atari800"
+    },
+    {
+      "emulator": "DeSmuME",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "desmume"
+    },
+    {
+      "emulator": "Dolphin",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "dolphin-emu"
+    },
+    {
+      "emulator": "DOSBox Staging",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "dosbox-staging"
+    },
+    {
+      "emulator": "DOSBox-X",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "dosbox-x"
+    },
+    {
+      "emulator": "DuckStation",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "duckstation"
+    },
+    {
+      "emulator": "Flycast",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "flycast"
+    },
+    {
+      "emulator": "FS-UAE",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "fsuae"
+    },
+    {
+      "emulator": "Hatari",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "hatari"
+    },
+    {
+      "emulator": "MAME",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "mame"
+    },
+    {
+      "emulator": "Mednafen",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "mednafen"
+    },
+    {
+      "emulator": "Mesen",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "mesen"
+    },
+    {
+      "emulator": "mGBA",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "mgba"
+    },
+    {
+      "emulator": "melonDS",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "melonds"
+    },
+    {
+      "emulator": "openMSX",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "openmsx"
+    },
+    {
+      "emulator": "PCSX2",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "pcsx2"
+    },
+    {
+      "emulator": "PPSSPP",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "ppsspp"
+    },
+    {
+      "emulator": "RetroArch",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "retroarch"
+    },
+    {
+      "emulator": "ScummVM",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "scummvm"
+    },
+    {
+      "emulator": "Snes9x",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "snes9x"
+    },
+    {
+      "emulator": "Stella",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "stella"
+    },
+    {
+      "emulator": "VICE",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "vice"
+    },
+    {
+      "emulator": "VICE (xpet)",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "vice"
+    },
+    {
+      "emulator": "VICE (xvic)",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "vice"
+    },
+    {
+      "emulator": "xemu",
+      "host": "linux",
+      "manager": "nix",
+      "package_id": "xemu"
+    },
     {
       "emulator": "Eden",
       "host": "linux",
@@ -39,13 +178,26 @@
       "metadata": {
         "release_api": "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases/latest",
         "archive_payload": "appimage",
-        "asset_terms": ["eden-linux", "clang", "pgo"],
+        "asset_terms": [
+          "eden-linux",
+          "clang",
+          "pgo"
+        ],
         "asset_terms_by_arch": {
-          "x86_64": ["amd64"],
-          "aarch64": ["aarch64"]
+          "x86_64": [
+            "amd64"
+          ],
+          "aarch64": [
+            "aarch64"
+          ]
         },
-        "supported_arches": ["x86_64", "aarch64"],
-        "executable_candidates": ["Eden"],
+        "supported_arches": [
+          "x86_64",
+          "aarch64"
+        ],
+        "executable_candidates": [
+          "Eden"
+        ],
         "update_strategy": "appimage_then_official_release"
       }
     },
@@ -57,13 +209,26 @@
       "metadata": {
         "release_api": "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases/latest",
         "archive_format": "zip",
-        "asset_terms": ["eden-windows", "msvc", "standard"],
+        "asset_terms": [
+          "eden-windows",
+          "msvc",
+          "standard"
+        ],
         "asset_terms_by_arch": {
-          "x86_64": ["amd64"],
-          "aarch64": ["arm64"]
+          "x86_64": [
+            "amd64"
+          ],
+          "aarch64": [
+            "arm64"
+          ]
         },
-        "supported_arches": ["x86_64", "aarch64"],
-        "executable_candidates": ["eden"],
+        "supported_arches": [
+          "x86_64",
+          "aarch64"
+        ],
+        "executable_candidates": [
+          "eden"
+        ],
         "update_strategy": "replace_from_official_release"
       }
     },
@@ -75,13 +240,18 @@
       "metadata": {
         "release_api": "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases/latest",
         "archive_format": "dmg",
-        "asset_terms": ["eden-macos"],
-        "supported_arches": ["aarch64"],
-        "executable_candidates": ["eden"],
+        "asset_terms": [
+          "eden-macos"
+        ],
+        "supported_arches": [
+          "aarch64"
+        ],
+        "executable_candidates": [
+          "eden"
+        ],
         "update_strategy": "replace_from_official_release"
       }
     },
-
     {
       "emulator": "Mesen",
       "host": "linux",
@@ -89,8 +259,14 @@
       "package_id": "SourMesen/Mesen2",
       "metadata": {
         "archive_format": "zip",
-        "asset_terms": ["mesen", "linux", "x64"],
-        "executable_candidates": ["Mesen"],
+        "asset_terms": [
+          "mesen",
+          "linux",
+          "x64"
+        ],
+        "executable_candidates": [
+          "Mesen"
+        ],
         "update_strategy": "replace_from_github_release"
       }
     },
@@ -101,7 +277,10 @@
       "package_id": "DirtBagXon/hypseus-singe",
       "metadata": {
         "archive_format": "tar.gz",
-        "asset_terms": ["hypseus-singe", "appimage"],
+        "asset_terms": [
+          "hypseus-singe",
+          "appimage"
+        ],
         "archive_payload": "appimage",
         "update_strategy": "appimage_then_github_release"
       }
@@ -113,9 +292,97 @@
       "package_id": "https://www.virtualdub.org/altirra.html",
       "metadata": {
         "download_link_pattern": "downloads/Altirra-*.zip",
-        "executable_candidates": ["Altirra64.exe", "Altirra.exe"],
+        "executable_candidates": [
+          "Altirra64.exe",
+          "Altirra.exe"
+        ],
         "runtime": "wine",
         "update_strategy": "replace_from_official_page"
+      }
+    },
+    {
+      "emulator": "Citron Neo",
+      "host": "linux",
+      "manager": "appimage",
+      "package_id": "citron-neo/emulator",
+      "metadata": {
+        "release_api": "https://api.github.com/repos/citron-neo/emulator/releases/latest",
+        "archive_payload": "appimage",
+        "asset_terms": [
+          "linux"
+        ],
+        "asset_terms_by_arch": {
+          "x86_64": [
+            "x86_64"
+          ],
+          "aarch64": [
+            "aarch64"
+          ]
+        },
+        "supported_arches": [
+          "x86_64",
+          "aarch64"
+        ],
+        "executable_candidates": [
+          "citron",
+          "Citron"
+        ],
+        "update_strategy": "appimage_then_official_release"
+      }
+    },
+    {
+      "emulator": "Citron Neo",
+      "host": "windows",
+      "manager": "github",
+      "package_id": "citron-neo/emulator",
+      "metadata": {
+        "release_api": "https://api.github.com/repos/citron-neo/emulator/releases/latest",
+        "archive_format": "zip",
+        "asset_terms": [
+          "windows",
+          "msvc"
+        ],
+        "asset_terms_by_arch": {
+          "x86_64": [
+            "x64"
+          ]
+        },
+        "supported_arches": [
+          "x86_64"
+        ],
+        "executable_candidates": [
+          "citron"
+        ],
+        "update_strategy": "replace_from_official_release"
+      }
+    },
+    {
+      "emulator": "Citron Neo",
+      "host": "macos",
+      "manager": "github",
+      "package_id": "citron-neo/emulator",
+      "metadata": {
+        "release_api": "https://api.github.com/repos/citron-neo/emulator/releases/latest",
+        "archive_format": "dmg",
+        "asset_terms": [
+          "macOS"
+        ],
+        "asset_terms_by_arch": {
+          "x86_64": [
+            "x86_64"
+          ],
+          "aarch64": [
+            "aarch64"
+          ]
+        },
+        "supported_arches": [
+          "x86_64",
+          "aarch64"
+        ],
+        "executable_candidates": [
+          "Citron"
+        ],
+        "update_strategy": "replace_from_official_release"
       }
     }
   ]
