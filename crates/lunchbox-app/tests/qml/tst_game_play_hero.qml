@@ -17,6 +17,7 @@ TestCase {
             discoveryBusy: false
             launchBusy: false
             gameRunning: false
+            preparable: false
             emulatorName: "RetroArch · Mesen"
             platform: "Nintendo Entertainment System"
             launchStatus: "Ready"
@@ -61,7 +62,28 @@ TestCase {
         })
         verify(hero)
         verify(hero.emulatorMissing)
+        verify(!hero.prepareNeeded)
         verify(hero.local)
+    }
+
+    function test_preparable_archive_offers_prepare_instead_of_install() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            canLaunch: false,
+            emulatorName: "",
+            emulatorOptionCount: 0,
+            selectedEmulatorOption: -1,
+            preparable: true
+        })
+        verify(hero)
+        verify(!hero.emulatorMissing)
+        verify(hero.prepareNeeded)
+        let prepared = false
+        hero.prepareRequested.connect(function() { prepared = true })
+        const action = findChild(hero, "launchAction")
+        verify(action)
+        compare(action.text, "PREPARE INSTALL")
+        action.clicked()
+        verify(prepared)
     }
 
     function test_launch_preparation_can_be_cancelled() {

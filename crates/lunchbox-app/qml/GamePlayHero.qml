@@ -12,6 +12,7 @@ Rectangle {
     required property bool discoveryBusy
     required property bool launchBusy
     required property bool gameRunning
+    required property bool preparable
     required property string emulatorName
     required property string platform
     required property string launchStatus
@@ -29,6 +30,7 @@ Rectangle {
     signal playRequested()
     signal cancelLaunchRequested()
     signal setupRequested()
+    signal prepareRequested()
     signal firmwareSetupRequested()
     signal manageEmulatorsRequested()
     signal emulatorSelected(int index)
@@ -36,7 +38,10 @@ Rectangle {
     signal savePlatformDefaultRequested()
     signal clearDefaultRequested()
 
-    readonly property bool emulatorMissing: !discoveryBusy && emulatorOptionCount === 0
+    readonly property bool prepareNeeded: !discoveryBusy && preparable
+                                          && emulatorOptionCount === 0
+    readonly property bool emulatorMissing: !discoveryBusy && !preparable
+                                            && emulatorOptionCount === 0
     readonly property bool firmwareSetupNeeded: !discoveryBusy
                                                 && firmwareMissingCount > 0
 
@@ -79,6 +84,7 @@ Rectangle {
                     width: parent.width
                     text: hero.gameRunning ? "NOW PLAYING"
                           : hero.canLaunch ? "READY TO PLAY"
+                          : hero.prepareNeeded ? "PREPARE TO PLAY"
                           : hero.emulatorMissing ? "EMULATOR NEEDED" : "SET UP PLAY"
                     color: hero.canLaunch ? "#83e3ad" : hero.accentCool
                     font.pixelSize: 12
@@ -88,6 +94,7 @@ Rectangle {
                 Text {
                     width: parent.width
                     text: hero.discoveryBusy ? "Detecting installed emulators…"
+                          : hero.prepareNeeded ? "Prepare this archived PC game to detect installed emulators"
                           : hero.emulatorName.length > 0 ? hero.emulatorName
                           : "Choose or install a compatible emulator"
                     color: hero.ink
@@ -220,6 +227,7 @@ Rectangle {
             text: hero.launchBusy ? "CANCEL PREPARATION"
                   : hero.gameRunning ? "GAME IS RUNNING"
                   : hero.canLaunch ? "▶  PLAY"
+                  : hero.prepareNeeded ? "PREPARE INSTALL"
                   : hero.firmwareSetupNeeded ? hero.firmwareSetupLabel
                   : hero.emulatorMissing ? "INSTALL AN EMULATOR" : "RECHECK PLAY SETUP"
             enabled: hero.launchBusy
@@ -231,6 +239,8 @@ Rectangle {
                     hero.cancelLaunchRequested()
                 else if (hero.canLaunch)
                     hero.playRequested()
+                else if (hero.prepareNeeded)
+                    hero.prepareRequested()
                 else if (hero.firmwareSetupNeeded)
                     hero.firmwareSetupRequested()
                 else

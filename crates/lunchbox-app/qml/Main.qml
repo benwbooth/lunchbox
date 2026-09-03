@@ -11324,6 +11324,7 @@ ApplicationWindow {
                         discoveryBusy: gameDetails.launch_discovery_busy
                         launchBusy: gameDetails.launch_busy
                         gameRunning: gameDetails.game_running
+                        preparable: gameDetails.preparable && !gameDetails.prepared
                         emulatorName: gameDetails.emulator_name
                         platform: gameDetails.platform
                         launchStatus: gameDetails.launch_status
@@ -11347,6 +11348,7 @@ ApplicationWindow {
                             else
                                 gameDetails.refresh_emulators()
                         }
+                        onPrepareRequested: gameDetails.prepare_game()
                         onFirmwareSetupRequested: root.openFirmwareSetupPage()
                         onEmulatorSelected: function(index) {
                             gameDetails.select_emulator_option(index)
