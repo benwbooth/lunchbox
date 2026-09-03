@@ -269,7 +269,7 @@ Rectangle {
                             && page.detailsModel.launch_status.length > 0
                         visible: hasStatus
                         width: parent.width
-                        implicitHeight: switchStatusText.implicitHeight + 28
+                        implicitHeight: operationStatusColumn.implicitHeight + 28
                         height: visible ? implicitHeight : 0
                         radius: 10
                         color: "#151d29"
@@ -277,19 +277,62 @@ Rectangle {
                                           "Could not") === 0
                                       ? page.accent : page.line
 
-                        Text {
-                            id: switchStatusText
+                        Column {
+                            id: operationStatusColumn
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.top: parent.top
                             anchors.margins: 14
-                            text: page.detailsModel.launch_status
-                            color: page.detailsModel.launch_status.indexOf(
-                                       "Could not") === 0
-                                   ? page.accent : page.muted
-                            font.pixelSize: 10
-                            lineHeight: 1.25
-                            wrapMode: Text.WordWrap
+                            spacing: 10
+
+                            Text {
+                                id: switchStatusText
+                                width: parent.width
+                                text: page.detailsModel.launch_status
+                                color: page.detailsModel.launch_status.indexOf(
+                                           "Could not") === 0
+                                       ? page.accent : page.muted
+                                font.pixelSize: 10
+                                lineHeight: 1.25
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                objectName: "firmwareProgressRow"
+                                readonly property bool operationActive:
+                                    page.detailsModel.firmware_busy
+                                visible: operationActive
+                                width: parent.width
+                                spacing: 10
+
+                                Text {
+                                    text: "🔧"
+                                    color: page.accent
+                                    font.pixelSize: 13
+                                    Accessible.name: "Firmware operation in progress"
+                                }
+
+                                InlineProgressBar {
+                                    objectName: "firmwareProgressBar"
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 7
+                                    from: 0
+                                    to: 100
+                                    value: Math.max(0,
+                                                    page.detailsModel.firmware_progress)
+                                    indeterminate:
+                                        page.detailsModel.firmware_progress < 0
+                                    fillColor: page.accentCool
+                                }
+
+                                Text {
+                                    visible: page.detailsModel.firmware_progress >= 0
+                                    text: page.detailsModel.firmware_progress + "%"
+                                    color: page.ink
+                                    font.pixelSize: 10
+                                    font.weight: Font.DemiBold
+                                }
+                            }
                         }
                     }
 

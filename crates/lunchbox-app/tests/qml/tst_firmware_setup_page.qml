@@ -22,6 +22,7 @@ TestCase {
                 property int firmware_missing_count: 2
                 property bool can_launch: false
                 property bool firmware_busy: false
+                property int firmware_progress: -1
                 property string firmware_summary: "Switch keys and firmware are required."
                 property string firmware_next_package: "switch-keys.zip"
                 property string firmware_setup_action: "choose"
@@ -94,6 +95,26 @@ TestCase {
         const status = findChild(host.page, "firmwareOperationStatus")
         verify(status)
         verify(status.hasStatus)
+    }
+
+    function test_long_firmware_work_shows_determinate_progress() {
+        const host = createTemporaryObject(pageComponent, testCase)
+        verify(host)
+        host.details.firmware_busy = true
+        host.details.firmware_progress = 42
+        host.details.launch_status = "Validating firmware package · 100/238 entries"
+        wait(0)
+        const row = findChild(host.page, "firmwareProgressRow")
+        const bar = findChild(host.page, "firmwareProgressBar")
+        verify(row)
+        compare(row.operationActive, true)
+        verify(bar)
+        compare(bar.indeterminate, false)
+        compare(bar.value, 42)
+
+        host.details.firmware_progress = -1
+        wait(0)
+        compare(bar.indeterminate, true)
     }
 
     function test_completed_setup_turns_the_primary_action_into_play() {

@@ -20,6 +20,27 @@ use crate::settings::{
     SettingsStore,
 };
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FirmwareHost {
+    Linux,
+    Windows,
+    MacOs,
+}
+
+impl FirmwareHost {
+    fn current() -> Result<Self> {
+        if cfg!(target_os = "linux") {
+            Ok(Self::Linux)
+        } else if cfg!(target_os = "windows") {
+            Ok(Self::Windows)
+        } else if cfg!(target_os = "macos") {
+            Ok(Self::MacOs)
+        } else {
+            bail!("firmware management does not support this host operating system")
+        }
+    }
+}
+
 const MAX_FIRMWARE_ARCHIVE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const MAX_FIRMWARE_EXTRACTED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 const MAX_FIRMWARE_FILES: usize = 250_000;
@@ -298,6 +319,12 @@ fn status_for_rule(
         }
     });
     let package_key = (rule.source_id.clone(), rule.package_name.clone());
+    if rule.runtime_kind == "ryubing"
+        && rule.source_id == "manual:nintendo-switch-firmware"
+        && let Some(target) = target_path.as_deref()
+    {
+        let _ = migrate_legacy_ryubing_firmware_layout(target);
+    }
     let runtime_target_ready = target_path
         .as_deref()
         .is_some_and(|target| managed_runtime_target_ready(rule, target));
@@ -307,8 +334,10 @@ fn status_for_rule(
         packages.contains_key(&package_key) || runtime_target_ready
     };
     let runtime_text = runtime_path.to_string_lossy().into_owned();
-    let synced = runtime_target_ready
-        || target_path.as_ref().is_some_and(|target| {
+    let synced = if rule.target_strategy == "managed_import" {
+        runtime_target_ready
+    } else {
+        target_path.as_ref().is_some_and(|target| {
             installs
                 .get(&(rule.rule_key.clone(), runtime_text.clone()))
                 .is_some_and(|receipt| {
@@ -317,7 +346,8 @@ fn status_for_rule(
                         && Path::new(&receipt.target_path) == target
                         && target.exists()
                 })
-        });
+        })
+    };
 
     Ok(FirmwareStatus {
         rule_key: rule.rule_key.clone(),
@@ -353,7 +383,7 @@ fn managed_runtime_target_ready(rule: &FirmwareRuleRow, target: &Path) -> bool {
             validate_switch_prod_keys(&target.join("prod.keys")).is_ok()
         }
         ("manual:nintendo-switch-firmware", SWITCH_FIRMWARE_PACKAGE) => {
-            validate_switch_firmware_directory(target).is_ok()
+            validate_switch_firmware_directory(target, &rule.runtime_kind).is_ok()
         }
         _ => false,
     }
@@ -395,6 +425,27 @@ fn runtime_root(
     let base = BaseDirs::new().context("could not determine firmware runtime directories")?;
     let home = base.home_dir();
     let flatpak = matches!(option.executable, EmulatorExecutable::Flatpak { .. });
+    if matches!(rule.runtime_kind.as_str(), "eden" | "ryubing" | "torzu") {
+        let host = FirmwareHost::current()?;
+        let switch_data_dir = if host == FirmwareHost::MacOs {
+            std::env::var_os("XDG_DATA_HOME")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".local/share"))
+        } else {
+            base.data_local_dir().to_path_buf()
+        };
+        return switch_runtime_root(
+            host,
+            &rule.runtime_kind,
+            &option.executable,
+            rom_path,
+            home,
+            base.config_dir(),
+            &switch_data_dir,
+        )
+        .map(Some);
+    }
     let root = match rule.runtime_kind.as_str() {
         "retroarch" if cfg!(target_os = "linux") && flatpak => {
             home.join(".var/app/org.libretro.RetroArch/config/retroarch/system")
@@ -470,27 +521,67 @@ fn runtime_root(
         "86box" if cfg!(target_os = "macos") => home.join("Library/Application Support/86Box/roms"),
         "86box" => base.data_local_dir().join("86Box/roms"),
         "pcem" => home.join(".pcem/roms"),
-        "eden" if cfg!(target_os = "linux") && flatpak => {
-            home.join(".var/app/dev.eden_emu.eden/data/eden")
-        }
-        "eden" if cfg!(target_os = "linux") => base.data_local_dir().join("eden"),
-        "eden" if cfg!(target_os = "windows") => base.config_dir().join("eden"),
-        "eden" => home.join("Library/Application Support/eden"),
-        "ryubing" if cfg!(target_os = "linux") && flatpak => {
-            home.join(".var/app/io.github.ryubing.Ryujinx/config/Ryujinx")
-        }
-        "ryubing" if cfg!(target_os = "linux") => base.config_dir().join("Ryujinx"),
-        "ryubing" if cfg!(target_os = "windows") => base.config_dir().join("Ryujinx"),
-        "ryubing" => home.join("Library/Application Support/Ryujinx"),
-        "torzu" if cfg!(target_os = "linux") && flatpak => {
-            home.join(".var/app/onion.torzu_emu.torzu/data/yuzu")
-        }
-        "torzu" if cfg!(target_os = "linux") => base.data_local_dir().join("yuzu"),
-        "torzu" if cfg!(target_os = "windows") => base.config_dir().join("yuzu"),
-        "torzu" => home.join("Library/Application Support/yuzu"),
         kind => bail!("firmware runtime {kind} has no reviewed target adapter"),
     };
     Ok(Some(root))
+}
+
+fn switch_runtime_root(
+    host: FirmwareHost,
+    runtime_kind: &str,
+    executable: &EmulatorExecutable,
+    rom_path: &Path,
+    home: &Path,
+    config_dir: &Path,
+    data_local_dir: &Path,
+) -> Result<PathBuf> {
+    let flatpak_app_id = match executable {
+        EmulatorExecutable::Flatpak { app_id, .. } if host == FirmwareHost::Linux => Some(app_id),
+        _ => None,
+    };
+    if let Some(app_id) = flatpak_app_id {
+        let sandbox = home.join(".var/app").join(app_id);
+        return match runtime_kind {
+            "eden" => Ok(sandbox.join("data/eden")),
+            "ryubing" => Ok(sandbox.join("config/Ryujinx")),
+            "torzu" => Ok(sandbox.join("data/yuzu")),
+            _ => bail!("unsupported Switch firmware runtime {runtime_kind}"),
+        };
+    }
+
+    let executable_parent = match executable {
+        EmulatorExecutable::Native(executable) => executable.parent(),
+        EmulatorExecutable::Wine { executable, .. } => executable.parent(),
+        EmulatorExecutable::Flatpak { .. } => None,
+    };
+    let portable = match runtime_kind {
+        "ryubing" => executable_parent.map(|parent| parent.join("portable")),
+        // Eden and yuzu-family builds use the executable directory on Windows,
+        // but the process working directory on Unix. Lunchbox launches ROMs with
+        // their containing directory as the working directory.
+        "eden" | "torzu" if host == FirmwareHost::Windows => {
+            executable_parent.map(|parent| parent.join("user"))
+        }
+        "eden" | "torzu" => rom_path.parent().map(|parent| parent.join("user")),
+        _ => bail!("unsupported Switch firmware runtime {runtime_kind}"),
+    };
+    if let Some(portable) = portable
+        && portable.is_dir()
+    {
+        return Ok(portable);
+    }
+
+    match (runtime_kind, host) {
+        ("ryubing", FirmwareHost::MacOs) => Ok(home.join("Library/Application Support/Ryujinx")),
+        ("ryubing", _) => Ok(config_dir.join("Ryujinx")),
+        ("eden", FirmwareHost::Windows) => Ok(config_dir.join("eden")),
+        ("torzu", FirmwareHost::Windows) => Ok(config_dir.join("yuzu")),
+        // These C++ runtimes intentionally use XDG_DATA_HOME on every Unix,
+        // including macOS, rather than Apple's Application Support directory.
+        ("eden", FirmwareHost::Linux | FirmwareHost::MacOs) => Ok(data_local_dir.join("eden")),
+        ("torzu", FirmwareHost::Linux | FirmwareHost::MacOs) => Ok(data_local_dir.join("yuzu")),
+        _ => bail!("unsupported Switch firmware runtime {runtime_kind}"),
+    }
 }
 
 fn resolve_platform_id(connection: &Connection, platform: &str) -> Result<String> {
@@ -563,6 +654,22 @@ fn write_manual_readme(directory: &Path, statuses: &[FirmwareStatus]) -> Result<
 }
 
 pub fn import_and_sync(statuses: &[FirmwareStatus], selected_path: &Path) -> Result<String> {
+    import_and_sync_with_progress(statuses, selected_path, |_, _| {})
+}
+
+pub fn import_and_sync_with_progress(
+    statuses: &[FirmwareStatus],
+    selected_path: &Path,
+    mut progress: impl FnMut(String, u8),
+) -> Result<String> {
+    let mut last_progress = None;
+    let mut report = |message: String, percent: u8| {
+        if last_progress != Some(percent) {
+            last_progress = Some(percent);
+            progress(message, percent);
+        }
+    };
+    report("Inspecting the selected firmware package…".into(), 0);
     if !selected_path.is_file() {
         bail!("the selected firmware package is not a readable local file");
     }
@@ -604,7 +711,14 @@ pub fn import_and_sync(statuses: &[FirmwareStatus], selected_path: &Path) -> Res
         );
     }
     let selected = candidates[0];
-    validate_managed_firmware_selection(selected, selected_path)?;
+    validate_managed_firmware_selection_with_progress(selected, selected_path, |done, total| {
+        let percent = progress_between(2, 20, done, total);
+        report(
+            format!("Validating firmware package · {done}/{total} entries"),
+            percent,
+        );
+    })?;
+    report("Preparing the verified firmware package…".into(), 22);
     let normalized_keys = (selected.package_name == SWITCH_KEYS_PACKAGE)
         .then(|| normalize_switch_key_package(selected_path))
         .transpose()?;
@@ -612,12 +726,23 @@ pub fn import_and_sync(statuses: &[FirmwareStatus], selected_path: &Path) -> Res
         .as_ref()
         .map(|(_, package)| package.as_path())
         .unwrap_or(selected_path);
-    let imported = import_package(&selected.source_id, &selected.package_name, package_path);
+    let imported = import_package_with_progress(
+        &selected.source_id,
+        &selected.package_name,
+        package_path,
+        |message, percent| report(message, progress_between(22, 68, usize::from(percent), 100)),
+    );
     if let Some((staging, _)) = normalized_keys.as_ref() {
         let _ = fs::remove_dir_all(staging);
     }
     let receipt = imported?;
-    let synced = sync_matching_statuses(statuses, std::slice::from_ref(&receipt))?;
+    report("Verifying and syncing the emulator profile…".into(), 70);
+    let synced = sync_matching_statuses_with_progress(
+        statuses,
+        std::slice::from_ref(&receipt),
+        |message, percent| report(message, progress_between(70, 99, usize::from(percent), 100)),
+    )?;
+    report("Firmware setup complete.".into(), 100);
     Ok(format!(
         "Imported {} ({} file{}){}.",
         receipt.package_name,
@@ -632,6 +757,15 @@ pub fn import_and_sync(statuses: &[FirmwareStatus], selected_path: &Path) -> Res
             )
         }
     ))
+}
+
+fn progress_between(start: u8, end: u8, done: usize, total: usize) -> u8 {
+    if total == 0 || start >= end {
+        return start;
+    }
+    let span = usize::from(end - start);
+    let offset = done.min(total).saturating_mul(span) / total;
+    start.saturating_add(u8::try_from(offset).unwrap_or(end - start))
 }
 
 fn firmware_selection_matches(
@@ -652,9 +786,10 @@ fn firmware_selection_matches(
     status.package_name.eq_ignore_ascii_case(selected_name)
 }
 
-fn validate_managed_firmware_selection(
+fn validate_managed_firmware_selection_with_progress(
     status: &FirmwareStatus,
     selected_path: &Path,
+    mut progress: impl FnMut(usize, usize),
 ) -> Result<()> {
     if status.target_strategy != "managed_import" {
         return Ok(());
@@ -664,7 +799,7 @@ fn validate_managed_firmware_selection(
             read_switch_key_package(selected_path).map(|_| ())
         }
         ("manual:nintendo-switch-firmware", SWITCH_FIRMWARE_PACKAGE) => {
-            validate_switch_firmware_zip(selected_path)
+            validate_switch_firmware_zip_with_progress(selected_path, &mut progress)
         }
         (source, package) => {
             bail!("managed firmware source {source} package {package} has no validator")
@@ -877,7 +1012,7 @@ fn validate_switch_title_keys_bytes(bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn validate_switch_firmware_directory(path: &Path) -> Result<()> {
+fn validate_switch_firmware_directory(path: &Path, runtime_kind: &str) -> Result<()> {
     if !path.is_dir() {
         bail!("Switch firmware directory does not exist");
     }
@@ -886,18 +1021,26 @@ fn validate_switch_firmware_directory(path: &Path) -> Result<()> {
     for entry in fs::read_dir(path)? {
         let entry = entry?;
         let file_type = entry.file_type()?;
-        if !file_type.is_file() {
-            continue;
-        }
-        let path = entry.path();
-        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        let entry_path = entry.path();
+        let Some(file_name) = entry_path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
         let lowercase_file_name = file_name.to_ascii_lowercase();
-        if switch_nca_content_id(&lowercase_file_name).is_none() {
+        let nca_path = if runtime_kind == "ryubing" {
+            if !file_type.is_dir() || switch_nca_content_id(&lowercase_file_name).is_none() {
+                continue;
+            }
+            entry_path.join("00")
+        } else {
+            if !file_type.is_file() || switch_nca_content_id(&lowercase_file_name).is_none() {
+                continue;
+            }
+            entry_path
+        };
+        if !nca_path.is_file() {
             continue;
         }
-        let size = entry.metadata()?.len();
+        let size = nca_path.metadata()?.len();
         if size == 0 {
             continue;
         }
@@ -913,6 +1056,85 @@ fn validate_switch_firmware_directory(path: &Path) -> Result<()> {
     bail!("Switch firmware directory does not contain a recognizable installed NCA set")
 }
 
+fn migrate_legacy_ryubing_firmware_layout(target: &Path) -> Result<bool> {
+    if validate_switch_firmware_directory(target, "ryubing").is_ok() || !target.is_dir() {
+        return Ok(false);
+    }
+    let mut legacy_files = Vec::new();
+    let mut content_ids = HashSet::new();
+    let mut total_bytes = 0u64;
+    for entry in fs::read_dir(target)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            return Ok(false);
+        }
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            return Ok(false);
+        };
+        let lowercase_name = name.to_ascii_lowercase();
+        let Some(content_id) = switch_nca_content_id(&lowercase_name) else {
+            return Ok(false);
+        };
+        if !content_ids.insert(content_id.to_owned()) {
+            return Ok(false);
+        }
+        let size = entry.metadata()?.len();
+        if size == 0 {
+            return Ok(false);
+        }
+        total_bytes = total_bytes.saturating_add(size);
+        legacy_files.push((entry.path(), content_id.to_owned()));
+    }
+    if legacy_files.len() < 10 || total_bytes < 1024 * 1024 {
+        return Ok(false);
+    }
+
+    let parent = target
+        .parent()
+        .context("Ryubing firmware directory has no parent")?;
+    let directory_name = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("Ryubing firmware directory name is not valid Unicode")?;
+    let staging = parent.join(format!(
+        ".{directory_name}.lunchbox-layout-{}",
+        Uuid::new_v4()
+    ));
+    fs::create_dir(&staging)?;
+    let staged = (|| -> Result<()> {
+        for (source, content_id) in &legacy_files {
+            let destination = staging.join(format!("{content_id}.nca/00"));
+            fs::create_dir_all(
+                destination
+                    .parent()
+                    .context("Ryubing firmware fragment has no parent")?,
+            )?;
+            fs::hard_link(source, &destination).with_context(|| {
+                format!("preparing Ryubing firmware layout for {}", source.display())
+            })?;
+        }
+        validate_switch_firmware_directory(&staging, "ryubing")
+    })();
+    if let Err(error) = staged {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+
+    let backup = parent.join(format!(
+        ".{directory_name}.lunchbox-flat-backup-{}",
+        Uuid::new_v4()
+    ));
+    fs::rename(target, &backup).context("preserving legacy Ryubing firmware layout")?;
+    if let Err(error) = fs::rename(&staging, target) {
+        let _ = fs::remove_dir_all(&staging);
+        let _ = fs::rename(&backup, target);
+        return Err(error).context("activating Ryubing firmware layout");
+    }
+    fs::remove_dir_all(&backup).context("removing migrated Ryubing firmware layout")?;
+    Ok(true)
+}
+
 fn switch_nca_content_id(file_name: &str) -> Option<&str> {
     let content_id = file_name
         .strip_suffix(".cnmt.nca")
@@ -921,7 +1143,15 @@ fn switch_nca_content_id(file_name: &str) -> Option<&str> {
         .then_some(content_id)
 }
 
+#[cfg(test)]
 fn validate_switch_firmware_zip(path: &Path) -> Result<()> {
+    validate_switch_firmware_zip_with_progress(path, &mut |_, _| {})
+}
+
+fn validate_switch_firmware_zip_with_progress(
+    path: &Path,
+    progress: &mut impl FnMut(usize, usize),
+) -> Result<()> {
     let file = File::open(path)?;
     let mut archive = zip::ZipArchive::new(file)
         .with_context(|| format!("reading Switch firmware ZIP {}", path.display()))?;
@@ -931,8 +1161,11 @@ fn validate_switch_firmware_zip(path: &Path) -> Result<()> {
     let mut nca_names = HashSet::new();
     let mut nca_count = 0usize;
     let mut total_nca_bytes = 0u64;
-    for index in 0..archive.len() {
+    let archive_len = archive.len();
+    progress(0, archive_len.max(1));
+    for index in 0..archive_len {
         let entry = archive.by_index(index)?;
+        progress(index + 1, archive_len);
         let Some(enclosed) = entry.enclosed_name() else {
             bail!("Switch firmware ZIP contains an unsafe path");
         };
@@ -969,9 +1202,18 @@ fn validate_switch_firmware_zip(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn sync_imported(statuses: &[FirmwareStatus]) -> Result<String> {
+pub fn sync_imported_with_progress(
+    statuses: &[FirmwareStatus],
+    mut progress: impl FnMut(String, u8),
+) -> Result<String> {
     let packages = SettingsStore::open_default()?.firmware_packages()?;
-    let synced = sync_matching_statuses(statuses, &packages)?;
+    let mut last_progress = None;
+    let synced = sync_matching_statuses_with_progress(statuses, &packages, |message, percent| {
+        if last_progress != Some(percent) {
+            last_progress = Some(percent);
+            progress(message, percent);
+        }
+    })?;
     if synced == 0 {
         bail!("no imported firmware package is available to sync for this runtime");
     }
@@ -1399,10 +1641,11 @@ fn normalized_torrent_path(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn import_package(
+fn import_package_with_progress(
     source_id: &str,
     package_name: &str,
     selected_path: &Path,
+    mut progress: impl FnMut(String, u8),
 ) -> Result<FirmwarePackageReceipt> {
     validate_package_filename(package_name)?;
     let store = SettingsStore::open_default()?;
@@ -1434,6 +1677,7 @@ fn import_package(
     let staged_extracted = staging.join("extracted");
 
     let staged = (|| -> Result<(String, Vec<FirmwareFileReceipt>)> {
+        progress("Copying firmware into the managed store…".into(), 0);
         fs::create_dir_all(&staged_extracted)?;
         fs::copy(selected_path, &staged_archive).with_context(|| {
             format!(
@@ -1443,16 +1687,32 @@ fn import_package(
             )
         })?;
         if package_name.to_ascii_lowercase().ends_with(".zip") {
-            extract_zip_archive(&staged_archive, &staged_extracted)?;
+            extract_zip_archive_with_progress(
+                &staged_archive,
+                &staged_extracted,
+                &mut |done, total| {
+                    progress(
+                        format!("Extracting firmware · {done}/{total} files"),
+                        progress_between(5, 55, done, total),
+                    );
+                },
+            )?;
         } else {
             fs::copy(&staged_archive, staged_extracted.join(package_name))?;
         }
+        progress("Hashing the firmware archive…".into(), 58);
         let archive_sha256 = sha256_file(&staged_archive)?;
-        let files = build_file_manifest(
+        let files = build_file_manifest_with_progress(
             source_id,
             package_name,
             &staged_extracted,
             &package_root.join("extracted"),
+            &mut |done, total| {
+                progress(
+                    format!("Verifying extracted firmware · {done}/{total} files"),
+                    progress_between(60, 96, done, total),
+                );
+            },
         )?;
         if files.is_empty() {
             bail!("firmware package contains no files");
@@ -1493,12 +1753,14 @@ fn import_package(
     if let Some(backup) = backup {
         let _ = fs::remove_dir_all(backup);
     }
+    progress("Firmware package stored and verified.".into(), 100);
     Ok(receipt)
 }
 
-fn sync_matching_statuses(
+fn sync_matching_statuses_with_progress(
     statuses: &[FirmwareStatus],
     packages: &[FirmwarePackageReceipt],
+    mut progress: impl FnMut(String, u8),
 ) -> Result<usize> {
     let package_map = packages
         .iter()
@@ -1511,39 +1773,70 @@ fn sync_matching_statuses(
         .collect::<HashMap<_, _>>();
     let store = SettingsStore::open_default()?;
     let mut synced = 0usize;
-    for status in statuses
+    let matching_statuses = statuses
         .iter()
         .filter(|status| status.target_strategy != "manual_import")
-    {
+        .filter(|status| {
+            package_map.contains_key(&(status.source_id.as_str(), status.package_name.as_str()))
+        })
+        .collect::<Vec<_>>();
+    let status_count = matching_statuses.len();
+    for (index, status) in matching_statuses.into_iter().enumerate() {
         let Some(package) =
             package_map.get(&(status.source_id.as_str(), status.package_name.as_str()))
         else {
             continue;
         };
-        if sync_status(status, package, &store)? {
+        let phase_start = progress_between(0, 100, index, status_count.max(1));
+        let phase_end = progress_between(0, 100, index + 1, status_count.max(1));
+        if sync_status_with_progress(status, package, &store, |message, percent| {
+            progress(
+                message,
+                progress_between(phase_start, phase_end, usize::from(percent), 100),
+            );
+        })? {
             synced += 1;
         }
     }
+    progress("Firmware profile sync complete.".into(), 100);
     Ok(synced)
 }
 
-fn sync_status(
+fn sync_status_with_progress(
     status: &FirmwareStatus,
     package: &FirmwarePackageReceipt,
     store: &SettingsStore,
+    mut progress: impl FnMut(String, u8),
 ) -> Result<bool> {
     if status.runtime_path.is_empty() || status.target_path.is_empty() {
         return Ok(false);
     }
-    verify_package_receipt(package, store)?;
+    progress(format!("Verifying {}…", status.package_name), 0);
+    verify_package_receipt_with_progress(package, store, &mut |done, total| {
+        progress(
+            format!("Verifying {} · {done}/{total} files", status.package_name),
+            progress_between(0, 58, done, total),
+        );
+    })?;
     let target = PathBuf::from(&status.target_path);
+    progress(format!("Syncing {}…", status.package_name), 60);
     match status.install_mode.as_str() {
         "merge_tree" if status.source_id == "manual:nintendo-switch-keys" => {
             copy_switch_key_package(Path::new(&package.extracted_root), &target)?;
         }
         "copy_archive" => atomic_copy(Path::new(&package.archive_path), &target)?,
         "merge_tree" if status.source_id == "manual:nintendo-switch-firmware" => {
-            copy_switch_firmware_tree(Path::new(&package.extracted_root), &target)?;
+            copy_switch_firmware_tree_with_progress(
+                Path::new(&package.extracted_root),
+                &target,
+                &status.runtime_kind,
+                &mut |done, total| {
+                    progress(
+                        format!("Installing Switch firmware · {done}/{total} archives"),
+                        progress_between(60, 98, done, total),
+                    );
+                },
+            )?;
         }
         "merge_tree" => {
             let source = package_sync_root(Path::new(&package.extracted_root), &status.source_id)?;
@@ -1563,6 +1856,7 @@ fn sync_status(
         package_name: status.package_name.clone(),
         synced_at: crate::settings::unix_timestamp(),
     })?;
+    progress(format!("Synced {}.", status.package_name), 100);
     Ok(true)
 }
 
@@ -1582,7 +1876,17 @@ fn copy_switch_key_package(source: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
-fn copy_switch_firmware_tree(source: &Path, target: &Path) -> Result<()> {
+#[cfg(test)]
+fn copy_switch_firmware_tree(source: &Path, target: &Path, runtime_kind: &str) -> Result<()> {
+    copy_switch_firmware_tree_with_progress(source, target, runtime_kind, &mut |_, _| {})
+}
+
+fn copy_switch_firmware_tree_with_progress(
+    source: &Path,
+    target: &Path,
+    runtime_kind: &str,
+    progress: &mut impl FnMut(usize, usize),
+) -> Result<()> {
     let parent = target
         .parent()
         .context("Switch firmware target has no parent directory")?;
@@ -1599,32 +1903,48 @@ fn copy_switch_firmware_tree(source: &Path, target: &Path) -> Result<()> {
         Uuid::new_v4()
     ));
     fs::create_dir(&staging)?;
-    let mut copied_names = HashSet::new();
-    let mut copied = 0usize;
-    let staged = (|| -> Result<()> {
-        for entry in WalkDir::new(source).follow_links(false) {
-            let entry = entry?;
-            if !entry.file_type().is_file()
-                || !entry
-                    .path()
-                    .extension()
-                    .and_then(|extension| extension.to_str())
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("nca"))
+    let nca_files = WalkDir::new(source)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|entry| match entry {
+            Ok(entry)
+                if entry.file_type().is_file()
+                    && entry
+                        .path()
+                        .extension()
+                        .and_then(|extension| extension.to_str())
+                        .is_some_and(|extension| extension.eq_ignore_ascii_case("nca")) =>
             {
-                continue;
+                Some(Ok(entry.into_path()))
             }
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let nca_count = nca_files.len();
+    progress(0, nca_count.max(1));
+    let mut copied_names = HashSet::new();
+    let staged = (|| -> Result<()> {
+        for (index, entry) in nca_files.iter().enumerate() {
             let name = entry
-                .path()
                 .file_name()
                 .and_then(|name| name.to_str())
                 .context("Switch firmware contains a non-Unicode NCA filename")?;
             if !copied_names.insert(name.to_ascii_lowercase()) {
                 bail!("Switch firmware contains duplicate NCA filenames");
             }
-            atomic_copy(entry.path(), &staging.join(name))?;
-            copied += 1;
+            let destination = if runtime_kind == "ryubing" {
+                let lowercase_name = name.to_ascii_lowercase();
+                let content_id = switch_nca_content_id(&lowercase_name)
+                    .context("Switch firmware contains an invalid NCA content ID")?;
+                staging.join(format!("{content_id}.nca/00"))
+            } else {
+                staging.join(name)
+            };
+            atomic_copy(entry, &destination)?;
+            progress(index + 1, nca_count);
         }
-        if copied < 10 {
+        if nca_count < 10 {
             bail!("Switch firmware package no longer contains the reviewed NCA set");
         }
         Ok(())
@@ -1712,7 +2032,16 @@ fn activate_package_directory(
     Ok(had_previous.then_some(backup))
 }
 
+#[cfg(test)]
 fn extract_zip_archive(archive_path: &Path, destination: &Path) -> Result<()> {
+    extract_zip_archive_with_progress(archive_path, destination, &mut |_, _| {})
+}
+
+fn extract_zip_archive_with_progress(
+    archive_path: &Path,
+    destination: &Path,
+    progress: &mut impl FnMut(usize, usize),
+) -> Result<()> {
     let file = File::open(archive_path)?;
     let mut archive = zip::ZipArchive::new(file)
         .with_context(|| format!("reading firmware ZIP {}", archive_path.display()))?;
@@ -1721,8 +2050,11 @@ fn extract_zip_archive(archive_path: &Path, destination: &Path) -> Result<()> {
     }
     let mut extracted_bytes = 0u64;
     let mut paths = HashSet::new();
-    for index in 0..archive.len() {
+    let archive_len = archive.len();
+    progress(0, archive_len.max(1));
+    for index in 0..archive_len {
         let mut entry = archive.by_index(index)?;
+        progress(index + 1, archive_len);
         let enclosed = entry
             .enclosed_name()
             .context("firmware ZIP contains an unsafe path")?
@@ -1764,19 +2096,43 @@ fn extract_zip_archive(archive_path: &Path, destination: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 fn build_file_manifest(
     source_id: &str,
     package_name: &str,
     staged_root: &Path,
     final_root: &Path,
 ) -> Result<Vec<FirmwareFileReceipt>> {
+    build_file_manifest_with_progress(
+        source_id,
+        package_name,
+        staged_root,
+        final_root,
+        &mut |_, _| {},
+    )
+}
+
+fn build_file_manifest_with_progress(
+    source_id: &str,
+    package_name: &str,
+    staged_root: &Path,
+    final_root: &Path,
+    progress: &mut impl FnMut(usize, usize),
+) -> Result<Vec<FirmwareFileReceipt>> {
     let mut files = Vec::new();
     let mut bytes = 0u64;
-    for entry in WalkDir::new(staged_root).follow_links(false) {
-        let entry = entry?;
-        if !entry.file_type().is_file() {
-            continue;
-        }
+    let entries = WalkDir::new(staged_root)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|entry| match entry {
+            Ok(entry) if entry.file_type().is_file() => Some(Ok(entry)),
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let entry_count = entries.len();
+    progress(0, entry_count.max(1));
+    for (index, entry) in entries.into_iter().enumerate() {
         if files.len() >= MAX_FIRMWARE_FILES {
             bail!("firmware package exceeds the {MAX_FIRMWARE_FILES}-file safety limit");
         }
@@ -1801,6 +2157,7 @@ fn build_file_manifest(
             sha256: sha256_file(entry.path())?,
             file_size: i64::try_from(size).unwrap_or(i64::MAX),
         });
+        progress(index + 1, entry_count);
     }
     files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok(files)
@@ -1810,7 +2167,16 @@ fn package_receipt_files_exist(package: &FirmwarePackageReceipt) -> bool {
     Path::new(&package.archive_path).is_file() && Path::new(&package.extracted_root).is_dir()
 }
 
+#[cfg(test)]
 fn verify_package_receipt(package: &FirmwarePackageReceipt, store: &SettingsStore) -> Result<()> {
+    verify_package_receipt_with_progress(package, store, &mut |_, _| {})
+}
+
+fn verify_package_receipt_with_progress(
+    package: &FirmwarePackageReceipt,
+    store: &SettingsStore,
+    progress: &mut impl FnMut(usize, usize),
+) -> Result<()> {
     let archive = Path::new(&package.archive_path);
     let extracted_root = Path::new(&package.extracted_root);
     if !archive.is_file() || !extracted_root.is_dir() {
@@ -1823,7 +2189,9 @@ fn verify_package_receipt(package: &FirmwarePackageReceipt, store: &SettingsStor
     if usize::try_from(package.file_count).ok() != Some(files.len()) {
         bail!("imported firmware package manifest is incomplete; import the package again");
     }
-    for file in files {
+    let file_count = files.len();
+    progress(0, file_count.max(1));
+    for (index, file) in files.into_iter().enumerate() {
         let expected_path = extracted_root.join(Path::new(&file.relative_path));
         let actual_path = Path::new(&file.store_path);
         if actual_path != expected_path || !actual_path.is_file() {
@@ -1842,6 +2210,7 @@ fn verify_package_receipt(package: &FirmwarePackageReceipt, store: &SettingsStor
                 file.relative_path
             );
         }
+        progress(index + 1, file_count);
     }
     Ok(())
 }
@@ -2021,6 +2390,146 @@ mod tests {
     }
 
     #[test]
+    fn switch_default_profiles_match_each_runtime_on_all_desktop_hosts() {
+        let native = EmulatorExecutable::Native(PathBuf::from("/opt/emulators/runtime"));
+        let rom = Path::new("/games/Switch/game.xci");
+        let home = Path::new("/users/player");
+        let roaming = Path::new("/users/player/AppData/Roaming");
+        let config = Path::new("/users/player/.config");
+        let xdg_data = Path::new("/users/player/.local/share");
+
+        assert_eq!(
+            switch_runtime_root(
+                FirmwareHost::Windows,
+                "ryubing",
+                &native,
+                rom,
+                home,
+                roaming,
+                xdg_data,
+            )
+            .unwrap(),
+            roaming.join("Ryujinx")
+        );
+        assert_eq!(
+            switch_runtime_root(
+                FirmwareHost::MacOs,
+                "ryubing",
+                &native,
+                rom,
+                home,
+                config,
+                xdg_data,
+            )
+            .unwrap(),
+            home.join("Library/Application Support/Ryujinx")
+        );
+        assert_eq!(
+            switch_runtime_root(
+                FirmwareHost::Linux,
+                "ryubing",
+                &native,
+                rom,
+                home,
+                config,
+                xdg_data,
+            )
+            .unwrap(),
+            config.join("Ryujinx")
+        );
+        for host in [FirmwareHost::Linux, FirmwareHost::MacOs] {
+            assert_eq!(
+                switch_runtime_root(host, "eden", &native, rom, home, config, xdg_data,).unwrap(),
+                xdg_data.join("eden")
+            );
+            assert_eq!(
+                switch_runtime_root(host, "torzu", &native, rom, home, config, xdg_data,).unwrap(),
+                xdg_data.join("yuzu")
+            );
+        }
+        assert_eq!(
+            switch_runtime_root(
+                FirmwareHost::Windows,
+                "eden",
+                &native,
+                rom,
+                home,
+                roaming,
+                xdg_data,
+            )
+            .unwrap(),
+            roaming.join("eden")
+        );
+        assert_eq!(
+            switch_runtime_root(
+                FirmwareHost::Windows,
+                "torzu",
+                &native,
+                rom,
+                home,
+                roaming,
+                xdg_data,
+            )
+            .unwrap(),
+            roaming.join("yuzu")
+        );
+    }
+
+    #[test]
+    fn switch_profiles_honor_flatpak_and_runtime_portable_directories() {
+        let temporary = tempfile::tempdir().unwrap();
+        let home = temporary.path().join("home");
+        let executable_directory = temporary.path().join("emulator");
+        let executable = executable_directory.join("Ryujinx");
+        let rom = temporary.path().join("games/game.xci");
+        fs::create_dir_all(executable_directory.join("portable")).unwrap();
+        fs::create_dir_all(rom.parent().unwrap().join("user")).unwrap();
+
+        assert_eq!(
+            switch_runtime_root(
+                FirmwareHost::Linux,
+                "ryubing",
+                &EmulatorExecutable::Native(executable),
+                &rom,
+                &home,
+                &home.join(".config"),
+                &home.join(".local/share"),
+            )
+            .unwrap(),
+            executable_directory.join("portable")
+        );
+        assert_eq!(
+            switch_runtime_root(
+                FirmwareHost::MacOs,
+                "eden",
+                &EmulatorExecutable::Native(executable_directory.join("Eden")),
+                &rom,
+                &home,
+                &home.join(".config"),
+                &home.join(".local/share"),
+            )
+            .unwrap(),
+            rom.parent().unwrap().join("user")
+        );
+        assert_eq!(
+            switch_runtime_root(
+                FirmwareHost::Linux,
+                "ryubing",
+                &EmulatorExecutable::Flatpak {
+                    command: PathBuf::from("flatpak"),
+                    app_id: "io.github.ryubing.Ryujinx".into(),
+                },
+                &rom,
+                &home,
+                &home.join(".config"),
+                &home.join(".local/share"),
+            )
+            .unwrap(),
+            home.join(".var/app/io.github.ryubing.Ryujinx/config/Ryujinx")
+        );
+    }
+
+    #[test]
     fn firmware_zip_extraction_is_bounded_and_manifested() {
         let temporary = tempfile::tempdir().unwrap();
         let archive = temporary.path().join("bios.zip");
@@ -2166,11 +2675,9 @@ mod tests {
         let firmware_directory = temporary.path().join("registered");
         fs::create_dir(&firmware_directory).unwrap();
         for index in 0..10 {
-            fs::write(
-                firmware_directory.join(format!("{index:032x}.nca")),
-                vec![index as u8; 128 * 1024],
-            )
-            .unwrap();
+            let nca_directory = firmware_directory.join(format!("{index:032x}.nca"));
+            fs::create_dir(&nca_directory).unwrap();
+            fs::write(nca_directory.join("00"), vec![index as u8; 128 * 1024]).unwrap();
         }
 
         let rule = |source: &str, package: &str, install_mode: &str| FirmwareRuleRow {
@@ -2209,6 +2716,29 @@ mod tests {
     }
 
     #[test]
+    fn legacy_flat_ryubing_firmware_is_migrated_idempotently() {
+        let temporary = tempfile::tempdir().unwrap();
+        let registered = temporary.path().join("bis/system/Contents/registered");
+        fs::create_dir_all(&registered).unwrap();
+        for index in 0..10 {
+            fs::write(
+                registered.join(format!("{index:032x}.nca")),
+                vec![index as u8; 128 * 1024],
+            )
+            .unwrap();
+        }
+
+        assert!(migrate_legacy_ryubing_firmware_layout(&registered).unwrap());
+        assert!(validate_switch_firmware_directory(&registered, "ryubing").is_ok());
+        assert!(
+            registered
+                .join("00000000000000000000000000000000.nca/00")
+                .is_file()
+        );
+        assert!(!migrate_legacy_ryubing_firmware_layout(&registered).unwrap());
+    }
+
+    #[test]
     fn switch_firmware_sync_atomically_replaces_the_registered_nca_set() {
         let temporary = tempfile::tempdir().unwrap();
         let source = temporary.path().join("source/nested");
@@ -2229,7 +2759,12 @@ mod tests {
             .unwrap();
         }
 
-        copy_switch_firmware_tree(temporary.path().join("source").as_path(), &target).unwrap();
+        copy_switch_firmware_tree(
+            temporary.path().join("source").as_path(),
+            &target,
+            "ryubing",
+        )
+        .unwrap();
 
         let mut installed = fs::read_dir(&target)
             .unwrap()
@@ -2239,6 +2774,8 @@ mod tests {
         assert_eq!(installed.len(), 10);
         assert_eq!(installed[0], "00000000000000000000000000000000.nca");
         assert_eq!(installed[9], "00000000000000000000000000000009.nca");
+        assert!(target.join(&installed[0]).join("00").is_file());
+        assert!(target.join(&installed[9]).join("00").is_file());
         assert!(!target.join("obsolete.nca").exists());
         assert!(!target.join("unrelated.txt").exists());
     }
