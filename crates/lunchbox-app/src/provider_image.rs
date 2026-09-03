@@ -198,6 +198,14 @@ fn cache_file_stem(kind: ArtworkKind) -> &'static str {
         ArtworkKind::TitleScreen => "screenshot-game-title",
         ArtworkKind::Fanart => "fanart-background",
         ArtworkKind::ClearLogo => "clear-logo",
+        ArtworkKind::CartFront => "cart-front",
+        ArtworkKind::CartBack => "cart-back",
+        ArtworkKind::Cart3d => "cart-3d",
+        ArtworkKind::Disc => "disc",
+        ArtworkKind::Marquee => "marquee",
+        ArtworkKind::Banner => "banner",
+        ArtworkKind::Flyer => "advertisement-flyer",
+        ArtworkKind::GameOverScreen => "screenshot-game-over",
     }
 }
 

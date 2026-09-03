@@ -487,6 +487,14 @@ fn search_query(title: &str, platform: &str, kind: ArtworkKind) -> String {
         ArtworkKind::TitleScreen => "title screen",
         ArtworkKind::Fanart => "fan art wallpaper",
         ArtworkKind::ClearLogo => "transparent clear logo",
+        ArtworkKind::CartFront => "cartridge front label",
+        ArtworkKind::CartBack => "cartridge back label",
+        ArtworkKind::Cart3d => "3D cartridge art",
+        ArtworkKind::Disc => "disc label art",
+        ArtworkKind::Marquee => "arcade marquee",
+        ArtworkKind::Banner => "game banner",
+        ArtworkKind::Flyer => "advertisement flyer",
+        ArtworkKind::GameOverScreen => "game over screen",
     };
     format!("{title} {platform} {media_term}")
 }

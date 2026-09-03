@@ -50,6 +50,31 @@ const IMAGE_SECTIONS: &[(ArtworkKind, &[&str])] = &[
     (ArtworkKind::Screenshot, &["Screenshot - Gameplay"]),
     (ArtworkKind::TitleScreen, &["Screenshot - Game Title"]),
     (ArtworkKind::ClearLogo, &["Clear Logo"]),
+    (
+        ArtworkKind::CartFront,
+        &[
+            "Cart - Front",
+            "Cart - Front/World",
+            "Cart - Front/North America",
+        ],
+    ),
+    (
+        ArtworkKind::CartBack,
+        &[
+            "Cart - Back",
+            "Cart - Back/World",
+            "Cart - Back/North America",
+        ],
+    ),
+    (ArtworkKind::Cart3d, &["Cart - 3D"]),
+    (
+        ArtworkKind::Disc,
+        &["Disc", "Disc/World", "Disc/North America"],
+    ),
+    (ArtworkKind::Marquee, &["Marquee"]),
+    (ArtworkKind::Banner, &["Banner"]),
+    (ArtworkKind::Flyer, &["Advertisement Flyer - Front"]),
+    (ArtworkKind::GameOverScreen, &["Screenshot - Game Over"]),
 ];
 
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "png", "jpeg"];

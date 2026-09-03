@@ -290,7 +290,7 @@ impl Client {
                     })
                     .collect());
             }
-            ArtworkKind::Screenshot => (
+            ArtworkKind::Screenshot | ArtworkKind::GameOverScreen => (
                 game.screenshots.clone(),
                 "screenshot",
                 "screenshot_med",
@@ -299,7 +299,14 @@ impl Client {
             ArtworkKind::BoxBack
             | ArtworkKind::Box3d
             | ArtworkKind::TitleScreen
-            | ArtworkKind::ClearLogo => {
+            | ArtworkKind::ClearLogo
+            | ArtworkKind::CartFront
+            | ArtworkKind::CartBack
+            | ArtworkKind::Cart3d
+            | ArtworkKind::Disc
+            | ArtworkKind::Marquee
+            | ArtworkKind::Banner
+            | ArtworkKind::Flyer => {
                 bail!("IGDB does not provide this Lunchbox artwork category")
             }
         };

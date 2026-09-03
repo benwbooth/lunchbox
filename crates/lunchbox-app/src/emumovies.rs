@@ -55,6 +55,10 @@ pub enum EmuMoviesMediaType {
     Fanart,
     ClearLogo,
     Banner,
+    Disc,
+    Marquee,
+    Flyer,
+    GameOverScreen,
 }
 
 impl EmuMoviesMediaType {
@@ -74,6 +78,10 @@ impl EmuMoviesMediaType {
             EmuMoviesMediaType::Fanart => "Fanart",
             EmuMoviesMediaType::ClearLogo => "Logos",
             EmuMoviesMediaType::Banner => "Banners",
+            EmuMoviesMediaType::Disc => "Discs",
+            EmuMoviesMediaType::Marquee => "Marquees",
+            EmuMoviesMediaType::Flyer => "Flyers",
+            EmuMoviesMediaType::GameOverScreen => "Gameplay",
         }
     }
 
@@ -93,6 +101,10 @@ impl EmuMoviesMediaType {
             EmuMoviesMediaType::Fanart => "fanart-background",
             EmuMoviesMediaType::ClearLogo => "clear-logo",
             EmuMoviesMediaType::Banner => "banner",
+            EmuMoviesMediaType::Disc => "disc",
+            EmuMoviesMediaType::Marquee => "marquee",
+            EmuMoviesMediaType::Flyer => "advertisement-flyer",
+            EmuMoviesMediaType::GameOverScreen => "screenshot-game-over",
         }
     }
 
@@ -111,6 +123,12 @@ impl EmuMoviesMediaType {
             "Banner" => Some(EmuMoviesMediaType::Banner),
             "Manual" => Some(EmuMoviesMediaType::Manual),
             "Music" => Some(EmuMoviesMediaType::Music),
+            "Disc" => Some(EmuMoviesMediaType::Disc),
+            "Marquee" => Some(EmuMoviesMediaType::Marquee),
+            "Advertisement Flyer - Front" | "Advertisement Flyer" => {
+                Some(EmuMoviesMediaType::Flyer)
+            }
+            "Screenshot - Game Over" => Some(EmuMoviesMediaType::GameOverScreen),
             _ => None,
         }
     }
@@ -1291,20 +1309,21 @@ impl EmuMoviesClient {
 
     /// Connect to FTP server
     fn connect(&self) -> Result<FtpStream> {
-        let addr = format!("{}:{}", FTP_HOST, FTP_PORT);
-        let mut ftp =
-            FtpStream::connect(&addr).context("Failed to connect to EmuMovies FTP server")?;
-        ftp.get_ref()
-            .set_read_timeout(Some(FTP_CONTROL_STALL_TIMEOUT))
-            .context("Failed to configure EmuMovies FTP read timeout")?;
-        ftp.get_ref()
-            .set_write_timeout(Some(FTP_CONTROL_STALL_TIMEOUT))
-            .context("Failed to configure EmuMovies FTP write timeout")?;
+        connect_stream(&self.config)
+    }
 
-        ftp.login(&self.config.username, &self.config.password)
-            .context("FTP login failed - check username/password")?;
-
-        Ok(ftp)
+    /// Reuses one authenticated FTP session per worker thread so repeated
+    /// listings and downloads skip a fresh TCP connect+login each time. A
+    /// failed operation drops the session; the next call reconnects.
+    fn with_session<T>(&self, mut operation: impl FnMut(&mut FtpStream) -> Result<T>) -> Result<T> {
+        let mut session = take_ftp_session(&self.config)?;
+        match operation(&mut session) {
+            Ok(value) => {
+                return_ftp_session(&self.config, session);
+                Ok(value)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     /// List files in a directory
@@ -1316,55 +1335,54 @@ impl EmuMoviesClient {
     where
         F: FnMut(usize) -> bool,
     {
-        let mut ftp = self.connect()?;
-        let (_response, data_stream) = ftp
-            .custom_data_command(
-                format!("NLST {}", path),
-                &[suppaftp::Status::AboutToSend, suppaftp::Status::AlreadyOpen],
-            )
-            .with_context(|| format!("Failed to list directory {path}"))?;
-        data_stream
-            .get_ref()
-            .set_read_timeout(Some(FTP_DATA_STALL_TIMEOUT))
-            .context("Failed to configure EmuMovies FTP data read timeout")?;
-        data_stream
-            .get_ref()
-            .set_write_timeout(Some(FTP_DATA_STALL_TIMEOUT))
-            .context("Failed to configure EmuMovies FTP data write timeout")?;
+        self.with_session(|ftp| {
+            let (_response, data_stream) = ftp
+                .custom_data_command(
+                    format!("NLST {}", path),
+                    &[suppaftp::Status::AboutToSend, suppaftp::Status::AlreadyOpen],
+                )
+                .with_context(|| format!("Failed to list directory {path}"))?;
+            data_stream
+                .get_ref()
+                .set_read_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+                .context("Failed to configure EmuMovies FTP data read timeout")?;
+            data_stream
+                .get_ref()
+                .set_write_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+                .context("Failed to configure EmuMovies FTP data write timeout")?;
 
-        let mut data_stream = BufReader::new(data_stream);
-        let mut files = Vec::new();
-        loop {
-            let mut line_buf = vec![];
-            match data_stream.read_until(b'\n', &mut line_buf) {
-                Ok(0) => break,
-                Ok(len) => {
-                    let mut line = String::from_utf8_lossy(&line_buf[..len]).to_string();
-                    if line.ends_with('\n') {
-                        line.pop();
+            let mut data_stream = BufReader::new(data_stream);
+            let mut files = Vec::new();
+            loop {
+                let mut line_buf = vec![];
+                match data_stream.read_until(b'\n', &mut line_buf) {
+                    Ok(0) => break,
+                    Ok(len) => {
+                        let mut line = String::from_utf8_lossy(&line_buf[..len]).to_string();
+                        if line.ends_with('\n') {
+                            line.pop();
+                        }
+                        if line.ends_with('\r') {
+                            line.pop();
+                        }
+                        if line.is_empty() {
+                            continue;
+                        }
+                        files.push(line);
+                        if !on_progress(files.len()) {
+                            anyhow::bail!(TRANSFER_CANCELLED_MESSAGE);
+                        }
                     }
-                    if line.ends_with('\r') {
-                        line.pop();
+                    Err(err) => {
+                        let _ = ftp.close_data_connection(data_stream);
+                        return Err(anyhow::anyhow!("Failed to list directory {path}: {err}"));
                     }
-                    if line.is_empty() {
-                        continue;
-                    }
-                    files.push(line);
-                    if !on_progress(files.len()) {
-                        anyhow::bail!(TRANSFER_CANCELLED_MESSAGE);
-                    }
-                }
-                Err(err) => {
-                    let _ = ftp.close_data_connection(data_stream);
-                    let _ = ftp.quit();
-                    return Err(anyhow::anyhow!("Failed to list directory {path}: {err}"));
                 }
             }
-        }
-        ftp.close_data_connection(data_stream)
-            .context("Failed to finalize directory listing")?;
-        let _ = ftp.quit();
-        Ok(files)
+            ftp.close_data_connection(data_stream)
+                .context("Failed to finalize directory listing")?;
+            Ok(files)
+        })
     }
 
     fn get_artwork_folders(&self) -> Result<Vec<String>> {
@@ -1745,45 +1763,45 @@ impl EmuMoviesClient {
             std::fs::create_dir_all(parent)?;
         }
 
-        let mut ftp = self.connect()?;
-        ftp.transfer_type(suppaftp::types::FileType::Binary)?;
+        self.with_session(|ftp| {
+            ftp.transfer_type(suppaftp::types::FileType::Binary)?;
 
-        let file_size = ftp.size(remote_path).ok().map(|size| size as u64);
-        tracing::info!("{} size: {:?} bytes", label, file_size);
+            let file_size = ftp.size(remote_path).ok().map(|size| size as u64);
+            tracing::info!("{} size: {:?} bytes", label, file_size);
 
-        let temp_path = output_path.with_extension("tmp");
-        let mut partial_download = PartialDownload::new(temp_path.clone());
-        let temp_file = File::create(&temp_path)?;
-        let mut writer = BufWriter::new(temp_file);
+            let temp_path = output_path.with_extension("tmp");
+            let mut partial_download = PartialDownload::new(temp_path.clone());
+            let temp_file = File::create(&temp_path)?;
+            let mut writer = BufWriter::new(temp_file);
 
-        let mut stream = ftp
-            .retr_as_stream(remote_path)
-            .with_context(|| format!("Failed to download: {remote_path}"))?;
-        stream
-            .get_ref()
-            .set_read_timeout(Some(FTP_DATA_STALL_TIMEOUT))
-            .context("Failed to configure EmuMovies data read timeout")?;
-        stream
-            .get_ref()
-            .set_write_timeout(Some(FTP_DATA_STALL_TIMEOUT))
-            .context("Failed to configure EmuMovies data write timeout")?;
+            let mut stream = ftp
+                .retr_as_stream(remote_path)
+                .with_context(|| format!("Failed to download: {remote_path}"))?;
+            stream
+                .get_ref()
+                .set_read_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+                .context("Failed to configure EmuMovies data read timeout")?;
+            stream
+                .get_ref()
+                .set_write_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+                .context("Failed to configure EmuMovies data write timeout")?;
 
-        let transfer =
-            stream_download(&mut stream, &mut writer, file_size, progress, label, |_| {});
-        if let Err(error) = transfer {
-            drop(writer);
-            let _ = ftp.abort(stream);
-            return Err(error);
-        }
+            let transfer =
+                stream_download(&mut stream, &mut writer, file_size, progress, label, |_| {});
+            if let Err(error) = transfer {
+                drop(writer);
+                let _ = ftp.abort(stream);
+                return Err(error);
+            }
 
-        writer.flush()?;
-        ftp.finalize_retr_stream(stream)
-            .with_context(|| format!("Failed to finalize download: {remote_path}"))?;
-        let _ = ftp.quit();
+            writer.flush()?;
+            ftp.finalize_retr_stream(stream)
+                .with_context(|| format!("Failed to finalize download: {remote_path}"))?;
 
-        report_progress(progress, 1.0)?;
-        partial_download.publish(output_path)?;
-        Ok(())
+            report_progress(progress, 1.0)?;
+            partial_download.publish(output_path)?;
+            Ok(())
+        })
     }
 
     /// Download a game manual from EmuMovies' direct manual folders.
@@ -2449,59 +2467,59 @@ impl EmuMoviesClient {
         }
 
         // Download the video
-        let mut ftp = self.connect()?;
-        ftp.transfer_type(suppaftp::types::FileType::Binary)?;
+        self.with_session(|ftp| {
+            ftp.transfer_type(suppaftp::types::FileType::Binary)?;
 
-        let file_size = ftp.size(&video_path).ok().map(|size| size as u64);
-        tracing::info!("Video size: {:?} bytes", file_size);
+            let file_size = ftp.size(&video_path).ok().map(|size| size as u64);
+            tracing::info!("Video size: {:?} bytes", file_size);
 
-        // Write to file
-        let temp_path = output_path.with_extension("tmp");
-        let mut partial_download = PartialDownload::new(temp_path.clone());
-        let temp_file = File::create(&temp_path)?;
-        let mut writer = BufWriter::new(temp_file);
+            // Write to file
+            let temp_path = output_path.with_extension("tmp");
+            let mut partial_download = PartialDownload::new(temp_path.clone());
+            let temp_file = File::create(&temp_path)?;
+            let mut writer = BufWriter::new(temp_file);
 
-        update_video_download_progress(game_cache_dir, 0, file_size);
+            update_video_download_progress(game_cache_dir, 0, file_size);
 
-        let mut stream = ftp
-            .retr_as_stream(&video_path)
-            .context(format!("Failed to download: {}", video_path))?;
-        stream
-            .get_ref()
-            .set_read_timeout(Some(FTP_DATA_STALL_TIMEOUT))
-            .context("Failed to configure EmuMovies video data read timeout")?;
-        stream
-            .get_ref()
-            .set_write_timeout(Some(FTP_DATA_STALL_TIMEOUT))
-            .context("Failed to configure EmuMovies video data write timeout")?;
-        let transfer = stream_download(
-            &mut stream,
-            &mut writer,
-            file_size,
-            progress,
-            "gameplay video",
-            |downloaded_bytes| {
-                update_video_download_progress(game_cache_dir, downloaded_bytes, file_size);
-            },
-        );
-        if let Err(error) = transfer {
-            drop(writer);
-            let _ = ftp.abort(stream);
-            return Err(error);
-        }
+            let mut stream = ftp
+                .retr_as_stream(&video_path)
+                .context(format!("Failed to download: {}", video_path))?;
+            stream
+                .get_ref()
+                .set_read_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+                .context("Failed to configure EmuMovies video data read timeout")?;
+            stream
+                .get_ref()
+                .set_write_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+                .context("Failed to configure EmuMovies video data write timeout")?;
+            let transfer = stream_download(
+                &mut stream,
+                &mut writer,
+                file_size,
+                progress,
+                "gameplay video",
+                |downloaded_bytes| {
+                    update_video_download_progress(game_cache_dir, downloaded_bytes, file_size);
+                },
+            );
+            if let Err(error) = transfer {
+                drop(writer);
+                let _ = ftp.abort(stream);
+                return Err(error);
+            }
 
-        writer.flush()?;
-        ftp.finalize_retr_stream(stream)
-            .context(format!("Failed to finalize download: {}", video_path))?;
-        let _ = ftp.quit();
+            writer.flush()?;
+            ftp.finalize_retr_stream(stream)
+                .context(format!("Failed to finalize download: {}", video_path))?;
 
-        report_progress(progress, 1.0)?;
-        partial_download.publish(&output_path)?;
-        write_video_cache_version(game_cache_dir)?;
+            report_progress(progress, 1.0)?;
+            partial_download.publish(&output_path)?;
+            write_video_cache_version(game_cache_dir)?;
 
-        tracing::info!("Downloaded video to {}", output_path.display());
+            tracing::info!("Downloaded video to {}", output_path.display());
 
-        Ok(output_path)
+            Ok(output_path.clone())
+        })
     }
 
     /// Check whether a matching video exists for a game without downloading it.
@@ -2594,6 +2612,61 @@ impl EmuMoviesClient {
 
         Ok(())
     }
+}
+
+struct FtpSessionSlot {
+    username: String,
+    password: String,
+    stream: FtpStream,
+}
+
+thread_local! {
+    static FTP_SESSION: std::cell::RefCell<Option<FtpSessionSlot>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+fn connect_stream(config: &EmuMoviesConfig) -> Result<FtpStream> {
+    let addr = format!("{}:{}", FTP_HOST, FTP_PORT);
+    let mut ftp = FtpStream::connect(&addr).context("Failed to connect to EmuMovies FTP server")?;
+    ftp.get_ref()
+        .set_read_timeout(Some(FTP_CONTROL_STALL_TIMEOUT))
+        .context("Failed to configure EmuMovies FTP read timeout")?;
+    ftp.get_ref()
+        .set_write_timeout(Some(FTP_CONTROL_STALL_TIMEOUT))
+        .context("Failed to configure EmuMovies FTP write timeout")?;
+
+    ftp.login(&config.username, &config.password)
+        .context("FTP login failed - check username/password")?;
+
+    Ok(ftp)
+}
+
+fn take_ftp_session(config: &EmuMoviesConfig) -> Result<FtpStream> {
+    let reusable = FTP_SESSION
+        .with(|slot| slot.borrow_mut().take())
+        .and_then(|mut session| {
+            let credentials_match =
+                session.username == config.username && session.password == config.password;
+            if credentials_match && session.stream.noop().is_ok() {
+                Some(session.stream)
+            } else {
+                None
+            }
+        });
+    match reusable {
+        Some(stream) => Ok(stream),
+        None => connect_stream(config),
+    }
+}
+
+fn return_ftp_session(config: &EmuMoviesConfig, stream: FtpStream) {
+    FTP_SESSION.with(|slot| {
+        *slot.borrow_mut() = Some(FtpSessionSlot {
+            username: config.username.clone(),
+            password: config.password.clone(),
+            stream,
+        });
+    });
 }
 
 /// Normalize a game name for matching (uses centralized tags module)

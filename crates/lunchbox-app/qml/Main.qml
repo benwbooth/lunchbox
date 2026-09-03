@@ -214,7 +214,15 @@ ApplicationWindow {
         { key: "screenshot", label: "Gameplay" },
         { key: "title-screen", label: "Title screen" },
         { key: "fanart", label: "Fan art" },
-        { key: "clear-logo", label: "Clear logo" }
+        { key: "clear-logo", label: "Clear logo" },
+        { key: "cart-front", label: "Cartridge front" },
+        { key: "cart-back", label: "Cartridge back" },
+        { key: "cart-3d", label: "3D cartridge" },
+        { key: "disc", label: "Disc" },
+        { key: "marquee", label: "Marquee" },
+        { key: "banner", label: "Banner" },
+        { key: "flyer", label: "Advertisement flyer" },
+        { key: "game-over-screen", label: "Game over screen" }
     ]
     readonly property var listColumnChoices: [
         { key: "title", label: "Title", width: 320 },
@@ -1383,6 +1391,21 @@ ApplicationWindow {
                                     + selectedHeroArtworkCount)
                                    % selectedHeroArtworkCount
         refreshSelectedArtwork()
+        if (fullscreenMedia.opened)
+            root.openFullscreenMedia()
+    }
+
+    function openFullscreenMedia() {
+        const url = selectedFanartUrl.toString().length > 0
+                ? selectedFanartUrl : selectedArtworkUrl
+        if (url.toString().length === 0)
+            return
+        fullscreenMedia.mediaUrl = url
+        fullscreenMedia.mediaTitle = gameDetails.title
+        fullscreenMedia.mediaSource = selectedArtworkSource.length > 0
+                ? selectedArtworkSource : ""
+        fullscreenMedia.canRotate = selectedHeroArtworkCount > 1
+        fullscreenMedia.open()
     }
 
     function refreshHeroArtworkFromProvider() {
@@ -1684,6 +1707,12 @@ ApplicationWindow {
                    ? "fanart" : steamGridDbKind.currentValue
         artworkProviderModel.begin_selection(selectedDatabaseId, gameDetails.title,
                                              gameDetails.platform, kind)
+    }
+
+    FullscreenMediaView {
+        id: fullscreenMedia
+        onPreviousRequested: root.rotateSelectedHeroArtwork(-1)
+        onNextRequested: root.rotateSelectedHeroArtwork(1)
     }
 
     NativeFileDialog {
@@ -11137,6 +11166,13 @@ ApplicationWindow {
                         opacity: status === Image.Ready ? 1 : 0
                         visible: !root.selectedBox3d
                         Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: detailImage.status === Image.Ready
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.openFullscreenMedia()
+                        }
                     }
                     Box3DViewer {
                         id: detailBox3d

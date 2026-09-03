@@ -237,10 +237,18 @@ pub enum ArtworkKind {
     TitleScreen,
     Fanart,
     ClearLogo,
+    CartFront,
+    CartBack,
+    Cart3d,
+    Disc,
+    Marquee,
+    Banner,
+    Flyer,
+    GameOverScreen,
 }
 
 impl ArtworkKind {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 15] = [
         Self::BoxFront,
         Self::BoxBack,
         Self::Box3d,
@@ -248,6 +256,14 @@ impl ArtworkKind {
         Self::TitleScreen,
         Self::Fanart,
         Self::ClearLogo,
+        Self::CartFront,
+        Self::CartBack,
+        Self::Cart3d,
+        Self::Disc,
+        Self::Marquee,
+        Self::Banner,
+        Self::Flyer,
+        Self::GameOverScreen,
     ];
 
     pub fn key(self) -> &'static str {
@@ -259,6 +275,14 @@ impl ArtworkKind {
             Self::TitleScreen => "title-screen",
             Self::Fanart => "fanart",
             Self::ClearLogo => "clear-logo",
+            Self::CartFront => "cart-front",
+            Self::CartBack => "cart-back",
+            Self::Cart3d => "cart-3d",
+            Self::Disc => "disc",
+            Self::Marquee => "marquee",
+            Self::Banner => "banner",
+            Self::Flyer => "flyer",
+            Self::GameOverScreen => "game-over-screen",
         }
     }
 
@@ -275,6 +299,14 @@ impl ArtworkKind {
             Self::TitleScreen => "Title screen",
             Self::Fanart => "Fan art",
             Self::ClearLogo => "Clear logo",
+            Self::CartFront => "Cartridge front",
+            Self::CartBack => "Cartridge back",
+            Self::Cart3d => "3D cartridge",
+            Self::Disc => "Disc",
+            Self::Marquee => "Marquee",
+            Self::Banner => "Banner",
+            Self::Flyer => "Advertisement flyer",
+            Self::GameOverScreen => "Game over screen",
         }
     }
 
@@ -291,6 +323,14 @@ impl ArtworkKind {
             "screenshot-game-title" => Some(Self::TitleScreen),
             "fanart-background" => Some(Self::Fanart),
             "clear-logo" => Some(Self::ClearLogo),
+            "cart-front" => Some(Self::CartFront),
+            "cart-back" => Some(Self::CartBack),
+            "cart-3d" => Some(Self::Cart3d),
+            "disc" => Some(Self::Disc),
+            "marquee" => Some(Self::Marquee),
+            "banner" => Some(Self::Banner),
+            "advertisement-flyer" => Some(Self::Flyer),
+            "screenshot-game-over" => Some(Self::GameOverScreen),
             _ => None,
         }
     }
@@ -324,6 +364,14 @@ impl ArtworkKind {
                 Self::BoxFront,
             ],
             Self::ClearLogo => &[Self::ClearLogo, Self::BoxFront, Self::Box3d],
+            Self::CartFront => &[Self::CartFront, Self::CartBack, Self::BoxFront],
+            Self::CartBack => &[Self::CartBack, Self::CartFront, Self::BoxBack],
+            Self::Cart3d => &[Self::Cart3d, Self::CartFront, Self::CartBack],
+            Self::Disc => &[Self::Disc, Self::BoxFront, Self::Box3d],
+            Self::Marquee => &[Self::Marquee, Self::Banner, Self::ClearLogo],
+            Self::Banner => &[Self::Banner, Self::Marquee, Self::ClearLogo],
+            Self::Flyer => &[Self::Flyer, Self::BoxFront, Self::Screenshot],
+            Self::GameOverScreen => &[Self::GameOverScreen, Self::TitleScreen, Self::Screenshot],
         }
     }
 
@@ -332,8 +380,18 @@ impl ArtworkKind {
             Self::BoxFront => Some("Named_Boxarts"),
             Self::Screenshot => Some("Named_Snaps"),
             Self::TitleScreen => Some("Named_Titles"),
+            Self::GameOverScreen => Some("Named_GameOver"),
             Self::ClearLogo => Some("Named_Logos"),
-            Self::BoxBack | Self::Box3d | Self::Fanart => None,
+            Self::BoxBack
+            | Self::Box3d
+            | Self::Fanart
+            | Self::CartFront
+            | Self::CartBack
+            | Self::Cart3d
+            | Self::Disc
+            | Self::Marquee
+            | Self::Banner
+            | Self::Flyer => None,
         }
     }
 
@@ -343,6 +401,14 @@ impl ArtworkKind {
             Self::Screenshot | Self::Fanart => &[Self::Screenshot],
             Self::TitleScreen => &[Self::TitleScreen],
             Self::ClearLogo => &[Self::ClearLogo, Self::BoxFront],
+            Self::CartFront => &[Self::CartFront, Self::BoxFront],
+            Self::CartBack => &[Self::CartBack, Self::BoxBack],
+            Self::Cart3d => &[Self::Cart3d, Self::CartFront],
+            Self::Disc => &[Self::Disc, Self::BoxFront],
+            Self::Marquee => &[Self::Marquee, Self::ClearLogo],
+            Self::Banner => &[Self::Banner, Self::ClearLogo],
+            Self::Flyer => &[Self::Flyer, Self::BoxFront],
+            Self::GameOverScreen => &[Self::GameOverScreen, Self::TitleScreen],
         }
     }
 
@@ -355,6 +421,14 @@ impl ArtworkKind {
             Self::TitleScreen => "screenshot-game-title",
             Self::Fanart => "fanart-background",
             Self::ClearLogo => "clear-logo",
+            Self::CartFront => "cart-front",
+            Self::CartBack => "cart-back",
+            Self::Cart3d => "cart-3d",
+            Self::Disc => "disc",
+            Self::Marquee => "marquee",
+            Self::Banner => "banner",
+            Self::Flyer => "advertisement-flyer",
+            Self::GameOverScreen => "screenshot-game-over",
         }
     }
 }
@@ -1558,6 +1632,14 @@ fn fetch_emumovies(
             ArtworkKind::TitleScreen => crate::emumovies::EmuMoviesMediaType::TitleScreen,
             ArtworkKind::Fanart => crate::emumovies::EmuMoviesMediaType::Fanart,
             ArtworkKind::ClearLogo => crate::emumovies::EmuMoviesMediaType::ClearLogo,
+            ArtworkKind::CartFront => crate::emumovies::EmuMoviesMediaType::CartFront,
+            ArtworkKind::CartBack => crate::emumovies::EmuMoviesMediaType::CartBack,
+            ArtworkKind::Cart3d => crate::emumovies::EmuMoviesMediaType::CartFront,
+            ArtworkKind::Disc => crate::emumovies::EmuMoviesMediaType::Disc,
+            ArtworkKind::Marquee => crate::emumovies::EmuMoviesMediaType::Marquee,
+            ArtworkKind::Banner => crate::emumovies::EmuMoviesMediaType::Banner,
+            ArtworkKind::Flyer => crate::emumovies::EmuMoviesMediaType::Flyer,
+            ArtworkKind::GameOverScreen => crate::emumovies::EmuMoviesMediaType::GameOverScreen,
         };
         if let Some(path) = client.try_get_media_from_archive(
             &request.platform,

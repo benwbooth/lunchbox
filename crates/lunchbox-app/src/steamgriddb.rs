@@ -179,7 +179,15 @@ fn endpoint_for_kind(kind: ArtworkKind) -> Result<&'static str> {
         ArtworkKind::BoxBack
         | ArtworkKind::Box3d
         | ArtworkKind::Screenshot
-        | ArtworkKind::TitleScreen => {
+        | ArtworkKind::TitleScreen
+        | ArtworkKind::CartFront
+        | ArtworkKind::CartBack
+        | ArtworkKind::Cart3d
+        | ArtworkKind::Disc
+        | ArtworkKind::Marquee
+        | ArtworkKind::Banner
+        | ArtworkKind::Flyer
+        | ArtworkKind::GameOverScreen => {
             bail!("SteamGridDB does not provide this Lunchbox artwork category")
         }
     }
