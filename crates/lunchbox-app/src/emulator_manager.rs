@@ -2553,7 +2553,7 @@ fn extract_dmg(archive_path: &Path, output_root: &Path) -> Result<()> {
         .arg(&mountpoint)
         .output()
         .context("unmounting managed emulator DMG")
-        .and_then(|output| require_output(output, "DMG unmount"));
+        .and_then(|output| require_output(output, "DMG unmount").map(|_| ()));
     let _ = remove_exact_tree_if_present(&mountpoint);
     copied.and(detach)
 }
