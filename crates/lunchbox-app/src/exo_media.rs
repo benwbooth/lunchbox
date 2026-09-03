@@ -2,21 +2,24 @@
 //!
 //! The eXo projects distribute a metadata pack (for example
 //! `XODOSMetadata.zip` under `Content/`) that contains the LaunchBox
-//! platform XML plus one image file per game and media type. The game is
-//! identified by its exact eXo shortname via the XML `ApplicationPath`, so
-//! an import never relies on a fuzzy title match.
+//! platform XML plus one image file per game and media type. Games are
+//! identified exactly — by the XML `ApplicationPath` shortname directory for
+//! prepared installs, and by the XML `DatabaseID` for collection-wide
+//! imports — so an import never relies on a fuzzy title match.
 
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, Result, bail};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use zip::ZipArchive;
 
-use crate::exo_install::{PreparedInstall, locate_relative_to_ancestors};
+use crate::exo_install::{ExoCollection, PreparedInstall, locate_relative_to_ancestors};
 use crate::media::ArtworkKind;
 
 /// LaunchBox XML media sections mapped onto Lunchbox artwork kinds, in
@@ -76,8 +79,8 @@ pub(crate) fn import_prepared_game_media(
     let member_index: std::collections::HashSet<&str> =
         member_names.iter().map(String::as_str).collect();
     let platform_dir = resolve_platform_dir(&member_index, prepared.collection)
-        .context("eXo metadata pack has no XML for this collection platform")?;
-    let xml_member = resolve_xml_member(&member_index, &platform_dir)
+        .context("eXo metadata pack has no images for this collection platform")?;
+    let xml_member = resolve_xml_member(&member_index, prepared.collection)
         .context("eXo metadata pack has no LaunchBox XML for this collection platform")?;
     let xml_bytes = read_zip_member(&mut archive, &xml_member)?;
     let xml = String::from_utf8_lossy(&xml_bytes);
@@ -118,35 +121,223 @@ fn marker_path(destination: &Path) -> PathBuf {
     destination.join(".exo-media-imported")
 }
 
-fn locate_metadata_pack(prepared: &PreparedInstall) -> Option<PathBuf> {
-    let relatives: &[&str] = match prepared.collection {
-        crate::exo_install::ExoCollection::Dos => &[
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CollectionImportSummary {
+    pub collection: ExoCollection,
+    pub pack_path: PathBuf,
+    pub games_in_pack: usize,
+    pub games_imported: usize,
+    pub assets_imported: usize,
+    pub cancelled: bool,
+}
+
+/// Imports artwork for every game in a collection's metadata pack into the
+/// LaunchBox media cache. Each XML `<Game>` carries the LaunchBox
+/// `DatabaseID`, which is exactly the media cache's `lb-<id>` key, so the
+/// whole collection maps without title matching. A per-game completion
+/// marker makes the run resumable, and a pack-level marker (stamped with
+/// the pack's size and mtime) makes a fully-imported pack a no-op.
+pub(crate) fn import_collection_media<F>(
+    media_root: &Path,
+    collection: ExoCollection,
+    anchors: &[PathBuf],
+    progress: F,
+    cancelled: &AtomicBool,
+) -> Result<Option<CollectionImportSummary>>
+where
+    F: FnMut(usize, usize),
+{
+    let Some(pack_path) = locate_metadata_pack_from_anchors(collection, anchors) else {
+        return Ok(None);
+    };
+    let pack_stamp = archive_stamp(&pack_path)?;
+    let pack_marker = media_root.join(format!(".{}-pack-imported", collection.slug()));
+    if pack_marker.is_file() && fs::read_to_string(&pack_marker).unwrap_or_default() == pack_stamp {
+        return Ok(None);
+    }
+
+    let pack = fs::File::open(&pack_path)
+        .with_context(|| format!("opening eXo metadata pack {}", pack_path.display()))?;
+    let mut archive = ZipArchive::new(pack)
+        .with_context(|| format!("reading eXo metadata pack {}", pack_path.display()))?;
+    let member_names: Vec<String> = archive.file_names().map(str::to_owned).collect();
+    let member_index: HashSet<&str> = member_names.iter().map(String::as_str).collect();
+    let platform_dir = resolve_platform_dir(&member_index, collection)
+        .with_context(|| format!("eXo metadata pack for {collection:?} has no images"))?;
+    let xml_member = resolve_xml_member(&member_index, collection)
+        .context("eXo metadata pack has no LaunchBox XML for this collection platform")?;
+    let xml_bytes = read_zip_member(&mut archive, &xml_member)?;
+    let xml = String::from_utf8_lossy(&xml_bytes);
+    let games: Vec<(i64, Vec<String>)> = parse_launchbox_xml(&xml)
+        .into_iter()
+        .filter(|entry| entry.database_id > 0)
+        .map(|entry| (entry.database_id, entry.names))
+        .collect();
+
+    let mut summary = CollectionImportSummary {
+        collection,
+        pack_path: pack_path.clone(),
+        games_in_pack: games.len(),
+        games_imported: 0,
+        assets_imported: 0,
+        cancelled: false,
+    };
+    let mut progress = progress;
+    for (position, (database_id, game_names)) in games.iter().enumerate() {
+        if cancelled.load(Ordering::Relaxed) {
+            summary.cancelled = true;
+            break;
+        }
+        progress(position, games.len());
+        let destination = media_root
+            .join(format!("lb-{database_id}"))
+            .join("launchbox");
+        if marker_path(&destination).is_file() || game_names.is_empty() {
+            continue;
+        }
+        for (kind, sections) in IMAGE_SECTIONS.iter() {
+            let Some(member) =
+                find_image_member(&member_index, &platform_dir, sections, game_names)
+            else {
+                continue;
+            };
+            let extension = member
+                .rsplit('.')
+                .next()
+                .unwrap_or("jpg")
+                .to_ascii_lowercase();
+            // The media cache is indexed by these exact file stems.
+            let target = destination.join(format!("{}.{}", kind.cache_file_stem(), extension));
+            let bytes = read_zip_member(&mut archive, &member)?;
+            fs::create_dir_all(&destination)
+                .with_context(|| format!("creating artwork directory {}", destination.display()))?;
+            fs::write(&target, &bytes)
+                .with_context(|| format!("writing imported artwork {}", target.display()))?;
+            summary.assets_imported += 1;
+        }
+        fs::create_dir_all(&destination)
+            .with_context(|| format!("creating artwork directory {}", destination.display()))?;
+        fs::write(marker_path(&destination), b"imported\n").with_context(|| {
+            format!(
+                "marking eXo media import complete in {}",
+                destination.display()
+            )
+        })?;
+        summary.games_imported += 1;
+    }
+    progress(games.len(), games.len());
+    if !summary.cancelled {
+        fs::create_dir_all(media_root)
+            .with_context(|| format!("creating media directory {}", media_root.display()))?;
+        fs::write(&pack_marker, pack_stamp).with_context(|| {
+            format!(
+                "marking the {} pack fully imported at {}",
+                collection.display_name(),
+                pack_marker.display()
+            )
+        })?;
+    }
+    Ok(Some(summary))
+}
+
+fn archive_stamp(path: &Path) -> Result<String> {
+    let metadata = path
+        .metadata()
+        .with_context(|| format!("inspecting eXo metadata pack {}", path.display()))?;
+    let modified = metadata
+        .modified()
+        .unwrap_or(std::time::UNIX_EPOCH)
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    Ok(format!("{}\n{}\n", metadata.len(), modified.as_nanos()))
+}
+
+/// Collects filesystem anchors that point inside an eXo torrent download
+/// tree: prepared-install source archives and completed eXo download jobs.
+/// Any single anchor is enough to locate the collection's metadata pack.
+pub(crate) fn collection_pack_anchors(store: &crate::settings::SettingsStore) -> Vec<PathBuf> {
+    let mut anchors = Vec::new();
+    let Ok(connection) = store.connection() else {
+        return anchors;
+    };
+    let Ok(mut statement) = connection.prepare(
+        "SELECT DISTINCT source_archive_path FROM prepared_game_installs
+         WHERE source_archive_path <> ''",
+    ) else {
+        return anchors;
+    };
+    if let Ok(rows) = statement.query_map([], |row| row.get::<_, String>(0)) {
+        for row in rows.flatten() {
+            anchors.push(PathBuf::from(row));
+        }
+    }
+    if let Ok(jobs) = store.jobs() {
+        for job in jobs {
+            if job.download_plan.contains("exo_archive_set")
+                && !job.local_download_path.as_os_str().is_empty()
+            {
+                anchors.push(job.local_download_path.clone());
+            }
+        }
+    }
+    anchors.sort();
+    anchors.dedup();
+    anchors
+}
+
+fn locate_metadata_pack_from_anchors(
+    collection: ExoCollection,
+    anchors: &[PathBuf],
+) -> Option<PathBuf> {
+    let relatives = pack_relative_candidates(collection);
+    for anchor in anchors {
+        // Anchors are usually symlinks into the original torrent download
+        // tree, where the metadata pack lives; resolve them first.
+        let start = fs::canonicalize(anchor).unwrap_or_else(|_| anchor.clone());
+        if let Some(pack) = locate_relative_to_ancestors(
+            &start,
+            relatives
+                .iter()
+                .map(PathBuf::from)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        ) {
+            return Some(pack);
+        }
+    }
+    None
+}
+
+fn pack_relative_candidates(collection: ExoCollection) -> &'static [&'static str] {
+    match collection {
+        ExoCollection::Dos => &[
             "Content/XODOSMetadata.zip",
             "Full Release/Content/XODOSMetadata.zip",
             "Lite Release/Content/XODOSMetadata.zip",
+            // Reached from the torrent's shared eXo/ root when the only
+            // anchor belongs to a different collection subtree.
+            "eXoDOS/Full Release/Content/XODOSMetadata.zip",
+            "eXoDOS/Lite Release/Content/XODOSMetadata.zip",
         ],
-        crate::exo_install::ExoCollection::Win3x => &[
+        ExoCollection::Win3x => &[
             "Content/XOWin3xMetadata.zip",
             "Full Release/Content/XOWin3xMetadata.zip",
             "Lite Release/Content/XOWin3xMetadata.zip",
+            "eXoWin3x/Content/XOWin3xMetadata.zip",
         ],
-        crate::exo_install::ExoCollection::Win9x => &[
+        ExoCollection::Win9x => &[
             "Content/XOWin9xMetadata.zip",
             "Full Release/Content/XOWin9xMetadata.zip",
             "Lite Release/Content/XOWin9xMetadata.zip",
+            "eXoWin9x/Content/XOWin9xMetadata.zip",
         ],
-    };
-    // Prepared library files are often symlinks into the original torrent
-    // download tree, where the metadata pack lives; resolve them first.
-    let source = fs::canonicalize(&prepared.source_archive_path)
-        .unwrap_or_else(|_| prepared.source_archive_path.clone());
-    locate_relative_to_ancestors(
-        &source,
-        relatives
-            .iter()
-            .map(PathBuf::from)
-            .collect::<Vec<_>>()
-            .as_slice(),
+    }
+}
+
+fn locate_metadata_pack(prepared: &PreparedInstall) -> Option<PathBuf> {
+    locate_metadata_pack_from_anchors(
+        prepared.collection,
+        std::slice::from_ref(&prepared.source_archive_path),
     )
 }
 
@@ -160,62 +351,92 @@ fn platform_dir_candidates(
     }
 }
 
-/// Resolves the platform directory used by both the pack XML and its
-/// `Images/` tree. eXoDOS nests the XML under `xml/all/`, while the Windows
-/// packs keep it directly under `xml/`.
+fn collection_token(collection: crate::exo_install::ExoCollection) -> &'static str {
+    match collection {
+        crate::exo_install::ExoCollection::Dos => "dos",
+        crate::exo_install::ExoCollection::Win3x => "3x",
+        crate::exo_install::ExoCollection::Win9x => "9x",
+    }
+}
+
+/// Resolves the platform directory of the pack's `Images/` tree. eXoDOS uses
+/// `MS-DOS`, the Windows packs `Windows 3x`/`Windows 9x`.
 fn resolve_platform_dir(
     member_index: &std::collections::HashSet<&str>,
     collection: crate::exo_install::ExoCollection,
 ) -> Option<String> {
     for candidate in platform_dir_candidates(collection) {
-        if member_index.contains(format!("xml/all/{candidate}.xml").as_str())
-            || member_index.contains(format!("xml/{candidate}.xml").as_str())
+        let prefix = format!("Images/{candidate}/");
+        if member_index
+            .iter()
+            .any(|name| name.starts_with(prefix.as_str()))
         {
             return Some(candidate.to_string());
         }
     }
-    let mut stems = member_index
+    let mut dirs = member_index
         .iter()
-        .filter_map(|name| {
-            if name.starts_with("xml/Playlists/") {
-                return None;
-            }
-            let stem = name
-                .strip_prefix("xml/all/")
-                .or_else(|| name.strip_prefix("xml/"))?;
-            stem.strip_suffix(".xml")
+        .filter_map(|name| name.strip_prefix("Images/"))
+        .filter(|rest| !rest.contains('/'))
+        .filter(|dir| {
+            !matches!(
+                *dir,
+                "Badges"
+                    | "Cache-BB"
+                    | "Cache-LB"
+                    | "None"
+                    | "Media Packs"
+                    | "Platform Categories"
+                    | "Platforms"
+                    | "Playlists"
+            )
         })
-        .filter(|stem| {
-            let lowered = stem.to_ascii_lowercase();
-            let token = match collection {
-                crate::exo_install::ExoCollection::Dos => "dos",
-                crate::exo_install::ExoCollection::Win3x => "3x",
-                crate::exo_install::ExoCollection::Win9x => "9x",
-            };
-            lowered.contains(token)
+        .filter(|dir| {
+            dir.to_ascii_lowercase()
+                .contains(collection_token(collection))
         })
         .collect::<Vec<_>>();
-    stems.sort_unstable();
-    stems.dedup();
-    if stems.len() == 1 {
-        return Some(stems.remove(0).to_string());
+    dirs.sort_unstable();
+    dirs.dedup();
+    if dirs.len() == 1 {
+        return Some(dirs.remove(0).to_string());
     }
     None
 }
 
+/// Resolves the pack's LaunchBox platform XML member. eXoDOS nests it under
+/// `xml/all/MS-DOS.xml`, Win3x keeps it at `xml/Windows 3x.xml`, and newer
+/// Win9x packs name it by era without an extension (`xml/all/1994-1996.9x`).
 fn resolve_xml_member(
     member_index: &std::collections::HashSet<&str>,
-    platform_dir: &str,
+    collection: crate::exo_install::ExoCollection,
 ) -> Option<String> {
-    let nested = format!("xml/all/{platform_dir}.xml");
-    let flat = format!("xml/{platform_dir}.xml");
-    if member_index.contains(nested.as_str()) {
-        Some(nested)
-    } else if member_index.contains(flat.as_str()) {
-        Some(flat)
-    } else {
-        None
-    }
+    let mut candidates = member_index
+        .iter()
+        .filter(|name| {
+            if name.starts_with("xml/Playlists/") || name.ends_with(".bat") {
+                return false;
+            }
+            let Some(stem) = name
+                .strip_prefix("xml/all/")
+                .or_else(|| name.strip_prefix("xml/"))
+            else {
+                return false;
+            };
+            // Only files directly in the platform XML directories; the
+            // family/ and Playlists/ trees are not the game list.
+            !stem.contains('/')
+        })
+        .filter(|name| {
+            name.to_ascii_lowercase()
+                .contains(collection_token(collection))
+        })
+        .copied()
+        .collect::<Vec<_>>();
+    candidates.sort_unstable();
+    candidates.dedup();
+    let first = candidates.first()?;
+    Some(first.to_string())
 }
 
 fn read_zip_member(archive: &mut ZipArchive<fs::File>, member: &str) -> Result<Vec<u8>> {
@@ -227,12 +448,20 @@ fn read_zip_member(archive: &mut ZipArchive<fs::File>, member: &str) -> Result<V
     Ok(bytes)
 }
 
-/// Finds the LaunchBox game entry whose application path contains the eXo
-/// shortname directory (for example `!dos/qmajik/`), and returns its naming
-/// candidates — eXo mixes LaunchBox `<Name>` and `<Title>` conventions, and
-/// image files are keyed by either.
-fn launchbox_game_names(xml: &str, shortname: &str) -> Vec<String> {
-    let needle = format!("/{}/", shortname.to_ascii_lowercase());
+/// One parsed `<Game>` from an eXo LaunchBox XML.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct XmlGameEntry {
+    /// LaunchBox `DatabaseID`; this is exactly the media cache's `lb-<id>` key.
+    database_id: i64,
+    /// Normalized (forward-slash, lowercased) `ApplicationPath`.
+    application_path: String,
+    /// Name candidates — eXo mixes LaunchBox `<Name>` and `<Title>`
+    /// conventions, and image files are keyed by either.
+    names: Vec<String>,
+}
+
+fn parse_launchbox_xml(xml: &str) -> Vec<XmlGameEntry> {
+    let mut entries = Vec::new();
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut in_game = false;
@@ -270,33 +499,51 @@ fn launchbox_game_names(xml: &str, shortname: &str) -> Vec<String> {
                         .get("ApplicationPath")
                         .map(|path| path.replace('\\', "/").to_ascii_lowercase())
                         .unwrap_or_default();
-                    if application_path.contains(&needle) {
-                        let mut candidates = Vec::new();
-                        for key in ["Name", "Title"] {
-                            if let Some(value) = fields
-                                .get(key)
-                                .map(|value| value.trim().to_owned())
-                                .filter(|value| !value.is_empty())
-                                && !candidates.contains(&value)
-                            {
-                                candidates.push(value);
-                            }
+                    let database_id = fields
+                        .get("DatabaseID")
+                        .and_then(|value| value.trim().parse::<i64>().ok())
+                        .unwrap_or_default();
+                    let mut candidates = Vec::new();
+                    for key in ["Name", "Title"] {
+                        if let Some(value) = fields
+                            .get(key)
+                            .map(|value| value.trim().to_owned())
+                            .filter(|value| !value.is_empty())
+                            && !candidates.contains(&value)
+                        {
+                            candidates.push(value);
                         }
-                        return candidates;
                     }
+                    entries.push(XmlGameEntry {
+                        database_id,
+                        application_path,
+                        names: candidates,
+                    });
                     fields.clear();
                 } else if field.as_deref() == Some(name.as_str()) {
                     field = None;
                 }
             }
-            Ok(Event::Eof) => return Vec::new(),
+            Ok(Event::Eof) => return entries,
             Err(error) => {
                 tracing::warn!("could not parse the eXo LaunchBox XML: {error}");
-                return Vec::new();
+                return entries;
             }
             _ => {}
         }
     }
+}
+
+/// Finds the LaunchBox game entry whose application path contains the eXo
+/// shortname directory (for example `!dos/qmajik/`), and returns its naming
+/// candidates.
+fn launchbox_game_names(xml: &str, shortname: &str) -> Vec<String> {
+    let needle = format!("/{}/", shortname.to_ascii_lowercase());
+    parse_launchbox_xml(xml)
+        .into_iter()
+        .find(|entry| entry.application_path.contains(&needle))
+        .map(|entry| entry.names)
+        .unwrap_or_default()
 }
 
 /// LaunchBox replaces filename-unsafe characters with underscores when it
@@ -471,6 +718,10 @@ mod tests {
             Some("Windows 3x".to_owned())
         );
         assert_eq!(
+            resolve_xml_member(&index, crate::exo_install::ExoCollection::Win3x),
+            Some("xml/Windows 3x.xml".to_owned())
+        );
+        assert_eq!(
             resolve_platform_dir(&index, crate::exo_install::ExoCollection::Dos),
             None
         );
@@ -485,6 +736,185 @@ mod tests {
             resolve_platform_dir(&dos_index, crate::exo_install::ExoCollection::Dos),
             Some("MS-DOS".to_owned())
         );
+        assert_eq!(
+            resolve_xml_member(&dos_index, crate::exo_install::ExoCollection::Dos),
+            Some("xml/MS-DOS.xml".to_owned())
+        );
+    }
+
+    #[test]
+    fn resolves_era_named_win9x_xml_and_matching_image_directory() {
+        // Newer eXoWin9x packs name the platform XML by era without an
+        // extension while keeping images under Images/Windows 9x/.
+        let members: Vec<String> = vec![
+            "xml/all/1994-1996.9x".to_owned(),
+            "xml/family/1994-1996.9x".to_owned(),
+            "xml/merge_9xall.bat".to_owned(),
+            "xml/Playlists/Installed eXo9x Games.xml".to_owned(),
+            "Images/Windows 9x/Box - Front/x-01.png".to_owned(),
+            "Images/None/Box - Front/y-01.jpg".to_owned(),
+            "Images/Badges/Favorite.png".to_owned(),
+        ];
+        let index: std::collections::HashSet<&str> = members.iter().map(String::as_str).collect();
+        assert_eq!(
+            resolve_xml_member(&index, crate::exo_install::ExoCollection::Win9x),
+            Some("xml/all/1994-1996.9x".to_owned())
+        );
+        assert_eq!(
+            resolve_platform_dir(&index, crate::exo_install::ExoCollection::Win9x),
+            Some("Windows 9x".to_owned())
+        );
+    }
+
+    const BULK_XML: &str = "<?xml version=\"1.0\" standalone=\"yes\"?>\r\n<LaunchBox>\r\n  <Game>\r\n    <Title>Alpha Game</Title>\r\n    <DatabaseID>100</DatabaseID>\r\n    <ApplicationPath>eXo\\eXoDOS\\!dos\\alpha\\Alpha Game (1990).bat</ApplicationPath>\r\n  </Game>\r\n  <Game>\r\n    <Title>Beta: The Game</Title>\r\n    <DatabaseID>101</DatabaseID>\r\n    <ApplicationPath>eXo\\eXoDOS\\!dos\\beta\\Beta Game (1991).bat</ApplicationPath>\r\n  </Game>\r\n  <Game>\r\n    <Title>No Database ID</Title>\r\n    <ApplicationPath>eXo\\eXoDOS\\!dos\\gamma\\gamma.bat</ApplicationPath>\r\n  </Game>\r\n</LaunchBox>\r\n";
+
+    fn write_bulk_pack_zip(path: &Path) {
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let file = fs::File::create(path).unwrap();
+        let mut archive = ZipWriter::new(file);
+        archive
+            .start_file("xml/all/MS-DOS.xml", SimpleFileOptions::default())
+            .unwrap();
+        std::io::Write::write_all(&mut archive, BULK_XML.as_bytes()).unwrap();
+        archive
+            .start_file(
+                "Images/MS-DOS/Box - Front/Alpha Game-01.jpg",
+                SimpleFileOptions::default(),
+            )
+            .unwrap();
+        std::io::Write::write_all(&mut archive, b"alpha-front").unwrap();
+        archive
+            .start_file(
+                "Images/MS-DOS/Screenshot - Gameplay/Beta_ The Game-01.png",
+                SimpleFileOptions::default(),
+            )
+            .unwrap();
+        std::io::Write::write_all(&mut archive, b"beta-shot").unwrap();
+        archive.finish().unwrap();
+    }
+
+    #[test]
+    fn collection_import_covers_every_pack_game_by_database_id() {
+        let temp = tempfile::tempdir().unwrap();
+        let pack_path = temp
+            .path()
+            .join("eXo/eXoDOS/Full Release/Content/XODOSMetadata.zip");
+        write_bulk_pack_zip(&pack_path);
+        let anchor = temp
+            .path()
+            .join("eXo/eXoDOS/Full Release/eXo/eXoDOS/game.zip");
+        fs::create_dir_all(anchor.parent().unwrap()).unwrap();
+        fs::write(&anchor, b"archive").unwrap();
+        let media_root = temp.path().join("media");
+        let cancelled = std::sync::atomic::AtomicBool::new(false);
+
+        let summary = import_collection_media(
+            &media_root,
+            crate::exo_install::ExoCollection::Dos,
+            std::slice::from_ref(&anchor),
+            |_, _| {},
+            &cancelled,
+        )
+        .unwrap()
+        .expect("pack should import");
+        assert_eq!(summary.games_in_pack, 2);
+        assert_eq!(summary.games_imported, 2);
+        assert_eq!(summary.assets_imported, 2);
+        assert!(!summary.cancelled);
+        assert_eq!(
+            fs::read(media_root.join("lb-100/launchbox/box-front.jpg")).unwrap(),
+            b"alpha-front"
+        );
+        assert_eq!(
+            fs::read(media_root.join("lb-101/launchbox/screenshot-gameplay.png")).unwrap(),
+            b"beta-shot"
+        );
+        // Games without a LaunchBox DatabaseID are never keyed into the cache.
+        assert!(!media_root.join("lb-0").exists());
+    }
+
+    #[test]
+    fn collection_import_is_idempotent_after_completion() {
+        let temp = tempfile::tempdir().unwrap();
+        let pack_path = temp
+            .path()
+            .join("eXo/eXoDOS/Full Release/Content/XODOSMetadata.zip");
+        write_bulk_pack_zip(&pack_path);
+        let anchor = temp
+            .path()
+            .join("eXo/eXoDOS/Full Release/eXo/eXoDOS/game.zip");
+        fs::create_dir_all(anchor.parent().unwrap()).unwrap();
+        fs::write(&anchor, b"archive").unwrap();
+        let media_root = temp.path().join("media");
+        let cancelled = std::sync::atomic::AtomicBool::new(false);
+
+        import_collection_media(
+            &media_root,
+            crate::exo_install::ExoCollection::Dos,
+            std::slice::from_ref(&anchor),
+            |_, _| {},
+            &cancelled,
+        )
+        .unwrap()
+        .unwrap();
+        // Removing the extracted art must not resurrect it: the pack marker
+        // records that this exact pack was fully processed.
+        fs::remove_file(media_root.join("lb-100/launchbox/box-front.jpg")).unwrap();
+        let second = import_collection_media(
+            &media_root,
+            crate::exo_install::ExoCollection::Dos,
+            std::slice::from_ref(&anchor),
+            |_, _| {},
+            &cancelled,
+        )
+        .unwrap();
+        assert!(second.is_none());
+        assert!(!media_root.join("lb-100/launchbox/box-front.jpg").exists());
+    }
+
+    #[test]
+    fn cancelled_collection_import_leaves_no_pack_marker() {
+        let temp = tempfile::tempdir().unwrap();
+        let pack_path = temp
+            .path()
+            .join("eXo/eXoDOS/Full Release/Content/XODOSMetadata.zip");
+        write_bulk_pack_zip(&pack_path);
+        let anchor = temp
+            .path()
+            .join("eXo/eXoDOS/Full Release/eXo/eXoDOS/game.zip");
+        fs::create_dir_all(anchor.parent().unwrap()).unwrap();
+        fs::write(&anchor, b"archive").unwrap();
+        let media_root = temp.path().join("media");
+        let cancelled = std::sync::atomic::AtomicBool::new(true);
+
+        let summary = import_collection_media(
+            &media_root,
+            crate::exo_install::ExoCollection::Dos,
+            std::slice::from_ref(&anchor),
+            |_, _| {},
+            &cancelled,
+        )
+        .unwrap()
+        .expect("pack should still be located");
+        assert!(summary.cancelled);
+        assert!(!media_root.join(".exodos-pack-imported").exists());
+
+        cancelled.store(false, std::sync::atomic::Ordering::Relaxed);
+        let resumed = import_collection_media(
+            &media_root,
+            crate::exo_install::ExoCollection::Dos,
+            std::slice::from_ref(&anchor),
+            |_, _| {},
+            &cancelled,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(resumed.games_imported, 2);
     }
 
     fn write_pack_zip(path: &Path) {

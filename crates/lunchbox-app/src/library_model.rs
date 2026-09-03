@@ -1051,6 +1051,7 @@ pub struct LibraryModelRust {
     media_started: Option<std::time::Instant>,
     media_fetch_started: Option<std::time::Instant>,
     media_fetch_queue: Option<MediaFetchQueue>,
+    exo_import_running: bool,
     media_requests: HashSet<(i64, ArtworkKind)>,
     emumovies_state_known: bool,
     emumovies_configured: bool,
@@ -1274,6 +1275,7 @@ impl Default for LibraryModelRust {
             media_started: None,
             media_fetch_started: None,
             media_fetch_queue: None,
+            exo_import_running: false,
             media_requests: HashSet::new(),
             emumovies_state_known: false,
             emumovies_configured: false,
@@ -5829,6 +5831,91 @@ impl qobject::LibraryModel {
             self.as_mut().set_status_message(qstring(format!(
                 "Catalog ready — artwork cache unavailable: {warning}"
             )));
+        }
+        self.as_mut().start_exo_collection_import();
+    }
+
+    /// Imports the eXo collections' own artwork in the background so it
+    /// becomes the default for every eXo game, not just prepared installs.
+    /// Runs once per scan; fully imported packs are no-ops.
+    fn start_exo_collection_import(mut self: Pin<&mut Self>) {
+        if self.as_ref().rust().exo_import_running {
+            return;
+        }
+        let Ok(store) = crate::settings::SettingsStore::open_default() else {
+            return;
+        };
+        let anchors = crate::exo_media::collection_pack_anchors(&store);
+        if anchors.is_empty() {
+            return;
+        }
+        self.as_mut().rust_mut().exo_import_running = true;
+        let qt_thread = self.as_ref().qt_thread();
+        let spawn_result = std::thread::Builder::new()
+            .name("lunchbox-exo-media-import".into())
+            .spawn(move || {
+                let media_root = crate::media::requested_media_directory();
+                let cancelled = std::sync::atomic::AtomicBool::new(false);
+                let mut imported_games = 0usize;
+                let mut imported_assets = 0usize;
+                for collection in [
+                    crate::exo_install::ExoCollection::Dos,
+                    crate::exo_install::ExoCollection::Win3x,
+                    crate::exo_install::ExoCollection::Win9x,
+                ] {
+                    let result = crate::exo_media::import_collection_media(
+                        &media_root,
+                        collection,
+                        &anchors,
+                        |_, _| {},
+                        &cancelled,
+                    );
+                    match result {
+                        Ok(Some(summary)) => {
+                            println!(
+                                "LUNCHBOX_EXO_COLLECTION_IMPORT collection={} pack={} games={} imported_games={} imported_assets={} cancelled={}",
+                                summary.collection.slug(),
+                                summary.pack_path.display(),
+                                summary.games_in_pack,
+                                summary.games_imported,
+                                summary.assets_imported,
+                                summary.cancelled
+                            );
+                            imported_games += summary.games_imported;
+                            imported_assets += summary.assets_imported;
+                        }
+                        Ok(None) => {}
+                        Err(error) => eprintln!(
+                            "LUNCHBOX_EXO_COLLECTION_IMPORT_FAILED collection={} error={error:#}",
+                            collection.slug()
+                        ),
+                    }
+                }
+                let _ = qt_thread.queue(move |mut model| {
+                    model
+                        .as_mut()
+                        .finish_exo_collection_import(imported_games, imported_assets);
+                });
+            });
+        if let Err(error) = spawn_result {
+            self.as_mut().rust_mut().exo_import_running = false;
+            eprintln!("LUNCHBOX_EXO_COLLECTION_IMPORT_SPAWN_FAILED error={error}");
+        }
+    }
+
+    fn finish_exo_collection_import(
+        mut self: Pin<&mut Self>,
+        imported_games: usize,
+        imported_assets: usize,
+    ) {
+        self.as_mut().rust_mut().exo_import_running = false;
+        if imported_assets > 0 {
+            self.as_mut().set_status_message(qstring(format!(
+                "Imported eXo artwork for {imported_games} games ({imported_assets} images) — refreshing artwork…"
+            )));
+            // The media index only scans directories; rescan so the new
+            // per-game files are picked up immediately.
+            self.as_mut().start_media_load();
         }
     }
 
