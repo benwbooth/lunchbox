@@ -13,6 +13,7 @@ Rectangle {
     required property bool launchBusy
     required property bool gameRunning
     required property bool preparable
+    required property bool prepareBusy
     required property string emulatorName
     required property string platform
     required property string launchStatus
@@ -38,7 +39,7 @@ Rectangle {
     signal savePlatformDefaultRequested()
     signal clearDefaultRequested()
 
-    readonly property bool prepareNeeded: !discoveryBusy && preparable
+    readonly property bool prepareNeeded: !discoveryBusy && !prepareBusy && preparable
                                           && emulatorOptionCount === 0
     readonly property bool emulatorMissing: !discoveryBusy && !preparable
                                             && emulatorOptionCount === 0
@@ -227,11 +228,12 @@ Rectangle {
             text: hero.launchBusy ? "CANCEL PREPARATION"
                   : hero.gameRunning ? "GAME IS RUNNING"
                   : hero.canLaunch ? "▶  PLAY"
+                  : hero.prepareBusy ? "PREPARING INSTALL…"
                   : hero.prepareNeeded ? "PREPARE INSTALL"
                   : hero.firmwareSetupNeeded ? hero.firmwareSetupLabel
                   : hero.emulatorMissing ? "INSTALL AN EMULATOR" : "RECHECK PLAY SETUP"
             enabled: hero.launchBusy
-                     || (!hero.gameRunning && !hero.discoveryBusy)
+                     || (!hero.gameRunning && !hero.discoveryBusy && !hero.prepareBusy)
             font.pixelSize: 12
             font.weight: Font.Bold
             onClicked: {

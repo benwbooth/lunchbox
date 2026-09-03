@@ -11325,6 +11325,7 @@ ApplicationWindow {
                         launchBusy: gameDetails.launch_busy
                         gameRunning: gameDetails.game_running
                         preparable: gameDetails.preparable && !gameDetails.prepared
+                        prepareBusy: gameDetails.prepare_busy
                         emulatorName: gameDetails.emulator_name
                         platform: gameDetails.platform
                         launchStatus: gameDetails.launch_status

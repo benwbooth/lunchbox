@@ -18,6 +18,7 @@ TestCase {
             launchBusy: false
             gameRunning: false
             preparable: false
+            prepareBusy: false
             emulatorName: "RetroArch · Mesen"
             platform: "Nintendo Entertainment System"
             launchStatus: "Ready"
@@ -84,6 +85,23 @@ TestCase {
         compare(action.text, "PREPARE INSTALL")
         action.clicked()
         verify(prepared)
+    }
+
+    function test_prepare_in_progress_shows_busy_state() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            canLaunch: false,
+            emulatorName: "",
+            emulatorOptionCount: 0,
+            selectedEmulatorOption: -1,
+            preparable: true,
+            prepareBusy: true
+        })
+        verify(hero)
+        verify(!hero.prepareNeeded)
+        const action = findChild(hero, "launchAction")
+        verify(action)
+        compare(action.text, "PREPARING INSTALL…")
+        compare(action.enabled, false)
     }
 
     function test_launch_preparation_can_be_cancelled() {

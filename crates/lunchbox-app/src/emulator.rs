@@ -1864,6 +1864,12 @@ fn build_plan_for_choice(
                     LaunchTemplateValue::Path(options),
                 );
             }
+            if is_dosbox_x(&emulator) {
+                // DOSBox-X otherwise prompts for a working directory on first
+                // run; the plan already starts it inside the prepared install.
+                arguments.push(OsString::from("-set"));
+                arguments.push(OsString::from("dosbox working directory option=noprompt"));
+            }
             let extra_insert_index = arguments.len();
             (arguments, extra_insert_index)
         }
@@ -1911,7 +1917,7 @@ fn build_plan_for_choice(
                 "shared_config".to_owned(),
                 LaunchTemplateValue::Path(shared_options_path.clone()),
             );
-            let arguments = vec![
+            let mut arguments = vec![
                 OsString::from("-conf"),
                 path_argument(&config_path, &emulator),
                 OsString::from("-conf"),
@@ -1919,6 +1925,10 @@ fn build_plan_for_choice(
                 OsString::from("-nomenu"),
                 OsString::from("-noconsole"),
             ];
+            if is_dosbox_x(&emulator) {
+                arguments.push(OsString::from("-set"));
+                arguments.push(OsString::from("dosbox working directory option=noprompt"));
+            }
             let extra_insert_index = arguments.len();
             (arguments, extra_insert_index)
         }
@@ -1998,6 +2008,10 @@ fn command_prefix(
     install_root: &Path,
 ) -> Result<(PathBuf, Vec<OsString>)> {
     command_prefix_with_access_roots(executable, install_root, &[])
+}
+
+fn is_dosbox_x(emulator: &EmulatorChoice) -> bool {
+    emulator.name.eq_ignore_ascii_case("DOSBox-X")
 }
 
 fn command_prefix_with_access_roots(
@@ -3027,6 +3041,8 @@ del *.rom
                 prepared.launch_config_path.as_os_str().to_owned(),
                 OsString::from("-conf"),
                 shared.as_os_str().to_owned(),
+                OsString::from("-set"),
+                OsString::from("dosbox working directory option=noprompt"),
                 OsString::from("--fullscreen"),
                 OsString::from("--label"),
                 OsString::from("Living Room"),
