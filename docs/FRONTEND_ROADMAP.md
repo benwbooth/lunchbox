@@ -243,7 +243,7 @@ ledger](LEGACY_FEATURE_PARITY.md) is the completeness checklist for this work.
 - Native Missing Media Audit for My Collection or the entire catalog. It scans
   exact artwork categories off-thread with cancellation, keeps hundreds of
   thousands of results virtualized, separates exact LibRetro repairs from
-  records requiring provider review, and uses a confirmed bounded two-worker
+  records requiring provider review, and uses a confirmed bounded eight-worker
   repair queue with no cross-category substitution. Every selected exact record
   is journaled transactionally before provider work starts, a stable
   cross-process lease prevents two Lunchbox instances from mutating one batch,

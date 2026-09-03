@@ -85,8 +85,8 @@ pub(crate) fn effective_provider_priority(priority: &[String]) -> Vec<String> {
 }
 
 const LIBRETRO_THUMBNAILS_URL: &str = "https://thumbnails.libretro.com";
-const MEDIA_DOWNLOAD_WORKERS: usize = 2;
-const MEDIA_DOWNLOAD_QUEUE_CAPACITY: usize = 128;
+const MEDIA_DOWNLOAD_WORKERS: usize = 8;
+const MEDIA_DOWNLOAD_QUEUE_CAPACITY: usize = 512;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const PROVIDER_FAILURE_BACKOFF: Duration = Duration::from_secs(2 * 60);
