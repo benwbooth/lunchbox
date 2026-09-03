@@ -124,6 +124,7 @@ pub mod qobject {
         #[qproperty(bool, downloadable)]
         #[qproperty(bool, preparable)]
         #[qproperty(bool, prepared)]
+        #[qproperty(bool, exo_media_imported)]
         #[qproperty(QString, preparation_phase)]
         #[qproperty(QString, preparation_file)]
         #[qproperty(QString, prepared_summary)]
@@ -146,6 +147,7 @@ pub mod qobject {
         #[qproperty(i32, launch_profile_preview_argument_count)]
         #[qproperty(i32, launch_profile_preview_revision)]
         #[qproperty(bool, firmware_busy)]
+        #[qproperty(i32, firmware_progress)]
         #[qproperty(bool, firmware_needs_import)]
         #[qproperty(bool, firmware_can_download)]
         #[qproperty(bool, firmware_can_sync)]
@@ -672,6 +674,7 @@ pub struct GameDetailsModelRust {
     downloadable: bool,
     preparable: bool,
     prepared: bool,
+    exo_media_imported: bool,
     preparation_phase: QString,
     preparation_file: QString,
     prepared_summary: QString,
@@ -694,6 +697,7 @@ pub struct GameDetailsModelRust {
     launch_profile_preview_argument_count: i32,
     launch_profile_preview_revision: i32,
     firmware_busy: bool,
+    firmware_progress: i32,
     firmware_needs_import: bool,
     firmware_can_download: bool,
     firmware_can_sync: bool,
@@ -890,6 +894,7 @@ impl Default for GameDetailsModelRust {
             downloadable: false,
             preparable: false,
             prepared: false,
+            exo_media_imported: false,
             preparation_phase: QString::default(),
             preparation_file: QString::default(),
             prepared_summary: QString::default(),
@@ -912,6 +917,7 @@ impl Default for GameDetailsModelRust {
             launch_profile_preview_argument_count: 0,
             launch_profile_preview_revision: 0,
             firmware_busy: false,
+            firmware_progress: -1,
             firmware_needs_import: false,
             firmware_can_download: false,
             firmware_can_sync: false,
@@ -2141,6 +2147,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_session_history_revision(session_revision);
         self.as_mut().set_preparable(false);
         self.as_mut().set_prepared(false);
+        self.as_mut().set_exo_media_imported(false);
         self.as_mut().set_preparation_phase(QString::default());
         self.as_mut().set_preparation_file(QString::default());
         self.as_mut().set_prepared_summary(QString::default());
@@ -2424,6 +2431,8 @@ impl qobject::GameDetailsModel {
                 self.as_mut().rust_mut().prepared_install = prepared_install;
                 self.as_mut().set_preparable(preparable);
                 self.as_mut().set_prepared(prepared);
+                self.as_mut()
+                    .set_exo_media_imported(details.exo_media_imported);
                 self.as_mut()
                     .set_prepared_summary(qstring(prepared_summary));
                 self.as_mut().set_registered_torrent_source_count(count_i32(
@@ -4765,14 +4774,31 @@ impl qobject::GameDetailsModel {
         let generation = self.as_ref().rust().details_generation;
         let game_id = self.as_ref().game_id().to_string();
         self.as_mut().set_firmware_busy(true);
+        self.as_mut().set_firmware_progress(0);
         self.as_mut()
             .set_launch_status(qstring("Importing and verifying firmware package…"));
         let qt_thread = self.as_ref().qt_thread();
+        let progress_thread = qt_thread.clone();
+        let progress_game_id = game_id.clone();
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-firmware-import".into())
             .spawn(move || {
-                let result = crate::firmware::import_and_sync(&statuses, &path)
-                    .map_err(|error| error.to_string());
+                let result = crate::firmware::import_and_sync_with_progress(
+                    &statuses,
+                    &path,
+                    |message, percent| {
+                        let progress_game_id = progress_game_id.clone();
+                        let _ = progress_thread.queue(move |mut model| {
+                            model.as_mut().update_firmware_progress(
+                                generation,
+                                progress_game_id,
+                                message,
+                                i32::from(percent),
+                            );
+                        });
+                    },
+                )
+                .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model
                         .as_mut()
@@ -4781,6 +4807,7 @@ impl qobject::GameDetailsModel {
             });
         if let Err(error) = spawn_result {
             self.as_mut().set_firmware_busy(false);
+            self.as_mut().set_firmware_progress(-1);
             self.as_mut()
                 .set_launch_status(qstring(format!("Could not start firmware import: {error}")));
         }
@@ -4804,6 +4831,7 @@ impl qobject::GameDetailsModel {
         let generation = self.as_ref().rust().details_generation;
         let game_id = self.as_ref().game_id().to_string();
         self.as_mut().set_firmware_busy(true);
+        self.as_mut().set_firmware_progress(-1);
         self.as_mut()
             .set_launch_status(qstring("Resolving the exact firmware source…"));
         let qt_thread = self.as_ref().qt_thread();
@@ -4819,6 +4847,7 @@ impl qobject::GameDetailsModel {
                             generation,
                             progress_game_id,
                             message,
+                            -1,
                         );
                     });
                 })
@@ -4831,6 +4860,7 @@ impl qobject::GameDetailsModel {
             });
         if let Err(error) = spawn_result {
             self.as_mut().set_firmware_busy(false);
+            self.as_mut().set_firmware_progress(-1);
             self.as_mut().set_launch_status(qstring(format!(
                 "Could not start firmware download: {error}"
             )));
@@ -4854,14 +4884,28 @@ impl qobject::GameDetailsModel {
         let generation = self.as_ref().rust().details_generation;
         let game_id = self.as_ref().game_id().to_string();
         self.as_mut().set_firmware_busy(true);
+        self.as_mut().set_firmware_progress(0);
         self.as_mut()
             .set_launch_status(qstring("Verifying and syncing firmware…"));
         let qt_thread = self.as_ref().qt_thread();
+        let progress_thread = qt_thread.clone();
+        let progress_game_id = game_id.clone();
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-firmware-sync".into())
             .spawn(move || {
                 let result =
-                    crate::firmware::sync_imported(&statuses).map_err(|error| error.to_string());
+                    crate::firmware::sync_imported_with_progress(&statuses, |message, percent| {
+                        let progress_game_id = progress_game_id.clone();
+                        let _ = progress_thread.queue(move |mut model| {
+                            model.as_mut().update_firmware_progress(
+                                generation,
+                                progress_game_id,
+                                message,
+                                i32::from(percent),
+                            );
+                        });
+                    })
+                    .map_err(|error| error.to_string());
                 let _ = qt_thread.queue(move |mut model| {
                     model
                         .as_mut()
@@ -4870,6 +4914,7 @@ impl qobject::GameDetailsModel {
             });
         if let Err(error) = spawn_result {
             self.as_mut().set_firmware_busy(false);
+            self.as_mut().set_firmware_progress(-1);
             self.as_mut()
                 .set_launch_status(qstring(format!("Could not start firmware sync: {error}")));
         }
@@ -4887,6 +4932,7 @@ impl qobject::GameDetailsModel {
             return;
         }
         self.as_mut().set_firmware_busy(false);
+        self.as_mut().set_firmware_progress(-1);
         match result {
             Ok(message) => {
                 self.as_mut().rust_mut().pending_firmware_message = Some(message);
@@ -4903,16 +4949,21 @@ impl qobject::GameDetailsModel {
         generation: u64,
         game_id: String,
         message: String,
+        percent: i32,
     ) {
         if generation == self.as_ref().rust().details_generation
             && game_id == self.as_ref().game_id().to_string()
             && *self.as_ref().firmware_busy()
         {
             self.as_mut().set_launch_status(qstring(message));
+            self.as_mut().set_firmware_progress(percent.clamp(-1, 100));
         }
     }
 
     fn clear_firmware_status(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().firmware_busy() {
+            self.as_mut().set_firmware_progress(-1);
+        }
         self.as_mut().set_firmware_rule_count(0);
         self.as_mut().set_firmware_missing_count(0);
         self.as_mut().set_firmware_manual_count(0);

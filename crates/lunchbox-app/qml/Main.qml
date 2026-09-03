@@ -2295,6 +2295,14 @@ ApplicationWindow {
     }
 
     Connections {
+        target: gameDetails
+        function onExo_media_importedChanged() {
+            if (gameDetails.exo_media_imported)
+                library.refresh_media()
+        }
+    }
+
+    Connections {
         target: emulatorManager
         function onInitializedChanged() {
             if (root.emulatorLifecycleRecoveryUiProbe && emulatorManager.initialized) {

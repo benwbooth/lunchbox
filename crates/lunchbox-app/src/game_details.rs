@@ -72,6 +72,7 @@ pub struct GameDetails {
     pub local_file_preference_stale: bool,
     pub managed_installation: Option<crate::ingest::ManagedInstallationSummary>,
     pub prepared_install: Option<PreparedInstall>,
+    pub exo_media_imported: bool,
     pub activity: Option<crate::settings::PlayActivity>,
     pub sessions: Vec<crate::settings::PlaySession>,
     pub supplemental_media: crate::media::SupplementalMedia,
@@ -1196,11 +1197,33 @@ fn load_prepared_state(details: &mut GameDetails) -> Result<()> {
     {
         // Best effort: import the collection's own artwork for this exact
         // game when its metadata pack is available locally.
-        let _ = crate::exo_media::import_prepared_game_media(
+        match crate::exo_media::import_prepared_game_media(
             &crate::media::requested_media_directory(),
             details.database_id,
             prepared,
-        );
+        ) {
+            Ok(kinds) => {
+                details.exo_media_imported = !kinds.is_empty();
+                if !kinds.is_empty() {
+                    println!(
+                        "LUNCHBOX_EXO_MEDIA_IMPORTED game={} database_id={} kinds={}",
+                        details.id,
+                        details.database_id,
+                        kinds
+                            .into_iter()
+                            .map(|kind| kind.key().to_owned())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    );
+                }
+            }
+            Err(error) => {
+                println!(
+                    "LUNCHBOX_EXO_MEDIA_FAILED game={} database_id={} error={error:#}",
+                    details.id, details.database_id
+                );
+            }
+        }
     }
     Ok(())
 }
