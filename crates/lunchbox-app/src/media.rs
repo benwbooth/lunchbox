@@ -346,7 +346,7 @@ impl ArtworkKind {
         }
     }
 
-    fn cache_file_stem(self) -> &'static str {
+    pub(crate) fn cache_file_stem(self) -> &'static str {
         match self {
             Self::BoxFront => "box-front",
             Self::BoxBack => "box-back",

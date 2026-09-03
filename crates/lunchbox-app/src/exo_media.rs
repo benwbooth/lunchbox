@@ -97,7 +97,8 @@ pub(crate) fn import_prepared_game_media(
                 .next()
                 .unwrap_or("jpg")
                 .to_ascii_lowercase();
-            let target = destination.join(format!("{}.{}", kind.key(), extension));
+            // The media cache is indexed by these exact file stems.
+            let target = destination.join(format!("{}.{}", kind.cache_file_stem(), extension));
             let bytes = read_zip_member(&mut archive, &member)?;
             fs::write(&target, &bytes)
                 .with_context(|| format!("writing imported artwork {}", target.display()))?;
@@ -436,7 +437,11 @@ mod tests {
         assert_eq!(imported, vec![ArtworkKind::BoxFront]);
         let front = media_root.join("lb-7/launchbox/box-front.jpg");
         assert_eq!(fs::read(&front).unwrap(), b"win3x-front-bytes");
-        assert!(!media_root.join("lb-7/launchbox/screenshot.png").exists());
+        assert!(
+            !media_root
+                .join("lb-7/launchbox/screenshot-gameplay.png")
+                .exists()
+        );
 
         // A game whose images live in the unclassified None folder resolves too.
         let none_prepared = PreparedInstall {
@@ -526,7 +531,7 @@ mod tests {
         assert_eq!(imported, vec![ArtworkKind::BoxFront, ArtworkKind::Fanart]);
         let front = media_root.join("lb-42/launchbox/box-front.jpg");
         assert_eq!(fs::read(&front).unwrap(), b"front-bytes");
-        let fanart = media_root.join("lb-42/launchbox/fanart.jpg");
+        let fanart = media_root.join("lb-42/launchbox/fanart-background.jpg");
         assert_eq!(fs::read(&fanart).unwrap(), b"fanart-bytes");
         assert!(!media_root.join("lb-42/launchbox/box-back.jpg").exists());
     }
