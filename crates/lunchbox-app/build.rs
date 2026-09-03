@@ -79,6 +79,7 @@ fn main() {
                 "qml/FirmwareAuditView.qml",
                 "qml/FirmwareSetupPage.qml",
                 "qml/FirstRunSetup.qml",
+                "qml/FullscreenMediaView.qml",
                 "qml/GameDownloadStatus.qml",
                 "qml/GameDetailsStatusCard.qml",
                 "qml/GameFilesCard.qml",

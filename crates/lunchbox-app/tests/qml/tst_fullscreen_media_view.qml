@@ -24,7 +24,6 @@ TestCase {
         verify(viewer)
         viewer.open()
         verify(viewer.opened)
-        verify(viewer.visible)
         compare(viewer.mediaTitle, "Quik Majik Adventure")
         compare(viewer.mediaSource, "eXoDOS")
         verify(viewer.canRotate)

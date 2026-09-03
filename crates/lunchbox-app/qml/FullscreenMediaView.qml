@@ -4,27 +4,38 @@ import QtQuick
 import QtQuick.Controls
 
 // Fullscreen overlay for inspecting one media item at native scale.
-// Click the backdrop, the close button, or press Escape to dismiss.
-Popup {
+// Item-based rather than a modal Overlay popup: it is instantiated at
+// window construction, and the engine must resolve it from the compiled
+// Lunchbox module, where an Overlay-bound popup deferred type resolution
+// stalled startup. Click the backdrop, the close button, or press Escape
+// to dismiss.
+Item {
     id: viewer
 
     property url mediaUrl: ""
     property string mediaTitle: ""
     property string mediaSource: ""
     property bool canRotate: false
+    property bool openRequested: false
+    readonly property bool opened: openRequested
 
     signal previousRequested()
     signal nextRequested()
 
-    anchors.centerIn: Overlay.overlay
-    width: Overlay.overlay ? Overlay.overlay.width : 0
-    height: Overlay.overlay ? Overlay.overlay.height : 0
-    modal: true
-    closePolicy: Popup.CloseOnEscape
-    padding: 0
-    parent: Overlay.overlay
+    function open() {
+        openRequested = true
+        focusScope.forceActiveFocus()
+    }
 
-    background: Rectangle {
+    function close() {
+        openRequested = false
+    }
+
+    visible: openRequested
+
+    Rectangle {
+        id: backdrop
+        anchors.fill: parent
         color: "#e8060a0f"
 
         MouseArea {
@@ -33,9 +44,10 @@ Popup {
         }
     }
 
-    contentItem: Item {
-        implicitWidth: viewer.width
-        implicitHeight: viewer.height
+    FocusScope {
+        id: focusScope
+        anchors.fill: parent
+        Keys.onEscapePressed: viewer.close()
 
         Image {
             id: fullImage
