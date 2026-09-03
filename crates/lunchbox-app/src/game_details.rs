@@ -1191,6 +1191,17 @@ fn load_prepared_state(details: &mut GameDetails) -> Result<()> {
     details.managed_installation =
         crate::ingest::inspect_managed_installation(&store, &details.id)?;
     details.prepared_install = crate::exo_install::cached_install(&store, &details.id)?;
+    if let Some(prepared) = &details.prepared_install
+        && details.database_id > 0
+    {
+        // Best effort: import the collection's own artwork for this exact
+        // game when its metadata pack is available locally.
+        let _ = crate::exo_media::import_prepared_game_media(
+            &crate::media::requested_media_directory(),
+            details.database_id,
+            prepared,
+        );
+    }
     Ok(())
 }
 

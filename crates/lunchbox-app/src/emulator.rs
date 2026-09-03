@@ -2828,6 +2828,7 @@ mod tests {
             install_root: root.to_path_buf(),
             launch_config_path,
             shortname: "TEST".to_owned(),
+            source_archive_path: root.join("archive.zip"),
             reused: true,
         }
     }

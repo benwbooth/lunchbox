@@ -116,6 +116,7 @@ pub struct PreparedInstall {
     pub install_root: PathBuf,
     pub launch_config_path: PathBuf,
     pub shortname: String,
+    pub source_archive_path: PathBuf,
     pub reused: bool,
 }
 
@@ -194,7 +195,7 @@ pub fn cached_install(store: &SettingsStore, game_uid: &str) -> Result<Option<Pr
     let connection = store.connection()?;
     let row = connection
         .query_row(
-            "SELECT collection, install_root, launch_config_path, shortname
+            "SELECT collection, install_root, launch_config_path, shortname, source_archive_path
              FROM prepared_game_installs WHERE game_uid=?1",
             [game_uid],
             |row| {
@@ -203,11 +204,13 @@ pub fn cached_install(store: &SettingsStore, game_uid: &str) -> Result<Option<Pr
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
                 ))
             },
         )
         .optional()?;
-    let Some((collection, install_root, launch_config_path, shortname)) = row else {
+    let Some((collection, install_root, launch_config_path, shortname, source_archive_path)) = row
+    else {
         return Ok(None);
     };
     let collection = parse_collection(&collection)?;
@@ -221,6 +224,7 @@ pub fn cached_install(store: &SettingsStore, game_uid: &str) -> Result<Option<Pr
         install_root,
         launch_config_path,
         shortname,
+        source_archive_path: PathBuf::from(source_archive_path),
         reused: true,
     }))
 }
@@ -401,6 +405,7 @@ where
             install_root: canonical_destination,
             launch_config_path,
             shortname,
+            source_archive_path: resolved.primary.clone(),
             reused: true,
         };
         record_cache(
@@ -501,6 +506,7 @@ where
         launch_config_path: install_root.join(config_relative),
         install_root,
         shortname,
+        source_archive_path: resolved.primary.clone(),
         reused: false,
     };
     record_cache(
@@ -617,7 +623,7 @@ fn resolve_required_archives(
     })
 }
 
-fn locate_relative_to_ancestors(start: &Path, relatives: &[PathBuf]) -> Option<PathBuf> {
+pub(crate) fn locate_relative_to_ancestors(start: &Path, relatives: &[PathBuf]) -> Option<PathBuf> {
     let start_directory = if start.is_dir() {
         start
     } else {
@@ -1239,7 +1245,7 @@ fn lookup_matching_cache(
     let connection = store.connection()?;
     let row = connection
         .query_row(
-            "SELECT collection, install_root, launch_config_path, shortname, source_signature
+            "SELECT collection, install_root, launch_config_path, shortname, source_archive_path, source_signature
              FROM prepared_game_installs WHERE game_uid=?1",
             [game_uid],
             |row| {
@@ -1249,11 +1255,19 @@ fn lookup_matching_cache(
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
                 ))
             },
         )
         .optional()?;
-    let Some((collection, install_root, launch_config_path, shortname, cached_signature)) = row
+    let Some((
+        collection,
+        install_root,
+        launch_config_path,
+        shortname,
+        source_archive_path,
+        cached_signature,
+    )) = row
     else {
         return Ok(None);
     };
@@ -1274,6 +1288,7 @@ fn lookup_matching_cache(
         install_root,
         launch_config_path,
         shortname,
+        source_archive_path: PathBuf::from(source_archive_path),
         reused: true,
     }))
 }

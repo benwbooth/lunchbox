@@ -15,6 +15,7 @@ pub mod emulator_update_model;
 mod emumovies;
 pub mod emumovies_model;
 mod exo_install;
+mod exo_media;
 mod external_torrent;
 pub mod external_torrent_model;
 mod firmware;
