@@ -25,7 +25,7 @@
         qtEnv = pkgs.qt6.env "lunchbox-qt-env" qtModules;
         databaseTool = pkgs.rustPlatform.buildRustPackage {
           pname = "lunchbox-db";
-          version = "0.1.0";
+          version = "0.1.1";
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
           LUNCHBOX_7Z = "${pkgs.p7zip}/bin/7z";
@@ -34,7 +34,7 @@
         };
         frontend = pkgs.rustPlatform.buildRustPackage {
           pname = "lunchbox";
-          version = "0.1.0";
+          version = "0.1.1";
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = with pkgs; [
