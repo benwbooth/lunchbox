@@ -1842,6 +1842,10 @@ fn build_plan_for_choice(
 ) -> Result<LaunchPlan> {
     let mut cleanup_paths = Vec::new();
     let mut template_values = BTreeMap::new();
+    let dosbox_launch = matches!(
+        kind,
+        PreparedLaunchKind::Dosbox { .. } | PreparedLaunchKind::Win9xDosboxX { .. }
+    );
     let (mut arguments, extra_insert_index) = match kind {
         PreparedLaunchKind::Dosbox {
             config_path,
@@ -1990,6 +1994,17 @@ fn build_plan_for_choice(
 
     let (program, mut prefix_arguments) =
         command_prefix(&emulator.executable, &prepared.install_root)?;
+    if dosbox_launch
+        && let EmulatorExecutable::Flatpak { .. } = emulator.executable
+        && let Some(app_id) = prefix_arguments.pop()
+    {
+        // DOSBox-X's Wayland window does not rescale its contents, so run
+        // the sandbox on the X11 socket only, where resizing scales the
+        // GPU-rendered game surface.
+        prefix_arguments.push(OsString::from("--socket=x11"));
+        prefix_arguments.push(OsString::from("--nosocket=wayland"));
+        prefix_arguments.push(app_id);
+    }
     prefix_arguments.extend(arguments);
     Ok(LaunchPlan {
         emulator_name: emulator.name,
@@ -2022,25 +2037,25 @@ fn dosbox_presentation_arguments(
     emulator: &EmulatorChoice,
 ) -> Result<Vec<OsString>> {
     let mut arguments = Vec::new();
-    if is_dosbox_x(emulator) {
+    if is_dosbox_x(&emulator) {
         // DOSBox-X otherwise prompts for a working directory on first run;
         // the plan already starts it inside the prepared install.
         arguments.push(OsString::from("-set"));
         arguments.push(OsString::from("dosbox working directory option=noprompt"));
     }
+    const PRESENTATION_CONF: &str = "[sdl]\nfullscreen=true\nfullresolution=desktop\nwindowresolution=original\noutput=openglnb\n[render]\nscaler=none\n";
     let conf_path = install_root.join(".lunchbox-presentation.conf");
     let write = || -> Result<()> {
-        if conf_path.is_file() {
+        if fs::read_to_string(&conf_path).ok().as_deref() == Some(PRESENTATION_CONF) {
             return Ok(());
         }
-        fs::write(
-            &conf_path,
-            // The eXo configs request a 1280x960 window that current
-            // DOSBox-X builds ignore; start fullscreen at the desktop
-            // resolution so the game fills the display instead.
-            "[sdl]\nfullscreen=true\nfullresolution=desktop\n",
-        )
-        .with_context(|| format!("writing DOSBox presentation config {}", conf_path.display()))
+        // The eXo configs request a 1280x960 window that current DOSBox-X
+        // builds ignore, and their CPU scaler pins the game to a small
+        // non-resizable render. Start fullscreen at the desktop resolution
+        // and let the GPU output scale, so the window also resizes
+        // correctly once fullscreen is toggled off.
+        fs::write(&conf_path, PRESENTATION_CONF)
+            .with_context(|| format!("writing DOSBox presentation config {}", conf_path.display()))
     };
     match write() {
         Ok(()) => {
@@ -3100,7 +3115,7 @@ del *.rom
         let presentation = prepared.install_root.join(".lunchbox-presentation.conf");
         assert_eq!(
             fs::read_to_string(&presentation).unwrap(),
-            "[sdl]\nfullscreen=true\nfullresolution=desktop\n"
+            "[sdl]\nfullscreen=true\nfullresolution=desktop\nwindowresolution=original\noutput=openglnb\n[render]\nscaler=none\n"
         );
 
         let replaced = build_plan_for_choice(
@@ -3325,6 +3340,44 @@ del *.rom
             ]
         );
         assert!(!plan.arguments.iter().any(|argument| argument == "-c"));
+    }
+
+    #[test]
+    fn flatpak_dosbox_launch_pins_the_x11_socket() {
+        let temp = TempDir::new().unwrap();
+        let prepared = prepared(
+            temp.path(),
+            ExoCollection::Dos,
+            "eXoDOS/!dos/TEST/dosbox_linux.conf",
+        );
+        let shared = temp.path().join("emulators/dosbox/options_linux.conf");
+        fs::create_dir_all(shared.parent().unwrap()).unwrap();
+        fs::write(&shared, b"options").unwrap();
+        let choice = EmulatorChoice {
+            id: "dosbox-x".to_owned(),
+            name: "DOSBox-X".to_owned(),
+            executable: EmulatorExecutable::Flatpak {
+                command: PathBuf::from("/usr/bin/flatpak"),
+                app_id: "com.dosbox_x.DOSBox-X".to_owned(),
+            },
+        };
+        let kind = classify_prepared_install(&prepared).unwrap();
+        let plan = build_plan_for_choice(
+            &prepared,
+            kind,
+            choice,
+            &crate::settings::ResolvedLaunchCustomization::default(),
+        )
+        .unwrap();
+        assert_eq!(plan.program, Path::new("/usr/bin/flatpak"));
+        assert_eq!(plan.arguments[0], "run");
+        let app_position = plan
+            .arguments
+            .iter()
+            .position(|argument| argument == "com.dosbox_x.DOSBox-X")
+            .expect("flatpak app id in the launch arguments");
+        assert_eq!(plan.arguments[app_position - 2], "--socket=x11");
+        assert_eq!(plan.arguments[app_position - 1], "--nosocket=wayland");
     }
 
     #[test]
@@ -3600,9 +3653,11 @@ del *.rom
                 .to_string_lossy()
                 .starts_with("--filesystem=")
         );
-        assert_eq!(plan.arguments[2], "com.dosbox_x.DOSBox-X");
-        assert_eq!(plan.arguments[3], "-conf");
-        assert_eq!(plan.arguments[4], prepared.launch_config_path.as_os_str());
+        assert_eq!(plan.arguments[2], "--socket=x11");
+        assert_eq!(plan.arguments[3], "--nosocket=wayland");
+        assert_eq!(plan.arguments[4], "com.dosbox_x.DOSBox-X");
+        assert_eq!(plan.arguments[5], "-conf");
+        assert_eq!(plan.arguments[6], prepared.launch_config_path.as_os_str());
     }
 
     #[test]
