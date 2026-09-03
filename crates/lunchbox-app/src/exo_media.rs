@@ -26,6 +26,7 @@ const IMAGE_SECTIONS: &[(ArtworkKind, &[&str])] = &[
         ArtworkKind::BoxFront,
         &[
             "Box - Front",
+            "Box - Front - Reconstructed",
             "Box - Front/World",
             "Box - Front/North America",
             "Box - Front/Europe",
@@ -72,9 +73,12 @@ pub(crate) fn import_prepared_game_media(
         .with_context(|| format!("reading eXo metadata pack {}", pack_path.display()))?;
 
     let member_names: Vec<String> = archive.file_names().map(str::to_owned).collect();
-    let platform_dir = resolve_platform_dir(&member_names, prepared.collection)
+    let member_index: std::collections::HashSet<&str> =
+        member_names.iter().map(String::as_str).collect();
+    let platform_dir = resolve_platform_dir(&member_index, prepared.collection)
         .context("eXo metadata pack has no XML for this collection platform")?;
-    let xml_member = format!("xml/all/{platform_dir}.xml");
+    let xml_member = resolve_xml_member(&member_index, &platform_dir)
+        .context("eXo metadata pack has no LaunchBox XML for this collection platform")?;
     let xml_bytes = read_zip_member(&mut archive, &xml_member)?;
     let xml = String::from_utf8_lossy(&xml_bytes);
     let game_names = launchbox_game_names(&xml, &prepared.shortname);
@@ -86,7 +90,7 @@ pub(crate) fn import_prepared_game_media(
         .with_context(|| format!("creating artwork directory {}", destination.display()))?;
     let mut imported = Vec::new();
     for (kind, sections) in IMAGE_SECTIONS.iter() {
-        if let Some(member) = find_image_member(&member_names, &platform_dir, sections, &game_names)
+        if let Some(member) = find_image_member(&member_index, &platform_dir, sections, &game_names)
         {
             let extension = member
                 .rsplit('.')
@@ -150,36 +154,67 @@ fn platform_dir_candidates(
 ) -> &'static [&'static str] {
     match collection {
         crate::exo_install::ExoCollection::Dos => &["MS-DOS"],
-        crate::exo_install::ExoCollection::Win3x => &["Windows 3.x", "Win3x"],
-        crate::exo_install::ExoCollection::Win9x => &["Windows 9.x", "Win9x", "Windows 9X"],
+        crate::exo_install::ExoCollection::Win3x => &["Windows 3x", "Windows 3.x", "Win3x"],
+        crate::exo_install::ExoCollection::Win9x => &["Windows 9x", "Windows 9.x", "Win9x"],
     }
 }
 
+/// Resolves the platform directory used by both the pack XML and its
+/// `Images/` tree. eXoDOS nests the XML under `xml/all/`, while the Windows
+/// packs keep it directly under `xml/`.
 fn resolve_platform_dir(
-    member_names: &[String],
+    member_index: &std::collections::HashSet<&str>,
     collection: crate::exo_install::ExoCollection,
 ) -> Option<String> {
     for candidate in platform_dir_candidates(collection) {
-        let member = format!("xml/all/{candidate}.xml");
-        if member_names.iter().any(|name| name == &member) {
+        if member_index.contains(format!("xml/all/{candidate}.xml").as_str())
+            || member_index.contains(format!("xml/{candidate}.xml").as_str())
+        {
             return Some(candidate.to_string());
         }
     }
-    let all: Vec<&String> = member_names
+    let mut stems = member_index
         .iter()
-        .filter(|name| {
-            let Some(stem) = name.strip_prefix("xml/all/") else {
-                return false;
-            };
-            stem.ends_with(".xml")
+        .filter_map(|name| {
+            if name.starts_with("xml/Playlists/") {
+                return None;
+            }
+            let stem = name
+                .strip_prefix("xml/all/")
+                .or_else(|| name.strip_prefix("xml/"))?;
+            stem.strip_suffix(".xml")
         })
-        .collect();
-    if all.len() == 1 {
-        return all[0]
-            .strip_prefix("xml/all/")
-            .map(|stem| stem.trim_end_matches(".xml").to_owned());
+        .filter(|stem| {
+            let lowered = stem.to_ascii_lowercase();
+            let token = match collection {
+                crate::exo_install::ExoCollection::Dos => "dos",
+                crate::exo_install::ExoCollection::Win3x => "3x",
+                crate::exo_install::ExoCollection::Win9x => "9x",
+            };
+            lowered.contains(token)
+        })
+        .collect::<Vec<_>>();
+    stems.sort_unstable();
+    stems.dedup();
+    if stems.len() == 1 {
+        return Some(stems.remove(0).to_string());
     }
     None
+}
+
+fn resolve_xml_member(
+    member_index: &std::collections::HashSet<&str>,
+    platform_dir: &str,
+) -> Option<String> {
+    let nested = format!("xml/all/{platform_dir}.xml");
+    let flat = format!("xml/{platform_dir}.xml");
+    if member_index.contains(nested.as_str()) {
+        Some(nested)
+    } else if member_index.contains(flat.as_str()) {
+        Some(flat)
+    } else {
+        None
+    }
 }
 
 fn read_zip_member(archive: &mut ZipArchive<fs::File>, member: &str) -> Result<Vec<u8>> {
@@ -263,20 +298,38 @@ fn launchbox_game_names(xml: &str, shortname: &str) -> Vec<String> {
     }
 }
 
+/// LaunchBox replaces filename-unsafe characters with underscores when it
+/// writes image files (for example `Quest: ...` becomes `Quest_ ...`).
+fn launchbox_filename(name: &str) -> String {
+    name.chars()
+        .map(|character| match character {
+            ':' | '/' | '\\' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            other => other,
+        })
+        .collect()
+}
+
+/// Locates the first image in the pack for the game, preferring the
+/// collection's platform folder and falling back to eXo's unclassified
+/// `None` folder (used by the Windows packs).
 fn find_image_member(
-    member_names: &[String],
+    member_index: &std::collections::HashSet<&str>,
     platform_dir: &str,
     sections: &[&str],
     game_names: &[String],
 ) -> Option<String> {
-    for game_name in game_names {
-        for section in sections {
-            for variant in NAME_VARIANTS {
-                for extension in IMAGE_EXTENSIONS {
-                    let member =
-                        format!("Images/{platform_dir}/{section}/{game_name}{variant}.{extension}");
-                    if member_names.iter().any(|name| name == &member) {
-                        return Some(member);
+    for platform in [platform_dir, "None"] {
+        for game_name in game_names {
+            for stem in [launchbox_filename(game_name), game_name.clone()] {
+                for section in sections {
+                    for variant in NAME_VARIANTS {
+                        for extension in IMAGE_EXTENSIONS {
+                            let member =
+                                format!("Images/{platform}/{section}/{stem}{variant}.{extension}");
+                            if member_index.contains(member.as_str()) {
+                                return Some(member);
+                            }
+                        }
                     }
                 }
             }
@@ -328,6 +381,105 @@ mod tests {
                 .join("eXo/eXoDOS/Full Release/eXo/eXoDOS/game.zip"),
             reused: false,
         }
+    }
+
+    const WIN3X_XML: &str = "<?xml version=\"1.0\" standalone=\"yes\"?>\r\n<LaunchBox>\r\n  <Game>\r\n    <Title>The Suit</Title>\r\n    <ApplicationPath>eXo\\eXoWin3X\\!win3x\\TheSuit\\The Suit (1995).bat</ApplicationPath>\r\n  </Game>\r\n  <Game>\r\n    <Title>Pack 3: Deluxe</Title>\r\n    <ApplicationPath>eXo\\eXoWin3x\\!win3x\\MSEnt3\\Pack 3_ Deluxe (1991).bat</ApplicationPath>\r\n  </Game>\r\n</LaunchBox>\r\n";
+
+    fn write_windows_pack_zip(path: &Path) {
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let file = fs::File::create(path).unwrap();
+        let mut archive = ZipWriter::new(file);
+        archive
+            .start_file("xml/Windows 3x.xml", SimpleFileOptions::default())
+            .unwrap();
+        std::io::Write::write_all(&mut archive, WIN3X_XML.as_bytes()).unwrap();
+        archive
+            .start_file(
+                "Images/Windows 3x/Box - Front/Pack 3_ Deluxe-00.jpg",
+                SimpleFileOptions::default(),
+            )
+            .unwrap();
+        std::io::Write::write_all(&mut archive, b"win3x-front-bytes").unwrap();
+        archive
+            .start_file(
+                "Images/None/Box - Front/The Suit-01.jpg",
+                SimpleFileOptions::default(),
+            )
+            .unwrap();
+        std::io::Write::write_all(&mut archive, b"none-fallback-bytes").unwrap();
+        archive.finish().unwrap();
+    }
+
+    #[test]
+    fn imports_windows_pack_artwork_with_sanitized_names_and_none_fallback() {
+        let temp = tempfile::tempdir().unwrap();
+        let pack_path = temp.path().join("eXo/eXoWin3x/Content/XOWin3xMetadata.zip");
+        write_windows_pack_zip(&pack_path);
+        let prepared = PreparedInstall {
+            collection: crate::exo_install::ExoCollection::Win3x,
+            install_root: temp.path().to_path_buf(),
+            launch_config_path: temp.path().join("config.conf"),
+            shortname: "MSEnt3".to_owned(),
+            source_archive_path: temp
+                .path()
+                .join("eXo/eXoWin3x/eXo/eXoWin3x/Pack 3 (1991).zip"),
+            reused: false,
+        };
+        let media_root = temp.path().join("media");
+
+        let imported = import_prepared_game_media(&media_root, 7, &prepared).unwrap();
+        assert_eq!(imported, vec![ArtworkKind::BoxFront]);
+        let front = media_root.join("lb-7/launchbox/box-front.jpg");
+        assert_eq!(fs::read(&front).unwrap(), b"win3x-front-bytes");
+        assert!(!media_root.join("lb-7/launchbox/screenshot.png").exists());
+
+        // A game whose images live in the unclassified None folder resolves too.
+        let none_prepared = PreparedInstall {
+            collection: crate::exo_install::ExoCollection::Win3x,
+            install_root: temp.path().to_path_buf(),
+            launch_config_path: temp.path().join("config2.conf"),
+            shortname: "TheSuit".to_owned(),
+            source_archive_path: prepared.source_archive_path.clone(),
+            reused: false,
+        };
+        let imported = import_prepared_game_media(&media_root, 8, &none_prepared).unwrap();
+        assert_eq!(imported, vec![ArtworkKind::BoxFront]);
+        let none_front = media_root.join("lb-8/launchbox/box-front.jpg");
+        assert_eq!(fs::read(&none_front).unwrap(), b"none-fallback-bytes");
+    }
+
+    #[test]
+    fn resolves_flat_windows_platform_xml_directories() {
+        let members: Vec<String> = vec![
+            "xml/Windows 3x.xml".to_owned(),
+            "xml/Playlists/Some Playlist.xml".to_owned(),
+            "Images/Windows 3x/Box - Front/x-01.jpg".to_owned(),
+        ];
+        let index: std::collections::HashSet<&str> = members.iter().map(String::as_str).collect();
+        assert_eq!(
+            resolve_platform_dir(&index, crate::exo_install::ExoCollection::Win3x),
+            Some("Windows 3x".to_owned())
+        );
+        assert_eq!(
+            resolve_platform_dir(&index, crate::exo_install::ExoCollection::Dos),
+            None
+        );
+        let dos_members: Vec<String> = vec![
+            "xml/MS-DOS.xml".to_owned(),
+            "xml/WinFAMILY.xml".to_owned(),
+            "Images/MS-DOS/Box - Front/x-01.jpg".to_owned(),
+        ];
+        let dos_index: std::collections::HashSet<&str> =
+            dos_members.iter().map(String::as_str).collect();
+        assert_eq!(
+            resolve_platform_dir(&dos_index, crate::exo_install::ExoCollection::Dos),
+            Some("MS-DOS".to_owned())
+        );
     }
 
     fn write_pack_zip(path: &Path) {
