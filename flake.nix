@@ -3,17 +3,22 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Current Eden AppImages use DwarFS. Keep its NixOS extraction tool on a
+    # known-good nixpkgs revision while the primary rolling input advances.
+    nixpkgs-dwarfs.url = "github:NixOS/nixpkgs/a5cc6f2c37bf518436dc8d1c288ccd0c43c2f4c4";
     # Keep Intel macOS on the supported Darwin branch while Apple Silicon and
     # Linux follow unstable.
     nixpkgs-intel-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, nixpkgs-intel-darwin, flake-utils }:
+  outputs = { self, nixpkgs, nixpkgs-dwarfs, nixpkgs-intel-darwin, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         nixpkgsForSystem = if system == "x86_64-darwin" then nixpkgs-intel-darwin else nixpkgs;
         pkgs = import nixpkgsForSystem { inherit system; };
+        dwarfsPkgs = import nixpkgs-dwarfs { inherit system; };
+        dwarfs = dwarfsPkgs.dwarfs;
         qtModules = with pkgs.qt6; [
           qtbase
           qtdeclarative
@@ -45,7 +50,10 @@
             qt6.wrapQtAppsHook
           ];
           buildInputs = qtModules
-            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.systemd ];
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+              dwarfs
+              pkgs.systemd
+            ];
           dontUseCmakeConfigure = true;
           dontUseNinjaBuild = true;
           dontUseNinjaInstall = true;
@@ -83,6 +91,8 @@
           '';
           preFixup = ''
             qtWrapperArgs+=(--set LUNCHBOX_DATABASE "$out/share/lunchbox/lunchbox.db")
+          '' + pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+            qtWrapperArgs+=(--prefix PATH : "${pkgs.lib.makeBinPath [ dwarfs ]}")
           '';
           meta = with pkgs.lib; {
             description = "Native Rust and Qt game library frontend";
@@ -122,7 +132,10 @@
             rustfmt
             sqlite
           ]) ++ qtModules
-            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.systemd ];
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+              dwarfs
+              pkgs.systemd
+            ];
 
           QMAKE = "${qtEnv}/bin/qmake";
           QT_QPA_PLATFORM = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "wayland;xcb";

@@ -162,7 +162,9 @@ pub mod qobject {
         #[qproperty(QString, firmware_next_package)]
         #[qproperty(QString, firmware_setup_action)]
         #[qproperty(QString, firmware_setup_label)]
+        #[qproperty(bool, switch_prod_keys_imported)]
         #[qproperty(bool, switch_prod_keys_ready)]
+        #[qproperty(bool, switch_firmware_imported)]
         #[qproperty(bool, switch_firmware_ready)]
         #[qproperty(i32, registered_torrent_source_count)]
         #[qproperty(i32, bundle_count)]
@@ -738,7 +740,9 @@ pub struct GameDetailsModelRust {
     firmware_next_package: QString,
     firmware_setup_action: QString,
     firmware_setup_label: QString,
+    switch_prod_keys_imported: bool,
     switch_prod_keys_ready: bool,
+    switch_firmware_imported: bool,
     switch_firmware_ready: bool,
     registered_torrent_source_count: i32,
     bundle_count: i32,
@@ -960,7 +964,9 @@ impl Default for GameDetailsModelRust {
             firmware_next_package: QString::default(),
             firmware_setup_action: QString::from("review"),
             firmware_setup_label: QString::from("SET UP EMULATOR"),
+            switch_prod_keys_imported: false,
             switch_prod_keys_ready: false,
+            switch_firmware_imported: false,
             switch_firmware_ready: false,
             registered_torrent_source_count: 0,
             bundle_count: 0,
@@ -5064,7 +5070,7 @@ impl qobject::GameDetailsModel {
             .any(crate::firmware::FirmwareStatus::can_sync)
         {
             self.as_mut().set_launch_status(qstring(
-                "No imported package needs runtime sync for this emulator.",
+                "No saved package needs to be applied to this emulator.",
             ));
             return;
         }
@@ -5073,7 +5079,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_firmware_busy(true);
         self.as_mut().set_firmware_progress(0);
         self.as_mut()
-            .set_launch_status(qstring("Verifying and syncing firmware…"));
+            .set_launch_status(qstring("Verifying and applying firmware to this emulator…"));
         let qt_thread = self.as_ref().qt_thread();
         let progress_thread = qt_thread.clone();
         let progress_game_id = game_id.clone();
@@ -5169,7 +5175,9 @@ impl qobject::GameDetailsModel {
             .set_firmware_setup_action(QString::from("review"));
         self.as_mut()
             .set_firmware_setup_label(QString::from("SET UP EMULATOR"));
+        self.as_mut().set_switch_prod_keys_imported(false);
         self.as_mut().set_switch_prod_keys_ready(false);
+        self.as_mut().set_switch_firmware_imported(false);
         self.as_mut().set_switch_firmware_ready(false);
     }
 
@@ -5220,6 +5228,11 @@ impl qobject::GameDetailsModel {
                             "launch_scoped" | "manual_import"
                         ))
             })
+        };
+        let package_imported = |package: &str| {
+            statuses
+                .iter()
+                .any(|status| status.package_name.eq_ignore_ascii_case(package) && status.imported)
         };
         let next_action = statuses
             .iter()
@@ -5273,7 +5286,10 @@ impl qobject::GameDetailsModel {
         if missing > 0 {
             let next_step = next_action.map_or_else(
                 || "Review firmware requirements".to_owned(),
-                |(action, package)| format!("{action} {package}"),
+                |(action, package)| {
+                    let action = if action == "SYNC" { "APPLY" } else { action };
+                    format!("{action} {package}")
+                },
             );
             self.as_mut().set_can_launch(false);
             self.as_mut()
@@ -5300,7 +5316,11 @@ impl qobject::GameDetailsModel {
         self.as_mut()
             .set_firmware_setup_label(QString::from("SET UP EMULATOR"));
         self.as_mut()
+            .set_switch_prod_keys_imported(package_imported("switch-keys.zip"));
+        self.as_mut()
             .set_switch_prod_keys_ready(package_ready("switch-keys.zip"));
+        self.as_mut()
+            .set_switch_firmware_imported(package_imported("switch-firmware.zip"));
         self.as_mut()
             .set_switch_firmware_ready(package_ready("switch-firmware.zip"));
         if (has_cli_flag("--firmware-probe") || has_cli_flag("--firmware-ui-probe"))
@@ -5488,6 +5508,27 @@ impl qobject::GameDetailsModel {
                     }
                     let mut child = crate::emulator::spawn_launch_plan(&plan)?;
                     let process_id = child.id();
+                    let startup_deadline = Instant::now() + Duration::from_millis(700);
+                    loop {
+                        if launch_cancel.load(AtomicOrdering::Relaxed) {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
+                        }
+                        if let Some(status) = child
+                            .try_wait()
+                            .context("checking whether the emulator survived startup")?
+                        {
+                            anyhow::bail!(
+                                "{} exited during startup with {status}; no game window was opened",
+                                plan.emulator_name
+                            );
+                        }
+                        if Instant::now() >= startup_deadline {
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(35));
+                    }
                     let play_started = Instant::now();
                     let play_session =
                         crate::settings::SettingsStore::open_default().and_then(|store| {

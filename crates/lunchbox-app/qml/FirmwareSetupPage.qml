@@ -120,6 +120,11 @@ Rectangle {
                         width: parent.width
                         text: page.ready
                               ? "Your emulator now has the prerequisites required for this game."
+                              : page.switchSetup
+                                && page.detailsModel.firmware_can_sync
+                              ? "Your verified Switch files are already saved in Lunchbox. Apply them to "
+                                + page.detailsModel.emulator_name
+                                + "; Lunchbox will copy and validate that emulator's profile, so you do not need to choose the files again."
                               : page.detailsModel.firmware_summary
                         color: page.ink
                         font.pixelSize: 15
@@ -160,6 +165,7 @@ Rectangle {
                                     packageName: "switch-keys.zip",
                                     description: "Choose prod.keys directly or a ZIP containing prod.keys and optional title.keys",
                                     current: page.nextPackageLower === "switch-keys.zip",
+                                    imported: page.detailsModel.switch_prod_keys_imported,
                                     complete: page.detailsModel.switch_prod_keys_ready,
                                     required: true
                                 },
@@ -168,6 +174,7 @@ Rectangle {
                                     packageName: "switch-firmware.zip",
                                     description: "System firmware · choose a ZIP containing the dumped NCA files",
                                     current: page.nextPackageLower === "switch-firmware.zip",
+                                    imported: page.detailsModel.switch_firmware_imported,
                                     complete: page.detailsModel.switch_firmware_ready,
                                     required: true
                                 }
@@ -193,11 +200,13 @@ Rectangle {
                                         Layout.preferredHeight: 34
                                         radius: 17
                                         color: requirement.modelData.complete ? "#236247"
+                                               : requirement.modelData.imported ? "#24535b"
                                                : requirement.modelData.current ? "#805523"
                                                                                : "#26313e"
                                         Text {
                                             anchors.centerIn: parent
                                             text: requirement.modelData.complete ? "✓"
+                                                  : requirement.modelData.imported ? "↳"
                                                   : requirement.modelData.current ? "→" : "·"
                                             color: "white"
                                             font.pixelSize: 15
@@ -216,7 +225,11 @@ Rectangle {
                                         }
                                         Text {
                                             Layout.fillWidth: true
-                                            text: requirement.modelData.description
+                                            text: requirement.modelData.imported
+                                                  && !requirement.modelData.complete
+                                                  ? "Saved and verified in Lunchbox · ready to apply to "
+                                                    + page.detailsModel.emulator_name
+                                                  : requirement.modelData.description
                                             color: page.muted
                                             font.pixelSize: 10
                                             wrapMode: Text.WordWrap
@@ -224,33 +237,41 @@ Rectangle {
                                     }
                                     Text {
                                         text: requirement.modelData.complete ? "READY"
+                                              : requirement.modelData.imported ? "SAVED"
                                               : requirement.modelData.current ? "NEXT"
                                               : requirement.modelData.required ? "MISSING"
                                                                                : "OPTIONAL"
-                                        color: requirement.modelData.complete ? page.accentCool
+                                        color: requirement.modelData.complete
+                                               || requirement.modelData.imported
+                                               ? page.accentCool
                                                : requirement.modelData.current ? page.accent : page.muted
                                         font.pixelSize: 9
                                         font.weight: Font.Bold
                                     }
                                     Button {
+                                        id: packageAction
                                         objectName: "firmwarePackageAction-"
                                                     + requirement.modelData.packageName
                                         readonly property bool selectorAvailable:
                                             !requirement.modelData.complete
+                                        readonly property bool applyAvailable:
+                                            requirement.modelData.imported
+                                            && !requirement.modelData.complete
                                         visible: selectorAvailable
-                                        Layout.preferredWidth: visible ? 150 : 0
+                                        Layout.preferredWidth: visible
+                                                               ? Math.max(150,
+                                                                          implicitWidth + 26)
+                                                               : 0
                                         Layout.preferredHeight: 36
-                                        text: requirement.modelData.current
-                                              && page.detailsModel.firmware_setup_action === "sync"
-                                              ? "SYNC NOW"
+                                        text: applyAvailable
+                                              ? "APPLY TO "
+                                                + page.detailsModel.emulator_name.toUpperCase()
                                               : "CHOOSE FILE"
                                         enabled: !page.detailsModel.firmware_busy
                                         font.pixelSize: 9
                                         font.weight: Font.Bold
                                         onClicked: {
-                                            if (requirement.modelData.current
-                                                    && page.detailsModel.firmware_setup_action
-                                                       === "sync")
+                                            if (applyAvailable)
                                                 page.primaryActionRequested()
                                             else
                                                 page.choosePackageRequested(

@@ -207,7 +207,7 @@ pub fn summarize(statuses: &[FirmwareStatus]) -> String {
         )
     } else if missing > 0 {
         format!(
-            "{missing} required firmware package{} need{} installation or sync.",
+            "{missing} required firmware package{} need{} importing or application to the selected emulator.",
             if missing == 1 { "" } else { "s" },
             if missing == 1 { "s" } else { "" }
         )
@@ -736,7 +736,10 @@ pub fn import_and_sync_with_progress(
         let _ = fs::remove_dir_all(staging);
     }
     let receipt = imported?;
-    report("Verifying and syncing the emulator profile…".into(), 70);
+    report(
+        "Verifying and applying files to the emulator profile…".into(),
+        70,
+    );
     let synced = sync_matching_statuses_with_progress(
         statuses,
         std::slice::from_ref(&receipt),
@@ -752,7 +755,7 @@ pub fn import_and_sync_with_progress(
             " and recorded it for launch-time staging".to_owned()
         } else {
             format!(
-                " and synced {synced} runtime requirement{}",
+                " and applied {synced} runtime requirement{}",
                 if synced == 1 { "" } else { "s" }
             )
         }
@@ -1798,7 +1801,10 @@ fn sync_matching_statuses_with_progress(
             synced += 1;
         }
     }
-    progress("Firmware profile sync complete.".into(), 100);
+    progress(
+        "Firmware has been applied to the emulator profile.".into(),
+        100,
+    );
     Ok(synced)
 }
 
@@ -1819,7 +1825,10 @@ fn sync_status_with_progress(
         );
     })?;
     let target = PathBuf::from(&status.target_path);
-    progress(format!("Syncing {}…", status.package_name), 60);
+    progress(
+        format!("Applying {} to the emulator profile…", status.package_name),
+        60,
+    );
     match status.install_mode.as_str() {
         "merge_tree" if status.source_id == "manual:nintendo-switch-keys" => {
             copy_switch_key_package(Path::new(&package.extracted_root), &target)?;
@@ -1856,7 +1865,7 @@ fn sync_status_with_progress(
         package_name: status.package_name.clone(),
         synced_at: crate::settings::unix_timestamp(),
     })?;
-    progress(format!("Synced {}.", status.package_name), 100);
+    progress(format!("Applied {}.", status.package_name), 100);
     Ok(true)
 }
 

@@ -34,6 +34,22 @@
         "type": "github"
       }
     },
+    "nixpkgs-dwarfs": {
+      "locked": {
+        "lastModified": 1788405554,
+        "narHash": "sha256-r2f1oUwixlgq9zOdYLqJLfS/lWBT60/IITjhTKI59JU=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "a5cc6f2c37bf518436dc8d1c288ccd0c43c2f4c4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "a5cc6f2c37bf518436dc8d1c288ccd0c43c2f4c4",
+        "type": "github"
+      }
+    },
     "nixpkgs-intel-darwin": {
       "locked": {
         "lastModified": 1787702303,
@@ -54,6 +70,7 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
+        "nixpkgs-dwarfs": "nixpkgs-dwarfs",
         "nixpkgs-intel-darwin": "nixpkgs-intel-darwin"
       }
     },

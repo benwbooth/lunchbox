@@ -23,11 +23,14 @@ TestCase {
                 property bool can_launch: false
                 property bool firmware_busy: false
                 property int firmware_progress: -1
+                property bool firmware_can_sync: false
                 property string firmware_summary: "Switch keys and firmware are required."
                 property string firmware_next_package: "switch-keys.zip"
                 property string firmware_setup_action: "choose"
                 property string firmware_setup_label: "SET UP EMULATOR"
+                property bool switch_prod_keys_imported: false
                 property bool switch_prod_keys_ready: false
+                property bool switch_firmware_imported: false
                 property bool switch_firmware_ready: false
                 property string launch_status: "Next: CHOOSE switch-keys.zip."
             }
@@ -51,9 +54,16 @@ TestCase {
                 signalName: "choosePackageRequested"
             }
 
+            SignalSpy {
+                id: primarySpy
+                target: setupPage
+                signalName: "primaryActionRequested"
+            }
+
             property alias details: detailsState
             property alias page: setupPage
             property alias chooseSpy: chooseSpy
+            property alias primarySpy: primarySpy
         }
     }
 
@@ -85,6 +95,25 @@ TestCase {
         compare(keysAction.selectorAvailable, false)
         compare(firmwareAction.selectorAvailable, true)
         compare(findChild(host.page, "firmwarePackageAction-title.keys"), null)
+    }
+
+    function test_saved_package_is_applied_without_asking_for_the_file_again() {
+        const host = createTemporaryObject(pageComponent, testCase)
+        verify(host)
+        host.details.emulator_name = "Eden"
+        host.details.firmware_can_sync = true
+        host.details.firmware_setup_action = "sync"
+        host.details.switch_prod_keys_imported = true
+        wait(0)
+
+        const keysAction = findChild(host.page,
+                                     "firmwarePackageAction-switch-keys.zip")
+        verify(keysAction)
+        compare(keysAction.applyAvailable, true)
+        compare(keysAction.text, "APPLY TO EDEN")
+        keysAction.click()
+        compare(host.chooseSpy.count, 0)
+        compare(host.primarySpy.count, 1)
     }
 
     function test_switch_setup_shows_import_failures() {

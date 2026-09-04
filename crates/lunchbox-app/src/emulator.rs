@@ -1,11 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::{OsStr, OsString};
-use std::fs;
+use std::fs::{self, File};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::time::UNIX_EPOCH;
 
 use anyhow::{Context, Result, anyhow, bail};
 use rusqlite::params_from_iter;
@@ -2127,7 +2129,9 @@ fn command_prefix_with_access_roots(
     access_roots: &[PathBuf],
 ) -> Result<(PathBuf, Vec<OsString>)> {
     match executable {
-        EmulatorExecutable::Native(path) => Ok((path.clone(), Vec::new())),
+        EmulatorExecutable::Native(path) => {
+            Ok((nixos_compatible_native_executable(path)?, Vec::new()))
+        }
         EmulatorExecutable::Flatpak { command, app_id } => {
             let mut mounts = BTreeSet::new();
             mounts.insert(map_path_for_flatpak(&flatpak_mount_point(install_root)?));
@@ -2149,6 +2153,155 @@ fn command_prefix_with_access_roots(
             ..
         } => Ok((command.clone(), vec![executable.as_os_str().to_owned()])),
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AppImagePayload {
+    Dwarfs,
+    Squashfs,
+    Unknown,
+}
+
+fn appimage_payload(path: &Path) -> Result<Option<AppImagePayload>> {
+    let mut file =
+        File::open(path).with_context(|| format!("opening managed AppImage {}", path.display()))?;
+    let mut header = [0_u8; 64];
+    if file.read(&mut header)? < header.len()
+        || &header[..4] != b"\x7fELF"
+        || header[4] != 2
+        || header[5] != 1
+        || &header[8..11] != b"AI\x02"
+    {
+        return Ok(None);
+    }
+    let section_offset = u64::from_le_bytes(header[40..48].try_into().expect("fixed ELF slice"));
+    let section_size = u64::from(u16::from_le_bytes(
+        header[58..60].try_into().expect("fixed ELF slice"),
+    ));
+    let section_count = u64::from(u16::from_le_bytes(
+        header[60..62].try_into().expect("fixed ELF slice"),
+    ));
+    let payload_offset = section_offset
+        .checked_add(
+            section_size
+                .checked_mul(section_count)
+                .context("managed AppImage ELF section table is too large")?,
+        )
+        .context("managed AppImage payload offset overflow")?;
+    file.seek(SeekFrom::Start(payload_offset))?;
+    let mut magic = [0_u8; 6];
+    let read = file.read(&mut magic)?;
+    Ok(Some(if read >= 6 && &magic == b"DWARFS" {
+        AppImagePayload::Dwarfs
+    } else if read >= 4 && &magic[..4] == b"hsqs" {
+        AppImagePayload::Squashfs
+    } else {
+        AppImagePayload::Unknown
+    }))
+}
+
+fn nixos_compatible_native_executable(path: &Path) -> Result<PathBuf> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        return Ok(path.to_path_buf());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if !Path::new("/etc/NIXOS").is_file()
+            || !path
+                .extension()
+                .and_then(OsStr::to_str)
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("appimage"))
+            || appimage_payload(path)? != Some(AppImagePayload::Dwarfs)
+        {
+            return Ok(path.to_path_buf());
+        }
+        extract_managed_dwarfs_appimage(path)
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn extract_managed_dwarfs_appimage(path: &Path) -> Result<PathBuf> {
+    let project = directories::ProjectDirs::from("com", "Lunchbox", "Lunchbox")
+        .context("could not determine the Lunchbox data directory")?;
+    let managed_root = project.data_local_dir().join("programs/appimage");
+    if !path.starts_with(&managed_root) {
+        bail!(
+            "the selected DwarFS AppImage cannot run directly on NixOS; install it through Lunchbox so it can be extracted safely"
+        );
+    }
+    let parent = path
+        .parent()
+        .context("managed AppImage has no containing directory")?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("managed AppImage name is not valid Unicode")?;
+    let extraction_root = parent.join(format!(".{name}.lunchbox-dwarfs"));
+    let app_run = extraction_root.join("AppRun");
+    let metadata = fs::metadata(path)?;
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let fingerprint = format!("{}:{modified}\n", metadata.len());
+    if executable_file(&app_run)
+        && fs::read_to_string(extraction_root.join(".lunchbox-source"))
+            .is_ok_and(|stored| stored == fingerprint)
+    {
+        return Ok(app_run);
+    }
+
+    let extractor = find_executable_in_paths(
+        "dwarfsextract",
+        &env::var_os("PATH")
+            .map(|path| env::split_paths(&path).collect::<Vec<_>>())
+            .unwrap_or_default(),
+    )
+    .context(
+        "this Eden AppImage uses DwarFS, but dwarfsextract is unavailable; update or reinstall Lunchbox from its Nix package",
+    )?;
+    let staging = parent.join(format!(
+        ".{name}.lunchbox-dwarfs-staging-{}",
+        std::process::id()
+    ));
+    if staging.exists() {
+        fs::remove_dir_all(&staging)?;
+    }
+    fs::create_dir(&staging)?;
+    let output = std::process::Command::new(extractor)
+        .args(["--input"])
+        .arg(path)
+        .args(["--output"])
+        .arg(&staging)
+        .args(["--log-level", "error"])
+        .output()
+        .context("starting DwarFS AppImage extraction")?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        let _ = fs::remove_dir_all(&staging);
+        bail!(
+            "could not extract the Eden AppImage for NixOS: {}",
+            if detail.is_empty() {
+                output.status.to_string()
+            } else {
+                detail
+            }
+        );
+    }
+    let staged_app_run = staging.join("AppRun");
+    if !executable_file(&staged_app_run) {
+        let _ = fs::remove_dir_all(&staging);
+        bail!("the extracted Eden AppImage does not contain an executable AppRun");
+    }
+    fs::write(staging.join(".lunchbox-source"), &fingerprint)?;
+    if extraction_root.exists() {
+        fs::remove_dir_all(&extraction_root)?;
+    }
+    fs::rename(&staging, &extraction_root)?;
+    Ok(app_run)
 }
 
 fn launch_environment(executable: &EmulatorExecutable) -> Vec<(OsString, OsString)> {
@@ -2925,6 +3078,55 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
     use tempfile::TempDir;
+
+    fn synthetic_appimage(root: &Path, payload_magic: &[u8]) -> PathBuf {
+        let path = root.join("emulator.AppImage");
+        let mut bytes = vec![0_u8; 128];
+        bytes[..4].copy_from_slice(b"\x7fELF");
+        bytes[4] = 2;
+        bytes[5] = 1;
+        bytes[8..11].copy_from_slice(b"AI\x02");
+        bytes[40..48].copy_from_slice(&64_u64.to_le_bytes());
+        bytes[58..60].copy_from_slice(&64_u16.to_le_bytes());
+        bytes[60..62].copy_from_slice(&1_u16.to_le_bytes());
+        bytes.extend_from_slice(payload_magic);
+        fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    #[test]
+    fn appimage_payload_reads_the_elf_section_boundary_not_runtime_strings() {
+        let temp = TempDir::new().unwrap();
+        let path = synthetic_appimage(temp.path(), b"DWARFS");
+        assert_eq!(
+            appimage_payload(&path).unwrap(),
+            Some(AppImagePayload::Dwarfs)
+        );
+
+        let path = temp.path().join("squashfs.AppImage");
+        fs::rename(temp.path().join("emulator.AppImage"), &path).unwrap();
+        let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+        file.seek(SeekFrom::Start(128)).unwrap();
+        file.write_all(b"hsqs00").unwrap();
+        assert_eq!(
+            appimage_payload(&path).unwrap(),
+            Some(AppImagePayload::Squashfs)
+        );
+    }
+
+    #[test]
+    fn configured_dwarfs_appimage_is_prepared_for_nixos() {
+        let Some(path) = env::var_os("LUNCHBOX_TEST_DWARFS_APPIMAGE").map(PathBuf::from) else {
+            return;
+        };
+        assert_eq!(
+            appimage_payload(&path).unwrap(),
+            Some(AppImagePayload::Dwarfs)
+        );
+        let executable = nixos_compatible_native_executable(&path).unwrap();
+        assert!(executable_file(&executable));
+        assert_eq!(executable.file_name(), Some(OsStr::new("AppRun")));
+    }
 
     fn prepared(root: &Path, collection: ExoCollection, config: &str) -> PreparedInstall {
         let launch_config_path = root.join(config);
