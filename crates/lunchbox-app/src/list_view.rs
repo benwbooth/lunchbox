@@ -856,7 +856,10 @@ mod tests {
             local: false,
             downloadable: true,
             non_retail: false,
+            has_non_retail_release: false,
             adult: false,
+            has_usa_release: false,
+            has_japan_release: false,
             cooperative: "unknown".into(),
             search_key: "canonical\nplatform".into(),
         }

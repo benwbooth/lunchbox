@@ -22,10 +22,12 @@ TestCase {
                 property bool torrent_loading: false
                 property bool download_busy: false
                 property string platform: "Nintendo Switch"
-                function download_source_count() { return 1 }
-                function download_source_bundle_at(index) { return 0 }
+                property string game_id: "game-one"
+                property int sourceCount: 1
+                function download_source_count() { return sourceCount }
+                function download_source_bundle_at(index) { return index }
                 function bundle_file_count_at(index) { return 1 }
-                function bundle_title_at(index) { return "MIG Switch Game Collection" }
+                function bundle_title_at(index) { return "Source " + index }
                 function bundle_detail_at(index) { return "5,475 indexed members" }
                 function bundle_file_name_at(bundle, file) {
                     return "Super Mario Odyssey.xci/Super Mario Odyssey.xci"
@@ -53,6 +55,7 @@ TestCase {
             }
 
             property alias sources: sources
+            property alias details: detailsState
             property alias reviewSpy: reviewSpy
         }
     }
@@ -89,5 +92,28 @@ TestCase {
         compare(host.sources.matchingSourceCount, 1)
         compare(host.sources.shouldShowSources, true)
         verify(findChild(host.sources, "torrentCandidate-0"))
+    }
+
+    function test_source_list_starts_at_five_and_expands_on_request() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.details.sourceCount = 8
+        host.details.detail_revision += 1
+        tryCompare(host.sources, "matchingSourceCount", 8)
+        compare(host.sources.visibleSourceCount, 5)
+        verify(findChild(host.sources, "torrentSource-4"))
+        compare(findChild(host.sources, "torrentSource-5"), null)
+
+        const expand = findChild(host.sources, "expandTorrentSourcesButton")
+        verify(expand)
+        compare(expand.text, "SHOW 3 MORE SOURCES")
+        expand.click()
+        compare(host.sources.visibleSourceCount, 8)
+        verify(findChild(host.sources, "torrentSource-7"))
+        compare(expand.text, "SHOW FEWER SOURCES")
+
+        host.details.game_id = "game-two"
+        compare(host.sources.sourcesExpanded, false)
+        compare(host.sources.visibleSourceCount, 5)
     }
 }

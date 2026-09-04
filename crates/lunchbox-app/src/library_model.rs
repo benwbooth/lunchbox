@@ -32,6 +32,10 @@ pub mod qobject {
         #[qproperty(bool, ready)]
         #[qproperty(bool, hide_non_retail)]
         #[qproperty(bool, hide_adult)]
+        #[qproperty(bool, usa_release_filter)]
+        #[qproperty(bool, japan_release_filter)]
+        #[qproperty(bool, adult_release_filter)]
+        #[qproperty(bool, non_retail_release_filter)]
         #[qproperty(QString, artwork_type)]
         #[qproperty(i32, grid_zoom)]
         #[qproperty(QString, view_mode)]
@@ -202,6 +206,15 @@ pub mod qobject {
             self: Pin<&mut LibraryModel>,
             hide_non_retail: bool,
             hide_adult: bool,
+        );
+
+        #[qinvokable]
+        fn set_release_filters(
+            self: Pin<&mut LibraryModel>,
+            usa: bool,
+            japan: bool,
+            adult: bool,
+            non_retail: bool,
         );
 
         #[qinvokable]
@@ -955,6 +968,10 @@ pub struct LibraryModelRust {
     ready: bool,
     hide_non_retail: bool,
     hide_adult: bool,
+    usa_release_filter: bool,
+    japan_release_filter: bool,
+    adult_release_filter: bool,
+    non_retail_release_filter: bool,
     artwork_type: QString,
     grid_zoom: i32,
     view_mode: QString,
@@ -1157,6 +1174,10 @@ impl Default for LibraryModelRust {
             ready: false,
             hide_non_retail: preferences.hide_non_retail,
             hide_adult: preferences.hide_adult,
+            usa_release_filter: false,
+            japan_release_filter: false,
+            adult_release_filter: false,
+            non_retail_release_filter: false,
             artwork_type: qstring(&preferences.artwork_type),
             grid_zoom: preferences.grid_zoom,
             view_mode: qstring(&preferences.view_mode),
@@ -2696,6 +2717,10 @@ impl qobject::LibraryModel {
                         tag: self.as_ref().tag_filter().to_string(),
                         hide_non_retail: *self.as_ref().hide_non_retail(),
                         hide_adult: *self.as_ref().hide_adult(),
+                        include_usa_releases: *self.as_ref().usa_release_filter(),
+                        include_japan_releases: *self.as_ref().japan_release_filter(),
+                        include_adult_releases: *self.as_ref().adult_release_filter(),
+                        include_non_retail_releases: *self.as_ref().non_retail_release_filter(),
                         favorite_game_ids: Arc::new(favorite_game_ids.clone()),
                         recent_game_order: Arc::new(recent_game_order.clone()),
                         display_titles: Arc::clone(&metadata_titles),
@@ -2936,6 +2961,10 @@ impl qobject::LibraryModel {
             tag: self.tag_filter().to_string(),
             hide_non_retail: *self.hide_non_retail(),
             hide_adult: *self.hide_adult(),
+            include_usa_releases: *self.usa_release_filter(),
+            include_japan_releases: *self.japan_release_filter(),
+            include_adult_releases: *self.adult_release_filter(),
+            include_non_retail_releases: *self.non_retail_release_filter(),
             favorite_game_ids: Arc::clone(&self.rust().favorite_game_ids),
             collection_game_ids,
             collection_game_order,
@@ -3092,6 +3121,26 @@ impl qobject::LibraryModel {
                 "Filters applied, but the preference could not be saved: {error}"
             )));
         }
+    }
+
+    pub fn set_release_filters(
+        mut self: Pin<&mut Self>,
+        usa: bool,
+        japan: bool,
+        adult: bool,
+        non_retail: bool,
+    ) {
+        if usa == *self.as_ref().usa_release_filter()
+            && japan == *self.as_ref().japan_release_filter()
+            && adult == *self.as_ref().adult_release_filter()
+            && non_retail == *self.as_ref().non_retail_release_filter()
+        {
+            return;
+        }
+        self.as_mut().set_usa_release_filter(usa);
+        self.as_mut().set_japan_release_filter(japan);
+        self.as_mut().set_adult_release_filter(adult);
+        self.as_mut().set_non_retail_release_filter(non_retail);
     }
 
     pub fn set_presentation_preferences(
@@ -7075,7 +7124,10 @@ mod tests {
             local,
             downloadable,
             non_retail: false,
+            has_non_retail_release: false,
             adult: false,
+            has_usa_release: false,
+            has_japan_release: false,
             cooperative: String::new(),
             search_key: format!("{id}\n{platform}"),
         }

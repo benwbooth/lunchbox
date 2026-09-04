@@ -257,8 +257,16 @@ ApplicationWindow {
     ]
     readonly property int activeFilterCount: (availability.length > 0 ? 1 : 0)
                                                + (library.tag_filter.length > 0 ? 1 : 0)
-                                               + (library.hide_non_retail ? 1 : 0)
-                                               + (library.hide_adult ? 1 : 0)
+                                               + (library.usa_release_filter
+                                                  || library.japan_release_filter ? 1 : 0)
+                                               + (library.adult_release_filter
+                                                  || library.non_retail_release_filter ? 1 : 0)
+                                               + (!library.adult_release_filter
+                                                  && !library.non_retail_release_filter
+                                                  && library.hide_non_retail ? 1 : 0)
+                                               + (!library.adult_release_filter
+                                                  && !library.non_retail_release_filter
+                                                  && library.hide_adult ? 1 : 0)
                                                + library.list_filter_active_count
     readonly property bool archiveImportUiProbe: Qt.application.arguments.indexOf("--archive-import-ui-probe") >= 0
     readonly property bool manualMatchUiProbe: Qt.application.arguments.indexOf("--manual-match-ui-probe") >= 0
@@ -1232,6 +1240,12 @@ ApplicationWindow {
         root.hoverPreviewPlaying = false
         root.hoverPreviewAudioMuted = true
         root.hoverPreviewPlaybackError = ""
+        // Artwork for the card under the pointer is foreground work immediately.
+        // Only video keeps the half-second intent gate below.
+        library.request_priority_artwork(tile.gameDatabaseId,
+                                         tile.gameCanonicalTitle,
+                                         tile.gamePlatform,
+                                         library.artwork_type)
         // A half-second intent gate prevents a fast pass over the grid from
         // downloading gameplay videos that the user never stopped to inspect.
         hoverPreviewDelay.restart()
@@ -7810,7 +7824,8 @@ ApplicationWindow {
         padding: 10
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
-        implicitHeight: filterColumn.implicitHeight + topPadding + bottomPadding
+        implicitHeight: Math.min(filterColumn.implicitHeight + topPadding + bottomPadding,
+                                 Math.max(260, root.height - y - 18))
 
         background: Rectangle {
             radius: 12
@@ -7818,9 +7833,16 @@ ApplicationWindow {
             border.color: root.line
             border.width: 1
         }
-        contentItem: Column {
-            id: filterColumn
-            spacing: 2
+        contentItem: ScrollView {
+            id: filterScroll
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            contentWidth: availableWidth
+
+            Column {
+                id: filterColumn
+                width: filterScroll.availableWidth
+                spacing: 2
             Item {
                 width: parent.width
                 height: 40
@@ -7841,6 +7863,7 @@ ApplicationWindow {
                     enabled: root.activeFilterCount > 0
                     onClicked: {
                         library.set_content_filters(false, false)
+                        library.set_release_filters(false, false, false, false)
                         library.select_tag_filter("")
                         library.clear_all_list_column_filters()
                         root.selectLibrary("")
@@ -7907,9 +7930,35 @@ ApplicationWindow {
                 ToolTip.visible: hovered && library.tag_count === 0
                 ToolTip.text: "Add tags from Edit Metadata in a game's details"
             }
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: root.line
+            }
+            ReleaseFilterPanel {
+                width: parent.width
+                library: root.library
+                ink: root.ink
+                muted: "#687488"
+                line: root.line
+                onFiltersChanged: root.scheduleFilter()
+            }
+            Text {
+                width: parent.width
+                visible: !library.adult_release_filter
+                         && !library.non_retail_release_filter
+                topPadding: 7
+                text: "DEFAULT VISIBILITY"
+                color: "#687488"
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 1
+            }
             FilterToggle {
                 label: "Hide non-retail"
                 description: "Homebrew, hacks, unlicensed and pirate releases"
+                visible: !library.adult_release_filter
+                         && !library.non_retail_release_filter
                 checked: library.hide_non_retail
                 onToggled: {
                     library.set_content_filters(!checked, library.hide_adult)
@@ -7919,6 +7968,8 @@ ApplicationWindow {
             FilterToggle {
                 label: "Hide adult"
                 description: "Adult-only ratings, genres and explicit title tags"
+                visible: !library.adult_release_filter
+                         && !library.non_retail_release_filter
                 checked: library.hide_adult
                 onToggled: {
                     library.set_content_filters(library.hide_non_retail, !checked)
@@ -7967,10 +8018,11 @@ ApplicationWindow {
                 width: parent.width
                 topPadding: 7
                 bottomPadding: 3
-                text: "Filters combine with search, tags, and platform selection. Minerva always excludes installed games."
+                text: "Selections within Region or Category are combined with OR; the two sections combine with search, tags, platform, and availability using AND. Minerva always excludes installed games."
                 color: "#6f7c90"
                 font.pixelSize: 9
                 wrapMode: Text.WordWrap
+            }
             }
         }
     }
@@ -9985,7 +10037,16 @@ ApplicationWindow {
             border.color: row.activeFocus || root.selectedGameId === row.gameId
                           ? root.accent : root.line
             border.width: row.activeFocus || root.selectedGameId === row.gameId ? 2 : 0
-            HoverHandler { id: rowHover }
+            HoverHandler {
+                id: rowHover
+                onHoveredChanged: {
+                    if (hovered)
+                        library.request_priority_artwork(row.gameDatabaseId,
+                                                         row.gameCanonicalTitle,
+                                                         row.gamePlatform,
+                                                         row.requestedArtworkType)
+                }
+            }
             TapHandler {
                 onTapped: {
                     list.currentIndex = row.index

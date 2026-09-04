@@ -9,6 +9,7 @@ Column {
     property bool showAddSource: false
     property bool installed: false
     property bool alternativesExpanded: false
+    property bool sourcesExpanded: false
     property color ink: "#f4f7fb"
     property color muted: "#95a2b6"
     property color line: "#2b3647"
@@ -19,6 +20,12 @@ Column {
         revision
         return detailsModel ? detailsModel.download_source_count() : 0
     }
+    readonly property int collapsedSourceLimit: 5
+    readonly property int visibleSourceCount:
+        sourcesExpanded ? matchingSourceCount
+                        : Math.min(collapsedSourceLimit, matchingSourceCount)
+    readonly property string gameIdentity:
+        detailsModel ? detailsModel.game_id : ""
     readonly property int registeredSourceCount:
         detailsModel ? detailsModel.registered_torrent_source_count : 0
     readonly property bool ranking: detailsModel ? detailsModel.torrent_loading : false
@@ -34,6 +41,7 @@ Column {
     visible: shouldShowSources
     height: visible ? implicitHeight : 0
     spacing: 9
+    onGameIdentityChanged: sourcesExpanded = false
 
     RowLayout {
         width: parent.width
@@ -91,7 +99,7 @@ Column {
     Repeater {
         id: sourceRepeater
         objectName: "matchingTorrentSources"
-        model: root.matchingSourceCount
+        model: root.visibleSourceCount
 
         delegate: Rectangle {
             id: sourceSection
@@ -242,6 +250,34 @@ Column {
                     }
                 }
             }
+        }
+    }
+
+    Button {
+        id: expandSourcesButton
+        objectName: "expandTorrentSourcesButton"
+        width: parent.width
+        height: 34
+        visible: root.matchingSourceCount > root.collapsedSourceLimit
+        text: root.sourcesExpanded
+              ? "SHOW FEWER SOURCES"
+              : "SHOW " + (root.matchingSourceCount - root.collapsedSourceLimit)
+                + " MORE SOURCE"
+                + (root.matchingSourceCount - root.collapsedSourceLimit === 1 ? "" : "S")
+        font.pixelSize: 9
+        font.weight: Font.Bold
+        onClicked: root.sourcesExpanded = !root.sourcesExpanded
+        background: Rectangle {
+            radius: 8
+            color: parent.down ? "#233144" : "transparent"
+            border.color: root.line
+        }
+        contentItem: Text {
+            text: parent.text
+            color: root.accentCool
+            font: parent.font
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
         }
     }
 

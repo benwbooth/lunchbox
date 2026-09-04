@@ -1318,14 +1318,23 @@ exact EmuMovies archive title members, and ScreenScraper. It reuses reviewed
 stable IDs, but may also consume one unambiguous strict exact title result from
 SteamGridDB, one strict exact title/platform result from IGDB, or one strict
 exact title result from a platform-constrained ScreenScraper search. Those
-transient matches are not persisted as identity links. Explicit refresh
+transient matches are not persisted as identity links. If those providers miss,
+the final automatic web fallback queries the exact title, platform, and artwork
+category and considers at most five results. Candidate URLs and image bytes stay
+bounded, HTTPS-only, signature validated, and atomically isolated in the
+`websearch` provider; the result is media only and never an identity link.
+Explicit refresh
 bypasses fresh provider-miss markers while every provider remains isolated to
 its own cache directory.
 
-Web artwork deliberately does not reproduce the legacy DuckDuckGo first-result
-scraper. The system browser receives a category-specific Google Images query;
-Lunchbox accepts
-only one user-reviewed HTTPS image URL or local file. A generation-guarded Rust
+The automatic web-artwork fallback restores the useful part of the legacy
+DuckDuckGo route without treating an arbitrary image as game identity: the query
+contains the exact catalog title, platform, and category; only the first five
+results are considered; and all network responses and image candidates are
+bounded before the existing atomic publisher accepts PNG/JPEG/WebP bytes. The
+manual route remains distinct. The system browser receives a category-specific
+Google Images query and Lunchbox accepts only one user-reviewed HTTPS image URL
+or local file. A generation-guarded Rust
 worker downloads or copies the candidate into an opaque, per-candidate process
 quarantine, rejects files over 16 MiB and non-PNG/JPEG/WebP signatures, and
 exposes only that validated local copy to QML. Confirmation promotes the exact

@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 use crate::catalog;
@@ -49,7 +50,7 @@ pub(crate) fn provider_description(provider: &str) -> &'static str {
         "minerva" => "Media distributed beside Minerva acquisition records",
         "emumovies" => "Premium retro artwork, videos, and manuals",
         "screenscraper" => "Checksum-oriented community game media",
-        "websearch" => "Explicitly reviewed artwork cached from a web search",
+        "websearch" => "Automatic last-resort web artwork plus explicitly reviewed imports",
         _ => "Provider is not recognized",
     }
 }
@@ -86,17 +87,19 @@ pub(crate) fn effective_provider_priority(priority: &[String]) -> Vec<String> {
 
 const LIBRETRO_THUMBNAILS_URL: &str = "https://thumbnails.libretro.com";
 const MEDIA_DOWNLOAD_WORKERS: usize = 8;
+const FOREGROUND_MEDIA_WORKERS: usize = 3;
 const MEDIA_DOWNLOAD_QUEUE_CAPACITY: usize = 512;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const PROVIDER_FAILURE_BACKOFF: Duration = Duration::from_secs(2 * 60);
 const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
-const AUTOMATIC_DOWNLOAD_PROVIDERS: [&str; 5] = [
+const AUTOMATIC_DOWNLOAD_PROVIDERS: [&str; 6] = [
     "libretro",
     "steamgriddb",
     "igdb",
     "emumovies",
     "screenscraper",
+    "websearch",
 ];
 static PROVIDER_FAILURES: std::sync::OnceLock<Mutex<HashMap<String, Instant>>> =
     std::sync::OnceLock::new();
@@ -1150,10 +1153,14 @@ impl MediaFetchState {
         true
     }
 
-    fn pop_next(&mut self) -> Option<MediaFetchRequest> {
-        self.foreground_requests
-            .pop_back()
-            .or_else(|| self.requests.pop_back())
+    fn pop_next(&mut self, foreground_only: bool) -> Option<MediaFetchRequest> {
+        self.foreground_requests.pop_back().or_else(|| {
+            if foreground_only {
+                None
+            } else {
+                self.requests.pop_back()
+            }
+        })
     }
 }
 
@@ -1283,6 +1290,7 @@ fn media_fetch_worker<F>(
 ) where
     F: Fn(MediaFetchOutcome) + Send + Sync + 'static,
 {
+    let foreground_only = worker_index < FOREGROUND_MEDIA_WORKERS;
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(4)))
         .timeout_global(Some(Duration::from_secs(15)))
@@ -1297,7 +1305,7 @@ fn media_fetch_worker<F>(
                 Err(_) => return,
             };
             while state.foreground_requests.is_empty()
-                && state.requests.is_empty()
+                && (foreground_only || state.requests.is_empty())
                 && !state.shutdown
             {
                 state = match ready.wait(state) {
@@ -1308,7 +1316,7 @@ fn media_fetch_worker<F>(
             if state.shutdown {
                 return;
             }
-            state.pop_next()
+            state.pop_next(foreground_only)
         };
         let Some(request) = request else { continue };
         callback(fetch_media(
@@ -1341,6 +1349,7 @@ fn fetch_media(
             "igdb" => fetch_igdb(root, &request),
             "emumovies" => fetch_emumovies(root, &request),
             "screenscraper" => fetch_screenscraper(root, &request),
+            "websearch" => fetch_web_image(agent, root, &request),
             _ => Ok(None),
         };
         match result {
@@ -1836,6 +1845,197 @@ fn fetch_screenscraper(
     Ok(fetched)
 }
 
+const WEB_SEARCH_RESPONSE_LIMIT: u64 = 2 * 1024 * 1024;
+const WEB_SEARCH_RESULT_LIMIT: usize = 5;
+const WEB_SEARCH_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+     (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+#[derive(Debug, Deserialize)]
+struct WebImageSearchResponse {
+    #[serde(default)]
+    results: Vec<WebImageSearchResult>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WebImageSearchResult {
+    #[serde(default)]
+    image: String,
+    #[serde(default)]
+    thumbnail: String,
+}
+
+/// Restores the legacy credential-free web-image fallback. The query is media
+/// routing only: its result never establishes or changes catalog identity.
+/// Candidate bytes still pass through the same bounded signature validation
+/// and atomic provider cache used by explicitly reviewed artwork.
+fn fetch_web_image(
+    agent: &ureq::Agent,
+    root: &Path,
+    request: &MediaFetchRequest,
+) -> Result<Option<(ArtworkKind, PathBuf)>> {
+    const PROVIDER: &str = "websearch";
+    if !request.force
+        && provider_negative_cache_is_fresh(
+            root,
+            PROVIDER,
+            request.database_id,
+            request.requested_kind,
+            request.exact_only,
+        )
+    {
+        return Ok(None);
+    }
+
+    for fetched_kind in retrieval_kinds(request.requested_kind, request.exact_only) {
+        let query = web_artwork_query(&request.title, &request.platform, fetched_kind);
+        let results = search_web_images(agent, &query)?;
+        let mut attempted = HashSet::new();
+        for result in results.into_iter().take(WEB_SEARCH_RESULT_LIMIT) {
+            for candidate_url in [result.image, result.thumbnail] {
+                if candidate_url.is_empty()
+                    || !attempted.insert(candidate_url.clone())
+                    || !crate::provider_image::approved_url(&candidate_url)
+                {
+                    continue;
+                }
+                let candidate_id = hex::encode(Sha256::digest(candidate_url.as_bytes()));
+                if let Ok(path) = crate::provider_image::download_and_publish(
+                    agent,
+                    &candidate_url,
+                    root,
+                    request.database_id,
+                    PROVIDER,
+                    fetched_kind,
+                    &candidate_id[..16],
+                ) {
+                    remove_provider_negative_cache(root, PROVIDER, request);
+                    return Ok(Some((fetched_kind, path)));
+                }
+            }
+        }
+    }
+
+    write_provider_negative_cache(
+        root,
+        PROVIDER,
+        request,
+        "no downloadable image in the first five exact-title web results",
+    )?;
+    Ok(None)
+}
+
+fn web_artwork_query(title: &str, platform: &str, kind: ArtworkKind) -> String {
+    let media = match kind {
+        ArtworkKind::BoxFront | ArtworkKind::Box3d => "box art cover",
+        ArtworkKind::BoxBack => "box back cover",
+        ArtworkKind::Screenshot => "gameplay screenshot",
+        ArtworkKind::TitleScreen => "title screen",
+        ArtworkKind::Fanart => "fan art wallpaper",
+        ArtworkKind::ClearLogo => "transparent game logo",
+        ArtworkKind::CartFront => "cartridge front",
+        ArtworkKind::CartBack => "cartridge back",
+        ArtworkKind::Cart3d => "3D cartridge",
+        ArtworkKind::Disc => "game disc",
+        ArtworkKind::Marquee => "arcade marquee",
+        ArtworkKind::Banner => "game banner",
+        ArtworkKind::Flyer => "game advertisement flyer",
+        ArtworkKind::GameOverScreen => "game over screen",
+    };
+    format!("\"{}\" \"{}\" {media}", title.trim(), platform.trim())
+}
+
+fn search_web_images(agent: &ureq::Agent, query: &str) -> Result<Vec<WebImageSearchResult>> {
+    let encoded: String = url::form_urlencoded::byte_serialize(query.as_bytes()).collect();
+    let search_url = format!("https://duckduckgo.com/?q={encoded}&iax=images&ia=images");
+    let html = read_bounded_web_response(
+        agent
+            .get(&search_url)
+            .header("User-Agent", WEB_SEARCH_USER_AGENT)
+            .header("Accept", "text/html,application/xhtml+xml")
+            .header("Accept-Language", "en-US,en;q=0.8")
+            .call()
+            .context("requesting the web-image search page")?,
+        "web-image search page",
+    )?;
+    let token = extract_web_image_token(&html)
+        .context("web-image search did not provide a request token")?;
+    let result_url =
+        format!("https://duckduckgo.com/i.js?l=us-en&o=json&q={encoded}&vqd={token}&f=,,,,,&p=1");
+    let body = read_bounded_web_response(
+        agent
+            .get(&result_url)
+            .header("User-Agent", WEB_SEARCH_USER_AGENT)
+            .header("Accept", "application/json")
+            .header("Referer", &search_url)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .call()
+            .context("requesting web-image results")?,
+        "web-image results",
+    )?;
+    serde_json::from_str::<WebImageSearchResponse>(&body)
+        .map(|response| response.results)
+        .context("decoding web-image results")
+}
+
+fn read_bounded_web_response(
+    mut response: ureq::http::Response<ureq::Body>,
+    label: &str,
+) -> Result<String> {
+    let status = response.status().as_u16();
+    if !(200..300).contains(&status) {
+        bail!("{label} request failed with HTTP {status}");
+    }
+    if response
+        .headers()
+        .get(ureq::http::header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_some_and(|length| length > WEB_SEARCH_RESPONSE_LIMIT)
+    {
+        bail!("{label} exceeds the 2 MiB safety limit");
+    }
+    let mut bytes = Vec::new();
+    response
+        .body_mut()
+        .as_reader()
+        .take(WEB_SEARCH_RESPONSE_LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("reading {label}"))?;
+    if bytes.len() as u64 > WEB_SEARCH_RESPONSE_LIMIT {
+        bail!("{label} exceeds the 2 MiB safety limit");
+    }
+    String::from_utf8(bytes).with_context(|| format!("decoding {label} as UTF-8"))
+}
+
+fn extract_web_image_token(html: &str) -> Option<String> {
+    for prefix in ["vqd='", "vqd=\""] {
+        if let Some(start) = html.find(prefix) {
+            let start = start + prefix.len();
+            let delimiter = prefix.chars().last()?;
+            if let Some(end) = html[start..].find(delimiter) {
+                return valid_web_image_token(&html[start..start + end]);
+            }
+        }
+    }
+    let start = html.find("vqd=")? + 4;
+    let remainder = &html[start..];
+    let end = remainder
+        .find(|character: char| {
+            character == '&' || character == '"' || character == '\'' || character.is_whitespace()
+        })
+        .unwrap_or(remainder.len().min(80));
+    valid_web_image_token(&remainder[..end])
+}
+
+fn valid_web_image_token(value: &str) -> Option<String> {
+    (!value.is_empty()
+        && value.len() <= 80
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')))
+    .then(|| value.to_owned())
+}
+
 pub(crate) fn retrieval_kinds(requested: ArtworkKind, exact_only: bool) -> Vec<ArtworkKind> {
     if exact_only {
         vec![requested]
@@ -2253,9 +2453,9 @@ mod tests {
         state.push(fetch_request(3, ArtworkKind::Fanart), true);
         state.push(fetch_request(4, ArtworkKind::BoxFront), false);
 
-        assert_eq!(state.pop_next().unwrap().database_id, 3);
-        assert_eq!(state.pop_next().unwrap().database_id, 4);
-        assert_eq!(state.pop_next().unwrap().database_id, 2);
+        assert_eq!(state.pop_next(false).unwrap().database_id, 3);
+        assert_eq!(state.pop_next(false).unwrap().database_id, 4);
+        assert_eq!(state.pop_next(false).unwrap().database_id, 2);
     }
 
     #[test]
@@ -2269,9 +2469,21 @@ mod tests {
         assert!(state.prioritize(2, ArtworkKind::BoxFront));
         assert!(!state.prioritize(9, ArtworkKind::BoxFront));
         assert_eq!(state.queued_len(), 3);
-        assert_eq!(state.pop_next().unwrap().database_id, 2);
-        assert_eq!(state.pop_next().unwrap().database_id, 1);
-        assert_eq!(state.pop_next().unwrap().database_id, 3);
+        assert_eq!(state.pop_next(false).unwrap().database_id, 2);
+        assert_eq!(state.pop_next(false).unwrap().database_id, 1);
+        assert_eq!(state.pop_next(false).unwrap().database_id, 3);
+    }
+
+    #[test]
+    fn reserved_foreground_worker_never_consumes_background_work() {
+        let mut state = MediaFetchState::default();
+        state.push(fetch_request(1, ArtworkKind::BoxFront), false);
+
+        assert!(state.pop_next(true).is_none());
+
+        state.push(fetch_request(2, ArtworkKind::Fanart), true);
+        assert_eq!(state.pop_next(true).unwrap().database_id, 2);
+        assert_eq!(state.pop_next(false).unwrap().database_id, 1);
     }
 
     fn touch(path: &Path) {
@@ -2388,10 +2600,39 @@ mod tests {
                 "libretro",
                 "steamgriddb",
                 "igdb",
-                "screenscraper"
+                "screenscraper",
+                "websearch"
             ]
         );
-        assert!(!automatic_provider_order(&priority).contains(&"websearch".to_owned()));
+    }
+
+    #[test]
+    fn web_artwork_query_is_exact_title_platform_and_media_specific() {
+        assert_eq!(
+            web_artwork_query(
+                " Super Mario Odyssey ",
+                " Nintendo Switch ",
+                ArtworkKind::BoxFront,
+            ),
+            "\"Super Mario Odyssey\" \"Nintendo Switch\" box art cover"
+        );
+        assert_eq!(
+            web_artwork_query("Faxanadu", "NES", ArtworkKind::Screenshot),
+            "\"Faxanadu\" \"NES\" gameplay screenshot"
+        );
+    }
+
+    #[test]
+    fn web_image_token_parser_accepts_only_bounded_safe_tokens() {
+        assert_eq!(
+            extract_web_image_token("var data = { vqd='4-123456789_abc' };").as_deref(),
+            Some("4-123456789_abc")
+        );
+        assert_eq!(
+            extract_web_image_token("https://example.invalid/?vqd=token-42&x=1").as_deref(),
+            Some("token-42")
+        );
+        assert!(extract_web_image_token("vqd='<script>'").is_none());
     }
 
     #[test]

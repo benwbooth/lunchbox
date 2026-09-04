@@ -507,12 +507,15 @@ strings.
 
 The desktop cover grid reuses those same cached videos for delayed gameplay
 previews. Resting the pointer on a card or focusing it from the keyboard for
-220 ms performs an off-thread exact-ID lookup; leaving, moving focus, opening
+500 ms performs an off-thread exact-ID lookup; leaving, moving focus, opening
 the game, or recycling the virtualized card cancels that request without
 publishing stale media. One shared Qt Multimedia player serves the active card,
 loops silently by default, exposes an explicit sound toggle, and labels the
-chosen cache provider. Visible games enter a bounded automatic EmuMovies queue;
-hovering or opening a game moves its stable identity to the front immediately.
+chosen cache provider. Visible games enter bounded automatic artwork and
+EmuMovies queues. Hovering a card immediately promotes its artwork into a
+foreground lane reserved from background grid loading; opening a game also
+promotes its hero and box art. Gameplay video keeps the 500-ms intent gate so
+merely crossing a card does not start a large download.
 The card shows setup, queued, live transfer percentage, unavailable, and
 retryable-error states, then
 re-runs the exact cache lookup and starts playback as soon as publication
@@ -524,13 +527,18 @@ the current source while preserving the legacy provider and media-type fallback
 order. The complete provider order is editable and durable in Settings; saving
 it immediately rebuilds the in-memory artwork index off the GUI thread and also
 governs cached videos and manuals. Missing exact artwork now walks that same
-order through LibRetro, SteamGridDB, IGDB, EmuMovies artwork packs, and
-ScreenScraper. Reviewed provider IDs are reused directly. Otherwise Lunchbox
+order through LibRetro, SteamGridDB, IGDB, EmuMovies artwork packs,
+ScreenScraper, and a final bounded web-image fallback. Reviewed provider IDs are
+reused directly. Otherwise Lunchbox
 accepts only one unambiguous exact SteamGridDB title, one exact IGDB
 title/platform pair, or one exact ScreenScraper title inside an explicitly
 mapped platform; ambiguous results remain manual review candidates. Nintendo
 Switch therefore skips LibRetro's nonexistent Switch namespace and continues
-through every configured modern-game provider. Its refresh action bypasses
+through every configured modern-game provider. The web fallback queries the
+exact title, platform, and requested media category, examines at most five
+results, and accepts only HTTPS PNG/JPEG/WebP bytes through the existing bounded
+atomic publisher. It supplies artwork only and never establishes game identity.
+Its refresh action bypasses
 fresh miss markers and each provider publishes only its own file. A miss or
 transfer error keeps every existing image.
 
@@ -552,9 +560,9 @@ chooses one individual artwork file. SteamGridDB supplies backgrounds, covers,
 and logos; IGDB supplies covers, artwork, and screenshots through a Confidential
 Twitch Developer application's Client ID and newest Client Secret. IGDB account
 credentials and IGDB MCP credentials are not API application credentials. Web
-artwork uses a focused Google Images query in the system browser rather than
-scraping unsupported search HTML: the user supplies one exact HTTPS image URL or
-local file, Lunchbox validates it off-thread in a unique quarantine, previews
+artwork also retains a focused Google Images query in the system browser for
+manual review: the user supplies one exact HTTPS image URL or local file,
+Lunchbox validates it off-thread in a unique quarantine, previews
 only that local validated copy, and publishes those exact bytes only after
 explicit confirmation. All reviewed image routes use bounded PNG/JPEG/WebP signature
 validation and atomic provider-owned cache publication, so replacing one source
