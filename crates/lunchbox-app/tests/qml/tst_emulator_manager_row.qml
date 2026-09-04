@@ -73,4 +73,24 @@ TestCase {
         tryCompare(host.emulatorRow, "uninstallActionVisible", true)
         verify(host.emulatorRow.emulatorDetail.indexOf("installed by Lunchbox") >= 0)
     }
+
+    function test_installed_emulator_offers_scoped_defaults() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        const defaultButton = findChild(host.emulatorRow, "emulatorDefaultButton")
+        verify(defaultButton)
+
+        compare(host.emulatorRow.defaultActionVisible, false)
+        host.manager.busy = false
+        host.emulatorRow.defaultActionsAvailable = true
+        host.emulatorRow.platformName = "Nintendo Switch"
+        compare(host.emulatorRow.defaultActionsAvailable, true)
+        tryCompare(host.emulatorRow, "defaultActionVisible", true)
+        compare(defaultButton.text, "Set default")
+
+        host.emulatorRow.platformDefault = true
+        tryCompare(defaultButton, "text", "Platform default")
+        host.emulatorRow.gameDefault = true
+        tryCompare(defaultButton, "text", "Game default")
+    }
 }

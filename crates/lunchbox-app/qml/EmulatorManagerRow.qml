@@ -12,6 +12,10 @@ Rectangle {
     required property color line
     required property color accent
     required property color accentCool
+    property bool defaultActionsAvailable: false
+    property bool gameDefault: false
+    property bool platformDefault: false
+    property string platformName: ""
 
     readonly property int modelRevision: emulatorModel ? emulatorModel.revision : 0
     readonly property bool managerBusy: emulatorModel ? emulatorModel.busy : false
@@ -46,9 +50,12 @@ Rectangle {
     }
     readonly property bool installActionVisible: !managerBusy && installAvailable
     readonly property bool uninstallActionVisible: !managerBusy && uninstallAvailable
+    readonly property bool defaultActionVisible: !managerBusy && defaultActionsAvailable
 
     signal installRequested(int rowIndex)
     signal uninstallRequested(int rowIndex, string emulatorName, string confirmation)
+    signal gameDefaultRequested(int rowIndex)
+    signal platformDefaultRequested(int rowIndex)
 
     width: ListView.view ? ListView.view.width : 720
     height: 78
@@ -155,6 +162,33 @@ Rectangle {
             running: visible
             Layout.preferredWidth: 26
             Layout.preferredHeight: 26
+        }
+
+        Button {
+            id: emulatorDefaultButton
+            objectName: "emulatorDefaultButton"
+            visible: row.defaultActionVisible
+            text: row.gameDefault ? "Game default"
+                  : row.platformDefault ? "Platform default" : "Set default"
+            font.pixelSize: 10
+            onClicked: defaultMenu.open()
+
+            Menu {
+                id: defaultMenu
+                y: emulatorDefaultButton.height
+
+                MenuItem {
+                    text: (row.gameDefault ? "✓  " : "")
+                          + "Default for this game"
+                    onTriggered: row.gameDefaultRequested(row.rowIndex)
+                }
+
+                MenuItem {
+                    text: (row.platformDefault ? "✓  " : "")
+                          + "Default for " + row.platformName
+                    onTriggered: row.platformDefaultRequested(row.rowIndex)
+                }
+            }
         }
 
         HeaderButton {

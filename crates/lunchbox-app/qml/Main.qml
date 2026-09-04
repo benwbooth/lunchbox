@@ -2329,6 +2329,13 @@ ApplicationWindow {
         id: emulatorManager
     }
 
+    Timer {
+        id: emulatorActivityExpiry
+        interval: 30000
+        repeat: false
+        onTriggered: emulatorManager.dismiss_completed_activity()
+    }
+
     EmulatorUpdateModel {
         id: emulatorUpdates
     }
@@ -2362,6 +2369,20 @@ ApplicationWindow {
                     && root.selectedGameId.length > 0
                     && gameDetails.local)
                 gameDetails.refresh_emulators()
+        }
+        function onRecent_activityChanged() {
+            if (emulatorManager.recent_activity.length > 0
+                    && !emulatorManager.recent_activity_attention)
+                emulatorActivityExpiry.restart()
+            else
+                emulatorActivityExpiry.stop()
+        }
+        function onRecent_activity_attentionChanged() {
+            if (emulatorManager.recent_activity.length > 0
+                    && !emulatorManager.recent_activity_attention)
+                emulatorActivityExpiry.restart()
+            else
+                emulatorActivityExpiry.stop()
         }
     }
 
@@ -21448,12 +21469,58 @@ ApplicationWindow {
                         line: root.line
                         accent: root.accent
                         accentCool: root.accentCool
+                        platformName: emulatorManager.platform_filter
+                        defaultActionsAvailable: {
+                            emulatorManager.revision
+                            gameDetails.detail_revision
+                            return emulatorManager.platform_filter.length > 0
+                                    && gameDetails.game_id.length > 0
+                                    && emulatorManager.platform_filter === gameDetails.platform
+                                    && gameDetails.manager_emulator_target_available(
+                                        emulatorManager.emulator_id_at(rowIndex),
+                                        emulatorManager.manager_at(rowIndex),
+                                        emulatorManager.package_id_at(rowIndex))
+                        }
+                        gameDefault: {
+                            emulatorManager.revision
+                            gameDetails.detail_revision
+                            return defaultActionsAvailable
+                                    && gameDetails.manager_emulator_target_is_default(
+                                        emulatorManager.emulator_id_at(rowIndex),
+                                        emulatorManager.manager_at(rowIndex),
+                                        emulatorManager.package_id_at(rowIndex),
+                                        "game")
+                        }
+                        platformDefault: {
+                            emulatorManager.revision
+                            gameDetails.detail_revision
+                            return defaultActionsAvailable
+                                    && gameDetails.manager_emulator_target_is_default(
+                                        emulatorManager.emulator_id_at(rowIndex),
+                                        emulatorManager.manager_at(rowIndex),
+                                        emulatorManager.package_id_at(rowIndex),
+                                        "platform")
+                        }
                         onInstallRequested: rowIndex => emulatorManager.install_at(rowIndex)
                         onUninstallRequested: (rowIndex, emulatorName, confirmation) => {
                             root.pendingEmulatorUninstallIndex = rowIndex
                             root.pendingEmulatorUninstallName = emulatorName
                             root.pendingEmulatorUninstallConfirmation = confirmation
                             emulatorUninstallDialog.open()
+                        }
+                        onGameDefaultRequested: rowIndex => {
+                            gameDetails.save_manager_emulator_preference(
+                                emulatorManager.emulator_id_at(rowIndex),
+                                emulatorManager.manager_at(rowIndex),
+                                emulatorManager.package_id_at(rowIndex),
+                                "game")
+                        }
+                        onPlatformDefaultRequested: rowIndex => {
+                            gameDetails.save_manager_emulator_preference(
+                                emulatorManager.emulator_id_at(rowIndex),
+                                emulatorManager.manager_at(rowIndex),
+                                emulatorManager.package_id_at(rowIndex),
+                                "platform")
                         }
                     }
                 }

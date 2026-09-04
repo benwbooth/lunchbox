@@ -33,6 +33,9 @@ pub mod qobject {
         fn refresh(self: Pin<&mut EmulatorManagerModel>);
 
         #[qinvokable]
+        fn dismiss_completed_activity(self: Pin<&mut EmulatorManagerModel>);
+
+        #[qinvokable]
         fn apply_filter(
             self: Pin<&mut EmulatorManagerModel>,
             search: QString,
@@ -44,6 +47,15 @@ pub mod qobject {
 
         #[qinvokable]
         fn name_at(self: &EmulatorManagerModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn emulator_id_at(self: &EmulatorManagerModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn manager_at(self: &EmulatorManagerModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn package_id_at(self: &EmulatorManagerModel, index: i32) -> QString;
 
         #[qinvokable]
         fn detail_at(self: &EmulatorManagerModel, index: i32) -> QString;
@@ -162,6 +174,13 @@ impl qobject::EmulatorManagerModel {
             return;
         }
         self.load_async("Refreshing emulator installations…");
+    }
+
+    pub fn dismiss_completed_activity(mut self: Pin<&mut Self>) {
+        if !*self.as_ref().recent_activity_attention() {
+            self.as_mut().set_recent_activity(QString::default());
+            self.as_mut().set_recent_activity_detail(QString::default());
+        }
     }
 
     fn load_async(mut self: Pin<&mut Self>, message: &str) {
@@ -330,6 +349,30 @@ impl qobject::EmulatorManagerModel {
 
     pub fn name_at(&self, index: i32) -> QString {
         qstring(self.row(index).map(|row| row.name.as_str()).unwrap_or(""))
+    }
+
+    pub fn emulator_id_at(&self, index: i32) -> QString {
+        qstring(
+            self.row(index)
+                .map(|row| row.emulator_id.as_str())
+                .unwrap_or(""),
+        )
+    }
+
+    pub fn manager_at(&self, index: i32) -> QString {
+        qstring(
+            self.row(index)
+                .map(|row| row.manager.as_str())
+                .unwrap_or(""),
+        )
+    }
+
+    pub fn package_id_at(&self, index: i32) -> QString {
+        qstring(
+            self.row(index)
+                .map(|row| row.package_id.as_str())
+                .unwrap_or(""),
+        )
     }
 
     pub fn detail_at(&self, index: i32) -> QString {
@@ -557,8 +600,10 @@ impl qobject::EmulatorManagerModel {
             .set_recent_activity(qstring(recent_operation_label(operation)));
         self.as_mut()
             .set_recent_activity_detail(qstring(&operation.detail));
-        self.as_mut()
-            .set_recent_activity_attention(operation.status != "succeeded");
+        self.as_mut().set_recent_activity_attention(matches!(
+            operation.status.as_str(),
+            "failed" | "interrupted" | "running"
+        ));
     }
 }
 

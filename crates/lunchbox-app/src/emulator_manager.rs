@@ -4,7 +4,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Output;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
@@ -21,6 +21,7 @@ use crate::settings::{
 
 const MAX_MANAGED_DOWNLOAD_BYTES: u64 = 1024 * 1024 * 1024;
 const GITHUB_API: &str = "https://api.github.com/repos";
+const COMPLETED_ACTIVITY_TTL_SECONDS: i64 = 30;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ManagedAction {
@@ -733,10 +734,22 @@ fn recover_interrupted_emulator_operations_at(
 }
 
 pub fn recent_emulator_lifecycle_operation() -> Result<Option<EmulatorLifecycleOperation>> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| i64::try_from(duration.as_secs()).unwrap_or(i64::MAX))
+        .unwrap_or(0);
     Ok(SettingsStore::open_default()?
-        .recent_emulator_lifecycle_operations(1)?
+        .recent_emulator_lifecycle_operations(20)?
         .into_iter()
-        .next())
+        .find(|operation| lifecycle_operation_visible_at(operation, now)))
+}
+
+fn lifecycle_operation_visible_at(operation: &EmulatorLifecycleOperation, now: i64) -> bool {
+    if !matches!(operation.status.as_str(), "succeeded" | "cancelled") {
+        return true;
+    }
+    let finished_at = operation.finished_at.unwrap_or(operation.started_at);
+    now.saturating_sub(finished_at) <= COMPLETED_ACTIVITY_TTL_SECONDS
 }
 
 pub fn perform_action(row: &ManagedEmulator, action: ManagedAction) -> Result<String> {
@@ -3007,5 +3020,31 @@ mod tests {
         extract_exact_zip_member(&archive_path, "mesen_libretro.so", &target).unwrap();
         assert_eq!(fs::read(target).unwrap(), b"core");
         assert!(!temp.path().join("unrelated.txt").exists());
+    }
+
+    #[test]
+    fn completed_activity_expires_but_attention_states_remain_visible() {
+        let operation = EmulatorLifecycleOperation {
+            id: uuid::Uuid::new_v4().to_string(),
+            emulator_id: "dosbox-x".into(),
+            display_name: "DOSBox-X".into(),
+            host_system_slug: "linux".into(),
+            manager: "flatpak".into(),
+            package_id: "com.dosbox_x.DOSBox-X".into(),
+            install_path: "user".into(),
+            action: "update".into(),
+            status: "succeeded".into(),
+            detail: "Updated DOSBox-X".into(),
+            started_at: 100,
+            finished_at: Some(110),
+        };
+        assert!(lifecycle_operation_visible_at(&operation, 140));
+        assert!(!lifecycle_operation_visible_at(&operation, 141));
+
+        for status in ["failed", "interrupted", "running"] {
+            let mut attention = operation.clone();
+            attention.status = status.into();
+            assert!(lifecycle_operation_visible_at(&attention, 10_000));
+        }
     }
 }

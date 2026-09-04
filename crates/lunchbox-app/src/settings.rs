@@ -3130,32 +3130,44 @@ impl SettingsStore {
         game_uid: &str,
         platform: &str,
     ) -> Result<Option<EmulatorPreference>> {
-        let connection = self.connection()?;
-        if !game_uid.trim().is_empty()
-            && let Some(preference) = connection
-                .query_row(
-                    "SELECT emulator_id, runtime_kind, core_name
-                     FROM game_emulator_preferences WHERE game_uid=?1",
-                    [game_uid],
-                    |row| {
-                        Ok(EmulatorPreference {
-                            emulator_id: row.get(0)?,
-                            runtime_kind: row.get(1)?,
-                            core_name: row.get(2)?,
-                            scope: "game".to_owned(),
-                        })
-                    },
-                )
-                .optional()?
-        {
+        if let Some(preference) = self.game_emulator_preference(game_uid)? {
             return Ok(Some(preference));
         }
 
+        self.platform_emulator_preference(platform)
+    }
+
+    pub fn game_emulator_preference(&self, game_uid: &str) -> Result<Option<EmulatorPreference>> {
+        if game_uid.trim().is_empty() {
+            return Ok(None);
+        }
+        self.connection()?
+            .query_row(
+                "SELECT emulator_id, runtime_kind, core_name
+                 FROM game_emulator_preferences WHERE game_uid=?1",
+                [game_uid],
+                |row| {
+                    Ok(EmulatorPreference {
+                        emulator_id: row.get(0)?,
+                        runtime_kind: row.get(1)?,
+                        core_name: row.get(2)?,
+                        scope: "game".to_owned(),
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn platform_emulator_preference(
+        &self,
+        platform: &str,
+    ) -> Result<Option<EmulatorPreference>> {
         let platform_key = catalog::normalize_platform_key(platform);
         if platform_key.is_empty() {
             return Ok(None);
         }
-        Ok(connection
+        self.connection()?
             .query_row(
                 "SELECT emulator_id, runtime_kind, core_name
                  FROM platform_emulator_preferences WHERE platform_key=?1",
@@ -3169,7 +3181,8 @@ impl SettingsStore {
                     })
                 },
             )
-            .optional()?)
+            .optional()
+            .map_err(Into::into)
     }
 
     pub fn managed_emulator_installs(&self) -> Result<Vec<ManagedEmulatorInstall>> {
@@ -9494,6 +9507,22 @@ mod tests {
         store
             .set_game_emulator_preference("game-one", "mesen-id", "retroarch", "mesen")
             .unwrap();
+        assert_eq!(
+            store
+                .platform_emulator_preference("Nintendo Entertainment System")
+                .unwrap()
+                .unwrap()
+                .emulator_id,
+            "nestopia-id"
+        );
+        assert_eq!(
+            store
+                .game_emulator_preference("game-one")
+                .unwrap()
+                .unwrap()
+                .emulator_id,
+            "mesen-id"
+        );
         assert_eq!(
             store
                 .emulator_preference("game-one", "Nintendo Entertainment System")

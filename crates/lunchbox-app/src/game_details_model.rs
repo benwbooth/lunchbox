@@ -357,6 +357,32 @@ pub mod qobject {
         fn select_emulator_option(self: Pin<&mut GameDetailsModel>, index: i32);
 
         #[qinvokable]
+        fn manager_emulator_target_available(
+            self: &GameDetailsModel,
+            emulator_id: QString,
+            manager: QString,
+            package_id: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn manager_emulator_target_is_default(
+            self: &GameDetailsModel,
+            emulator_id: QString,
+            manager: QString,
+            package_id: QString,
+            scope: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn save_manager_emulator_preference(
+            self: Pin<&mut GameDetailsModel>,
+            emulator_id: QString,
+            manager: QString,
+            package_id: QString,
+            scope: QString,
+        );
+
+        #[qinvokable]
         fn save_game_emulator_preference(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
@@ -766,6 +792,8 @@ pub struct GameDetailsModelRust {
     preferred_local_file_path: Option<PathBuf>,
     rom_emulator_options: Vec<crate::emulator::RomEmulatorOption>,
     rom_firmware_statuses: Vec<Vec<crate::firmware::FirmwareStatus>>,
+    game_emulator_preference: Option<crate::settings::EmulatorPreference>,
+    platform_emulator_preference: Option<crate::settings::EmulatorPreference>,
     launch_profile_preview_arguments: Vec<String>,
     launch_profile_preview_fallback_extra_arguments: String,
     launch_profile_preview_fallback_command_template: String,
@@ -986,6 +1014,8 @@ impl Default for GameDetailsModelRust {
             preferred_local_file_path: None,
             rom_emulator_options: Vec::new(),
             rom_firmware_statuses: Vec::new(),
+            game_emulator_preference: None,
+            platform_emulator_preference: None,
             launch_profile_preview_arguments: Vec::new(),
             launch_profile_preview_fallback_extra_arguments: String::new(),
             launch_profile_preview_fallback_command_template: String::new(),
@@ -1344,7 +1374,30 @@ enum EmulatorDiscoveryResult {
     Rom {
         availability: crate::emulator::RomLaunchAvailability,
         firmware_statuses: Vec<Vec<crate::firmware::FirmwareStatus>>,
+        game_preference: Option<crate::settings::EmulatorPreference>,
+        platform_preference: Option<crate::settings::EmulatorPreference>,
     },
+}
+
+fn emulator_preference_matches_option(
+    preference: &crate::settings::EmulatorPreference,
+    option: &crate::emulator::RomEmulatorOption,
+) -> bool {
+    preference.emulator_id == option.emulator_id
+        && preference.runtime_kind == option.runtime_kind.key()
+        && preference.core_name == option.core_name
+}
+
+fn emulator_preference_for_option(
+    option: &crate::emulator::RomEmulatorOption,
+    scope: &str,
+) -> crate::settings::EmulatorPreference {
+    crate::settings::EmulatorPreference {
+        emulator_id: option.emulator_id.clone(),
+        runtime_kind: option.runtime_kind.key().to_owned(),
+        core_name: option.core_name.clone(),
+        scope: scope.to_owned(),
+    }
 }
 
 enum LaunchInput {
@@ -2167,6 +2220,8 @@ impl qobject::GameDetailsModel {
         self.as_mut().rust_mut().preferred_local_file_path = None;
         self.as_mut().rust_mut().rom_emulator_options.clear();
         self.as_mut().rust_mut().rom_firmware_statuses.clear();
+        self.as_mut().rust_mut().game_emulator_preference = None;
+        self.as_mut().rust_mut().platform_emulator_preference = None;
         self.as_mut().rust_mut().prepared_emulator = None;
         self.as_mut().rust_mut().prepared_install = None;
         self.as_mut().rust_mut().bundles.clear();
@@ -3816,6 +3871,8 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_emulator_summary(QString::default());
         self.as_mut().rust_mut().rom_emulator_options.clear();
         self.as_mut().rust_mut().rom_firmware_statuses.clear();
+        self.as_mut().rust_mut().game_emulator_preference = None;
+        self.as_mut().rust_mut().platform_emulator_preference = None;
         self.as_mut().rust_mut().prepared_emulator = None;
         self.as_mut().clear_firmware_status();
         self.as_mut().set_emulator_option_count(0);
@@ -3837,8 +3894,10 @@ impl qobject::GameDetailsModel {
                         )
                         .map(EmulatorDiscoveryResult::Prepared);
                     }
-                    let preference = crate::settings::SettingsStore::open_default()?
-                        .emulator_preference(&game_id, &platform)?;
+                    let store = crate::settings::SettingsStore::open_default()?;
+                    let game_preference = store.game_emulator_preference(&game_id)?;
+                    let platform_preference = store.platform_emulator_preference(&platform)?;
+                    let preference = game_preference.as_ref().or(platform_preference.as_ref());
                     let rom_path = selected_local_file
                         .as_deref()
                         .context("selected local game file disappeared")?;
@@ -3846,7 +3905,7 @@ impl qobject::GameDetailsModel {
                         &platform,
                         rom_path,
                         &catalog_database,
-                        preference.as_ref(),
+                        preference,
                     )?;
                     let firmware_statuses = crate::firmware::statuses_for_options(
                         &catalog_database,
@@ -3857,6 +3916,8 @@ impl qobject::GameDetailsModel {
                     Ok(EmulatorDiscoveryResult::Rom {
                         availability,
                         firmware_statuses,
+                        game_preference,
+                        platform_preference,
                     })
                 })()
                 .map_err(|error| error.to_string());
@@ -3911,6 +3972,8 @@ impl qobject::GameDetailsModel {
             Ok(EmulatorDiscoveryResult::Rom {
                 availability,
                 firmware_statuses,
+                game_preference,
+                platform_preference,
             }) => {
                 let selected_index = availability.selected_index;
                 let selected =
@@ -3918,6 +3981,8 @@ impl qobject::GameDetailsModel {
                 let option_count = availability.options.len();
                 self.as_mut().rust_mut().rom_emulator_options = availability.options;
                 self.as_mut().rust_mut().rom_firmware_statuses = firmware_statuses;
+                self.as_mut().rust_mut().game_emulator_preference = game_preference;
+                self.as_mut().rust_mut().platform_emulator_preference = platform_preference;
                 self.as_mut()
                     .set_emulator_option_count(count_i32(option_count));
                 self.as_mut().set_selected_emulator_option(
@@ -4268,6 +4333,97 @@ impl qobject::GameDetailsModel {
         ));
     }
 
+    pub fn manager_emulator_target_available(
+        &self,
+        emulator_id: QString,
+        manager: QString,
+        package_id: QString,
+    ) -> bool {
+        self.manager_emulator_option_index(
+            &emulator_id.to_string(),
+            &manager.to_string(),
+            &package_id.to_string(),
+        )
+        .is_some()
+    }
+
+    pub fn manager_emulator_target_is_default(
+        &self,
+        emulator_id: QString,
+        manager: QString,
+        package_id: QString,
+        scope: QString,
+    ) -> bool {
+        let Some(option) = self
+            .manager_emulator_option_index(
+                &emulator_id.to_string(),
+                &manager.to_string(),
+                &package_id.to_string(),
+            )
+            .and_then(|index| self.rust().rom_emulator_options.get(index))
+        else {
+            return false;
+        };
+        let preference = match scope.to_string().as_str() {
+            "game" => self.rust().game_emulator_preference.as_ref(),
+            "platform" => self.rust().platform_emulator_preference.as_ref(),
+            _ => return false,
+        };
+        preference.is_some_and(|preference| emulator_preference_matches_option(preference, option))
+    }
+
+    pub fn save_manager_emulator_preference(
+        mut self: Pin<&mut Self>,
+        emulator_id: QString,
+        manager: QString,
+        package_id: QString,
+        scope: QString,
+    ) {
+        let scope = scope.to_string();
+        let Some(index) = self.as_ref().manager_emulator_option_index(
+            &emulator_id.to_string(),
+            &manager.to_string(),
+            &package_id.to_string(),
+        ) else {
+            self.as_mut().set_launch_status(qstring(
+                "Install or refresh this emulator before making it a default.",
+            ));
+            return;
+        };
+        let Ok(index) = i32::try_from(index) else {
+            self.as_mut()
+                .set_launch_status(qstring("The selected emulator index is out of range."));
+            return;
+        };
+        self.as_mut().select_emulator_option(index);
+        match scope.as_str() {
+            "game" => self.as_mut().save_game_emulator_preference(),
+            "platform" => self.as_mut().save_platform_emulator_preference(),
+            _ => self
+                .as_mut()
+                .set_launch_status(qstring("Choose a game or platform default scope.")),
+        }
+    }
+
+    fn manager_emulator_option_index(
+        &self,
+        emulator_id: &str,
+        manager: &str,
+        package_id: &str,
+    ) -> Option<usize> {
+        let emulator_id = emulator_id.trim();
+        let package_id = package_id.trim();
+        self.rust().rom_emulator_options.iter().position(|option| {
+            if manager.trim() == "libretro" {
+                option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
+                    && option.core_name == package_id
+            } else {
+                option.runtime_kind == crate::emulator::EmulatorRuntimeKind::Standalone
+                    && option.emulator_id == emulator_id
+            }
+        })
+    }
+
     pub fn save_game_emulator_preference(mut self: Pin<&mut Self>) {
         let Some(option) = self.selected_rom_emulator_option() else {
             return;
@@ -4283,11 +4439,14 @@ impl qobject::GameDetailsModel {
         });
         match result {
             Ok(()) => {
+                self.as_mut().rust_mut().game_emulator_preference =
+                    Some(emulator_preference_for_option(&option, "game"));
                 self.as_mut().set_emulator_preference_scope(qstring("game"));
                 self.as_mut().set_launch_status(qstring(format!(
                     "{} is now the default for this game.",
                     option.label()
                 )));
+                self.as_mut().bump_revision();
             }
             Err(error) => self.as_mut().set_launch_status(qstring(format!(
                 "Could not save the game emulator default: {error}"
@@ -4310,12 +4469,15 @@ impl qobject::GameDetailsModel {
         });
         match result {
             Ok(()) => {
+                self.as_mut().rust_mut().platform_emulator_preference =
+                    Some(emulator_preference_for_option(&option, "platform"));
                 self.as_mut()
                     .set_emulator_preference_scope(qstring("platform"));
                 self.as_mut().set_launch_status(qstring(format!(
                     "{} is now the default for {platform}.",
                     option.label()
                 )));
+                self.as_mut().bump_revision();
             }
             Err(error) => self.as_mut().set_launch_status(qstring(format!(
                 "Could not save the platform emulator default: {error}"
@@ -4328,7 +4490,10 @@ impl qobject::GameDetailsModel {
         match crate::settings::SettingsStore::open_default()
             .and_then(|store| store.clear_game_emulator_preference(&game_id))
         {
-            Ok(()) => self.as_mut().refresh_emulators(),
+            Ok(()) => {
+                self.as_mut().bump_revision();
+                self.as_mut().refresh_emulators();
+            }
             Err(error) => self.as_mut().set_launch_status(qstring(format!(
                 "Could not clear the game emulator default: {error}"
             ))),
@@ -4340,7 +4505,10 @@ impl qobject::GameDetailsModel {
         match crate::settings::SettingsStore::open_default()
             .and_then(|store| store.clear_platform_emulator_preference(&platform))
         {
-            Ok(()) => self.as_mut().refresh_emulators(),
+            Ok(()) => {
+                self.as_mut().bump_revision();
+                self.as_mut().refresh_emulators();
+            }
             Err(error) => self.as_mut().set_launch_status(qstring(format!(
                 "Could not clear the platform emulator default: {error}"
             ))),
