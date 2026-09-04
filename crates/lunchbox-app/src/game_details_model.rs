@@ -1370,7 +1370,11 @@ fn is_emulator_launch_probe() -> bool {
 }
 
 enum EmulatorDiscoveryResult {
-    Prepared(crate::emulator::LaunchAvailability),
+    Prepared {
+        availability: crate::emulator::LaunchAvailability,
+        game_preference: Option<crate::settings::EmulatorPreference>,
+        platform_preference: Option<crate::settings::EmulatorPreference>,
+    },
     Rom {
         availability: crate::emulator::RomLaunchAvailability,
         firmware_statuses: Vec<Vec<crate::firmware::FirmwareStatus>>,
@@ -3888,11 +3892,20 @@ impl qobject::GameDetailsModel {
             .spawn(move || {
                 let availability = (|| -> anyhow::Result<EmulatorDiscoveryResult> {
                     if let Some(prepared) = prepared {
-                        return crate::emulator::inspect_launch_availability(
+                        let store = crate::settings::SettingsStore::open_default()?;
+                        let game_preference = store.game_emulator_preference(&game_id)?;
+                        let platform_preference = store.platform_emulator_preference(&platform)?;
+                        let preference = game_preference.as_ref().or(platform_preference.as_ref());
+                        let availability = crate::emulator::inspect_launch_availability(
                             &prepared,
                             &catalog_database,
-                        )
-                        .map(EmulatorDiscoveryResult::Prepared);
+                            preference,
+                        )?;
+                        return Ok(EmulatorDiscoveryResult::Prepared {
+                            availability,
+                            game_preference,
+                            platform_preference,
+                        });
                     }
                     let store = crate::settings::SettingsStore::open_default()?;
                     let game_preference = store.game_emulator_preference(&game_id)?;
@@ -3951,7 +3964,13 @@ impl qobject::GameDetailsModel {
         }
         self.as_mut().set_launch_discovery_busy(false);
         match availability {
-            Ok(EmulatorDiscoveryResult::Prepared(availability)) => {
+            Ok(EmulatorDiscoveryResult::Prepared {
+                availability,
+                game_preference,
+                platform_preference,
+            }) => {
+                self.as_mut().rust_mut().game_emulator_preference = game_preference;
+                self.as_mut().rust_mut().platform_emulator_preference = platform_preference;
                 self.as_mut()
                     .set_launch_status(qstring(&availability.detail));
                 if let Some(emulator) = availability.emulator {

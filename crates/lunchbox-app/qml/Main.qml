@@ -694,7 +694,14 @@ ApplicationWindow {
 
     function openEmulatorManagerForPlatform(platform) {
         root.resetEmulatorManagerFilters()
-        emulatorManager.set_platform_scope(platform)
+        if (gameDetails.game_id.length > 0
+                && gameDetails.platform === platform) {
+            emulatorManager.set_game_scope(platform,
+                                           gameDetails.game_id,
+                                           gameDetails.title)
+        } else {
+            emulatorManager.set_platform_scope(platform)
+        }
         emulatorManagerDialog.open()
         emulatorManager.initialize()
     }
@@ -6563,7 +6570,11 @@ ApplicationWindow {
             }
             const firstRow = emulatorList.itemAtIndex(0)
             if (emulatorList.count !== emulatorManager.row_count
-                    || !firstRow || firstRow.emulatorName.length === 0) {
+                    || !firstRow || firstRow.emulatorName.length === 0
+                    || !firstRow.defaultActionsAvailable
+                    || (firstRow.defaultTargetAvailable
+                        && !firstRow.platformDefaultActionVisible)
+                    || firstRow.height !== 116) {
                 Qt.exit(2)
                 return
             }
@@ -21484,6 +21495,140 @@ ApplicationWindow {
                 }
             }
 
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? 88 : 0
+                visible: emulatorManager.platform_filter.length > 0
+                color: "#14241f"
+                border.color: "#28584f"
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
+                    spacing: 14
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 3
+                        Text {
+                            text: "DEFAULT EMULATORS"
+                            color: root.accentCool
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.8
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Use the explicit Game Default or System Default buttons on any installed emulator below. A game default overrides the "
+                                  + emulatorManager.platform_filter + " system default."
+                            color: root.muted
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    Rectangle {
+                        visible: emulatorManager.context_game_uid.length > 0
+                        Layout.preferredWidth: 205
+                        Layout.preferredHeight: 52
+                        radius: 8
+                        color: "#10201b"
+                        border.color: root.line
+                        Column {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 3
+                            Text {
+                                text: "GAME DEFAULT"
+                                color: root.muted
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                            }
+                            Text {
+                                width: parent.width - 20
+                                text: {
+                                    emulatorManager.revision
+                                    return emulatorManager.default_summary("game")
+                                }
+                                color: root.ink
+                                font.pixelSize: 10
+                                font.weight: Font.DemiBold
+                                elide: Text.ElideRight
+                            }
+                        }
+                        RoundButton {
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            width: 24
+                            height: 24
+                            visible: {
+                                emulatorManager.revision
+                                return emulatorManager.default_summary("game") !== "Automatic"
+                            }
+                            text: "×"
+                            flat: true
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Reset game default"
+                            onClicked: {
+                                emulatorManager.clear_default("game")
+                                if (gameDetails.local)
+                                    gameDetails.refresh_emulators()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 205
+                        Layout.preferredHeight: 52
+                        radius: 8
+                        color: "#10201b"
+                        border.color: root.line
+                        Column {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 3
+                            Text {
+                                text: "SYSTEM DEFAULT"
+                                color: root.muted
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                            }
+                            Text {
+                                width: parent.width - 20
+                                text: {
+                                    emulatorManager.revision
+                                    return emulatorManager.default_summary("platform")
+                                }
+                                color: root.ink
+                                font.pixelSize: 10
+                                font.weight: Font.DemiBold
+                                elide: Text.ElideRight
+                            }
+                        }
+                        RoundButton {
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            width: 24
+                            height: 24
+                            visible: {
+                                emulatorManager.revision
+                                return emulatorManager.default_summary("platform") !== "Automatic"
+                            }
+                            text: "×"
+                            flat: true
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Reset " + emulatorManager.platform_filter + " system default"
+                            onClicked: {
+                                emulatorManager.clear_default("platform")
+                                if (gameDetails.local)
+                                    gameDetails.refresh_emulators()
+                            }
+                        }
+                    }
+                }
+            }
+
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -21511,36 +21656,21 @@ ApplicationWindow {
                         accent: root.accent
                         accentCool: root.accentCool
                         platformName: emulatorManager.platform_filter
-                        defaultActionsAvailable: {
+                        defaultActionsAvailable: emulatorManager.platform_filter.length > 0
+                        gameDefaultActionsAvailable: emulatorManager.context_game_uid.length > 0
+                        defaultTargetAvailable: {
                             emulatorManager.revision
-                            gameDetails.detail_revision
-                            return emulatorManager.platform_filter.length > 0
-                                    && gameDetails.game_id.length > 0
-                                    && emulatorManager.platform_filter === gameDetails.platform
-                                    && gameDetails.manager_emulator_target_available(
-                                        emulatorManager.emulator_id_at(rowIndex),
-                                        emulatorManager.manager_at(rowIndex),
-                                        emulatorManager.package_id_at(rowIndex))
+                            return emulatorManager.installed_at(rowIndex)
                         }
                         gameDefault: {
                             emulatorManager.revision
-                            gameDetails.detail_revision
                             return defaultActionsAvailable
-                                    && gameDetails.manager_emulator_target_is_default(
-                                        emulatorManager.emulator_id_at(rowIndex),
-                                        emulatorManager.manager_at(rowIndex),
-                                        emulatorManager.package_id_at(rowIndex),
-                                        "game")
+                                    && emulatorManager.default_at(rowIndex, "game")
                         }
                         platformDefault: {
                             emulatorManager.revision
-                            gameDetails.detail_revision
                             return defaultActionsAvailable
-                                    && gameDetails.manager_emulator_target_is_default(
-                                        emulatorManager.emulator_id_at(rowIndex),
-                                        emulatorManager.manager_at(rowIndex),
-                                        emulatorManager.package_id_at(rowIndex),
-                                        "platform")
+                                    && emulatorManager.default_at(rowIndex, "platform")
                         }
                         onInstallRequested: rowIndex => emulatorManager.install_at(rowIndex)
                         onUninstallRequested: (rowIndex, emulatorName, confirmation) => {
@@ -21550,18 +21680,14 @@ ApplicationWindow {
                             emulatorUninstallDialog.open()
                         }
                         onGameDefaultRequested: rowIndex => {
-                            gameDetails.save_manager_emulator_preference(
-                                emulatorManager.emulator_id_at(rowIndex),
-                                emulatorManager.manager_at(rowIndex),
-                                emulatorManager.package_id_at(rowIndex),
-                                "game")
+                            emulatorManager.set_default_at(rowIndex, "game")
+                            if (gameDetails.local)
+                                gameDetails.refresh_emulators()
                         }
                         onPlatformDefaultRequested: rowIndex => {
-                            gameDetails.save_manager_emulator_preference(
-                                emulatorManager.emulator_id_at(rowIndex),
-                                emulatorManager.manager_at(rowIndex),
-                                emulatorManager.package_id_at(rowIndex),
-                                "platform")
+                            emulatorManager.set_default_at(rowIndex, "platform")
+                            if (gameDetails.local)
+                                gameDetails.refresh_emulators()
                         }
                     }
                 }

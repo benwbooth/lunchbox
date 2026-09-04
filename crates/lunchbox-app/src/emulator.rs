@@ -763,6 +763,21 @@ fn preview_placeholder_value(placeholder: &str) -> &'static str {
 pub fn inspect_launch_availability(
     prepared: &PreparedInstall,
     catalog_database: &Path,
+    preference: Option<&crate::settings::EmulatorPreference>,
+) -> Result<LaunchAvailability> {
+    let preferred_emulator_id = preference
+        .filter(|preference| {
+            preference.runtime_kind == EmulatorRuntimeKind::Standalone.key()
+                && preference.core_name.is_empty()
+        })
+        .map(|preference| preference.emulator_id.as_str());
+    inspect_prepared_launch_availability(prepared, catalog_database, preferred_emulator_id)
+}
+
+fn inspect_prepared_launch_availability(
+    prepared: &PreparedInstall,
+    catalog_database: &Path,
+    preferred_emulator_id: Option<&str>,
 ) -> Result<LaunchAvailability> {
     let kind = classify_prepared_install(prepared)?;
     let host = HostPlatform::current()?;
@@ -771,23 +786,48 @@ pub fn inspect_launch_availability(
     let flatpak_apps = installed_flatpak_apps(host);
     let path_entries = executable_search_directories();
     let managed_executables = managed_emulator_executables(host, &path_entries);
-    let emulator = definitions.iter().find_map(|definition| {
-        discover_definition(
-            definition,
-            host,
-            &path_entries,
-            &flatpak_apps,
-            &managed_executables,
-        )
+    let discovered = definitions
+        .iter()
+        .filter_map(|definition| {
+            discover_definition(
+                definition,
+                host,
+                &path_entries,
+                &flatpak_apps,
+                &managed_executables,
+            )
+        })
+        .collect::<Vec<_>>();
+    let preferred_available = preferred_emulator_id.is_some_and(|preferred_emulator_id| {
+        discovered
+            .iter()
+            .any(|choice| choice.id == preferred_emulator_id)
     });
+    let emulator = preferred_emulator_id
+        .and_then(|preferred_emulator_id| {
+            discovered
+                .iter()
+                .find(|choice| choice.id == preferred_emulator_id)
+        })
+        .or_else(|| discovered.first())
+        .cloned();
     let required = kind.required_emulator_names().join(" or ");
     let detail = if let Some(choice) = &emulator {
-        format!(
-            "{} is ready with {} ({})",
-            kind.description(),
-            choice.name,
-            choice.executable.summary()
-        )
+        if preferred_available {
+            format!(
+                "{} is using the configured default: {} ({}).",
+                kind.description(),
+                choice.name,
+                choice.executable.summary()
+            )
+        } else {
+            format!(
+                "{} is ready with {} ({}).",
+                kind.description(),
+                choice.name,
+                choice.executable.summary()
+            )
+        }
     } else {
         format!(
             "{} needs an installed standalone {required}",
@@ -808,7 +848,11 @@ pub fn build_prepared_launch_plan_with_customization(
     customization: &crate::settings::ResolvedLaunchCustomization,
 ) -> Result<LaunchPlan> {
     let kind = classify_prepared_install(prepared)?;
-    let availability = inspect_launch_availability(prepared, catalog_database)?;
+    let availability = inspect_prepared_launch_availability(
+        prepared,
+        catalog_database,
+        Some(expected_emulator_id),
+    )?;
     let emulator = availability.emulator.ok_or_else(|| {
         anyhow!(
             "No compatible emulator is installed. Install {} and refresh detection.",

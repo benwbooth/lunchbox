@@ -23,6 +23,8 @@ pub mod qobject {
         #[qproperty(QString, search)]
         #[qproperty(QString, status_filter)]
         #[qproperty(QString, platform_filter)]
+        #[qproperty(QString, context_game_uid)]
+        #[qproperty(QString, context_game_title)]
         #[qproperty(i32, operation_revision)]
         type EmulatorManagerModel = super::EmulatorManagerModelRust;
 
@@ -44,6 +46,14 @@ pub mod qobject {
 
         #[qinvokable]
         fn set_platform_scope(self: Pin<&mut EmulatorManagerModel>, platform: QString);
+
+        #[qinvokable]
+        fn set_game_scope(
+            self: Pin<&mut EmulatorManagerModel>,
+            platform: QString,
+            game_uid: QString,
+            game_title: QString,
+        );
 
         #[qinvokable]
         fn name_at(self: &EmulatorManagerModel, index: i32) -> QString;
@@ -77,6 +87,21 @@ pub mod qobject {
 
         #[qinvokable]
         fn can_uninstall_at(self: &EmulatorManagerModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn installed_at(self: &EmulatorManagerModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn default_at(self: &EmulatorManagerModel, index: i32, scope: QString) -> bool;
+
+        #[qinvokable]
+        fn default_summary(self: &EmulatorManagerModel, scope: QString) -> QString;
+
+        #[qinvokable]
+        fn set_default_at(self: Pin<&mut EmulatorManagerModel>, index: i32, scope: QString);
+
+        #[qinvokable]
+        fn clear_default(self: Pin<&mut EmulatorManagerModel>, scope: QString);
 
         #[qinvokable]
         fn uninstall_confirmation_at(self: &EmulatorManagerModel, index: i32) -> QString;
@@ -127,7 +152,11 @@ pub struct EmulatorManagerModelRust {
     search: QString,
     status_filter: QString,
     platform_filter: QString,
+    context_game_uid: QString,
+    context_game_title: QString,
     operation_revision: i32,
+    game_preference: Option<crate::settings::EmulatorPreference>,
+    platform_preference: Option<crate::settings::EmulatorPreference>,
     all_rows: Vec<ManagedEmulator>,
     rows: Vec<ManagedEmulator>,
 }
@@ -150,7 +179,11 @@ impl Default for EmulatorManagerModelRust {
             search: QString::default(),
             status_filter: QString::from("all"),
             platform_filter: QString::default(),
+            context_game_uid: QString::default(),
+            context_game_title: QString::default(),
             operation_revision: 0,
+            game_preference: None,
+            platform_preference: None,
             all_rows: Vec::new(),
             rows: Vec::new(),
         }
@@ -279,7 +312,46 @@ impl qobject::EmulatorManagerModel {
 
     pub fn set_platform_scope(mut self: Pin<&mut Self>, platform: QString) {
         self.as_mut().set_platform_filter(platform);
+        self.as_mut().set_context_game_uid(QString::default());
+        self.as_mut().set_context_game_title(QString::default());
+        self.as_mut().reload_default_preferences();
         self.as_mut().refilter();
+    }
+
+    pub fn set_game_scope(
+        mut self: Pin<&mut Self>,
+        platform: QString,
+        game_uid: QString,
+        game_title: QString,
+    ) {
+        self.as_mut().set_platform_filter(platform);
+        self.as_mut().set_context_game_uid(game_uid);
+        self.as_mut().set_context_game_title(game_title);
+        self.as_mut().reload_default_preferences();
+        self.as_mut().refilter();
+    }
+
+    fn reload_default_preferences(mut self: Pin<&mut Self>) {
+        let game_uid = self.as_ref().context_game_uid().to_string();
+        let platform = self.as_ref().platform_filter().to_string();
+        match crate::settings::SettingsStore::open_default().and_then(|store| {
+            Ok((
+                store.game_emulator_preference(&game_uid)?,
+                store.platform_emulator_preference(&platform)?,
+            ))
+        }) {
+            Ok((game_preference, platform_preference)) => {
+                self.as_mut().rust_mut().game_preference = game_preference;
+                self.as_mut().rust_mut().platform_preference = platform_preference;
+            }
+            Err(error) => {
+                self.as_mut().rust_mut().game_preference = None;
+                self.as_mut().rust_mut().platform_preference = None;
+                self.as_mut().set_message(qstring(format!(
+                    "Could not load emulator defaults: {error}"
+                )));
+            }
+        }
     }
 
     fn refilter(mut self: Pin<&mut Self>) {
@@ -416,6 +488,149 @@ impl qobject::EmulatorManagerModel {
 
     pub fn can_uninstall_at(&self, index: i32) -> bool {
         self.row(index).is_some_and(ManagedEmulator::can_uninstall)
+    }
+
+    pub fn installed_at(&self, index: i32) -> bool {
+        self.row(index).is_some_and(|row| row.installed)
+    }
+
+    pub fn default_at(&self, index: i32, scope: QString) -> bool {
+        let Some(row) = self.row(index) else {
+            return false;
+        };
+        let preference = match scope.to_string().as_str() {
+            "game" => self.rust().game_preference.as_ref(),
+            "platform" => self.rust().platform_preference.as_ref(),
+            _ => None,
+        };
+        preference.is_some_and(|preference| managed_row_matches_preference(row, preference))
+    }
+
+    pub fn default_summary(&self, scope: QString) -> QString {
+        let preference = match scope.to_string().as_str() {
+            "game" => self.rust().game_preference.as_ref(),
+            "platform" => self.rust().platform_preference.as_ref(),
+            _ => None,
+        };
+        let Some(preference) = preference else {
+            return qstring("Automatic");
+        };
+        qstring(
+            self.rust()
+                .all_rows
+                .iter()
+                .find(|row| managed_row_matches_preference(row, preference))
+                .map(|row| row.name.as_str())
+                .unwrap_or("Configured emulator (not currently detected)"),
+        )
+    }
+
+    pub fn set_default_at(mut self: Pin<&mut Self>, index: i32, scope: QString) {
+        if *self.as_ref().busy() {
+            return;
+        }
+        let Some(row) = self.as_ref().row(index).cloned() else {
+            self.as_mut()
+                .set_message(qstring("Select an emulator first."));
+            return;
+        };
+        if !row.installed {
+            self.as_mut().set_message(qstring(format!(
+                "Install {} before making it a default.",
+                row.name
+            )));
+            return;
+        }
+        let platform = self.as_ref().platform_filter().to_string();
+        let game_uid = self.as_ref().context_game_uid().to_string();
+        let game_title = self.as_ref().context_game_title().to_string();
+        let scope = scope.to_string();
+        let result = managed_row_preference(&row, &platform).and_then(|preference| {
+            let store = crate::settings::SettingsStore::open_default()?;
+            match scope.as_str() {
+                "game" => {
+                    if game_uid.trim().is_empty() {
+                        anyhow::bail!("open Emulator Manager from a game to set a game default");
+                    }
+                    store.set_game_emulator_preference(
+                        &game_uid,
+                        &preference.emulator_id,
+                        &preference.runtime_kind,
+                        &preference.core_name,
+                    )?;
+                }
+                "platform" => store.set_platform_emulator_preference(
+                    &platform,
+                    &preference.emulator_id,
+                    &preference.runtime_kind,
+                    &preference.core_name,
+                )?,
+                _ => anyhow::bail!("choose a game or system default scope"),
+            }
+            Ok(preference)
+        });
+        match result {
+            Ok(mut preference) => {
+                preference.scope = scope.clone();
+                match scope.as_str() {
+                    "game" => self.as_mut().rust_mut().game_preference = Some(preference),
+                    "platform" => self.as_mut().rust_mut().platform_preference = Some(preference),
+                    _ => unreachable!("validated default scope"),
+                }
+                let target = if scope == "game" {
+                    if game_title.trim().is_empty() {
+                        "this game".to_owned()
+                    } else {
+                        game_title
+                    }
+                } else {
+                    platform
+                };
+                self.as_mut().set_message(qstring(format!(
+                    "{} is now the default for {target}.",
+                    row.name
+                )));
+                let revision = self.as_ref().revision().saturating_add(1);
+                self.as_mut().set_revision(revision);
+            }
+            Err(error) => self.as_mut().set_message(qstring(format!(
+                "Could not save the emulator default: {error:#}"
+            ))),
+        }
+    }
+
+    pub fn clear_default(mut self: Pin<&mut Self>, scope: QString) {
+        if *self.as_ref().busy() {
+            return;
+        }
+        let scope = scope.to_string();
+        let game_uid = self.as_ref().context_game_uid().to_string();
+        let platform = self.as_ref().platform_filter().to_string();
+        let result =
+            crate::settings::SettingsStore::open_default().and_then(|store| match scope.as_str() {
+                "game" => store.clear_game_emulator_preference(&game_uid),
+                "platform" => store.clear_platform_emulator_preference(&platform),
+                _ => anyhow::bail!("choose a game or system default scope"),
+            });
+        match result {
+            Ok(()) => {
+                match scope.as_str() {
+                    "game" => self.as_mut().rust_mut().game_preference = None,
+                    "platform" => self.as_mut().rust_mut().platform_preference = None,
+                    _ => unreachable!("validated default scope"),
+                }
+                self.as_mut().set_message(qstring(if scope == "game" {
+                    "The game default was reset to automatic selection."
+                } else {
+                    "The system default was reset to automatic selection."
+                }));
+                let revision = self.as_ref().revision().saturating_add(1);
+                self.as_mut().set_revision(revision);
+            }
+            Err(error) => self.as_mut().set_message(qstring(format!(
+                "Could not reset the emulator default: {error}"
+            ))),
+        }
     }
 
     pub fn verify_recovery_probe(&self, dialog_visible: bool) -> bool {
@@ -607,6 +822,116 @@ impl qobject::EmulatorManagerModel {
     }
 }
 
+fn managed_row_matches_preference(
+    row: &ManagedEmulator,
+    preference: &crate::settings::EmulatorPreference,
+) -> bool {
+    if row.manager == "libretro" {
+        preference.runtime_kind == "retroarch" && preference.core_name == row.package_id
+    } else {
+        preference.runtime_kind == "standalone"
+            && preference.core_name.is_empty()
+            && preference.emulator_id == row.emulator_id
+    }
+}
+
+fn managed_row_preference(
+    row: &ManagedEmulator,
+    platform: &str,
+) -> anyhow::Result<crate::settings::EmulatorPreference> {
+    let platform_key = crate::catalog::normalize_platform_key(platform);
+    if platform_key.is_empty() || !row.is_compatible_with(&platform_key) {
+        anyhow::bail!("{} is not cataloged for {platform}", row.name);
+    }
+    let database = crate::catalog::requested_database_path()
+        .ok_or_else(|| anyhow::anyhow!("the canonical emulator catalog is unavailable"))?;
+    let connection = crate::catalog::open_read_only(&database, "Lunchbox emulator catalog")?;
+    let mut statement = connection.prepare(
+        "SELECT DISTINCT e.id, ep.core_name, pkg.manager, pkg.package_id
+         FROM emulator_platforms ep
+         JOIN emulators e ON e.id=ep.emulator_id
+         JOIN platforms p ON p.id=ep.platform_id
+         JOIN emulator_host_systems h ON h.emulator_id=e.id
+         LEFT JOIN emulator_packages pkg
+           ON pkg.emulator_id=e.id AND pkg.host_system_slug=h.host_system_slug
+         WHERE h.host_system_slug=?1
+           AND (
+               p.normalized_name=?2 OR EXISTS (
+                   SELECT 1 FROM platform_aliases a
+                   WHERE a.platform_id=p.id AND a.normalized_alias=?2
+               )
+           )
+         ORDER BY e.id, ep.core_name, pkg.manager, pkg.package_id",
+    )?;
+    let candidates = statement
+        .query_map(
+            rusqlite::params![row.host_system_slug, platform_key],
+            |candidate| {
+                Ok((
+                    candidate.get::<_, String>(0)?,
+                    candidate.get::<_, String>(1)?,
+                    candidate.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    candidate.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                ))
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    select_managed_preference_identity(row, &candidates).ok_or_else(|| {
+        anyhow::anyhow!(
+            "{} does not have an exact {} launch profile for {platform}",
+            row.name,
+            if row.manager == "libretro" {
+                "RetroArch core"
+            } else {
+                "standalone"
+            }
+        )
+    })
+}
+
+fn select_managed_preference_identity(
+    row: &ManagedEmulator,
+    candidates: &[(String, String, String, String)],
+) -> Option<crate::settings::EmulatorPreference> {
+    let mut identities = std::collections::BTreeSet::new();
+    if row.manager == "libretro" {
+        for (emulator_id, core_names, _, _) in candidates {
+            if core_names
+                .split(';')
+                .map(str::trim)
+                .any(|core| core == row.package_id)
+            {
+                identities.insert((
+                    emulator_id.clone(),
+                    "retroarch".to_owned(),
+                    row.package_id.clone(),
+                ));
+            }
+        }
+    } else {
+        for (emulator_id, core_names, manager, package_id) in candidates {
+            if emulator_id == &row.emulator_id
+                && core_names.trim().is_empty()
+                && manager == &row.manager
+                && package_id == &row.package_id
+            {
+                identities.insert((emulator_id.clone(), "standalone".to_owned(), String::new()));
+            }
+        }
+    }
+    let mut identities = identities.into_iter();
+    let (emulator_id, runtime_kind, core_name) = identities.next()?;
+    if identities.next().is_some() {
+        return None;
+    }
+    Some(crate::settings::EmulatorPreference {
+        emulator_id,
+        runtime_kind,
+        core_name,
+        scope: String::new(),
+    })
+}
+
 fn recent_operation_label(operation: &crate::settings::EmulatorLifecycleOperation) -> String {
     let action = match (operation.action.as_str(), operation.status.as_str()) {
         ("install", "succeeded") => "Installed",
@@ -694,6 +1019,90 @@ mod tests {
         assert!(nes.is_recommended_for("nintendo-entertainment-system"));
         assert!(!nes.is_compatible_with("nintendo-switch"));
         assert!(nes.is_compatible_with(""));
+    }
+
+    #[test]
+    fn managed_defaults_preserve_exact_standalone_and_core_identity() {
+        let mut standalone = row("Mesen", true, false);
+        standalone.emulator_id = "mesen-id".into();
+        standalone.manager = "flatpak".into();
+        standalone.package_id = "org.example.Mesen".into();
+        let candidates = vec![
+            (
+                "mesen-id".into(),
+                String::new(),
+                "flatpak".into(),
+                "org.example.Mesen".into(),
+            ),
+            (
+                "other-id".into(),
+                "mesen".into(),
+                "flatpak".into(),
+                "org.example.RetroArch".into(),
+            ),
+        ];
+        let preference = select_managed_preference_identity(&standalone, &candidates).unwrap();
+        assert_eq!(preference.emulator_id, "mesen-id");
+        assert_eq!(preference.runtime_kind, "standalone");
+        assert!(preference.core_name.is_empty());
+        assert!(managed_row_matches_preference(&standalone, &preference));
+
+        let mut core = standalone.clone();
+        core.emulator_id = "libretro-core-fceumm".into();
+        core.manager = "libretro".into();
+        core.package_id = "fceumm".into();
+        let core_candidates = vec![
+            (
+                "fceumm-emulator-id".into(),
+                "fceumm; nestopia".into(),
+                "flatpak".into(),
+                "org.libretro.RetroArch".into(),
+            ),
+            (
+                "unrelated-id".into(),
+                "snes9x".into(),
+                "flatpak".into(),
+                "org.libretro.RetroArch".into(),
+            ),
+        ];
+        let preference = select_managed_preference_identity(&core, &core_candidates).unwrap();
+        assert_eq!(preference.emulator_id, "fceumm-emulator-id");
+        assert_eq!(preference.runtime_kind, "retroarch");
+        assert_eq!(preference.core_name, "fceumm");
+        assert!(managed_row_matches_preference(&core, &preference));
+    }
+
+    #[test]
+    fn managed_defaults_reject_ambiguous_or_wrong_package_identity() {
+        let mut core = row("Core", true, true);
+        core.manager = "libretro".into();
+        core.package_id = "shared_core".into();
+        let ambiguous = vec![
+            (
+                "first-id".into(),
+                "shared_core".into(),
+                String::new(),
+                String::new(),
+            ),
+            (
+                "second-id".into(),
+                "shared_core".into(),
+                String::new(),
+                String::new(),
+            ),
+        ];
+        assert!(select_managed_preference_identity(&core, &ambiguous).is_none());
+
+        core.manager = "flatpak".into();
+        core.emulator_id = "expected-id".into();
+        core.package_id = "org.example.Expected".into();
+        let wrong_package = vec![(
+            "expected-id".into(),
+            String::new(),
+            "flatpak".into(),
+            "org.example.Other".into(),
+        )];
+        assert!(select_managed_preference_identity(&core, &wrong_package).is_none());
     }
 
     #[test]

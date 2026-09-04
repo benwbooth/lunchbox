@@ -77,20 +77,39 @@ TestCase {
     function test_installed_emulator_offers_scoped_defaults() {
         const host = createTemporaryObject(hostComponent, testCase)
         verify(host)
-        const defaultButton = findChild(host.emulatorRow, "emulatorDefaultButton")
-        verify(defaultButton)
+        const gameButton = findChild(host.emulatorRow, "emulatorGameDefaultButton")
+        const systemButton = findChild(host.emulatorRow, "emulatorPlatformDefaultButton")
+        verify(gameButton && systemButton)
 
-        compare(host.emulatorRow.defaultActionVisible, false)
+        compare(host.emulatorRow.gameDefaultActionVisible, false)
+        compare(host.emulatorRow.platformDefaultActionVisible, false)
         host.manager.busy = false
         host.emulatorRow.defaultActionsAvailable = true
+        host.emulatorRow.gameDefaultActionsAvailable = true
+        host.emulatorRow.defaultTargetAvailable = true
         host.emulatorRow.platformName = "Nintendo Switch"
         compare(host.emulatorRow.defaultActionsAvailable, true)
-        tryCompare(host.emulatorRow, "defaultActionVisible", true)
-        compare(defaultButton.text, "Set default")
+        tryCompare(host.emulatorRow, "gameDefaultActionVisible", true)
+        tryCompare(host.emulatorRow, "platformDefaultActionVisible", true)
+        compare(gameButton.text, "USE FOR GAME")
+        compare(systemButton.text, "USE FOR SYSTEM")
 
         host.emulatorRow.platformDefault = true
-        tryCompare(defaultButton, "text", "Platform default")
+        tryCompare(systemButton, "text", "✓  SYSTEM DEFAULT")
         host.emulatorRow.gameDefault = true
-        tryCompare(defaultButton, "text", "Game default")
+        tryCompare(gameButton, "text", "✓  GAME DEFAULT")
+    }
+
+    function test_uninstalled_emulator_keeps_default_path_discoverable() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.manager.busy = false
+        host.emulatorRow.defaultActionsAvailable = true
+        host.emulatorRow.gameDefaultActionsAvailable = true
+        host.emulatorRow.defaultTargetAvailable = false
+
+        compare(host.emulatorRow.height, 116)
+        compare(host.emulatorRow.gameDefaultActionVisible, false)
+        compare(host.emulatorRow.platformDefaultActionVisible, false)
     }
 }

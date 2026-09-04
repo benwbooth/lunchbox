@@ -13,6 +13,8 @@ Rectangle {
     required property color accent
     required property color accentCool
     property bool defaultActionsAvailable: false
+    property bool gameDefaultActionsAvailable: false
+    property bool defaultTargetAvailable: false
     property bool gameDefault: false
     property bool platformDefault: false
     property string platformName: ""
@@ -50,7 +52,11 @@ Rectangle {
     }
     readonly property bool installActionVisible: !managerBusy && installAvailable
     readonly property bool uninstallActionVisible: !managerBusy && uninstallAvailable
-    readonly property bool defaultActionVisible: !managerBusy && defaultActionsAvailable
+    readonly property bool gameDefaultActionVisible: defaultActionsAvailable
+                                                     && gameDefaultActionsAvailable
+                                                     && defaultTargetAvailable
+    readonly property bool platformDefaultActionVisible: defaultActionsAvailable
+                                                         && defaultTargetAvailable
 
     signal installRequested(int rowIndex)
     signal uninstallRequested(int rowIndex, string emulatorName, string confirmation)
@@ -58,7 +64,7 @@ Rectangle {
     signal platformDefaultRequested(int rowIndex)
 
     width: ListView.view ? ListView.view.width : 720
-    height: 78
+    height: defaultActionsAvailable ? 116 : 78
     radius: 10
     color: emulatorHover.hovered ? "#1b2330" : "#151c27"
     border.color: emulatorStatus === "MANAGED" ? "#28584f" : line
@@ -66,7 +72,10 @@ Rectangle {
     HoverHandler { id: emulatorHover }
 
     RowLayout {
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 78
         anchors.leftMargin: 17
         anchors.rightMargin: 14
         spacing: 14
@@ -164,33 +173,6 @@ Rectangle {
             Layout.preferredHeight: 26
         }
 
-        Button {
-            id: emulatorDefaultButton
-            objectName: "emulatorDefaultButton"
-            visible: row.defaultActionVisible
-            text: row.gameDefault ? "Game default"
-                  : row.platformDefault ? "Platform default" : "Set default"
-            font.pixelSize: 10
-            onClicked: defaultMenu.open()
-
-            Menu {
-                id: defaultMenu
-                y: emulatorDefaultButton.height
-
-                MenuItem {
-                    text: (row.gameDefault ? "✓  " : "")
-                          + "Default for this game"
-                    onTriggered: row.gameDefaultRequested(row.rowIndex)
-                }
-
-                MenuItem {
-                    text: (row.platformDefault ? "✓  " : "")
-                          + "Default for " + row.platformName
-                    onTriggered: row.platformDefaultRequested(row.rowIndex)
-                }
-            }
-        }
-
         HeaderButton {
             objectName: "emulatorInstallButton"
             visible: row.installActionVisible
@@ -207,6 +189,57 @@ Rectangle {
                            row.rowIndex,
                            row.emulatorName,
                            row.emulatorModel.uninstall_confirmation_at(row.rowIndex))
+        }
+    }
+
+    RowLayout {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 73
+        anchors.rightMargin: 14
+        height: 38
+        spacing: 8
+        visible: row.defaultActionsAvailable
+
+        Text {
+            Layout.fillWidth: true
+            text: row.defaultTargetAvailable
+                  ? "Choose where this installed emulator is the default"
+                  : "Install this emulator to use it as a default"
+            color: row.muted
+            font.pixelSize: 9
+            elide: Text.ElideRight
+        }
+
+        Button {
+            id: emulatorGameDefaultButton
+            objectName: "emulatorGameDefaultButton"
+            visible: row.gameDefaultActionVisible
+            enabled: !row.managerBusy
+            Layout.preferredWidth: 132
+            Layout.preferredHeight: 29
+            text: row.gameDefault ? "✓  GAME DEFAULT" : "USE FOR GAME"
+            font.pixelSize: 8
+            font.weight: Font.Bold
+            onClicked: row.gameDefaultRequested(row.rowIndex)
+            ToolTip.visible: hovered
+            ToolTip.text: "Use " + row.emulatorName + " by default for this game"
+        }
+
+        Button {
+            id: emulatorPlatformDefaultButton
+            objectName: "emulatorPlatformDefaultButton"
+            visible: row.platformDefaultActionVisible
+            enabled: !row.managerBusy
+            Layout.preferredWidth: 142
+            Layout.preferredHeight: 29
+            text: row.platformDefault ? "✓  SYSTEM DEFAULT" : "USE FOR SYSTEM"
+            font.pixelSize: 8
+            font.weight: Font.Bold
+            onClicked: row.platformDefaultRequested(row.rowIndex)
+            ToolTip.visible: hovered
+            ToolTip.text: "Use " + row.emulatorName + " by default for " + row.platformName
         }
     }
 }
