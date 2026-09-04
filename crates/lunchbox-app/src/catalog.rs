@@ -330,8 +330,12 @@ fn load_preview_from_sources(
         list_metadata.push_empty();
     }
     apply_alternate_release_regions(&discovery, &mut games)?;
+    let linked_release_families = load_linked_release_families(
+        &discovery,
+        (!focus.platform.trim().is_empty()).then_some(focus.platform.as_str()),
+    )?;
     let mut list_metadata = list_metadata.finish();
-    apply_release_families(&mut games, &mut list_metadata);
+    apply_release_families(&mut games, &mut list_metadata, &linked_release_families);
 
     let canonical_aliases = canonical_platform_aliases(&canonical)?;
     let mut platform_statement = discovery.prepare(
@@ -520,7 +524,11 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
     })?;
     let mut platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut list_metadata = list_metadata.finish();
-    apply_release_families(&mut games, &mut list_metadata);
+    apply_release_families(
+        &mut games,
+        &mut list_metadata,
+        &LinkedReleaseFamilies::default(),
+    );
     apply_grouped_platform_counts(&games, &mut platforms);
     validate_unique_media_ids(&games)?;
 
@@ -710,8 +718,9 @@ fn load_discovery_catalog_with_native_state(
         list_metadata.push_empty();
     }
     apply_alternate_release_regions(&discovery, &mut games)?;
+    let linked_release_families = load_linked_release_families(&discovery, None)?;
     let mut list_metadata = list_metadata.finish();
-    apply_release_families(&mut games, &mut list_metadata);
+    apply_release_families(&mut games, &mut list_metadata, &linked_release_families);
 
     let canonical_aliases = canonical_platform_aliases(canonical)?;
     let mut platform_statement = discovery.prepare(
@@ -920,17 +929,169 @@ fn optional_game_column(connection: &Connection, column: &str) -> Result<&'stati
     }
 }
 
+#[derive(Default)]
+struct LinkedReleaseFamilies {
+    /// A value of zero records an ambiguous title that must never be linked
+    /// automatically.
+    aliases: HashMap<String, i64>,
+    canonical_titles: HashMap<i64, String>,
+}
+
+impl LinkedReleaseFamilies {
+    fn record_alias(
+        &mut self,
+        platform: &str,
+        alternate_title: &str,
+        database_id: i64,
+        canonical_title: &str,
+    ) {
+        if database_id <= 0 {
+            return;
+        }
+        self.canonical_titles
+            .entry(database_id)
+            .or_insert_with(|| canonical_title.trim().to_owned());
+        let key = release_family_title_key(platform, alternate_title);
+        if key.ends_with('\0') {
+            return;
+        }
+        self.aliases
+            .entry(key)
+            .and_modify(|existing| {
+                if *existing != database_id {
+                    *existing = 0;
+                }
+            })
+            .or_insert(database_id);
+    }
+
+    fn linked_id_for_key(&self, key: &str) -> Option<i64> {
+        self.aliases
+            .get(key)
+            .copied()
+            .filter(|database_id| *database_id > 0)
+    }
+}
+
+/// Loads only explicit LaunchBox alternate-name relationships. Ambiguous
+/// aliases on the same platform are retained as a fail-closed marker rather
+/// than guessed from title similarity.
+fn load_linked_release_families(
+    connection: &Connection,
+    platform: Option<&str>,
+) -> Result<LinkedReleaseFamilies> {
+    if !table_exists(connection, "game_alternate_names")?
+        || !column_exists(connection, "game_alternate_names", "launchbox_db_id")?
+        || !column_exists(connection, "game_alternate_names", "alternate_name")?
+    {
+        return Ok(LinkedReleaseFamilies::default());
+    }
+
+    let mut families = LinkedReleaseFamilies::default();
+    let query = if platform.is_some() {
+        "SELECT a.launchbox_db_id, g.title, p.name, a.alternate_name
+         FROM platforms p
+         JOIN games g ON g.platform_id = p.id
+         JOIN game_alternate_names a ON a.launchbox_db_id = g.launchbox_db_id
+         WHERE p.name = ?1
+           AND a.launchbox_db_id > 0
+           AND trim(coalesce(a.alternate_name, '')) <> ''"
+    } else {
+        "SELECT a.launchbox_db_id, g.title, p.name, a.alternate_name
+         FROM game_alternate_names a
+         JOIN games g ON g.launchbox_db_id = a.launchbox_db_id
+         JOIN platforms p ON p.id = g.platform_id
+         WHERE a.launchbox_db_id > 0
+           AND trim(coalesce(a.alternate_name, '')) <> ''"
+    };
+    let mut statement = connection.prepare(query)?;
+    let mut rows = if let Some(platform) = platform {
+        statement.query([platform])?
+    } else {
+        statement.query([])?
+    };
+    while let Some(row) = rows.next()? {
+        let database_id: i64 = row.get(0)?;
+        let canonical_title: &str = text_column(row, 1).unwrap_or_default();
+        let platform: &str = text_column(row, 2).unwrap_or_default();
+        let alternate_title: &str = text_column(row, 3).unwrap_or_default();
+        families.record_alias(platform, alternate_title, database_id, canonical_title);
+    }
+    Ok(families)
+}
+
+fn release_family_title_key(platform: &str, title: &str) -> String {
+    format!(
+        "{}\0{}",
+        platform.trim().to_lowercase(),
+        crate::tags::normalize_title_for_matching(title)
+    )
+}
+
+fn record_unique_family_owner(owners: &mut HashMap<String, i64>, key: String, database_id: i64) {
+    owners
+        .entry(key)
+        .and_modify(|existing| {
+            if *existing != database_id {
+                *existing = 0;
+            }
+        })
+        .or_insert(database_id);
+}
+
 /// Groups release families (same game across regions/versions) in a single
 /// pass, records each family's distinct-title variant count on its
 /// representative row, and collapses the family to that representative.
-fn apply_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata) {
+fn apply_release_families(
+    games: &mut Vec<Game>,
+    metadata: &mut ListMetadata,
+    linked_families: &LinkedReleaseFamilies,
+) {
+    let title_keys = games
+        .iter()
+        .map(|game| release_family_title_key(&game.platform, &game.title))
+        .collect::<Vec<_>>();
+    let mut canonical_title_owners = HashMap::<String, i64>::new();
+    for (index, game) in games.iter().enumerate() {
+        if game.launchbox_db_id <= 0 {
+            continue;
+        }
+        record_unique_family_owner(
+            &mut canonical_title_owners,
+            title_keys[index].clone(),
+            game.launchbox_db_id,
+        );
+    }
+
+    let family_ids = games
+        .iter()
+        .enumerate()
+        .map(|(index, game)| {
+            if game.launchbox_db_id > 0 {
+                return game.launchbox_db_id;
+            }
+            let title_key = &title_keys[index];
+            if linked_families.aliases.contains_key(title_key) {
+                return linked_families
+                    .linked_id_for_key(title_key)
+                    .unwrap_or_default();
+            }
+            canonical_title_owners
+                .get(title_key)
+                .copied()
+                .filter(|database_id| *database_id > 0)
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
+
     let mut family_order = Vec::<String>::new();
     let mut family_members = HashMap::<String, Vec<usize>>::new();
-    for (index, game) in games.iter().enumerate() {
-        let base = crate::game_details::catalog_release_base(&game.title)
-            .unwrap_or_else(|| game.title.trim().to_owned());
-        let normalized_base = crate::tags::normalize_title_for_matching(&base);
-        let key = format!("{}\0{}", game.platform.to_lowercase(), normalized_base);
+    for (index, title_key) in title_keys.into_iter().enumerate() {
+        let key = if family_ids[index] > 0 {
+            format!("linked:{}", family_ids[index])
+        } else {
+            title_key
+        };
         if !family_members.contains_key(&key) {
             family_order.push(key.clone());
         }
@@ -943,9 +1104,28 @@ fn apply_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata) {
             continue;
         };
         // The overwhelming majority of families are single releases; keep
-        // them untouched without ranking or flag merging.
+        // them without ranking or flag merging, but still present a clean,
+        // canonical card title.
         if members.len() == 1 {
-            retained.push(members[0]);
+            let representative = members[0];
+            let family_id = family_ids[representative];
+            let preferred_title = linked_families
+                .canonical_titles
+                .get(&family_id)
+                .map(String::as_str)
+                .unwrap_or(&games[representative].title);
+            let display_title = crate::game_details::catalog_display_title(preferred_title);
+            if !games[representative]
+                .search_key
+                .contains(&display_title.to_lowercase())
+            {
+                games[representative].search_key.push('\n');
+                games[representative]
+                    .search_key
+                    .push_str(&display_title.to_lowercase());
+            }
+            games[representative].title = display_title;
+            retained.push(representative);
             continue;
         }
         let representative = members
@@ -977,6 +1157,19 @@ fn apply_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata) {
         for index in members {
             distinct_titles.insert(games[*index].title.trim().to_lowercase());
         }
+        let family_id = family_ids[representative];
+        let preferred_title = members
+            .iter()
+            .find(|index| family_id > 0 && games[**index].launchbox_db_id == family_id)
+            .map(|index| games[*index].title.as_str())
+            .or_else(|| {
+                linked_families
+                    .canonical_titles
+                    .get(&family_id)
+                    .map(String::as_str)
+            })
+            .unwrap_or(&games[representative].title);
+        let display_title = crate::game_details::catalog_display_title(preferred_title);
         let search_additions: Vec<String> = distinct_titles
             .iter()
             .filter(|title| !games[representative].search_key.contains(title.as_str()))
@@ -990,12 +1183,18 @@ fn apply_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata) {
         representative_game.has_non_retail_release = has_non_retail_release;
         representative_game.adult = adult;
         representative_game.release_regions = release_regions;
+        representative_game.title = display_title;
         if let Some(cooperative) = cooperative {
             representative_game.cooperative = cooperative.to_owned();
         }
         for title in search_additions {
             representative_game.search_key.push('\n');
             representative_game.search_key.push_str(&title);
+        }
+        let display_search = representative_game.title.to_lowercase();
+        if !representative_game.search_key.contains(&display_search) {
+            representative_game.search_key.push('\n');
+            representative_game.search_key.push_str(&display_search);
         }
         metadata.set_variant_count(representative, variant_count);
         retained.push(representative);
@@ -2558,7 +2757,7 @@ mod tests {
             builder.push_empty();
         }
         let mut metadata = builder.finish();
-        apply_release_families(&mut games, &mut metadata);
+        apply_release_families(&mut games, &mut metadata, &LinkedReleaseFamilies::default());
 
         assert_eq!(games.len(), 3);
         let faxanadu = games
@@ -2618,7 +2817,7 @@ mod tests {
         }
         let mut metadata = metadata.finish();
 
-        apply_release_families(&mut games, &mut metadata);
+        apply_release_families(&mut games, &mut metadata, &LinkedReleaseFamilies::default());
 
         assert_eq!(games.len(), 1);
         assert_eq!(games[0].launchbox_db_id, 511);
@@ -2630,5 +2829,94 @@ mod tests {
             games[0].release_regions & crate::region_priority::region_bit("Europe").unwrap(),
             0
         );
+    }
+
+    #[test]
+    fn regional_qualifiers_are_not_card_titles_even_for_singletons() {
+        let mut games = vec![Game {
+            id: "regional".to_owned(),
+            title: "Example Game (USA, Europe) (Rev 2)".to_owned(),
+            platform: "Example Platform".to_owned(),
+            search_key: "example game (usa, europe) (rev 2)".to_owned(),
+            ..Game::default()
+        }];
+        let mut metadata = ListMetadataBuilder::with_capacity(1);
+        metadata.push_empty();
+        let mut metadata = metadata.finish();
+
+        apply_release_families(&mut games, &mut metadata, &LinkedReleaseFamilies::default());
+
+        assert_eq!(games[0].title, "Example Game (Rev 2)");
+        assert!(games[0].search_key.contains("usa, europe"));
+    }
+
+    #[test]
+    fn explicit_translated_titles_collapse_into_the_canonical_family() {
+        let platform = "Sony Playstation";
+        let mut linked = LinkedReleaseFamilies::default();
+        linked.record_alias(platform, "Akumajou Dracula X", 511, "Castlevania X");
+        linked.record_alias(platform, "悪魔城ドラキュラX", 511, "Castlevania X");
+        let mut games = [
+            ("canonical", "Castlevania X", 511),
+            ("romanized", "Akumajou Dracula X (Japan)", 0),
+            ("japanese", "悪魔城ドラキュラX (Japan)", 0),
+        ]
+        .into_iter()
+        .map(|(id, title, launchbox_db_id)| Game {
+            id: id.to_owned(),
+            launchbox_db_id,
+            title: title.to_owned(),
+            platform: platform.to_owned(),
+            search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+            ..Game::default()
+        })
+        .collect::<Vec<_>>();
+        let mut metadata = ListMetadataBuilder::with_capacity(games.len());
+        for _ in &games {
+            metadata.push_empty();
+        }
+        let mut metadata = metadata.finish();
+
+        apply_release_families(&mut games, &mut metadata, &linked);
+
+        assert_eq!(games.len(), 1);
+        assert_eq!(games[0].title, "Castlevania X");
+        assert!(games[0].search_key.contains("akumajou dracula x"));
+        assert!(games[0].search_key.contains("悪魔城ドラキュラx"));
+    }
+
+    #[test]
+    fn ambiguous_translated_titles_are_never_accepted_as_identity_links() {
+        let platform = "Example Platform";
+        let mut linked = LinkedReleaseFamilies::default();
+        linked.record_alias(platform, "Shared Local Name", 10, "First Game");
+        linked.record_alias(platform, "Shared Local Name", 20, "Second Game");
+        let mut games = [
+            ("first", "First Game", 10),
+            ("second", "Second Game", 20),
+            ("translated", "Shared Local Name (Japan)", 0),
+        ]
+        .into_iter()
+        .map(|(id, title, launchbox_db_id)| Game {
+            id: id.to_owned(),
+            launchbox_db_id,
+            title: title.to_owned(),
+            platform: platform.to_owned(),
+            search_key: title.to_lowercase(),
+            ..Game::default()
+        })
+        .collect::<Vec<_>>();
+        let mut metadata = ListMetadataBuilder::with_capacity(games.len());
+        for _ in &games {
+            metadata.push_empty();
+        }
+        let mut metadata = metadata.finish();
+
+        apply_release_families(&mut games, &mut metadata, &linked);
+
+        assert_eq!(games.len(), 3);
+        assert!(games.iter().any(|game| game.title == "First Game"));
+        assert!(games.iter().any(|game| game.title == "Second Game"));
+        assert!(games.iter().any(|game| game.title == "Shared Local Name"));
     }
 }

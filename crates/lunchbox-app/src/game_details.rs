@@ -1033,6 +1033,42 @@ pub(crate) fn catalog_release_base(title: &str) -> Option<String> {
     release_identity(title).map(|identity| identity.base)
 }
 
+/// Removes only recognized region qualifiers from a catalog title. Other
+/// meaningful qualifiers such as a year, revision, disc, or edition remain
+/// visible. Identity and search retain the original source title separately.
+pub(crate) fn catalog_display_title(title: &str) -> String {
+    let mut output = String::with_capacity(title.len());
+    let mut cursor = 0;
+    while cursor < title.len() {
+        let remainder = &title[cursor..];
+        let opening = [('(', ')'), ('[', ']')]
+            .into_iter()
+            .filter_map(|(opening, closing)| {
+                remainder
+                    .find(opening)
+                    .map(|offset| (offset, opening, closing))
+            })
+            .min_by_key(|(offset, _, _)| *offset);
+        let Some((offset, opening, closing)) = opening else {
+            output.push_str(remainder);
+            break;
+        };
+        output.push_str(&remainder[..offset]);
+        let tag_start = offset + opening.len_utf8();
+        let after_opening = &remainder[tag_start..];
+        let Some(tag_end) = after_opening.find(closing) else {
+            output.push_str(&remainder[offset..]);
+            break;
+        };
+        let after_tag = tag_start + tag_end + closing.len_utf8();
+        if canonical_region_tag(&after_opening[..tag_end]).is_none() {
+            output.push_str(&remainder[offset..after_tag]);
+        }
+        cursor += after_tag;
+    }
+    output.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn is_catalog_release_tag(tag: &str) -> bool {
     canonical_region_tag(tag).is_some()
         || is_version_tag(tag)
