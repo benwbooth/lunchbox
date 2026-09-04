@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-09-01",
+  "reviewed_at": "2026-09-04",
   "sources": [
     {
       "emulator": "Ares",
@@ -383,6 +383,95 @@
           "Citron"
         ],
         "update_strategy": "replace_from_official_release"
+      }
+    },
+    {
+      "emulator": "Gearlynx",
+      "host": "windows",
+      "manager": "github",
+      "package_id": "drhelius/Gearlynx",
+      "metadata": {
+        "archive_format": "zip",
+        "asset_terms": [
+          "desktop",
+          "windows"
+        ],
+        "asset_terms_by_arch": {
+          "x86_64": [
+            "x64"
+          ],
+          "aarch64": [
+            "arm64"
+          ]
+        },
+        "supported_arches": [
+          "x86_64",
+          "aarch64"
+        ],
+        "executable_candidates": [
+          "Gearlynx"
+        ],
+        "update_strategy": "replace_from_github_release"
+      }
+    },
+    {
+      "emulator": "jgenesis",
+      "host": "linux",
+      "manager": "appimage",
+      "package_id": "jsgroth/jgenesis",
+      "metadata": {
+        "archive_payload": "appimage",
+        "asset_terms": [
+          "jgenesis_",
+          "x86_64"
+        ],
+        "supported_arches": [
+          "x86_64"
+        ],
+        "executable_candidates": [
+          "jgenesis"
+        ],
+        "update_strategy": "appimage_then_github_release"
+      }
+    },
+    {
+      "emulator": "jgenesis",
+      "host": "windows",
+      "manager": "github",
+      "package_id": "jsgroth/jgenesis",
+      "metadata": {
+        "archive_format": "zip",
+        "asset_terms": [
+          "jgenesis-",
+          "windows",
+          "x86_64"
+        ],
+        "supported_arches": [
+          "x86_64"
+        ],
+        "executable_candidates": [
+          "jgenesis"
+        ],
+        "update_strategy": "replace_from_github_release"
+      }
+    },
+    {
+      "emulator": "Nuance Resurrection",
+      "host": "windows",
+      "manager": "github",
+      "package_id": "andkrau/NuanceResurrection",
+      "metadata": {
+        "archive_format": "zip",
+        "asset_terms": [
+          "nuance_"
+        ],
+        "supported_arches": [
+          "x86_64"
+        ],
+        "executable_candidates": [
+          "Nuance"
+        ],
+        "update_strategy": "replace_from_github_release"
       }
     }
   ]

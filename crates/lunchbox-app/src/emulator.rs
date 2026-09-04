@@ -455,6 +455,9 @@ pub fn default_rom_launch_template_for(
     if emulator_name.eq_ignore_ascii_case("Altirra") {
         return "%{altirra_media_switch} %f".to_owned();
     }
+    if emulator_name.eq_ignore_ascii_case("Play!") {
+        return "--disc %f".to_owned();
+    }
     "%f".to_owned()
 }
 
@@ -1749,6 +1752,8 @@ fn executable_names(name: &str, host: HostPlatform) -> Vec<String> {
         "fs-uae" => &["fs-uae", "fs-uae-launcher"],
         "hypseus singe" => &["hypseus", "singe"],
         "mesen" => &["Mesen", "mesen", "mesen-x"],
+        "nuance resurrection" => &["Nuance", "nuance"],
+        "play!" => &["Play", "Play!"],
         "ppsspp" => &["PPSSPP", "PPSSPPQt", "ppsspp"],
         "scummvm" => &["scummvm", "ScummVM"],
         "vice" => &["x64sc", "x64", "x128", "xplus4", "vice"],
@@ -2947,6 +2952,28 @@ del *.rom
         assert!(parse_portable_arguments("'unterminated").is_err());
         assert!(validate_launch_template("%{unknown} %f").is_err());
         validate_launch_template("--file=%f %% %{core}").unwrap();
+    }
+
+    #[test]
+    fn play_uses_its_required_disc_argument_and_real_executable_name() {
+        assert_eq!(
+            default_rom_launch_template_for(
+                "Play!",
+                EmulatorRuntimeKind::Standalone,
+                "Sony Playstation 2"
+            ),
+            "--disc %f"
+        );
+        assert!(
+            executable_names("Play!", HostPlatform::Windows)
+                .iter()
+                .any(|name| name == "Play.exe")
+        );
+        assert!(
+            executable_names("Nuance Resurrection", HostPlatform::Linux)
+                .iter()
+                .any(|name| name == "Nuance")
+        );
     }
 
     #[test]
