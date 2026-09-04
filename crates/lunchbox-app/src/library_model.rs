@@ -628,6 +628,13 @@ pub mod qobject {
         ) -> bool;
 
         #[qinvokable]
+        fn report_library_session_restored(
+            self: &LibraryModel,
+            platform: QString,
+            game_uid: QString,
+        );
+
+        #[qinvokable]
         fn save_couch_state(
             self: Pin<&mut LibraryModel>,
             shelf: QString,
@@ -770,6 +777,38 @@ type CatalogLoadResult = Result<
     ),
     String,
 >;
+
+fn validate_library_session_preferences(
+    catalog: &Catalog,
+    mut preferences: LibrarySessionPreferences,
+) -> (LibrarySessionPreferences, Option<String>) {
+    let mut warnings = Vec::new();
+    if !preferences.platform.is_empty()
+        && !catalog
+            .platforms
+            .iter()
+            .any(|platform| platform.name == preferences.platform)
+    {
+        warnings.push(format!(
+            "saved platform {} is no longer present",
+            preferences.platform
+        ));
+        preferences.platform.clear();
+    }
+    if !preferences.selected_game_uid.is_empty()
+        && !catalog
+            .games
+            .iter()
+            .any(|game| game.id == preferences.selected_game_uid)
+    {
+        warnings.push("saved game is no longer present".to_owned());
+        preferences.selected_game_uid.clear();
+    }
+    (
+        preferences,
+        (!warnings.is_empty()).then(|| warnings.join("; ")),
+    )
+}
 
 enum CollectionMutation {
     Created(UserCollection),
@@ -2177,10 +2216,22 @@ impl qobject::LibraryModel {
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-catalog-load".into())
             .spawn(move || {
-                match catalog::load_preview(&path) {
+                let preview_session = SettingsStore::open_default()
+                    .and_then(|store| store.load_library_session_preferences())
+                    .map_err(|error| error.to_string());
+                let preview_focus = preview_session
+                    .as_ref()
+                    .map(|preferences| catalog::CatalogPreviewFocus {
+                        platform: preferences.platform.clone(),
+                        game_uid: preferences.selected_game_uid.clone(),
+                    })
+                    .unwrap_or_default();
+                match catalog::load_preview(&path, &preview_focus) {
                     Ok(Some(preview)) => {
                         let _ = qt_thread.queue(move |mut model| {
-                            model.as_mut().finish_preview(generation, preview);
+                            model
+                                .as_mut()
+                                .finish_preview(generation, preview, preview_session);
                         });
                     }
                     Ok(None) => {}
@@ -2284,7 +2335,12 @@ impl qobject::LibraryModel {
         }
     }
 
-    fn finish_preview(mut self: Pin<&mut Self>, generation: u64, preview: catalog::CatalogPreview) {
+    fn finish_preview(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        preview: catalog::CatalogPreview,
+        session_preferences: Result<LibrarySessionPreferences, String>,
+    ) {
         if generation != self.as_ref().rust().load_generation {
             return;
         }
@@ -2304,6 +2360,9 @@ impl qobject::LibraryModel {
         let offer_count = catalog.offer_count;
         let emulator_count = catalog.emulator_count;
         let source_label = catalog.source_label.clone();
+        let session_preferences = session_preferences
+            .map(|preferences| validate_library_session_preferences(&catalog, preferences).0)
+            .unwrap_or_default();
         let platform_query = self.as_ref().platform_search().to_string().to_lowercase();
         let filtered_indices = (0..preview_game_count).collect::<Vec<_>>();
         let alphabet_index = build_alphabet_index(
@@ -2365,6 +2424,15 @@ impl qobject::LibraryModel {
             .set_downloadable_game_count(saturating_i32(downloadable_game_count));
         self.as_mut()
             .set_emulator_count(saturating_i32(emulator_count));
+        self.as_mut()
+            .set_session_platform(qstring(&session_preferences.platform));
+        self.as_mut()
+            .set_session_game_uid(qstring(&session_preferences.selected_game_uid));
+        self.as_mut()
+            .set_session_grid_content_y(session_preferences.grid_content_y);
+        self.as_mut()
+            .set_session_list_content_y(session_preferences.list_content_y);
+        self.as_mut().set_session_state_ready(true);
         self.as_mut().set_ready(true);
         let revision = self.as_ref().platform_revision().wrapping_add(1);
         self.as_mut().set_platform_revision(revision);
@@ -2438,29 +2506,9 @@ impl qobject::LibraryModel {
                     Err(error) => Some(error),
                 };
                 let session_warning = match session_preferences {
-                    Ok(mut preferences) => {
-                        let mut warnings = Vec::new();
-                        if !preferences.platform.is_empty()
-                            && !catalog
-                                .platforms
-                                .iter()
-                                .any(|platform| platform.name == preferences.platform)
-                        {
-                            warnings.push(format!(
-                                "saved platform {} is no longer present",
-                                preferences.platform
-                            ));
-                            preferences.platform.clear();
-                        }
-                        if !preferences.selected_game_uid.is_empty()
-                            && !catalog
-                                .games
-                                .iter()
-                                .any(|game| game.id == preferences.selected_game_uid)
-                        {
-                            warnings.push("saved game is no longer present".to_owned());
-                            preferences.selected_game_uid.clear();
-                        }
+                    Ok(preferences) => {
+                        let (preferences, warning) =
+                            validate_library_session_preferences(&catalog, preferences);
                         self.as_mut()
                             .set_session_platform(qstring(&preferences.platform));
                         self.as_mut()
@@ -2469,7 +2517,7 @@ impl qobject::LibraryModel {
                             .set_session_grid_content_y(preferences.grid_content_y);
                         self.as_mut()
                             .set_session_list_content_y(preferences.list_content_y);
-                        (!warnings.is_empty()).then(|| warnings.join("; "))
+                        warning
                     }
                     Err(error) => Some(error),
                 };
@@ -6261,6 +6309,33 @@ impl qobject::LibraryModel {
         self.as_mut()
             .set_session_list_content_y(preferences.list_content_y);
         true
+    }
+
+    pub fn report_library_session_restored(&self, platform: QString, game_uid: QString) {
+        let game_uid = game_uid.to_string();
+        let row = self
+            .rust()
+            .filtered_indices
+            .iter()
+            .position(|index| {
+                self.rust()
+                    .catalog
+                    .games
+                    .get(*index)
+                    .is_some_and(|game| game.id == game_uid)
+            })
+            .and_then(|row| i32::try_from(row).ok())
+            .unwrap_or(-1);
+        let elapsed = self
+            .rust()
+            .load_started
+            .map(|started| started.elapsed().as_millis())
+            .unwrap_or_default();
+        println!(
+            "LUNCHBOX_LIBRARY_SESSION_RESTORED_MS={elapsed} platform={:?} game_uid={game_uid:?} row={row} full_catalog={}",
+            platform.to_string(),
+            !*self.loading()
+        );
     }
 
     fn rebuild_filtered_platforms(mut self: Pin<&mut Self>) {

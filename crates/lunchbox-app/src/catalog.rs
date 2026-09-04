@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, params};
 
 use crate::list_view::{ListColumn, ListColumnFilter, ListMetadata, ListMetadataBuilder};
 use crate::settings::GameMetadataOverride;
@@ -49,6 +49,12 @@ pub struct Catalog {
 pub struct CatalogPreview {
     pub catalog: Catalog,
     pub total_game_count: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CatalogPreviewFocus {
+    pub platform: String,
+    pub game_uid: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -208,16 +214,38 @@ pub fn load(path: &Path) -> Result<Catalog> {
 /// Load enough of the discovery catalog to paint and interact with the first
 /// screen while the complete in-memory search index is built. This is never a
 /// substitute for the full load: the library model replaces it atomically.
-pub fn load_preview(path: &Path) -> Result<Option<CatalogPreview>> {
+pub fn load_preview(path: &Path, focus: &CatalogPreviewFocus) -> Result<Option<CatalogPreview>> {
     let canonical = open_read_only(path, "Lunchbox database")?;
     validate_canonical_schema(&canonical)?;
     let Some(discovery_path) = requested_discovery_database_path() else {
         return Ok(None);
     };
+    let native_state_path = crate::settings::state_database_path()?;
+    load_preview_from_sources(
+        &canonical,
+        &discovery_path,
+        requested_minerva_database_path().as_deref(),
+        requested_user_database_path().as_deref(),
+        native_state_path
+            .is_file()
+            .then_some(native_state_path.as_path()),
+        focus,
+    )
+    .map(Some)
+}
+
+fn load_preview_from_sources(
+    canonical: &Connection,
+    discovery_path: &Path,
+    minerva_path: Option<&Path>,
+    user_path: Option<&Path>,
+    native_state_path: Option<&Path>,
+    focus: &CatalogPreviewFocus,
+) -> Result<CatalogPreview> {
     let discovery = open_read_only(&discovery_path, "Lunchbox discovery database")?;
     validate_discovery_schema(&discovery)?;
-    let installed = load_installed_games(requested_user_database_path().as_deref())?;
-    let minerva = load_minerva_coverage(requested_minerva_database_path().as_deref())?;
+    let installed = load_installed_games_with_native_state(user_path, native_state_path)?;
+    let minerva = load_minerva_coverage(minerva_path)?;
     let total_game_count =
         count(&discovery, "games", "1")?.saturating_add(installed.local_only_games.len());
     let order = if column_exists(&discovery, "games", "sort_title")? {
@@ -230,11 +258,12 @@ pub fn load_preview(path: &Path) -> Result<Option<CatalogPreview>> {
                 coalesce(g.launchbox_db_id, 0)
          FROM games g
          JOIN platforms p ON p.id = g.platform_id
-         ORDER BY {order} COLLATE NOCASE, g.id
+         WHERE (?1 = '' OR p.name = ?1)
+         ORDER BY (g.id = ?2) DESC, {order} COLLATE NOCASE, g.id
          LIMIT 240"
     );
     let mut statement = discovery.prepare(&query)?;
-    let rows = statement.query_map([], |row| {
+    let rows = statement.query_map(params![focus.platform, focus.game_uid], |row| {
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
@@ -317,7 +346,7 @@ pub fn load_preview(path: &Path) -> Result<Option<CatalogPreview>> {
     });
     apply_grouped_platform_counts(&games, &mut platforms);
 
-    Ok(Some(CatalogPreview {
+    Ok(CatalogPreview {
         catalog: Catalog {
             games,
             platforms,
@@ -328,7 +357,7 @@ pub fn load_preview(path: &Path) -> Result<Option<CatalogPreview>> {
             source_label: format!("Discovery catalog: {}", discovery_path.display()),
         },
         total_game_count,
-    }))
+    })
 }
 
 pub(crate) fn open_read_only(path: &Path, description: &str) -> Result<Connection> {
@@ -2030,6 +2059,75 @@ mod tests {
         );
         assert_eq!(downloadable.len(), 1);
         assert_eq!(catalog.games[downloadable[0]].title, "Download Game");
+    }
+
+    #[test]
+    fn focused_preview_starts_with_the_exact_saved_game_and_platform() {
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let discovery_path = directory.path().join("games.db");
+
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+
+        let mut discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (1, 'Other System');
+                 INSERT INTO platforms VALUES (2, 'Saved System');
+                 INSERT INTO games VALUES
+                   ('other-game', 'Aardvark', NULL, 'Released', 1, 1);",
+            )
+            .unwrap();
+        let transaction = discovery.transaction().unwrap();
+        for index in 0..300 {
+            transaction
+                .execute(
+                    "INSERT INTO games VALUES (?1, ?2, NULL, 'Released', ?3, 2)",
+                    params![
+                        format!("saved-{index:03}"),
+                        format!("Saved Game {index:03}"),
+                        i64::from(index) + 10
+                    ],
+                )
+                .unwrap();
+        }
+        transaction.commit().unwrap();
+        drop(discovery);
+
+        let preview = load_preview_from_sources(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            &CatalogPreviewFocus {
+                platform: "Saved System".into(),
+                game_uid: "saved-299".into(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(preview.total_game_count, 301);
+        assert_eq!(preview.catalog.games.len(), 240);
+        assert_eq!(preview.catalog.games[0].id, "saved-299");
+        assert!(
+            preview
+                .catalog
+                .games
+                .iter()
+                .all(|game| game.platform == "Saved System")
+        );
     }
 
     #[test]

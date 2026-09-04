@@ -499,6 +499,9 @@ ApplicationWindow {
             const row = library.row_for_game(gameId)
             if (row >= 0) {
                 view.currentIndex = row
+                view.positionViewAtIndex(
+                            row,
+                            root.gridMode ? GridView.Contain : ListView.Contain)
                 root.openGame(gameId,
                               library.database_id_for_game(gameId),
                               library.display_title_for_game(gameId),
@@ -508,6 +511,31 @@ ApplicationWindow {
             }
         }
         return true
+    }
+
+    function revealSelectedPlatform() {
+        if (root.selectedPlatform.length === 0)
+            return
+        for (let index = 0; index < library.filtered_platform_count; ++index) {
+            if (library.filtered_platform_name_at(index)
+                    === root.selectedPlatform) {
+                platformList.positionViewAtIndex(index, ListView.Contain)
+                return
+            }
+        }
+    }
+
+    function reanchorSelectedGame() {
+        const view = gameViewLoader.item
+        if (!view || root.selectedGameId.length === 0)
+            return
+        const row = library.row_for_game(root.selectedGameId)
+        if (row < 0)
+            return
+        view.currentIndex = row
+        view.positionViewAtIndex(
+                    row,
+                    root.gridMode ? GridView.Contain : ListView.Contain)
     }
 
     function artworkProviderNeedsSetup(provider) {
@@ -3128,6 +3156,15 @@ ApplicationWindow {
 
     Connections {
         target: library
+        function onPlatform_revisionChanged() {
+            if (library.loading || !root.librarySessionRestored
+                    || root.automatedProbeRun)
+                return
+            Qt.callLater(function() {
+                root.revealSelectedPlatform()
+                root.reanchorSelectedGame()
+            })
+        }
         function onReadyChanged() {
             if (library.ready) {
                 if (library.catalog_probe && !library.loading)
@@ -7252,7 +7289,8 @@ ApplicationWindow {
         id: librarySessionRestoreTimer
         interval: 40
         repeat: true
-        running: library.session_state_ready
+        running: library.ready
+                 && library.session_state_ready
                  && !root.librarySessionRestored
                  && !root.automatedProbeRun
         onTriggered: {
@@ -7264,6 +7302,7 @@ ApplicationWindow {
                 library.apply_filter(searchField.text,
                                      root.selectedPlatform,
                                      root.availability)
+                Qt.callLater(root.revealSelectedPlatform)
                 root.librarySessionFilterApplied = true
                 return
             }
@@ -7278,6 +7317,8 @@ ApplicationWindow {
             }
             if (root.restoreLibrarySession()) {
                 root.librarySessionRestored = true
+                library.report_library_session_restored(
+                            root.selectedPlatform, root.selectedGameId)
                 stop()
             }
         }
