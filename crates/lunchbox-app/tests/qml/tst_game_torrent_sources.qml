@@ -24,9 +24,13 @@ TestCase {
                 property string platform: "Nintendo Switch"
                 property string game_id: "game-one"
                 property int sourceCount: 1
+                property int candidatesPerSource: 1
                 function download_source_count() { return sourceCount }
+                function download_candidate_count() {
+                    return sourceCount * candidatesPerSource
+                }
                 function download_source_bundle_at(index) { return index }
-                function bundle_file_count_at(index) { return 1 }
+                function bundle_file_count_at(index) { return candidatesPerSource }
                 function bundle_title_at(index) { return "Source " + index }
                 function bundle_detail_at(index) { return "5,475 indexed members" }
                 function bundle_file_name_at(bundle, file) {
@@ -106,11 +110,16 @@ TestCase {
 
         const expand = findChild(host.sources, "expandTorrentSourcesButton")
         verify(expand)
-        compare(expand.text, "SHOW 5 MORE SOURCES")
+        compare(expand.text, "SHOW ALL SOURCES AND MATCHES")
+        tryVerify(function() {
+            return expand.mapToItem(host.sources, 0, expand.height).y
+                   <= findChild(host.sources, "torrentSource-0")
+                        .mapToItem(host.sources, 0, 0).y
+        })
         expand.click()
         compare(host.sources.visibleSourceCount, 8)
         verify(findChild(host.sources, "torrentSource-7"))
-        compare(expand.text, "SHOW FEWER SOURCES")
+        compare(expand.text, "SHOW TOP 3 SOURCES")
 
         host.details.game_id = "game-two"
         compare(host.sources.sourcesExpanded, false)
@@ -139,5 +148,29 @@ TestCase {
         host.details.detail_revision += 1
         tryCompare(host.sources, "matchingSourceCount", 0)
         compare(host.sources.sourcesExpanded, false)
+    }
+
+    function test_collapsed_sources_show_only_each_best_match() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.details.sourceCount = 3
+        host.details.candidatesPerSource = 8
+        host.details.detail_revision += 1
+        tryCompare(host.sources, "matchingCandidateCount", 24)
+
+        const firstSource = findChild(host.sources, "torrentSource-0")
+        verify(firstSource)
+        compare(firstSource.visibleCandidateCount, 1)
+        verify(findChild(firstSource, "torrentCandidate-0"))
+        compare(findChild(firstSource, "torrentCandidate-1"), null)
+        const detail = findChild(firstSource, "torrentCandidateDetail-0-0")
+        verify(detail)
+        compare(detail.elide, Text.ElideMiddle)
+
+        const expand = findChild(host.sources, "expandTorrentSourcesButton")
+        verify(expand)
+        expand.click()
+        compare(firstSource.visibleCandidateCount, 8)
+        verify(findChild(firstSource, "torrentCandidate-7"))
     }
 }

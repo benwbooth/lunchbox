@@ -20,10 +20,17 @@ Column {
         revision
         return detailsModel ? detailsModel.download_source_count() : 0
     }
+    readonly property int matchingCandidateCount: {
+        revision
+        return detailsModel ? detailsModel.download_candidate_count() : 0
+    }
     readonly property int collapsedSourceLimit: 3
     readonly property int visibleSourceCount:
         sourcesExpanded ? matchingSourceCount
                         : Math.min(collapsedSourceLimit, matchingSourceCount)
+    readonly property bool hasCollapsedContent:
+        matchingSourceCount > collapsedSourceLimit
+        || matchingCandidateCount > visibleSourceCount
     readonly property string gameIdentity:
         detailsModel ? detailsModel.game_id : ""
     readonly property int registeredSourceCount:
@@ -48,6 +55,10 @@ Column {
     }
     onRankingChanged: {
         if (ranking)
+            sourcesExpanded = false
+    }
+    onRevisionChanged: {
+        if (ranking || matchingSourceCount === 0)
             sourcesExpanded = false
     }
 
@@ -104,6 +115,32 @@ Column {
         wrapMode: Text.WordWrap
     }
 
+    Button {
+        id: expandSourcesButton
+        objectName: "expandTorrentSourcesButton"
+        width: parent.width
+        height: 34
+        visible: root.hasCollapsedContent
+        text: root.sourcesExpanded
+              ? "SHOW TOP " + root.collapsedSourceLimit + " SOURCES"
+              : "SHOW ALL SOURCES AND MATCHES"
+        font.pixelSize: 9
+        font.weight: Font.Bold
+        onClicked: root.sourcesExpanded = !root.sourcesExpanded
+        background: Rectangle {
+            radius: 8
+            color: parent.down ? "#233144" : "transparent"
+            border.color: root.line
+        }
+        contentItem: Text {
+            text: parent.text
+            color: root.accentCool
+            font: parent.font
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
+
     Repeater {
         id: sourceRepeater
         objectName: "matchingTorrentSources"
@@ -121,6 +158,9 @@ Column {
                 sourceRevision
                 return root.detailsModel.bundle_file_count_at(bundleIndex)
             }
+            readonly property int visibleCandidateCount:
+                root.sourcesExpanded ? candidateCount
+                                     : Math.min(1, candidateCount)
             objectName: "torrentSource-" + index
             width: root.width
             height: sourceContents.implicitHeight + 24
@@ -143,6 +183,8 @@ Column {
                     width: parent.width
                     spacing: 8
                     Text {
+                        id: sourceTitle
+                        objectName: "torrentSourceTitle-" + sourceSection.index
                         Layout.fillWidth: true
                         text: {
                             sourceSection.sourceRevision
@@ -153,6 +195,10 @@ Column {
                         font.pixelSize: 12
                         font.weight: Font.DemiBold
                         elide: Text.ElideRight
+                        HoverHandler { id: sourceTitleHover }
+                        ToolTip.visible: sourceTitleHover.hovered
+                        ToolTip.delay: 350
+                        ToolTip.text: sourceTitle.text
                     }
                     Rectangle {
                         visible: sourceSection.index === 0
@@ -174,6 +220,8 @@ Column {
                     }
                 }
                 Text {
+                    id: sourceDetail
+                    objectName: "torrentSourceDetail-" + sourceSection.index
                     width: parent.width
                     text: {
                         sourceSection.sourceRevision
@@ -183,10 +231,14 @@ Column {
                     color: root.muted
                     font.pixelSize: 10
                     elide: Text.ElideRight
+                    HoverHandler { id: sourceDetailHover }
+                    ToolTip.visible: sourceDetailHover.hovered
+                    ToolTip.delay: 350
+                    ToolTip.text: sourceDetail.text
                 }
 
                 Repeater {
-                    model: sourceSection.candidateCount
+                    model: sourceSection.visibleCandidateCount
                     delegate: Rectangle {
                         id: fileRow
                         required property int index
@@ -209,6 +261,9 @@ Column {
                             spacing: 4
                             Text {
                                 id: fileName
+                                objectName: "torrentCandidateName-"
+                                            + sourceSection.index + "-"
+                                            + fileRow.index
                                 width: parent.width
                                 text: {
                                     fileRow.fileRevision
@@ -219,9 +274,16 @@ Column {
                                 color: root.ink
                                 font.pixelSize: 11
                                 wrapMode: Text.WrapAnywhere
+                                HoverHandler { id: fileNameHover }
+                                ToolTip.visible: fileNameHover.hovered
+                                ToolTip.delay: 350
+                                ToolTip.text: fileName.text
                             }
                             Text {
                                 id: fileInfo
+                                objectName: "torrentCandidateDetail-"
+                                            + sourceSection.index + "-"
+                                            + fileRow.index
                                 width: parent.width
                                 text: {
                                     fileRow.fileRevision
@@ -231,7 +293,11 @@ Column {
                                 }
                                 color: root.muted
                                 font.pixelSize: 10
-                                elide: Text.ElideRight
+                                elide: Text.ElideMiddle
+                                HoverHandler { id: fileInfoHover }
+                                ToolTip.visible: fileInfoHover.hovered
+                                ToolTip.delay: 350
+                                ToolTip.text: fileInfo.text
                             }
                         }
                         HeaderButton {
@@ -258,34 +324,6 @@ Column {
                     }
                 }
             }
-        }
-    }
-
-    Button {
-        id: expandSourcesButton
-        objectName: "expandTorrentSourcesButton"
-        width: parent.width
-        height: 34
-        visible: root.matchingSourceCount > root.collapsedSourceLimit
-        text: root.sourcesExpanded
-              ? "SHOW FEWER SOURCES"
-              : "SHOW " + (root.matchingSourceCount - root.collapsedSourceLimit)
-                + " MORE SOURCE"
-                + (root.matchingSourceCount - root.collapsedSourceLimit === 1 ? "" : "S")
-        font.pixelSize: 9
-        font.weight: Font.Bold
-        onClicked: root.sourcesExpanded = !root.sourcesExpanded
-        background: Rectangle {
-            radius: 8
-            color: parent.down ? "#233144" : "transparent"
-            border.color: root.line
-        }
-        contentItem: Text {
-            text: parent.text
-            color: root.accentCool
-            font: parent.font
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
         }
     }
 
