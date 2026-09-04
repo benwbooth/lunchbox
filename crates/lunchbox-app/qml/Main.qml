@@ -388,7 +388,13 @@ ApplicationWindow {
     readonly property bool emulatorLifecycleRecoveryUiProbe: Qt.application.arguments.indexOf("--emulator-lifecycle-recovery-ui-probe") >= 0
     readonly property bool emulatorManagerProbe: emulatorLifecycleRecoveryUiProbe
                                                  || Qt.application.arguments.indexOf("--emulator-manager-probe") >= 0
+                                                 || emulatorManagerPlatformProbe.length > 0
     readonly property bool emulatorManagerUiProbe: Qt.application.arguments.indexOf("--emulator-manager-ui-probe") >= 0
+    readonly property string emulatorManagerPlatformProbe:
+        Qt.application.arguments.indexOf("--emulator-manager-switch-ui-probe") >= 0
+        ? "Nintendo Switch"
+        : Qt.application.arguments.indexOf("--emulator-manager-msdos-ui-probe") >= 0
+          ? "MS-DOS" : ""
     readonly property bool emulatorUpdateUiProbe: Qt.application.arguments.indexOf("--emulator-update-ui-probe") >= 0
     readonly property bool emulatorUpdatePinUiProbe: Qt.application.arguments.indexOf("--emulator-update-pin-ui-probe") >= 0
     readonly property bool firmwareProbe: Qt.application.arguments.indexOf("--firmware-probe") >= 0
@@ -645,18 +651,21 @@ ApplicationWindow {
         }
     }
 
+    function resetEmulatorManagerFilters() {
+        emulatorSearch.text = ""
+        emulatorStatusFilter.currentIndex = 0
+        emulatorManager.apply_filter("", "all")
+    }
+
     function openEmulatorManager() {
+        root.resetEmulatorManagerFilters()
         emulatorManager.set_platform_scope("")
         emulatorManagerDialog.open()
         emulatorManager.initialize()
     }
 
     function openEmulatorManagerForPlatform(platform) {
-        // A platform-scoped view must not inherit stale text/status filters
-        // from a previous manager visit, which can silently empty the list.
-        emulatorSearch.text = ""
-        emulatorStatusFilter.currentIndex = 0
-        emulatorManager.apply_filter("", "all")
+        root.resetEmulatorManagerFilters()
         emulatorManager.set_platform_scope(platform)
         emulatorManagerDialog.open()
         emulatorManager.initialize()
@@ -2339,7 +2348,10 @@ ApplicationWindow {
     Connections {
         target: emulatorManager
         function onInitializedChanged() {
-            if (root.emulatorLifecycleRecoveryUiProbe && emulatorManager.initialized) {
+            if (root.emulatorManagerPlatformProbe.length > 0
+                    && emulatorManager.initialized) {
+                emulatorManagerPlatformProbeTimer.restart()
+            } else if (root.emulatorLifecycleRecoveryUiProbe && emulatorManager.initialized) {
                 root.openEmulatorManager()
                 emulatorLifecycleRecoveryReadyTimer.restart()
             } else if (root.emulatorManagerProbe && emulatorManager.initialized)
@@ -6366,6 +6378,13 @@ ApplicationWindow {
                 if (root.controllerUiProbe)
                     console.log("LUNCHBOX_CONTROLLER_UI_OPENED")
             }
+            else if (root.emulatorManagerPlatformProbe.length > 0)
+            {
+                // Reproduce the stale-state regression before exercising the
+                // ordinary platform-scoped entry point.
+                emulatorManager.apply_filter("__no_emulator_matches__", "managed")
+                root.openEmulatorManagerForPlatform(root.emulatorManagerPlatformProbe)
+            }
             else if (root.emulatorManagerProbe)
                 emulatorManager.initialize()
             else if (root.emulatorUpdateUiProbe || root.emulatorUpdatePinUiProbe)
@@ -6470,6 +6489,21 @@ ApplicationWindow {
         running: root.emulatorManagerUiProbe
         repeat: false
         onTriggered: root.openEmulatorManager()
+    }
+
+    Timer {
+        id: emulatorManagerPlatformProbeTimer
+        interval: 100
+        repeat: false
+        onTriggered: {
+            if (!emulatorManager.verify_platform_scope_probe(
+                        root.emulatorManagerPlatformProbe,
+                        emulatorManagerDialog.visible)) {
+                Qt.exit(2)
+                return
+            }
+            Qt.quit()
+        }
     }
 
     Timer {

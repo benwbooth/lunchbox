@@ -73,6 +73,13 @@ pub mod qobject {
         fn verify_recovery_probe(self: &EmulatorManagerModel, dialog_visible: bool) -> bool;
 
         #[qinvokable]
+        fn verify_platform_scope_probe(
+            self: &EmulatorManagerModel,
+            expected_platform: QString,
+            dialog_visible: bool,
+        ) -> bool;
+
+        #[qinvokable]
         fn install_at(self: Pin<&mut EmulatorManagerModel>, index: i32);
 
         #[qinvokable]
@@ -389,6 +396,51 @@ impl qobject::EmulatorManagerModel {
                 "LUNCHBOX_EMULATOR_RECOVERY_UI_FAILED {evidence} message={:?}",
                 self.message().to_string()
             );
+        }
+        ready
+    }
+
+    pub fn verify_platform_scope_probe(
+        &self,
+        expected_platform: QString,
+        dialog_visible: bool,
+    ) -> bool {
+        let expected_platform = expected_platform.to_string();
+        let expected_key = crate::catalog::normalize_platform_key(&expected_platform);
+        let actual_platform = self.platform_filter().to_string();
+        let actual_key = crate::catalog::normalize_platform_key(&actual_platform);
+        let names = self
+            .rust()
+            .rows
+            .iter()
+            .map(|row| row.name.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        let ready = dialog_visible
+            && *self.initialized()
+            && !*self.busy()
+            && !expected_key.is_empty()
+            && actual_key == expected_key
+            && self.search().to_string().is_empty()
+            && self.status_filter().to_string() == "all"
+            && !self.rust().rows.is_empty()
+            && self
+                .rust()
+                .rows
+                .iter()
+                .all(|row| row.is_compatible_with(&expected_key));
+        let evidence = format!(
+            "platform={expected_platform:?} visible={dialog_visible} initialized={} busy={} rows={} search={:?} status={:?} names={names}",
+            *self.initialized(),
+            *self.busy(),
+            self.rust().rows.len(),
+            self.search().to_string(),
+            self.status_filter().to_string(),
+        );
+        if ready {
+            println!("LUNCHBOX_EMULATOR_PLATFORM_UI_READY {evidence}");
+        } else {
+            eprintln!("LUNCHBOX_EMULATOR_PLATFORM_UI_FAILED {evidence}");
         }
         ready
     }
