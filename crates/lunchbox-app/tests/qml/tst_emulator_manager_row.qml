@@ -37,7 +37,7 @@ TestCase {
 
             Lunchbox.EmulatorManagerRow {
                 id: emulatorRow
-                index: 0
+                rowIndex: 0
                 emulatorModel: manager
                 ink: "#f4f7fb"
                 muted: "#94a0b3"

@@ -6503,6 +6503,12 @@ ApplicationWindow {
                 Qt.exit(2)
                 return
             }
+            const firstRow = emulatorList.itemAtIndex(0)
+            if (emulatorList.count !== emulatorManager.row_count
+                    || !firstRow || firstRow.emulatorName.length === 0) {
+                Qt.exit(2)
+                return
+            }
             Qt.quit()
         }
     }
@@ -21435,6 +21441,7 @@ ApplicationWindow {
 
                     delegate: EmulatorManagerRow {
                         required property int index
+                        rowIndex: index
                         emulatorModel: emulatorManager
                         ink: root.ink
                         muted: root.muted

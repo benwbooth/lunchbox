@@ -5,7 +5,7 @@ import QtQuick.Layouts
 Rectangle {
     id: row
 
-    required property int index
+    required property int rowIndex
     required property var emulatorModel
     required property color ink
     required property color muted
@@ -18,31 +18,31 @@ Rectangle {
     readonly property int managerBusyIndex: emulatorModel ? emulatorModel.busy_index : -1
     readonly property string emulatorName: {
         modelRevision
-        return emulatorModel ? emulatorModel.name_at(index) : ""
+        return emulatorModel ? emulatorModel.name_at(rowIndex) : ""
     }
     readonly property string emulatorStatus: {
         modelRevision
-        return emulatorModel ? emulatorModel.status_at(index) : ""
+        return emulatorModel ? emulatorModel.status_at(rowIndex) : ""
     }
     readonly property string emulatorSource: {
         modelRevision
-        return emulatorModel ? emulatorModel.source_at(index) : ""
+        return emulatorModel ? emulatorModel.source_at(rowIndex) : ""
     }
     readonly property string emulatorDetail: {
         modelRevision
-        return emulatorModel ? emulatorModel.detail_at(index) : ""
+        return emulatorModel ? emulatorModel.detail_at(rowIndex) : ""
     }
     readonly property bool recommended: {
         modelRevision
-        return emulatorModel && emulatorModel.recommended_at(index)
+        return emulatorModel && emulatorModel.recommended_at(rowIndex)
     }
     readonly property bool installAvailable: {
         modelRevision
-        return emulatorModel && emulatorModel.can_install_at(index)
+        return emulatorModel && emulatorModel.can_install_at(rowIndex)
     }
     readonly property bool uninstallAvailable: {
         modelRevision
-        return emulatorModel && emulatorModel.can_uninstall_at(index)
+        return emulatorModel && emulatorModel.can_uninstall_at(rowIndex)
     }
     readonly property bool installActionVisible: !managerBusy && installAvailable
     readonly property bool uninstallActionVisible: !managerBusy && uninstallAvailable
@@ -151,7 +151,7 @@ Rectangle {
         }
 
         BusyIndicator {
-            visible: row.managerBusy && row.managerBusyIndex === row.index
+            visible: row.managerBusy && row.managerBusyIndex === row.rowIndex
             running: visible
             Layout.preferredWidth: 26
             Layout.preferredHeight: 26
@@ -162,7 +162,7 @@ Rectangle {
             visible: row.installActionVisible
             text: "Install"
             active: true
-            onClicked: row.installRequested(row.index)
+            onClicked: row.installRequested(row.rowIndex)
         }
 
         Button {
@@ -170,9 +170,9 @@ Rectangle {
             visible: row.uninstallActionVisible
             text: "Uninstall"
             onClicked: row.uninstallRequested(
-                           row.index,
+                           row.rowIndex,
                            row.emulatorName,
-                           row.emulatorModel.uninstall_confirmation_at(row.index))
+                           row.emulatorModel.uninstall_confirmation_at(row.rowIndex))
         }
     }
 }
