@@ -20,7 +20,7 @@ Column {
         revision
         return detailsModel ? detailsModel.download_source_count() : 0
     }
-    readonly property int collapsedSourceLimit: 5
+    readonly property int collapsedSourceLimit: 3
     readonly property int visibleSourceCount:
         sourcesExpanded ? matchingSourceCount
                         : Math.min(collapsedSourceLimit, matchingSourceCount)
@@ -42,6 +42,14 @@ Column {
     height: visible ? implicitHeight : 0
     spacing: 9
     onGameIdentityChanged: sourcesExpanded = false
+    onMatchingSourceCountChanged: {
+        if (matchingSourceCount === 0)
+            sourcesExpanded = false
+    }
+    onRankingChanged: {
+        if (ranking)
+            sourcesExpanded = false
+    }
 
     RowLayout {
         width: parent.width

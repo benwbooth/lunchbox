@@ -94,19 +94,19 @@ TestCase {
         verify(findChild(host.sources, "torrentCandidate-0"))
     }
 
-    function test_source_list_starts_at_five_and_expands_on_request() {
+    function test_source_list_starts_at_three_and_expands_on_request() {
         const host = createTemporaryObject(hostComponent, testCase)
         verify(host)
         host.details.sourceCount = 8
         host.details.detail_revision += 1
         tryCompare(host.sources, "matchingSourceCount", 8)
-        compare(host.sources.visibleSourceCount, 5)
-        verify(findChild(host.sources, "torrentSource-4"))
-        compare(findChild(host.sources, "torrentSource-5"), null)
+        compare(host.sources.visibleSourceCount, 3)
+        verify(findChild(host.sources, "torrentSource-2"))
+        compare(findChild(host.sources, "torrentSource-3"), null)
 
         const expand = findChild(host.sources, "expandTorrentSourcesButton")
         verify(expand)
-        compare(expand.text, "SHOW 3 MORE SOURCES")
+        compare(expand.text, "SHOW 5 MORE SOURCES")
         expand.click()
         compare(host.sources.visibleSourceCount, 8)
         verify(findChild(host.sources, "torrentSource-7"))
@@ -114,6 +114,30 @@ TestCase {
 
         host.details.game_id = "game-two"
         compare(host.sources.sourcesExpanded, false)
-        compare(host.sources.visibleSourceCount, 5)
+        compare(host.sources.visibleSourceCount, 3)
+    }
+
+    function test_new_source_search_recovers_the_collapsed_state() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.details.sourceCount = 8
+        host.details.detail_revision += 1
+        tryCompare(host.sources, "matchingSourceCount", 8)
+
+        const expand = findChild(host.sources, "expandTorrentSourcesButton")
+        verify(expand)
+        expand.click()
+        compare(host.sources.visibleSourceCount, 8)
+
+        host.details.torrent_loading = true
+        compare(host.sources.sourcesExpanded, false)
+        compare(host.sources.visibleSourceCount, 3)
+
+        expand.click()
+        compare(host.sources.visibleSourceCount, 8)
+        host.details.sourceCount = 0
+        host.details.detail_revision += 1
+        tryCompare(host.sources, "matchingSourceCount", 0)
+        compare(host.sources.sourcesExpanded, false)
     }
 }
