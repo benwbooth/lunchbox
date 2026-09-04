@@ -493,7 +493,10 @@ Use `--filter-ui-probe` to leave the native filter surface open for an
 unattended visual check against a real catalog.
 
 Use `--media-probe` to wait for the asynchronous media index, print
-`LUNCHBOX_MEDIA_READY_MS` with game and cached-candidate counts, and exit.
+`LUNCHBOX_MEDIA_READY_MS` with both scan and process-start elapsed time plus
+game and cached-candidate counts, and exit. Media indexing starts in parallel
+with catalog hydration so cached artwork can populate the interactive preview
+without waiting for the complete catalog replacement.
 `--artwork-ui-probe` filters to a deterministic set of real cached covers and
 leaves the native grid open for a virtual-display visual check.
 `--media-fetch-probe --media-directory EMPTY_PATH` performs the same path from

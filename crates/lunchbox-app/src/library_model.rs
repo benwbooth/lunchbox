@@ -2270,6 +2270,13 @@ impl qobject::LibraryModel {
                     model.as_mut().finish_load(generation, loaded);
                 });
             });
+        if spawn_result.is_ok() {
+            // Cached artwork and videos do not depend on the catalog query.
+            // Index them alongside catalog hydration so the preview grid can
+            // paint real media as soon as it appears instead of waiting for
+            // every game and user preference to finish loading first.
+            self.as_mut().start_media_load();
+        }
         if let Err(error) = spawn_result {
             self.as_mut().set_loading(false);
             self.as_mut()
@@ -2843,7 +2850,6 @@ impl qobject::LibraryModel {
                     status.push_str(&format!(" — custom fields unavailable: {warning}"));
                 }
                 self.as_mut().set_status_message(qstring(status));
-                self.as_mut().start_media_load();
                 if self.as_ref().rust().reload_pending {
                     self.as_mut().rust_mut().reload_pending = false;
                     self.as_mut().start_load();
@@ -5813,6 +5819,10 @@ impl qobject::LibraryModel {
             .media_started
             .map(|started| started.elapsed().as_millis())
             .unwrap_or_default();
+        let startup_ms = crate::startup_elapsed().as_millis();
+        println!(
+            "LUNCHBOX_MEDIA_READY_MS={elapsed_ms} startup_ms={startup_ms} games={game_count} assets={asset_count} skipped={skipped_entries}"
+        );
         self.as_mut().rust_mut().media = Arc::new(index);
         self.as_mut()
             .set_media_directory(qstring(root.to_string_lossy()));
@@ -5824,9 +5834,6 @@ impl qobject::LibraryModel {
         self.as_mut().start_media_fetch_queue(root);
         let revision = self.as_ref().media_revision().wrapping_add(1);
         self.as_mut().set_media_revision(revision);
-        println!(
-            "LUNCHBOX_MEDIA_READY_MS={elapsed_ms} games={game_count} assets={asset_count} skipped={skipped_entries}"
-        );
         if let Some(warning) = warning {
             self.as_mut().set_status_message(qstring(format!(
                 "Catalog ready — artwork cache unavailable: {warning}"

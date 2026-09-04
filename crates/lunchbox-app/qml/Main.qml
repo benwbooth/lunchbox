@@ -3500,8 +3500,9 @@ ApplicationWindow {
             }
         }
         function onMedia_revisionChanged() {
-            if (library.media_probe)
-                Qt.quit()
+            if (library.media_probe && library.media_revision > 0
+                    && !library.media_loading)
+                Qt.callLater(Qt.quit)
             else if (root.mediaFetchUiProbe && library.media_revision === 1) {
                 searchField.text = "A Nightmare on Elm Street"
                 library.apply_filter(searchField.text, "", "")
