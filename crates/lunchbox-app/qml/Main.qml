@@ -7937,7 +7937,7 @@ ApplicationWindow {
             }
             ReleaseFilterPanel {
                 width: parent.width
-                library: root.library
+                libraryModel: library
                 ink: root.ink
                 muted: "#687488"
                 line: root.line

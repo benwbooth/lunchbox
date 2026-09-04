@@ -36,7 +36,7 @@ TestCase {
             Lunchbox.ReleaseFilterPanel {
                 id: releaseFilters
                 width: parent.width
-                library: libraryState
+                libraryModel: libraryState
             }
 
             SignalSpy {

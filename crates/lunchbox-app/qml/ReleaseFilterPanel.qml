@@ -3,7 +3,7 @@ import QtQuick
 Column {
     id: panel
 
-    required property var library
+    required property var libraryModel
     property color ink: "#f4f7fb"
     property color muted: "#687488"
     property color line: "#2a3545"
@@ -26,12 +26,13 @@ Column {
         objectName: "usaReleaseFilter"
         label: "United States releases"
         description: "Families with exact US or North America region metadata"
-        checked: panel.library.usa_release_filter
+        checked: panel.libraryModel.usa_release_filter
         onToggled: {
-            panel.library.set_release_filters(!checked,
-                                              panel.library.japan_release_filter,
-                                              panel.library.adult_release_filter,
-                                              panel.library.non_retail_release_filter)
+            panel.libraryModel.set_release_filters(
+                        !checked,
+                        panel.libraryModel.japan_release_filter,
+                        panel.libraryModel.adult_release_filter,
+                        panel.libraryModel.non_retail_release_filter)
             panel.filtersChanged()
         }
     }
@@ -40,12 +41,13 @@ Column {
         objectName: "japanReleaseFilter"
         label: "Japanese releases"
         description: "Exact Japan metadata, linked romanized names, or Japanese script"
-        checked: panel.library.japan_release_filter
+        checked: panel.libraryModel.japan_release_filter
         onToggled: {
-            panel.library.set_release_filters(panel.library.usa_release_filter,
-                                              !checked,
-                                              panel.library.adult_release_filter,
-                                              panel.library.non_retail_release_filter)
+            panel.libraryModel.set_release_filters(
+                        panel.libraryModel.usa_release_filter,
+                        !checked,
+                        panel.libraryModel.adult_release_filter,
+                        panel.libraryModel.non_retail_release_filter)
             panel.filtersChanged()
         }
     }
@@ -70,12 +72,13 @@ Column {
         objectName: "adultReleaseFilter"
         label: "Adult releases"
         description: "Show only adult-rated or explicitly adult releases"
-        checked: panel.library.adult_release_filter
+        checked: panel.libraryModel.adult_release_filter
         onToggled: {
-            panel.library.set_release_filters(panel.library.usa_release_filter,
-                                              panel.library.japan_release_filter,
-                                              !checked,
-                                              panel.library.non_retail_release_filter)
+            panel.libraryModel.set_release_filters(
+                        panel.libraryModel.usa_release_filter,
+                        panel.libraryModel.japan_release_filter,
+                        !checked,
+                        panel.libraryModel.non_retail_release_filter)
             panel.filtersChanged()
         }
     }
@@ -84,12 +87,13 @@ Column {
         objectName: "nonRetailReleaseFilter"
         label: "Homebrew / pirate releases"
         description: "Homebrew, ROM hacks, unlicensed, bootleg and pirate releases"
-        checked: panel.library.non_retail_release_filter
+        checked: panel.libraryModel.non_retail_release_filter
         onToggled: {
-            panel.library.set_release_filters(panel.library.usa_release_filter,
-                                              panel.library.japan_release_filter,
-                                              panel.library.adult_release_filter,
-                                              !checked)
+            panel.libraryModel.set_release_filters(
+                        panel.libraryModel.usa_release_filter,
+                        panel.libraryModel.japan_release_filter,
+                        panel.libraryModel.adult_release_filter,
+                        !checked)
             panel.filtersChanged()
         }
     }
