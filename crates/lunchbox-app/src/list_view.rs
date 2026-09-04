@@ -850,6 +850,7 @@ mod tests {
         Game {
             id: id.into(),
             launchbox_db_id: 1,
+            media_id: 1,
             title: "Canonical".into(),
             platform: "Platform".into(),
             status: "canonical".into(),
@@ -858,8 +859,7 @@ mod tests {
             non_retail: false,
             has_non_retail_release: false,
             adult: false,
-            has_usa_release: false,
-            has_japan_release: false,
+            release_regions: 0,
             cooperative: "unknown".into(),
             search_key: "canonical\nplatform".into(),
         }

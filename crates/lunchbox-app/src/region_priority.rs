@@ -40,9 +40,35 @@ pub const DEFAULT_REGION_PRIORITY: &[&str] = &[
     "Norway",
     "New Zealand",
     "Latin America",
+    "South America",
+    "Oceania",
     "Unknown",
     "",
 ];
+
+/// Every canonical, user-selectable release region. The stable order also
+/// defines the compact bit representation stored on catalog rows.
+pub fn filter_regions() -> impl Iterator<Item = &'static str> {
+    DEFAULT_REGION_PRIORITY
+        .iter()
+        .copied()
+        .filter(|region| !region.is_empty())
+}
+
+pub(crate) fn region_bit(region: &str) -> Option<u64> {
+    let canonical = canonical_region(region)?;
+    filter_regions()
+        .position(|candidate| candidate == canonical)
+        .map(|index| 1_u64 << index)
+}
+
+pub(crate) fn regions_mask(value: &str) -> u64 {
+    value
+        .split([',', '/', '&', '+'])
+        .map(str::trim)
+        .filter_map(region_bit)
+        .fold(0, |mask, bit| mask | bit)
+}
 
 pub fn default_region_priority() -> Vec<String> {
     DEFAULT_REGION_PRIORITY
@@ -118,7 +144,7 @@ pub fn display_name(region: &str) -> &str {
     }
 }
 
-fn canonical_region(region: &str) -> Option<&'static str> {
+pub(crate) fn canonical_region(region: &str) -> Option<&'static str> {
     Some(match region.trim().to_ascii_lowercase().as_str() {
         "usa" | "united states" | "north america" => "USA",
         "japan" => "Japan",
@@ -136,7 +162,7 @@ fn canonical_region(region: &str) -> Option<&'static str> {
         "spain" => "Spain",
         "united kingdom" | "uk" => "United Kingdom",
         "taiwan" => "Taiwan",
-        "netherlands" => "Netherlands",
+        "netherlands" | "the netherlands" => "Netherlands",
         "belgium" => "Belgium",
         "greece" => "Greece",
         "portugal" => "Portugal",
@@ -152,6 +178,8 @@ fn canonical_region(region: &str) -> Option<&'static str> {
         "norway" => "Norway",
         "new zealand" => "New Zealand",
         "latin america" => "Latin America",
+        "south america" => "South America",
+        "oceania" => "Oceania",
         "unknown" => "Unknown",
         "" => "",
         _ => return None,
@@ -198,5 +226,38 @@ mod tests {
             priority_for_region(Some("Unknown"), &order)
                 < priority_for_region(Some("Unrecognized"), &order)
         );
+    }
+
+    #[test]
+    fn every_catalog_region_alias_has_a_filter_bit() {
+        for region in [
+            "Asia",
+            "Australia",
+            "Brazil",
+            "Canada",
+            "China",
+            "Europe",
+            "Finland",
+            "France",
+            "Germany",
+            "Greece",
+            "Hong Kong",
+            "Italy",
+            "Japan",
+            "Korea",
+            "North America",
+            "Norway",
+            "Oceania",
+            "Russia",
+            "South America",
+            "Spain",
+            "Sweden",
+            "The Netherlands",
+            "United Kingdom",
+            "United States",
+            "World",
+        ] {
+            assert_ne!(regions_mask(region), 0, "missing region {region}");
+        }
     }
 }

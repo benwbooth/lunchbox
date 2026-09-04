@@ -32,8 +32,9 @@ pub mod qobject {
         #[qproperty(bool, ready)]
         #[qproperty(bool, hide_non_retail)]
         #[qproperty(bool, hide_adult)]
-        #[qproperty(bool, usa_release_filter)]
-        #[qproperty(bool, japan_release_filter)]
+        #[qproperty(i32, release_region_count)]
+        #[qproperty(i32, selected_release_region_count)]
+        #[qproperty(i32, release_region_revision)]
         #[qproperty(bool, adult_release_filter)]
         #[qproperty(bool, non_retail_release_filter)]
         #[qproperty(QString, artwork_type)]
@@ -209,12 +210,25 @@ pub mod qobject {
         );
 
         #[qinvokable]
-        fn set_release_filters(
+        fn release_region_name_at(self: &LibraryModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn release_region_selected_at(self: &LibraryModel, index: i32) -> bool;
+
+        #[qinvokable]
+        fn toggle_release_region(self: Pin<&mut LibraryModel>, index: i32);
+
+        #[qinvokable]
+        fn clear_release_region_filters(self: Pin<&mut LibraryModel>);
+
+        #[qinvokable]
+        fn release_category_mode(self: &LibraryModel, category: QString) -> QString;
+
+        #[qinvokable]
+        fn set_release_category_mode(
             self: Pin<&mut LibraryModel>,
-            usa: bool,
-            japan: bool,
-            adult: bool,
-            non_retail: bool,
+            category: QString,
+            mode: QString,
         );
 
         #[qinvokable]
@@ -320,33 +334,25 @@ pub mod qobject {
         );
 
         #[qinvokable]
-        fn artwork_url(self: &LibraryModel, launchbox_db_id: i32, artwork_type: QString) -> QUrl;
+        fn artwork_url(self: &LibraryModel, media_id: i64, artwork_type: QString) -> QUrl;
 
         #[qinvokable]
-        fn exact_artwork_url(
-            self: &LibraryModel,
-            launchbox_db_id: i32,
-            artwork_type: QString,
-        ) -> QUrl;
+        fn exact_artwork_url(self: &LibraryModel, media_id: i64, artwork_type: QString) -> QUrl;
 
         #[qinvokable]
-        fn artwork_source(
-            self: &LibraryModel,
-            launchbox_db_id: i32,
-            artwork_type: QString,
-        ) -> QString;
+        fn artwork_source(self: &LibraryModel, media_id: i64, artwork_type: QString) -> QString;
 
         #[qinvokable]
         fn artwork_candidate_count(
             self: &LibraryModel,
-            launchbox_db_id: i32,
+            media_id: i64,
             artwork_type: QString,
         ) -> i32;
 
         #[qinvokable]
         fn artwork_candidate_url(
             self: &LibraryModel,
-            launchbox_db_id: i32,
+            media_id: i64,
             artwork_type: QString,
             index: i32,
         ) -> QUrl;
@@ -354,7 +360,7 @@ pub mod qobject {
         #[qinvokable]
         fn artwork_candidate_source(
             self: &LibraryModel,
-            launchbox_db_id: i32,
+            media_id: i64,
             artwork_type: QString,
             index: i32,
         ) -> QString;
@@ -362,7 +368,7 @@ pub mod qobject {
         #[qinvokable]
         fn request_artwork(
             self: Pin<&mut LibraryModel>,
-            launchbox_db_id: i32,
+            media_id: i64,
             title: QString,
             platform: QString,
             artwork_type: QString,
@@ -371,7 +377,7 @@ pub mod qobject {
         #[qinvokable]
         fn request_priority_artwork(
             self: Pin<&mut LibraryModel>,
-            launchbox_db_id: i32,
+            media_id: i64,
             title: QString,
             platform: QString,
             artwork_type: QString,
@@ -395,7 +401,7 @@ pub mod qobject {
         #[qinvokable]
         fn redownload_artwork(
             self: Pin<&mut LibraryModel>,
-            launchbox_db_id: i32,
+            media_id: i64,
             title: QString,
             platform: QString,
             artwork_type: QString,
@@ -412,6 +418,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn database_id_for_game(self: &LibraryModel, game_uid: QString) -> i32;
+
+        #[qinvokable]
+        fn media_id_for_game(self: &LibraryModel, game_uid: QString) -> i64;
 
         #[qinvokable]
         fn display_title_for_game(self: &LibraryModel, game_uid: QString) -> QString;
@@ -928,8 +937,9 @@ const GAME_NOTES_ROLE: i32 = USER_ROLE + 22;
 const GAME_PLAY_MODE_ROLE: i32 = USER_ROLE + 23;
 const GAME_VERSION_ROLE: i32 = USER_ROLE + 24;
 const GAME_RELEASE_STATUS_ROLE: i32 = USER_ROLE + 25;
+const GAME_MEDIA_ID_ROLE: i32 = USER_ROLE + 26;
 
-const ROLES: [(i32, &str); 25] = [
+const ROLES: [(i32, &str); 26] = [
     (GAME_ID_ROLE, "gameId"),
     (GAME_TITLE_ROLE, "gameTitle"),
     (GAME_PLATFORM_ROLE, "gamePlatform"),
@@ -955,6 +965,7 @@ const ROLES: [(i32, &str); 25] = [
     (GAME_PLAY_MODE_ROLE, "gamePlayMode"),
     (GAME_VERSION_ROLE, "gameVersion"),
     (GAME_RELEASE_STATUS_ROLE, "gameReleaseStatus"),
+    (GAME_MEDIA_ID_ROLE, "gameMediaId"),
 ];
 
 pub struct LibraryModelRust {
@@ -968,8 +979,9 @@ pub struct LibraryModelRust {
     ready: bool,
     hide_non_retail: bool,
     hide_adult: bool,
-    usa_release_filter: bool,
-    japan_release_filter: bool,
+    release_region_count: i32,
+    selected_release_region_count: i32,
+    release_region_revision: i32,
     adult_release_filter: bool,
     non_retail_release_filter: bool,
     artwork_type: QString,
@@ -1092,6 +1104,7 @@ pub struct LibraryModelRust {
     tag_count: i32,
     tag_revision: i32,
     platform_revision: i32,
+    release_region_mask: u64,
     catalog: Arc<Catalog>,
     media: Arc<MediaIndex>,
     artwork_kind: ArtworkKind,
@@ -1174,8 +1187,10 @@ impl Default for LibraryModelRust {
             ready: false,
             hide_non_retail: preferences.hide_non_retail,
             hide_adult: preferences.hide_adult,
-            usa_release_filter: false,
-            japan_release_filter: false,
+            release_region_count: i32::try_from(crate::region_priority::filter_regions().count())
+                .unwrap_or_default(),
+            selected_release_region_count: 0,
+            release_region_revision: 0,
             adult_release_filter: false,
             non_retail_release_filter: false,
             artwork_type: qstring(&preferences.artwork_type),
@@ -1320,6 +1335,7 @@ impl Default for LibraryModelRust {
             tag_count: 0,
             tag_revision: 0,
             platform_revision: 0,
+            release_region_mask: 0,
             catalog: Arc::new(Catalog::default()),
             media: Arc::new(MediaIndex::default()),
             artwork_kind: ArtworkKind::default(),
@@ -2717,8 +2733,7 @@ impl qobject::LibraryModel {
                         tag: self.as_ref().tag_filter().to_string(),
                         hide_non_retail: *self.as_ref().hide_non_retail(),
                         hide_adult: *self.as_ref().hide_adult(),
-                        include_usa_releases: *self.as_ref().usa_release_filter(),
-                        include_japan_releases: *self.as_ref().japan_release_filter(),
+                        release_region_mask: self.as_ref().rust().release_region_mask,
                         include_adult_releases: *self.as_ref().adult_release_filter(),
                         include_non_retail_releases: *self.as_ref().non_retail_release_filter(),
                         favorite_game_ids: Arc::new(favorite_game_ids.clone()),
@@ -2961,8 +2976,7 @@ impl qobject::LibraryModel {
             tag: self.tag_filter().to_string(),
             hide_non_retail: *self.hide_non_retail(),
             hide_adult: *self.hide_adult(),
-            include_usa_releases: *self.usa_release_filter(),
-            include_japan_releases: *self.japan_release_filter(),
+            release_region_mask: self.rust().release_region_mask,
             include_adult_releases: *self.adult_release_filter(),
             include_non_retail_releases: *self.non_retail_release_filter(),
             favorite_game_ids: Arc::clone(&self.rust().favorite_game_ids),
@@ -3123,24 +3137,92 @@ impl qobject::LibraryModel {
         }
     }
 
-    pub fn set_release_filters(
-        mut self: Pin<&mut Self>,
-        usa: bool,
-        japan: bool,
-        adult: bool,
-        non_retail: bool,
-    ) {
-        if usa == *self.as_ref().usa_release_filter()
-            && japan == *self.as_ref().japan_release_filter()
-            && adult == *self.as_ref().adult_release_filter()
-            && non_retail == *self.as_ref().non_retail_release_filter()
-        {
+    pub fn release_region_name_at(&self, index: i32) -> QString {
+        let Some(index) = usize::try_from(index).ok() else {
+            return QString::default();
+        };
+        crate::region_priority::filter_regions()
+            .nth(index)
+            .map(qstring)
+            .unwrap_or_default()
+    }
+
+    pub fn release_region_selected_at(&self, index: i32) -> bool {
+        let region = self.release_region_name_at(index).to_string();
+        crate::region_priority::region_bit(&region)
+            .is_some_and(|bit| self.rust().release_region_mask & bit != 0)
+    }
+
+    pub fn toggle_release_region(mut self: Pin<&mut Self>, index: i32) {
+        let region = self.as_ref().release_region_name_at(index).to_string();
+        let Some(bit) = crate::region_priority::region_bit(&region) else {
+            return;
+        };
+        self.as_mut().rust_mut().release_region_mask ^= bit;
+        let selected = self
+            .as_ref()
+            .rust()
+            .release_region_mask
+            .count_ones()
+            .try_into()
+            .unwrap_or(i32::MAX);
+        self.as_mut().set_selected_release_region_count(selected);
+        let revision = self.as_ref().release_region_revision().wrapping_add(1);
+        self.as_mut().set_release_region_revision(revision);
+    }
+
+    pub fn clear_release_region_filters(mut self: Pin<&mut Self>) {
+        if self.as_ref().rust().release_region_mask == 0 {
             return;
         }
-        self.as_mut().set_usa_release_filter(usa);
-        self.as_mut().set_japan_release_filter(japan);
-        self.as_mut().set_adult_release_filter(adult);
-        self.as_mut().set_non_retail_release_filter(non_retail);
+        self.as_mut().rust_mut().release_region_mask = 0;
+        self.as_mut().set_selected_release_region_count(0);
+        let revision = self.as_ref().release_region_revision().wrapping_add(1);
+        self.as_mut().set_release_region_revision(revision);
+    }
+
+    pub fn release_category_mode(&self, category: QString) -> QString {
+        let mode = match category.to_string().as_str() {
+            "adult" if *self.adult_release_filter() => "only",
+            "adult" if *self.hide_adult() => "exclude",
+            "non-retail" if *self.non_retail_release_filter() => "only",
+            "non-retail" if *self.hide_non_retail() => "exclude",
+            "adult" | "non-retail" => "any",
+            _ => "",
+        };
+        qstring(mode)
+    }
+
+    pub fn set_release_category_mode(mut self: Pin<&mut Self>, category: QString, mode: QString) {
+        let category = category.to_string();
+        let mode = mode.to_string();
+        if !matches!(mode.as_str(), "any" | "exclude" | "only")
+            || !matches!(category.as_str(), "adult" | "non-retail")
+        {
+            self.as_mut()
+                .set_status_message(qstring("Unsupported release category filter"));
+            return;
+        }
+
+        let mut hide_non_retail = *self.as_ref().hide_non_retail();
+        let mut hide_adult = *self.as_ref().hide_adult();
+        let mut only_non_retail = *self.as_ref().non_retail_release_filter();
+        let mut only_adult = *self.as_ref().adult_release_filter();
+        match category.as_str() {
+            "adult" => {
+                hide_adult = mode == "exclude";
+                only_adult = mode == "only";
+            }
+            "non-retail" => {
+                hide_non_retail = mode == "exclude";
+                only_non_retail = mode == "only";
+            }
+            _ => unreachable!(),
+        }
+        self.as_mut()
+            .set_content_filters(hide_non_retail, hide_adult);
+        self.as_mut().set_adult_release_filter(only_adult);
+        self.as_mut().set_non_retail_release_filter(only_non_retail);
     }
 
     pub fn set_presentation_preferences(
@@ -3537,7 +3619,7 @@ impl qobject::LibraryModel {
             };
             AutomaticVideoRequest {
                 game_uid: game_uid.clone(),
-                database_id: game.launchbox_db_id,
+                database_id: game.media_id,
                 title: game.title.clone(),
                 platform: game.platform.clone(),
             }
@@ -3736,88 +3818,67 @@ impl qobject::LibraryModel {
         );
     }
 
-    pub fn artwork_url(&self, launchbox_db_id: i32, artwork_type: QString) -> QUrl {
-        self.media_asset(launchbox_db_id, &artwork_type.to_string(), false)
+    pub fn artwork_url(&self, media_id: i64, artwork_type: QString) -> QUrl {
+        self.media_asset(media_id, &artwork_type.to_string(), false)
             .map(media_asset_url)
             .unwrap_or_default()
     }
 
-    pub fn exact_artwork_url(&self, launchbox_db_id: i32, artwork_type: QString) -> QUrl {
-        self.media_asset(launchbox_db_id, &artwork_type.to_string(), true)
+    pub fn exact_artwork_url(&self, media_id: i64, artwork_type: QString) -> QUrl {
+        self.media_asset(media_id, &artwork_type.to_string(), true)
             .map(media_asset_url)
             .unwrap_or_default()
     }
 
-    pub fn artwork_source(&self, launchbox_db_id: i32, artwork_type: QString) -> QString {
-        self.media_asset(launchbox_db_id, &artwork_type.to_string(), false)
+    pub fn artwork_source(&self, media_id: i64, artwork_type: QString) -> QString {
+        self.media_asset(media_id, &artwork_type.to_string(), false)
             .map(|asset| qstring(&asset.source))
             .unwrap_or_default()
     }
 
-    pub fn artwork_candidate_count(&self, launchbox_db_id: i32, artwork_type: QString) -> i32 {
+    pub fn artwork_candidate_count(&self, media_id: i64, artwork_type: QString) -> i32 {
         let kind =
             ArtworkKind::parse(&artwork_type.to_string()).unwrap_or(self.rust().artwork_kind);
-        saturating_i32(
-            self.rust()
-                .media
-                .candidate_count(i64::from(launchbox_db_id), kind),
-        )
+        saturating_i32(self.rust().media.candidate_count(media_id, kind))
     }
 
-    pub fn artwork_candidate_url(
-        &self,
-        launchbox_db_id: i32,
-        artwork_type: QString,
-        index: i32,
-    ) -> QUrl {
-        self.media_candidate(launchbox_db_id, &artwork_type.to_string(), index)
+    pub fn artwork_candidate_url(&self, media_id: i64, artwork_type: QString, index: i32) -> QUrl {
+        self.media_candidate(media_id, &artwork_type.to_string(), index)
             .map(media_asset_url)
             .unwrap_or_default()
     }
 
     pub fn artwork_candidate_source(
         &self,
-        launchbox_db_id: i32,
+        media_id: i64,
         artwork_type: QString,
         index: i32,
     ) -> QString {
-        self.media_candidate(launchbox_db_id, &artwork_type.to_string(), index)
+        self.media_candidate(media_id, &artwork_type.to_string(), index)
             .map(|asset| qstring(&asset.source))
             .unwrap_or_default()
     }
 
     pub fn request_artwork(
         mut self: Pin<&mut Self>,
-        launchbox_db_id: i32,
+        media_id: i64,
         title: QString,
         platform: QString,
         artwork_type: QString,
     ) {
-        self.as_mut().queue_artwork_request(
-            launchbox_db_id,
-            title,
-            platform,
-            artwork_type,
-            false,
-            false,
-        );
+        self.as_mut()
+            .queue_artwork_request(media_id, title, platform, artwork_type, false, false);
     }
 
     pub fn request_priority_artwork(
         mut self: Pin<&mut Self>,
-        launchbox_db_id: i32,
+        media_id: i64,
         title: QString,
         platform: QString,
         artwork_type: QString,
     ) {
-        self.as_mut().queue_artwork_request(
-            launchbox_db_id,
-            title,
-            platform,
-            artwork_type,
-            false,
-            true,
-        );
+        self.as_mut()
+            .queue_artwork_request(media_id, title, platform, artwork_type, false, true);
     }
 
     pub fn set_emumovies_configured(mut self: Pin<&mut Self>, configured: bool) {
@@ -3896,7 +3957,7 @@ impl qobject::LibraryModel {
         }
         self.as_mut().queue_automatic_video(AutomaticVideoRequest {
             game_uid,
-            database_id: game.launchbox_db_id,
+            database_id: game.media_id,
             title: game.title,
             platform: game.platform,
         });
@@ -4333,24 +4394,18 @@ impl qobject::LibraryModel {
 
     pub fn redownload_artwork(
         mut self: Pin<&mut Self>,
-        launchbox_db_id: i32,
+        media_id: i64,
         title: QString,
         platform: QString,
         artwork_type: QString,
     ) {
-        self.as_mut().queue_artwork_request(
-            launchbox_db_id,
-            title,
-            platform,
-            artwork_type,
-            true,
-            true,
-        );
+        self.as_mut()
+            .queue_artwork_request(media_id, title, platform, artwork_type, true, true);
     }
 
     fn queue_artwork_request(
         mut self: Pin<&mut Self>,
-        launchbox_db_id: i32,
+        media_id: i64,
         title: QString,
         platform: QString,
         artwork_type: QString,
@@ -4359,7 +4414,7 @@ impl qobject::LibraryModel {
     ) {
         if !*self.as_ref().media_retrieval_enabled()
             || *self.as_ref().media_loading()
-            || launchbox_db_id <= 0
+            || media_id <= 0
         {
             return;
         }
@@ -4372,7 +4427,7 @@ impl qobject::LibraryModel {
         if title.trim().is_empty() || platform.trim().is_empty() {
             return;
         }
-        let database_id = i64::from(launchbox_db_id);
+        let database_id = media_id;
         if !force
             && self
                 .as_ref()
@@ -4479,6 +4534,12 @@ impl qobject::LibraryModel {
     pub fn database_id_for_game(&self, game_uid: QString) -> i32 {
         game_for_uid(self, &game_uid.to_string())
             .map(|game| i32::try_from(game.launchbox_db_id).unwrap_or(i32::MAX))
+            .unwrap_or_default()
+    }
+
+    pub fn media_id_for_game(&self, game_uid: QString) -> i64 {
+        game_for_uid(self, &game_uid.to_string())
+            .map(|game| game.media_id)
             .unwrap_or_default()
     }
 
@@ -5840,14 +5901,9 @@ impl qobject::LibraryModel {
         self.as_mut().set_collection_revision(revision);
     }
 
-    fn media_asset(
-        &self,
-        launchbox_db_id: i32,
-        artwork_type: &str,
-        exact: bool,
-    ) -> Option<&MediaAsset> {
+    fn media_asset(&self, media_id: i64, artwork_type: &str, exact: bool) -> Option<&MediaAsset> {
         let kind = ArtworkKind::parse(artwork_type).unwrap_or(self.rust().artwork_kind);
-        let database_id = i64::from(launchbox_db_id);
+        let database_id = media_id;
         if exact {
             self.rust().media.exact(database_id, kind)
         } else {
@@ -5857,15 +5913,13 @@ impl qobject::LibraryModel {
 
     fn media_candidate(
         &self,
-        launchbox_db_id: i32,
+        media_id: i64,
         artwork_type: &str,
         index: i32,
     ) -> Option<&MediaAsset> {
         let index = usize::try_from(index).ok()?;
         let kind = ArtworkKind::parse(artwork_type).unwrap_or(self.rust().artwork_kind);
-        self.rust()
-            .media
-            .candidate(i64::from(launchbox_db_id), kind, index)
+        self.rust().media.candidate(media_id, kind, index)
     }
 
     fn start_media_load(mut self: Pin<&mut Self>) {
@@ -7068,6 +7122,7 @@ impl qobject::LibraryModel {
             GAME_DATABASE_ID_ROLE => {
                 QVariant::from(&i32::try_from(game.launchbox_db_id).unwrap_or_default())
             }
+            GAME_MEDIA_ID_ROLE => QVariant::from(&game.media_id),
             GAME_CANONICAL_TITLE_ROLE => QVariant::from(&qstring(&game.title)),
             GAME_DEVELOPER_ROLE => list_value(crate::list_view::ListColumn::Developer),
             GAME_PUBLISHER_ROLE => list_value(crate::list_view::ListColumn::Publisher),
@@ -7118,6 +7173,7 @@ mod tests {
         catalog::Game {
             id: id.to_owned(),
             launchbox_db_id: 1,
+            media_id: 1,
             title: id.to_owned(),
             platform: platform.to_owned(),
             status: String::new(),
@@ -7126,8 +7182,7 @@ mod tests {
             non_retail: false,
             has_non_retail_release: false,
             adult: false,
-            has_usa_release: false,
-            has_japan_release: false,
+            release_regions: 0,
             cooperative: String::new(),
             search_key: format!("{id}\n{platform}"),
         }

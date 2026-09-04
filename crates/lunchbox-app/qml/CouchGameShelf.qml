@@ -64,10 +64,11 @@ ListView {
         required property bool gameLocal
         required property bool gameDownloadable
         required property int gameDatabaseId
+        required property double gameMediaId
         property int artworkRevision: shelf.library.media_revision
         property url artworkUrl: {
             artworkRevision
-            return shelf.library.artwork_url(gameDatabaseId, "box-front")
+            return shelf.library.artwork_url(gameMediaId, "box-front")
         }
         readonly property bool current: ListView.isCurrentItem
         readonly property int selectionDistance: Math.abs(index - shelf.currentIndex)
@@ -76,12 +77,12 @@ ListView {
         height: shelf.cinematic ? 98 : shelf.height - 8
 
         function requestArtwork() {
-            shelf.library.request_artwork(gameDatabaseId, gameCanonicalTitle,
+            shelf.library.request_artwork(gameMediaId, gameCanonicalTitle,
                                           gamePlatform, "box-front")
         }
 
         Component.onCompleted: requestArtwork()
-        onGameDatabaseIdChanged: requestArtwork()
+        onGameMediaIdChanged: requestArtwork()
         onGameCanonicalTitleChanged: requestArtwork()
         onGamePlatformChanged: requestArtwork()
         onArtworkRevisionChanged: requestArtwork()

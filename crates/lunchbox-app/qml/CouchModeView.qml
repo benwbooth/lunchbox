@@ -36,6 +36,7 @@ Item {
     property string selectedGameId: ""
     property string loadedGameId: ""
     property int selectedDatabaseId: 0
+    property double selectedMediaId: 0
     property string selectedTitle: ""
     property string selectedPlatform: ""
     property bool selectedLocal: false
@@ -82,13 +83,13 @@ Item {
     }
     readonly property url heroUrl: {
         mediaRevision
-        return selectedDatabaseId > 0
-               ? library.artwork_url(selectedDatabaseId, "fanart") : ""
+        return selectedMediaId > 0
+               ? library.artwork_url(selectedMediaId, "fanart") : ""
     }
     readonly property url coverUrl: {
         mediaRevision
-        return selectedDatabaseId > 0
-               ? library.artwork_url(selectedDatabaseId, "box-front") : ""
+        return selectedMediaId > 0
+               ? library.artwork_url(selectedMediaId, "box-front") : ""
     }
     readonly property bool favorite: {
         library.favorite_revision
@@ -442,12 +443,13 @@ Item {
         navigationZone = 2
         selectedGameId = gameId
         selectedDatabaseId = databaseId
+        selectedMediaId = library.media_id_for_game(gameId)
         selectedTitle = title
         selectedLocal = local
         selectedDownloadable = downloadable
         loadedGameId = ""
-        library.request_priority_artwork(databaseId, title, platform, "box-front")
-        library.request_priority_artwork(databaseId, title, platform, "fanart")
+        library.request_priority_artwork(selectedMediaId, title, platform, "box-front")
+        library.request_priority_artwork(selectedMediaId, title, platform, "fanart")
         variantRequested(gameId, databaseId, title, platform, local, downloadable)
         focusGameById(gameId)
         forceActiveFocus()
@@ -496,13 +498,14 @@ Item {
         }
         selectedGameId = item.gameId
         selectedDatabaseId = item.gameDatabaseId
+        selectedMediaId = item.gameMediaId
         selectedTitle = item.gameTitle
         selectedPlatform = item.gamePlatform
         selectedLocal = item.gameLocal
         selectedDownloadable = item.gameDownloadable
-        library.request_priority_artwork(selectedDatabaseId, selectedTitle,
+        library.request_priority_artwork(selectedMediaId, selectedTitle,
                                          selectedPlatform, "box-front")
-        library.request_priority_artwork(selectedDatabaseId, selectedTitle,
+        library.request_priority_artwork(selectedMediaId, selectedTitle,
                                          selectedPlatform, "fanart")
         return true
     }
@@ -1039,10 +1042,10 @@ Item {
     onCurrentPlatformNameChanged: syncCategory()
 
     onMediaRevisionChanged: {
-        if (selectedDatabaseId > 0) {
-            library.request_priority_artwork(selectedDatabaseId, selectedTitle,
+        if (selectedMediaId > 0) {
+            library.request_priority_artwork(selectedMediaId, selectedTitle,
                                              selectedPlatform, "box-front")
-            library.request_priority_artwork(selectedDatabaseId, selectedTitle,
+            library.request_priority_artwork(selectedMediaId, selectedTitle,
                                              selectedPlatform, "fanart")
         }
     }
@@ -3690,6 +3693,7 @@ Item {
                 shelf.currentIndex = -1
                 view.selectedGameId = ""
                 view.selectedDatabaseId = 0
+                view.selectedMediaId = 0
                 view.selectedTitle = ""
                 return
             }

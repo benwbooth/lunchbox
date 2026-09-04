@@ -446,6 +446,7 @@ mod tests {
         Game {
             id: id.to_owned(),
             launchbox_db_id: 1,
+            media_id: 1,
             title: title.to_owned(),
             platform: platform.to_owned(),
             status: "canonical".to_owned(),
@@ -454,8 +455,7 @@ mod tests {
             non_retail: false,
             has_non_retail_release: false,
             adult: false,
-            has_usa_release: false,
-            has_japan_release: false,
+            release_regions: 0,
             cooperative: "unknown".to_owned(),
             search_key: String::new(),
         }

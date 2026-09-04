@@ -265,6 +265,7 @@ mod tests {
         Game {
             id: id.to_owned(),
             launchbox_db_id: database_id,
+            media_id: database_id,
             title: title.to_owned(),
             platform: "Nintendo Entertainment System".to_owned(),
             status: "Released".to_owned(),
@@ -273,8 +274,7 @@ mod tests {
             non_retail: false,
             has_non_retail_release: false,
             adult: false,
-            has_usa_release: false,
-            has_japan_release: false,
+            release_regions: 0,
             cooperative: "unknown".into(),
             search_key: title.to_lowercase(),
         }

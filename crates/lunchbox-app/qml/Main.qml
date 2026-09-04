@@ -110,6 +110,7 @@ ApplicationWindow {
                 ? downloadQueue.job_index_for_game(selectedGameId) : -1
     }
     property int selectedDatabaseId: 0
+    property double selectedMediaId: 0
     property url selectedArtworkUrl: ""
     property url selectedFanartUrl: ""
     property url selectedBoxFrontUrl: ""
@@ -257,16 +258,11 @@ ApplicationWindow {
     ]
     readonly property int activeFilterCount: (availability.length > 0 ? 1 : 0)
                                                + (library.tag_filter.length > 0 ? 1 : 0)
-                                               + (library.usa_release_filter
-                                                  || library.japan_release_filter ? 1 : 0)
+                                               + (library.selected_release_region_count > 0 ? 1 : 0)
                                                + (library.adult_release_filter
-                                                  || library.non_retail_release_filter ? 1 : 0)
-                                               + (!library.adult_release_filter
-                                                  && !library.non_retail_release_filter
-                                                  && library.hide_non_retail ? 1 : 0)
-                                               + (!library.adult_release_filter
-                                                  && !library.non_retail_release_filter
-                                                  && library.hide_adult ? 1 : 0)
+                                                  || library.hide_adult ? 1 : 0)
+                                               + (library.non_retail_release_filter
+                                                  || library.hide_non_retail ? 1 : 0)
                                                + library.list_filter_active_count
     readonly property bool archiveImportUiProbe: Qt.application.arguments.indexOf("--archive-import-ui-probe") >= 0
     readonly property bool manualMatchUiProbe: Qt.application.arguments.indexOf("--manual-match-ui-probe") >= 0
@@ -752,6 +748,7 @@ ApplicationWindow {
                 couchModeView.selectedTitle = gameDetails.title
                 couchModeView.selectedPlatform = gameDetails.platform
                 couchModeView.selectedDatabaseId = root.selectedDatabaseId
+                couchModeView.selectedMediaId = root.selectedMediaId
                 couchModeView.selectedLocal = gameDetails.local
                 couchModeView.selectedDownloadable = gameDetails.downloadable
             }
@@ -1242,7 +1239,7 @@ ApplicationWindow {
         root.hoverPreviewPlaybackError = ""
         // Artwork for the card under the pointer is foreground work immediately.
         // Only video keeps the half-second intent gate below.
-        library.request_priority_artwork(tile.gameDatabaseId,
+        library.request_priority_artwork(tile.gameMediaId,
                                          tile.gameCanonicalTitle,
                                          tile.gamePlatform,
                                          library.artwork_type)
@@ -1289,13 +1286,14 @@ ApplicationWindow {
         downloadAlternativesExpanded = false
         selectedGameId = gameId
         selectedDatabaseId = databaseId
+        selectedMediaId = library.media_id_for_game(gameId)
         selectedBox3d = false
         selectedHeroArtworkIndex = 0
         if (!root.downloadPlanUiProbe) {
-            library.request_priority_artwork(databaseId, identityTitle, platform,
+            library.request_priority_artwork(selectedMediaId, identityTitle, platform,
                                              library.artwork_type)
-            library.request_priority_artwork(databaseId, identityTitle, platform, "fanart")
-            library.request_priority_artwork(databaseId, identityTitle, platform, "box-front")
+            library.request_priority_artwork(selectedMediaId, identityTitle, platform, "fanart")
+            library.request_priority_artwork(selectedMediaId, identityTitle, platform, "box-front")
             library.request_game_video(gameId)
             refreshSelectedArtwork()
         }
@@ -1410,27 +1408,27 @@ ApplicationWindow {
     }
 
     function refreshSelectedArtwork() {
-        selectedArtworkUrl = library.artwork_url(selectedDatabaseId,
+        selectedArtworkUrl = library.artwork_url(selectedMediaId,
                                                  library.artwork_type)
         selectedHeroArtworkType = "fanart"
-        selectedHeroArtworkCount = library.artwork_candidate_count(selectedDatabaseId,
+        selectedHeroArtworkCount = library.artwork_candidate_count(selectedMediaId,
                                                                     selectedHeroArtworkType)
         selectedHeroArtworkIndex = Math.max(0, Math.min(selectedHeroArtworkIndex,
                                                         selectedHeroArtworkCount - 1))
         selectedFanartUrl = selectedHeroArtworkCount > 0
-                          ? library.artwork_candidate_url(selectedDatabaseId,
+                          ? library.artwork_candidate_url(selectedMediaId,
                                                           selectedHeroArtworkType,
                                                           selectedHeroArtworkIndex)
                           : ""
         selectedArtworkSource = selectedHeroArtworkCount > 0
-                                ? library.artwork_candidate_source(selectedDatabaseId,
+                                ? library.artwork_candidate_source(selectedMediaId,
                                                                    selectedHeroArtworkType,
                                                                    selectedHeroArtworkIndex)
-                                : library.artwork_source(selectedDatabaseId,
+                                : library.artwork_source(selectedMediaId,
                                                          library.artwork_type)
-        selectedBoxFrontUrl = library.exact_artwork_url(selectedDatabaseId,
+        selectedBoxFrontUrl = library.exact_artwork_url(selectedMediaId,
                                                         "box-front")
-        selectedBoxBackUrl = library.exact_artwork_url(selectedDatabaseId,
+        selectedBoxBackUrl = library.exact_artwork_url(selectedMediaId,
                                                        "box-back")
         if (selectedBoxFrontUrl.toString().length === 0)
             selectedBox3d = false
@@ -1472,11 +1470,11 @@ ApplicationWindow {
     }
 
     function refreshHeroArtworkFromProvider() {
-        if (selectedDatabaseId <= 0 || !library.media_retrieval_enabled)
+        if (selectedMediaId <= 0 || !library.media_retrieval_enabled)
             return
         selectedFanartUrl = ""
         selectedArtworkSource = ""
-        library.redownload_artwork(selectedDatabaseId, gameDetails.title,
+        library.redownload_artwork(selectedMediaId, gameDetails.title,
                                    gameDetails.platform, "fanart")
     }
 
@@ -1943,7 +1941,7 @@ ApplicationWindow {
                     || root.hoverPreviewTile.gameId
                        !== root.hoverPreviewPendingGameId)
                 return
-            library.request_priority_artwork(root.hoverPreviewTile.gameDatabaseId,
+            library.request_priority_artwork(root.hoverPreviewTile.gameMediaId,
                                              root.hoverPreviewTile.gameCanonicalTitle,
                                              root.hoverPreviewTile.gamePlatform,
                                              library.artwork_type)
@@ -7863,10 +7861,13 @@ ApplicationWindow {
                     enabled: root.activeFilterCount > 0
                     onClicked: {
                         library.set_content_filters(false, false)
-                        library.set_release_filters(false, false, false, false)
+                        library.clear_release_region_filters()
+                        library.set_release_category_mode("adult", "any")
+                        library.set_release_category_mode("non-retail", "any")
                         library.select_tag_filter("")
                         library.clear_all_list_column_filters()
                         root.selectLibrary("")
+                        root.scheduleFilter()
                     }
                 }
             }
@@ -7943,39 +7944,6 @@ ApplicationWindow {
                 line: root.line
                 onFiltersChanged: root.scheduleFilter()
             }
-            Text {
-                width: parent.width
-                visible: !library.adult_release_filter
-                         && !library.non_retail_release_filter
-                topPadding: 7
-                text: "DEFAULT VISIBILITY"
-                color: "#687488"
-                font.pixelSize: 9
-                font.weight: Font.Bold
-                font.letterSpacing: 1
-            }
-            FilterToggle {
-                label: "Hide non-retail"
-                description: "Homebrew, hacks, unlicensed and pirate releases"
-                visible: !library.adult_release_filter
-                         && !library.non_retail_release_filter
-                checked: library.hide_non_retail
-                onToggled: {
-                    library.set_content_filters(!checked, library.hide_adult)
-                    root.scheduleFilter()
-                }
-            }
-            FilterToggle {
-                label: "Hide adult"
-                description: "Adult-only ratings, genres and explicit title tags"
-                visible: !library.adult_release_filter
-                         && !library.non_retail_release_filter
-                checked: library.hide_adult
-                onToggled: {
-                    library.set_content_filters(library.hide_non_retail, !checked)
-                    root.scheduleFilter()
-                }
-            }
             Rectangle {
                 width: parent.width
                 height: 1
@@ -8018,7 +7986,7 @@ ApplicationWindow {
                 width: parent.width
                 topPadding: 7
                 bottomPadding: 3
-                text: "Selections within Region or Category are combined with OR; the two sections combine with search, tags, platform, and availability using AND. Minerva always excludes installed games."
+                text: "Selected regions are combined with OR. Adult and homebrew/pirate modes are independent and combine with search, tags, platform, and availability using AND. Minerva always excludes installed games."
                 color: "#6f7c90"
                 font.pixelSize: 9
                 wrapMode: Text.WordWrap
@@ -9110,6 +9078,7 @@ ApplicationWindow {
             required property bool gameLocal
             required property bool gameDownloadable
             required property int gameDatabaseId
+            required property double gameMediaId
             required property string gameVariants
             property int downloadRevision: downloadQueue.revision
             readonly property int downloadJobIndex: {
@@ -9176,7 +9145,7 @@ ApplicationWindow {
             property string requestedArtworkType: library.artwork_type
             property url artworkUrl: {
                 mediaRevision
-                return library.artwork_url(gameDatabaseId, library.artwork_type)
+                return library.artwork_url(gameMediaId, library.artwork_type)
             }
             HoverPreviewPresentation {
                 id: previewPresentation
@@ -9200,10 +9169,10 @@ ApplicationWindow {
             }
             property string artworkSource: {
                 mediaRevision
-                return library.artwork_source(gameDatabaseId, library.artwork_type)
+                return library.artwork_source(gameMediaId, library.artwork_type)
             }
             function requestVisibleArtwork() {
-                library.request_artwork(gameDatabaseId, gameCanonicalTitle,
+                library.request_artwork(gameMediaId, gameCanonicalTitle,
                                         gamePlatform, requestedArtworkType)
             }
             function updatePreviewInterest() {
@@ -9253,7 +9222,7 @@ ApplicationWindow {
                 root.disarmGridPreview(tile)
                 requestVisibleArtwork()
             }
-            onGameDatabaseIdChanged: requestVisibleArtwork()
+            onGameMediaIdChanged: requestVisibleArtwork()
             onGameTitleChanged: requestVisibleArtwork()
             onGameCanonicalTitleChanged: requestVisibleArtwork()
             onGamePlatformChanged: requestVisibleArtwork()
@@ -9940,6 +9909,7 @@ ApplicationWindow {
             required property bool gameLocal
             required property bool gameDownloadable
             required property int gameDatabaseId
+            required property double gameMediaId
             required property string gameDeveloper
             required property string gamePublisher
             required property string gameYear
@@ -9979,10 +9949,10 @@ ApplicationWindow {
             property string requestedArtworkType: library.artwork_type
             property url artworkUrl: {
                 mediaRevision
-                return library.artwork_url(gameDatabaseId, library.artwork_type)
+                return library.artwork_url(gameMediaId, library.artwork_type)
             }
             function requestVisibleArtwork() {
-                library.request_artwork(gameDatabaseId, gameCanonicalTitle,
+                library.request_artwork(gameMediaId, gameCanonicalTitle,
                                         gamePlatform, requestedArtworkType)
             }
             function columnValue(key) {
@@ -10021,7 +9991,7 @@ ApplicationWindow {
             }
             Component.onCompleted: requestVisibleArtwork()
             onGameIdChanged: requestVisibleArtwork()
-            onGameDatabaseIdChanged: requestVisibleArtwork()
+            onGameMediaIdChanged: requestVisibleArtwork()
             onGameTitleChanged: requestVisibleArtwork()
             onGameCanonicalTitleChanged: requestVisibleArtwork()
             onGamePlatformChanged: requestVisibleArtwork()
@@ -10041,7 +10011,7 @@ ApplicationWindow {
                 id: rowHover
                 onHoveredChanged: {
                     if (hovered)
-                        library.request_priority_artwork(row.gameDatabaseId,
+                        library.request_priority_artwork(row.gameMediaId,
                                                          row.gameCanonicalTitle,
                                                          row.gamePlatform,
                                                          row.requestedArtworkType)
@@ -11222,6 +11192,7 @@ ApplicationWindow {
                 onClicked: {
                     root.selectedGameId = ""
                     root.selectedDatabaseId = 0
+                    root.selectedMediaId = 0
                     root.selectedArtworkUrl = ""
                     root.selectedFanartUrl = ""
                     root.selectedArtworkSource = ""
@@ -11431,7 +11402,7 @@ ApplicationWindow {
                         anchors.margins: 9
                         spacing: 5
                         visible: !root.selectedBox3d
-                                 && root.selectedDatabaseId > 0
+                                 && root.selectedMediaId > 0
                                  && (root.selectedHeroArtworkCount > 1
                                      || library.media_retrieval_enabled)
 
@@ -12996,6 +12967,10 @@ ApplicationWindow {
                                     return gameDetails.related_game_database_id_at(
                                                 relatedCard.index)
                                 }
+                                property double mediaId: {
+                                    relatedCard.revision
+                                    return library.media_id_for_game(relatedCard.relatedId)
+                                }
                                 property string relatedTitle: {
                                     relatedCard.revision
                                     return gameDetails.related_game_title_at(
@@ -13023,7 +12998,7 @@ ApplicationWindow {
                                 }
                                 property url artworkUrl: {
                                     relatedCard.mediaRevision
-                                    return library.artwork_url(relatedCard.databaseId,
+                                    return library.artwork_url(relatedCard.mediaId,
                                                                library.artwork_type)
                                 }
                                 readonly property string availabilityLabel:
@@ -13042,7 +13017,7 @@ ApplicationWindow {
                                                  + relatedPlatform + ". " + relationship
 
                                 function requestArtwork() {
-                                    library.request_artwork(relatedCard.databaseId,
+                                    library.request_artwork(relatedCard.mediaId,
                                                             relatedCard.relatedTitle,
                                                             relatedCard.relatedPlatform,
                                                             library.artwork_type)

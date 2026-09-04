@@ -16,6 +16,7 @@ use crate::settings::GameMetadataOverride;
 pub struct Game {
     pub id: String,
     pub launchbox_db_id: i64,
+    pub media_id: i64,
     pub title: String,
     pub platform: String,
     pub status: String,
@@ -24,10 +25,25 @@ pub struct Game {
     pub non_retail: bool,
     pub has_non_retail_release: bool,
     pub adult: bool,
-    pub has_usa_release: bool,
-    pub has_japan_release: bool,
+    pub release_regions: u64,
     pub cooperative: String,
     pub(crate) search_key: String,
+}
+
+/// Media providers can search by exact title/platform even when a source row
+/// has no LaunchBox ID. Keep those caches stable and disjoint from real IDs.
+pub(crate) fn stable_media_id(launchbox_db_id: i64, game_uid: &str) -> i64 {
+    if launchbox_db_id > 0 {
+        return launchbox_db_id;
+    }
+    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+    const SYNTHETIC_MARKER: u64 = 1 << 51;
+    let hash = game_uid.as_bytes().iter().fold(FNV_OFFSET, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(FNV_PRIME)
+    });
+    i64::try_from(SYNTHETIC_MARKER | (hash & (SYNTHETIC_MARKER - 1)))
+        .expect("synthetic media IDs remain exactly representable in QML")
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -68,8 +84,7 @@ pub struct Filter {
     pub tag: String,
     pub hide_non_retail: bool,
     pub hide_adult: bool,
-    pub include_usa_releases: bool,
-    pub include_japan_releases: bool,
+    pub release_region_mask: u64,
     pub include_adult_releases: bool,
     pub include_non_retail_releases: bool,
     pub favorite_game_ids: Arc<HashSet<String>>,
@@ -287,7 +302,8 @@ fn load_preview_from_sources(
             || installed.game_uids.contains(&id);
         let non_retail = is_non_retail_game(&title, None);
         let adult = is_adult_game(&title, None, None);
-        let (has_usa_release, has_japan_release) = release_region_membership(&title, None);
+        let release_regions = release_region_membership(&title, None);
+        let media_id = stable_media_id(database_id, &id);
         games.push(Game {
             search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
             downloadable: !local
@@ -296,6 +312,7 @@ fn load_preview_from_sources(
                     .contains(&normalize_platform_key(&platform)),
             id,
             launchbox_db_id: database_id,
+            media_id,
             title,
             platform,
             status,
@@ -303,8 +320,7 @@ fn load_preview_from_sources(
             non_retail,
             has_non_retail_release: non_retail,
             adult,
-            has_usa_release,
-            has_japan_release,
+            release_regions,
             cooperative: "unknown".to_owned(),
         });
         list_metadata.push_empty();
@@ -359,6 +375,7 @@ fn load_preview_from_sources(
             .then_with(|| left.name.cmp(&right.name))
     });
     apply_grouped_platform_counts(&games, &mut platforms);
+    validate_unique_media_ids(&games)?;
 
     Ok(CatalogPreview {
         catalog: Catalog {
@@ -439,13 +456,15 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
                   games.id",
     )?;
     let game_rows = statement.query_map([], |row| {
+        let id: String = row.get(0)?;
         let title: String = row.get(1)?;
         let platform: String = row.get(2)?;
         let non_retail = is_non_retail_game(&title, None);
         let adult = is_adult_game(&title, None, None);
-        let (has_usa_release, has_japan_release) = release_region_membership(&title, None);
+        let release_regions = release_region_membership(&title, None);
         Ok(Game {
-            id: row.get(0)?,
+            media_id: stable_media_id(0, &id),
+            id,
             launchbox_db_id: 0,
             search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
             title,
@@ -456,8 +475,7 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
             non_retail,
             has_non_retail_release: non_retail,
             adult,
-            has_usa_release,
-            has_japan_release,
+            release_regions,
             cooperative: "unknown".to_owned(),
         })
     })?;
@@ -504,6 +522,7 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
     let mut list_metadata = list_metadata.finish();
     apply_release_families(&mut games, &mut list_metadata);
     apply_grouped_platform_counts(&games, &mut platforms);
+    validate_unique_media_ids(&games)?;
 
     Ok(Catalog {
         games,
@@ -643,8 +662,8 @@ fn load_discovery_catalog_with_native_state(
         };
         let non_retail = is_non_retail_game(&title, release_type.as_deref());
         let adult = is_adult_game(&title, esrb.as_deref(), genre.as_deref());
-        let (has_usa_release, has_japan_release) =
-            release_region_membership(&title, region.as_deref());
+        let release_regions = release_region_membership(&title, region.as_deref());
+        let media_id = stable_media_id(database_id, &id);
         let mut search_key = String::with_capacity(title.len() + platform_lower.len() + 1);
         search_key.extend(title.chars().flat_map(char::to_lowercase));
         search_key.push('\n');
@@ -652,6 +671,7 @@ fn load_discovery_catalog_with_native_state(
         games.push(Game {
             id,
             launchbox_db_id: database_id,
+            media_id,
             search_key,
             title,
             platform,
@@ -661,8 +681,7 @@ fn load_discovery_catalog_with_native_state(
             non_retail,
             has_non_retail_release: non_retail,
             adult,
-            has_usa_release,
-            has_japan_release,
+            release_regions,
             cooperative: cooperative_status(cooperative).to_owned(),
         });
         let release_year: Option<i64> = row.get(12)?;
@@ -736,6 +755,7 @@ fn load_discovery_catalog_with_native_state(
             .then_with(|| left.name.cmp(&right.name))
     });
     apply_grouped_platform_counts(&games, &mut platforms);
+    validate_unique_media_ids(&games)?;
 
     Ok(Catalog {
         games,
@@ -746,6 +766,24 @@ fn load_discovery_catalog_with_native_state(
         emulator_count: count(canonical, "emulators", "1")?,
         source_label: format!("Discovery catalog: {}", discovery_path.display()),
     })
+}
+
+fn validate_unique_media_ids(games: &[Game]) -> Result<()> {
+    let mut identities = HashMap::with_capacity(games.len());
+    for game in games {
+        if game.media_id <= 0 {
+            bail!("catalog game {} has no usable media identity", game.id);
+        }
+        if let Some(existing) = identities.insert(game.media_id, game.id.as_str())
+            && existing != game.id
+        {
+            bail!(
+                "catalog media identity collision between {existing} and {}",
+                game.id
+            );
+        }
+    }
+    Ok(())
 }
 
 fn canonical_platform_aliases(connection: &Connection) -> Result<HashMap<String, String>> {
@@ -891,7 +929,8 @@ fn apply_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata) {
     for (index, game) in games.iter().enumerate() {
         let base = crate::game_details::catalog_release_base(&game.title)
             .unwrap_or_else(|| game.title.trim().to_owned());
-        let key = format!("{}\0{}", game.platform.to_lowercase(), base.to_lowercase());
+        let normalized_base = crate::tags::normalize_title_for_matching(&base);
+        let key = format!("{}\0{}", game.platform.to_lowercase(), normalized_base);
         if !family_members.contains_key(&key) {
             family_order.push(key.clone());
         }
@@ -923,8 +962,9 @@ fn apply_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata) {
             .iter()
             .any(|index| games[*index].has_non_retail_release);
         let adult = members.iter().any(|index| games[*index].adult);
-        let has_usa_release = members.iter().any(|index| games[*index].has_usa_release);
-        let has_japan_release = members.iter().any(|index| games[*index].has_japan_release);
+        let release_regions = members
+            .iter()
+            .fold(0_u64, |mask, index| mask | games[*index].release_regions);
         let cooperative = if members
             .iter()
             .any(|index| games[*index].cooperative == "yes")
@@ -949,8 +989,7 @@ fn apply_release_families(games: &mut Vec<Game>, metadata: &mut ListMetadata) {
         representative_game.non_retail = non_retail;
         representative_game.has_non_retail_release = has_non_retail_release;
         representative_game.adult = adult;
-        representative_game.has_usa_release = has_usa_release;
-        representative_game.has_japan_release = has_japan_release;
+        representative_game.release_regions = release_regions;
         if let Some(cooperative) = cooperative {
             representative_game.cooperative = cooperative.to_owned();
         }
@@ -1138,9 +1177,11 @@ fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -
         } else {
             let non_retail = is_non_retail_game(&title, None);
             let adult = is_adult_game(&title, None, None);
-            let (has_usa_release, has_japan_release) = release_region_membership(&title, None);
+            let release_regions = release_region_membership(&title, None);
+            let game_uid = format!("local-file:{id}");
             installed.local_only_games.push(Game {
-                id: format!("local-file:{id}"),
+                media_id: stable_media_id(0, &game_uid),
+                id: game_uid,
                 launchbox_db_id: 0,
                 search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
                 title,
@@ -1151,8 +1192,7 @@ fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -
                 non_retail,
                 has_non_retail_release: non_retail,
                 adult,
-                has_usa_release,
-                has_japan_release,
+                release_regions,
                 cooperative: "unknown".to_owned(),
             });
         }
@@ -1283,39 +1323,26 @@ const NON_RETAIL_TITLE_TAGS: [&str; 6] = [
     "aftermarket",
 ];
 
-fn release_region_membership(title: &str, metadata_region: Option<&str>) -> (bool, bool) {
-    let mut usa = false;
-    let mut japan = false;
-    let mut include = |value: &str| {
-        for region in value.split([',', '/', '&', '+']).map(str::trim) {
-            if ["usa", "united states", "north america"]
-                .iter()
-                .any(|expected| region.eq_ignore_ascii_case(expected))
-            {
-                usa = true;
-            } else if region.eq_ignore_ascii_case("japan") {
-                japan = true;
-            }
-        }
-    };
+fn release_region_membership(title: &str, metadata_region: Option<&str>) -> u64 {
+    let mut mask = 0_u64;
     if let Some(region) = metadata_region.filter(|region| !region.trim().is_empty()) {
-        include(region);
+        mask |= crate::region_priority::regions_mask(region);
     }
     let (_, tags) = crate::tags::parse_title_tags(title);
     for tag in tags
         .iter()
         .filter(|tag| tag.category == crate::tags::TagCategory::Region)
     {
-        include(&tag.text);
+        mask |= crate::region_priority::regions_mask(&tag.text);
     }
     // Kana is unambiguous Japanese-language evidence. Han characters alone
     // are deliberately not treated as Japanese because the same code points
     // are also used by Chinese titles. Romanized text is likewise not guessed;
     // exact linked alternate-title region metadata is applied separately.
     if title.chars().any(is_japanese_kana) {
-        japan = true;
+        mask |= crate::region_priority::region_bit("Japan").unwrap_or_default();
     }
-    (usa, japan)
+    mask
 }
 
 fn is_japanese_kana(character: char) -> bool {
@@ -1339,8 +1366,7 @@ fn apply_alternate_release_regions(connection: &Connection, games: &mut [Game]) 
         return Ok(());
     }
 
-    let mut usa_ids = HashSet::new();
-    let mut japan_ids = HashSet::new();
+    let mut regions_by_id = HashMap::<i64, u64>::new();
     let mut statement = connection.prepare(
         "SELECT launchbox_db_id, trim(region)
          FROM game_alternate_names
@@ -1350,21 +1376,21 @@ fn apply_alternate_release_regions(connection: &Connection, games: &mut [Game]) 
     while let Some(row) = rows.next()? {
         let database_id: i64 = row.get(0)?;
         let region: &str = text_column(row, 1).unwrap_or_default();
-        let (usa, japan) = release_region_membership("", Some(region));
-        if usa {
-            usa_ids.insert(database_id);
-        }
-        if japan {
-            japan_ids.insert(database_id);
-        }
+        let mask = release_region_membership("", Some(region));
+        regions_by_id
+            .entry(database_id)
+            .and_modify(|regions| *regions |= mask)
+            .or_insert(mask);
     }
 
     for game in games {
         if game.launchbox_db_id <= 0 {
             continue;
         }
-        game.has_usa_release |= usa_ids.contains(&game.launchbox_db_id);
-        game.has_japan_release |= japan_ids.contains(&game.launchbox_db_id);
+        game.release_regions |= regions_by_id
+            .get(&game.launchbox_db_id)
+            .copied()
+            .unwrap_or_default();
     }
     Ok(())
 }
@@ -1540,19 +1566,12 @@ fn game_matches_filter(
     let Some(game) = catalog.games.get(index) else {
         return false;
     };
-    let release_region_matches = if filter.include_usa_releases || filter.include_japan_releases {
-        (filter.include_usa_releases && game.has_usa_release)
-            || (filter.include_japan_releases && game.has_japan_release)
-    } else {
-        true
-    };
-    let release_category_matches =
-        if filter.include_adult_releases || filter.include_non_retail_releases {
-            (filter.include_adult_releases && game.adult)
-                || (filter.include_non_retail_releases && game.has_non_retail_release)
-        } else {
-            (!filter.hide_non_retail || !game.non_retail) && (!filter.hide_adult || !game.adult)
-        };
+    let release_region_matches =
+        filter.release_region_mask == 0 || filter.release_region_mask & game.release_regions != 0;
+    let release_category_matches = (!filter.include_adult_releases || game.adult)
+        && (!filter.include_non_retail_releases || game.has_non_retail_release)
+        && (!filter.hide_non_retail || !game.non_retail)
+        && (!filter.hide_adult || !game.adult);
     (search.is_empty()
         || game.search_key.contains(&search)
         || filter
@@ -1657,6 +1676,7 @@ mod tests {
                 Game {
                     id: "metroid".into(),
                     launchbox_db_id: 1,
+                    media_id: 1,
                     title: "Metroid".into(),
                     platform: "Nintendo Entertainment System".into(),
                     status: "canonical".into(),
@@ -1665,14 +1685,14 @@ mod tests {
                     non_retail: false,
                     has_non_retail_release: false,
                     adult: false,
-                    has_usa_release: false,
-                    has_japan_release: false,
+                    release_regions: 0,
                     cooperative: "no".into(),
                     search_key: "metroid\nnintendo entertainment system".into(),
                 },
                 Game {
                     id: "outrun".into(),
                     launchbox_db_id: 2,
+                    media_id: 2,
                     title: "OutRun".into(),
                     platform: "Arcade".into(),
                     status: "canonical".into(),
@@ -1681,8 +1701,7 @@ mod tests {
                     non_retail: false,
                     has_non_retail_release: false,
                     adult: false,
-                    has_usa_release: false,
-                    has_japan_release: false,
+                    release_regions: 0,
                     cooperative: "unknown".into(),
                     search_key: "outrun\narcade".into(),
                 },
@@ -1706,6 +1725,15 @@ mod tests {
             assert!(key.contains(query), "missing platform query {query:?}");
         }
         assert!(platform_search_key("Unknown Console", None).contains("unknown console"));
+    }
+
+    #[test]
+    fn media_ids_cover_unlinked_catalog_rows_without_impersonating_provider_ids() {
+        assert_eq!(stable_media_id(511, "ignored"), 511);
+        let first = stable_media_id(0, "stable-game-uid");
+        assert_eq!(first, stable_media_id(0, "stable-game-uid"));
+        assert_ne!(first, stable_media_id(0, "another-game-uid"));
+        assert!((1_i64 << 51..1_i64 << 52).contains(&first));
     }
 
     #[test]
@@ -2068,36 +2096,30 @@ mod tests {
 
     #[test]
     fn release_filters_use_exact_region_and_category_facets() {
+        let usa = crate::region_priority::region_bit("USA").unwrap();
+        let japan = crate::region_priority::region_bit("Japan").unwrap();
+        let europe = crate::region_priority::region_bit("Europe").unwrap();
         assert_eq!(
             release_region_membership("Game (USA, Europe)", None),
-            (true, false)
+            usa | europe
         );
-        assert_eq!(
-            release_region_membership("Game (Japan)", None),
-            (false, true)
-        );
+        assert_eq!(release_region_membership("Game (Japan)", None), japan);
         assert_eq!(
             release_region_membership("Game", Some("North America")),
-            (true, false)
+            usa
         );
-        assert_eq!(
-            release_region_membership("Japan Grand Prix", None),
-            (false, false)
-        );
-        assert_eq!(
-            release_region_membership("ゼルダの伝説", None),
-            (false, true)
-        );
+        assert_eq!(release_region_membership("Japan Grand Prix", None), 0);
+        assert_eq!(release_region_membership("ゼルダの伝説", None), japan);
         assert_eq!(
             release_region_membership("Zelda no Densetsu", None),
-            (false, false),
+            0,
             "Latin text must not be guessed as romanized Japanese"
         );
 
         let mut catalog = fixture_catalog();
-        catalog.games[0].has_usa_release = true;
+        catalog.games[0].release_regions = usa;
         catalog.games[0].adult = true;
-        catalog.games[1].has_japan_release = true;
+        catalog.games[1].release_regions = japan | europe;
         catalog.games[1].non_retail = true;
         catalog.games[1].has_non_retail_release = true;
 
@@ -2105,7 +2127,7 @@ mod tests {
             filter_indices(
                 &catalog,
                 &Filter {
-                    include_usa_releases: true,
+                    release_region_mask: usa,
                     ..Filter::default()
                 }
             ),
@@ -2115,8 +2137,7 @@ mod tests {
             filter_indices(
                 &catalog,
                 &Filter {
-                    include_usa_releases: true,
-                    include_japan_releases: true,
+                    release_region_mask: usa | japan,
                     ..Filter::default()
                 }
             ),
@@ -2127,19 +2148,16 @@ mod tests {
                 &catalog,
                 &Filter {
                     include_adult_releases: true,
-                    include_non_retail_releases: true,
-                    hide_non_retail: true,
-                    hide_adult: true,
                     ..Filter::default()
                 }
             ),
-            vec![0, 1]
+            vec![0]
         );
         assert_eq!(
             filter_indices(
                 &catalog,
                 &Filter {
-                    include_japan_releases: true,
+                    release_region_mask: japan,
                     include_adult_releases: true,
                     ..Filter::default()
                 }
@@ -2181,12 +2199,11 @@ mod tests {
 
         apply_alternate_release_regions(&connection, &mut games).unwrap();
 
-        assert!(games[0].has_japan_release);
-        assert!(!games[0].has_usa_release);
-        assert!(games[1].has_usa_release);
-        assert!(!games[1].has_japan_release);
-        assert!(!games[2].has_usa_release);
-        assert!(!games[2].has_japan_release);
+        let usa = crate::region_priority::region_bit("USA").unwrap();
+        let japan = crate::region_priority::region_bit("Japan").unwrap();
+        assert_eq!(games[0].release_regions, japan);
+        assert_eq!(games[1].release_regions, usa);
+        assert_eq!(games[2].release_regions, 0);
     }
 
     #[test]
@@ -2466,10 +2483,11 @@ mod tests {
         fn game(id: &str, title: &str, platform: &str, database_id: i64, local: bool) -> Game {
             let non_retail = is_non_retail_game(title, None);
             let adult = is_adult_game(title, None, None);
-            let (has_usa_release, has_japan_release) = release_region_membership(title, None);
+            let release_regions = release_region_membership(title, None);
             Game {
                 id: id.into(),
                 launchbox_db_id: database_id,
+                media_id: stable_media_id(database_id, id),
                 title: title.into(),
                 platform: platform.into(),
                 status: "Released".into(),
@@ -2478,8 +2496,7 @@ mod tests {
                 non_retail,
                 has_non_retail_release: non_retail,
                 adult,
-                has_usa_release,
-                has_japan_release,
+                release_regions,
                 cooperative: "unknown".into(),
                 search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
             }
@@ -2550,8 +2567,14 @@ mod tests {
             .expect("canonical Faxanadu family card");
         assert_eq!(games[faxanadu].launchbox_db_id, 1283);
         assert!(games[faxanadu].search_key.contains("faxanadu (europe)"));
-        assert!(games[faxanadu].has_usa_release);
-        assert!(games[faxanadu].has_japan_release);
+        assert_ne!(
+            games[faxanadu].release_regions & crate::region_priority::region_bit("USA").unwrap(),
+            0
+        );
+        assert_ne!(
+            games[faxanadu].release_regions & crate::region_priority::region_bit("Japan").unwrap(),
+            0
+        );
         assert_eq!(
             metadata.display_value(
                 faxanadu,
@@ -2567,5 +2590,45 @@ mod tests {
                 .any(|game| game.title == "Faxanadu: Revisioned")
         );
         assert!(games.iter().any(|game| game.platform == "Nintendo Wii"));
+    }
+
+    #[test]
+    fn regional_family_grouping_ignores_separator_punctuation() {
+        let platform = "Sony Playstation";
+        let mut games = [
+            ("canonical", "Castlevania: Symphony of the Night", 511),
+            ("asia", "Castlevania - Symphony of the Night (Asia)", 0),
+            ("europe", "Castlevania - Symphony of the Night (Europe)", 0),
+        ]
+        .into_iter()
+        .map(|(id, title, launchbox_db_id)| Game {
+            id: id.to_owned(),
+            launchbox_db_id,
+            title: title.to_owned(),
+            platform: platform.to_owned(),
+            status: "Released".to_owned(),
+            release_regions: release_region_membership(title, None),
+            search_key: format!("{}\n{}", title.to_lowercase(), platform.to_lowercase()),
+            ..Game::default()
+        })
+        .collect::<Vec<_>>();
+        let mut metadata = ListMetadataBuilder::with_capacity(games.len());
+        for _ in &games {
+            metadata.push_empty();
+        }
+        let mut metadata = metadata.finish();
+
+        apply_release_families(&mut games, &mut metadata);
+
+        assert_eq!(games.len(), 1);
+        assert_eq!(games[0].launchbox_db_id, 511);
+        assert_ne!(
+            games[0].release_regions & crate::region_priority::region_bit("Asia").unwrap(),
+            0
+        );
+        assert_ne!(
+            games[0].release_regions & crate::region_priority::region_bit("Europe").unwrap(),
+            0
+        );
     }
 }

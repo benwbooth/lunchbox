@@ -63,7 +63,15 @@ pub(crate) fn download_and_publish(
 
     let mut response = agent
         .get(url)
-        .header("User-Agent", "Lunchbox/0.1 reviewed artwork client")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Lunchbox/0.1",
+        )
+        .header(
+            "Accept",
+            "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        )
         .call()
         .context("downloading reviewed provider artwork")?;
     let status = response.status().as_u16();

@@ -2443,48 +2443,9 @@ fn canonical_region_tag(tag: &str) -> Option<String> {
         .split([',', '/', '&', '+'])
         .map(str::trim)
         .filter(|part| !part.is_empty())
-        .map(canonical_region)
+        .map(crate::region_priority::canonical_region)
         .collect::<Option<Vec<_>>>()?;
     (!parts.is_empty()).then(|| parts.join(", "))
-}
-
-fn canonical_region(region: &str) -> Option<&'static str> {
-    Some(match region.trim().to_ascii_lowercase().as_str() {
-        "usa" | "united states" | "north america" => "USA",
-        "japan" => "Japan",
-        "asia" => "Asia",
-        "world" => "World",
-        "europe" => "Europe",
-        "australia" => "Australia",
-        "canada" => "Canada",
-        "brazil" => "Brazil",
-        "korea" => "Korea",
-        "china" => "China",
-        "france" => "France",
-        "germany" => "Germany",
-        "italy" => "Italy",
-        "spain" => "Spain",
-        "united kingdom" | "uk" => "United Kingdom",
-        "taiwan" => "Taiwan",
-        "netherlands" => "Netherlands",
-        "belgium" => "Belgium",
-        "greece" => "Greece",
-        "portugal" => "Portugal",
-        "austria" => "Austria",
-        "sweden" => "Sweden",
-        "finland" => "Finland",
-        "russia" => "Russia",
-        "switzerland" => "Switzerland",
-        "hong kong" => "Hong Kong",
-        "scandinavia" => "Scandinavia",
-        "denmark" => "Denmark",
-        "poland" => "Poland",
-        "norway" => "Norway",
-        "new zealand" => "New Zealand",
-        "latin america" => "Latin America",
-        "unknown" => "Unknown",
-        _ => return None,
-    })
 }
 
 fn is_version_tag(tag: &str) -> bool {

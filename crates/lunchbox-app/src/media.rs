@@ -1891,7 +1891,11 @@ fn fetch_web_image(
         let results = search_web_images(agent, &query)?;
         let mut attempted = HashSet::new();
         for result in results.into_iter().take(WEB_SEARCH_RESULT_LIMIT) {
-            for candidate_url in [result.image, result.thumbnail] {
+            // Search-engine thumbnails are typically proxied, small, and far
+            // more dependable than arbitrary origin servers. Prefer them so
+            // a visible card gets something quickly; an explicit refresh can
+            // still replace it with a higher-priority exact source later.
+            for candidate_url in [result.thumbnail, result.image] {
                 if candidate_url.is_empty()
                     || !attempted.insert(candidate_url.clone())
                     || !crate::provider_image::approved_url(&candidate_url)
@@ -2633,6 +2637,35 @@ mod tests {
             Some("token-42")
         );
         assert!(extract_web_image_token("vqd='<script>'").is_none());
+    }
+
+    #[test]
+    #[ignore = "requires live web image search"]
+    fn live_web_fallback_publishes_a_valid_cover() {
+        let root = tempfile::tempdir().unwrap();
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_connect(Some(Duration::from_secs(5)))
+            .timeout_global(Some(Duration::from_secs(20)))
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let result = fetch_web_image(
+            &agent,
+            root.path(),
+            &MediaFetchRequest {
+                request_id: "live-web-fallback".to_owned(),
+                database_id: 42,
+                title: "Super Mario Odyssey".to_owned(),
+                platform: "Nintendo Switch".to_owned(),
+                requested_kind: ArtworkKind::BoxFront,
+                force: true,
+                exact_only: false,
+            },
+        )
+        .unwrap()
+        .expect("a live web cover result");
+        assert_eq!(result.0, ArtworkKind::BoxFront);
+        assert!(result.1.is_file());
     }
 
     #[test]
