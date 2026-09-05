@@ -425,6 +425,12 @@ fn runtime_root(
     let base = BaseDirs::new().context("could not determine firmware runtime directories")?;
     let home = base.home_dir();
     let flatpak = matches!(option.executable, EmulatorExecutable::Flatpak { .. });
+    if rule.runtime_kind == "duckstation"
+        && cfg!(target_os = "linux")
+        && let EmulatorExecutable::Flatpak { app_id, .. } = &option.executable
+    {
+        return Ok(Some(duckstation_flatpak_bios_root(home, app_id)));
+    }
     if matches!(rule.runtime_kind.as_str(), "eden" | "ryubing" | "torzu") {
         let host = FirmwareHost::current()?;
         let switch_data_dir = if host == FirmwareHost::MacOs {
@@ -455,9 +461,6 @@ fn runtime_root(
             base.data_local_dir().join("RetroArch/system")
         }
         "retroarch" => home.join("Library/Application Support/RetroArch/system"),
-        "duckstation" if cfg!(target_os = "linux") && flatpak => {
-            home.join(".var/app/org.duckstation.DuckStation/data/duckstation/bios")
-        }
         "duckstation" if cfg!(target_os = "linux") => {
             base.data_local_dir().join("duckstation/bios")
         }
@@ -524,6 +527,14 @@ fn runtime_root(
         kind => bail!("firmware runtime {kind} has no reviewed target adapter"),
     };
     Ok(Some(root))
+}
+
+fn duckstation_flatpak_bios_root(home: &Path, app_id: &str) -> PathBuf {
+    // The Flatpak build keeps its user directory (settings.ini and BIOS) in
+    // XDG_CONFIG_HOME, unlike the native/AppImage build's XDG_DATA_HOME.
+    home.join(".var/app")
+        .join(app_id)
+        .join("config/duckstation/bios")
 }
 
 fn switch_runtime_root(
@@ -2415,6 +2426,19 @@ mod tests {
         assert_ne!(store_component("source:a"), store_component("source/a"));
         assert!(validate_package_filename("../bios.zip").is_err());
         assert!(validate_package_filename("bios.zip").is_ok());
+    }
+
+    #[test]
+    fn duckstation_flatpak_bios_uses_the_config_profile_not_native_data_layout() {
+        let home = Path::new("/users/player");
+        assert_eq!(
+            duckstation_flatpak_bios_root(home, "org.duckstation.DuckStation"),
+            home.join(".var/app/org.duckstation.DuckStation/config/duckstation/bios"),
+        );
+        assert_eq!(
+            duckstation_flatpak_bios_root(home, "org.example.DuckStation"),
+            home.join(".var/app/org.example.DuckStation/config/duckstation/bios"),
+        );
     }
 
     #[test]
