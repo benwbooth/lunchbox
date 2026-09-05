@@ -1737,6 +1737,38 @@
       }
     },
     {
+      "id": "retroarch:mednafen_pce_fast:pce2",
+      "name": "RetroArch · Beetle PCE Fast · PC Engine 2-button",
+      "core": "mednafen_pce_fast",
+      "target_layout": "pce-2",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/beetle-pce-fast-libretro/blob/95fbd9c51bf0e35aa376a7774e9c02ff927cd991/libretro.c",
+      "conditions": [
+        "Two-button gamepad mode is selected for all five ports in a private core-options file",
+        "Six-button games and mouse input require a separate profile",
+        "Per-game core options are suspended for this launch; the saved files are unchanged",
+        "Only gameplay I/II are assigned; hardware turbo aliases are not independent buttons"
+      ],
+      "core_options": {
+        "pce_fast_default_joypad_type_p1": "2 Buttons",
+        "pce_fast_default_joypad_type_p2": "2 Buttons",
+        "pce_fast_default_joypad_type_p3": "2 Buttons",
+        "pce_fast_default_joypad_type_p4": "2 Buttons",
+        "pce_fast_default_joypad_type_p5": "2 Buttons"
+      },
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "select": "Select",
+        "a": "East",
+        "b": "South"
+      }
+    },
+    {
       "id": "retroarch:gambatte:gameboy",
       "name": "RetroArch · Gambatte · Game Boy gamepad",
       "core": "gambatte",

@@ -62,6 +62,24 @@ pub fn contract(core: &str, platform: &str) -> Option<&'static EmulatorProfile> 
             "nes"
         }
         "gambatte" if platform.contains("game boy") && !platform.contains("advance") => "gameboy",
+        "mednafen_pce_fast"
+            if matches!(
+                platform.as_str(),
+                "nec pc engine"
+                    | "pc engine"
+                    | "nec turbografx-16"
+                    | "turbografx-16"
+                    | "nec turbografx-16 cd"
+                    | "turbografx-cd"
+                    | "nec turbografx-cd"
+                    | "nec pc engine cd"
+                    | "pc engine cd"
+                    | "nec - pc engine - turbografx 16"
+                    | "nec - pc engine cd - turbografx-cd"
+            ) =>
+        {
+            "pce-2"
+        }
         "genesis_plus_gx" if platform.contains("genesis") || platform.contains("mega drive") => {
             "genesis-6"
         }
@@ -78,6 +96,7 @@ pub fn supports_profile(profile: &EmulatorProfile) -> bool {
         && matches!(
             profile.id.as_str(),
             "retroarch:fceumm:nes"
+                | "retroarch:mednafen_pce_fast:pce2"
                 | "retroarch:gambatte:gameboy"
                 | "retroarch:genesis_plus_gx:md6"
                 | "retroarch:mupen64plus_next:n64-independent"
@@ -148,7 +167,7 @@ fn write_core_options(
             || arg == "-c"
             || arg.to_string_lossy().starts_with("--config=")
             || arg.to_string_lossy().starts_with("--appendconfig")),
-        "Custom RetroArch configuration arguments need core-options resolution before calibrated N64 launch"
+        "Custom RetroArch configuration arguments need core-options resolution before calibrated launch with core options"
     );
     let dirs = directories::BaseDirs::new().context("Finding RetroArch config directory")?;
     let base = match executable {
@@ -164,7 +183,7 @@ fn write_core_options(
         !config
             .lines()
             .any(|line| line.trim_start().starts_with("#include")),
-        "Included RetroArch configs require core-options resolution before calibrated N64 launch"
+        "Included RetroArch configs require core-options resolution before calibrated launch with core options"
     );
     let path = match cfg_value(&config, "core_options_path").filter(|v| !v.is_empty()) {
         Some(path) => {
@@ -517,6 +536,10 @@ pub fn prepare(
         profile.name
     );
     ensure!(devices.len() <= 16, "Too many calibrated controllers");
+    ensure!(
+        profile.core != "mednafen_pce_fast" || devices.len() <= 5,
+        "Beetle PCE Fast supports at most five controller ports; hide extra controllers in Settings"
+    );
     let cache = directories::BaseDirs::new()
         .context("Finding controller launch cache")?
         .cache_dir()
@@ -591,6 +614,48 @@ fn attach_config(
 mod tests {
     use super::*;
     use crate::controller_catalog::InputBinding;
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn horizontal_and_turbo_pads_compose_pce_gameplay_without_upper_button_aliases() {
+        let profile = contract("mednafen_pce_fast", "NEC TurboGrafx-16").unwrap();
+        for layout in ["horizontal-four", "n30-turbo", "pce-2"] {
+            let mut cal = nes();
+            cal.layout = layout.into();
+            let map = JoydevMap {
+                index: 2,
+                buttons: (288..296).rev().collect(),
+                axes: vec![],
+            };
+            let config = player_config(&cal, profile, &map, 1).unwrap();
+            for (physical, output) in [("a", "a"), ("b", "b")] {
+                let (_, number) = map
+                    .binding(cal.bindings[physical].native.as_ref().unwrap())
+                    .unwrap();
+                assert!(
+                    config.contains(&format!("input_player1_{output}_btn = \"{number}\"")),
+                    "{layout}"
+                );
+            }
+            for output in ["x", "y", "l", "r", "l2"] {
+                assert!(
+                    config.contains(&format!("input_player1_{output}_btn = \"nul\"")),
+                    "{layout}"
+                );
+            }
+        }
+        let options = core_options_overlay(
+            "pce_fast_default_joypad_type_p1 = \"6 Buttons\"\npce_fast_cdspeed = \"4\"\n",
+            &profile.core_options,
+        )
+        .unwrap();
+        assert!(!options.contains("6 Buttons"));
+        assert!(options.contains("pce_fast_cdspeed = \"4\""));
+        for player in 1..=5 {
+            assert!(options.contains(&format!(
+                "pce_fast_default_joypad_type_p{player} = \"2 Buttons\""
+            )));
+        }
+    }
     #[test]
     fn n64_independent_buttons_and_core_options_are_composed_together() {
         let profile = contract("mupen64plus_next", "Nintendo 64").unwrap();
@@ -803,6 +868,16 @@ mod tests {
     }
     #[test]
     fn contracts_never_infer_system_from_core_name_alone() {
+        assert!(contract("mednafen_pce_fast", "NEC SuperGrafx").is_none());
+        assert!(contract("mednafen_pce_fast", "NEC PC-FX").is_none());
+        assert!(contract("mednafen_pce", "NEC PC Engine").is_none());
+        assert!(contract("mednafen_pce_fast", "NEC TurboGrafx-CD").is_some());
+        assert_eq!(
+            contract("mednafen_pce_fast", "NEC - PC Engine CD - TurboGrafx-CD")
+                .unwrap()
+                .target_layout,
+            "pce-2"
+        );
         assert!(contract("genesis_plus_gx", "Sega Game Gear").is_none());
         assert!(contract("fceumm", "Super Nintendo Entertainment System").is_none());
         assert!(contract("unknown", "Nintendo Entertainment System").is_none());

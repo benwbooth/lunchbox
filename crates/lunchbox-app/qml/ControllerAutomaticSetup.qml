@@ -54,7 +54,7 @@ ColumnLayout {
     }
     Label {
         Layout.fillWidth: true
-        text: "Calibrated launch currently supports native Linux RetroArch with FCEUmm, Gambatte, Genesis Plus GX and Mupen64Plus-Next. RetroArch automatic overrides/remaps (and N64 per-game core options) are suspended for that session; your saved files are unchanged. Other cores/emulators still need adapters. Disable Apply saved calibrations to keep an emulator’s native setup."
+        text: "Calibrated launch supports Linux RetroArch (native or Flatpak) with FCEUmm, Gambatte, Genesis Plus GX, Mupen64Plus-Next and Beetle PCE Fast (two-button games). RetroArch automatic overrides/remaps (and N64/PCE per-game core options) are suspended for that session; your saved files are unchanged. Other cores/emulators still need adapters. Disable Apply saved calibrations to keep an emulator’s native setup."
         color: "#ffb454"
         wrapMode: Text.WordWrap
     }

@@ -23,11 +23,13 @@ arrangements. The catalog distinguishes independent upper buttons from hardware
 turbo repeats. These rules do not assume device button numbering.
 
 **Apply saved calibrations at emulator launch** uses a temporary configuration
-for Linux RetroArch (native or Flatpak) with FCEUmm, Gambatte, Genesis Plus GX or
-Mupen64Plus-Next. The N64 adapter enables independent C-button mode. Only compatible
+for Linux RetroArch (native or Flatpak) with FCEUmm, Gambatte, Genesis Plus GX,
+Mupen64Plus-Next or Beetle PCE Fast. The PCE Fast adapter explicitly selects
+two-button mode for its five ports; six-button games and mouse input need a
+separate profile. The N64 adapter enables independent C-button mode. Only compatible
 connected calibrations are assigned as players. Older preview-only calibrations
 require one new recording to capture physical inputs. Automatic RetroArch
-overrides/remaps and N64 per-game core options are suspended for that launch;
+overrides/remaps and N64/PCE per-game core options are suspended for that launch;
 your saved files are not overwritten. Disable this switch to retain native
 emulator setup when an adapter is unavailable. Standalone and Windows/macOS
 adapters remain unfinished. Existing advanced InputPlumber mappings remain a

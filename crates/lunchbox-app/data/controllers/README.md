@@ -38,7 +38,8 @@ adapters. Controls/options can vary by core version and controller mode.
   Missing analog sticks/buttons remain missing. This is optimal under the stated
   cost policy, not a claim of universal ergonomic optimality.
 - Linux RetroArch launch writer: native and Flatpak, FCEUmm/NES, Gambatte/GB,
-  Genesis Plus GX/MD six-button, Mupen64Plus-Next/N64 independent C-button mode.
+  Genesis Plus GX/MD six-button, Mupen64Plus-Next/N64 independent C-button mode,
+  Beetle PCE Fast/PC Engine two-button mode (maximum five players).
   Per-launch configs use kernel-reported joystick indices, not Xbox numbering.
   Saved calibrations from the preview-only prototype need one recalibration to
   capture physical evdev bindings, including synthesized D-pad inputs.
@@ -81,9 +82,15 @@ and normalization implementations. Core-specific functional mappings are linked
 in the catalog; Mupen64Plus-Next's independent mode is verified against its input
 implementation, not assumed from generic RetroPad labels.
 
+Beetle PCE Fast's I/II input descriptors, input polling table, and five initial
+joypad-mode options were checked against upstream commit
+`95fbd9c51bf0e35aa376a7774e9c02ff927cd991` on 2026-09-05 (`libretro.c` and
+`libretro_core_options.h`). Its two-button contract leaves mode-switch and
+software-turbo hotkeys unbound; six-button games require another profile.
+
 The initial adapter suspends RetroArch automatic config overrides/remaps for a
-session, and N64 uses a copy of global core options with independent C-buttons
-enabled (per-core/per-game options are suspended). Custom N64 config/include
+session. N64 and PCE use a copy of global core options with independent C-buttons
+or two-button mode selected (per-core/per-game options are suspended). Custom N64/PCE config/include
 chains are rejected until their effective options can be resolved. No existing
 config file is overwritten. Temporary files are deleted when the launched child
 exits, including spawn/error/cancel paths. A frontend crash can leave a private
