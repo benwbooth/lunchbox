@@ -58,6 +58,14 @@ emulator before enabling automatic launch. Lightguns, keypads, wheels, motion
 controls, pressure sensitivity, and nonstandard analog devices need explicit
 capabilities rather than being squeezed into a standard joypad profile.
 
+The PlayStation digital layout and `duckstation-settings` transport are available
+for preview. This transport contains DuckStation setting keys rather than
+RetroPad outputs; it cannot opt into the RetroArch writer. DuckStation automatic
+launch remains unavailable pending verified SDL identity/binding resolution and
+configuration isolation. See `docs/DUCKSTATION_CONTROLLERS.md` for pinned evidence
+and the remaining adapter requirements. Mapping rows expose stable control IDs
+separately from display labels.
+
 Raw GilRs event codes are OS-specific. Calibrations record their OS/backend and
 must not be silently reused on a different input backend. Linux row identification
 uses the exact evdev source; portable model IDs with multiple matches are refused.

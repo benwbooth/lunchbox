@@ -110,6 +110,7 @@ pub struct Calibration {
 #[derive(Debug, Serialize)]
 pub struct MappingPlan {
     pub profile: String,
+    pub transport: String,
     pub status: String,
     pub automatic_launch_ready: bool,
     pub rows: Vec<MappingRow>,
@@ -118,7 +119,9 @@ pub struct MappingPlan {
 
 #[derive(Debug, Serialize)]
 pub struct MappingRow {
+    pub target_id: String,
     pub target: String,
+    pub physical_id: Option<String>,
     pub physical: String,
     pub input: Option<InputBinding>,
     pub output: String,
@@ -219,14 +222,28 @@ impl Catalog {
                 .layout(&profile.target_layout)
                 .ok_or_else(|| anyhow::anyhow!("unknown target layout"))?;
             ensure!(
-                profile.status == "documented" && profile.transport == "retropad",
+                profile.status == "documented"
+                    && matches!(
+                        profile.transport.as_str(),
+                        "retropad" | "duckstation-settings"
+                    ),
                 "unsupported profile contract"
             );
             ensure!(
                 profile.source.starts_with("https://") && !profile.conditions.is_empty(),
                 "profile lacks provenance or assumptions"
             );
+            if profile.transport == "duckstation-settings" {
+                ensure!(
+                    profile.core == "duckstation" && profile.target_layout == "playstation-digital",
+                    "unreviewed DuckStation input mode"
+                );
+            }
             if let Some(launch) = &profile.retroarch_launch {
+                ensure!(
+                    profile.transport == "retropad",
+                    "non-RetroPad profile cannot use RetroArch launch adapter"
+                );
                 ensure!(valid_id(&profile.core), "invalid launched core ID");
                 ensure!(
                     !launch.platforms.is_empty() && (1..=16).contains(&launch.max_players),
@@ -255,10 +272,18 @@ impl Catalog {
                     layout.controls.iter().any(|control| control.id == *target),
                     "unknown target control"
                 );
-                ensure!(
-                    crate::settings::CONTROLLER_GAMEPAD_BUTTONS.contains(&output.as_str()),
-                    "unknown output control"
-                );
+                let known = match profile.transport.as_str() {
+                    "retropad" => {
+                        crate::settings::CONTROLLER_GAMEPAD_BUTTONS.contains(&output.as_str())
+                    }
+                    "duckstation-settings" => [
+                        "Up", "Down", "Left", "Right", "Start", "Select", "Cross", "Circle",
+                        "Square", "Triangle", "L1", "R1", "L2", "R2",
+                    ]
+                    .contains(&output.as_str()),
+                    _ => false,
+                };
+                ensure!(known, "unknown output control for this transport");
                 ensure!(outputs.insert(output), "conflicting output controls");
             }
             for control in layout.controls.iter().filter(|control| !control.optional) {
@@ -380,6 +405,8 @@ impl Calibration {
                     warnings.push(format!("Missing physical input for {target_id}"));
                 }
                 MappingRow {
+                    target_id: target_id.clone(),
+                    physical_id: physical.map(|c| c.id.clone()),
                     target: target
                         .controls
                         .iter()
@@ -405,10 +432,11 @@ impl Calibration {
                     || target
                         .controls
                         .iter()
-                        .any(|c| c.label == row.target && c.optional)
+                        .any(|c| c.id == row.target_id && c.optional)
             });
         Ok(MappingPlan {
             profile: profile.name.clone(),
+            transport: profile.transport.clone(),
             status: profile.status.clone(),
             automatic_launch_ready,
             rows,
@@ -508,6 +536,84 @@ pub fn export_svg(directory: &std::path::Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn duckstation_preview_uses_configuration_keys_and_stable_control_ids() {
+        let profile = catalog()
+            .emulator_profiles
+            .iter()
+            .find(|p| p.id == "duckstation:digital-controller")
+            .unwrap();
+        assert!(!crate::controller_launch::supports_profile(profile));
+        assert_eq!(profile.bindings.len(), 14);
+        let plan = calibration("dualshock").plan(&profile.id).unwrap();
+        assert_eq!(plan.transport, "duckstation-settings");
+        assert!(!plan.automatic_launch_ready);
+        assert!(plan.rows.iter().all(|row| row.input.is_some()));
+        let cross = plan.rows.iter().find(|row| row.target_id == "b").unwrap();
+        assert_eq!(cross.output, "Cross");
+        assert_eq!(cross.physical_id.as_deref(), Some("b"));
+        let digital = catalog().layout("playstation-digital").unwrap();
+        assert_eq!(digital.controls.len(), 14);
+        assert!(digital.controls.iter().all(|control| !control.analog));
+
+        let mut brawler = calibration("brawler64");
+        let plan = brawler.plan(&profile.id).unwrap();
+        let control = |id: &str| plan.rows.iter().find(|r| r.target_id == id).unwrap();
+        assert_eq!(control("b").physical_id.as_deref(), Some("a"));
+        assert_eq!(control("y").physical_id.as_deref(), Some("b"));
+        assert_eq!(control("l2").physical_id.as_deref(), Some("z"));
+        assert_eq!(control("r2").physical_id.as_deref(), Some("z_right"));
+        brawler.bindings.remove("z_right");
+        assert!(
+            brawler
+                .plan(&profile.id)
+                .unwrap()
+                .rows
+                .iter()
+                .find(|r| r.target_id == "r2")
+                .unwrap()
+                .input
+                .is_none()
+        );
+        let standard_n64 = calibration("n64").plan(&profile.id).unwrap();
+        for id in ["r2", "select"] {
+            assert!(
+                standard_n64
+                    .rows
+                    .iter()
+                    .find(|r| r.target_id == id)
+                    .unwrap()
+                    .input
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn transports_cannot_mix_retropad_with_standalone_setting_names() {
+        let mut db = catalog().clone();
+        let index = db
+            .emulator_profiles
+            .iter()
+            .position(|p| p.id == "duckstation:digital-controller")
+            .unwrap();
+        db.emulator_profiles[index]
+            .bindings
+            .insert("b".into(), "South".into());
+        assert!(db.validate().is_err());
+        db.emulator_profiles[index]
+            .bindings
+            .insert("b".into(), "Cross".into());
+        db.emulator_profiles[index].retroarch_launch = Some(RetroArchLaunch {
+            platforms: vec!["Sony Playstation".into()],
+            device: 1,
+            max_players: 2,
+        });
+        assert!(db.validate().is_err());
+        db.emulator_profiles[index].retroarch_launch = None;
+        db.emulator_profiles[index].transport = "retropad".into();
+        assert!(db.validate().is_err());
+    }
     #[test]
     fn launch_catalog_requires_unambiguous_reviewed_device_modes() {
         let original = catalog().clone();

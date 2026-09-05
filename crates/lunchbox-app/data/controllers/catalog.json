@@ -1617,6 +1617,141 @@
       ]
     },
     {
+      "id": "playstation-digital",
+      "name": "PlayStation — original digital controller",
+      "family": "diamond",
+      "shape": "dual-grip",
+      "controls": [
+        {
+          "id": "b",
+          "label": "Cross",
+          "x": 78,
+          "y": 58,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "a",
+          "label": "Circle",
+          "x": 90,
+          "y": 42,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "y",
+          "label": "Square",
+          "x": 66,
+          "y": 42,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "x",
+          "label": "Triangle",
+          "x": 78,
+          "y": 26,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l",
+          "label": "L1",
+          "x": 18,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r",
+          "label": "R1",
+          "x": 82,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l2",
+          "label": "L2",
+          "x": 18,
+          "y": 84,
+          "group": "rear",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r2",
+          "label": "R2",
+          "x": 82,
+          "y": 84,
+          "group": "rear",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "select",
+          "label": "Select",
+          "x": 43,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 54,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 32,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ],
+      "notes": "Digital PlayStation pad: four face buttons, L1/R1/L2/R2, D-pad, Select and Start. No analog sticks or stick clicks. Original schematic, not a measured shell."
+    },
+    {
       "id": "pce-2",
       "name": "PC Engine / TurboGrafx-16 — two-button pad",
       "family": "two-button",
@@ -1945,6 +2080,26 @@
         "up": "DPadUp", "down": "DPadDown", "left": "DPadLeft", "right": "DPadRight",
         "start": "Start", "select": "Select", "a": "East", "b": "South",
         "x": "North", "y": "West", "l": "LeftBumper", "r": "RightBumper"
+      }
+    },
+    {
+      "id": "duckstation:digital-controller",
+      "name": "DuckStation · PlayStation digital controller (preview)",
+      "core": "duckstation",
+      "target_layout": "playstation-digital",
+      "transport": "duckstation-settings",
+      "status": "documented",
+      "source": "https://github.com/stenzek/duckstation/blob/0a53bc47c/src/core/digital_controller.cpp",
+      "conditions": [
+        "DigitalController device mode only; not AnalogController, lightguns or specialty controllers",
+        "Outputs are DuckStation controller setting names, not RetroPad or raw SDL button numbers",
+        "Preview only: SDL device identity and effective game/input-profile configuration must be resolved before automatic launch",
+        "L1/R1/L2/R2 and Select must be independently available; missing controls are not invented"
+      ],
+      "bindings": {
+        "up": "Up", "down": "Down", "left": "Left", "right": "Right",
+        "start": "Start", "select": "Select", "a": "Circle", "b": "Cross",
+        "x": "Triangle", "y": "Square", "l": "L1", "r": "R1", "l2": "L2", "r2": "R2"
       }
     },
     {

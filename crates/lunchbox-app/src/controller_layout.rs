@@ -33,6 +33,8 @@ fn preferred<'a>(source: &Layout, target: &Layout, id: &'a str) -> &'a str {
             "y" => "b",
             "a" => "c_down",
             "x" => "c_left",
+            "l2" => "z",
+            "r2" => "z_right",
             other => other,
         };
     }

@@ -330,7 +330,7 @@ fn player_config(
             let optional = target
                 .controls
                 .iter()
-                .find(|c| c.label == row.target)
+                .find(|c| c.id == row.target_id)
                 .is_some_and(|c| c.optional);
             ensure!(
                 optional,

@@ -48,6 +48,11 @@ but only the highest-ranked compatible controllers fill the current input mode's
 ports. A Game Boy game no longer attempts to create a second player just because
 two calibrated controllers are connected. Preview-only contracts stay preview-only.
 
+The original PlayStation digital controller is now a selectable layout. The
+DuckStation digital-controller preview shows its own configuration keys instead
+of treating them as RetroPad outputs. This does **not** enable DuckStation automatic
+launch yet; see [DuckStation adapter requirements](DUCKSTATION_CONTROLLERS.md).
+
 Open Settings → Controllers. The live input check shows the device and the
 normalized control it reports. Known standard diamond devices are recognized;
 unusual pads are not assigned wiring based solely on their product name.
