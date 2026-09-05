@@ -363,6 +363,25 @@
       ]
     },
     {
+      "id": "gba",
+      "name": "Nintendo Game Boy Advance — A/B + L/R",
+      "family": "two-button",
+      "shape": "handheld",
+      "notes": "Standard GBA controls. Cartridge motion, solar sensors and rumble are separate capabilities, not additional face buttons.",
+      "controls": [
+        { "id": "b", "label": "B", "x": 76, "y": 54, "group": "face", "optional": false, "analog": false },
+        { "id": "a", "label": "A", "x": 88, "y": 44, "group": "face", "optional": false, "analog": false },
+        { "id": "l", "label": "L", "x": 14, "y": 12, "group": "shoulder", "optional": false, "analog": false },
+        { "id": "r", "label": "R", "x": 86, "y": 12, "group": "shoulder", "optional": false, "analog": false },
+        { "id": "select", "label": "Select", "x": 28, "y": 75, "group": "menu", "optional": false, "analog": false },
+        { "id": "start", "label": "Start", "x": 28, "y": 63, "group": "menu", "optional": false, "analog": false },
+        { "id": "up", "label": "Up", "x": 16, "y": 38, "group": "dpad", "optional": false, "analog": false },
+        { "id": "down", "label": "Down", "x": 16, "y": 54, "group": "dpad", "optional": false, "analog": false },
+        { "id": "left", "label": "Left", "x": 11, "y": 46, "group": "dpad", "optional": false, "analog": false },
+        { "id": "right", "label": "Right", "x": 21, "y": 46, "group": "dpad", "optional": false, "analog": false }
+      ]
+    },
+    {
       "id": "snes",
       "name": "Super Nintendo — diamond A/B/X/Y",
       "family": "diamond",
@@ -1946,6 +1965,53 @@
         "select": "Select",
         "a": "East",
         "b": "South"
+      }
+    },
+    {
+      "id": "retroarch:mgba:gba",
+      "name": "RetroArch · mGBA · Game Boy Advance gamepad",
+      "core": "mgba",
+      "target_layout": "gba",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/mgba/blob/e31759b24e7a4e3899285ff720d7b573ac328ae7/src/platform/libretro/libretro.c",
+      "retroarch_library": "mGBA",
+      "retroarch_launch": {
+        "platforms": ["Nintendo Game Boy Advance", "Nintendo - Game Boy Advance", "Game Boy Advance", "GBA"],
+        "device": 1,
+        "max_players": 1
+      },
+      "conditions": [
+        "Standard ten-button GBA gameplay inputs on core port zero; link-cable multiplayer is not another frontend controller port",
+        "Turbo inputs, solar-sensor adjustment hotkeys, motion sensors and physical rumble are not automatically assigned by this standard gamepad contract"
+      ],
+      "bindings": {
+        "up": "DPadUp", "down": "DPadDown", "left": "DPadLeft", "right": "DPadRight",
+        "start": "Start", "select": "Select", "a": "East", "b": "South",
+        "l": "LeftBumper", "r": "RightBumper"
+      }
+    },
+    {
+      "id": "retroarch:mgba:gameboy",
+      "name": "RetroArch · mGBA · Game Boy / Color gamepad",
+      "core": "mgba",
+      "target_layout": "gameboy",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/mgba/blob/e31759b24e7a4e3899285ff720d7b573ac328ae7/src/platform/libretro/libretro.c",
+      "retroarch_library": "mGBA",
+      "retroarch_launch": {
+        "platforms": ["Nintendo Game Boy", "Nintendo - Game Boy", "Game Boy", "Nintendo Game Boy Color", "Nintendo - Game Boy Color", "Game Boy Color"],
+        "device": 1,
+        "max_players": 1
+      },
+      "conditions": [
+        "Standard Game Boy / Color gameplay inputs on core port zero; no GBA shoulder controls required",
+        "Turbo, cartridge sensors and physical rumble are not automatically assigned by this standard gamepad contract"
+      ],
+      "bindings": {
+        "up": "DPadUp", "down": "DPadDown", "left": "DPadLeft", "right": "DPadRight",
+        "start": "Start", "select": "Select", "a": "East", "b": "South"
       }
     },
     {

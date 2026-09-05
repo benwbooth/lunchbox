@@ -40,7 +40,8 @@ adapters. Controls/options can vary by core version and controller mode.
 - Linux RetroArch launch writer: native and Flatpak, FCEUmm/NES, Gambatte/GB,
   Genesis Plus GX/MD six-button, Mupen64Plus-Next/N64 independent C-button mode,
   Beetle PCE Fast/PC Engine two-button mode (maximum five players), and
-  Snes9x/bsnes standard SNES joypads (two ports).
+  Snes9x/bsnes standard SNES joypads (two ports), and mGBA standard GBA/GB/GBC
+  gamepads (one port).
   Per-launch configs use kernel-reported joystick indices, not Xbox numbering.
   Saved calibrations from the preview-only prototype need one recalibration to
   capture physical evdev bindings, including synthesized D-pad inputs.
@@ -88,6 +89,20 @@ four on a device that actually reports them. Hardware turbo is never treated as
 an extra independent face input.
 
 ## Launch adapter evidence and limitations
+
+### mGBA standard gamepads
+
+The GBA layout adds the physical L/R shoulders to the A/B handheld family. Its
+schematic and every-pair assignments are generated through the existing catalog
+and solver, without per-controller/emulator combinations. mGBA has separate
+GBA and GB/GBC contracts so the latter does not require nonexistent shoulders.
+The source at `e31759b24e7a4e3899285ff720d7b573ac328ae7`,
+`src/platform/libretro/libretro.c` (`keymap`, input descriptors and `retro_run`),
+reads standard controls from frontend port zero. The launch writer explicitly
+clears unmapped turbo and solar-sensor inputs. Sensors, cartridge-specific
+controls and physical rumble still need their own capabilities and adapters.
+This is source-checked standard-input composition, not a claim of physical
+gameplay or all-cartridge-feature verification.
 
 ### SwanStation mode-aware adapter (in progress)
 

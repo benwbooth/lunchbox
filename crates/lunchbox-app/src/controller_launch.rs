@@ -1037,6 +1037,52 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
+    fn mgba_distinguishes_gba_shoulders_from_gameboy_and_preserves_thumb_pairs() {
+        let gba = catalog()
+            .launch_profile("mgba", "Nintendo Game Boy Advance")
+            .unwrap();
+        let gb = catalog()
+            .launch_profile("mgba", "Nintendo Game Boy Color")
+            .unwrap();
+        assert_eq!(gba.target_layout, "gba");
+        assert_eq!(gb.target_layout, "gameboy");
+        assert_eq!(gba.bindings.len(), 10);
+        assert_eq!(gb.bindings.len(), 8);
+        assert_eq!(gba.retroarch_launch.as_ref().unwrap().max_players, 1);
+        assert!(catalog().launch_profile("mgba", "Nintendo DS").is_none());
+        let (n30, _) = calibrated_layout("horizontal-four");
+        assert!(compatible(&n30, gb));
+        assert!(!compatible(&n30, gba));
+        for (layout, physical_a, physical_b) in [
+            ("gba", "a", "b"),
+            ("brawler64", "a", "b"),
+            ("xbox", "b", "y"),
+            ("dualshock", "b", "y"),
+        ] {
+            let (calibration, numbering) = calibrated_layout(layout);
+            assert!(compatible(&calibration, gba));
+            let config = player_config(&calibration, gba, &numbering, 1).unwrap();
+            for (output, physical) in [("a", physical_a), ("b", physical_b), ("l", "l"), ("r", "r")]
+            {
+                let (suffix, button) = numbering
+                    .binding(calibration.bindings[physical].native.as_ref().unwrap())
+                    .unwrap();
+                assert_eq!(suffix, "btn");
+                assert!(
+                    config.contains(&format!("input_player1_{output}_btn = \"{button}\"")),
+                    "{layout}: {output}"
+                );
+            }
+            // Do not accidentally inherit turbo or solar-sensor controls.
+            for output in ["x", "y", "l2", "r2", "l3", "r3"] {
+                assert!(config.contains(&format!("input_player1_{output}_btn = \"nul\"")));
+                assert!(config.contains(&format!("input_player1_{output}_axis = \"nul\"")));
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
     fn mixed_console_port_modes_allocate_independent_compatible_controllers() {
         let make_device = |id: &str| ControllerDevice {
             stable_id: id.into(),
