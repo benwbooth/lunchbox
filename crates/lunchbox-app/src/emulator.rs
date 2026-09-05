@@ -2144,6 +2144,14 @@ fn command_prefix_with_access_roots(
                     .into_iter()
                     .map(|mount| OsString::from(format!("--filesystem={}", mount.display()))),
             );
+            if app_id == "org.duckstation.DuckStation" {
+                // DuckStation's bundled SDL3 misses the Steam virtual pads via
+                // evdev on this Flatpak runtime. Use the verified js interface.
+                // SDL_LINUX_JOYSTICK_CLASSIC is the obsolete SDL2 spelling.
+                // Keep this launch-scoped; do not rewrite controller mappings
+                // or widen the user's saved Flatpak permissions.
+                arguments.push(OsString::from("--env=SDL_JOYSTICK_LINUX_CLASSIC=1"));
+            }
             arguments.push(OsString::from(app_id));
             Ok((command.clone(), arguments))
         }
@@ -3652,6 +3660,38 @@ del *.rom
             .expect("flatpak app id in the launch arguments");
         assert_eq!(plan.arguments[app_position - 2], "--socket=x11");
         assert_eq!(plan.arguments[app_position - 1], "--nosocket=wayland");
+    }
+
+    #[test]
+    fn duckstation_flatpak_launch_uses_sdl3_gamepad_workaround_before_app_id() {
+        let temp = TempDir::new().unwrap();
+        let rom = temp.path().join("Game with spaces.chd");
+        fs::write(&rom, b"rom").unwrap();
+        let option = RomEmulatorOption {
+            emulator_id: "duckstation-id".into(),
+            emulator_name: "DuckStation".into(),
+            runtime_kind: EmulatorRuntimeKind::Standalone,
+            core_name: String::new(),
+            executable: EmulatorExecutable::Flatpak {
+                command: PathBuf::from("/usr/bin/flatpak"),
+                app_id: "org.duckstation.DuckStation".into(),
+            },
+            core_path: None,
+            recommended: true,
+        };
+        let plan = build_rom_launch_plan(&rom, "Sony Playstation", &option).unwrap();
+        assert_eq!(plan.program, Path::new("/usr/bin/flatpak"));
+        assert_eq!(
+            plan.arguments,
+            vec![
+                OsString::from("run"),
+                OsString::from(format!("--filesystem={}", temp.path().display())),
+                OsString::from("--env=SDL_JOYSTICK_LINUX_CLASSIC=1"),
+                OsString::from("org.duckstation.DuckStation"),
+                rom.into_os_string(),
+            ]
+        );
+        assert!(plan.environment.is_empty());
     }
 
     #[test]
