@@ -199,6 +199,7 @@ ApplicationWindow {
     property bool emulatorUpdateStartupScheduled: false
     property int emulatorUpdatePinProbeStage: 0
     property int pendingControllerProfileDeleteIndex: -1
+    property bool controllerLearnActive: false
     property string pendingControllerProfileDeleteName: ""
     property int downloadPlanProbeBundleIndex: 0
     property bool downloadPlanProbeStarted: false
@@ -616,6 +617,7 @@ ApplicationWindow {
              : requestedSettingsSection === "screenscraper" ? screenScraperSettingsSection
              : requestedSettingsSection === "qbittorrent" ? qbittorrentSettingsSection
              : requestedSettingsSection === "emulators" ? emulatorSettingsSection
+             : requestedSettingsSection === "controllers" ? controllerSection
              : null
     }
 
@@ -1831,6 +1833,61 @@ ApplicationWindow {
 
     GamepadInput {
         id: gamepadInput
+        navigation_enabled: (root.active || root.couchGamepadUiProbe) && !gameDetails.game_running
+                            && !root.controllerLearnActive
+        onNavigation_enabledChanged: sync_navigation_enabled()
+        Component.onCompleted: Qt.callLater(initialize)
+    }
+
+    DesktopGamepadNavigation {
+        applicationWindow: root
+        gamepad: gamepadInput
+        libraryView: gameViewLoader.item
+        focusScope: settingsDialog.visible ? settingsDialog.contentItem : null
+        overlayItem: Overlay.overlay
+        enabled: !root.couchModeActive && !gameDetails.game_running
+        onOpenGame: item => {
+            if (item.gameId !== undefined)
+                root.openGame(item.gameId, item.gameDatabaseId, item.gameTitle,
+                              item.gamePlatform, item.gameLocal, item.gameDownloadable)
+        }
+        onBackRequested: {
+            if (settingsDialog.visible) settingsDialog.close()
+            else if (gameDetails.panel_open) gameDetails.close_panel()
+            else if (gameViewLoader.item) gameViewLoader.item.forceActiveFocus()
+        }
+        onMenuRequested: root.openSettingsFor("controllers")
+    }
+
+    Connections {
+        target: gamepadInput
+        function onConnected_countChanged() {
+            if (settingsDialog.visible) controllerHotplugRefresh.restart()
+        }
+        function onInput_revisionChanged() {
+            if (root.controllerLearnActive && appSettings.controller_profile_editor_open) {
+                appSettings.choose_controller_profile_source(gamepadInput.last_control)
+                root.controllerLearnActive = false
+            }
+        }
+    }
+    Timer {
+        id: controllerHotplugRefresh
+        interval: 500
+        onTriggered: {
+            if (!settingsDialog.visible) return
+            if (appSettings.controller_busy) restart()
+            else appSettings.refresh_controllers()
+        }
+    }
+    Timer {
+        interval: 20000
+        running: root.controllerLearnActive
+        onTriggered: root.controllerLearnActive = false
+    }
+    Connections {
+        target: appSettings
+        function onController_profile_editor_openChanged() { root.controllerLearnActive = false }
     }
 
     AudioOutput {
@@ -20022,6 +20079,12 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: 9
 
+                    ControllerAutomaticSetup {
+                        Layout.fillWidth: true
+                        settingsModel: appSettings
+                        gamepad: gamepadInput
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 12
@@ -20029,7 +20092,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: 2
                             Text {
-                                text: "CONTROLLERS"
+                                text: "ADVANCED CONTROLLER ROUTING"
                                 color: root.accent
                                 font.pixelSize: 10
                                 font.weight: Font.Bold
@@ -20773,6 +20836,17 @@ ApplicationWindow {
                                             font.pixelSize: 9
                                         }
                                         ComboBox {
+                                            Layout.fillWidth: true
+                                            model: appSettings.controller_profile_button_count()
+                                            displayText: "Target: " + appSettings.controller_profile_button_label(appSettings.controller_profile_editor_target)
+                                            delegate: ItemDelegate {
+                                                required property int index
+                                                text: appSettings.controller_profile_button_name_at(index)
+                                            }
+                                            onActivated: appSettings.select_controller_profile_target(appSettings.controller_profile_button_id_at(currentIndex))
+                                            Accessible.name: "Virtual target button or C-button direction"
+                                        }
+                                        ComboBox {
                                             id: physicalControllerSource
                                             Layout.fillWidth: true
                                             model: appSettings.controller_profile_button_count()
@@ -20800,6 +20874,17 @@ ApplicationWindow {
                                                              appSettings.controller_profile_button_id_at(
                                                                  currentIndex))
                                             Accessible.name: "Physical source button"
+                                        }
+                                        Button {
+                                            Layout.fillWidth: true
+                                            text: root.controllerLearnActive ? "Listening… press the physical control" : "Record a physical button / C-button"
+                                            onClicked: root.controllerLearnActive = !root.controllerLearnActive
+                                        }
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: gamepadInput.last_input
+                                            color: root.accentCool
+                                            wrapMode: Text.WordWrap
                                         }
                                         Button {
                                             Layout.fillWidth: true

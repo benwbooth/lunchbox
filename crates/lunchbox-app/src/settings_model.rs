@@ -47,6 +47,7 @@ pub mod qobject {
         #[qproperty(bool, shader_requires_confirmation)]
         #[qproperty(i32, shader_revision)]
         #[qproperty(bool, controller_enabled)]
+        #[qproperty(bool, controller_automatic)]
         #[qproperty(bool, controller_remapping_available)]
         #[qproperty(QString, controller_output_target)]
         #[qproperty(bool, controller_busy)]
@@ -162,6 +163,27 @@ pub mod qobject {
 
         #[qinvokable]
         fn set_controller_mapping_enabled(self: Pin<&mut SettingsModel>, enabled: bool);
+
+        #[qinvokable]
+        fn set_controller_automatic_enabled(self: Pin<&mut SettingsModel>, enabled: bool);
+        #[qinvokable]
+        fn configure_controller_routing(self: Pin<&mut SettingsModel>, enabled: bool);
+        #[qinvokable]
+        fn controller_layout_at(self: &SettingsModel, index: i32) -> QString;
+        #[qinvokable]
+        fn choose_controller_layout(self: Pin<&mut SettingsModel>, index: i32, layout: QString);
+        #[qinvokable]
+        fn controller_preference_at(self: &SettingsModel, system: QString) -> i32;
+        #[qinvokable]
+        fn choose_preferred_controller(self: Pin<&mut SettingsModel>, system: QString, index: i32);
+        #[qinvokable]
+        fn preferred_controller_profile(self: &SettingsModel, system: QString) -> QString;
+        #[qinvokable]
+        fn choose_preferred_controller_profile(
+            self: Pin<&mut SettingsModel>,
+            system: QString,
+            profile: QString,
+        );
 
         #[qinvokable]
         fn choose_default_controller_target(self: Pin<&mut SettingsModel>, target: QString);
@@ -343,6 +365,7 @@ pub struct SettingsModelRust {
     shader_generation: u64,
     shader_cancel: Option<Arc<AtomicBool>>,
     controller_enabled: bool,
+    controller_automatic: bool,
     controller_remapping_available: bool,
     controller_output_target: QString,
     controller_busy: bool,
@@ -412,6 +435,7 @@ impl Default for SettingsModelRust {
             shader_generation: 0,
             shader_cancel: None,
             controller_enabled: false,
+            controller_automatic: false,
             controller_remapping_available: false,
             controller_output_target: QString::from("xb360"),
             controller_busy: false,
@@ -1173,7 +1197,8 @@ impl qobject::SettingsModel {
         let status = controller_inventory_status(&inventory);
         let remapping_available = inventory.provider.provider == "inputplumber"
             && inventory.provider.available
-            && inventory.provider.service_accessible;
+            && inventory.provider.service_accessible
+            && inventory.managed_device_count > 0;
         if std::env::args().any(|argument| argument == "--controller-ui-probe") {
             println!(
                 "LUNCHBOX_CONTROLLER_UI_READY controllers={} managed={} targets={} status={status:?}",
@@ -1193,6 +1218,165 @@ impl qobject::SettingsModel {
     pub fn set_controller_mapping_enabled(mut self: Pin<&mut Self>, enabled: bool) {
         self.as_mut().set_controller_enabled(enabled);
         self.as_mut().rust_mut().controller_mapping.enabled = enabled;
+        self.as_mut().controller_settings_changed();
+    }
+
+    pub fn set_controller_automatic_enabled(mut self: Pin<&mut Self>, enabled: bool) {
+        self.as_mut().rust_mut().controller_mapping.automatic = enabled;
+        self.as_mut().set_controller_automatic(enabled);
+        if enabled {
+            self.as_mut().rust_mut().controller_mapping.enabled = true;
+            self.as_mut().set_controller_enabled(true);
+        }
+        self.as_mut().controller_settings_changed();
+    }
+
+    pub fn configure_controller_routing(mut self: Pin<&mut Self>, enabled: bool) {
+        if *self.as_ref().controller_busy() {
+            return;
+        }
+        self.as_mut().set_controller_busy(true);
+        let qt_thread = self.as_ref().qt_thread();
+        let result = std::thread::Builder::new()
+            .name("lunchbox-controller-routing".into())
+            .spawn(move || {
+                let result = controllers::configure_linux_routing(enabled);
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().set_controller_busy(false);
+                    match result {
+                        Ok(()) => model.as_mut().refresh_controllers(),
+                        Err(error) => model.as_mut().set_controller_status(qstring(format!(
+                            "Controller routing could not be changed: {error}"
+                        ))),
+                    }
+                });
+            });
+        if let Err(error) = result {
+            self.as_mut().set_controller_busy(false);
+            self.as_mut()
+                .set_controller_status(qstring(error.to_string()));
+        }
+    }
+
+    pub fn controller_layout_at(&self, index: i32) -> QString {
+        self.controller_at(index)
+            .map(|device| {
+                qstring(controllers::device_layout(
+                    &self.rust().controller_mapping,
+                    &device,
+                ))
+            })
+            .unwrap_or_else(|| qstring("auto"))
+    }
+
+    pub fn choose_controller_layout(mut self: Pin<&mut Self>, index: i32, layout: QString) {
+        let layout = layout.to_string();
+        if !controllers::DEVICE_LAYOUTS
+            .iter()
+            .any(|(id, _)| *id == layout)
+        {
+            return;
+        }
+        let Some(device) = self.as_ref().controller_at(index) else {
+            return;
+        };
+        self.as_mut()
+            .rust_mut()
+            .controller_mapping
+            .device_layouts
+            .insert(device.stable_id, layout);
+        self.as_mut().controller_settings_changed();
+    }
+
+    pub fn controller_preference_at(&self, system: QString) -> i32 {
+        let Some(id) = self
+            .rust()
+            .controller_mapping
+            .preferred_devices
+            .get(&system.to_string())
+        else {
+            return 0;
+        };
+        (0..self.controller_count())
+            .find(|index| {
+                self.controller_at(*index)
+                    .is_some_and(|device| device.stable_id == *id)
+            })
+            .map_or(0, |index| index + 1)
+    }
+
+    pub fn choose_preferred_controller(mut self: Pin<&mut Self>, system: QString, index: i32) {
+        let system = system.to_string();
+        if !controllers::SYSTEM_LAYOUTS
+            .iter()
+            .any(|(id, _)| *id == system)
+        {
+            return;
+        }
+        if index == 0 {
+            self.as_mut()
+                .rust_mut()
+                .controller_mapping
+                .preferred_devices
+                .remove(&system);
+        } else if let Some(device) = self.as_ref().controller_at(index - 1) {
+            self.as_mut()
+                .rust_mut()
+                .controller_mapping
+                .preferred_devices
+                .insert(system, device.stable_id);
+        }
+        self.as_mut().controller_settings_changed();
+    }
+
+    pub fn preferred_controller_profile(&self, system: QString) -> QString {
+        let mapping = &self.rust().controller_mapping;
+        qstring(
+            mapping
+                .preferred_devices
+                .get(&system.to_string())
+                .and_then(|device| mapping.device_system_profiles.get(device))
+                .and_then(|profiles| profiles.get(&system.to_string()))
+                .map(String::as_str)
+                .unwrap_or(""),
+        )
+    }
+
+    pub fn choose_preferred_controller_profile(
+        mut self: Pin<&mut Self>,
+        system: QString,
+        profile: QString,
+    ) {
+        let system = system.to_string();
+        let profile = profile.to_string();
+        let this = self.as_ref();
+        let mapping = &this.rust().controller_mapping;
+        if !profile.is_empty()
+            && profile != "none"
+            && profile != controllers::TWO_BUTTON_CLOCKWISE_PROFILE_ID
+            && !mapping
+                .custom_profiles
+                .iter()
+                .any(|custom| custom.id == profile)
+        {
+            return;
+        }
+        let Some(device) = mapping.preferred_devices.get(&system).cloned() else {
+            return;
+        };
+        let this = self.as_mut();
+        let mut data = this.rust_mut();
+        let profiles = data
+            .controller_mapping
+            .device_system_profiles
+            .entry(device)
+            .or_default();
+        if profile.is_empty() {
+            profiles.remove(&system);
+        } else {
+            profiles.insert(system, profile);
+        }
+        drop(data);
         self.as_mut().controller_settings_changed();
     }
 
@@ -1231,7 +1415,23 @@ impl qobject::SettingsModel {
 
     pub fn controller_name_at(&self, index: i32) -> QString {
         self.controller_at(index)
-            .map(|controller| qstring(controller.name))
+            .map(|controller| {
+                if controller.vendor_id.as_deref() == Some("28de")
+                    && controller.product_id.as_deref() == Some("11ff")
+                {
+                    return qstring("Steam Input virtual controller");
+                }
+                if controller.vendor_id.as_deref() == Some("045e")
+                    && controller.product_id.as_deref() == Some("028e")
+                {
+                    return qstring(format!(
+                        "USB XInput controller · revision {} · {}",
+                        controller.version.as_deref().unwrap_or("unknown"),
+                        controller.device_path.display()
+                    ));
+                }
+                qstring(controller.name)
+            })
             .unwrap_or_default()
     }
 
@@ -2068,6 +2268,8 @@ impl qobject::SettingsModel {
         self.as_mut().bump_media_provider_revision();
         self.as_mut()
             .set_controller_enabled(controller_mapping.enabled);
+        self.as_mut()
+            .set_controller_automatic(controller_mapping.automatic);
         self.as_mut()
             .set_controller_output_target(qstring(&controller_mapping.output_target));
         self.as_mut().rust_mut().controller_mapping = controller_mapping;

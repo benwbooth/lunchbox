@@ -15,12 +15,18 @@ pub mod qobject {
         #[qproperty(QString, active_device)]
         #[qproperty(QString, controller_layout)]
         #[qproperty(QString, status_message)]
+        #[qproperty(QString, last_input)]
+        #[qproperty(QString, last_control)]
+        #[qproperty(i32, input_revision)]
+        #[qproperty(bool, navigation_enabled)]
         #[qproperty(QString, navigation_action)]
         #[qproperty(i32, navigation_revision)]
         type GamepadInput = super::GamepadInputRust;
 
         #[qinvokable]
         fn initialize(self: Pin<&mut GamepadInput>);
+        #[qinvokable]
+        fn sync_navigation_enabled(self: &GamepadInput);
 
         #[qinvokable]
         fn button_label(self: &GamepadInput, action: QString) -> QString;
@@ -56,9 +62,14 @@ pub struct GamepadInputRust {
     active_device: QString,
     controller_layout: QString,
     status_message: QString,
+    last_input: QString,
+    last_control: QString,
+    input_revision: i32,
+    navigation_enabled: bool,
     navigation_action: QString,
     navigation_revision: i32,
     stop: Arc<AtomicBool>,
+    navigation_gate: Arc<AtomicBool>,
 }
 
 impl Default for GamepadInputRust {
@@ -70,10 +81,15 @@ impl Default for GamepadInputRust {
             connected_count: 0,
             active_device: QString::default(),
             controller_layout: QString::from("xbox"),
-            status_message: QString::from("Gamepad input starts with Couch Mode."),
+            status_message: QString::from("Controller input initializes in the background."),
+            last_input: QString::default(),
+            last_control: QString::default(),
+            input_revision: 0,
+            navigation_enabled: true,
             navigation_action: QString::default(),
             navigation_revision: 0,
             stop: Arc::new(AtomicBool::new(false)),
+            navigation_gate: Arc::new(AtomicBool::new(true)),
         }
     }
 }
@@ -277,6 +293,11 @@ fn qstring(value: impl AsRef<str>) -> QString {
 }
 
 impl qobject::GamepadInput {
+    pub fn sync_navigation_enabled(&self) {
+        self.rust()
+            .navigation_gate
+            .store(*self.navigation_enabled(), Ordering::Release);
+    }
     pub fn initialize(mut self: Pin<&mut Self>) {
         if *self.as_ref().initialized() {
             return;
@@ -299,6 +320,7 @@ impl qobject::GamepadInput {
         self.as_mut()
             .set_status_message(qstring("Starting cross-platform gamepad input…"));
         let stop = Arc::clone(&self.as_ref().rust().stop);
+        let navigation_gate = Arc::clone(&self.as_ref().rust().navigation_gate);
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
             .name("lunchbox-gamepad-input".into())
@@ -330,11 +352,26 @@ impl qobject::GamepadInput {
                     return;
                 }
 
-                let mut translator = NavigationTranslator::default();
+                let mut translators: HashMap<GamepadId, NavigationTranslator> = HashMap::new();
                 while !stop.load(Ordering::Acquire) {
                     let event = gilrs.next_event_blocking(Some(EVENT_POLL_INTERVAL));
                     let now = Instant::now();
+                    let navigation_enabled = navigation_gate.load(Ordering::Acquire);
+                    if !navigation_enabled {
+                        translators.clear();
+                    }
                     if let Some(event) = event {
+                        if let Some(control) = diagnostic_control(event.event) {
+                            let name = gilrs.gamepad(event.id).name().to_owned();
+                            let number = usize::from(event.id) + 1;
+                            let description = format!("Pad {number}: {name} · {control}");
+                            let _ = qt_thread.queue(move |mut model| {
+                                model.as_mut().set_last_input(qstring(description));
+                                model.as_mut().set_last_control(qstring(control));
+                                let revision = model.as_ref().input_revision().wrapping_add(1);
+                                model.as_mut().set_input_revision(revision);
+                            });
+                        }
                         let connection_changed =
                             matches!(event.event, EventType::Connected | EventType::Disconnected);
                         if matches!(event.event, EventType::Connected) {
@@ -346,6 +383,7 @@ impl qobject::GamepadInput {
                         }
 
                         if connection_changed {
+                            translators.remove(&event.id);
                             let snapshot = controller_snapshot(&gilrs, active_id);
                             active_id = snapshot.active_id;
                             if qt_thread
@@ -358,7 +396,19 @@ impl qobject::GamepadInput {
                             }
                         }
 
-                        if let Some(action) = translator.handle_event(event.event, now) {
+                        if navigation_enabled
+                            && let Some(action) = translators
+                                .entry(event.id)
+                                .or_default()
+                                .handle_event(event.event, now)
+                        {
+                            if active_id != Some(event.id) {
+                                for (id, translator) in &mut translators {
+                                    if *id != event.id {
+                                        translator.clear();
+                                    }
+                                }
+                            }
                             active_id = Some(event.id);
                             let gamepad = gilrs.gamepad(event.id);
                             let device = gamepad.name().to_owned();
@@ -374,7 +424,11 @@ impl qobject::GamepadInput {
                         }
                     }
 
-                    for action in translator.due_repeats(now) {
+                    let repeats = active_id
+                        .and_then(|id| translators.get_mut(&id))
+                        .map(|translator| translator.due_repeats(now))
+                        .unwrap_or_default();
+                    for action in repeats {
                         let (device, layout) = active_id
                             .map(|id| {
                                 let gamepad = gilrs.gamepad(id);
@@ -440,6 +494,9 @@ impl qobject::GamepadInput {
         device: String,
         layout: String,
     ) {
+        if !*self.as_ref().navigation_enabled() {
+            return;
+        }
         if !device.is_empty() && self.as_ref().active_device().to_string() != device {
             self.as_mut().set_active_device(qstring(device));
         }
@@ -450,6 +507,41 @@ impl qobject::GamepadInput {
             .set_navigation_action(qstring(action.as_str()));
         let revision = self.as_ref().navigation_revision().wrapping_add(1);
         self.as_mut().set_navigation_revision(revision);
+    }
+}
+
+fn diagnostic_control(event: EventType) -> Option<String> {
+    match event {
+        EventType::ButtonPressed(button, _) => Some(match button {
+            Button::LeftThumb => "LeftStick".into(),
+            Button::RightThumb => "RightStick".into(),
+            Button::Mode => "Guide".into(),
+            Button::LeftTrigger => "LeftBumper".into(),
+            Button::RightTrigger => "RightBumper".into(),
+            Button::LeftTrigger2 => "LeftTrigger".into(),
+            Button::RightTrigger2 => "RightTrigger".into(),
+            _ => format!("{button:?}"),
+        }),
+        EventType::AxisChanged(axis, value, _) if value.abs() >= AXIS_ENGAGE => match axis {
+            Axis::RightStickX => Some(
+                if value < 0.0 {
+                    "RightStickLeft"
+                } else {
+                    "RightStickRight"
+                }
+                .into(),
+            ),
+            Axis::RightStickY => Some(
+                if value < 0.0 {
+                    "RightStickDown"
+                } else {
+                    "RightStickUp"
+                }
+                .into(),
+            ),
+            _ => None,
+        },
+        _ => None,
     }
 }
 

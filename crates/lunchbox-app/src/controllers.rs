@@ -18,8 +18,175 @@ pub const ACTION_REMAP: &str = "remap";
 pub const ACTION_PASSTHROUGH: &str = "passthrough";
 pub const ACTION_HIDE: &str = "hide";
 pub const TWO_BUTTON_CLOCKWISE_PROFILE_ID: &str = "two-button-clockwise";
+pub const DEVICE_LAYOUTS: &[(&str, &str)] = &[
+    ("auto", "Detect automatically"),
+    ("diamond", "Standard diamond (PS5 / Steam / Xbox)"),
+    ("horizontal", "Horizontal — left reports B, right reports A"),
+    (
+        "horizontal-swapped",
+        "Horizontal — left reports A, right reports B",
+    ),
+    ("nintendo", "Nintendo diamond — swap A/B and X/Y"),
+];
+pub const SYSTEM_LAYOUTS: &[(&str, &str)] = &[
+    ("two-button", "NES / Game Boy / two-button PC Engine"),
+    ("n64", "Nintendo 64"),
+    ("six-button", "Mega Drive / Saturn / Arcade"),
+    ("modern", "SNES and modern systems"),
+];
+
+pub fn system_layout(platform: &str) -> &'static str {
+    let platform = platform.to_ascii_lowercase();
+    if platform.contains("nintendo 64") || platform == "n64" {
+        "n64"
+    } else if matches!(platform.trim(), "nes" | "gb" | "gbc" | "pce" | "tg16") {
+        "two-button"
+    } else if [
+        "nintendo entertainment",
+        "famicom",
+        "game boy",
+        "gameboy",
+        "pc engine",
+        "turbografx",
+    ]
+    .iter()
+    .any(|part| platform.contains(part))
+        && !platform.contains("super")
+        && !platform.contains("advance")
+    {
+        "two-button"
+    } else if ["genesis", "mega drive", "megadrive", "saturn", "arcade"]
+        .iter()
+        .any(|part| platform.contains(part))
+    {
+        "six-button"
+    } else {
+        "modern"
+    }
+}
+
+pub fn detected_device_layout(device: &ControllerDevice) -> &'static str {
+    let name = device.name.to_ascii_lowercase();
+    // Both the user's horizontal pad and N64-style pad report this Xbox ID.
+    // XInput describes the protocol, not the physical face-button arrangement.
+    if device.vendor_id.as_deref() == Some("045e") && device.product_id.as_deref() == Some("028e") {
+        return "auto";
+    }
+    // Do not infer nonstandard button wiring from a marketing name. Receivers
+    // and XInput/DInput modes can expose different layouts under the same name.
+    if name.contains("dualsense")
+        || name.contains("dualshock")
+        || name.contains("x-box")
+        || name.contains("xbox")
+        || name.contains("steam controller")
+    {
+        "diamond"
+    } else {
+        "auto"
+    }
+}
+
+pub fn device_layout<'a>(
+    mapping: &'a ControllerMappingSettings,
+    device: &ControllerDevice,
+) -> &'a str {
+    match mapping
+        .device_layouts
+        .get(&device.stable_id)
+        .map(String::as_str)
+    {
+        Some(layout) if layout != "auto" => layout,
+        _ => detected_device_layout(device),
+    }
+}
+
+fn automatic_profile(layout: &str, system: &str) -> Option<&'static str> {
+    match (layout, system) {
+        ("diamond", "two-button") => Some(TWO_BUTTON_CLOCKWISE_PROFILE_ID),
+        ("horizontal-swapped", "two-button") => Some("horizontal-ab-swap"),
+        ("nintendo", _) => Some("nintendo-label-swap"),
+        _ => None,
+    }
+}
+
+fn automatic_player_mappings(
+    mapping: &ControllerMappingSettings,
+    controllers: &[ControllerDevice],
+    platform: Option<&str>,
+    game_id: Option<i64>,
+) -> ControllerMappingSettings {
+    let mut resolved = mapping.clone();
+    if !mapping.automatic
+        || mapping
+            .player_mappings
+            .iter()
+            .any(|player| player.controller_id.as_deref() == Some(CONTROLLER_SCOPE_ALL))
+    {
+        return resolved;
+    }
+    let system = system_layout(platform.unwrap_or(""));
+    let mut devices = controllers
+        .iter()
+        .filter(|device| !mapping.hidden_controller_ids.contains(&device.stable_id))
+        .collect::<Vec<_>>();
+    let preferred = mapping.preferred_devices.get(system);
+    devices.sort_by_key(|device| {
+        let explicit_player = mapping
+            .player_mappings
+            .iter()
+            .position(|player| player.controller_id.as_deref() == Some(&device.stable_id));
+        let layout = device_layout(mapping, device);
+        (
+            explicit_player.is_none(),
+            explicit_player.unwrap_or(usize::MAX),
+            preferred != Some(&device.stable_id),
+            if system == "two-button" {
+                !layout.starts_with("horizontal")
+            } else {
+                layout != "diamond"
+            },
+        )
+    });
+    let has_override = mapping.default_profile_id.is_some()
+        || platform.is_some_and(|platform| mapping.platform_profile_ids.contains_key(platform))
+        || game_id.is_some_and(|id| mapping.game_profile_ids.contains_key(&id.to_string()));
+    resolved.player_mappings = devices
+        .into_iter()
+        .map(|device| {
+            let mut player = mapping
+                .player_mappings
+                .iter()
+                .find(|player| player.controller_id.as_deref() == Some(&device.stable_id))
+                .cloned()
+                .unwrap_or_else(|| ControllerPlayerMapping {
+                    controller_id: Some(device.stable_id.clone()),
+                    ..Default::default()
+                });
+            let specific_profile = mapping
+                .device_system_profiles
+                .get(&device.stable_id)
+                .and_then(|profiles| profiles.get(system))
+                .cloned();
+            if game_id.is_some_and(|id| mapping.game_profile_ids.contains_key(&id.to_string())) {
+                // Let resolve_active_player_mappings inherit the game override.
+                player.profile_id = None;
+            } else if specific_profile.is_some() {
+                player.profile_id = specific_profile;
+            } else if player.profile_id.is_none() && !has_override {
+                player.profile_id =
+                    automatic_profile(device_layout(mapping, device), system).map(str::to_owned);
+            }
+            player
+        })
+        .collect();
+    resolved
+}
 
 pub const CONTROLLER_PROFILE_BUTTONS: &[(&str, &str)] = &[
+    ("RightStickUp", "Right stick up / C-up (axis mode)"),
+    ("RightStickDown", "Right stick down / C-down (axis mode)"),
+    ("RightStickLeft", "Right stick left / C-left (axis mode)"),
+    ("RightStickRight", "Right stick right / C-right (axis mode)"),
     ("South", "South / A / Cross"),
     ("East", "East / B / Circle"),
     ("West", "West / X / Square"),
@@ -276,6 +443,9 @@ pub fn remove_custom_profile(mapping: &mut ControllerMappingSettings, profile_id
     mapping
         .game_profile_ids
         .retain(|_, saved| saved != profile_id);
+    for profiles in mapping.device_system_profiles.values_mut() {
+        profiles.retain(|_, saved| saved != profile_id);
+    }
     trim_default_player_mappings(mapping);
     true
 }
@@ -298,6 +468,18 @@ pub fn controller_inventory() -> ControllerInventory {
         supported_targets,
         warnings,
     }
+}
+
+pub fn configure_linux_routing(enabled: bool) -> Result<(), String> {
+    if !cfg!(target_os = "linux") {
+        return Err("System-wide controller routing is only available on Linux.".into());
+    }
+    let args: &[&str] = if enabled {
+        &["devices", "manage-all", "--enable"]
+    } else {
+        &["devices", "manage-all"]
+    };
+    run_command_with_timeout("inputplumber", args, COMMAND_TIMEOUT).map(|_| ())
 }
 
 pub fn ordered_controllers(
@@ -1103,6 +1285,9 @@ pub fn activate_for_launch(
         }
     };
 
+    let automatic_mapping =
+        automatic_player_mappings(mapping, &controllers, platform_name, launchbox_db_id);
+    let mapping = &automatic_mapping;
     let inherited_profile = resolve_profile_id(mapping, platform_name, launchbox_db_id);
     let active_players = resolve_active_player_mappings(
         settings,
@@ -1289,6 +1474,40 @@ fn normalized_profile_id(value: &str) -> Option<String> {
 
 fn resolve_profile_path(settings: &AppSettings, profile_id: &str) -> Result<PathBuf, String> {
     match profile_id {
+        "horizontal-ab-swap" | "nintendo-label-swap" => {
+            let mut mappings = vec![
+                ControllerButtonMapping {
+                    source_button: "South".into(),
+                    target_button: "East".into(),
+                },
+                ControllerButtonMapping {
+                    source_button: "East".into(),
+                    target_button: "South".into(),
+                },
+            ];
+            if profile_id == "nintendo-label-swap" {
+                mappings.extend([
+                    ControllerButtonMapping {
+                        source_button: "North".into(),
+                        target_button: "West".into(),
+                    },
+                    ControllerButtonMapping {
+                        source_button: "West".into(),
+                        target_button: "North".into(),
+                    },
+                ]);
+            }
+            let profile = ControllerCustomProfile {
+                id: profile_id.into(),
+                name: profile_id.into(),
+                layout: "generic".into(),
+                mappings,
+            };
+            write_controller_profile(
+                &format!("{profile_id}.yaml"),
+                &custom_profile_yaml(&profile),
+            )
+        }
         TWO_BUTTON_CLOCKWISE_PROFILE_ID => {
             write_controller_profile("two-button-clockwise.yaml", TWO_BUTTON_CLOCKWISE_PROFILE)
         }
@@ -1377,14 +1596,28 @@ fn custom_profile_yaml(profile: &ControllerCustomProfile) -> String {
     yaml.push_str("mapping:\n");
     for mapping in mappings {
         yaml.push_str(&format!(
-            "  - name: {} to {}\n    source_event:\n      gamepad:\n        button: {}\n    target_events:\n      - gamepad:\n          button: {}\n",
+            "  - name: {} to {}\n    source_event:\n      gamepad:\n{}    target_events:\n      - gamepad:\n{}",
             mapping.source_button,
             mapping.target_button,
-            mapping.source_button,
-            mapping.target_button
+            profile_event_yaml(&mapping.source_button, 8),
+            profile_event_yaml(&mapping.target_button, 10)
         ));
     }
     yaml
+}
+
+fn profile_event_yaml(control: &str, indent: usize) -> String {
+    let padding = " ".repeat(indent);
+    if let Some(direction) = control.strip_prefix("RightStick")
+        && matches!(direction, "Up" | "Down" | "Left" | "Right")
+    {
+        format!(
+            "{padding}axis:\n{padding}  name: RightStick\n{padding}  direction: {}\n{padding}  deadzone: 0.5\n",
+            direction.to_ascii_lowercase()
+        )
+    } else {
+        format!("{padding}button: {control}\n")
+    }
 }
 
 fn yaml_quote(value: &str) -> String {
@@ -1725,6 +1958,133 @@ mod tests {
             unique_id: None,
             is_virtual: false,
         }
+    }
+
+    #[test]
+    fn automatic_layouts_choose_connected_horizontal_pad_without_double_swapping() {
+        let pads = vec![
+            controller("ps5", "DualSense"),
+            controller("n30", "8BitDo N30"),
+        ];
+        let mut mapping = ControllerMappingSettings {
+            automatic: true,
+            ..Default::default()
+        };
+        mapping
+            .device_layouts
+            .insert("n30".into(), "horizontal".into());
+        let resolved =
+            automatic_player_mappings(&mapping, &pads, Some("Nintendo Entertainment System"), None);
+        assert_eq!(
+            resolved.player_mappings[0].controller_id.as_deref(),
+            Some("n30")
+        );
+        assert_eq!(resolved.player_mappings[0].profile_id, None);
+        assert_eq!(
+            resolved.player_mappings[1].profile_id.as_deref(),
+            Some(TWO_BUTTON_CLOCKWISE_PROFILE_ID)
+        );
+        mapping
+            .device_layouts
+            .insert("n30".into(), "horizontal-swapped".into());
+        let resolved = automatic_player_mappings(&mapping, &pads, Some("NES"), None);
+        assert_eq!(
+            resolved.player_mappings[0].profile_id.as_deref(),
+            Some("horizontal-ab-swap")
+        );
+    }
+
+    #[test]
+    fn automatic_profiles_respect_explicit_game_overrides_and_disconnected_preferences() {
+        let pads = vec![controller("ps5", "DualSense")];
+        let mut mapping = ControllerMappingSettings {
+            automatic: true,
+            ..Default::default()
+        };
+        mapping
+            .preferred_devices
+            .insert("two-button".into(), "unplugged".into());
+        mapping.game_profile_ids.insert("525".into(), "none".into());
+        let resolved = automatic_player_mappings(&mapping, &pads, Some("NES"), Some(525));
+        assert_eq!(
+            resolved.player_mappings[0].controller_id.as_deref(),
+            Some("ps5")
+        );
+        assert_eq!(resolved.player_mappings[0].profile_id, None);
+        assert_eq!(mapping.preferred_devices["two-button"], "unplugged");
+    }
+
+    #[test]
+    fn n64_and_sega_can_use_different_profiles_on_the_same_controller() {
+        let pads = vec![controller("n64", "Brawler64")];
+        let mut mapping = ControllerMappingSettings {
+            automatic: true,
+            ..Default::default()
+        };
+        mapping.device_system_profiles.insert(
+            "n64".into(),
+            HashMap::from([
+                ("n64".into(), "custom:n64".into()),
+                ("six-button".into(), "custom:sega".into()),
+            ]),
+        );
+        for (system, profile) in [
+            ("Nintendo 64", "custom:n64"),
+            ("Sega Genesis", "custom:sega"),
+        ] {
+            let resolved = automatic_player_mappings(&mapping, &pads, Some(system), None);
+            assert_eq!(
+                resolved.player_mappings[0].profile_id.as_deref(),
+                Some(profile)
+            );
+        }
+        assert_eq!(detected_device_layout(&pads[0]), "auto");
+    }
+
+    #[test]
+    fn generic_xbox_identity_does_not_prove_a_diamond_layout() {
+        for version in ["0110", "0114"] {
+            let mut pad = controller("usb-pad", "Microsoft X-Box 360 pad");
+            pad.vendor_id = Some("045e".into());
+            pad.product_id = Some("028e".into());
+            pad.version = Some(version.into());
+            assert_eq!(detected_device_layout(&pad), "auto");
+            let mut mapping = ControllerMappingSettings::default();
+            mapping
+                .device_layouts
+                .insert(pad.stable_id.clone(), "horizontal".into());
+            assert_eq!(device_layout(&mapping, &pad), "horizontal");
+        }
+        let mut steam = controller("steam", "Microsoft X-Box 360 pad 0");
+        steam.vendor_id = Some("28de".into());
+        steam.product_id = Some("11ff".into());
+        assert_eq!(detected_device_layout(&steam), "diamond");
+    }
+
+    #[test]
+    fn system_classification_does_not_treat_snes_or_gba_as_nes() {
+        for system in [
+            "Super Nintendo Entertainment System",
+            "Nintendo Game Boy Advance",
+        ] {
+            assert_eq!(system_layout(system), "modern");
+        }
+        assert_eq!(system_layout("Nintendo Game Boy Color"), "two-button");
+    }
+
+    #[test]
+    fn c_button_axis_mappings_generate_typed_axis_events() {
+        let yaml = custom_profile_yaml(&ControllerCustomProfile {
+            name: "N64 C buttons".into(),
+            mappings: vec![ControllerButtonMapping {
+                source_button: "RightStickUp".into(),
+                target_button: "North".into(),
+            }],
+            ..Default::default()
+        });
+        assert!(yaml.contains("axis:\n          name: RightStick\n          direction: up"));
+        assert!(yaml.contains("button: North"));
+        assert!(!yaml.contains("button: RightStickUp"));
     }
 
     fn inventory() -> ControllerInventory {

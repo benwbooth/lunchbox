@@ -26,6 +26,10 @@ const MAX_EMULATOR_LIFECYCLE_HISTORY: usize = 200;
 const MAX_GAME_TAGS: usize = 32;
 static STORE_INITIALIZATION: Mutex<()> = Mutex::new(());
 pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
+    "RightStickUp",
+    "RightStickDown",
+    "RightStickLeft",
+    "RightStickRight",
     "South",
     "East",
     "North",
@@ -259,6 +263,14 @@ impl EmulatorUpdatePreferences {
 pub struct ControllerMappingSettings {
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default)]
+    pub automatic: bool,
+    #[serde(default)]
+    pub device_layouts: HashMap<String, String>,
+    #[serde(default)]
+    pub preferred_devices: HashMap<String, String>,
+    #[serde(default)]
+    pub device_system_profiles: HashMap<String, HashMap<String, String>>,
     #[serde(default = "default_controller_provider")]
     pub provider: String,
     #[serde(default = "default_controller_target")]
@@ -285,6 +297,10 @@ impl Default for ControllerMappingSettings {
     fn default() -> Self {
         Self {
             enabled: false,
+            automatic: false,
+            device_layouts: HashMap::new(),
+            preferred_devices: HashMap::new(),
+            device_system_profiles: HashMap::new(),
             provider: default_controller_provider(),
             output_target: default_controller_target(),
             manage_all: true,
@@ -1133,6 +1149,50 @@ impl AppSettings {
 
 impl ControllerMappingSettings {
     pub fn validate(&self) -> Result<()> {
+        if self.device_layouts.len() > 64 || self.preferred_devices.len() > 512 {
+            bail!("too many saved controller preferences");
+        }
+        if self.device_system_profiles.len() > 64 {
+            bail!("too many device-specific profiles");
+        }
+        for (device, profiles) in &self.device_system_profiles {
+            validate_controller_id(device)?;
+            if profiles.len() > 4 {
+                bail!("too many system layouts for a controller");
+            }
+            for (system, profile) in profiles {
+                if !crate::controllers::SYSTEM_LAYOUTS
+                    .iter()
+                    .any(|(id, _)| id == system)
+                    || (profile != "none"
+                        && profile != crate::controllers::TWO_BUTTON_CLOCKWISE_PROFILE_ID
+                        && !self
+                            .custom_profiles
+                            .iter()
+                            .any(|custom| custom.id == *profile))
+                {
+                    bail!("unknown device/system controller profile");
+                }
+            }
+        }
+        for (device, layout) in &self.device_layouts {
+            validate_controller_id(device)?;
+            if !crate::controllers::DEVICE_LAYOUTS
+                .iter()
+                .any(|(id, _)| id == layout)
+            {
+                bail!("unsupported physical controller layout {layout}");
+            }
+        }
+        for (system, device) in &self.preferred_devices {
+            validate_controller_id(device)?;
+            if !crate::controllers::SYSTEM_LAYOUTS
+                .iter()
+                .any(|(id, _)| id == system)
+            {
+                bail!("unsupported controller system family {system}");
+            }
+        }
         if !matches!(self.provider.trim(), "auto" | "inputplumber") {
             bail!("unsupported controller provider {}", self.provider);
         }
