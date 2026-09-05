@@ -1,11 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
+use lunchbox_controller_probe::libretro_input::Diagnostic;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(
-    about = "Run an original GBA input diagnostic in an explicitly trusted mGBA libretro core"
-)]
+#[command(about = "Run an original input diagnostic in an explicitly trusted libretro core")]
 struct Args {
     #[arg(long)]
     core: PathBuf,
@@ -13,6 +12,8 @@ struct Args {
     sha256: String,
     #[arg(long)]
     bitmask: bool,
+    #[arg(long, value_enum, default_value = "gba")]
+    system: Diagnostic,
     #[arg(long, default_value_t = 15, value_parser = clap::value_parser!(u64).range(1..=120))]
     timeout_seconds: u64,
 }
@@ -28,10 +29,11 @@ fn run() -> Result<()> {
             std::process::exit(124);
         }
     });
-    let result = lunchbox_controller_probe::libretro_input::inspect_mgba(
+    let result = lunchbox_controller_probe::libretro_input::inspect(
         &args.core,
         &args.sha256,
         args.bitmask,
+        args.system,
     );
     let _ = done.send(());
     let _ = watchdog.join();

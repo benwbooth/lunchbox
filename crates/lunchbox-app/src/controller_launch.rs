@@ -1037,6 +1037,49 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
+    fn gamegear_uses_two_buttons_and_start_without_requiring_select() {
+        let profile = contract("genesis_plus_gx", "Sega Game Gear").unwrap();
+        assert_eq!(profile.bindings.len(), 7);
+        assert_eq!(profile.target_layout, "gamegear");
+        assert_eq!(
+            profile.core_options["genesis_plus_gx_system_hw"],
+            "game gear"
+        );
+        for (layout, one, two) in [
+            ("gamegear", "b", "a"),
+            ("nes", "b", "a"),
+            ("horizontal-four", "b", "a"),
+            ("n30-turbo", "b", "a"),
+            ("brawler64", "b", "a"),
+            ("xbox", "y", "b"),
+        ] {
+            let (mut calibration, numbering) = calibrated_layout(layout);
+            calibration.bindings.remove("select");
+            assert!(compatible(&calibration, profile), "{layout}");
+            let config = player_config(&calibration, profile, &numbering, 1).unwrap();
+            assert!(config.contains("input_libretro_device_p1 = \"769\""));
+            for (output, physical) in [("b", one), ("a", two), ("start", "start")] {
+                let (_, button) = numbering
+                    .binding(calibration.bindings[physical].native.as_ref().unwrap())
+                    .unwrap();
+                assert!(
+                    config.contains(&format!("input_player1_{output}_btn = \"{button}\"")),
+                    "{layout}/{output}"
+                );
+            }
+            for output in ["select", "x", "y", "l", "r", "l2", "r2"] {
+                for suffix in ["btn", "axis"] {
+                    assert!(config.contains(&format!("input_player1_{output}_{suffix} = \"nul\"")));
+                }
+            }
+            assert!(player_config(&calibration, profile, &numbering, 2).is_err());
+            calibration.bindings.remove("start");
+            assert!(!compatible(&calibration, profile));
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
     fn mgba_distinguishes_gba_shoulders_from_gameboy_and_preserves_thumb_pairs() {
         let gba = catalog()
             .launch_profile("mgba", "Nintendo Game Boy Advance")
@@ -1665,7 +1708,7 @@ mod tests {
                 .target_layout,
             "pce-2"
         );
-        assert!(contract("genesis_plus_gx", "Sega Game Gear").is_none());
+        assert!(contract("genesis_plus_gx", "Sega Master System").is_none());
         assert!(contract("fceumm", "Super Nintendo Entertainment System").is_none());
         assert!(contract("unknown", "Nintendo Entertainment System").is_none());
         assert_eq!(

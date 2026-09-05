@@ -1,12 +1,13 @@
 # Real-core input diagnostics
 
 `lunchbox-libretro-input` is an opt-in, separate-process test harness. It loads an
-explicitly supplied trusted mGBA core, verifies its SHA256, and runs an original
-ARM diagnostic from memory. The program copies the emulated GBA KEYINPUT register
-to EWRAM alongside an execution marker. No Nintendo logo, BIOS, or commercial
+explicitly supplied trusted core, verifies its SHA256, and runs an original
+diagnostic. The default mGBA backend runs an ARM program from memory, copying the
+emulated GBA KEYINPUT register to EWRAM alongside an execution marker. The Game
+Gear backend runs an original Z80 program in Genesis Plus GX. No BIOS or commercial
 game bytes are present, and no ROM or firmware download is needed.
 
-The first backend tests ten standard buttons, releases after every press, and
+The GBA backend tests ten standard buttons, releases after every press, and
 A+B/L+R combinations. It checks active-low hardware bits, not just whether a
 configuration was accepted. Run both frontend callback paths:
 
@@ -38,3 +39,30 @@ It does not test physical-device calibration, OS/SDL enumeration, RetroArch's
 configuration/remap processing, other cores, cartridge sensors, or rumble.
 Those layers require separate evidence. Audio/video callbacks intentionally
 discard output: this is a headless input diagnostic, not a game frontend.
+
+## Game Gear / Genesis Plus GX
+
+Add `--system gamegear` and supply a trusted `genesis_plus_gx_libretro.so` with its
+expected SHA256. Run once normally and once with `--bitmask`, as above. This core
+requires a file path, so the helper writes its original 32 KiB diagnostic cartridge
+only into the private temporary directory and removes it on normal exit. The
+`TMR SEGA` bytes are the cartridge format signature, not imported game artwork or
+code. The helper selects Game Gear hardware and disables optional BIOS loading.
+
+The Z80 program samples port DC bits 0–5 (directions and buttons 1/2) and port 00
+bit 7 (Start), storing both bytes plus an execution marker in work RAM. Output's
+`diagnostic` field distinguishes `gamegear-dc-00` from `gba-keyinput`; the existing
+`expected_keyinput`/`observed_keyinput` fields contain masked register samples.
+For Game Gear the low byte is DC, the high byte is 00, and the mask is `0x803f`.
+Region/link-port bits are excluded. Cases cover all seven controls, releases,
+1+2 and 1+Start combinations, and the absence of a Select gameplay action.
+
+On 2026-09-05 the official Libretro Linux x86_64 nightly core reported
+`v1.7.4 a7985a9`, SHA256
+`a6da7c738dfa87708d173b2034b71b84368d6adf5a53126ebb5791933ce929bd`.
+Both callback modes passed all 22 observations using explicit device 769
+(MS Joypad 2 Button); the core exposed 8192 bytes of work RAM.
+The pinned [frontend mapping](https://github.com/libretro/Genesis-Plus-GX/blob/a7985a9c4278ac352f8ca7bb4d3cc6b36e9e3e7d/libretro/libretro.c)
+and [hardware I/O](https://github.com/libretro/Genesis-Plus-GX/blob/a7985a9c4278ac352f8ca7bb4d3cc6b36e9e3e7d/core/io_ctrl.c)
+provide the source contract. This does not verify physical input, RetroArch
+configuration processing, other Genesis Plus GX systems, or link-cable hardware.

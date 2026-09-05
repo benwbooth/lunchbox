@@ -86,6 +86,8 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
                 b"mgba_use_bios" => c"OFF".as_ptr(),
                 b"mgba_skip_bios" | b"mgba_allow_opposing_directions" => c"ON".as_ptr(),
                 b"mgba_idle_optimization" => c"Don't Remove".as_ptr(),
+                b"genesis_plus_gx_system_hw" => c"game gear".as_ptr(),
+                b"genesis_plus_gx_bios" => c"disabled".as_ptr(),
                 _ => std::ptr::null(),
             };
             !variable.value.is_null()
@@ -206,6 +208,82 @@ pub fn gba_diagnostic_rom() -> Vec<u8> {
     rom
 }
 
+/// Original Z80 loop: sample Game Gear ports DC (directions/buttons) and 00
+/// (Start), and store both in work RAM with the same execution marker as GBA.
+pub fn gamegear_diagnostic_rom() -> Vec<u8> {
+    let mut rom = vec![0; 0x8000];
+    let program = [
+        0xf3, // di
+        0xdb, 0xdc, // loop: in a, (dc)
+        0x32, 0x00, 0xc0, // ld (c000), a
+        0xdb, 0x00, // in a, (00)
+        0x32, 0x01, 0xc0, // ld (c001), a
+        0x21, 0x4e, 0x49, // ld hl, 494e
+        0x22, 0x04, 0xc0, // ld (c004), hl
+        0x21, 0x42, 0x4c, // ld hl, 4c42
+        0x22, 0x06, 0xc0, // ld (c006), hl
+        0xc3, 0x01, 0x00, // jp loop
+    ];
+    rom[..program.len()].copy_from_slice(&program);
+    rom[0x7ff0..0x7ff8].copy_from_slice(b"TMR SEGA"); // cartridge format signature
+    rom[0x7fff] = 0x6c; // international Game Gear, 32 KiB
+    let checksum = rom[..0x7ff0]
+        .iter()
+        .fold(0u16, |sum, byte| sum.wrapping_add(u16::from(*byte)));
+    rom[0x7ffa..0x7ffc].copy_from_slice(&checksum.to_le_bytes());
+    rom
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum Diagnostic {
+    Gba,
+    Gamegear,
+}
+
+impl Diagnostic {
+    fn identity(self) -> (&'static str, &'static str, u32, u16) {
+        match self {
+            Self::Gba => ("mGBA", "input.gba", 1, 0x3ff),
+            Self::Gamegear => ("Genesis Plus GX", "input.gg", 769, 0x803f),
+        }
+    }
+
+    fn cases(self) -> &'static [(&'static str, u16, u16)] {
+        match self {
+            Self::Gba => &[
+                ("released", 0, 0),
+                ("A", 1 << 8, 1 << 0),
+                ("B", 1 << 0, 1 << 1),
+                ("Select", 1 << 2, 1 << 2),
+                ("Start", 1 << 3, 1 << 3),
+                ("Right", 1 << 7, 1 << 4),
+                ("Left", 1 << 6, 1 << 5),
+                ("Up", 1 << 4, 1 << 6),
+                ("Down", 1 << 5, 1 << 7),
+                ("R", 1 << 11, 1 << 8),
+                ("L", 1 << 10, 1 << 9),
+                ("A+B", (1 << 8) | 1, 3),
+                ("L+R", (1 << 10) | (1 << 11), 0x300),
+            ],
+            // Low byte is DC bits 0..5; high byte is 00 bit 7 (Start).
+            // Unused region/link bits are not gameplay inputs.
+            Self::Gamegear => &[
+                ("released", 0, 0),
+                ("1", 1, 1 << 4),
+                ("2", 1 << 8, 1 << 5),
+                ("Start", 1 << 3, 1 << 15),
+                ("Up", 1 << 4, 1),
+                ("Down", 1 << 5, 1 << 1),
+                ("Left", 1 << 6, 1 << 2),
+                ("Right", 1 << 7, 1 << 3),
+                ("1+2", 1 | (1 << 8), 0x30),
+                ("1+Start", 1 | (1 << 3), 0x8010),
+                ("Select is unassigned", 1 << 2, 0),
+            ],
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct Observation {
     pub name: String,
@@ -216,6 +294,7 @@ pub struct Observation {
 #[derive(Debug, Serialize)]
 pub struct Report {
     pub schema_version: u32,
+    pub diagnostic: &'static str,
     pub core_sha256: String,
     pub core_name: String,
     pub core_version: String,
@@ -231,6 +310,16 @@ pub struct Report {
 /// diagnostic uses synthetic frontend input, not OS controller enumeration or
 /// the Lunchbox-to-RetroArch configuration layer. The CLI bounds wall time.
 pub fn inspect_mgba(path: &Path, expected_sha256: &str, bitmask: bool) -> Result<Report> {
+    inspect(path, expected_sha256, bitmask, Diagnostic::Gba)
+}
+
+pub fn inspect(
+    path: &Path,
+    expected_sha256: &str,
+    bitmask: bool,
+    diagnostic: Diagnostic,
+) -> Result<Report> {
+    let (expected_core, filename, device, register_mask) = diagnostic.identity();
     let path = path.canonicalize()?;
     let hash = crate::file_hash(&path)?;
     ensure!(
@@ -259,16 +348,19 @@ pub fn inspect_mgba(path: &Path, expected_sha256: &str, bitmask: bool) -> Result
     SINGLE_REQUESTS.store(0, Ordering::Relaxed);
     BITMASK.store(bitmask, Ordering::Relaxed);
     // These buffers must outlive unload_game, including every error path.
-    let rom = gba_diagnostic_rom();
+    let rom = match diagnostic {
+        Diagnostic::Gba => gba_diagnostic_rom(),
+        Diagnostic::Gamegear => gamegear_diagnostic_rom(),
+    };
     let rom_path = CString::new(
         directory
             .path()
-            .join("input.gba")
+            .join(filename)
             .to_str()
             .context("UTF-8 ROM path required")?,
     )?;
     unsafe {
-        let library = Library::new(&path).context("Loading trusted mGBA core")?;
+        let library = Library::new(&path).context("Loading trusted libretro core")?;
         let version = *library.get::<unsafe extern "C" fn() -> u32>(b"retro_api_version\0")?;
         ensure!(version() == 1, "Unsupported libretro API version");
         let info_fn =
@@ -282,9 +374,12 @@ pub fn inspect_mgba(path: &Path, expected_sha256: &str, bitmask: bool) -> Result
         let name = CStr::from_ptr(info.name).to_str()?.to_owned();
         let revision = CStr::from_ptr(info.version).to_str()?.to_owned();
         ensure!(
-            name == "mGBA" && !info.need_fullpath,
-            "Expected an in-memory mGBA core"
+            name == expected_core,
+            "Expected {expected_core}, got {name}"
         );
+        if info.need_fullpath {
+            std::fs::write(directory.path().join(filename), &rom)?;
+        }
         let init = *library.get::<unsafe extern "C" fn()>(b"retro_init\0")?;
         let load =
             *library.get::<unsafe extern "C" fn(*const GameInfo) -> bool>(b"retro_load_game\0")?;
@@ -313,17 +408,23 @@ pub fn inspect_mgba(path: &Path, expected_sha256: &str, bitmask: bool) -> Result
         callback!(b"retro_set_input_state\0", Input, input);
         init();
         core.initialized = true;
-        set_device(0, 1);
+        set_device(0, device);
         ensure!(
             load(&GameInfo {
                 path: rom_path.as_ptr(),
-                data: rom.as_ptr().cast(),
-                size: rom.len(),
+                data: if info.need_fullpath {
+                    std::ptr::null()
+                } else {
+                    rom.as_ptr().cast()
+                },
+                size: if info.need_fullpath { 0 } else { rom.len() },
                 meta: std::ptr::null()
             }),
             "Core rejected original diagnostic ROM"
         );
         core.loaded = true;
+        set_device(0, device);
+        set_device(1, 0);
         let reported_system_ram_bytes = (core.memory_size)(2);
         // This pinned mGBA frontend reports the GB RAM size even for GBA.
         // Read only our eight diagnostic bytes, within its reported bounds;
@@ -333,23 +434,12 @@ pub fn inspect_mgba(path: &Path, expected_sha256: &str, bitmask: bool) -> Result
             "Unexpected exposed system RAM size: {reported_system_ram_bytes}"
         );
         let mut observations = Vec::new();
-        // GBA KEYINPUT bit order is hardware order, separate from RetroPad IDs.
-        for (name, rp, gba) in [
-            ("released", 0, 0),
-            ("A", 1 << 8, 1 << 0),
-            ("B", 1 << 0, 1 << 1),
-            ("Select", 1 << 2, 1 << 2),
-            ("Start", 1 << 3, 1 << 3),
-            ("Right", 1 << 7, 1 << 4),
-            ("Left", 1 << 6, 1 << 5),
-            ("Up", 1 << 4, 1 << 6),
-            ("Down", 1 << 5, 1 << 7),
-            ("R", 1 << 11, 1 << 8),
-            ("L", 1 << 10, 1 << 9),
-            ("A+B", (1 << 8) | 1, 3),
-            ("L+R", (1 << 10) | (1 << 11), 0x300),
-        ] {
-            for (step_name, mask, expected) in [(name, rp, 0x3ff ^ gba), ("release", 0, 0x3ff)] {
+        // Hardware register bits are independent of the core's RetroPad IDs.
+        for &(name, rp, hardware) in diagnostic.cases() {
+            for (step_name, mask, expected) in [
+                (name, rp, register_mask ^ hardware),
+                ("release", 0, register_mask),
+            ] {
                 PRESSED.store(mask, Ordering::Relaxed);
                 for _ in 0..4 {
                     (core.run)();
@@ -359,16 +449,16 @@ pub fn inspect_mgba(path: &Path, expected_sha256: &str, bitmask: bool) -> Result
                     "Diagnostic memory became unavailable"
                 );
                 let memory = (core.memory)(2).cast::<u8>();
-                ensure!(!memory.is_null(), "No EWRAM exposed by core");
+                ensure!(!memory.is_null(), "No system RAM exposed by core");
                 let bytes = std::slice::from_raw_parts(memory, 8);
                 ensure!(
                     u32::from_le_bytes(bytes[4..8].try_into().unwrap()) == 0x4c42494e,
                     "Diagnostic program did not execute"
                 );
-                let observed = u16::from_le_bytes([bytes[0], bytes[1]]) & 0x3ff;
+                let observed = u16::from_le_bytes([bytes[0], bytes[1]]) & register_mask;
                 ensure!(
                     observed == expected,
-                    "{step_name}: expected KEYINPUT {expected:#05x}, observed {observed:#05x}"
+                    "{step_name}: expected input register bits {expected:#06x}, observed {observed:#06x}"
                 );
                 observations.push(Observation {
                     name: step_name.into(),
@@ -394,6 +484,10 @@ pub fn inspect_mgba(path: &Path, expected_sha256: &str, bitmask: bool) -> Result
         );
         Ok(Report {
             schema_version: 1,
+            diagnostic: match diagnostic {
+                Diagnostic::Gba => "gba-keyinput",
+                Diagnostic::Gamegear => "gamegear-dc-00",
+            },
             core_sha256: hash,
             core_name: name,
             core_version: revision,
@@ -410,6 +504,26 @@ pub fn inspect_mgba(path: &Path, expected_sha256: &str, bitmask: bool) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn gamegear_rom_is_reproducible_with_valid_header_and_register_cases() {
+        let rom = gamegear_diagnostic_rom();
+        assert_eq!(rom, gamegear_diagnostic_rom());
+        assert_eq!(rom.len(), 32768);
+        assert_eq!(&rom[0x7ff0..0x7ff8], b"TMR SEGA");
+        assert_eq!(rom[0x7fff], 0x6c);
+        assert_eq!(
+            u16::from_le_bytes(rom[0x7ffa..0x7ffc].try_into().unwrap()),
+            rom[..0x7ff0].iter().map(|b| u16::from(*b)).sum::<u16>()
+        );
+        assert_eq!(&rom[..6], &[0xf3, 0xdb, 0xdc, 0x32, 0x00, 0xc0]);
+        assert_eq!(&rom[23..26], &[0xc3, 0x01, 0x00]);
+        let (_, _, device, mask) = Diagnostic::Gamegear.identity();
+        assert_eq!(device, 769);
+        assert_eq!(mask, 0x803f);
+        for &(_, _, hardware) in Diagnostic::Gamegear.cases() {
+            assert_eq!(hardware & !mask, 0);
+        }
+    }
     #[test]
     fn original_rom_has_valid_branch_literals_and_no_logo() {
         let rom = gba_diagnostic_rom();

@@ -41,7 +41,7 @@ adapters. Controls/options can vary by core version and controller mode.
   Genesis Plus GX/MD six-button, Mupen64Plus-Next/N64 independent C-button mode,
   Beetle PCE Fast/PC Engine two-button mode (maximum five players), and
   Snes9x/bsnes standard SNES joypads (two ports), and mGBA standard GBA/GB/GBC
-  gamepads (one port).
+  gamepads (one port), plus Genesis Plus GX/Game Gear two-button mode (one port).
   Per-launch configs use kernel-reported joystick indices, not Xbox numbering.
   Saved calibrations from the preview-only prototype need one recalibration to
   capture physical evdev bindings, including synthesized D-pad inputs.
@@ -106,6 +106,21 @@ gameplay or all-cartridge-feature verification.
 The [real-core diagnostic](../../../lunchbox-controller-probe/LIBRETRO_INPUT.md)
 also verifies the frontend-to-emulated-hardware segment for the pinned mGBA core,
 using an original program; it does not yet verify the OS/RetroArch input layers.
+
+### Game Gear / Genesis Plus GX
+
+The `gamegear` layout has buttons 1/2, Start and the D-pad: no fictitious Select
+requirement. It participates in every layout-pair composition and SVG export.
+The launch contract selects device 769 (MS Joypad 2 Button) and Game Gear hardware
+in a private core-options copy, preserving the user's configuration. It supports
+one handheld player; it does not imply Master System, SG-1000 or link-cable support.
+Regression tests compose Brawler64, Xbox-style, NES and N30-family calibrations,
+clear unused inputs, and reject a missing Start button or a second player.
+
+The [real-core diagnostic](../../../lunchbox-controller-probe/LIBRETRO_INPUT.md)
+checks both frontend callback modes against the emulated Game Gear input ports,
+including releases and combinations. It does not claim physical-device-to-game
+verification or test RetroArch's configuration processing.
 
 ### SwanStation mode-aware adapter (in progress)
 

@@ -382,6 +382,22 @@
       ]
     },
     {
+      "id": "gamegear",
+      "name": "Sega Game Gear — 1/2 + Start",
+      "family": "two-button",
+      "shape": "handheld",
+      "notes": "Seven gameplay controls. Game Gear has Start but no Select; link-cable hardware is a separate capability.",
+      "controls": [
+        { "id": "b", "label": "1", "x": 76, "y": 54, "group": "face", "optional": false, "analog": false },
+        { "id": "a", "label": "2", "x": 88, "y": 44, "group": "face", "optional": false, "analog": false },
+        { "id": "start", "label": "Start", "x": 84, "y": 23, "group": "menu", "optional": false, "analog": false },
+        { "id": "up", "label": "Up", "x": 16, "y": 38, "group": "dpad", "optional": false, "analog": false },
+        { "id": "down", "label": "Down", "x": 16, "y": 54, "group": "dpad", "optional": false, "analog": false },
+        { "id": "left", "label": "Left", "x": 11, "y": 46, "group": "dpad", "optional": false, "analog": false },
+        { "id": "right", "label": "Right", "x": 21, "y": 46, "group": "dpad", "optional": false, "analog": false }
+      ]
+    },
+    {
       "id": "snes",
       "name": "Super Nintendo — diamond A/B/X/Y",
       "family": "diamond",
@@ -2098,6 +2114,31 @@
         "y": "North",
         "z": "RightBumper",
         "mode": "Select"
+      }
+    },
+    {
+      "id": "retroarch:genesis_plus_gx:gamegear",
+      "name": "RetroArch · Genesis Plus GX · Game Gear",
+      "core": "genesis_plus_gx",
+      "target_layout": "gamegear",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/Genesis-Plus-GX/blob/a7985a9c4278ac352f8ca7bb4d3cc6b36e9e3e7d/libretro/libretro.c",
+      "retroarch_launch": {
+        "platforms": ["Sega Game Gear", "Game Gear", "Sega - Game Gear"],
+        "device": 769,
+        "max_players": 1
+      },
+      "core_options": { "genesis_plus_gx_system_hw": "game gear" },
+      "conditions": [
+        "MS Joypad 2 Button device 769; one handheld player, no link-cable emulation",
+        "Game Gear hardware selected in a private core-options copy; user configuration is preserved",
+        "RetroPad B maps to 1, A to 2, Start to Start; Select and other extra inputs are unassigned",
+        "Core-to-hardware mapping checked by the original Game Gear register diagnostic; physical gameplay requires separate verification"
+      ],
+      "bindings": {
+        "up": "DPadUp", "down": "DPadDown", "left": "DPadLeft", "right": "DPadRight",
+        "start": "Start", "b": "South", "a": "East"
       }
     },
     {
