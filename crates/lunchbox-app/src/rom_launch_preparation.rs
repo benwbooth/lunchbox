@@ -166,7 +166,7 @@ fn prepare_playlist(
                 prepared_entries.push(entry);
             }
         }
-        let generated = session.join("playlist.lunchbox-launch.m3u");
+        let generated = session.join(prepared_playlist_filename(playlist_path));
         write_playlist(&generated, &prepared_entries)?;
         let access_roots = deduplicated_parents(
             std::iter::once(generated.clone()).chain(prepared_entries.iter().cloned()),
@@ -180,6 +180,18 @@ fn prepare_playlist(
         })
     })();
     finish_session_outcome(outcome, &session, cancelled)
+}
+
+fn prepared_playlist_filename(playlist_path: &Path) -> String {
+    // Library playlists already carry the game's name. Keep it when rewriting
+    // their entries for extracted media, inside the unique launch session.
+    let stem = playlist_path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy();
+    let title = stem.trim_matches(|character: char| character.is_whitespace() || character == '.');
+    let title = if title.is_empty() { "Game" } else { title };
+    format!("{}.m3u", crate::qbittorrent::safe_path_component(title))
 }
 
 fn prepare_direct_archive(
@@ -1163,6 +1175,12 @@ mod tests {
         let cancelled = Arc::new(AtomicBool::new(false));
 
         let prepared = prepare_for_launch_in(&playlist, false, &cancelled, &cache).unwrap();
+        assert_eq!(prepared.path.file_name().unwrap(), "Game.m3u");
+        assert_ne!(prepared.path, playlist);
+        assert_eq!(
+            fs::read_to_string(&playlist).unwrap(),
+            "Disc 1.zip\nDisc 2.zip\n"
+        );
         assert_eq!(prepared.archive_count, 2);
         assert_eq!(prepared.playlist_entries, 2);
         let generated = fs::read_to_string(&prepared.path).unwrap();
@@ -1176,6 +1194,23 @@ mod tests {
         assert!(!cleanup_owned_path_in(temp.path(), &cache));
         fs::remove_dir_all(session).unwrap();
         assert!(!session.exists());
+    }
+
+    #[test]
+    fn prepared_playlist_keeps_game_title_in_a_portable_filename() {
+        for (source, expected) in [
+            ("Final Fantasy VII (USA).m3u", "Final Fantasy VII (USA).m3u"),
+            (
+                "ファイナルファンタジーVII.m3u",
+                "ファイナルファンタジーVII.m3u",
+            ),
+            ("Game: Subtitle?.m3u", "Game_ Subtitle_.m3u"),
+            ("CON.m3u", "_CON.m3u"),
+            ("Game. .m3u", "Game.m3u"),
+            ("...m3u", "Game.m3u"),
+        ] {
+            assert_eq!(prepared_playlist_filename(Path::new(source)), expected);
+        }
     }
 
     #[test]
