@@ -2103,6 +2103,29 @@
       }
     },
     {
+      "id": "duckstation:analog-controller",
+      "name": "DuckStation · PlayStation analog controller (preview)",
+      "core": "duckstation",
+      "target_layout": "dualshock",
+      "transport": "duckstation-settings",
+      "status": "documented",
+      "source": "https://github.com/stenzek/duckstation/blob/0a53bc47c/src/core/analog_controller.cpp",
+      "conditions": [
+        "AnalogController gameplay inputs; does not change the user's emulated controller type",
+        "Stick directions require physical analog controls; axis-backed digital C-buttons do not become a second stick",
+        "Analog toggle, rumble routing, sensitivity, dead zones and analog-mode policy retain the emulator's settings",
+        "Preview only: proportional SDL bindings and effective configuration still need end-to-end game verification"
+      ],
+      "bindings": {
+        "up": "Up", "down": "Down", "left": "Left", "right": "Right",
+        "start": "Start", "select": "Select", "a": "Circle", "b": "Cross",
+        "x": "Triangle", "y": "Square", "l": "L1", "r": "R1", "l2": "L2", "r2": "R2",
+        "l3": "L3", "r3": "R3",
+        "stick_up": "LUp", "stick_down": "LDown", "stick_left": "LLeft", "stick_right": "LRight",
+        "right_stick_up": "RUp", "right_stick_down": "RDown", "right_stick_left": "RLeft", "right_stick_right": "RRight"
+      }
+    },
+    {
       "id": "retroarch:mupen64plus_next:n64",
       "name": "RetroArch · Mupen64Plus-Next · N64 gamepad",
       "core": "mupen64plus_next",

@@ -1,7 +1,7 @@
 # DuckStation controller adapter: evidence and remaining work
 
-Status: the original PlayStation digital layout and DuckStation DigitalController
-contract are implemented in the calibration preview. **Automatic DuckStation
+Status: PlayStation digital and dual-stick analog gameplay contracts are
+implemented in the calibration preview. **Automatic DuckStation
 launch is not implemented or enabled.** This is not a substitute for the full
 standalone launch adapter.
 
@@ -15,8 +15,11 @@ is advertised. The current upstream argument parser likewise has no such option.
 The digital controller's fourteen setting names were checked against
 [the installed revision's controller definition](https://github.com/stenzek/duckstation/blob/0a53bc47c/src/core/digital_controller.cpp).
 The catalog stores these functional configuration keys, not copied implementation
-or Xbox button numbers. AnalogController, lightguns, and specialty controllers
-need separate contracts.
+or Xbox button numbers. The AnalogController preview separately records its 24
+gameplay inputs from the [installed analog definition](https://github.com/stenzek/duckstation/blob/0a53bc47c/src/core/analog_controller.cpp),
+including eight proportional stick directions. Analog-mode toggle and motor
+routing are not assigned by this preview. Lightguns and specialty controllers
+still need separate contracts.
 
 [The installed SDL backend](https://github.com/stenzek/duckstation/blob/0a53bc47c/src/util/sdl_input_source.cpp)
 distinguishes gamepad names, raw button/axis indices, hats, and player IDs. Raw
@@ -58,7 +61,9 @@ flag, and named profiles. Missing separate-disc settings or missing profiles
 fall back as the emulator does. The caller must supply verified game/disc-set
 identity, not a guessed serial. There is no global type fallback for an active
 game/profile input layer. A digital patch cannot change an AnalogController to
-DigitalController. Analog bindings and specialty types still need contracts.
+DigitalController. The analog gameplay writer likewise requires AnalogController;
+it preserves analog-mode options, dead zones, sensitivity, toggle and motor
+bindings. Those preserved controls are not yet automatically reassigned.
 
 On 2026-09-05, `duckstation_startup --preserve-config` exercised the installed
 Flatpak with the user's real global settings copied privately. Its Dev output
@@ -90,9 +95,8 @@ The Rust digital-input translator uses these bindings to produce DuckStation
 binding suffixes. For SDL 3.2.20's Linux classic backend, physical evdev-code
 lookup is also implemented from the kernel's read-only joystick maps, verified
 against SDL control counts. Hat axes are removed from the axis sequence and hats
-retain first-seen order. Other physical backends, axis rest/range interpretation,
-analog target conversion, final player assignment, isolated configuration, and
-launch integration remain.
+retain first-seen order. Other physical backends, final launch-time player
+assignment, full user-state isolation, and launch integration remain.
 
 The Linux calibration wizard now records physical axis rest/peak values plus
 kernel bounds and flat/fuzz/resolution. It samples through release and waits for
@@ -127,8 +131,18 @@ Corrections with unsupported arithmetic or type are rejected rather than guessed
 Old snapshots without corrections remain valid for button numbering, not axis
 conversion. The actual kernel oracle matched all eight axes on both selected
 USB pads on kernel 7.2.2, including physical trigger rest 0 -> joystick -32767.
-Analog-target binding, current physical-bounds validation, and end-to-end launch
-application remain unfinished.
+Current physical-bounds validation and end-to-end launch application remain
+unfinished.
+
+The proportional translator now composes measured axis endpoints with kernel
+correction and SDL axis mappings. It checks the complete movement interval, not
+just the endpoint: preceding digital ranges, shared outputs and non-neutral
+release boundaries cannot silently turn a stick into an on/off control. Separate
+positive/negative mappings of the same physical axis are supported when they
+retain independent output halves and a neutral release. Unconsumed raw axes use
+the verified revision's suppression rules. Buttons and hats cannot become analog
+inputs. This has deterministic regression tests, not actual analog gameplay
+verification; it does not enable automatic DuckStation launch.
 
 The installed `0a53bc47c` SDL backend marks raw axis events consumed using the
 **output** axis index, unlike its button/hat handling, which uses the input index.

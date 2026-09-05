@@ -1,4 +1,4 @@
-//! Digital-control translation for DuckStation's SDL input protocol.
+//! Digital and proportional-axis translation for DuckStation's SDL protocol.
 //!
 //! Input indices must already be resolved in the *target SDL runtime*. This is
 //! not evdev-to-SDL conversion, player assignment, or an emulator launch adapter.
@@ -31,6 +31,143 @@ pub enum AxisSuppression {
     DuckStation0a53bc47c,
     /// Use only for an emulator revision verified to mark the input axis index.
     VerifiedInputIndex,
+}
+
+/// A calibrated direction of a physical analog control, in target SDL units.
+/// The caller establishes analog capability from the chosen physical layout;
+/// a C-button reporting axis events is not thereby an analog stick.
+#[derive(Debug, Clone, Copy)]
+pub struct AnalogInput {
+    pub index: u32,
+    pub released: i16,
+    pub extent: i16,
+}
+
+pub fn physical_analog_binding(
+    gamepad: &ResolvedGamepad,
+    physical: &crate::linux_classic::ClassicMap,
+    encoded: u32,
+    measured: crate::linux_classic::AxisEndpoints,
+    suppression: AxisSuppression,
+) -> Result<String> {
+    physical.validate_counts(gamepad)?;
+    let DigitalInput::Axis {
+        index,
+        released,
+        pressed,
+    } = physical.digital_input(encoded, Some(measured))?
+    else {
+        anyhow::bail!("Buttons and hats cannot provide proportional analog movement");
+    };
+    analog_binding(
+        gamepad,
+        AnalogInput {
+            index,
+            released,
+            extent: pressed,
+        },
+        suppression,
+    )
+}
+
+/// Preserves a continuous axis interval. Never returns a button token even when
+/// SDL mapped the underlying axis to a digital button. No threshold sampling or
+/// synthesized analog movement is used.
+pub fn analog_binding(
+    gamepad: &ResolvedGamepad,
+    axis: AnalogInput,
+    suppression: AxisSuppression,
+) -> Result<String> {
+    gamepad.validate()?;
+    let input = DigitalInput::Axis {
+        index: axis.index,
+        released: axis.released,
+        pressed: axis.extent,
+    };
+    validate_input(gamepad, input)?;
+    let low = i32::from(axis.released.min(axis.extent));
+    let high = i32::from(axis.released.max(axis.extent));
+    if let Some((position, binding)) = gamepad
+        .bindings
+        .iter()
+        .enumerate()
+        .find(|(_, b)| matches_press(&b.input, input))
+        && let (Input::Axis { min, max, .. }, Output::Axis { .. }) =
+            (&binding.input, &binding.output)
+    {
+        let covers_motion = *min.min(max) <= low && *min.max(max) >= high;
+        // SDL chooses the first matching input range on every event. A
+        // preceding mapping may steal the middle of the motion even though
+        // the endpoint matched the later analog mapping.
+        let interrupted = gamepad.bindings[..position]
+            .iter()
+            .any(|prior| match prior.input {
+                Input::Axis { index, min, max } if index == axis.index => {
+                    min.min(max).max(low) < min.max(max).min(high)
+                }
+                _ => false,
+            });
+        let aliased = gamepad.bindings.iter().any(|other| {
+            !std::ptr::eq(binding, other)
+                && same_output(&binding.output, &other.output)
+                && binding.input != other.input
+                && !matches!(
+                    (&other.input, &binding.output, &other.output),
+                    (Input::Axis { index, .. },
+                     Output::Axis { min: a, max: b, .. },
+                     Output::Axis { min: c, max: d, .. })
+                        if *index == axis.index
+                            && a.min(b).max(c.min(d)) >= a.max(b).min(c.max(d))
+                )
+        });
+        // Opposite halves of one physical axis may legitimately share an
+        // output. At the inclusive release boundary SDL can select the
+        // earlier half, so check its actual rest value, not just this half.
+        let rest = DigitalInput::Axis {
+            index: axis.index,
+            released: axis.released,
+            pressed: axis.released,
+        };
+        let centered = gamepad
+            .bindings
+            .iter()
+            .find(|other| matches_press(&other.input, rest))
+            .is_none_or(|other| {
+                !same_output(&binding.output, &other.output)
+                    || mapped_axis_value(other, axis.released).is_some_and(|v| v.abs() <= 1)
+            });
+        if covers_motion
+            && !interrupted
+            && !aliased
+            && centered
+            && let Some(token) = mapped_token(binding, input)
+        {
+            return Ok(token);
+        }
+    }
+    raw_binding(gamepad, input, suppression)
+}
+
+/// SDL's axis interpolation uses float32 and truncates the scaled offset.
+/// Called only after the gamepad's ranges and the matching input are validated.
+fn mapped_axis_value(binding: &Binding, value: i16) -> Option<i32> {
+    let Input::Axis {
+        min: input_min,
+        max: input_max,
+        ..
+    } = binding.input
+    else {
+        return None;
+    };
+    let Output::Axis { min, max, .. } = binding.output else {
+        return None;
+    };
+    let value = i32::from(value);
+    if input_min == min && input_max == max {
+        return Some(value);
+    }
+    let progress = (value - input_min) as f32 / (input_max - input_min) as f32;
+    Some(min + (progress * (max - min) as f32) as i32)
 }
 
 /// Compose measured physical input, kernel correction, and the target runtime's
@@ -87,6 +224,14 @@ pub fn digital_binding(
             }
         }
     }
+    raw_binding(gamepad, input, suppression)
+}
+
+fn raw_binding(
+    gamepad: &ResolvedGamepad,
+    input: DigitalInput,
+    suppression: AxisSuppression,
+) -> Result<String> {
     // DuckStation drops whole mapped buttons/hats, not only the mapped hat
     // direction. Its installed axis-index quirk must also be modeled explicitly.
     let suppressed = gamepad
@@ -396,6 +541,294 @@ mod tests {
             .unwrap(),
             "Button0"
         );
+    }
+
+    #[test]
+    fn measured_analog_motion_composes_physical_correction_and_sdl_axis() {
+        use crate::linux_classic::{AxisCorrection, AxisEndpoints, ClassicMap};
+        let mut physical = ClassicMap::from_joydev(&[], &[0]).unwrap();
+        physical.axis_corrections.insert(
+            0,
+            AxisCorrection {
+                coefficients: [127, 127, 4227330, 4227330, 0, 0, 0, 0],
+                precision: 0,
+                kind: 1,
+            },
+        );
+        let p = ResolvedGamepad {
+            joystick_axes: 1,
+            joystick_buttons: 0,
+            joystick_hats: 0,
+            bindings: vec![Binding {
+                input: Input::Axis {
+                    index: 0,
+                    min: -32768,
+                    max: 32767,
+                },
+                output: Output::Axis {
+                    index: 1,
+                    min: 32767,
+                    max: -32768,
+                },
+            }],
+        };
+        for (pressed, expected) in [(0, "+LeftY"), (255, "-LeftY")] {
+            assert_eq!(
+                physical_analog_binding(
+                    &p,
+                    &physical,
+                    0x30000,
+                    AxisEndpoints {
+                        released: 127,
+                        pressed
+                    },
+                    AxisSuppression::VerifiedInputIndex
+                )
+                .unwrap(),
+                expected
+            );
+        }
+        physical.axis_corrections.clear();
+        assert!(
+            physical_analog_binding(
+                &p,
+                &physical,
+                0x30000,
+                AxisEndpoints {
+                    released: 127,
+                    pressed: 255
+                },
+                AxisSuppression::VerifiedInputIndex
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn analog_directions_preserve_axis_tokens_and_mapping_inversion() {
+        let p = pad(vec![Binding {
+            input: Input::Axis {
+                index: 0,
+                min: -32768,
+                max: 32767,
+            },
+            output: Output::Axis {
+                index: 0,
+                min: -32768,
+                max: 32767,
+            },
+        }]);
+        for (extent, expected) in [(-32768, "-LeftX"), (32767, "+LeftX")] {
+            assert_eq!(
+                analog_binding(
+                    &p,
+                    AnalogInput {
+                        index: 0,
+                        released: 0,
+                        extent
+                    },
+                    AxisSuppression::VerifiedInputIndex
+                )
+                .unwrap(),
+                expected
+            );
+        }
+        let inverse = pad(vec![Binding {
+            input: Input::Axis {
+                index: 0,
+                min: 32767,
+                max: -32768,
+            },
+            output: Output::Axis {
+                index: 1,
+                min: -32768,
+                max: 32767,
+            },
+        }]);
+        assert_eq!(
+            analog_binding(
+                &inverse,
+                AnalogInput {
+                    index: 0,
+                    released: 0,
+                    extent: 32767
+                },
+                AxisSuppression::VerifiedInputIndex
+            )
+            .unwrap(),
+            "-LeftY"
+        );
+        assert_eq!(
+            analog_binding(
+                &pad(vec![]),
+                AnalogInput {
+                    index: 3,
+                    released: 0,
+                    extent: -32768
+                },
+                AxisSuppression::VerifiedInputIndex
+            )
+            .unwrap(),
+            "-Axis3"
+        );
+    }
+
+    #[test]
+    fn analog_split_axis_halves_preserve_motion_and_require_a_neutral_boundary() {
+        let half = |input_min, input_max, output_min, output_max| Binding {
+            input: Input::Axis {
+                index: 0,
+                min: input_min,
+                max: input_max,
+            },
+            output: Output::Axis {
+                index: 0,
+                min: output_min,
+                max: output_max,
+            },
+        };
+        let positive = half(0, 32767, 0, 32767);
+        let p = pad(vec![half(-32768, 0, -32768, 0), positive.clone()]);
+        for (extent, expected) in [(-32768, "-LeftX"), (32767, "+LeftX")] {
+            assert_eq!(
+                analog_binding(
+                    &p,
+                    AnalogInput {
+                        index: 0,
+                        released: 0,
+                        extent
+                    },
+                    AxisSuppression::VerifiedInputIndex
+                )
+                .unwrap(),
+                expected
+            );
+        }
+        for negative in [
+            // Opposite motion cannot also drive the positive output half.
+            half(-32768, 0, 32767, 0),
+            // Disjoint output halves, but the earlier one is nonzero at rest.
+            half(-32768, 0, 0, -32768),
+        ] {
+            assert!(
+                analog_binding(
+                    &pad(vec![negative, positive.clone()]),
+                    AnalogInput {
+                        index: 0,
+                        released: 0,
+                        extent: 32767
+                    },
+                    AxisSuppression::VerifiedInputIndex
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn analog_rejects_button_outputs_shared_outputs_and_interrupted_motion() {
+        let axis = AnalogInput {
+            index: 0,
+            released: 0,
+            extent: 32767,
+        };
+        let digital = Binding {
+            input: Input::Axis {
+                index: 0,
+                min: -32768,
+                max: 32767,
+            },
+            output: Output::Button { index: 0 },
+        };
+        assert!(
+            analog_binding(
+                &pad(vec![digital]),
+                axis,
+                AxisSuppression::VerifiedInputIndex
+            )
+            .is_err()
+        );
+        let analog = Binding {
+            input: Input::Axis {
+                index: 0,
+                min: -32768,
+                max: 32767,
+            },
+            output: Output::Axis {
+                index: 0,
+                min: -32768,
+                max: 32767,
+            },
+        };
+        let middle = Binding {
+            input: Input::Axis {
+                index: 0,
+                min: 10000,
+                max: 20000,
+            },
+            output: Output::Button { index: 1 },
+        };
+        assert!(
+            analog_binding(
+                &pad(vec![middle, analog.clone()]),
+                axis,
+                AxisSuppression::VerifiedInputIndex
+            )
+            .is_err()
+        );
+        let alias = Binding {
+            input: Input::Button { index: 3 },
+            output: analog.output.clone(),
+        };
+        assert!(
+            analog_binding(
+                &pad(vec![analog.clone(), alias]),
+                axis,
+                AxisSuppression::VerifiedInputIndex
+            )
+            .is_err()
+        );
+        let half = Binding {
+            input: Input::Axis {
+                index: 0,
+                min: 100,
+                max: 32767,
+            },
+            output: analog.output,
+        };
+        assert!(
+            analog_binding(&pad(vec![half]), axis, AxisSuppression::VerifiedInputIndex).is_err()
+        );
+    }
+
+    #[test]
+    fn analog_physical_conversion_rejects_hats_and_buttons() {
+        use crate::linux_classic::{AxisCorrection, AxisEndpoints, ClassicMap};
+        let mut physical = ClassicMap::from_joydev(&[304], &[16, 17]).unwrap();
+        physical
+            .axis_corrections
+            .insert(16, AxisCorrection::default());
+        let p = ResolvedGamepad {
+            joystick_buttons: 1,
+            joystick_axes: 0,
+            joystick_hats: 1,
+            bindings: vec![],
+        };
+        for encoded in [0x10130, 0x30010] {
+            assert!(
+                physical_analog_binding(
+                    &p,
+                    &physical,
+                    encoded,
+                    AxisEndpoints {
+                        released: 0,
+                        pressed: 1
+                    },
+                    AxisSuppression::VerifiedInputIndex
+                )
+                .is_err()
+            );
+        }
     }
     #[test]
     fn c_button_on_axis_uses_mapped_axis_and_preserves_direction() {

@@ -239,7 +239,11 @@ impl Catalog {
             );
             if profile.transport == "duckstation-settings" {
                 ensure!(
-                    profile.core == "duckstation" && profile.target_layout == "playstation-digital",
+                    profile.core == "duckstation"
+                        && matches!(
+                            profile.target_layout.as_str(),
+                            "playstation-digital" | "dualshock"
+                        ),
                     "unreviewed DuckStation input mode"
                 );
             }
@@ -280,14 +284,38 @@ impl Catalog {
                     "retropad" => {
                         crate::settings::CONTROLLER_GAMEPAD_BUTTONS.contains(&output.as_str())
                     }
-                    "duckstation-settings" => [
-                        "Up", "Down", "Left", "Right", "Start", "Select", "Cross", "Circle",
-                        "Square", "Triangle", "L1", "R1", "L2", "R2",
-                    ]
-                    .contains(&output.as_str()),
+                    "duckstation-settings" => {
+                        [
+                            "Up", "Down", "Left", "Right", "Start", "Select", "Cross", "Circle",
+                            "Square", "Triangle", "L1", "R1", "L2", "R2",
+                        ]
+                        .contains(&output.as_str())
+                            || (profile.target_layout == "dualshock"
+                                && [
+                                    "L3", "R3", "LLeft", "LRight", "LUp", "LDown", "RLeft",
+                                    "RRight", "RUp", "RDown",
+                                ]
+                                .contains(&output.as_str()))
+                    }
                     _ => false,
                 };
                 ensure!(known, "unknown output control for this transport");
+                if profile.transport == "duckstation-settings" {
+                    let analog_output = [
+                        "LLeft", "LRight", "LUp", "LDown", "RLeft", "RRight", "RUp", "RDown",
+                    ]
+                    .contains(&output.as_str());
+                    ensure!(
+                        layout
+                            .controls
+                            .iter()
+                            .find(|c| c.id == *target)
+                            .unwrap()
+                            .analog
+                            == analog_output,
+                        "DuckStation control and output disagree on analog capability"
+                    );
+                }
                 ensure!(outputs.insert(output), "conflicting output controls");
             }
             for control in layout.controls.iter().filter(|control| !control.optional) {
@@ -600,6 +628,52 @@ mod tests {
                     .is_none()
             );
         }
+    }
+
+    #[test]
+    fn duckstation_analog_preview_respects_each_physical_layouts_capabilities() {
+        let profile = catalog()
+            .emulator_profiles
+            .iter()
+            .find(|p| p.id == "duckstation:analog-controller")
+            .unwrap();
+        assert_eq!(profile.bindings.len(), 24);
+        assert!(!crate::controller_launch::supports_profile(profile));
+        for source in ["dualshock", "xbox"] {
+            let plan = calibration(source).plan(&profile.id).unwrap();
+            assert!(!plan.automatic_launch_ready);
+            assert!(plan.rows.iter().all(|row| row.input.is_some()));
+            for (target, output) in [("stick_up", "LUp"), ("right_stick_right", "RRight")] {
+                let row = plan.rows.iter().find(|r| r.target_id == target).unwrap();
+                assert_eq!(row.output, output);
+                assert_eq!(row.physical_id.as_deref(), Some(target));
+                assert_eq!(row.input.as_ref().unwrap().kind, "axis");
+            }
+        }
+        for source in ["brawler64", "n64", "horizontal-four", "n30-turbo"] {
+            let plan = calibration(source).plan(&profile.id).unwrap();
+            for row in plan
+                .rows
+                .iter()
+                .filter(|r| r.target_id.starts_with("right_stick_"))
+            {
+                assert!(
+                    row.input.is_none(),
+                    "{source} cannot provide {}",
+                    row.target_id
+                );
+            }
+        }
+        let mut db = catalog().clone();
+        let profile = db
+            .emulator_profiles
+            .iter_mut()
+            .find(|p| p.id == "duckstation:analog-controller")
+            .unwrap();
+        // Both setting names exist, but swapping their physical roles is invalid.
+        profile.bindings.insert("stick_up".into(), "Cross".into());
+        profile.bindings.insert("b".into(), "LUp".into());
+        assert!(db.validate().is_err());
     }
 
     #[test]

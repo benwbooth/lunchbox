@@ -85,9 +85,17 @@ handles mapped buttons, signed/inverted axes, trigger ranges, cardinal hats,
 and available raw events. It rejects conflated outputs and unusable ranges.
 It preserves SDL binding order and requires an explicit raw-axis suppression
 contract, including the installed DuckStation revision's output-index quirk.
-The classic adapter supplies the physical-code lookup for that verified backend;
-other physical adapters, analog target controls, final player IDs, and launch
-settings remain. No automated DuckStation launch is enabled by this helper.
+The classic adapter supplies the physical-code lookup for that verified backend.
+`physical_analog_binding` additionally translates measured proportional axis
+directions through the kernel correction and SDL mapping. It rejects digital
+outputs, interrupted motion intervals, conflated output halves and non-neutral
+release boundaries; it never synthesizes analog movement from buttons or hats.
+The configuration helper can patch DigitalController or AnalogController gameplay
+inputs without changing the selected type or unrelated settings. Analog-mode
+toggle and motor bindings are preserved, not automatically reassigned.
+Other physical adapters, final launch-time player IDs, full isolation and actual
+gameplay verification remain. No automated DuckStation launch is enabled by this
+helper.
 
 ## Actual emulator startup oracle
 

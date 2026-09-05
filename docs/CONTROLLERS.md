@@ -43,6 +43,15 @@ diamond pads use the left/bottom pair, and N64-style pads can use six-button
 arrangements. The catalog distinguishes independent upper buttons from hardware
 turbo repeats. These rules do not assume device button numbering.
 
+Choose the layout by physical arrangement, not the USB-reported model or Xbox
+letters. A horizontal four-button pad has two rows of independent controls; it
+is not a diamond layout. An N30-style pad whose upper buttons only repeat the
+lower pair instead uses the hardware-turbo layout. Calibration records whichever
+button numbers the selected USB mode actually sends. Neither layout gains sticks
+or extra independent buttons when targeting a more complex system. The same
+capability checks apply to every source layout, including Brawler64 and modern
+dual-stick pads; Brawler64 is not a special input-numbering backend.
+
 **Apply saved calibrations at emulator launch** uses a temporary configuration
 for Linux RetroArch (native or Flatpak) with FCEUmm, Gambatte, Genesis Plus GX,
 Mupen64Plus-Next or Beetle PCE Fast. The PCE Fast adapter explicitly selects
@@ -71,8 +80,10 @@ two calibrated controllers are connected. Preview-only contracts stay preview-on
 
 The original PlayStation digital controller is now a selectable layout. The
 DuckStation digital-controller preview shows its own configuration keys instead
-of treating them as RetroPad outputs. This does **not** enable DuckStation automatic
-launch yet; see [DuckStation adapter requirements](DUCKSTATION_CONTROLLERS.md).
+of treating them as RetroPad outputs. Its analog-controller preview additionally
+maps proportional stick directions for capable pads, leaving missing sticks
+explicit for horizontal and N64-style layouts. This does **not** enable DuckStation
+automatic launch yet; see [DuckStation adapter requirements](DUCKSTATION_CONTROLLERS.md).
 
 Open Settings → Controllers. The live input check shows the device and the
 normalized control it reports. Known standard diamond devices are recognized;

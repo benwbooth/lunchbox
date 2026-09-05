@@ -361,14 +361,40 @@ impl LaunchConfig {
                 .eq_ignore_ascii_case("DigitalController"),
             "Digital bindings cannot replace the selected controller type"
         );
+        self.patch_inputs(pad, bindings, KEYS)
+    }
+
+    /// Gameplay bindings for the selected AnalogController. Keeps its type,
+    /// dead zones, sensitivity, analog-mode policy, toggle and motor routing.
+    /// Toggle/motor assignment is separate from calibrated gameplay inputs.
+    pub fn apply_analog(&mut self, pad: u8, bindings: &BTreeMap<String, String>) -> Result<()> {
+        const KEYS: &[&str] = &[
+            "Up", "Down", "Left", "Right", "Select", "Start", "Cross", "Circle", "Square",
+            "Triangle", "L1", "L2", "R1", "R2", "L3", "R3", "LLeft", "LRight", "LUp", "LDown",
+            "RLeft", "RRight", "RUp", "RDown",
+        ];
         ensure!(
-            bindings.keys().all(|key| KEYS.contains(&key.as_str())),
-            "Unknown digital controller binding"
+            self.controller_type(pad)?
+                .eq_ignore_ascii_case("AnalogController"),
+            "Analog bindings cannot replace the selected controller type"
+        );
+        self.patch_inputs(pad, bindings, KEYS)
+    }
+
+    fn patch_inputs(
+        &mut self,
+        pad: u8,
+        bindings: &BTreeMap<String, String>,
+        keys: &[&str],
+    ) -> Result<()> {
+        ensure!(
+            bindings.keys().all(|key| keys.contains(&key.as_str())),
+            "Unknown gameplay controller binding"
         );
         // Validate the entire change in memory before replacing the staged file.
         let path = self.input_path();
         let mut input = self.documents[&path].clone();
-        for key in KEYS {
+        for key in keys {
             input.set(
                 &format!("Pad{pad}"),
                 key,
@@ -736,5 +762,36 @@ mod tests {
                 first != "None"
             );
         }
+    }
+
+    #[test]
+    fn analog_patch_preserves_mode_and_non_gameplay_settings() {
+        let source = fixture(
+            "[Pad1]\nType=AnalogController\nLUp=old\nLUp=other\nAnalogDeadzone=0.12\nAnalogSensitivity=1.15\nForceAnalogOnReset=false\nAnalog=Keyboard/Tab\nLargeMotor=SDL-0/LargeMotor\n[Hotkeys]\nPause=Keyboard/P\n",
+        );
+        let mut staged = LaunchConfig::stage(source.path(), None).unwrap();
+        let bindings = BTreeMap::from([
+            ("LUp".into(), "SDL-2/-LeftY".into()),
+            ("Cross".into(), "SDL-2/A".into()),
+        ]);
+        staged.apply_analog(1, &bindings).unwrap();
+        let first = fs::read(staged.input_path()).unwrap();
+        staged.apply_analog(1, &bindings).unwrap();
+        assert_eq!(fs::read(staged.input_path()).unwrap(), first);
+        let input = &staged.documents[&staged.input_path()];
+        assert_eq!(input.get("Pad1", "LUp").unwrap(), Some("SDL-2/-LeftY"));
+        assert_eq!(input.get("Pad1", "RUp").unwrap(), Some(""));
+        for (key, value) in [
+            ("Type", "AnalogController"),
+            ("AnalogDeadzone", "0.12"),
+            ("AnalogSensitivity", "1.15"),
+            ("ForceAnalogOnReset", "false"),
+            ("Analog", "Keyboard/Tab"),
+            ("LargeMotor", "SDL-0/LargeMotor"),
+        ] {
+            assert_eq!(input.get("Pad1", key).unwrap(), Some(value));
+        }
+        assert!(staged.apply_analog(2, &BTreeMap::new()).is_err());
+        staged.verify_originals_unchanged().unwrap();
     }
 }
