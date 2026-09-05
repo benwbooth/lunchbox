@@ -6,6 +6,8 @@ TextField {
 
     signal clearRequested()
     property bool searchIconVisible: false
+    // The field's background (or its enclosing search box) owns the focus border.
+    readonly property bool providesFocusIndicator: true
 
     rightPadding: text.length > 0 ? 40 : 12
     selectByMouse: true

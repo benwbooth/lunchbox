@@ -231,15 +231,16 @@ Item {
 
     Rectangle {
         id: focusRing
-        parent: router.overlayItem || router.applicationWindow.contentItem
-        readonly property var targetItem: router.applicationWindow.activeFocusItem
+        objectName: "desktopGamepadFocusRing"
+        readonly property var targetItem: router.control(router.applicationWindow.activeFocusItem)
+        // Follow the actual control's transforms and clipping, not a detached
+        // snapshot of its window position. Already-decorated controls opt out.
+        parent: targetItem || router.applicationWindow.contentItem
         visible: router.enabled && router.applicationWindow.active && targetItem
                  && targetItem !== router.applicationWindow.contentItem && targetItem.visible
+                 && targetItem.providesFocusIndicator !== true
                  && router.gamepad.connected_count > 0
-        x: targetItem ? targetItem.mapToItem(parent, 0, 0).x - 2 : 0
-        y: targetItem ? targetItem.mapToItem(parent, 0, 0).y - 2 : 0
-        width: targetItem ? targetItem.width + 4 : 0
-        height: targetItem ? targetItem.height + 4 : 0
+        anchors.fill: parent
         radius: 6
         color: "transparent"
         border.color: "#ffb454"

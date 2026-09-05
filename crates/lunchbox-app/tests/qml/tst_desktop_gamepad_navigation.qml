@@ -38,6 +38,7 @@ TestCase {
         property int columnCount: 4
         delegate: Item {
             required property int index
+            readonly property bool providesFocusIndicator: true
             width: 90; height: 70
             activeFocusOnTab: true
             onActiveFocusChanged: if (activeFocus) host.activeFocusItem = this
@@ -69,6 +70,11 @@ TestCase {
     }
     Button { id: button; parent: contents; y: 400; text: "Play"; onClicked: testCase.clicked++ }
     CheckBox { id: checkbox; parent: contents; x: 120; y: 400 }
+    Lunchbox.ClearableSearchField {
+        id: searchField
+        parent: contents
+        x: 10; y: 500; width: 200; height: 40
+    }
     ComboBox {
         id: combo
         parent: contents
@@ -105,6 +111,38 @@ TestCase {
         router.handle("down"); compare(grid.currentIndex, 5)
         router.handle("accept"); compare(testCase.opened, 1)
     }
+    function test_existing_focus_borders_suppress_fallback_outline() {
+        host.activeFocusItem = grid.itemAtIndex(0)
+        const ring = findChild(host.activeFocusItem, "desktopGamepadFocusRing")
+        verify(ring !== null)
+        verify(!ring.visible)
+        host.activeFocusItem = searchField
+        compare(ring.parent, searchField)
+        verify(!ring.visible)
+        host.activeFocusItem = button
+        verify(ring.visible)
+        compare(ring.parent, button)
+        compare(ring.x, 0); compare(ring.y, 0)
+        compare(ring.width, button.width); compare(ring.height, button.height)
+        const originalX = button.x
+        button.x += 50
+        compare(ring.x, 0)
+        compare(ring.mapToItem(contents, 0, 0).x, button.x)
+        button.x = originalX
+    }
+    function test_fallback_outline_survives_focused_delegate_removal() {
+        host.activeFocusItem = grid.itemAtIndex(0)
+        grid.model = 0
+        grid.forceLayout()
+        wait(0)
+        host.activeFocusItem = button
+        const ring = findChild(button, "desktopGamepadFocusRing")
+        verify(ring !== null)
+        verify(ring.visible)
+        grid.model = 100
+        grid.forceLayout()
+        wait(0)
+    }
     function test_left_crosses_to_platform_not_previous_grid_row() {
         router.focusViewIndex(grid, 4)
         router.handle("left")
@@ -132,7 +170,7 @@ TestCase {
         grid.cacheBuffer = 1000
         grid.forceLayout()
         wait(0)
-        verify(grid.itemAtIndex(20) !== null)
+        tryVerify(() => grid.itemAtIndex(20) !== null)
         compare(router.visibleRect(grid.itemAtIndex(20)), null)
         verify(router.candidates(null).indexOf(grid.itemAtIndex(20)) < 0)
         grid.cacheBuffer = 320

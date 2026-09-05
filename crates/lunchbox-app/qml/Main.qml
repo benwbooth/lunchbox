@@ -9465,6 +9465,7 @@ ApplicationWindow {
             height: grid.cellHeight
             z: cardHover.hovered || previewRequested ? 100 : 0
             activeFocusOnTab: true
+            readonly property bool providesFocusIndicator: true
 
             TapHandler {
                 onTapped: {
@@ -10206,6 +10207,7 @@ ApplicationWindow {
             color: row.activeFocus ? "#263142"
                    : rowHover.hovered ? "#202a39"
                    : index % 2 === 0 ? "#141b25" : "#111821"
+            readonly property bool providesFocusIndicator: true
             border.color: row.activeFocus || root.selectedGameId === row.gameId
                           ? root.accent : root.line
             border.width: row.activeFocus || root.selectedGameId === row.gameId ? 2 : 0
