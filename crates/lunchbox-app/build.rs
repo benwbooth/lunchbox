@@ -57,6 +57,8 @@ fn main() {
             .qml_files([
                 "qml/AcceleratedWheelHandler.qml",
                 "qml/WindowPlacement.qml",
+                "qml/StartupPresentation.qml",
+                "qml/ProbeArguments.qml",
                 "qml/DesktopGamepadNavigation.qml",
                 "qml/ControllerAutomaticSetup.qml",
                 "qml/ControllerInputFeedback.qml",

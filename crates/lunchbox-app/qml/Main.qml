@@ -9,7 +9,9 @@ import Lunchbox
 
 ApplicationWindow {
     id: root
-    visible: true
+    // Probe windows retain their explicit test lifecycle. Normal startup is
+    // revealed only by the one-shot presentation barrier below.
+    visible: root.automatedProbeRun
     width: couchModeUiProbe || controllerProfileUiProbe || launchProfileUiProbe
            || launchProfileManagerUiProbe || steamGridDbUiProbe || igdbUiProbe
            || webArtworkUiProbe || onboardingUiProbe
@@ -63,6 +65,15 @@ ApplicationWindow {
     property bool librarySessionFilterApplied: false
     property bool librarySessionRestored: false
     property bool librarySessionFullRestored: false
+    property bool startupInitializationRequested: false
+    property bool startupFirstFrameReported: false
+    readonly property bool startupPresented: root.automatedProbeRun || startupPresentation.presented
+    readonly property bool startupDataReady: root.startupInitializationRequested
+                                            && !library.loading && !library.filtering
+                                            && !filterDelay.running && !appSettings.busy
+                                            && (!library.ready || (root.librarySessionFullRestored
+                                                                  && !library.media_loading
+                                                                  && !gameDetails.loading))
     property string availability: ""
     property string selectedCollectionId: ""
     property string selectedCollectionName: ""
@@ -439,14 +450,8 @@ ApplicationWindow {
     property bool couchDownloadProbeArmed: false
     readonly property string metadataProbeTitle: "Super Mario Bros. — Living Room Edition"
     readonly property string metadataProbeCustomSearch: "8BitDo Ultimate"
-    readonly property bool automatedProbeRun: {
-        for (let index = 0; index < Qt.application.arguments.length; ++index) {
-            const argument = Qt.application.arguments[index]
-            if (argument.indexOf("probe") >= 0)
-                return true
-        }
-        return false
-    }
+    ProbeArguments { id: probeArguments }
+    readonly property bool automatedProbeRun: probeArguments.isProbeRun(Qt.application.arguments)
 
     palette.window: "#0c1119"
     palette.windowText: ink
@@ -460,7 +465,7 @@ ApplicationWindow {
     palette.highlightedText: "#10141c"
 
     onClosing: close => {
-        if (!root.automatedProbeRun && root.librarySessionFullRestored)
+        if (!root.automatedProbeRun && root.librarySessionFullRestored && root.startupPresented)
             root.saveLibrarySession()
         if (root.couchLaunchUiProbe) {
             close.accepted = true
@@ -501,6 +506,9 @@ ApplicationWindow {
         if (!view)
             return false
 
+        contentLayout.ensurePolished()
+        view.forceLayout()
+
         const savedPosition = root.gridMode
                               ? library.session_grid_content_y
                               : library.session_list_content_y
@@ -534,8 +542,97 @@ ApplicationWindow {
     }
 
     WindowPlacement {
+        id: windowPlacement
         window: root
         enabled: !root.automatedProbeRun
+        deferPresentation: !root.automatedProbeRun
+    }
+
+    function prepareStartupPresentation() {
+        // Hidden windows have no render loop to polish layouts for us.
+        // ApplicationWindow can retain its previous content size until the
+        // native resize event is delivered. This shell has no header/footer
+        // slots; its custom chrome belongs inside this full-window content.
+        root.contentItem.width = root.width
+        root.contentItem.height = root.height
+        root.contentItem.ensurePolished()
+        contentLayout.ensurePolished()
+        if (!library.ready)
+            return true // The completed catalog-error screen must be reachable.
+        const view = gameViewLoader.item
+        if (library.filtered_count > 0) {
+            if (!view || view.width <= 0 || view.height <= 0)
+                return false
+            root.restoreLibrarySession()
+            view.forceLayout()
+            if (!view.startupArtworkReady())
+                return false
+        }
+        root.revealSelectedPlatform()
+        if (gameDetails.panel_open && !root.selectedBox3d
+                && detailImage.status === Image.Loading)
+            return false
+        // Onboarding is resolved while hidden, not opened over the first frame.
+        if (appSettings.initialized && root.shouldShowOnboarding() && !onboardingPage.visible)
+            onboardingPage.open()
+        return !library.filtering && !filterDelay.running && !gameDetails.loading
+    }
+
+    StartupPresentation {
+        id: startupPresentation
+        enabled: !root.automatedProbeRun
+        ready: root.startupDataReady && windowPlacement.restored
+        prepare: root.prepareStartupPresentation
+        onPresent: {
+            windowPlacement.showRestored()
+            console.log("LUNCHBOX_WINDOW_PRESENTED elapsed_ms=" + (Date.now() - root.startupCreatedAt)
+                        + " platform=" + root.selectedPlatform + " game=" + root.selectedGameId
+                        + " view=" + library.view_mode
+                        + " content_y=" + (gameViewLoader.item ? gameViewLoader.item.contentY : 0)
+                        + " geometry=" + root.x + "," + root.y + "," + root.width + "," + root.height)
+        }
+    }
+    readonly property double startupCreatedAt: Date.now()
+    function settleStartupResize() {
+        // A compositor may negotiate a different maximized client rectangle at
+        // map time. Reanchor synchronously before that rectangle's first frame.
+        if (!root.automatedProbeRun && root.startupPresented
+                && !root.startupFirstFrameReported && root.librarySessionFullRestored) {
+            root.contentItem.width = root.width
+            root.contentItem.height = root.height
+            root.contentItem.ensurePolished()
+            contentLayout.ensurePolished()
+            root.restoreLibrarySession()
+        }
+    }
+    onWidthChanged: root.settleStartupResize()
+    onHeightChanged: root.settleStartupResize()
+    Timer {
+        interval: 10000
+        running: !root.automatedProbeRun && !root.startupPresented
+        onTriggered: console.log("LUNCHBOX_STARTUP_WAIT data_ready=" + root.startupDataReady
+                                 + " settings_busy=" + appSettings.busy
+                                 + " media_loading=" + library.media_loading
+                                 + " details_loading=" + gameDetails.loading
+                                 + " restored=" + root.librarySessionFullRestored
+                                 + " view=" + (gameViewLoader.item
+                                     ? gameViewLoader.item.width + "x" + gameViewLoader.item.height
+                                       + " children=" + gameViewLoader.item.contentItem.children.length
+                                       + " artwork_ready=" + gameViewLoader.item.startupArtworkReady()
+                                     : "none")
+                                 + " detail_image=" + detailImage.status)
+    }
+    onFrameSwapped: {
+        if (root.startupPresented && !root.automatedProbeRun && !root.startupFirstFrameReported) {
+            root.startupFirstFrameReported = true
+            console.log("LUNCHBOX_FIRST_FRAME elapsed_ms=" + (Date.now() - root.startupCreatedAt)
+                        + " full_catalog=" + !library.loading
+                        + " restored=" + root.librarySessionFullRestored
+                        + " platform=" + root.selectedPlatform + " game=" + root.selectedGameId
+                        + " view=" + library.view_mode
+                        + " content_y=" + (gameViewLoader.item ? gameViewLoader.item.contentY : 0)
+                        + " geometry=" + root.x + "," + root.y + "," + root.width + "," + root.height)
+        }
     }
 
     Settings {
@@ -544,7 +641,7 @@ ApplicationWindow {
     }
 
     function scheduleSessionSave() {
-        if (root.librarySessionFullRestored && !root.automatedProbeRun
+        if (root.librarySessionFullRestored && root.startupPresented && !root.automatedProbeRun
                 && !library.filtering)
             librarySessionSaveTimer.restart()
     }
@@ -6990,6 +7087,7 @@ ApplicationWindow {
         onTriggered: {
             library.initialize()
             appSettings.initialize()
+            root.startupInitializationRequested = true
             // Credential discovery is independent of AppSettings. Starting it
             // here keeps the automatic-video queue independent of a later
             // settings signal that may already have fired.
@@ -7429,9 +7527,11 @@ ApplicationWindow {
         repeat: true
         running: library.ready
                  && library.session_state_ready
+                 && !library.loading
                  && !root.librarySessionFullRestored
                  && !root.automatedProbeRun
         onTriggered: {
+            contentLayout.ensurePolished()
             if (!root.librarySessionFilterApplied) {
                 root.selectedPlatform = library.session_platform
                 root.selectedCollectionId = ""
@@ -9079,6 +9179,19 @@ ApplicationWindow {
 
     component GameGrid: GridView {
         id: grid
+        function startupArtworkReady() {
+            let visibleTiles = 0
+            for (const item of contentItem.children) {
+                if (item.startupArtworkPending === undefined
+                        || item.y + item.height <= contentY - cacheBuffer
+                        || item.y >= contentY + height + cacheBuffer)
+                    continue
+                ++visibleTiles
+                if (item.startupArtworkPending)
+                    return false
+            }
+            return count === 0 || visibleTiles > 0
+        }
         reuseItems: true
         clip: true
         cacheBuffer: height
@@ -9223,6 +9336,7 @@ ApplicationWindow {
             readonly property real previewCardHeight: cardGeometry.cardHeight
             readonly property real previewCardMaximumExpansion: cardGeometry.maximumExpansion
             readonly property int previewArtworkStatus: coverImage.status
+            readonly property bool startupArtworkPending: coverImage.status === Image.Loading
             readonly property real previewArtworkOpacity: coverImage.opacity
             readonly property real previewArtworkDecodeWidth: coverImage.sourceSize.width
             readonly property real previewArtworkDecodeHeight: coverImage.sourceSize.height
@@ -9817,6 +9931,19 @@ ApplicationWindow {
 
     component GameList: ListView {
         id: list
+        function startupArtworkReady() {
+            let visibleRows = 0
+            for (const item of contentItem.children) {
+                if (item.startupArtworkPending === undefined
+                        || item.y + item.height <= contentY - cacheBuffer
+                        || item.y >= contentY + height + cacheBuffer)
+                    continue
+                ++visibleRows
+                if (item.startupArtworkPending)
+                    return false
+            }
+            return count === 0 || visibleRows > 0
+        }
         reuseItems: true
         clip: true
         cacheBuffer: height
@@ -10024,6 +10151,7 @@ ApplicationWindow {
 
         delegate: Rectangle {
             id: row
+            readonly property bool startupArtworkPending: listImage.status === Image.Loading
             required property int index
             required property string gameId
             required property string gameTitle
@@ -10787,6 +10915,7 @@ ApplicationWindow {
         clip: true
 
         ColumnLayout {
+            id: contentLayout
             anchors.fill: parent
             anchors.leftMargin: 27
             anchors.rightMargin: 27
@@ -11217,7 +11346,7 @@ ApplicationWindow {
         border.color: root.line
 
         Behavior on width {
-            enabled: root.librarySessionFullRestored && !detailsResizeMouse.pressed
+            enabled: (root.automatedProbeRun || root.startupFirstFrameReported) && !detailsResizeMouse.pressed
             NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
         }
 
@@ -11427,6 +11556,7 @@ ApplicationWindow {
                     }
                     Image {
                         id: detailImage
+                        retainWhileLoading: true
                         anchors.fill: parent
                         source: root.selectedFanartUrl.toString().length > 0
                                 ? root.selectedFanartUrl : root.selectedArtworkUrl
@@ -11440,7 +11570,10 @@ ApplicationWindow {
                         sourceSize.height: Math.max(1, Math.round(height * 2))
                         opacity: status === Image.Ready ? 1 : 0
                         visible: !root.selectedBox3d
-                        Behavior on opacity { NumberAnimation { duration: 150 } }
+                        Behavior on opacity {
+                            enabled: root.automatedProbeRun || root.startupFirstFrameReported
+                            NumberAnimation { duration: 150 }
+                        }
 
                         MouseArea {
                             anchors.fill: parent

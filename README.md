@@ -17,13 +17,16 @@ nix develop
 cargo run -p lunchbox-app -- --database build/lunchbox.db
 ```
 
-The window paints before full-catalog work begins. A first worker publication
-makes 240 real games, complete platform counts, and installed/Minerva coverage
-interactive; the complete catalog and search index replace that preview in the
-background without resetting navigation. SQLite loading and collection
-filtering run on worker threads, while virtualized Qt views consume a native
-`QAbstractListModel`. Use `--startup-probe` to measure shell construction without
-waiting for database loading.
+Normal startup prepares the window while hidden, then reveals the restored
+library view once the full catalog, saved filters, selection, scroll position,
+layout, and visible cached/indexed artwork decoding have settled. Network artwork
+enrichment can continue afterward. Saved window placement is
+applied before presentation, including starting maximized. There is no fixed
+splash delay; an empty library or completed catalog error can also be shown.
+SQLite loading and collection filtering run on worker threads, while virtualized
+Qt views consume a native `QAbstractListModel`. Later reloads keep the window
+visible. Use `--startup-probe` to measure shell construction without waiting for
+database loading; automated probes retain their separate presentation lifecycle.
 
 The platform sidebar searches names and familiar aliases such as NES, SNES,
 PS2, and MAME while showing the live match count. Drag its right edge to resize
