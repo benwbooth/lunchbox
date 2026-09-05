@@ -16,6 +16,7 @@ TestCase {
     property int activated: -1
 
     Item { id: contents; anchors.fill: parent }
+    Item { id: windowFocusContainer; parent: contents; anchors.fill: parent }
     QtObject {
         id: host
         property bool active: true
@@ -129,6 +130,9 @@ TestCase {
         compare(ring.x, 0)
         compare(ring.mapToItem(contents, 0, 0).x, button.x)
         button.x = originalX
+        host.activeFocusItem = windowFocusContainer
+        compare(ring.parent, windowFocusContainer)
+        verify(!ring.visible)
     }
     function test_fallback_outline_survives_focused_delegate_removal() {
         host.activeFocusItem = grid.itemAtIndex(0)

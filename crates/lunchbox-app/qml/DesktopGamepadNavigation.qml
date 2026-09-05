@@ -238,6 +238,7 @@ Item {
         parent: targetItem || router.applicationWindow.contentItem
         visible: router.enabled && router.applicationWindow.active && targetItem
                  && targetItem !== router.applicationWindow.contentItem && targetItem.visible
+                 && targetItem.activeFocusOnTab
                  && targetItem.providesFocusIndicator !== true
                  && router.gamepad.connected_count > 0
         anchors.fill: parent
