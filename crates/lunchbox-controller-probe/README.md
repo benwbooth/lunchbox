@@ -1,5 +1,9 @@
 # Target-runtime SDL controller probe
 
+The separate [libretro input diagnostic](LIBRETRO_INPUT.md) tests a real core's
+input interpretation using an original diagnostic program. It does not replace
+this SDL inventory tool; the existing default executable remains unchanged.
+
 This small Rust helper dynamically loads an explicitly supplied, trusted SDL3
 library and emits a JSON inventory. Run it as its own process on the main thread,
 inside the emulator's runtime when that runtime differs from the host (Flatpak,

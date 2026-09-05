@@ -1,5 +1,6 @@
 [package]
 name = "lunchbox-controller-probe"
+default-run = "lunchbox-controller-probe"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

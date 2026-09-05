@@ -14,6 +14,7 @@ const SUBSYSTEMS: u32 = 0x00000200 | 0x00002000; // SDL_INIT_JOYSTICK | SDL_INIT
 pub mod bindings;
 pub mod duckstation;
 pub mod duckstation_config;
+pub mod libretro_input;
 pub mod linux_classic;
 pub mod players;
 

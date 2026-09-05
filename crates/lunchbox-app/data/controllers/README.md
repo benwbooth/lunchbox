@@ -103,6 +103,9 @@ clears unmapped turbo and solar-sensor inputs. Sensors, cartridge-specific
 controls and physical rumble still need their own capabilities and adapters.
 This is source-checked standard-input composition, not a claim of physical
 gameplay or all-cartridge-feature verification.
+The [real-core diagnostic](../../../lunchbox-controller-probe/LIBRETRO_INPUT.md)
+also verifies the frontend-to-emulated-hardware segment for the pinned mGBA core,
+using an original program; it does not yet verify the OS/RetroArch input layers.
 
 ### SwanStation mode-aware adapter (in progress)
 
