@@ -75,6 +75,18 @@ Other data-root-relative files and persistent emulator databases still require
 an audit before enabling production isolation; a no-game startup does not prove
 all user state is preserved through gameplay.
 
+The pinned-source data-root audit found specific remaining state to preserve:
+`playtime.dat` and `custom_properties.ini` in `core/game_list.cpp`, memory-scanner
+files in `watches/`, and a relative `UI/GameListBackgroundPath`. The playtime file
+uses in-place locked updates, whereas custom properties use atomic replacement
+through `INISettingsInterface::Save`; simply symlinking both files is not a
+write-preserving solution. Data-root logs, crash output, shader/CPU dumps and
+updater staging also need explicit destination policies. Achievement databases
+and game-list caches use the rebased Cache folder. The private-root helper does
+not yet handle these remaining direct-root state paths, so it remains unsuitable
+for production game launches. Source inspection covered `src/` at `0a53bc47c`,
+not just the global settings definitions; no upstream implementation was copied.
+
 ## Implementation requirements
 
 The [target-runtime SDL probe](../crates/lunchbox-controller-probe/README.md) now

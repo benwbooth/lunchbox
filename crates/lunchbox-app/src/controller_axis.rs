@@ -34,6 +34,14 @@ impl AxisMeasurement {
     pub fn direction(&self) -> i8 {
         if self.pressed > self.released { 1 } else { -1 }
     }
+
+    fn matches_bounds(&self, current: AxisInfo) -> bool {
+        self.minimum == current.minimum
+            && self.maximum == current.maximum
+            && self.flat == current.flat
+            && self.fuzz == current.fuzz
+            && self.resolution == current.resolution
+    }
 }
 
 // Linux input_absinfo ABI: six signed 32-bit values on both 32/64-bit hosts.
@@ -204,6 +212,36 @@ fn read_info(file: &std::fs::File, code: u16) -> Result<AxisInfo> {
     Ok(info)
 }
 
+/// Revalidate captured gestures against the current physical device mode.
+/// The caller must establish this event node belongs to the selected joystick.
+/// Current position is deliberately not compared with recorded rest: the user
+/// may be holding a control while launching. No calibration ioctls are written.
+#[cfg(target_os = "linux")]
+pub fn validate_recorded_axes<'a>(
+    path: &std::path::Path,
+    measurements: impl IntoIterator<Item = (u32, &'a AxisMeasurement)>,
+) -> Result<()> {
+    let file = std::fs::File::open(path)?;
+    for (encoded, measured) in measurements {
+        ensure!(
+            encoded >> 16 == 3 && encoded & 0xffff < 64,
+            "Invalid physical axis code"
+        );
+        measured.validate()?;
+        let current = read_info(&file, encoded as u16)?;
+        ensure!(
+            measured.matches_bounds(current),
+            "Controller axis {} changed since calibration; check its USB mode and recalibrate",
+            encoded & 0xffff
+        );
+        ensure!(
+            (current.minimum..=current.maximum).contains(&current.value),
+            "Controller axis is outside its reported range"
+        );
+    }
+    Ok(())
+}
+
 /// Read-only diagnostic evidence from the same kernel ABI used by capture.
 #[cfg(target_os = "linux")]
 pub fn probe(path: &std::path::Path, code: u8) -> Result<serde_json::Value> {
@@ -226,6 +264,85 @@ mod tests {
             maximum: 32767,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn launch_bounds_check_detects_mode_changes_without_requiring_released_controls() {
+        let measured = AxisMeasurement {
+            minimum: -32768,
+            maximum: 32767,
+            flat: 128,
+            fuzz: 4,
+            resolution: 1,
+            released: 0,
+            pressed: 32767,
+        };
+        let baseline = AxisInfo {
+            value: -24000,
+            minimum: measured.minimum,
+            maximum: measured.maximum,
+            flat: measured.flat,
+            fuzz: measured.fuzz,
+            resolution: measured.resolution,
+        };
+        assert!(measured.matches_bounds(baseline));
+        for current in [
+            AxisInfo {
+                minimum: 0,
+                ..baseline
+            },
+            AxisInfo {
+                maximum: 255,
+                ..baseline
+            },
+            AxisInfo {
+                flat: 0,
+                ..baseline
+            },
+            AxisInfo {
+                fuzz: 0,
+                ..baseline
+            },
+            AxisInfo {
+                resolution: 0,
+                ..baseline
+            },
+        ] {
+            assert!(!measured.matches_bounds(current));
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    #[ignore = "Read-only hardware check: set LUNCHBOX_CONTROLLER_TEST_EVENT to an evdev gamepad node"]
+    fn live_axis_bounds_accept_current_mode_and_reject_changed_calibration() {
+        let path = std::path::PathBuf::from(
+            std::env::var_os("LUNCHBOX_CONTROLLER_TEST_EVENT").expect("Set the exact event node"),
+        );
+        let info = read_info(&std::fs::File::open(&path).unwrap(), 0).unwrap();
+        // Synthetic endpoints exercise validation only: never save this as a
+        // user's gesture or claim that hardware motion was physically tested.
+        let measured = AxisMeasurement {
+            minimum: info.minimum,
+            maximum: info.maximum,
+            flat: info.flat,
+            fuzz: info.fuzz,
+            resolution: info.resolution,
+            released: info.minimum,
+            pressed: info.maximum,
+        };
+        validate_recorded_axes(&path, [(0x30000, &measured)]).unwrap();
+        let changed = AxisMeasurement {
+            maximum: measured.maximum.checked_add(1).unwrap(),
+            ..measured.clone()
+        };
+        assert!(
+            validate_recorded_axes(&path, [(0x30000, &changed)])
+                .unwrap_err()
+                .to_string()
+                .contains("changed since calibration")
+        );
+        validate_recorded_axes(&path, [(0x30000, &measured)]).unwrap();
     }
 
     #[test]

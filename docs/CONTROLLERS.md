@@ -31,6 +31,17 @@ measurements still load; future SDL range-sensitive adapters must not invent
 missing measurements. Emulator-specific axis normalization and standalone launch
 integration remain separate work.
 
+Before a calibrated RetroArch launch, measured axes used by the selected core
+are checked against the connected device's current minimum, maximum, flat, fuzz
+and resolution. The event node must resolve to the same kernel input device as
+the selected joystick; the first event node or a matching product name is not
+sufficient. Changed ranges ask for a USB-mode check/recalibration instead of
+applying stale measurements. Joystick numbering and device identity are checked
+again after sampling. Holding a button or stick during launch does not itself
+invalidate calibration. This is a preparation-time check, not hotplug protection
+throughout gameplay; old calibrations without measured ranges still lack that
+specific check.
+
 Runtime check on 2026-09-05: `--controller-numbering-probe` successfully read
 all eight reported evdev axes on each of the three connected gamepad interfaces
 (`/dev/input/js3`, `js4`, `js5`), including stick ranges, 0..255 triggers and
@@ -155,3 +166,15 @@ explicit game overrides, per-device N64/Sega profiles, C-button YAML generation,
 desktop grid navigation, buttons/checkboxes, combo-box selection, popup back
 handling, and inactive-window suppression. Physical-device end-to-end testing is
 separate from those deterministic tests.
+
+A read-only hardware check for launch-time axis-range validation is available as
+an ignored Rust test. Set `LUNCHBOX_CONTROLLER_TEST_EVENT` to the exact connected
+gamepad event node and run `cargo test -p lunchbox-app --lib
+controller_axis::tests::live_axis_bounds_accept_current_mode_and_reject_changed_calibration
+-- --ignored` in the development shell. It accepts the current bounds and rejects
+an altered bounds record without saving calibration or sending input. Its
+synthetic endpoints test the validator only, not physical movement or gameplay.
+On 2026-09-05 it passed on `/dev/input/event259` and `/dev/input/event264`,
+whose kernel identities matched `/dev/input/js4` and `/dev/input/js5` respectively.
+The numbering probe also confirmed all eight axes on each of the three connected
+gamepad interfaces using the exact event-node selection.

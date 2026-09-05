@@ -158,11 +158,90 @@ fn write_core_options(
 }
 
 /// Read-only runtime numbering, independent of the labels printed on a pad.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct JoydevMap {
     pub index: usize,
     pub buttons: Vec<u16>,
     pub axes: Vec<u8>,
+}
+
+#[cfg(target_os = "linux")]
+fn measured_event_path<'a>(
+    joystick: &Path,
+    events: &'a [std::path::PathBuf],
+    sys_input: &Path,
+) -> Result<(&'a Path, std::path::PathBuf)> {
+    let identity = |path: &Path, prefix: &str| -> Result<std::path::PathBuf> {
+        ensure!(
+            path.parent() == Some(Path::new("/dev/input")),
+            "Expected a physical input node"
+        );
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .context("Input node name is not UTF-8")?;
+        ensure!(
+            name.strip_prefix(prefix)
+                .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())),
+            "Unexpected input node name"
+        );
+        Ok(sys_input.join(name).join("device").canonicalize()?)
+    };
+    let expected = identity(joystick, "js")?;
+    let mut selected = None;
+    for event in events {
+        if identity(event, "event")? == expected {
+            ensure!(
+                selected.is_none(),
+                "Ambiguous physical event node for calibrated controller"
+            );
+            selected = Some(event.as_path());
+        }
+    }
+    Ok((
+        selected
+            .context("No exact evdev node for the selected joystick; reconnect the controller")?,
+        expected,
+    ))
+}
+
+/// The same physical input mode that produced the gesture must still be present
+/// when its per-launch mapping is written. Older button-number calibrations stay
+/// readable; missing axis measurements are never fabricated for them.
+fn validated_numbering(
+    calibration: &Calibration,
+    profile: &EmulatorProfile,
+    device: &ControllerDevice,
+) -> Result<JoydevMap> {
+    let plan = calibration.plan(&profile.id)?;
+    let numbering = JoydevMap::read(&device.device_path)?;
+    let measurements = plan
+        .rows
+        .iter()
+        .filter_map(|row| {
+            let input = row.input.as_ref()?;
+            Some((input.native.as_ref()?.code, input.axis.as_ref()?))
+        })
+        .collect::<Vec<_>>();
+    if measurements.is_empty() {
+        return Ok(numbering);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let sys_input = Path::new("/sys/class/input");
+        let (event, identity) =
+            measured_event_path(&device.device_path, &device.event_paths, sys_input)?;
+        crate::controller_axis::validate_recorded_axes(event, measurements)?;
+        ensure!(
+            JoydevMap::read(&device.device_path)? == numbering
+                && measured_event_path(&device.device_path, &device.event_paths, sys_input)?.1
+                    == identity,
+            "Controller changed while preparing its mapping; try launching again"
+        );
+        Ok(numbering)
+    }
+    #[cfg(not(target_os = "linux"))]
+    bail!("Physical axis validation requires the recorded Linux input backend")
 }
 
 #[cfg(target_os = "linux")]
@@ -188,17 +267,18 @@ pub fn numbering_probe() -> Result<()> {
     for device in crate::controllers::list_local_controllers(&mut warnings) {
         let numbering = JoydevMap::read(&device.device_path)?;
         #[cfg(target_os = "linux")]
-        let physical_axes = device
-            .event_paths
-            .first()
-            .map(|path| {
-                numbering
-                    .axes
-                    .iter()
-                    .map(|code| crate::controller_axis::probe(path, *code))
-                    .collect::<Result<Vec<_>>>()
-            })
-            .transpose()?;
+        let physical_axes = {
+            let (event, _) = measured_event_path(
+                &device.device_path,
+                &device.event_paths,
+                Path::new("/sys/class/input"),
+            )?;
+            numbering
+                .axes
+                .iter()
+                .map(|code| crate::controller_axis::probe(event, *code))
+                .collect::<Result<Vec<_>>>()?
+        };
         #[cfg(not(target_os = "linux"))]
         let physical_axes: Option<Vec<serde_json::Value>> = None;
         println!(
@@ -527,13 +607,9 @@ pub fn prepare(
         "# Lunchbox per-launch physical calibration. User config is never rewritten.\ninput_joypad_driver = \"linuxraw\"\ninput_autodetect_enable = \"false\"\nauto_remaps_enable = \"false\"\nauto_overrides_enable = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\n",
     );
     for (index, device) in devices.iter().enumerate() {
-        let numbering = JoydevMap::read(&device.device_path)?;
-        config.push_str(&player_config(
-            &mapping.calibrations[&device.stable_id],
-            profile,
-            &numbering,
-            index + 1,
-        )?);
+        let calibration = &mapping.calibrations[&device.stable_id];
+        let numbering = validated_numbering(calibration, profile, device)?;
+        config.push_str(&player_config(calibration, profile, &numbering, index + 1)?);
     }
     // Do not leave later ports pointing at one of these same devices through an
     // inherited automatic configuration. Players are the calibrated selection.
@@ -590,6 +666,36 @@ fn attach_config(
 mod tests {
     use super::*;
     use crate::controller_catalog::InputBinding;
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn measured_event_identity_never_falls_back_to_first_event_or_same_model() {
+        use std::os::unix::fs::symlink;
+        let directory = tempfile::tempdir().unwrap();
+        let sys = directory.path();
+        for name in ["pad-a", "pad-b", "js4", "event8", "event9", "event10"] {
+            std::fs::create_dir(sys.join(name)).unwrap();
+        }
+        for (node, physical) in [
+            ("js4", "pad-a"),
+            ("event8", "pad-b"),
+            ("event9", "pad-a"),
+            ("event10", "pad-a"),
+        ] {
+            symlink(sys.join(physical), sys.join(node).join("device")).unwrap();
+        }
+        let joystick = Path::new("/dev/input/js4");
+        let events = vec!["/dev/input/event8".into(), "/dev/input/event9".into()];
+        assert_eq!(
+            measured_event_path(joystick, &events, sys).unwrap().0,
+            Path::new("/dev/input/event9")
+        );
+        assert!(measured_event_path(joystick, &events[..1], sys).is_err());
+        let mut ambiguous = events;
+        ambiguous.push("/dev/input/event10".into());
+        assert!(measured_event_path(joystick, &ambiguous, sys).is_err());
+        assert!(measured_event_path(Path::new("/tmp/js4"), &ambiguous, sys).is_err());
+    }
+
     #[test]
     #[cfg(target_os = "linux")]
     fn snes_cores_compose_physical_inputs_through_retropad() {
