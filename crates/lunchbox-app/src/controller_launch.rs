@@ -187,10 +187,25 @@ pub fn numbering_probe() -> Result<()> {
     let mut warnings = Vec::new();
     for device in crate::controllers::list_local_controllers(&mut warnings) {
         let numbering = JoydevMap::read(&device.device_path)?;
+        #[cfg(target_os = "linux")]
+        let physical_axes = device
+            .event_paths
+            .first()
+            .map(|path| {
+                numbering
+                    .axes
+                    .iter()
+                    .map(|code| crate::controller_axis::probe(path, *code))
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?;
+        #[cfg(not(target_os = "linux"))]
+        let physical_axes: Option<Vec<serde_json::Value>> = None;
         println!(
             "{}",
             serde_json::json!({ "device": device.device_path, "name": device.name,
-            "index": numbering.index, "buttons": numbering.buttons, "axes": numbering.axes })
+            "index": numbering.index, "buttons": numbering.buttons, "axes": numbering.axes,
+            "physical_axes": physical_axes })
         );
     }
     Ok(())
@@ -598,6 +613,7 @@ mod tests {
                                 kind: "button".into(),
                                 direction: 0,
                                 logical: control.label.clone(),
+                                axis: None,
                                 native: Some(NativeInput {
                                     code: 0x10120 + index as u32,
                                     direction: 0,
@@ -844,6 +860,7 @@ mod tests {
                         kind: "button".into(),
                         direction: 0,
                         logical: c.label.clone(),
+                        axis: None,
                         native: Some(NativeInput {
                             code: 0x10120 + index as u32,
                             direction: 0,

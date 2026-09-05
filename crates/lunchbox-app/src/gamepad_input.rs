@@ -20,6 +20,8 @@ pub mod qobject {
         #[qproperty(QString, last_device_key)]
         #[qproperty(QString, last_binding)]
         #[qproperty(QString, neutral_device_key)]
+        #[qproperty(QString, neutral_binding)]
+        #[qproperty(QString, neutral_error)]
         #[qproperty(i32, neutral_revision)]
         #[qproperty(i32, input_revision)]
         #[qproperty(bool, navigation_enabled)]
@@ -71,6 +73,8 @@ pub struct GamepadInputRust {
     last_device_key: QString,
     last_binding: QString,
     neutral_device_key: QString,
+    neutral_binding: QString,
+    neutral_error: QString,
     neutral_revision: i32,
     input_revision: i32,
     navigation_enabled: bool,
@@ -95,6 +99,8 @@ impl Default for GamepadInputRust {
             last_device_key: QString::default(),
             last_binding: QString::default(),
             neutral_device_key: QString::default(),
+            neutral_binding: QString::default(),
+            neutral_error: QString::default(),
             neutral_revision: 0,
             input_revision: 0,
             navigation_enabled: true,
@@ -366,6 +372,7 @@ impl qobject::GamepadInput {
 
                 let mut translators: HashMap<GamepadId, NavigationTranslator> = HashMap::new();
                 let mut diagnostics: HashMap<GamepadId, DiagnosticTracker> = HashMap::new();
+                let mut captures: HashMap<GamepadId, PendingCalibration> = HashMap::new();
                 while !stop.load(Ordering::Acquire) {
                     let event = gilrs.next_event_blocking(Some(EVENT_POLL_INTERVAL));
                     let now = Instant::now();
@@ -376,16 +383,13 @@ impl qobject::GamepadInput {
                     if let Some(event) = event {
                         let (binding, neutral) =
                             diagnostics.entry(event.id).or_default().handle(event.event);
-                        if neutral {
-                            let key = input_device_key(&gilrs.gamepad(event.id));
-                            let _ = qt_thread.queue(move |mut model| {
-                                model.as_mut().set_neutral_device_key(qstring(key));
-                                let revision = model.as_ref().neutral_revision().wrapping_add(1);
-                                model.as_mut().set_neutral_revision(revision);
-                            });
+                        if neutral && let Some(capture) = captures.get_mut(&event.id) {
+                            capture.release(now);
                         }
                         if let Some(mut binding) = binding {
                             binding.native = native_input(&gilrs.gamepad(event.id), event.event);
+                            let key = input_device_key(&gilrs.gamepad(event.id));
+                            captures.entry(event.id).or_insert_with(|| PendingCalibration::new(binding.clone(), &key));
                             let control = binding.logical.clone();
                             let encoded =
                                 serde_json::to_string(&binding).expect("input binding serializes");
@@ -415,6 +419,18 @@ impl qobject::GamepadInput {
                         if connection_changed {
                             diagnostics.remove(&event.id);
                             translators.remove(&event.id);
+                            if let Some(mut capture) = captures.remove(&event.id) {
+                                capture.error = Some("Controller disconnected. Reconnect it and repeat this control.".into());
+                                let key = input_device_key(&gilrs.gamepad(event.id));
+                                let error = capture.error.unwrap();
+                                let _ = qt_thread.queue(move |mut model| {
+                                    model.as_mut().set_neutral_device_key(qstring(key));
+                                    model.as_mut().set_neutral_binding(qstring(""));
+                                    model.as_mut().set_neutral_error(qstring(error));
+                                    let revision = model.as_ref().neutral_revision().wrapping_add(1);
+                                    model.as_mut().set_neutral_revision(revision);
+                                });
+                            }
                             let snapshot = controller_snapshot(&gilrs, active_id);
                             active_id = snapshot.active_id;
                             if qt_thread
@@ -454,6 +470,23 @@ impl qobject::GamepadInput {
                             }
                         }
                     }
+
+                    captures.retain(|id, capture| {
+                        let Some(completed) = capture.poll(now) else { return true; };
+                        let key = input_device_key(&gilrs.gamepad(*id));
+                        let (binding, error) = match completed {
+                            Ok(binding) => (serde_json::to_string(&binding).expect("binding serializes"), String::new()),
+                            Err(error) => (String::new(), error),
+                        };
+                        let _ = qt_thread.queue(move |mut model| {
+                            model.as_mut().set_neutral_device_key(qstring(key));
+                            model.as_mut().set_neutral_binding(qstring(binding));
+                            model.as_mut().set_neutral_error(qstring(error));
+                            let revision = model.as_ref().neutral_revision().wrapping_add(1);
+                            model.as_mut().set_neutral_revision(revision);
+                        });
+                        false
+                    });
 
                     let repeats = active_id
                         .and_then(|id| translators.get_mut(&id))
@@ -541,6 +574,77 @@ impl qobject::GamepadInput {
     }
 }
 
+struct PendingCalibration {
+    binding: crate::controller_catalog::InputBinding,
+    axis: Option<crate::controller_axis::AxisCapture>,
+    released: bool,
+    error: Option<String>,
+}
+
+impl PendingCalibration {
+    fn new(binding: crate::controller_catalog::InputBinding, device: &str) -> Self {
+        let mut result = Self {
+            binding,
+            axis: None,
+            released: false,
+            error: None,
+        };
+        if let Some(native) = &result.binding.native
+            && native.code >> 16 == 3
+        {
+            match crate::controller_axis::AxisCapture::open(
+                std::path::Path::new(device),
+                native.code,
+            ) {
+                Ok(axis) => result.axis = Some(axis),
+                Err(error) => {
+                    result.error = Some(format!(
+                        "Could not measure this physical axis: {error}. Try again."
+                    ))
+                }
+            }
+        }
+        result
+    }
+
+    fn release(&mut self, now: Instant) {
+        self.released = true;
+        if let Some(axis) = &mut self.axis {
+            axis.release(now);
+        }
+    }
+
+    fn poll(
+        &mut self,
+        now: Instant,
+    ) -> Option<Result<crate::controller_catalog::InputBinding, String>> {
+        if self.error.is_none()
+            && let Some(axis) = &mut self.axis
+        {
+            match axis.poll(now) {
+                Ok(Some(measured)) => {
+                    if let Some(native) = &mut self.binding.native {
+                        // Raw measured motion, not a guess based on a normalized
+                        // Xbox/GilRs label (which may be inverted by its mapping).
+                        native.direction = measured.direction();
+                    }
+                    self.binding.axis = Some(measured);
+                    self.axis = None;
+                }
+                Ok(None) => return None,
+                Err(error) => self.error = Some(error.to_string()),
+            }
+        }
+        if !self.released {
+            return None;
+        }
+        Some(match &self.error {
+            Some(error) => Err(error.clone()),
+            None => Ok(self.binding.clone()),
+        })
+    }
+}
+
 #[derive(Default)]
 struct DiagnosticTracker {
     buttons: std::collections::HashSet<u32>,
@@ -596,6 +700,7 @@ impl DiagnosticTracker {
                 direction,
                 logical,
                 native: None,
+                axis: None,
             })
         });
         (

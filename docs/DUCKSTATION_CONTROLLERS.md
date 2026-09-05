@@ -94,6 +94,15 @@ retain first-seen order. Other physical backends, axis rest/range interpretation
 analog target conversion, final player assignment, isolated configuration, and
 launch integration remain.
 
+The Linux calibration wizard now records physical axis rest/peak values plus
+kernel bounds and flat/fuzz/resolution. It samples through release and waits for
+the raw value to settle, then persists the measurement with the binding and
+corrects its raw direction. This supplies evidence needed for the range
+translation above; it does not itself normalize those values to SDL or enable
+DuckStation launch. Old calibrations remain readable but do not acquire invented
+measurements. The numbering probe also reports read-only evdev axis metadata for
+runtime comparison with saved measurements.
+
 The opt-in event-order player probe now keeps all opened devices alive and
 projects the verified revision's collision/fallback rules. Its matching-runtime
 mode requires explicit target libudev (and libcap dependency), rejecting an

@@ -88,6 +88,10 @@ pub struct InputBinding {
     /// Older calibrations lack this and remain usable for preview only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native: Option<NativeInput>,
+    /// Measured physical rest/peak/bounds, separate from input identity so two
+    /// observations of the same control cannot evade duplicate-input checks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub axis: Option<crate::controller_axis::AxisMeasurement>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -359,6 +363,15 @@ impl Calibration {
                     "Invalid physical controller input"
                 );
                 ensure!(native_inputs.insert(native), "Duplicate physical input");
+            }
+            if let Some(axis) = &input.axis {
+                axis.validate()?;
+                ensure!(
+                    input.native.as_ref().is_some_and(
+                        |native| native.code >> 16 == 3 && native.direction == axis.direction()
+                    ),
+                    "Measured axis does not match the physical input direction"
+                );
             }
         }
         Ok(())
@@ -698,6 +711,7 @@ mod tests {
                             direction: if c.analog { 1 } else { 0 },
                             logical: c.label.clone(),
                             native: None,
+                            axis: None,
                         },
                     )
                 })
@@ -756,5 +770,45 @@ mod tests {
             before,
             std::fs::read(dir.path().join("brawler64.svg")).unwrap()
         );
+    }
+
+    #[test]
+    fn measured_axis_roundtrips_and_cannot_change_physical_identity() {
+        use crate::controller_axis::AxisMeasurement;
+        let mut cal = calibration("nes");
+        let b = cal.bindings.get_mut("b").unwrap();
+        b.native = Some(NativeInput {
+            code: 0x30000,
+            direction: -1,
+        });
+        b.axis = Some(AxisMeasurement {
+            minimum: 0,
+            maximum: 255,
+            flat: 0,
+            fuzz: 0,
+            resolution: 0,
+            released: 128,
+            pressed: 0,
+        });
+        cal.validate().unwrap();
+        let decoded: Calibration =
+            serde_json::from_str(&serde_json::to_string(&cal).unwrap()).unwrap();
+        assert_eq!(cal, decoded);
+        cal.bindings
+            .get_mut("b")
+            .unwrap()
+            .native
+            .as_mut()
+            .unwrap()
+            .direction = 1;
+        assert!(cal.validate().is_err());
+        cal.bindings.get_mut("b").unwrap().native = None;
+        assert!(cal.validate().is_err());
+        cal = decoded;
+        let mut alias = cal.bindings["b"].clone();
+        alias.code += 1; // Different normalized code must not hide a physical alias.
+        alias.axis.as_mut().unwrap().pressed = 1;
+        cal.bindings.insert("a".into(), alias);
+        assert!(cal.validate().is_err());
     }
 }

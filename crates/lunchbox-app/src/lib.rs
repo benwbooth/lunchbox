@@ -4,6 +4,7 @@ mod catalog;
 mod collection_identity;
 pub mod collection_identity_model;
 mod collections;
+mod controller_axis;
 mod controller_catalog;
 mod controller_launch;
 mod controller_layout;

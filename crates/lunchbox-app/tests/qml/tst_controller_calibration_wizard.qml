@@ -15,6 +15,8 @@ TestCase {
             property string last_binding: ""
             property int input_revision: 0
             property string neutral_device_key: ""
+            property string neutral_binding: ""
+            property string neutral_error: ""
             property int neutral_revision: 0
         }
         QtObject {
@@ -46,7 +48,7 @@ TestCase {
         pad.neutral_device_key = key
         pad.neutral_revision++
     }
-    function init() { wizard.openFor("n30", "N30"); tryCompare(wizard, "visible", true) }
+    function init() { pad.neutral_binding = ""; pad.neutral_error = ""; wizard.openFor("n30", "N30"); tryCompare(wizard, "visible", true) }
     function cleanup() { wizard.close() }
     function test_wrong_controller_cannot_calibrate_selected_pad() {
         input("event2", 1)
@@ -83,5 +85,37 @@ TestCase {
         compare(wizard.currentControl, null)
         compare(Object.keys(wizard.bindings).length, 2)
         verify(!wizard.bindings.turbo_b)
+    }
+    function test_axis_keeps_measured_rest_peak_and_corrected_physical_direction() {
+        const raw = {code:196608,kind:"axis",direction:1,logical:"LeftStickRight",
+            native:{code:196608,direction:1}}
+        pad.last_device_key = "event1"; pad.last_binding = JSON.stringify(raw); pad.input_revision++
+        verify(wizard.waitingForRelease)
+        const completed = Object.assign({}, raw, {native:{code:196608,direction:-1},
+            axis:{minimum:0,maximum:255,flat:0,fuzz:0,resolution:0,released:128,pressed:0}})
+        pad.neutral_binding = JSON.stringify(completed)
+        release("event1")
+        compare(wizard.step, 1)
+        compare(wizard.bindings.b.native.direction, -1)
+        compare(wizard.bindings.b.axis.released, 128)
+        compare(wizard.bindings.b.axis.pressed, 0)
+    }
+    function test_missing_or_mismatched_axis_measurement_does_not_advance() {
+        const raw = {code:196608,kind:"axis",direction:1,logical:"LeftStickRight",
+            native:{code:196608,direction:1}}
+        pad.last_device_key = "event1"; pad.last_binding = JSON.stringify(raw); pad.input_revision++
+        release("event1")
+        compare(wizard.step, 0)
+        verify(!wizard.waitingForRelease)
+        verify(!wizard.bindings.b)
+        verify(wizard.status.indexOf("measure") >= 0)
+    }
+    function test_capture_error_does_not_save_incomplete_input() {
+        input("event1", 1)
+        pad.neutral_error = "Controller disconnected."
+        release("event1")
+        compare(wizard.step, 0)
+        verify(!wizard.bindings.b)
+        compare(wizard.status, "Controller disconnected.")
     }
 }

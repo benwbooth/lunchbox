@@ -16,6 +16,27 @@ require analog events; C-buttons may be recorded as buttons or axis directions.
 **Use calibration** stages the result; the main **Save settings** persists it.
 Controller navigation is suspended while the wizard is open.
 
+On Linux, axis-backed controls now retain a measured gesture: kernel bounds,
+flat/fuzz/resolution, the furthest observed position, and the actual settled
+release value. This applies to sticks, triggers, hats and C-buttons exposed as
+axes. Hold/move the highlighted control fully, then release it. Capture waits
+120 ms for a stable rest reading rather than treating the early normalized
+neutral event as the hardware's center. A failed read, changed device bounds,
+mixed directions or disconnect asks for that control again. The wizard cannot
+save while the gesture is unfinished. The physical direction used by the
+RetroArch launch writer comes from this measurement, not a presumed Xbox label.
+The values are saved with the calibration and kept separate from input identity
+so duplicate controls remain detectable. Existing calibrations without these
+measurements still load; future SDL range-sensitive adapters must not invent
+missing measurements. Emulator-specific axis normalization and standalone launch
+integration remain separate work.
+
+Runtime check on 2026-09-05: `--controller-numbering-probe` successfully read
+all eight reported evdev axes on each of the three connected gamepad interfaces
+(`/dev/input/js3`, `js4`, `js5`), including stick ranges, 0..255 triggers and
+-1..1 hats. This checks the real read-only ioctl path; captured button gestures
+and gameplay still need a physical-user test.
+
 The system/emulator preview composes any calibrated layout with documented input
 contracts. Horizontal four-button pads retain their lower A/B pair for NES/GB/PCE;
 diamond pads use the left/bottom pair, and N64-style pads can use six-button

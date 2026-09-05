@@ -66,11 +66,35 @@ Dialog {
         next[currentControl.id] = input
         bindings = next
         waitingForRelease = true
-        status = "Recorded " + currentControl.label + " → " + input.logical + " (code " + input.code + "). Release all controls to continue."
+        const physicalAxis = input.native && (input.native.code >>> 16) === 3
+        status = "Recorded " + currentControl.label + " → " + input.logical + " (code " + input.code + "). "
+            + (physicalAxis ? "Move fully in the highlighted direction, then release and let it settle." : "Release all controls to continue.")
     }
     function receiveNeutral() {
         if (!visible || !waitingForRelease) return
         if (settingsModel.controller_key_for_input(gamepad.neutral_device_key) !== deviceId) return
+        const recorded = currentControl ? bindings[currentControl.id] : null
+        let completed = null
+        try { completed = JSON.parse(gamepad.neutral_binding || "null") } catch (error) {}
+        let error = gamepad.neutral_error || ""
+        const matches = recorded && completed && recorded.code === completed.code
+            && recorded.kind === completed.kind && recorded.direction === completed.direction
+        if (!error && recorded && recorded.native && (recorded.native.code >>> 16) === 3
+            && (!matches || !completed.axis))
+            error = "Could not measure this axis. Move fully in the highlighted direction, then release it and try again."
+        if (error) {
+            let next = Object.assign({}, bindings)
+            if (currentControl) delete next[currentControl.id]
+            bindings = next
+            waitingForRelease = false
+            status = error
+            return
+        }
+        if (matches) {
+            let next = Object.assign({}, bindings)
+            next[currentControl.id] = completed
+            bindings = next
+        }
         waitingForRelease = false
         step++
         status = currentControl ? "Press " + currentControl.label + "." : "Calibration complete. Review the mapping or use this calibration, then save settings."
@@ -204,7 +228,7 @@ Dialog {
         Button { text: "Cancel"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole; onClicked: wizard.close() }
         Button {
             text: "Use calibration"
-            enabled: Object.keys(wizard.bindings).length > 0
+            enabled: Object.keys(wizard.bindings).length > 0 && !wizard.waitingForRelease
             DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
             onClicked: {
                 const error = wizard.settingsModel.save_controller_calibration(wizard.deviceId, wizard.layout.id, JSON.stringify(wizard.bindings))
