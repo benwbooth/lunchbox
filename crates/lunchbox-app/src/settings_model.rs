@@ -48,6 +48,7 @@ pub mod qobject {
         #[qproperty(i32, shader_revision)]
         #[qproperty(bool, controller_enabled)]
         #[qproperty(bool, controller_automatic)]
+        #[qproperty(bool, controller_calibrated_launch)]
         #[qproperty(bool, controller_remapping_available)]
         #[qproperty(QString, controller_output_target)]
         #[qproperty(bool, controller_busy)]
@@ -166,6 +167,8 @@ pub mod qobject {
 
         #[qinvokable]
         fn set_controller_automatic_enabled(self: Pin<&mut SettingsModel>, enabled: bool);
+        #[qinvokable]
+        fn set_controller_calibrated_launch_enabled(self: Pin<&mut SettingsModel>, enabled: bool);
         #[qinvokable]
         fn configure_controller_routing(self: Pin<&mut SettingsModel>, enabled: bool);
         #[qinvokable]
@@ -400,6 +403,7 @@ pub struct SettingsModelRust {
     shader_cancel: Option<Arc<AtomicBool>>,
     controller_enabled: bool,
     controller_automatic: bool,
+    controller_calibrated_launch: bool,
     controller_remapping_available: bool,
     controller_output_target: QString,
     controller_busy: bool,
@@ -470,6 +474,7 @@ impl Default for SettingsModelRust {
             shader_cancel: None,
             controller_enabled: false,
             controller_automatic: false,
+            controller_calibrated_launch: true,
             controller_remapping_available: false,
             controller_output_target: QString::from("xb360"),
             controller_busy: false,
@@ -1265,6 +1270,15 @@ impl qobject::SettingsModel {
         self.as_mut().controller_settings_changed();
     }
 
+    pub fn set_controller_calibrated_launch_enabled(mut self: Pin<&mut Self>, enabled: bool) {
+        self.as_mut()
+            .rust_mut()
+            .controller_mapping
+            .calibrated_launch = enabled;
+        self.as_mut().set_controller_calibrated_launch(enabled);
+        self.as_mut().controller_settings_changed();
+    }
+
     pub fn configure_controller_routing(mut self: Pin<&mut Self>, enabled: bool) {
         if *self.as_ref().controller_busy() {
             return;
@@ -1583,7 +1597,7 @@ impl qobject::SettingsModel {
             .calibrations
             .insert(id, calibration);
         self.as_mut().controller_settings_changed();
-        self.as_mut().set_message(qstring("Controller calibration recorded. Save settings to keep it. Emulator mappings are preview-only until their launch adapters are implemented and verified."));
+        self.as_mut().set_message(qstring("Controller calibration recorded. Save settings to keep it. Supported launch adapters will apply it automatically; other emulators still need adapter support."));
         QString::default()
     }
 
@@ -2495,6 +2509,8 @@ impl qobject::SettingsModel {
             .set_controller_enabled(controller_mapping.enabled);
         self.as_mut()
             .set_controller_automatic(controller_mapping.automatic);
+        self.as_mut()
+            .set_controller_calibrated_launch(controller_mapping.calibrated_launch);
         self.as_mut()
             .set_controller_output_target(qstring(&controller_mapping.output_target));
         self.as_mut().rust_mut().controller_mapping = controller_mapping;

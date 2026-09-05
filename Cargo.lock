@@ -1735,6 +1735,7 @@ dependencies = [
  "hex",
  "keyring",
  "lava_torrent",
+ "libc",
  "md-5",
  "quick-xml",
  "rars",

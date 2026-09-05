@@ -275,6 +275,8 @@ pub struct ControllerMappingSettings {
     pub device_names: HashMap<String, String>,
     #[serde(default)]
     pub calibrations: HashMap<String, crate::controller_catalog::Calibration>,
+    #[serde(default = "default_true")]
+    pub calibrated_launch: bool,
     #[serde(default)]
     pub preferred_devices: HashMap<String, String>,
     #[serde(default)]
@@ -301,6 +303,10 @@ pub struct ControllerMappingSettings {
     pub custom_profiles: Vec<ControllerCustomProfile>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl Default for ControllerMappingSettings {
     fn default() -> Self {
         Self {
@@ -309,6 +315,7 @@ impl Default for ControllerMappingSettings {
             device_layouts: HashMap::new(),
             device_names: HashMap::new(),
             calibrations: HashMap::new(),
+            calibrated_launch: true,
             preferred_devices: HashMap::new(),
             device_system_profiles: HashMap::new(),
             provider: default_controller_provider(),

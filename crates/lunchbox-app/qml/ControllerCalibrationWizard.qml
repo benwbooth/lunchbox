@@ -17,7 +17,8 @@ Dialog {
     property bool showPreview: false
     property int profileIndex: 0
     readonly property var layout: catalog.layouts[layoutIndex]
-    readonly property var currentControl: layout && step < layout.controls.length ? layout.controls[step] : null
+    readonly property var calibrationControls: layout ? layout.controls.filter(control => !control.repeat_of) : []
+    readonly property var currentControl: step < calibrationControls.length ? calibrationControls[step] : null
     readonly property var preview: showPreview ? JSON.parse(settingsModel.controller_mapping_preview(
         layout.id, JSON.stringify(bindings), catalog.emulator_profiles[profileIndex].id)) : ({ rows: [], warnings: [] })
     parent: Overlay.overlay
@@ -131,7 +132,7 @@ Dialog {
             }
             ProgressBar {
                 Layout.fillWidth: true
-                from: 0; to: wizard.layout.controls.length; value: wizard.step
+                from: 0; to: wizard.calibrationControls.length; value: wizard.step
             }
             Label {
                 Layout.fillWidth: true
@@ -166,7 +167,9 @@ Dialog {
                 }
                 Label {
                     Layout.fillWidth: true
-                    text: "Documented mapping preview — not yet applied automatically"
+                    text: wizard.preview.automatic_launch_ready
+                        ? "Ready for the native Linux RetroArch adapter — device checked again at launch"
+                        : "Preview only — missing physical inputs or launch adapter"
                     color: "#ffb454"
                     wrapMode: Text.WordWrap
                 }

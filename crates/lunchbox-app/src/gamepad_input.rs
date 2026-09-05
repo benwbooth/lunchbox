@@ -384,7 +384,8 @@ impl qobject::GamepadInput {
                                 model.as_mut().set_neutral_revision(revision);
                             });
                         }
-                        if let Some(binding) = binding {
+                        if let Some(mut binding) = binding {
+                            binding.native = native_input(&gilrs.gamepad(event.id), event.event);
                             let control = binding.logical.clone();
                             let encoded =
                                 serde_json::to_string(&binding).expect("input binding serializes");
@@ -594,6 +595,7 @@ impl DiagnosticTracker {
                 kind: kind.into(),
                 direction,
                 logical,
+                native: None,
             })
         });
         (
@@ -664,6 +666,69 @@ fn input_device_key(gamepad: &gilrs::Gamepad<'_>) -> String {
     #[cfg(not(target_os = "linux"))]
     {
         crate::controllers::portable_input_device_key(&hex::encode(gamepad.uuid()), gamepad.name())
+    }
+}
+
+fn native_input(
+    gamepad: &gilrs::Gamepad<'_>,
+    event: EventType,
+) -> Option<crate::controller_catalog::NativeInput> {
+    #[cfg(target_os = "linux")]
+    {
+        use crate::controller_catalog::NativeInput;
+        match event {
+            EventType::ButtonPressed(button, code) => {
+                use gilrs::LinuxGamepadExt;
+                let packed = code.into_u32();
+                let physical_button = packed >> 16 == 1
+                    && crate::controller_launch::physical_button_present(
+                        gamepad.devpath(),
+                        packed as u16,
+                    )
+                    .ok()?;
+                // GilRs' D-pad filter emits synthetic BTN_DPAD codes for hats.
+                // Recover the actual mapped hat axis instead of guessing its index.
+                let hat = match button {
+                    Button::DPadUp => Some((Axis::DPadY, -1)),
+                    Button::DPadDown => Some((Axis::DPadY, 1)),
+                    Button::DPadLeft => Some((Axis::DPadX, -1)),
+                    Button::DPadRight => Some((Axis::DPadX, 1)),
+                    _ => None,
+                };
+                if !physical_button
+                    && let Some((axis, direction)) = hat
+                    && let Some(axis_code) = gamepad.axis_code(axis)
+                {
+                    return Some(NativeInput {
+                        code: axis_code.into_u32(),
+                        direction,
+                    });
+                }
+                let code = code.into_u32();
+                Some(NativeInput {
+                    code,
+                    direction: if code >> 16 == 3 { 1 } else { 0 },
+                })
+            }
+            EventType::AxisChanged(axis, value, code) => {
+                let sign = if value < 0.0 { -1 } else { 1 };
+                Some(NativeInput {
+                    code: code.into_u32(),
+                    direction: if matches!(axis, Axis::LeftStickY | Axis::RightStickY | Axis::DPadY)
+                    {
+                        -sign
+                    } else {
+                        sign
+                    },
+                })
+            }
+            _ => None,
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (gamepad, event);
+        None
     }
 }
 

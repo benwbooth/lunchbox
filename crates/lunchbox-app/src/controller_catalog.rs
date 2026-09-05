@@ -40,6 +40,8 @@ pub struct Control {
     pub group: String,
     pub optional: bool,
     pub analog: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_of: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -54,6 +56,8 @@ pub struct EmulatorProfile {
     pub source: String,
     pub conditions: Vec<String>,
     pub bindings: BTreeMap<String, String>,
+    #[serde(default)]
+    pub core_options: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -65,6 +69,18 @@ pub struct InputBinding {
     /// Direction in GilRs' normalized coordinate system, not raw evdev sign.
     pub direction: i8,
     pub logical: String,
+    /// Physical evdev input, captured before translating to emulator numbering.
+    /// Older calibrations lack this and remain usable for preview only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native: Option<NativeInput>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeInput {
+    pub code: u32,
+    /// Raw kernel axis sign, or zero for a physical button.
+    pub direction: i8,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -132,12 +148,27 @@ impl Catalog {
                 "unknown shape"
             );
             let mut controls = HashSet::new();
+            ensure!(
+                layout.controls.iter().filter(|c| c.group == "face").count() <= 8,
+                "Face group exceeds assignment solver bound"
+            );
             for control in &layout.controls {
                 ensure!(
                     valid_id(&control.id) && controls.insert(&control.id),
                     "duplicate control ID"
                 );
                 ensure!(!control.label.is_empty(), "empty control label");
+                if let Some(base) = &control.repeat_of {
+                    ensure!(
+                        control.group == "turbo"
+                            && control.optional
+                            && !control.analog
+                            && layout.controls.iter().any(|c| c.id == *base
+                                && c.id != control.id
+                                && c.repeat_of.is_none()),
+                        "Invalid hardware turbo control"
+                    );
+                }
                 ensure!(
                     control.x.is_finite()
                         && control.y.is_finite()
@@ -212,6 +243,7 @@ impl Calibration {
             "Record at least one control"
         );
         let mut inputs = HashSet::new();
+        let mut native_inputs = HashSet::new();
         for (id, input) in &self.bindings {
             let control = layout
                 .controls
@@ -240,6 +272,15 @@ impl Calibration {
                 inputs.insert((input.code, input.kind.as_str(), input.direction)),
                 "One input was assigned to multiple controls; skip duplicate hardware buttons"
             );
+            if let Some(native) = &input.native {
+                ensure!(self.os == "linux", "Physical evdev bindings require Linux");
+                ensure!(
+                    (native.code >> 16 == 1 && native.direction == 0)
+                        || (native.code >> 16 == 3 && matches!(native.direction, -1 | 1)),
+                    "Invalid physical controller input"
+                );
+                ensure!(native_inputs.insert(native), "Duplicate physical input");
+            }
         }
         Ok(())
     }
@@ -255,7 +296,12 @@ impl Calibration {
             .ok_or_else(|| anyhow::anyhow!("Unknown emulator profile"))?;
         let target = db.layout(&profile.target_layout).unwrap();
         let mut warnings = profile.conditions.clone();
-        warnings.push("Preview only: the emulator configuration writer and runtime verification for this contract are not implemented. Existing emulator settings are unchanged.".into());
+        let adapter = crate::controller_launch::supports_profile(profile);
+        warnings.push(if adapter {
+            "Native Linux RetroArch launch adapter available. Physical bindings and connected-device numbering are checked again at launch; automatic RetroArch remaps/overrides are suspended for that session."
+        } else {
+            "Preview only: an automatic launch adapter for this contract is not implemented."
+        }.into());
         if self.os != std::env::consts::OS {
             warnings.push(
                 "This calibration was recorded on another OS; recalibrate before use.".into(),
@@ -267,12 +313,14 @@ impl Calibration {
                     .into(),
             );
         }
-        let rows = profile
+        let assignments = crate::controller_layout::assignments(source, target);
+        let rows: Vec<MappingRow> = profile
             .bindings
             .iter()
             .map(|(target_id, output)| {
-                let source_id = suggested_source(source, target, target_id);
-                let physical = source.controls.iter().find(|c| c.id == source_id);
+                let physical = assignments
+                    .get(target_id)
+                    .and_then(|source_id| source.controls.iter().find(|c| c.id == *source_id));
                 let input = physical.and_then(|c| self.bindings.get(&c.id)).cloned();
                 if input.is_none() {
                     warnings.push(format!("Missing physical input for {target_id}"));
@@ -293,39 +341,26 @@ impl Calibration {
                 }
             })
             .collect();
+        let automatic_launch_ready = adapter
+            && self.os == "linux"
+            && self.os == std::env::consts::OS
+            && rows.iter().all(|row| {
+                row.input
+                    .as_ref()
+                    .is_some_and(|input| input.native.is_some())
+                    || target
+                        .controls
+                        .iter()
+                        .any(|c| c.label == row.target && c.optional)
+            });
         Ok(MappingPlan {
             profile: profile.name.clone(),
             status: profile.status.clone(),
-            automatic_launch_ready: false,
+            automatic_launch_ready,
             rows,
             warnings,
         })
     }
-}
-
-fn suggested_source<'a>(source: &Layout, target: &Layout, target_id: &'a str) -> &'a str {
-    if source.family == "diamond" && target.family == "two-button" {
-        return match target_id {
-            "b" => "y",
-            "a" => "b",
-            other => other,
-        };
-    }
-    if source.family == "n64" && matches!(target.family.as_str(), "six-button" | "three-button") {
-        return match target_id {
-            "a" => "a",
-            "b" => "c_down",
-            "c" => "c_right",
-            "x" => "b",
-            "y" => "c_left",
-            "z" => "c_up",
-            "mode" => "select",
-            other => other,
-        };
-    }
-    // Matching semantic IDs is a conservative fallback; absent controls remain
-    // absent rather than silently borrowing a trigger or losing an analog axis.
-    target_id
 }
 
 fn xml(value: &str) -> String {
@@ -449,6 +484,7 @@ mod tests {
                             kind: if c.analog { "axis" } else { "button" }.into(),
                             direction: if c.analog { 1 } else { 0 },
                             logical: c.label.clone(),
+                            native: None,
                         },
                     )
                 })

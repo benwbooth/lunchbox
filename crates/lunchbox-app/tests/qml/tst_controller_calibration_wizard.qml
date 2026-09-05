@@ -23,6 +23,10 @@ TestCase {
                 return JSON.stringify({host_os:"linux", layouts:[{id:"nes",name:"NES",notes:"",controls:[
                     {id:"b",label:"B",analog:false,optional:false},
                     {id:"a",label:"A",analog:false,optional:false}
+                ]},{id:"n30-turbo",name:"N30 turbo",notes:"",controls:[
+                    {id:"b",label:"B",analog:false,optional:false},
+                    {id:"a",label:"A",analog:false,optional:false},
+                    {id:"turbo_b",label:"Turbo B",analog:false,optional:true,repeat_of:"b"}
                 ]}],emulator_profiles:[]})
             }
             function controller_key_for_input(key) { return key === "event1" ? "n30" : "other" }
@@ -69,5 +73,15 @@ TestCase {
         input("event1", 2); release("event1")
         wizard.resetLayout(0)
         compare(wizard.step, 0); compare(Object.keys(wizard.bindings).length, 0)
+    }
+    function test_hardware_turbo_is_not_calibrated_as_an_independent_button() {
+        wizard.resetLayout(1)
+        compare(wizard.layout.controls.length, 3)
+        compare(wizard.calibrationControls.length, 2)
+        input("event1", 1); release("event1")
+        input("event1", 2); release("event1")
+        compare(wizard.currentControl, null)
+        compare(Object.keys(wizard.bindings).length, 2)
+        verify(!wizard.bindings.turbo_b)
     }
 }

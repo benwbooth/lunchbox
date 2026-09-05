@@ -16,11 +16,22 @@ require analog events; C-buttons may be recorded as buttons or axis directions.
 **Use calibration** stages the result; the main **Save settings** persists it.
 Controller navigation is suspended while the wizard is open.
 
-The system/emulator preview composes the calibration with documented input
-contracts, including a suggested Brawler64-to-six-button layout. Missing controls
-and all known assumptions stay visible. It is explicitly preview-only: automatic
-launch adapters for these calibrated profiles are not yet implemented. Existing
-advanced InputPlumber mappings remain a separate path. See
+The system/emulator preview composes any calibrated layout with documented input
+contracts. Horizontal four-button pads retain their lower A/B pair for NES/GB/PCE;
+diamond pads use the left/bottom pair, and N64-style pads can use six-button
+arrangements. The catalog distinguishes independent upper buttons from hardware
+turbo repeats. These rules do not assume device button numbering.
+
+**Apply saved calibrations at emulator launch** uses a temporary configuration
+for Linux RetroArch (native or Flatpak) with FCEUmm, Gambatte, Genesis Plus GX or
+Mupen64Plus-Next. The N64 adapter enables independent C-button mode. Only compatible
+connected calibrations are assigned as players. Older preview-only calibrations
+require one new recording to capture physical inputs. Automatic RetroArch
+overrides/remaps and N64 per-game core options are suspended for that launch;
+your saved files are not overwritten. Disable this switch to retain native
+emulator setup when an adapter is unavailable. Standalone and Windows/macOS
+adapters remain unfinished. Existing advanced InputPlumber mappings remain a
+separate path and are not applied on top of this adapter. See
 `crates/lunchbox-app/data/controllers/README.md` for coverage and provenance.
 
 Open Settings → Controllers. The live input check shows the device and the
@@ -63,7 +74,7 @@ knowledge of every game's run/jump actions. Individual games may need overrides.
 ## Runtime support and boundaries
 
 - Frontend navigation uses GilRs and is not dependent on InputPlumber.
-- Game-launch remapping currently uses the Linux InputPlumber adapter. A running
+- Legacy virtual-device remapping uses the Linux InputPlumber adapter. A running
   service alone is insufficient: it must manage the selected physical device.
 - **Enable Linux controller routing** explicitly confirms a system-wide change
   to the running service. It can affect other applications and Steam Input.
@@ -71,7 +82,7 @@ knowledge of every game's run/jump actions. Individual games may need overrides.
   **Use native controller routing** to disable that service-wide routing.
 - Per-launch profiles, target devices, and player order use the existing
   capture/restore session. They do not overwrite emulator configuration files.
-- Standalone Windows/macOS emulator-configuration adapters are not implemented.
+- Standalone emulator and Windows/macOS configuration adapters are not implemented.
   Device-specific N30, Retro Fighters, and Steam Controller mode/receiver
   verification still requires the actual hardware. Do not assume product names
   or printed A/B labels prove a particular mapping.

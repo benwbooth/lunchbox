@@ -813,7 +813,7 @@ fn trim_default_player_mappings(mapping: &mut ControllerMappingSettings) {
     }
 }
 
-fn list_local_controllers(warnings: &mut Vec<String>) -> Vec<ControllerDevice> {
+pub(crate) fn list_local_controllers(warnings: &mut Vec<String>) -> Vec<ControllerDevice> {
     #[cfg(target_os = "linux")]
     {
         list_linux_joystick_controllers(warnings)

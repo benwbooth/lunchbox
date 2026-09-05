@@ -5446,7 +5446,7 @@ impl qobject::GameDetailsModel {
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
                         anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
-                    let plan = match &launch_input {
+                    let mut plan = match &launch_input {
                         LaunchInput::Prepared {
                             install,
                             catalog_database,
@@ -5490,7 +5490,6 @@ impl qobject::GameDetailsModel {
                         }
                     };
                     let emulator_name = plan.emulator_name.clone();
-                    let command_summary = plan.command_summary();
                     let cleanup_paths = plan.cleanup_paths.clone();
                     let _cleanup_guard = LaunchCleanupGuard(cleanup_paths);
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
@@ -5499,13 +5498,26 @@ impl qobject::GameDetailsModel {
                     let controller_settings = crate::settings::SettingsStore::open_default()
                         .and_then(|store| store.load())
                         .context("loading controller mapping settings")?;
-                    let controller_activation = crate::controllers::activate_for_launch(
+                    let calibrated_session = match &launch_input {
+                        LaunchInput::Rom { platform, option, .. } => crate::controller_launch::prepare(
+                            &controller_settings, platform, option, &mut plan,
+                        ).context("applying calibrated controller mappings")?,
+                        _ => None,
+                    };
+                    let command_summary = plan.command_summary();
+                    // Only one mapping layer may own this launch.
+                    let controller_activation = if let Some(session) = &calibrated_session {
+                        crate::controllers::ControllerActivation {
+                            warning: Some(session.description.clone()),
+                            ..Default::default()
+                        }
+                    } else { crate::controllers::activate_for_launch(
                         &controller_settings,
                         Some(&activity_platform),
                         Some(activity_database_id),
                     )
                     .map_err(anyhow::Error::msg)
-                    .context("preparing controller mapping")?;
+                    .context("preparing controller mapping")? };
                     let crate::controllers::ControllerActivation {
                         session: controller_session,
                         warning: controller_warning,
@@ -5592,6 +5604,7 @@ impl qobject::GameDetailsModel {
                     };
                     let status = child.wait();
                     drop(controller_session);
+                    drop(calibrated_session);
                     let status = status.context("waiting for the emulator process")?;
                     let outcome = if probe_terminated {
                         "terminated"

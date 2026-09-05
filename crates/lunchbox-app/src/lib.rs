@@ -5,6 +5,8 @@ mod collection_identity;
 pub mod collection_identity_model;
 mod collections;
 mod controller_catalog;
+mod controller_launch;
+mod controller_layout;
 mod controllers;
 mod couch_theme;
 mod download_plan;
@@ -113,6 +115,15 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|arg| arg == "--controller-numbering-probe") {
+        return match controller_launch::numbering_probe() {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!("{error:#}");
+                1
+            }
+        };
+    }
     let arguments: Vec<String> = std::env::args().collect();
     if let Some(index) = arguments
         .iter()

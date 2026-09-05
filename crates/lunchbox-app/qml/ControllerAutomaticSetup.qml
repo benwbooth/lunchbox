@@ -54,7 +54,7 @@ ColumnLayout {
     }
     Label {
         Layout.fillWidth: true
-        text: "New diagram-based calibrations can be saved and previewed below. Their automatic emulator launch adapters are still being implemented; the existing launch profiles are separate."
+        text: "Calibrated launch currently supports native Linux RetroArch with FCEUmm, Gambatte, Genesis Plus GX and Mupen64Plus-Next. RetroArch automatic overrides/remaps (and N64 per-game core options) are suspended for that session; your saved files are unchanged. Other cores/emulators still need adapters. Disable Apply saved calibrations to keep an emulator’s native setup."
         color: "#ffb454"
         wrapMode: Text.WordWrap
     }
@@ -111,6 +111,11 @@ ColumnLayout {
         text: "Test controller input — pause menu navigation"
         checked: setup.testInput
         onToggled: setup.testInput = checked
+    }
+    Switch {
+        text: "Apply saved calibrations at emulator launch"
+        checked: setup.settingsModel.controller_calibrated_launch
+        onToggled: setup.settingsModel.set_controller_calibrated_launch_enabled(checked)
     }
     Label {
         Layout.fillWidth: true

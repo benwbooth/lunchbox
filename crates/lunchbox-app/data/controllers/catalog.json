@@ -83,8 +83,8 @@
     },
     {
       "id": "horizontal-four",
-      "name": "Horizontal four-button pad — A/B and X/Y pairs",
-      "family": "two-button",
+      "name": "Horizontal four-button / N30-style — independent X/Y",
+      "family": "horizontal-four",
       "shape": "rectangle",
       "controls": [
         {
@@ -177,7 +177,110 @@
           "optional": false,
           "analog": false
         }
-      ]
+      ],
+      "notes": "Four independent inputs in two horizontal pairs. Map their physical positions, regardless of the Xbox letters the device reports. If the upper buttons repeat A/B rather than reporting separate inputs, choose the N30 turbo variant."
+    },
+    {
+      "id": "n30-turbo",
+      "name": "8BitDo N30-style — A/B plus hardware turbo buttons",
+      "family": "two-button",
+      "shape": "rectangle",
+      "controls": [
+        {
+          "id": "b",
+          "label": "B",
+          "x": 70,
+          "y": 57,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "a",
+          "label": "A",
+          "x": 84,
+          "y": 57,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "turbo_b",
+          "label": "Turbo B",
+          "x": 70,
+          "y": 37,
+          "group": "turbo",
+          "optional": true,
+          "analog": false,
+          "repeat_of": "b"
+        },
+        {
+          "id": "turbo_a",
+          "label": "Turbo A",
+          "x": 84,
+          "y": 37,
+          "group": "turbo",
+          "optional": true,
+          "analog": false,
+          "repeat_of": "a"
+        },
+        {
+          "id": "select",
+          "label": "Select",
+          "x": 43,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 54,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 56,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ],
+      "notes": "Two lower gameplay buttons plus upper Turbo B/A. Hardware turbo repeats existing inputs, not two extra gameplay controls. Use the independent X/Y variant if your USB mode reports four distinct buttons.",
+      "source": "https://support.8bitdo.com/faq/n30-2-4-g-nt.html"
     },
     {
       "id": "gameboy",
@@ -889,7 +992,7 @@
           "label": "Mode (top)",
           "x": 50,
           "y": 14,
-          "group": "shoulder",
+          "group": "menu",
           "optional": false,
           "analog": false
         },
@@ -1512,9 +1615,149 @@
           "analog": true
         }
       ]
+    },
+    {
+      "id": "pce-2",
+      "name": "PC Engine / TurboGrafx-16 — two-button pad",
+      "family": "two-button",
+      "shape": "rectangle",
+      "controls": [
+        {
+          "id": "b",
+          "label": "II",
+          "x": 70,
+          "y": 53,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "a",
+          "label": "I",
+          "x": 84,
+          "y": 53,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "select",
+          "label": "Select",
+          "x": 43,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Run",
+          "x": 54,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 56,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ],
+      "notes": "Standard two-button gameplay layout. Turbo controls, when present, repeat I/II rather than providing additional game inputs."
     }
   ],
   "emulator_profiles": [
+    {
+      "id": "retroarch:mupen64plus_next:n64-independent",
+      "name": "RetroArch · Mupen64Plus-Next · Independent N64 C-buttons",
+      "core": "mupen64plus_next",
+      "target_layout": "n64",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/mupen64plus-libretro-nx/blob/develop/custom/mupen64plus-core/plugin/emulate_game_controller_via_libretro.c",
+      "conditions": [
+        "Independent C-button mode is enabled in a private per-launch core-options file",
+        "Existing per-game core options are suspended for this session; the global options file is copied, never rewritten",
+        "Opposing C buttons remain independent if the hardware reports them independently"
+      ],
+      "core_options": {
+        "mupen64plus-alt-map": "True"
+      },
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "a": "South",
+        "b": "West",
+        "l": "Select",
+        "r": "RightTrigger",
+        "z": "LeftTrigger",
+        "c_up": "North",
+        "c_down": "East",
+        "c_left": "LeftBumper",
+        "c_right": "RightBumper",
+        "stick_up": "LeftStickUp",
+        "stick_down": "LeftStickDown",
+        "stick_left": "LeftStickLeft",
+        "stick_right": "LeftStickRight"
+      }
+    },
+    {
+      "id": "retroarch:gambatte:gameboy",
+      "name": "RetroArch · Gambatte · Game Boy gamepad",
+      "core": "gambatte",
+      "target_layout": "gameboy",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://docs.libretro.com/library/gambatte/#joypad",
+      "conditions": [
+        "Standard Game Boy gamepad; palette hotkeys are not gameplay controls"
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "select": "Select",
+        "a": "East",
+        "b": "South"
+      }
+    },
     {
       "id": "retroarch:fceumm:nes",
       "name": "RetroArch · FCEUmm · NES gamepad",
