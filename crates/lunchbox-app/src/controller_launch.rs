@@ -101,6 +101,59 @@ fn read_optional(path: &Path) -> Result<String> {
     }
 }
 
+fn retroarch_base(executable: &EmulatorExecutable) -> Result<(std::path::PathBuf, String)> {
+    let dirs = directories::BaseDirs::new().context("Finding RetroArch config directory")?;
+    let base = match executable {
+        EmulatorExecutable::Flatpak { app_id, .. } => dirs
+            .home_dir()
+            .join(".var/app")
+            .join(app_id)
+            .join("config/retroarch"),
+        _ => dirs.config_dir().join("retroarch"),
+    };
+    let path = base.join("retroarch.cfg");
+    ensure!(
+        path.exists()
+            || matches!(executable, EmulatorExecutable::Flatpak { .. })
+            || !dirs.home_dir().join(".retroarch.cfg").exists(),
+        "Legacy ~/.retroarch.cfg needs explicit configuration resolution for calibrated launch"
+    );
+    Ok((base, read_optional(&path)?))
+}
+
+fn configured_path(value: &str) -> Result<std::path::PathBuf> {
+    let path = if let Some(relative) = value.strip_prefix("~/") {
+        directories::BaseDirs::new()
+            .context("Finding RetroArch home directory")?
+            .home_dir()
+            .join(relative)
+    } else {
+        std::path::PathBuf::from(value)
+    };
+    ensure!(
+        path.is_absolute(),
+        "Custom relative RetroArch paths need effective configuration resolution"
+    );
+    Ok(path)
+}
+
+fn emulator_arguments<'a>(
+    plan: &'a LaunchPlan,
+    executable: &EmulatorExecutable,
+) -> Result<&'a [OsString]> {
+    match executable {
+        EmulatorExecutable::Flatpak { app_id, .. } => {
+            let boundary = plan
+                .arguments
+                .iter()
+                .position(|arg| arg.to_str() == Some(app_id))
+                .context("Missing Flatpak app boundary")?;
+            Ok(&plan.arguments[boundary + 1..])
+        }
+        _ => Ok(&plan.arguments),
+    }
+}
+
 fn write_core_options(
     profile: &EmulatorProfile,
     plan: &LaunchPlan,
@@ -117,16 +170,7 @@ fn write_core_options(
             || arg.to_string_lossy().starts_with("--appendconfig")),
         "Custom RetroArch configuration arguments need core-options resolution before calibrated launch with core options"
     );
-    let dirs = directories::BaseDirs::new().context("Finding RetroArch config directory")?;
-    let base = match executable {
-        EmulatorExecutable::Flatpak { app_id, .. } => dirs
-            .home_dir()
-            .join(".var/app")
-            .join(app_id)
-            .join("config/retroarch"),
-        _ => dirs.config_dir().join("retroarch"),
-    };
-    let config = read_optional(&base.join("retroarch.cfg"))?;
+    let (base, config) = retroarch_base(executable)?;
     ensure!(
         !config
             .lines()
@@ -134,14 +178,7 @@ fn write_core_options(
         "Included RetroArch configs require core-options resolution before calibrated launch with core options"
     );
     let path = match cfg_value(&config, "core_options_path").filter(|v| !v.is_empty()) {
-        Some(path) => {
-            let path = std::path::PathBuf::from(path);
-            ensure!(
-                path.is_absolute(),
-                "Custom relative core-options path is not supported yet"
-            );
-            path
-        }
+        Some(path) => configured_path(&path)?,
         None => base.join("retroarch-core-options.cfg"),
     };
     let options = core_options_overlay(&read_optional(&path)?, &profile.core_options)?;
@@ -152,8 +189,15 @@ fn write_core_options(
         "Core-options path cannot be encoded"
     );
     std::fs::write(&output, options)?;
+    // RetroArch may save a per-core .opt under this directory even with
+    // game_specific_options disabled. Keep that exit-time write private too.
+    let private_config = directory.join("config");
+    std::fs::create_dir_all(&private_config)?;
+    let private_config = private_config
+        .to_str()
+        .context("Private config path must be UTF-8")?;
     Ok(format!(
-        "game_specific_options = \"false\"\ncore_options_path = \"{output_text}\"\n"
+        "game_specific_options = \"false\"\nglobal_core_options = \"false\"\ncore_options_path = \"{output_text}\"\nrgui_config_directory = \"{private_config}\"\n"
     ))
 }
 
@@ -586,6 +630,9 @@ pub fn prepare(
         "Calibrated launch for Wine RetroArch is not implemented yet"
     );
     let profile = contract(&option.core_name, platform).context("No automatic controller contract for this core/platform yet; disable Apply saved calibrations to use the emulator's native setup")?;
+    if catalog().launch_modes(&option.core_name, platform).len() > 1 {
+        return prepare_mode_aware(settings, platform, option, plan, &devices);
+    }
     // A connected N30 must not prevent a calibrated Brawler64 from playing N64.
     // Only controllers with every required target capability enter the player list.
     devices.retain(|device| compatible(&mapping.calibrations[&device.stable_id], profile));
@@ -634,6 +681,217 @@ pub fn prepare(
     }))
 }
 
+/// Independent target modes per console port, selected from the emulator's
+/// configuration, never inferred by downgrading an incompatible physical pad.
+fn prepare_mode_aware(
+    settings: &AppSettings,
+    platform: &str,
+    option: &RomEmulatorOption,
+    plan: &mut LaunchPlan,
+    devices: &[&ControllerDevice],
+) -> Result<Option<CalibratedLaunch>> {
+    let (base, config) = retroarch_base(&option.executable)?;
+    ensure!(
+        !plan
+            .environment
+            .iter()
+            .any(|(key, _)| key == "XDG_CONFIG_HOME" || key == "HOME"),
+        "Custom emulator environment needs effective controller-mode resolution"
+    );
+    let profiles = catalog().launch_modes(&option.core_name, platform);
+    let first = profiles.first().context("No controller mode contract")?;
+    let ports = first.retroarch_launch.as_ref().unwrap().max_players;
+    ensure!(
+        profiles.iter().all(
+            |profile| profile.retroarch_launch.as_ref().unwrap().max_players == ports
+                && profile.core_options == first.core_options
+                && profile.retroarch_library == first.retroarch_library
+        ),
+        "Controller modes disagree on port topology, library name or core options"
+    );
+    let library = first
+        .retroarch_library
+        .as_ref()
+        .context("Mode-aware core lacks its exact library name")?;
+    let arguments = emulator_arguments(plan, &option.executable)?;
+    ensure!(
+        !arguments.iter().any(|arg| arg == "--config"
+            || arg.to_string_lossy().starts_with("-c")
+            || arg.to_string_lossy().starts_with("--config=")
+            || arg.to_string_lossy().starts_with("--appendconfig")),
+        "Custom RetroArch config arguments need effective controller-mode resolution"
+    );
+    // A saved core/game remap can select a device mode, not just button wiring.
+    // Do not silently fall back to the base mode while those layers are unresolved.
+    let remaps = cfg_value(&config, "input_remapping_directory")
+        .filter(|v| !v.is_empty())
+        .map(|value| configured_path(&value))
+        .transpose()?
+        .unwrap_or_else(|| base.join("config/remaps"));
+    let overrides = cfg_value(&config, "rgui_config_directory")
+        .filter(|v| !v.is_empty())
+        .map(|value| configured_path(&value))
+        .transpose()?
+        .unwrap_or_else(|| base.join("config"));
+    for directory in [remaps.join(library), overrides.join(library)] {
+        if directory.exists() {
+            for entry in walkdir::WalkDir::new(&directory) {
+                let entry = entry?;
+                ensure!(
+                    !entry.file_type().is_file()
+                        || !entry
+                            .path()
+                            .extension()
+                            .is_some_and(|ext| ext == "rmp" || ext == "cfg"),
+                    "Saved {library} core/game overrides need effective controller-mode resolution before calibrated launch"
+                );
+            }
+        }
+    }
+    let modes = crate::controller_launch_modes::configured_modes(&config, arguments, ports)?;
+    let players = mode_players(settings, &option.core_name, platform, &modes, devices)?;
+    let cache = directories::BaseDirs::new()
+        .context("Finding controller launch cache")?
+        .cache_dir()
+        .join("lunchbox/controller-launch");
+    std::fs::create_dir_all(&cache)?;
+    let directory = tempfile::Builder::new()
+        .prefix("session-")
+        .tempdir_in(cache)?;
+    let mut output = String::from(
+        "# Lunchbox per-launch physical calibration; original configuration is unchanged.\ninput_joypad_driver = \"linuxraw\"\ninput_autodetect_enable = \"false\"\nauto_remaps_enable = \"false\"\nauto_overrides_enable = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\n",
+    );
+    let highest_port = players.iter().map(|(port, _, _)| *port).max().unwrap();
+    // Disabled gaps must not inherit a joystick already assigned to another port.
+    for port in 1..=ports {
+        if !players.iter().any(|(assigned, _, _)| *assigned == port) {
+            for (_, control) in OUTPUTS {
+                for suffix in ["btn", "axis"] {
+                    output.push_str(&format!(
+                        "input_player{port}_{control}_{suffix} = \"nul\"\n"
+                    ));
+                }
+            }
+            output.push_str(&format!("input_libretro_device_p{port} = \"0\"\n"));
+        }
+    }
+    for (port, profile, device) in &players {
+        let calibration = &settings.controller_mapping.calibrations[&device.stable_id];
+        let numbering = validated_numbering(calibration, profile, device)?;
+        output.push_str(&player_config(calibration, profile, &numbering, *port)?);
+    }
+    output.push_str(&format!("input_max_users = \"{highest_port}\"\n"));
+    output.push_str(&write_core_options(
+        first,
+        plan,
+        &option.executable,
+        directory.path(),
+    )?);
+    let path = directory.path().join("controllers.cfg");
+    std::fs::write(&path, output)?;
+    attach_config(plan, &option.executable, &path)?;
+    Ok(Some(CalibratedLaunch {
+        _directory: directory,
+        description: format!(
+            "Applied {} calibrated controller(s) using the selected per-port modes · RetroArch automatic overrides/remaps suspended for this launch",
+            players.len()
+        ),
+    }))
+}
+
+fn mode_players<'a>(
+    settings: &AppSettings,
+    core: &str,
+    platform: &str,
+    modes: &[u32],
+    devices: &[&'a ControllerDevice],
+) -> Result<Vec<(usize, &'static EmulatorProfile, &'a ControllerDevice)>> {
+    let mut targets = Vec::new();
+    for (index, mode) in modes.iter().copied().enumerate() {
+        if mode == 0 {
+            continue;
+        }
+        let profile = catalog()
+            .launch_mode(core, platform, mode)
+            .with_context(|| {
+                format!(
+                    "No calibrated contract for {core} controller mode {mode} on port {}",
+                    index + 1
+                )
+            })?;
+        ensure!(
+            index < profile.retroarch_launch.as_ref().unwrap().max_players,
+            "Controller port exceeds the verified mode"
+        );
+        targets.push((index + 1, profile));
+    }
+    let candidates = targets
+        .iter()
+        .map(|(_, profile)| {
+            devices
+                .iter()
+                .enumerate()
+                .filter_map(|(index, device)| {
+                    settings
+                        .controller_mapping
+                        .calibrations
+                        .get(&device.stable_id)
+                        .is_some_and(|calibration| compatible(calibration, profile))
+                        .then_some(index)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    // Augmenting paths maximize filled ports without consuming a uniquely
+    // capable pad on a port that another connected controller could serve.
+    fn assign(
+        port: usize,
+        candidates: &[Vec<usize>],
+        owners: &mut [Option<usize>],
+        seen: &mut [bool],
+    ) -> bool {
+        for &device in &candidates[port] {
+            if seen[device] {
+                continue;
+            }
+            seen[device] = true;
+            if owners[device].is_none_or(|other| assign(other, candidates, owners, seen)) {
+                owners[device] = Some(port);
+                return true;
+            }
+        }
+        false
+    }
+    let mut owners = vec![None; devices.len()];
+    for (index, (port, profile)) in targets.iter().enumerate() {
+        if !assign(
+            index,
+            &candidates,
+            &mut owners,
+            &mut vec![false; devices.len()],
+        ) && *port == 1
+        {
+            bail!(
+                "No connected calibration supplies all controls for {}. Complete calibration or choose a compatible controller; the emulated mode was not changed",
+                profile.name
+            );
+        }
+    }
+    let mut players = owners
+        .iter()
+        .enumerate()
+        .filter_map(|(device, owner)| {
+            owner.map(|target| (targets[target].0, targets[target].1, devices[device]))
+        })
+        .collect::<Vec<_>>();
+    players.sort_by_key(|(port, _, _)| *port);
+    ensure!(
+        !players.is_empty(),
+        "No enabled console port has a compatible calibrated controller"
+    );
+    Ok(players)
+}
+
 fn attach_config(
     plan: &mut LaunchPlan,
     executable: &EmulatorExecutable,
@@ -666,6 +924,285 @@ fn attach_config(
 mod tests {
     use super::*;
     use crate::controller_catalog::InputBinding;
+
+    fn calibrated_layout(layout: &str) -> (Calibration, JoydevMap) {
+        let mut buttons = Vec::new();
+        let mut bindings = BTreeMap::new();
+        for control in &catalog().layout(layout).unwrap().controls {
+            let native = if control.analog {
+                let axis = match control.id.as_str() {
+                    "stick_up" | "stick_down" => 1,
+                    "stick_left" | "stick_right" => 0,
+                    "right_stick_up" | "right_stick_down" => 3,
+                    "right_stick_left" | "right_stick_right" => 2,
+                    _ => panic!("Unknown test axis"),
+                };
+                NativeInput {
+                    code: 0x30000 + axis,
+                    direction: if control.id.ends_with("up") || control.id.ends_with("left") {
+                        -1
+                    } else {
+                        1
+                    },
+                }
+            } else {
+                let code = 288 + buttons.len() as u16;
+                buttons.push(code);
+                NativeInput {
+                    code: 0x10000 + u32::from(code),
+                    direction: 0,
+                }
+            };
+            bindings.insert(
+                control.id.clone(),
+                InputBinding {
+                    code: native.code,
+                    direction: native.direction,
+                    kind: if control.analog { "axis" } else { "button" }.into(),
+                    logical: "Driver label is deliberately irrelevant".into(),
+                    axis: None,
+                    native: Some(native),
+                },
+            );
+        }
+        buttons.reverse();
+        (
+            Calibration {
+                layout: layout.into(),
+                os: "linux".into(),
+                backend: "gilrs-0.11".into(),
+                bindings,
+            },
+            JoydevMap {
+                index: 3,
+                buttons,
+                axes: vec![3, 2, 1, 0],
+            },
+        )
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn swanstation_uses_mode_specific_physical_bindings_not_printed_letters() {
+        for (mode, layout) in [
+            (1, "brawler64"),
+            (1, "dualshock"),
+            (261, "dualshock"),
+            (261, "xbox"),
+        ] {
+            let profile = catalog()
+                .launch_mode("swanstation", "Sony Playstation", mode)
+                .unwrap();
+            let (calibration, numbering) = calibrated_layout(layout);
+            let config = player_config(&calibration, profile, &numbering, 1).unwrap();
+            assert!(compatible(&calibration, profile));
+            assert!(config.contains(&format!("input_libretro_device_p1 = \"{mode}\"")));
+            let physical = if layout == "brawler64" { "a" } else { "b" };
+            let (_, cross) = numbering
+                .binding(calibration.bindings[physical].native.as_ref().unwrap())
+                .unwrap();
+            assert!(config.contains(&format!("input_player1_b_btn = \"{cross}\"")));
+            if mode == 261 {
+                for (control, output) in [
+                    ("stick_up", "l_y_minus"),
+                    ("stick_right", "l_x_plus"),
+                    ("right_stick_down", "r_y_plus"),
+                    ("right_stick_left", "r_x_minus"),
+                ] {
+                    let (_, axis) = numbering
+                        .binding(calibration.bindings[control].native.as_ref().unwrap())
+                        .unwrap();
+                    assert!(config.contains(&format!("input_player1_{output}_axis = \"{axis}\"")));
+                    assert!(config.contains(&format!("input_player1_{output}_btn = \"nul\"")));
+                }
+            }
+        }
+        let analog = catalog().launch_mode("swanstation", "PSX", 261).unwrap();
+        assert!(!compatible(&calibrated_layout("brawler64").0, analog));
+        assert!(!compatible(&calibrated_layout("horizontal-four").0, analog));
+        let mut missing_click = calibrated_layout("dualshock").0;
+        missing_click.bindings.remove("l3");
+        assert!(!compatible(&missing_click, analog));
+        assert!(catalog().launch_mode("swanstation", "PSX", 517).is_none());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn mixed_console_port_modes_allocate_independent_compatible_controllers() {
+        let make_device = |id: &str| ControllerDevice {
+            stable_id: id.into(),
+            name: "Same USB name".into(),
+            device_path: format!("/dev/input/{id}").into(),
+            event_paths: vec![],
+            vendor_id: None,
+            product_id: None,
+            version: None,
+            bus_type: None,
+            physical_path: None,
+            unique_id: None,
+            is_virtual: false,
+        };
+        let devices = [make_device("js4"), make_device("js5")];
+        let mut settings = AppSettings::default();
+        settings
+            .controller_mapping
+            .calibrations
+            .insert("js4".into(), calibrated_layout("brawler64").0);
+        settings
+            .controller_mapping
+            .calibrations
+            .insert("js5".into(), calibrated_layout("dualshock").0);
+        let digital_first = mode_players(
+            &settings,
+            "swanstation",
+            "PSX",
+            &[1, 261],
+            &[&devices[1], &devices[0]],
+        )
+        .unwrap();
+        assert_eq!(digital_first.len(), 2);
+        assert_eq!(digital_first[0].2.stable_id, "js4");
+        assert_eq!(digital_first[1].2.stable_id, "js5");
+        let selected = mode_players(
+            &settings,
+            "swanstation",
+            "PSX",
+            &[261, 1],
+            &[&devices[0], &devices[1]],
+        )
+        .unwrap();
+        assert_eq!(
+            (selected[0].0, selected[0].2.stable_id.as_str()),
+            (1, "js5")
+        );
+        assert_eq!(
+            (selected[1].0, selected[1].2.stable_id.as_str()),
+            (2, "js4")
+        );
+        assert!(mode_players(&settings, "swanstation", "PSX", &[261, 1], &[&devices[0]]).is_err());
+        let selected =
+            mode_players(&settings, "swanstation", "PSX", &[0, 1], &[&devices[0]]).unwrap();
+        assert_eq!(selected[0].0, 2);
+        assert!(mode_players(&settings, "swanstation", "PSX", &[517, 1], &[&devices[1]]).is_err());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    #[ignore = "Real RetroArch Flatpak BIOS-only smoke check; requires explicit trusted core and BIOS directory"]
+    fn swanstation_flatpak_mode_startup_oracle() {
+        use std::os::unix::process::CommandExt;
+        use std::{
+            fs,
+            process::{Command, Stdio},
+            time::{Duration, Instant},
+        };
+        let core = std::path::PathBuf::from(
+            std::env::var_os("LUNCHBOX_TEST_SWANSTATION_CORE").expect("Set trusted core path"),
+        )
+        .canonicalize()
+        .unwrap();
+        let bios = std::path::PathBuf::from(
+            std::env::var_os("LUNCHBOX_TEST_PSX_BIOS_DIRECTORY").expect("Set BIOS directory"),
+        )
+        .canonicalize()
+        .unwrap();
+        assert!(core.is_file() && bios.is_dir());
+        let directory = tempfile::Builder::new()
+            .prefix("lunchbox-swanstation-mode-oracle-")
+            .tempdir_in("/tmp")
+            .unwrap()
+            .keep();
+        for mode in [1, 261] {
+            let root = directory.join(mode.to_string());
+            fs::create_dir(&root).unwrap();
+            for folder in ["saves", "states", "cache", "logs"] {
+                fs::create_dir(root.join(folder)).unwrap();
+            }
+            let profile = catalog().launch_mode("swanstation", "PSX", mode).unwrap();
+            let (calibration, numbering) = calibrated_layout("dualshock");
+            let mut config = player_config(&calibration, profile, &numbering, 1).unwrap();
+            config.push_str("menu_show_start_screen = \"false\"\nmenu_pause_libretro = \"false\"\naudio_enable = \"false\"\nhistory_list_enable = \"false\"\ngame_specific_options = \"false\"\n");
+            config.push_str("config_save_on_exit = \"false\"\ninput_autodetect_enable = \"false\"\nauto_remaps_enable = \"false\"\nauto_overrides_enable = \"false\"\ninput_max_users = \"1\"\ninput_joypad_driver = \"linuxraw\"\ninput_driver = \"udev\"\nvideo_driver = \"null\"\naudio_driver = \"null\"\nvideo_vsync = \"false\"\nmenu_enable_widgets = \"false\"\npause_nonactive = \"false\"\npause_on_disconnect = \"false\"\n");
+            // A real video driver is necessary for a meaningful rendered-frame
+            // limit; a null display can run without advancing that counter.
+            config = config.replace("video_driver = \"null\"", "video_driver = \"glcore\"");
+            for (key, path) in [
+                ("system_directory", bios.clone()),
+                ("savefile_directory", root.join("saves")),
+                ("savestate_directory", root.join("states")),
+                ("cache_directory", root.join("cache")),
+                ("log_dir", root.join("logs")),
+                ("core_options_path", root.join("options.cfg")),
+                ("rgui_config_directory", root.join("config")),
+                ("content_history_path", root.join("history.lpl")),
+                ("content_favorites_path", root.join("favorites.lpl")),
+                ("content_image_history_path", root.join("images.lpl")),
+                ("content_music_history_path", root.join("music.lpl")),
+                ("content_video_history_path", root.join("videos.lpl")),
+            ] {
+                let path = path.to_str().unwrap();
+                assert!(!path.contains(['"', '\n', '\r']));
+                config.push_str(&format!("{key} = \"{path}\"\n"));
+            }
+            fs::write(root.join("options.cfg"), "swanstation_GPU_Renderer = \"Software\"\nswanstation_ControllerPorts_MultitapMode = \"Disabled\"\n").unwrap();
+            fs::write(root.join("retroarch.cfg"), config).unwrap();
+            let log = fs::File::create(root.join("startup.log")).unwrap();
+            let mut child = Command::new("flatpak")
+                .process_group(0)
+                .arg("run")
+                .arg(format!(
+                    "--filesystem={}:ro",
+                    core.parent().unwrap().display()
+                ))
+                .arg(format!("--filesystem={}:ro", bios.display()))
+                .arg(format!("--filesystem={}", root.display()))
+                .args(["org.libretro.RetroArch", "--verbose", "--config"])
+                .arg(root.join("retroarch.cfg"))
+                .arg("-L")
+                .arg(&core)
+                .args(["--max-frames", "8", "--sram-mode", "noload-nosave"])
+                .stdout(Stdio::from(log.try_clone().unwrap()))
+                .stderr(Stdio::from(log))
+                .spawn()
+                .unwrap();
+            let started = Instant::now();
+            let status = loop {
+                if let Some(status) = child.try_wait().unwrap() {
+                    break status;
+                }
+                if started.elapsed() > Duration::from_secs(30) {
+                    // A Flatpak launcher can exit before its sandbox child.
+                    // This test alone owns the fresh process group; never kill
+                    // every RetroArch process or a shared terminal job group.
+                    unsafe {
+                        libc::kill(-(child.id() as i32), libc::SIGTERM);
+                    }
+                    std::thread::sleep(Duration::from_millis(200));
+                    unsafe {
+                        libc::kill(-(child.id() as i32), libc::SIGKILL);
+                    }
+                    child.wait().unwrap();
+                    panic!("Core startup timed out; logs at {}", root.display());
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            };
+            let text = fs::read_to_string(root.join("startup.log")).unwrap();
+            assert!(
+                status.success(),
+                "Core startup failed; logs at {}",
+                root.display()
+            );
+            assert!(
+                text.contains("SwanStation"),
+                "Wrong core; logs at {}",
+                root.display()
+            );
+            println!(
+                "SWANSTATION_MODE_ORACLE mode={mode} log={}",
+                root.join("startup.log").display()
+            );
+        }
+    }
     #[test]
     #[cfg(target_os = "linux")]
     fn measured_event_identity_never_falls_back_to_first_event_or_same_model() {
@@ -773,7 +1310,13 @@ mod tests {
             );
             if let Some(launch) = &profile.retroarch_launch {
                 for alias in &launch.platforms {
-                    assert_eq!(contract(&profile.core, alias).unwrap().id, profile.id);
+                    assert_eq!(
+                        catalog()
+                            .launch_mode(&profile.core, alias, launch.device)
+                            .unwrap()
+                            .id,
+                        profile.id
+                    );
                 }
             }
         }

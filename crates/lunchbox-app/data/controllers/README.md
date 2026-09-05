@@ -89,6 +89,29 @@ an extra independent face input.
 
 ## Launch adapter evidence and limitations
 
+### SwanStation mode-aware adapter (in progress)
+
+The catalog distinguishes digital device 1 from DualShock device 261 using
+SwanStation source revision `7f69c199ed88d5723f71dd3a6e9c1b7a45b535a6`.
+These IDs are core-specific: Beetle PSX uses a different DualShock ID.
+The adapter composes each port independently from its configured mode and a
+compatible calibrated physical layout; missing analog controls never silently
+change the emulated controller to digital. Command-line device overrides take
+precedence over the base configuration. Saved override/remap files and include
+chains still need effective-mode resolution and currently produce an error.
+
+The Flatpak BIOS-only runtime probe loads SwanStation and boots the BIOS. The
+initial null-display probe timed out; an OpenGL display completes the eight-frame
+limit successfully for both digital and DualShock configurations (2026-09-05,
+RetroArch 1.22.2; core SHA256
+`b0dcc6c4f939fe814693a59d03895ab8a8ba8d3c2cc1e84bb79c14d33de9899e`).
+This is startup evidence, not physical controller gameplay
+verification. The probe uses private configuration/save/history paths and
+explicitly supplied existing BIOS files, without downloading game content.
+Runtime observation also showed that RetroArch can save a per-core `.opt` under
+`rgui_config_directory` despite a private `core_options_path`; both the production
+options writer and the probe now redirect that additional path into the session.
+
 Functional driver/configuration facts checked against RetroArch's
 [linuxraw driver](https://github.com/libretro/RetroArch/blob/master/input/drivers_joypad/linuxraw_joypad.c),
 [configuration reader](https://github.com/libretro/RetroArch/blob/master/configuration.c),

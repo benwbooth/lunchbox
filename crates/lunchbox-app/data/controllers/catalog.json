@@ -1476,7 +1476,7 @@
           "x": 36,
           "y": 84,
           "group": "stick",
-          "optional": true,
+          "optional": false,
           "analog": false
         },
         {
@@ -1485,7 +1485,7 @@
           "x": 65,
           "y": 84,
           "group": "stick",
-          "optional": true,
+          "optional": false,
           "analog": false
         },
         {
@@ -2080,6 +2080,110 @@
         "up": "DPadUp", "down": "DPadDown", "left": "DPadLeft", "right": "DPadRight",
         "start": "Start", "select": "Select", "a": "East", "b": "South",
         "x": "North", "y": "West", "l": "LeftBumper", "r": "RightBumper"
+      }
+    },
+    {
+      "id": "retroarch:swanstation:digital",
+      "retroarch_library": "SwanStation",
+      "name": "RetroArch · SwanStation · PlayStation digital controller",
+      "core": "swanstation",
+      "target_layout": "playstation-digital",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/swanstation/blob/7f69c199ed88d5723f71dd3a6e9c1b7a45b535a6/src/libretro/libretro_host_interface.cpp",
+      "retroarch_launch": {
+        "platforms": [
+          "Sony Playstation",
+          "Sony - PlayStation",
+          "PlayStation",
+          "PS1",
+          "PSX"
+        ],
+        "device": 1,
+        "max_players": 2
+      },
+      "core_options": {
+        "swanstation_ControllerPorts_MultitapMode": "Disabled"
+      },
+      "conditions": [
+        "Two console ports; multitap is disabled in the private core-options copy",
+        "Selects the per-port Digital or DualShock contract from base RetroArch device settings and explicit command-line device overrides",
+        "Custom config/include chains and automatic per-core/game remaps require separate effective-mode resolution",
+        "DualShock mode requires real physical sticks; no fallback to Digital because a selected pad lacks analog inputs",
+        "Analog-mode toggle options are preserved; physical rumble through linuxraw is not implemented"
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "select": "Select",
+        "a": "East",
+        "b": "South",
+        "x": "North",
+        "y": "West",
+        "l": "LeftBumper",
+        "r": "RightBumper",
+        "l2": "LeftTrigger",
+        "r2": "RightTrigger"
+      }
+    },
+    {
+      "id": "retroarch:swanstation:dualshock",
+      "retroarch_library": "SwanStation",
+      "name": "RetroArch · SwanStation · DualShock",
+      "core": "swanstation",
+      "target_layout": "dualshock",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/swanstation/blob/7f69c199ed88d5723f71dd3a6e9c1b7a45b535a6/src/libretro/libretro_host_interface.cpp",
+      "retroarch_launch": {
+        "platforms": [
+          "Sony Playstation",
+          "Sony - PlayStation",
+          "PlayStation",
+          "PS1",
+          "PSX"
+        ],
+        "device": 261,
+        "max_players": 2
+      },
+      "core_options": {
+        "swanstation_ControllerPorts_MultitapMode": "Disabled"
+      },
+      "conditions": [
+        "Two console ports; multitap is disabled in the private core-options copy",
+        "Selects the per-port Digital or DualShock contract from base RetroArch device settings and explicit command-line device overrides",
+        "Custom config/include chains and automatic per-core/game remaps require separate effective-mode resolution",
+        "DualShock mode requires real physical sticks; no fallback to Digital because a selected pad lacks analog inputs",
+        "Analog-mode toggle options are preserved; physical rumble through linuxraw is not implemented"
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "select": "Select",
+        "a": "East",
+        "b": "South",
+        "x": "North",
+        "y": "West",
+        "l": "LeftBumper",
+        "r": "RightBumper",
+        "l2": "LeftTrigger",
+        "r2": "RightTrigger",
+        "l3": "LeftStick",
+        "r3": "RightStick",
+        "stick_up": "LeftStickUp",
+        "stick_down": "LeftStickDown",
+        "stick_left": "LeftStickLeft",
+        "stick_right": "LeftStickRight",
+        "right_stick_up": "RightStickUp",
+        "right_stick_down": "RightStickDown",
+        "right_stick_left": "RightStickLeft",
+        "right_stick_right": "RightStickRight"
       }
     },
     {

@@ -58,6 +58,9 @@ pub struct EmulatorProfile {
     pub bindings: BTreeMap<String, String>,
     #[serde(default)]
     pub core_options: BTreeMap<String, String>,
+    /// Exact core-reported library name used for RetroArch override directories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retroarch_library: Option<String>,
     /// Explicit opt-in to the implemented Linux RetroArch launch writer.
     /// Documented preview profiles do not implicitly become launch contracts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -148,15 +151,33 @@ impl Catalog {
     }
 
     pub fn launch_profile(&self, core: &str, platform: &str) -> Option<&EmulatorProfile> {
-        let mut matches = self.emulator_profiles.iter().filter(|profile| {
-            profile.core == core
-                && profile.retroarch_launch.as_ref().is_some_and(|launch| {
-                    launch
-                        .platforms
-                        .iter()
-                        .any(|alias| alias.eq_ignore_ascii_case(platform.trim()))
-                })
-        });
+        let matches = self.launch_modes(core, platform);
+        if matches.len() == 1 {
+            return Some(matches[0]);
+        }
+        self.launch_mode(core, platform, 1)
+    }
+
+    pub fn launch_modes(&self, core: &str, platform: &str) -> Vec<&EmulatorProfile> {
+        self.emulator_profiles
+            .iter()
+            .filter(|profile| {
+                profile.core == core
+                    && profile.retroarch_launch.as_ref().is_some_and(|launch| {
+                        launch
+                            .platforms
+                            .iter()
+                            .any(|alias| alias.eq_ignore_ascii_case(platform.trim()))
+                    })
+            })
+            .collect()
+    }
+
+    pub fn launch_mode(&self, core: &str, platform: &str, device: u32) -> Option<&EmulatorProfile> {
+        let mut matches = self
+            .launch_modes(core, platform)
+            .into_iter()
+            .filter(|profile| profile.retroarch_launch.as_ref().unwrap().device == device);
         let first = matches.next()?;
         // Refuse ambiguity even if a caller has not validated its catalog yet.
         matches.next().is_none().then_some(first)
@@ -248,6 +269,15 @@ impl Catalog {
                 );
             }
             if let Some(launch) = &profile.retroarch_launch {
+                if let Some(library) = &profile.retroarch_library {
+                    ensure!(
+                        !library.is_empty()
+                            && library != "."
+                            && library != ".."
+                            && !library.chars().any(|c| c.is_control() || "/\\".contains(c)),
+                        "invalid RetroArch library directory name"
+                    );
+                }
                 ensure!(
                     profile.transport == "retropad",
                     "non-RetroPad profile cannot use RetroArch launch adapter"
@@ -258,8 +288,14 @@ impl Catalog {
                     "launch contract requires platform aliases and 1-16 player ports"
                 );
                 ensure!(
-                    launch.device & 0xff == 1 && launch.device <= u16::MAX.into(),
-                    "launch writer only supports joypads and their subclasses"
+                    (launch.device & 0xff == 1
+                        || (profile.target_layout == "dualshock"
+                            && matches!(
+                                (profile.core.as_str(), launch.device),
+                                ("swanstation", 261) | ("mednafen_psx" | "mednafen_psx_hw", 517)
+                            )))
+                        && launch.device <= u16::MAX.into(),
+                    "launch writer requires a reviewed joypad or analog device mode"
                 );
                 for alias in &launch.platforms {
                     ensure!(
@@ -269,7 +305,11 @@ impl Catalog {
                         "invalid launch platform alias"
                     );
                     ensure!(
-                        launch_targets.insert((profile.core.clone(), alias.to_ascii_lowercase())),
+                        launch_targets.insert((
+                            profile.core.clone(),
+                            alias.to_ascii_lowercase(),
+                            launch.device
+                        )),
                         "duplicate or ambiguous core/platform launch contract"
                     );
                 }
@@ -753,6 +793,30 @@ mod tests {
         assert!(original.launch_profile("snes9x", "SNES Mouse").is_none());
         assert!(original.launch_profile("snes9x2010", "SNES").is_none());
         assert!(original.launch_profile("bsnes", "Game Boy").is_none());
+    }
+
+    #[test]
+    fn psx_mode_ids_are_core_specific_and_defaults_remain_unambiguous() {
+        let db = catalog();
+        let digital = db.launch_profile("swanstation", "PSX").unwrap();
+        assert_eq!(digital.retroarch_launch.as_ref().unwrap().device, 1);
+        let analog = db
+            .launch_mode("swanstation", "Sony - PlayStation", 261)
+            .unwrap();
+        assert_eq!(analog.target_layout, "dualshock");
+        assert_eq!(analog.retroarch_library.as_deref(), Some("SwanStation"));
+        assert!(db.launch_mode("swanstation", "PSX", 517).is_none());
+        let mut invalid = db.clone();
+        invalid
+            .emulator_profiles
+            .iter_mut()
+            .find(|profile| profile.id == analog.id)
+            .unwrap()
+            .retroarch_launch
+            .as_mut()
+            .unwrap()
+            .device = 517;
+        assert!(invalid.validate().is_err());
     }
     #[test]
     fn catalog_ids_contracts_and_svg_controls_are_consistent() {

@@ -7,6 +7,7 @@ mod collections;
 mod controller_axis;
 mod controller_catalog;
 mod controller_launch;
+mod controller_launch_modes;
 mod controller_layout;
 mod controllers;
 mod couch_theme;
