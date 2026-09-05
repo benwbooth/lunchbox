@@ -2250,7 +2250,12 @@ pub(crate) fn rank_file_candidates_for_platform(
     let mut candidates = files
         .into_iter()
         .filter_map(|mut file| {
+            file.match_score = 0.0;
+            file.matched_title.clear();
             for (title, query) in &queries {
+                if !release_content_matches_request(&file.filename, title) {
+                    continue;
+                }
                 let tokens = significant_tokens(query);
                 let score = file_match_score(&file.filename, query, &tokens);
                 if score > file.match_score {
@@ -2391,13 +2396,24 @@ fn file_match_score(filename: &str, query: &str, query_tokens: &[&str]) -> f64 {
         .and_then(|name| name.to_str())
         .unwrap_or(filename);
     let candidate = normalized_words(title_without_tags(stem));
+    // Sequel numbers are identity-bearing, including normalized Roman numerals.
+    // Do not suggest VIII for VII just because both share "Final Fantasy".
+    if query.split_whitespace().any(|token| {
+        token.chars().all(|character| character.is_ascii_digit())
+            && !candidate.split_whitespace().any(|other| other == token)
+    }) {
+        return 0.0;
+    }
     if candidate == query {
         return 1.0;
     }
-    if candidate.starts_with(query) {
+    if candidate
+        .strip_prefix(query)
+        .is_some_and(|rest| rest.starts_with(' '))
+    {
         return 0.72;
     }
-    if candidate.contains(query) {
+    if format!(" {candidate} ").contains(&format!(" {query} ")) {
         return 0.65;
     }
     if query_tokens.is_empty() {
@@ -2419,12 +2435,46 @@ fn file_match_score(filename: &str, query: &str, query_tokens: &[&str]) -> f64 {
 }
 
 pub(crate) fn torrent_file_match_score(filename: &str, game_title: &str) -> f64 {
+    if !release_content_matches_request(filename, game_title) {
+        return 0.0;
+    }
     let query = normalized_words(title_without_tags(game_title));
     if query.is_empty() {
         return 0.0;
     }
     let query_tokens = significant_tokens(&query);
     file_match_score(filename, &query, &query_tokens)
+}
+
+fn release_content_matches_request(filename: &str, game_title: &str) -> bool {
+    // Inspect the filename including release tags, but not its parent folders.
+    // These tags describe different content, not interchangeable regional releases.
+    fn special_content(value: &str) -> [bool; 3] {
+        let normalized = normalized_words(value);
+        let words = normalized.split_whitespace().collect::<Vec<_>>();
+        [
+            words.iter().any(|word| {
+                matches!(
+                    *word,
+                    "demo" | "sample" | "sampler" | "preview" | "previews" | "kiosk"
+                )
+            }),
+            words
+                .iter()
+                .any(|word| matches!(*word, "beta" | "proto" | "prototype")),
+            words
+                .windows(2)
+                .any(|pair| matches!(pair, ["bonus", "disc" | "disk" | "cd"])),
+        ]
+    }
+    let stem = Path::new(filename)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or(filename);
+    special_content(stem)
+        .into_iter()
+        .zip(special_content(game_title))
+        .all(|(candidate, requested)| !candidate || requested)
 }
 
 fn title_without_tags(value: &str) -> &str {
@@ -3239,6 +3289,74 @@ mod tests {
         assert_eq!(
             file_match_score("Super Mario Land 4 (Unknown).zip", &query, &tokens),
             0.72
+        );
+    }
+
+    #[test]
+    fn final_fantasy_vii_matches_the_game_not_sampler_or_preview_discs() {
+        let files = vec![
+            candidate(0, "Final Fantasy VII (USA) (Interactive Sampler CD).chd"),
+            candidate(
+                1,
+                "Final Fantasy VII (USA) (Square Soft on PlayStation Previews).zip",
+            ),
+            candidate(2, "Final Fantasy VII (USA) (Demo).zip"),
+            candidate(3, "Final Fantasy VIII (USA).zip"),
+            candidate(4, "Final Fantasy VII (USA).zip"),
+        ];
+        let ranked = rank_file_candidates(
+            files,
+            "Final Fantasy VII",
+            &[],
+            &preferences("USA", "latest"),
+        )
+        .unwrap();
+        assert_eq!(ranked.len(), 1);
+        assert_eq!(ranked[0].index, 4);
+        assert_eq!(ranked[0].match_score, 1.0);
+    }
+
+    #[test]
+    fn release_content_checks_preserve_full_discs_and_explicit_demo_requests() {
+        assert_eq!(
+            torrent_file_match_score("Final Fantasy VII (USA) (Disc 2).chd", "Final Fantasy VII",),
+            1.0
+        );
+        assert_eq!(
+            torrent_file_match_score(
+                "Final Fantasy VII (USA) (Demo).zip",
+                "Final Fantasy VII (Demo)",
+            ),
+            1.0
+        );
+        assert_eq!(
+            torrent_file_match_score("PlayStation Sampler (Europe).zip", "PlayStation Sampler",),
+            1.0
+        );
+        assert_eq!(
+            torrent_file_match_score("Previews/Final Fantasy VII (USA).zip", "Final Fantasy VII",),
+            1.0
+        );
+        for suffix in ["Demo", "Beta", "Proto", "Bonus Disc"] {
+            assert_eq!(
+                torrent_file_match_score(
+                    &format!("Final Fantasy VII (USA) ({suffix}).zip"),
+                    "Final Fantasy VII",
+                ),
+                0.0
+            );
+        }
+        assert_eq!(
+            torrent_file_match_score("Final Fantasy 7 (USA).zip", "Final Fantasy VII"),
+            1.0
+        );
+        assert_eq!(
+            torrent_file_match_score("Final Fantasy 70 (USA).zip", "Final Fantasy VII"),
+            0.0
+        );
+        assert_eq!(
+            torrent_file_match_score("Final Fantasy VI (USA).zip", "Final Fantasy VII"),
+            0.0
         );
     }
 

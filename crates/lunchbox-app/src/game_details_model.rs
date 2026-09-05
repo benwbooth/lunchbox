@@ -6453,7 +6453,8 @@ fn download_candidate_location(
     index: i32,
 ) -> Option<(usize, usize)> {
     let mut remaining = usize::try_from(index).ok()?;
-    for (bundle_index, group) in groups.iter().enumerate() {
+    for bundle_index in ranked_source_indices(groups) {
+        let group = &groups[bundle_index];
         if remaining < group.files.len() {
             return Some((bundle_index, remaining));
         }
@@ -6463,18 +6464,23 @@ fn download_candidate_location(
 }
 
 fn download_source_location(groups: &[BundleCandidateGroup], index: i32) -> Option<usize> {
-    let mut remaining = usize::try_from(index).ok()?;
-    groups.iter().enumerate().find_map(|(bundle_index, group)| {
-        if group.files.is_empty() {
-            return None;
-        }
-        if remaining == 0 {
-            Some(bundle_index)
-        } else {
-            remaining -= 1;
-            None
-        }
-    })
+    ranked_source_indices(groups)
+        .get(usize::try_from(index).ok()?)
+        .copied()
+}
+
+fn ranked_source_indices(groups: &[BundleCandidateGroup]) -> Vec<usize> {
+    let mut indices = (0..groups.len())
+        .filter(|&index| !groups[index].files.is_empty())
+        .collect::<Vec<_>>();
+    // Keep original bundle indices stable for asynchronous results and download
+    // selection. Source/catalog priority only breaks equal-quality matches.
+    indices.sort_by(|&left, &right| {
+        groups[right].files[0]
+            .match_score
+            .total_cmp(&groups[left].files[0].match_score)
+    });
+    indices
 }
 
 fn preferred_loaded_group_index(groups: &[BundleCandidateGroup]) -> Option<usize> {
@@ -6780,6 +6786,22 @@ mod tests {
         assert_eq!(download_source_location(&groups, 1), Some(2));
         assert_eq!(download_source_location(&groups, 2), None);
         assert_eq!(download_source_location(&groups, -1), None);
+    }
+
+    #[test]
+    fn exact_game_source_outranks_earlier_fuzzy_source_without_changing_file_indices() {
+        let mut fuzzy = candidate_group(true, true);
+        fuzzy.files[0].filename = "Final Fantasy VII - Compilation.zip".into();
+        fuzzy.files[0].match_score = 0.72;
+        let mut exact = candidate_group(true, true);
+        exact.files[0].filename = "Final Fantasy VII (USA).zip".into();
+        exact.files[0].index = 15063;
+        let groups = vec![fuzzy, BundleCandidateGroup::default(), exact];
+        assert_eq!(download_source_location(&groups, 0), Some(2));
+        assert_eq!(download_source_location(&groups, 1), Some(0));
+        assert_eq!(download_candidate_location(&groups, 0), Some((2, 0)));
+        assert_eq!(groups[2].files[0].index, 15063);
+        assert_eq!(download_candidate_location(&groups, 1), Some((0, 0)));
     }
 
     #[test]
