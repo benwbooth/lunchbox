@@ -380,6 +380,28 @@ pub fn inspect_target_runtime(
                 "Selected device is not an SDL gamepad: {path}"
             );
         }
+        #[cfg(target_os = "linux")]
+        let mut physical_before_open = BTreeMap::new();
+        #[cfg(target_os = "linux")]
+        if version == 3_002_020
+            && effective_hints
+                .get("SDL_JOYSTICK_LINUX_CLASSIC")
+                .and_then(Option::as_deref)
+                == Some("1")
+        {
+            for path in binding_paths {
+                let path = Path::new(path);
+                // HIDAPI has another coordinate system even if classic is enabled.
+                if path.parent() == Some(Path::new("/dev/input"))
+                    && path
+                        .file_name()
+                        .and_then(|p| p.to_str())
+                        .is_some_and(|p| p.starts_with("js"))
+                {
+                    physical_before_open.insert(path.to_owned(), linux_classic::read(path)?);
+                }
+            }
+        }
         let player_session = if player_contract.is_some() {
             ensure!(
                 runtime_libraries.iter().any(|l| l
@@ -415,30 +437,21 @@ pub fn inspect_target_runtime(
                     get_error,
                 )?);
                 #[cfg(target_os = "linux")]
-                if version == 3_002_020
-                    && effective_hints
-                        .get("SDL_JOYSTICK_LINUX_CLASSIC")
-                        .and_then(Option::as_deref)
-                        == Some("1")
+                if let Some(path) = device.path.as_deref().map(Path::new)
+                    && let Some(before) = physical_before_open.get(path)
                 {
-                    let path = Path::new(device.path.as_ref().context("Missing SDL device path")?);
-                    // HIDAPI devices need their own physical adapter. Never apply
-                    // the classic numbering algorithm merely because a hint is set.
-                    if path.parent() == Some(Path::new("/dev/input"))
-                        && path
-                            .file_name()
-                            .and_then(|p| p.to_str())
-                            .is_some_and(|p| p.starts_with("js"))
-                    {
-                        let physical = linux_classic::read(path)?;
-                        physical.validate_counts(
-                            device
-                                .resolved
-                                .as_ref()
-                                .context("Missing resolved bindings")?,
-                        )?;
-                        device.linux_classic = Some(physical);
-                    }
+                    let physical = linux_classic::read(path)?;
+                    ensure!(
+                        &physical == before,
+                        "Kernel numbering or correction changed while SDL opened the device"
+                    );
+                    physical.validate_counts(
+                        device
+                            .resolved
+                            .as_ref()
+                            .context("Missing resolved bindings")?,
+                    )?;
+                    device.linux_classic = Some(physical);
                 }
                 // Verify that the selected instance still names the same path.
                 ensure!(
@@ -489,7 +502,7 @@ pub fn inspect_target_runtime(
             }
         }
         Ok(Snapshot {
-            schema_version: 3,
+            schema_version: 4,
             host_os: std::env::consts::OS.into(),
             library: library_path,
             library_sha256,

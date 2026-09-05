@@ -106,7 +106,7 @@ runtime comparison with saved measurements.
 The opt-in event-order player probe now keeps all opened devices alive and
 projects the verified revision's collision/fallback rules. Its matching-runtime
 mode requires explicit target libudev (and libcap dependency), rejecting an
-unverified loader fallback. Snapshot schema 3 records hashes for those libraries.
+unverified loader fallback. Snapshot schema 3 added hashes for those libraries.
 The Rust `duckstation_startup` oracle verifies the actual installed executable's
 verbose device-open records, not merely the helper's own calculations. On
 2026-09-05 it confirmed three gamepads with the two selected generic pads in
@@ -114,6 +114,21 @@ DuckStation slots **1 and 2**. Both opened names are `Xbox 360 Controller`, so
 names alone still cannot identify them. Log validation includes event order,
 instance IDs and slots; paths come from the matching helper observation.
 Live hotplug between processes and production launch-time confirmation remain.
+
+Schema 4 additionally records the actual kernel joystick correction for every
+physical axis, checked before and after SDL device opens. The new
+`physical_digital_binding` conversion composes measured evdev rest/pressed values
+through these corrections and the resolved SDL mapping. Numbering alone was
+insufficient: the [Linux joystick ABI](https://github.com/torvalds/linux/blob/v6.12/include/uapi/linux/joystick.h)
+exposes calibration used by the [kernel value converter](https://github.com/torvalds/linux/blob/v6.12/drivers/input/joydev.c),
+and [SDL 3.2.20 classic input](https://github.com/libsdl-org/SDL/blob/release-3.2.20/src/joystick/linux/SDL_sysjoystick.c)
+forwards those already-corrected values. No calibration ioctl writes are used.
+Corrections with unsupported arithmetic or type are rejected rather than guessed.
+Old snapshots without corrections remain valid for button numbering, not axis
+conversion. The actual kernel oracle matched all eight axes on both selected
+USB pads on kernel 7.2.2, including physical trigger rest 0 -> joystick -32767.
+Analog-target binding, current physical-bounds validation, and end-to-end launch
+application remain unfinished.
 
 The installed `0a53bc47c` SDL backend marks raw axis events consumed using the
 **output** axis index, unlike its button/hat handling, which uses the input index.

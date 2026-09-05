@@ -33,6 +33,23 @@ pub enum AxisSuppression {
     VerifiedInputIndex,
 }
 
+/// Compose measured physical input, kernel correction, and the target runtime's
+/// SDL mapping. The returned suffix still needs a verified emulator player ID.
+pub fn physical_digital_binding(
+    gamepad: &ResolvedGamepad,
+    physical: &crate::linux_classic::ClassicMap,
+    encoded: u32,
+    measured: Option<crate::linux_classic::AxisEndpoints>,
+    suppression: AxisSuppression,
+) -> Result<String> {
+    physical.validate_counts(gamepad)?;
+    digital_binding(
+        gamepad,
+        physical.digital_input(encoded, measured)?,
+        suppression,
+    )
+}
+
 /// Return the binding component after `SDL-N/`. The caller must independently
 /// establish DuckStation's actual player ID. This only targets digital actions;
 /// it must not be used to replace a target analog stick with buttons.
@@ -308,6 +325,77 @@ mod tests {
         assert_eq!(translate(&p, DigitalInput::Button(0)).unwrap(), "Y");
         assert_eq!(translate(&p, DigitalInput::Button(11)).unwrap(), "Button11");
         assert!(translate(&p, DigitalInput::Button(12)).is_err());
+    }
+
+    #[test]
+    fn physical_measurement_composes_kernel_and_sdl_mapping_for_a_trigger() {
+        use crate::linux_classic::{AxisCorrection, AxisEndpoints, ClassicMap};
+        let mut physical = ClassicMap::from_joydev(&[304], &[16, 17, 2]).unwrap();
+        physical.axis_corrections.insert(
+            2,
+            AxisCorrection {
+                coefficients: [127, 127, 4227330, 4227330, 0, 0, 0, 0],
+                precision: 0,
+                kind: 1,
+            },
+        );
+        let p = ResolvedGamepad {
+            joystick_axes: 1,
+            joystick_buttons: 1,
+            joystick_hats: 1,
+            bindings: vec![Binding {
+                input: Input::Axis {
+                    index: 0,
+                    min: -32768,
+                    max: 32767,
+                },
+                output: Output::Axis {
+                    index: 4,
+                    min: 0,
+                    max: 32767,
+                },
+            }],
+        };
+        assert_eq!(
+            physical_digital_binding(
+                &p,
+                &physical,
+                0x30002,
+                Some(AxisEndpoints {
+                    released: 0,
+                    pressed: 255
+                }),
+                AxisSuppression::DuckStation0a53bc47c
+            )
+            .unwrap(),
+            "+LeftTrigger"
+        );
+        let mut old = physical.clone();
+        old.axis_corrections.clear();
+        assert!(
+            physical_digital_binding(
+                &p,
+                &old,
+                0x30002,
+                Some(AxisEndpoints {
+                    released: 0,
+                    pressed: 255
+                }),
+                AxisSuppression::DuckStation0a53bc47c
+            )
+            .is_err()
+        );
+        assert_eq!(
+            physical_digital_binding(
+                &p,
+                &old,
+                0x10130,
+                None,
+                AxisSuppression::DuckStation0a53bc47c
+            )
+            .unwrap(),
+            "Button0"
+        );
     }
     #[test]
     fn c_button_on_axis_uses_mapped_axis_and_preserves_direction() {

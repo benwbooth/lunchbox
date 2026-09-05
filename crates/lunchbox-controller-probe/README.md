@@ -15,6 +15,27 @@ It does not apply emulator mappings. An optional player probe projects a verifie
 DuckStation revision's assignment rules; an actual-emulator oracle checks a
 single startup against that projection.
 
+Schema 4 adds read-only Linux joydev axis corrections (`JSIOCGCORR`), keyed by
+physical evdev code including hat axes. The probe compares the kernel map and
+corrections before/after opening the selected SDL devices, and rejects changes.
+Older snapshots still deserialize, but axes without correction evidence cannot
+be converted. `physical_digital_binding` composes a measured physical rest/press
+pair, kernel correction, SDL numbering/mapping and DuckStation's digital binding
+protocol. The caller still must validate saved physical bounds and actual
+emulator player assignment; this does not enable automatic launch.
+
+The read-only kernel oracle can verify a stationary controller's conversion
+against actual joystick startup events, with exact sysfs identity checking:
+
+```console
+nix develop -c cargo run -p lunchbox-controller-probe --example joydev_correction -- /dev/input/js4 /dev/input/event259
+```
+
+Use the current device nodes, not these example indices. On 2026-09-05 this
+matched all eight axes on both selected USB pads on kernel 7.2.2. Physical trigger
+rest `0` became joystick `-32767`, demonstrating why an uncorrected raw value is
+not an SDL value. This is a stationary kernel-value check, not a gameplay test.
+
 Build with `nix develop -c cargo build --release -p lunchbox-controller-probe`,
 or use the `lunchbox-controller-probe` Nix flake package/app. The binary accepts:
 
