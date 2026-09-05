@@ -36,7 +36,11 @@ before XDG configuration-directory routing. Changing XDG_CONFIG_HOME is thus a
 possible isolation mechanism, not proof of isolation for every installation.
 The installed revision's [data-root implementation](https://github.com/stenzek/duckstation/blob/0a53bc47c/src/core/host.cpp)
 also prioritizes portable files before XDG routing on Linux. Actual redirected
-startup and effective settings still need verification before enabling this path.
+startup has now been verified for a **fresh test root** (not a production overlay).
+Flatpak overrides XDG paths at sandbox entry, so the override must happen inside
+the sandbox, before executing DuckStation. The Rust startup oracle confirms the
+logged root and unchanged original settings. Preservation of user data and
+effective per-game/profile configuration still needs implementation/verification.
 
 ## Implementation requirements
 
@@ -47,6 +51,9 @@ the launcher's `SDL_JOYSTICK_LINUX_CLASSIC=1` setting. Distinct joystick paths
 identified the generic pads despite identical names/GUIDs. Additional mouse/LED/
 virtual-pointer joystick interfaces were also visible. Reported player-index
 hints must not be mistaken for DuckStation's final fallback assignments.
+**Correction:** those earlier six-device inventories omitted the target runtime's
+libudev dependency; they do not match the real emulator's filtered device set.
+See the actual startup verification below before using any player projection.
 
 The probe can now optionally open explicitly selected gamepads to copy SDL's
 resolved bindings, including input/output axis ranges and hats. Default
@@ -58,6 +65,18 @@ against SDL control counts. Hat axes are removed from the axis sequence and hats
 retain first-seen order. Other physical backends, axis rest/range interpretation,
 analog target conversion, final player assignment, isolated configuration, and
 launch integration remain.
+
+The opt-in event-order player probe now keeps all opened devices alive and
+projects the verified revision's collision/fallback rules. Its matching-runtime
+mode requires explicit target libudev (and libcap dependency), rejecting an
+unverified loader fallback. Snapshot schema 3 records hashes for those libraries.
+The Rust `duckstation_startup` oracle verifies the actual installed executable's
+verbose device-open records, not merely the helper's own calculations. On
+2026-09-05 it confirmed three gamepads with the two selected generic pads in
+DuckStation slots **1 and 2**. Both opened names are `Xbox 360 Controller`, so
+names alone still cannot identify them. Log validation includes event order,
+instance IDs and slots; paths come from the matching helper observation.
+Live hotplug between processes and production launch-time confirmation remain.
 
 The installed `0a53bc47c` SDL backend marks raw axis events consumed using the
 **output** axis index, unlike its button/hat handling, which uses the input index.

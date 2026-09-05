@@ -14,6 +14,7 @@ const SUBSYSTEMS: u32 = 0x00000200 | 0x00002000; // SDL_INIT_JOYSTICK | SDL_INIT
 pub mod bindings;
 pub mod duckstation;
 pub mod linux_classic;
+pub mod players;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
@@ -43,13 +44,23 @@ pub struct Snapshot {
     pub host_os: String,
     pub library: PathBuf,
     pub library_sha256: String,
+    #[serde(default)]
+    pub runtime_libraries: Vec<RuntimeLibrary>,
     pub sdl_version: i32,
     pub sdl_revision: Option<String>,
     pub requested_hints: BTreeMap<String, String>,
     pub effective_hints: BTreeMap<String, Option<String>>,
     pub mapping_database_sha256: Option<String>,
     pub devices: Vec<Device>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player_probe: Option<players::PlayerProbe>,
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RuntimeLibrary {
+    pub path: PathBuf,
+    pub sha256: String,
 }
 
 impl Snapshot {
@@ -157,6 +168,33 @@ pub fn inspect_with_bindings(
     hints: BTreeMap<String, String>,
     binding_paths: &[String],
 ) -> Result<Snapshot> {
+    inspect_target_runtime(
+        library_path,
+        mapping_db,
+        hints,
+        binding_paths,
+        None,
+        &[],
+    )
+}
+
+/// Load explicit trusted runtime dependencies first, in dependency order.
+/// Needed when the helper's dynamic loader cannot discover the target runtime's
+/// libudev, for example a Nix-built helper running inside a Flatpak.
+/// The explicit player probe opens all devices in SDL event order, including
+/// non-gamepads; otherwise only the selected binding paths are opened.
+pub fn inspect_target_runtime(
+    library_path: &Path,
+    mapping_db: Option<&Path>,
+    hints: BTreeMap<String, String>,
+    binding_paths: &[String],
+    player_contract: Option<&str>,
+    runtime_library_paths: &[PathBuf],
+) -> Result<Snapshot> {
+    ensure!(
+        player_contract.is_none_or(|c| c == players::CONTRACT),
+        "Unknown DuckStation player contract"
+    );
     let unique: std::collections::BTreeSet<_> = binding_paths.iter().collect();
     ensure!(
         unique.len() == binding_paths.len(),
@@ -199,6 +237,25 @@ pub fn inspect_with_bindings(
     // All function signatures below follow SDL3's public C ABI, available since
     // 3.2.0. Library outlives every symbol, allocation and subsystem guard.
     unsafe {
+        let mut dependencies = Vec::new();
+        let mut runtime_libraries = Vec::new();
+        for path in runtime_library_paths {
+            ensure!(path.is_absolute(), "Runtime library path must be absolute");
+            let path = path
+                .canonicalize()
+                .context("Resolving runtime dependency")?;
+            ensure!(
+                !runtime_libraries
+                    .iter()
+                    .any(|l: &RuntimeLibrary| l.path == path),
+                "Duplicate runtime dependency"
+            );
+            let sha256 = file_hash(&path)?;
+            dependencies.push(Library::new(&path).with_context(|| {
+                format!("Loading trusted runtime dependency {}", path.display())
+            })?);
+            runtime_libraries.push(RuntimeLibrary { path, sha256 });
+        }
         let library = Library::new(&library_path).context("Loading target SDL3 library")?;
         // Resolve an SDL3-only symbol before calling SDL_GetVersion: SDL2 has an
         // incompatible function with that name, and must never be called here.
@@ -329,6 +386,28 @@ pub fn inspect_with_bindings(
                 "Selected device is not an SDL gamepad: {path}"
             );
         }
+        let player_session = if player_contract.is_some() {
+            ensure!(
+                runtime_libraries.iter().any(|l| l
+                    .path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("libudev.so."))),
+                "Player projection requires the target runtime's explicit libudev dependency"
+            );
+            ensure!(
+                cfg!(target_os = "linux")
+                    && version == 3_002_020
+                    && effective_hints
+                        .get("SDL_JOYSTICK_LINUX_CLASSIC")
+                        .and_then(Option::as_deref)
+                        == Some("1"),
+                "Player probe currently requires verified SDL 3.2.20 Linux classic runtime"
+            );
+            Some(players::observe(&library, &devices, get_error)?)
+        } else {
+            None
+        };
         for device in &mut devices {
             if device
                 .path
@@ -379,6 +458,35 @@ pub fn inspect_with_bindings(
             "Device hotplug, backend settings and mapping database changes require a new snapshot."
                 .into(),
         ];
+        if player_session.is_some() {
+            players::ensure_no_topology_events(&library)?;
+            warnings.push("Player IDs are a helper projection, not confirmation from the actual emulator process; confirm startup topology before use.".into());
+            for device in &devices {
+                ensure!(
+                    string(get_path(device.instance_id))? == device.path,
+                    "SDL device disappeared or changed path after player probe"
+                );
+            }
+            let mut final_count = 0;
+            let final_ids = joysticks(&mut final_count);
+            ensure!(!final_ids.is_null(), "Cannot recheck SDL inventory");
+            let _final_ids = Allocation {
+                pointer: final_ids.cast(),
+                free,
+            };
+            ensure!(
+                (0..=1024).contains(&final_count),
+                "Invalid final SDL device count"
+            );
+            let final_ids = std::slice::from_raw_parts(final_ids, final_count as usize);
+            ensure!(
+                final_ids
+                    .iter()
+                    .copied()
+                    .eq(devices.iter().map(|d| d.instance_id)),
+                "SDL inventory changed after player projection; retry"
+            );
+        }
         for (name, value) in &hints {
             if effective_hints.get(name).and_then(Option::as_ref) != Some(value) {
                 warnings.push(format!(
@@ -387,16 +495,18 @@ pub fn inspect_with_bindings(
             }
         }
         Ok(Snapshot {
-            schema_version: 2,
+            schema_version: 3,
             host_os: std::env::consts::OS.into(),
             library: library_path,
             library_sha256,
+            runtime_libraries,
             sdl_version: version,
             sdl_revision: string(get_revision())?,
             requested_hints: hints,
             effective_hints,
             mapping_database_sha256,
             devices,
+            player_probe: player_session.as_ref().map(|s| s.report.clone()),
             warnings,
         })
     }
@@ -483,12 +593,14 @@ mod tests {
             host_os: "linux".into(),
             library: "/test/SDL3".into(),
             library_sha256: "".into(),
+            runtime_libraries: vec![],
             sdl_version: 3_002_000,
             sdl_revision: None,
             requested_hints: BTreeMap::new(),
             effective_hints: BTreeMap::new(),
             mapping_database_sha256: None,
             warnings: vec![],
+            player_probe: None,
             devices: paths
                 .iter()
                 .enumerate()
