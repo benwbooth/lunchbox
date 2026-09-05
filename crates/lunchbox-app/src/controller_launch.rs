@@ -850,6 +850,15 @@ fn mode_players<'a>(
         owners: &mut [Option<usize>],
         seen: &mut [bool],
     ) -> bool {
+        // Preserve earlier ports' preferences whenever an unused compatible
+        // controller is available. Reassign only to fill an otherwise empty
+        // port (for example digital first, then DualShock-only second).
+        for &device in &candidates[port] {
+            if !seen[device] && owners[device].is_none() {
+                owners[device] = Some(port);
+                return true;
+            }
+        }
         for &device in &candidates[port] {
             if seen[device] {
                 continue;
@@ -1052,6 +1061,12 @@ mod tests {
             .controller_mapping
             .calibrations
             .insert("js5".into(), calibrated_layout("dualshock").0);
+        for order in [[&devices[0], &devices[1]], [&devices[1], &devices[0]]] {
+            let players = mode_players(&settings, "swanstation", "PSX", &[1, 1], &order).unwrap();
+            assert_eq!(players.len(), 2);
+            assert_eq!(players[0].2.stable_id, order[0].stable_id);
+            assert_eq!(players[1].2.stable_id, order[1].stable_id);
+        }
         let digital_first = mode_players(
             &settings,
             "swanstation",
