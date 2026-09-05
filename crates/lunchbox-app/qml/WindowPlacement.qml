@@ -14,6 +14,13 @@ Item {
         location: placement.settingsLocation
     }
 
+    function savedFlag(key) {
+        // INI-backed QSettings can return strings after a process restart.
+        // In particular, Boolean("false") is true in JavaScript.
+        const value = saved.value(key, false)
+        return value === true || value === 1 || value === "true" || value === "1"
+    }
+
     function save() {
         if (!enabled || !restored)
             return
@@ -38,7 +45,7 @@ Item {
         const normalHeight = saved.value("normalHeight", 900)
         const normalX = saved.value("normalX", 0)
         const normalY = saved.value("normalY", 0)
-        const positioned = saved.value("positioned", false)
+        const positioned = savedFlag("positioned")
         let screen = window.screen
         for (const candidate of Qt.application.screens) {
             if (positioned && normalX >= candidate.virtualX
@@ -57,7 +64,7 @@ Item {
             window.y = Math.max(screen.virtualY, Math.min(normalY,
                                     screen.virtualY + screen.height - window.height))
         }
-        if (saved.value("maximized", false))
+        if (savedFlag("maximized"))
             window.showMaximized()
         restored = true
     }

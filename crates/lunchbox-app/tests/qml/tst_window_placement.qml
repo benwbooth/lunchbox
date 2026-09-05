@@ -61,4 +61,34 @@ TestCase {
         second.placement.enabled = false
         second.close()
     }
+
+    function test_saved_window_state_data() {
+        return [
+            { tag: "string false", flag: "false", maximized: false },
+            { tag: "boolean false", flag: false, maximized: false },
+            { tag: "string true", flag: "true", maximized: true },
+            { tag: "boolean true", flag: true, maximized: true }
+        ]
+    }
+
+    function test_saved_window_state(data) {
+        // QSettings INI values can be strings in a fresh process, unlike the
+        // typed values retained by an in-process save/restore test.
+        seed.setValue("normalWidth", 500)
+        seed.setValue("normalHeight", 400)
+        seed.setValue("positioned", "false")
+        seed.setValue("maximized", data.flag)
+        seed.sync()
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        tryCompare(host.placement, "restored", true)
+        compare(host.visibility, data.maximized ? Window.Maximized : Window.Windowed)
+        if (!data.maximized) {
+            compare(host.width, 500)
+            compare(host.height, 400)
+        }
+        compare(host.placement.savedFlag("positioned"), false)
+        host.placement.enabled = false
+        host.close()
+    }
 }

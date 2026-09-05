@@ -6479,6 +6479,11 @@ fn ranked_source_indices(groups: &[BundleCandidateGroup]) -> Vec<usize> {
         groups[right].files[0]
             .match_score
             .total_cmp(&groups[left].files[0].match_score)
+            .then_with(|| {
+                groups[right].files[0]
+                    .byte_size
+                    .cmp(&groups[left].files[0].byte_size)
+            })
     });
     indices
 }
@@ -6694,8 +6699,8 @@ mod tests {
         BundleCandidateGroup, LaunchProfileTarget, download_candidate_location,
         download_source_location, effective_download_settings, format_last_played,
         format_play_time, format_release_date, format_session_duration, metadata_save_messages,
-        preferred_loaded_group_index, preview_for_launch_profile_target, session_outcome_label,
-        steam_store_url_string, validate_launch_profile_template,
+        preferred_loaded_group_index, preview_for_launch_profile_target, ranked_source_indices,
+        session_outcome_label, steam_store_url_string, validate_launch_profile_template,
     };
     use crate::emulator::effective_launch_preview_values;
     use crate::game_details::{BundleMatchKind, MinervaBundle, TorrentFileCandidate};
@@ -6802,6 +6807,19 @@ mod tests {
         assert_eq!(download_candidate_location(&groups, 0), Some((2, 0)));
         assert_eq!(groups[2].files[0].index, 15063);
         assert_eq!(download_candidate_location(&groups, 1), Some((0, 0)));
+    }
+
+    #[test]
+    fn larger_source_payload_breaks_equal_match_ties_but_not_weaker_matches() {
+        let small = candidate_group(true, true);
+        let mut large = candidate_group(true, true);
+        large.files[0].byte_size = 200;
+        let mut weak = candidate_group(true, true);
+        weak.files[0].byte_size = 300;
+        weak.files[0].match_score = 0.72;
+        let groups = vec![small, large, weak];
+        assert_eq!(ranked_source_indices(&groups), [1, 0, 2]);
+        assert_eq!(download_candidate_location(&groups, 0), Some((1, 0)));
     }
 
     #[test]

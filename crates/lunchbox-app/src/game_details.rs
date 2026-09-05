@@ -1628,7 +1628,7 @@ pub fn load_torrent_files(
         });
         candidates.sort_by(|left, right| {
             release_preference_order(left, right, preferences)
-                .then_with(|| left.byte_size.cmp(&right.byte_size))
+                .then_with(|| right.byte_size.cmp(&left.byte_size))
                 .then_with(|| left.filename.cmp(&right.filename))
         });
         candidates.truncate(MAX_FILE_CANDIDATES);
@@ -2010,7 +2010,7 @@ fn machine_plan_candidates(
         .collect::<Vec<_>>();
     candidates.sort_by(|left, right| {
         release_preference_order(left, right, preferences)
-            .then_with(|| left.byte_size.cmp(&right.byte_size))
+            .then_with(|| right.byte_size.cmp(&left.byte_size))
             .then_with(|| left.filename.cmp(&right.filename))
     });
     candidates.truncate(MAX_FILE_CANDIDATES);
@@ -2268,7 +2268,7 @@ pub(crate) fn rank_file_candidates_for_platform(
                 .then_some(file)
         })
         .collect::<Vec<_>>();
-    candidates.sort_by(|left, right| {
+    let candidate_order = |left: &TorrentFileCandidate, right: &TorrentFileCandidate| {
         platform_payload_tier(platform, left)
             .cmp(&platform_payload_tier(platform, right))
             .then_with(|| right.match_score.total_cmp(&left.match_score))
@@ -2278,9 +2278,10 @@ pub(crate) fn rank_file_candidates_for_platform(
                     .unwrap_or(u8::MAX)
                     .cmp(&exo_primary_priority(&right.filename).unwrap_or(u8::MAX))
             })
-            .then_with(|| left.byte_size.cmp(&right.byte_size))
+            .then_with(|| right.byte_size.cmp(&left.byte_size))
             .then_with(|| left.filename.cmp(&right.filename))
-    });
+    };
+    candidates.sort_by(candidate_order);
     let mut seen_plans = HashSet::new();
     candidates.retain_mut(|candidate| {
         let Some(plan) = build_optical_plan(&plan_files, candidate.index)
@@ -2304,6 +2305,9 @@ pub(crate) fn rank_file_candidates_for_platform(
         candidate.download_plan = Some(plan);
         true
     });
+    // Compare complete payload sizes after grouping, not individual cue sheets
+    // or discs. Match quality and release preferences still take precedence.
+    candidates.sort_by(candidate_order);
     candidates.truncate(MAX_FILE_CANDIDATES);
     Ok(candidates)
 }
@@ -3441,6 +3445,48 @@ mod tests {
         assert_eq!(ranked[0].byte_size, 3_300);
         assert_eq!(plan.disc_count(), 2);
         assert_eq!(plan.members.len(), 4);
+    }
+
+    #[test]
+    fn larger_payload_breaks_ties_without_overriding_title_or_region() {
+        let mut files = vec![
+            candidate(0, "Game (USA).chd"),
+            candidate(1, "Game (USA).zip"),
+            candidate(2, "Game (Japan).zip"),
+            candidate(3, "Game Extended (USA).zip"),
+        ];
+        for (file, size) in files.iter_mut().zip([100, 200, 300, 400]) {
+            file.byte_size = size;
+        }
+        let ranked =
+            rank_file_candidates(files, "Game", &[], &preferences("USA", "latest")).unwrap();
+        assert_eq!(
+            ranked.iter().map(|file| file.index).collect::<Vec<_>>(),
+            [1, 0, 2, 3]
+        );
+    }
+
+    #[test]
+    fn larger_multidisc_set_is_ranked_by_total_payload_size() {
+        let mut files = vec![
+            candidate(0, "Final Fantasy VII (USA).zip"),
+            candidate(1, "Final Fantasy VII (USA) (Disc 1).chd"),
+            candidate(2, "Final Fantasy VII (USA) (Disc 2).chd"),
+        ];
+        for (file, size) in files.iter_mut().zip([150, 100, 100]) {
+            file.byte_size = size;
+        }
+        let ranked = rank_file_candidates(
+            files,
+            "Final Fantasy VII",
+            &[],
+            &preferences("USA", "latest"),
+        )
+        .unwrap();
+        assert_eq!(ranked.len(), 2);
+        assert_eq!(ranked[0].byte_size, 200);
+        assert_eq!(ranked[0].download_plan.as_ref().unwrap().disc_count(), 2);
+        assert_eq!(ranked[1].index, 0);
     }
 
     #[test]
