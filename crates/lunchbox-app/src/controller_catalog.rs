@@ -58,6 +58,21 @@ pub struct EmulatorProfile {
     pub bindings: BTreeMap<String, String>,
     #[serde(default)]
     pub core_options: BTreeMap<String, String>,
+    /// Explicit opt-in to the implemented Linux RetroArch launch writer.
+    /// Documented preview profiles do not implicitly become launch contracts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retroarch_launch: Option<RetroArchLaunch>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetroArchLaunch {
+    /// Exact platform aliases; matching only trims whitespace and ignores case.
+    pub platforms: Vec<String>,
+    /// libretro device ID, including a reviewed joypad subclass when necessary.
+    pub device: u32,
+    /// Player count for this device mode, not every mode the core supports.
+    pub max_players: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -125,6 +140,21 @@ impl Catalog {
         self.layouts.iter().find(|layout| layout.id == id)
     }
 
+    pub fn launch_profile(&self, core: &str, platform: &str) -> Option<&EmulatorProfile> {
+        let mut matches = self.emulator_profiles.iter().filter(|profile| {
+            profile.core == core
+                && profile.retroarch_launch.as_ref().is_some_and(|launch| {
+                    launch
+                        .platforms
+                        .iter()
+                        .any(|alias| alias.eq_ignore_ascii_case(platform.trim()))
+                })
+        });
+        let first = matches.next()?;
+        // Refuse ambiguity even if a caller has not validated its catalog yet.
+        matches.next().is_none().then_some(first)
+    }
+
     pub fn validate(&self) -> Result<()> {
         ensure!(
             self.schema_version == 1,
@@ -179,6 +209,7 @@ impl Catalog {
             }
         }
         let mut profiles = HashSet::new();
+        let mut launch_targets = HashSet::new();
         for profile in &self.emulator_profiles {
             ensure!(
                 profiles.insert(&profile.id),
@@ -195,6 +226,29 @@ impl Catalog {
                 profile.source.starts_with("https://") && !profile.conditions.is_empty(),
                 "profile lacks provenance or assumptions"
             );
+            if let Some(launch) = &profile.retroarch_launch {
+                ensure!(valid_id(&profile.core), "invalid launched core ID");
+                ensure!(
+                    !launch.platforms.is_empty() && (1..=16).contains(&launch.max_players),
+                    "launch contract requires platform aliases and 1-16 player ports"
+                );
+                ensure!(
+                    launch.device & 0xff == 1 && launch.device <= u16::MAX.into(),
+                    "launch writer only supports joypads and their subclasses"
+                );
+                for alias in &launch.platforms {
+                    ensure!(
+                        !alias.is_empty()
+                            && alias.trim() == alias
+                            && !alias.chars().any(char::is_control),
+                        "invalid launch platform alias"
+                    );
+                    ensure!(
+                        launch_targets.insert((profile.core.clone(), alias.to_ascii_lowercase())),
+                        "duplicate or ambiguous core/platform launch contract"
+                    );
+                }
+            }
             let mut outputs = HashSet::new();
             for (target, output) in &profile.bindings {
                 ensure!(
@@ -454,6 +508,59 @@ pub fn export_svg(directory: &std::path::Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn launch_catalog_requires_unambiguous_reviewed_device_modes() {
+        let original = catalog().clone();
+        let index = original
+            .emulator_profiles
+            .iter()
+            .position(|p| p.id == "retroarch:snes9x:snes")
+            .unwrap();
+        let mut duplicate = original.clone();
+        let mut profile = duplicate.emulator_profiles[index].clone();
+        profile.id.push_str("-duplicate");
+        duplicate.emulator_profiles.push(profile);
+        assert!(duplicate.validate().is_err());
+        assert!(duplicate.launch_profile("snes9x", "SNES").is_none());
+        for max_players in [0, 17] {
+            let mut bad = original.clone();
+            bad.emulator_profiles[index]
+                .retroarch_launch
+                .as_mut()
+                .unwrap()
+                .max_players = max_players;
+            assert!(bad.validate().is_err());
+        }
+        for device in [0, 2, 5, 65537] {
+            let mut bad = original.clone();
+            bad.emulator_profiles[index]
+                .retroarch_launch
+                .as_mut()
+                .unwrap()
+                .device = device;
+            assert!(bad.validate().is_err());
+        }
+        for aliases in [
+            vec![],
+            vec![" SNES".into()],
+            vec!["SNES".into(), "snes".into()],
+        ] {
+            let mut bad = original.clone();
+            bad.emulator_profiles[index]
+                .retroarch_launch
+                .as_mut()
+                .unwrap()
+                .platforms = aliases;
+            assert!(bad.validate().is_err());
+        }
+        assert_eq!(
+            original.launch_profile("snes9x", "  sNeS ").unwrap().id,
+            "retroarch:snes9x:snes"
+        );
+        assert!(original.launch_profile("snes9x", "SNES Mouse").is_none());
+        assert!(original.launch_profile("snes9x2010", "SNES").is_none());
+        assert!(original.launch_profile("bsnes", "Game Boy").is_none());
+    }
     #[test]
     fn catalog_ids_contracts_and_svg_controls_are_consistent() {
         catalog().validate().unwrap();

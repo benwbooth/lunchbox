@@ -9,6 +9,12 @@ ColumnLayout {
     property bool testInput: false
     readonly property bool calibrationActive: calibration.visible
     readonly property var calibrationContentItem: calibration.contentItem
+    readonly property string calibratedCoverage: {
+        if (calibration.catalog.host_os !== "linux")
+            return "Calibrated launch adapters for this OS are not implemented yet."
+        const profiles = calibration.catalog.emulator_profiles.filter(profile => profile.retroarch_launch)
+        return "Linux RetroArch (native or Flatpak): " + profiles.map(profile => profile.name.replace("RetroArch · ", "")).join(", ") + "."
+    }
     function openCalibrationFor(index, layoutId) {
         calibration.openFor(settingsModel.controller_key_at(index), settingsModel.controller_name_at(index))
         if (layoutId) {
@@ -54,14 +60,14 @@ ColumnLayout {
     }
     Label {
         Layout.fillWidth: true
-        text: "Calibrated launch supports Linux RetroArch (native or Flatpak) with FCEUmm, Gambatte, Genesis Plus GX, Mupen64Plus-Next and Beetle PCE Fast (two-button games). RetroArch automatic overrides/remaps (and N64/PCE per-game core options) are suspended for that session; your saved files are unchanged. Other cores/emulators still need adapters. Disable Apply saved calibrations to keep an emulator’s native setup."
+        text: setup.calibratedCoverage + " Automatic RetroArch overrides/remaps are suspended for the session. Contracts that require core options also suspend per-game core options; saved files are unchanged. Other cores/emulators still need adapters. Disable Apply saved calibrations to keep native setup."
         color: "#ffb454"
         wrapMode: Text.WordWrap
     }
     Label {
         Layout.fillWidth: true
         visible: !setup.settingsModel.controller_remapping_available
-        text: "Controller navigation works independently. Game remapping needs a supported, managed InputPlumber device on Linux; standalone Windows/macOS adapters are not available yet. You can save preferences now, but they are not applied until the backend is ready."
+        text: "Advanced virtual-controller routing below needs a supported, managed InputPlumber device on Linux. Calibrated RetroArch launch and Lunchbox navigation work independently of InputPlumber."
         wrapMode: Text.WordWrap
         color: "#ffb454"
     }

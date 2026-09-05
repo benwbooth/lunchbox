@@ -39,7 +39,8 @@ adapters. Controls/options can vary by core version and controller mode.
   cost policy, not a claim of universal ergonomic optimality.
 - Linux RetroArch launch writer: native and Flatpak, FCEUmm/NES, Gambatte/GB,
   Genesis Plus GX/MD six-button, Mupen64Plus-Next/N64 independent C-button mode,
-  Beetle PCE Fast/PC Engine two-button mode (maximum five players).
+  Beetle PCE Fast/PC Engine two-button mode (maximum five players), and
+  Snes9x/bsnes standard SNES joypads (two ports).
   Per-launch configs use kernel-reported joystick indices, not Xbox numbering.
   Saved calibrations from the preview-only prototype need one recalibration to
   capture physical evdev bindings, including synthesized D-pad inputs.
@@ -96,8 +97,28 @@ config file is overwritten. Temporary files are deleted when the launched child
 exits, including spawn/error/cancel paths. A frontend crash can leave a private
 cache directory but cannot persist these mappings into RetroArch's base config.
 
+Snes9x's input descriptors, `BTN_*` definitions, polling, and joypad device selection
+were checked at `7a8878f1306f65594c30b7d86dee41d972c2e495` in
+`libretro/libretro.cpp`. bsnes's `joypad_mapping`, input polling and device selection
+were checked at `63ee22f7af8f5d1ada295c2c98fd7bf261fa62a7` in
+`bsnes/target-libretro/{program,libretro}.cpp` on 2026-09-05. The standard two-port
+joypad mode is covered; multitap, mouse, lightgun, Super Game Boy and other core
+variants require explicit separate contracts. These are source/configuration
+checks, not physical-controller gameplay verification.
+
+`retroarch_launch` explicitly opts a documented contract into the Linux writer.
+It records exact `platforms` aliases (case-insensitive, trimmed caller input),
+the libretro joypad `device` ID, and the input mode's `max_players`. Validation
+rejects missing aliases, non-joypad modes, invalid port counts, and overlapping
+core/platform defaults. Names are not matched by substring. Omission means
+preview-only, regardless of a contract's documentation status. The settings
+coverage text is generated from these entries instead of a second hard-coded list.
+
 Only compatible, calibrated, connected devices enter the player list; explicit
-ordering and preferred-device settings rank those devices. The legacy InputPlumber
+ordering and preferred-device settings rank those devices. Excess devices are
+left out after applying that order, up to the mode's declared port count.
+Current limits are GB 1, standard NES/MD/SNES 2, N64 4, and PCE Fast 5.
+Multitap modes require a separate contract. The legacy InputPlumber
 launch adapter is not stacked on the calibrated RetroArch adapter. Existing
 externally configured Steam Input/InputPlumber routing is not modified.
 

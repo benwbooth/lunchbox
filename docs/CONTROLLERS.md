@@ -36,6 +36,18 @@ adapters remain unfinished. Existing advanced InputPlumber mappings remain a
 separate path and are not applied on top of this adapter. See
 `crates/lunchbox-app/data/controllers/README.md` for coverage and provenance.
 
+Standard SNES joypads are also supported in the Snes9x and bsnes RetroArch cores
+(two console ports, not multitap/mouse/lightgun or Super Game Boy). An N64-style
+source uses physical B/A for SNES Y/B, preserving the run/jump thumb pair, and
+C-left/C-down for X/A. Required controls such as L/R and Select must be calibrated;
+a four-face-button pad without shoulders is not silently treated as a full SNES pad.
+
+Launch contracts now declare exact platform aliases, libretro device IDs, and
+player counts in the catalog. Extra connected pads remain available in Lunchbox
+but only the highest-ranked compatible controllers fill the current input mode's
+ports. A Game Boy game no longer attempts to create a second player just because
+two calibrated controllers are connected. Preview-only contracts stay preview-only.
+
 Open Settings → Controllers. The live input check shows the device and the
 normalized control it reports. Known standard diamond devices are recognized;
 unusual pads are not assigned wiring based solely on their product name.

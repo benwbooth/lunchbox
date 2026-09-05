@@ -25,6 +25,17 @@ fn preferred<'a>(source: &Layout, target: &Layout, id: &'a str) -> &'a str {
             other => other,
         };
     }
+    if source.family == "n64" && target.family == "diamond" {
+        // Keep the N64 B/A thumb pair as the SNES Y/B run/jump pair.
+        // The adjacent C-left/C-down pair supplies X/A, without crossing hands.
+        return match id {
+            "b" => "a",
+            "y" => "b",
+            "a" => "c_down",
+            "x" => "c_left",
+            other => other,
+        };
+    }
     if source.family == "n64" && matches!(target.family.as_str(), "six-button" | "three-button") {
         return match id {
             "a" => "a",
@@ -138,6 +149,23 @@ pub fn assignments(source: &Layout, target: &Layout) -> BTreeMap<String, String>
 mod tests {
     use super::*;
     use crate::controller_catalog::catalog;
+    #[test]
+    fn n64_to_diamond_preserves_the_run_jump_thumb_pair() {
+        let pairs = assignments(
+            catalog().layout("brawler64").unwrap(),
+            catalog().layout("snes").unwrap(),
+        );
+        for (target, source) in [
+            ("b", "a"),
+            ("y", "b"),
+            ("a", "c_down"),
+            ("x", "c_left"),
+            ("l", "l"),
+            ("r", "r"),
+        ] {
+            assert_eq!(pairs[target], source);
+        }
+    }
     #[test]
     fn every_pair_is_deterministic_injective_and_preserves_capabilities() {
         for source in &catalog().layouts {

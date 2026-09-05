@@ -1701,6 +1701,11 @@
   "emulator_profiles": [
     {
       "id": "retroarch:mupen64plus_next:n64-independent",
+      "retroarch_launch": {
+        "platforms": ["Nintendo 64", "Nintendo - Nintendo 64", "N64"],
+        "device": 1,
+        "max_players": 4
+      },
       "name": "RetroArch · Mupen64Plus-Next · Independent N64 C-buttons",
       "core": "mupen64plus_next",
       "target_layout": "n64",
@@ -1738,6 +1743,16 @@
     },
     {
       "id": "retroarch:mednafen_pce_fast:pce2",
+      "retroarch_launch": {
+        "platforms": [
+          "NEC PC Engine", "PC Engine", "NEC TurboGrafx-16", "TurboGrafx-16",
+          "NEC TurboGrafx-16 CD", "TurboGrafx-CD", "NEC TurboGrafx-CD",
+          "NEC PC Engine CD", "PC Engine CD",
+          "NEC - PC Engine - TurboGrafx 16", "NEC - PC Engine CD - TurboGrafx-CD"
+        ],
+        "device": 1,
+        "max_players": 5
+      },
       "name": "RetroArch · Beetle PCE Fast · PC Engine 2-button",
       "core": "mednafen_pce_fast",
       "target_layout": "pce-2",
@@ -1770,6 +1785,14 @@
     },
     {
       "id": "retroarch:gambatte:gameboy",
+      "retroarch_launch": {
+        "platforms": [
+          "Nintendo Game Boy", "Nintendo Game Boy Color", "Game Boy", "Game Boy Color",
+          "Nintendo - Game Boy", "Nintendo - Game Boy Color"
+        ],
+        "device": 1,
+        "max_players": 1
+      },
       "name": "RetroArch · Gambatte · Game Boy gamepad",
       "core": "gambatte",
       "target_layout": "gameboy",
@@ -1792,6 +1815,14 @@
     },
     {
       "id": "retroarch:fceumm:nes",
+      "retroarch_launch": {
+        "platforms": [
+          "NES", "Nintendo NES", "Nintendo Famicom", "Nintendo Entertainment System",
+          "Nintendo - Nintendo Entertainment System"
+        ],
+        "device": 1,
+        "max_players": 2
+      },
       "name": "RetroArch · FCEUmm · NES gamepad",
       "core": "fceumm",
       "target_layout": "nes",
@@ -1838,6 +1869,11 @@
     },
     {
       "id": "retroarch:genesis_plus_gx:md6",
+      "retroarch_launch": {
+        "platforms": ["Sega Genesis", "Sega Mega Drive", "Genesis", "Mega Drive", "Sega - Mega Drive - Genesis"],
+        "device": 513,
+        "max_players": 2
+      },
       "name": "RetroArch · Genesis Plus GX · MD 6-button",
       "core": "genesis_plus_gx",
       "target_layout": "genesis-6",
@@ -1861,6 +1897,54 @@
         "y": "North",
         "z": "RightBumper",
         "mode": "Select"
+      }
+    },
+    {
+      "id": "retroarch:snes9x:snes",
+      "name": "RetroArch · Snes9x · SNES gamepad",
+      "core": "snes9x",
+      "target_layout": "snes",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/snes9xgit/snes9x/blob/7a8878f1306f65594c30b7d86dee41d972c2e495/libretro/libretro.cpp",
+      "retroarch_launch": {
+        "platforms": ["SNES", "Super Famicom", "Nintendo Super Famicom", "Super Nintendo Entertainment System", "Nintendo - Super Nintendo Entertainment System"],
+        "device": 1,
+        "max_players": 2
+      },
+      "conditions": [
+        "Standard SNES joypads in two console ports; not multitap, mouse or lightgun",
+        "Core input descriptors and button polling verified against the pinned upstream source",
+        "No existing RetroArch core/game remaps or automatic config overrides"
+      ],
+      "bindings": {
+        "up": "DPadUp", "down": "DPadDown", "left": "DPadLeft", "right": "DPadRight",
+        "start": "Start", "select": "Select", "a": "East", "b": "South",
+        "x": "North", "y": "West", "l": "LeftBumper", "r": "RightBumper"
+      }
+    },
+    {
+      "id": "retroarch:bsnes:snes",
+      "name": "RetroArch · bsnes · SNES gamepad",
+      "core": "bsnes",
+      "target_layout": "snes",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/bsnes/blob/63ee22f7af8f5d1ada295c2c98fd7bf261fa62a7/bsnes/target-libretro/program.cpp",
+      "retroarch_launch": {
+        "platforms": ["SNES", "Super Famicom", "Nintendo Super Famicom", "Super Nintendo Entertainment System", "Nintendo - Super Nintendo Entertainment System"],
+        "device": 1,
+        "max_players": 2
+      },
+      "conditions": [
+        "Standard SNES joypads in two console ports; not multitap, mouse or lightgun",
+        "Input polling and device selection verified in the pinned target-libretro program.cpp and libretro.cpp",
+        "Super Game Boy and other bsnes variants require their own contracts"
+      ],
+      "bindings": {
+        "up": "DPadUp", "down": "DPadDown", "left": "DPadLeft", "right": "DPadRight",
+        "start": "Start", "select": "Select", "a": "East", "b": "South",
+        "x": "North", "y": "West", "l": "LeftBumper", "r": "RightBumper"
       }
     },
     {

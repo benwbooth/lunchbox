@@ -44,63 +44,11 @@ const OUTPUTS: &[(&str, &str)] = &[
 
 /// Select by the actual launched core and platform, never emulator display name.
 pub fn contract(core: &str, platform: &str) -> Option<&'static EmulatorProfile> {
-    let platform = platform.to_ascii_lowercase();
-    if core == "mupen64plus_next" && (platform.contains("nintendo 64") || platform == "n64") {
-        return catalog()
-            .emulator_profiles
-            .iter()
-            .find(|p| p.id == "retroarch:mupen64plus_next:n64-independent");
-    }
-    let target = match core {
-        "fceumm"
-            if platform.contains("entertainment system") && !platform.contains("super")
-                || matches!(
-                    platform.as_str(),
-                    "nes" | "nintendo nes" | "nintendo famicom"
-                ) =>
-        {
-            "nes"
-        }
-        "gambatte" if platform.contains("game boy") && !platform.contains("advance") => "gameboy",
-        "mednafen_pce_fast"
-            if matches!(
-                platform.as_str(),
-                "nec pc engine"
-                    | "pc engine"
-                    | "nec turbografx-16"
-                    | "turbografx-16"
-                    | "nec turbografx-16 cd"
-                    | "turbografx-cd"
-                    | "nec turbografx-cd"
-                    | "nec pc engine cd"
-                    | "pc engine cd"
-                    | "nec - pc engine - turbografx 16"
-                    | "nec - pc engine cd - turbografx-cd"
-            ) =>
-        {
-            "pce-2"
-        }
-        "genesis_plus_gx" if platform.contains("genesis") || platform.contains("mega drive") => {
-            "genesis-6"
-        }
-        _ => return None,
-    };
-    catalog()
-        .emulator_profiles
-        .iter()
-        .find(|p| p.core == core && p.target_layout == target)
+    catalog().launch_profile(core, platform)
 }
 
 pub fn supports_profile(profile: &EmulatorProfile) -> bool {
-    cfg!(target_os = "linux")
-        && matches!(
-            profile.id.as_str(),
-            "retroarch:fceumm:nes"
-                | "retroarch:mednafen_pce_fast:pce2"
-                | "retroarch:gambatte:gameboy"
-                | "retroarch:genesis_plus_gx:md6"
-                | "retroarch:mupen64plus_next:n64-independent"
-        )
+    cfg!(target_os = "linux") && profile.retroarch_launch.is_some()
 }
 
 fn cfg_value(text: &str, key: &str) -> Option<String> {
@@ -356,7 +304,14 @@ fn player_config(
         calibration.os == std::env::consts::OS && calibration.os == "linux",
         "Recalibrate on this host OS"
     );
-    ensure!((1..=16).contains(&player), "Invalid player number");
+    let launch = profile
+        .retroarch_launch
+        .as_ref()
+        .context("Preview-only controller contract")?;
+    ensure!(
+        (1..=launch.max_players).contains(&player),
+        "Player number exceeds this input mode's port count"
+    );
     let plan = calibration.plan(&profile.id)?;
     let target = catalog().layout(&profile.target_layout).unwrap();
     let mut values = BTreeMap::new();
@@ -400,12 +355,7 @@ fn player_config(
     values.insert(format!("input_player{player}_analog_dpad_mode"), "0".into());
     values.insert(
         format!("input_libretro_device_p{player}"),
-        if profile.target_layout == "genesis-6" {
-            "513"
-        } else {
-            "1"
-        }
-        .into(),
+        launch.device.to_string(),
     );
     Ok(values
         .into_iter()
@@ -496,6 +446,20 @@ fn compatible(calibration: &Calibration, profile: &EmulatorProfile) -> bool {
         .is_ok_and(|plan| plan.automatic_launch_ready)
 }
 
+fn restrict_players(
+    devices: &mut Vec<&ControllerDevice>,
+    profile: &EmulatorProfile,
+) -> Result<usize> {
+    let eligible_count = devices.len();
+    let launch = profile
+        .retroarch_launch
+        .as_ref()
+        .context("Preview-only controller contract")?;
+    // Preference ordering chooses active players without creating nonexistent ports.
+    devices.truncate(launch.max_players);
+    Ok(eligible_count)
+}
+
 /// Returns None only when no saved calibrated launch was requested. Failures are
 /// surfaced at the launch boundary instead of reporting a miswired game as ready.
 pub fn prepare(
@@ -535,11 +499,7 @@ pub fn prepare(
         "No connected calibration has all required controls for {}. Complete calibration (older calibrations need physical-input capture), or disable Apply saved calibrations.",
         profile.name
     );
-    ensure!(devices.len() <= 16, "Too many calibrated controllers");
-    ensure!(
-        profile.core != "mednafen_pce_fast" || devices.len() <= 5,
-        "Beetle PCE Fast supports at most five controller ports; hide extra controllers in Settings"
-    );
+    let eligible_count = restrict_players(&mut devices, profile)?;
     let cache = directories::BaseDirs::new()
         .context("Finding controller launch cache")?
         .cache_dir()
@@ -575,8 +535,9 @@ pub fn prepare(
     Ok(Some(CalibratedLaunch {
         _directory: directory,
         description: format!(
-            "Applied {} calibrated controller(s) for {} · RetroArch automatic overrides/remaps suspended for this launch",
+            "Applied {} of {} compatible calibrated controller(s) for {} · RetroArch automatic overrides/remaps suspended for this launch",
             devices.len(),
+            eligible_count,
             profile.name
         ),
     }))
@@ -614,6 +575,94 @@ fn attach_config(
 mod tests {
     use super::*;
     use crate::controller_catalog::InputBinding;
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn snes_cores_compose_physical_inputs_through_retropad() {
+        for core in ["snes9x", "bsnes"] {
+            let profile = contract(core, "Nintendo - Super Nintendo Entertainment System").unwrap();
+            for layout in ["snes", "xbox", "dualshock", "brawler64"] {
+                let mut cal = nes();
+                cal.layout = layout.into();
+                cal.bindings = catalog()
+                    .layout(layout)
+                    .unwrap()
+                    .controls
+                    .iter()
+                    .filter(|control| !control.analog)
+                    .enumerate()
+                    .map(|(index, control)| {
+                        (
+                            control.id.clone(),
+                            InputBinding {
+                                code: index as u32,
+                                kind: "button".into(),
+                                direction: 0,
+                                logical: control.label.clone(),
+                                native: Some(NativeInput {
+                                    code: 0x10120 + index as u32,
+                                    direction: 0,
+                                }),
+                            },
+                        )
+                    })
+                    .collect();
+                let map = JoydevMap {
+                    index: 3,
+                    buttons: (288..288 + cal.bindings.len() as u16).rev().collect(),
+                    axes: vec![],
+                };
+                let config = player_config(&cal, profile, &map, 1).unwrap();
+                assert!(compatible(&cal, profile), "{core}/{layout}");
+                let face = if layout == "brawler64" {
+                    [("a", "c_down"), ("b", "a"), ("x", "c_left"), ("y", "b")]
+                } else {
+                    [("a", "a"), ("b", "b"), ("x", "x"), ("y", "y")]
+                };
+                for (output, physical) in face.into_iter().chain([
+                    ("l", "l"),
+                    ("r", "r"),
+                    ("start", "start"),
+                    ("select", "select"),
+                ]) {
+                    let (_, number) = map
+                        .binding(cal.bindings[physical].native.as_ref().unwrap())
+                        .unwrap();
+                    assert!(
+                        config.contains(&format!("input_player1_{output}_btn = \"{number}\"")),
+                        "{core}/{layout}/{output}"
+                    );
+                }
+                assert!(config.contains("input_libretro_device_p1 = \"1\""));
+                assert!(player_config(&cal, profile, &map, 3).is_err());
+            }
+            // Four face buttons alone do not supply the required SNES shoulders.
+            let mut n30 = nes();
+            n30.layout = "horizontal-four".into();
+            assert!(!compatible(&n30, profile));
+        }
+    }
+
+    #[test]
+    fn launch_opt_in_and_port_count_come_from_the_catalog() {
+        for profile in &catalog().emulator_profiles {
+            assert_eq!(
+                supports_profile(profile),
+                cfg!(target_os = "linux") && profile.retroarch_launch.is_some()
+            );
+            if let Some(launch) = &profile.retroarch_launch {
+                for alias in &launch.platforms {
+                    assert_eq!(contract(&profile.core, alias).unwrap().id, profile.id);
+                }
+            }
+        }
+        let preview = catalog()
+            .emulator_profiles
+            .iter()
+            .find(|p| p.id == "retroarch:genesis_plus_gx:md3")
+            .unwrap();
+        assert!(!supports_profile(preview));
+        assert!(restrict_players(&mut vec![], preview).is_err());
+    }
     #[test]
     #[cfg(target_os = "linux")]
     fn horizontal_and_turbo_pads_compose_pce_gameplay_without_upper_button_aliases() {
@@ -719,6 +768,17 @@ mod tests {
             is_virtual: false,
         };
         let devices = vec![device("pad-a"), device("pad-b")];
+        let mut ordered = vec![&devices[1], &devices[0]];
+        assert_eq!(
+            restrict_players(
+                &mut ordered,
+                contract("gambatte", "Nintendo Game Boy").unwrap()
+            )
+            .unwrap(),
+            2
+        );
+        assert_eq!(ordered.len(), 1);
+        assert_eq!(ordered[0].stable_id, "pad-b");
         let mut settings = AppSettings::default();
         for device in &devices {
             settings
