@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/lunchbox-app", "crates/lunchbox-db"]
+members = ["crates/lunchbox-app", "crates/lunchbox-db", "crates/lunchbox-controller-probe"]
 
 [workspace.package]
 version = "0.1.1"

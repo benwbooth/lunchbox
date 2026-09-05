@@ -40,6 +40,18 @@ startup and effective settings still need verification before enabling this path
 
 ## Implementation requirements
 
+The [target-runtime SDL probe](../crates/lunchbox-controller-probe/README.md) now
+provides the enumeration stage of requirement 2. It successfully queried SDL
+3.2.20 inside the installed DuckStation Flatpak with the packaged mapping DB and
+the launcher's `SDL_JOYSTICK_LINUX_CLASSIC=1` setting. Distinct joystick paths
+identified the generic pads despite identical names/GUIDs. Additional mouse/LED/
+virtual-pointer joystick interfaces were also visible. Reported player-index
+hints must not be mistaken for DuckStation's final fallback assignments.
+
+The probe intentionally does not open controllers, consume emulator input
+events, or write settings. Physical-to-SDL input conversion, final player
+assignment, isolated effective configuration, and integration at launch remain.
+
 1. Resolve the exact launched executable/version, data root, game settings,
    selected input profile, and controller device type. Do not silently replace
    an analog controller with a digital controller to make a calibration fit.

@@ -37,6 +37,20 @@
           cargoBuildFlags = [ "--package" "lunchbox-db" ];
           cargoTestFlags = [ "--package" "lunchbox-db" ];
         };
+        controllerProbe = pkgs.rustPlatform.buildRustPackage {
+          pname = "lunchbox-controller-probe";
+          version = "0.1.1";
+          src = pkgs.lib.cleanSource ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+          cargoBuildFlags = [ "--package" "lunchbox-controller-probe" ];
+          cargoTestFlags = [ "--package" "lunchbox-controller-probe" ];
+          meta = with pkgs.lib; {
+            description = "Target-runtime SDL3 controller inventory for Lunchbox adapters";
+            license = licenses.mit;
+            mainProgram = "lunchbox-controller-probe";
+            platforms = platforms.linux ++ platforms.darwin;
+          };
+        };
         frontend = pkgs.rustPlatform.buildRustPackage {
           pname = "lunchbox";
           version = "0.1.1";
@@ -103,10 +117,12 @@
         };
       in
       {
+        checks.controller-probe = controllerProbe;
         packages = {
           default = frontend;
           lunchbox = frontend;
           lunchbox-db = databaseTool;
+          lunchbox-controller-probe = controllerProbe;
         };
 
         apps.default = {
@@ -117,6 +133,11 @@
         apps.lunchbox-db = {
           type = "app";
           program = "${databaseTool}/bin/lunchbox-db";
+        };
+
+        apps.lunchbox-controller-probe = {
+          type = "app";
+          program = "${controllerProbe}/bin/lunchbox-controller-probe";
         };
 
         devShells.default = pkgs.mkShell {

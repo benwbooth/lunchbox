@@ -18,6 +18,18 @@ env:
   QT_VERSION: 6.8.3
 
 jobs:
+  controller-probe:
+    name: Controller probe tests (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test portable controller probe
+        run: cargo test --locked --package lunchbox-controller-probe
+
   nix:
     name: Nix flake
     runs-on: ubuntu-24.04
