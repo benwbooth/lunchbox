@@ -472,6 +472,13 @@ pub mod qobject {
         fn bundle_title_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn bundle_file_size_at(
+            self: &GameDetailsModel,
+            bundle_index: i32,
+            file_index: i32,
+        ) -> QString;
+
+        #[qinvokable]
         fn bundle_detail_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -5945,6 +5952,12 @@ impl qobject::GameDetailsModel {
     pub fn bundle_file_count_at(&self, bundle_index: i32) -> i32 {
         self.bundle_group(bundle_index)
             .map(|group| count_i32(group.files.len()))
+            .unwrap_or_default()
+    }
+
+    pub fn bundle_file_size_at(&self, bundle_index: i32, file_index: i32) -> QString {
+        self.bundle_file(bundle_index, file_index)
+            .map(|file| qstring(game_details::format_bytes(file.byte_size)))
             .unwrap_or_default()
     }
 

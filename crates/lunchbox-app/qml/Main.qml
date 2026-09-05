@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtMultimedia
+import QtCore
 import Lunchbox
 
 ApplicationWindow {
@@ -61,6 +62,7 @@ ApplicationWindow {
     property string selectedPlatform: ""
     property bool librarySessionFilterApplied: false
     property bool librarySessionRestored: false
+    property bool librarySessionFullRestored: false
     property string availability: ""
     property string selectedCollectionId: ""
     property string selectedCollectionName: ""
@@ -456,7 +458,7 @@ ApplicationWindow {
     palette.highlightedText: "#10141c"
 
     onClosing: close => {
-        if (!root.automatedProbeRun && library.session_state_ready)
+        if (!root.automatedProbeRun && root.librarySessionFullRestored)
             root.saveLibrarySession()
         if (root.couchLaunchUiProbe) {
             close.accepted = true
@@ -480,7 +482,12 @@ ApplicationWindow {
 
     function saveLibrarySession() {
         const view = gameViewLoader.item
+        if (!view || library.filtering)
+            return
         const position = view ? Math.max(0, Math.round(view.contentY)) : 0
+        navigationSettings.setValue("searchText", searchField.text)
+        navigationSettings.setValue("availability", root.availability)
+        navigationSettings.sync()
         library.save_library_session(root.selectedPlatform,
                                      root.selectedGameId,
                                      library.view_mode,
@@ -503,10 +510,8 @@ ApplicationWindow {
             const row = library.row_for_game(gameId)
             if (row >= 0) {
                 view.currentIndex = row
-                view.positionViewAtIndex(
-                            row,
-                            root.gridMode ? GridView.Contain : ListView.Contain)
-                root.openGame(gameId,
+                if (root.selectedGameId !== gameId)
+                    root.openGame(gameId,
                               library.database_id_for_game(gameId),
                               library.display_title_for_game(gameId),
                               library.platform_for_game(gameId),
@@ -514,7 +519,43 @@ ApplicationWindow {
                               library.downloadable_for_game(gameId))
             }
         }
+        if (!library.loading) {
+            Qt.callLater(function() {
+                if (gameViewLoader.item !== view)
+                    return
+                view.forceLayout()
+                view.contentY = Math.min(savedPosition,
+                                        Math.max(0, view.contentHeight - view.height))
+            })
+        }
         return true
+    }
+
+    WindowPlacement {
+        window: root
+        enabled: !root.automatedProbeRun
+    }
+
+    Settings {
+        id: navigationSettings
+        category: "LibraryNavigation"
+    }
+
+    function scheduleSessionSave() {
+        if (root.librarySessionFullRestored && !root.automatedProbeRun
+                && !library.filtering)
+            librarySessionSaveTimer.restart()
+    }
+    onSelectedGameIdChanged: scheduleSessionSave()
+    onSelectedPlatformChanged: scheduleSessionSave()
+    Connections {
+        target: gameViewLoader.item
+        function onContentYChanged() { root.scheduleSessionSave() }
+    }
+    Timer {
+        id: librarySessionSaveTimer
+        interval: 500
+        onTriggered: root.saveLibrarySession()
     }
 
     function revealSelectedPlatform() {
@@ -3176,7 +3217,7 @@ ApplicationWindow {
     Connections {
         target: library
         function onPlatform_revisionChanged() {
-            if (library.loading || !root.librarySessionRestored
+            if (library.loading || !root.librarySessionFullRestored
                     || root.automatedProbeRun)
                 return
             Qt.callLater(function() {
@@ -3406,6 +3447,8 @@ ApplicationWindow {
                 root.beginCouchDownloadProbe()
         }
         function onFilteringChanged() {
+            if (!library.filtering)
+                root.scheduleSessionSave()
             if (library.filter_probe && library.ready && !library.filtering)
                 Qt.quit()
             else if (root.tagsUiProbe && root.tagsProbeStage === 3
@@ -7314,14 +7357,15 @@ ApplicationWindow {
         repeat: true
         running: library.ready
                  && library.session_state_ready
-                 && !root.librarySessionRestored
+                 && !root.librarySessionFullRestored
                  && !root.automatedProbeRun
         onTriggered: {
             if (!root.librarySessionFilterApplied) {
                 root.selectedPlatform = library.session_platform
                 root.selectedCollectionId = ""
                 root.selectedCollectionName = ""
-                root.availability = ""
+                searchField.text = navigationSettings.value("searchText", "")
+                root.availability = navigationSettings.value("availability", "")
                 library.apply_filter(searchField.text,
                                      root.selectedPlatform,
                                      root.availability)
@@ -7331,10 +7375,15 @@ ApplicationWindow {
             }
             if (library.filtering)
                 return
+            if (root.librarySessionRestored && library.loading)
+                return
             if (!gameViewLoader.item) {
                 if (library.filtered_count === 0) {
                     root.librarySessionRestored = true
-                    stop()
+                    if (!library.loading) {
+                        root.librarySessionFullRestored = true
+                        stop()
+                    }
                 }
                 return
             }
@@ -7342,7 +7391,10 @@ ApplicationWindow {
                 root.librarySessionRestored = true
                 library.report_library_session_restored(
                             root.selectedPlatform, root.selectedGameId)
-                stop()
+                if (!library.loading) {
+                    root.librarySessionFullRestored = true
+                    stop()
+                }
             }
         }
     }
@@ -11093,7 +11145,7 @@ ApplicationWindow {
         border.color: root.line
 
         Behavior on width {
-            enabled: !detailsResizeMouse.pressed
+            enabled: root.librarySessionFullRestored && !detailsResizeMouse.pressed
             NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
         }
 

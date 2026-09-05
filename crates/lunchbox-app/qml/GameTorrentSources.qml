@@ -245,7 +245,7 @@ Column {
                         property int fileRevision: root.revision
                         objectName: "torrentCandidate-" + index
                         width: sourceContents.width
-                        height: Math.max(70, fileName.implicitHeight
+                        height: Math.max(fileActions.implicitHeight + 20, fileName.implicitHeight
                                          + fileInfo.implicitHeight + 26)
                         radius: 8
                         color: sourceSection.index === 0 && index === 0
@@ -254,7 +254,7 @@ Column {
 
                         Column {
                             anchors.left: parent.left
-                            anchors.right: getButton.left
+                            anchors.right: fileActions.left
                             anchors.leftMargin: 11
                             anchors.rightMargin: 9
                             anchors.verticalCenter: parent.verticalCenter
@@ -300,25 +300,45 @@ Column {
                                 ToolTip.text: fileInfo.text
                             }
                         }
-                        HeaderButton {
-                            id: getButton
-                            objectName: "getTorrentCandidate-" + fileRow.index
+                        Column {
+                            id: fileActions
+                            width: Math.max(62, fileSize.implicitWidth)
                             anchors.right: parent.right
                             anchors.rightMargin: 9
                             anchors.verticalCenter: parent.verticalCenter
-                            text: root.detailsModel.download_busy ? "…" : "GET"
-                            enabled: !root.detailsModel.download_busy
-                                     && sourceSection.candidateCount > 0
-                            implicitWidth: 62
-                            implicitHeight: 34
-                            leftPadding: 8
-                            rightPadding: 8
-                            onClicked: {
-                                const selected = root.detailsModel.select_bundle_file(
-                                                   sourceSection.bundleIndex,
-                                                   fileRow.index)
-                                if (selected >= 0)
-                                    root.reviewCandidateRequested(selected)
+                            spacing: 6
+                            Text {
+                                id: fileSize
+                                objectName: "torrentCandidateSize-" + sourceSection.index + "-" + fileRow.index
+                                width: parent.width
+                                text: {
+                                    fileRow.fileRevision
+                                    return root.detailsModel.bundle_file_size_at(
+                                                sourceSection.bundleIndex, fileRow.index)
+                                }
+                                color: root.ink
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                            HeaderButton {
+                                id: getButton
+                                objectName: "getTorrentCandidate-" + fileRow.index
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: root.detailsModel.download_busy ? "…" : "GET"
+                                enabled: !root.detailsModel.download_busy
+                                         && sourceSection.candidateCount > 0
+                                implicitWidth: 62
+                                implicitHeight: 34
+                                leftPadding: 8
+                                rightPadding: 8
+                                onClicked: {
+                                    const selected = root.detailsModel.select_bundle_file(
+                                                       sourceSection.bundleIndex,
+                                                       fileRow.index)
+                                    if (selected >= 0)
+                                        root.reviewCandidateRequested(selected)
+                                }
                             }
                         }
                     }

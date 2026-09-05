@@ -26,7 +26,7 @@ Item {
     readonly property int expandedIdealHeight: 70
                                                 + ((queue && queue.message.length > 0) ? 58 : 18)
                                                 + Math.min(4, jobCount) * 112
-                                                + 72
+                                                + 112
     readonly property string collapsedSummary: activeCount > 0
                                                 ? activeCount + (activeCount === 1 ? " active download" : " active downloads")
                                                   + (aggregateSpeed.length > 0 ? "  ·  " + aggregateSpeed : "")
@@ -349,15 +349,31 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 52
+                Layout.preferredHeight: footerActions.implicitHeight + 16
                 color: status.panel
                 border.color: status.line
-                Button {
+                ColumnLayout {
+                    id: footerActions
+                    anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.rightMargin: 12
+                    anchors.margins: 12
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "OPEN DOWNLOAD MANAGER"
-                    onClicked: status.manageRequested()
+                    spacing: 4
+                    Button {
+                        objectName: "clearFinishedDownloadsButton"
+                        Layout.fillWidth: true
+                        text: "Clear finished"
+                        enabled: status.queue && !status.queue.busy
+                                 && status.finishedCount > 0
+                        onClicked: status.queue.clear_finished()
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Clear finished entries from this list. Downloaded files are kept."
+                    }
+                    Button {
+                        Layout.fillWidth: true
+                        text: "Open download manager"
+                        onClicked: status.manageRequested()
+                    }
                 }
             }
         }

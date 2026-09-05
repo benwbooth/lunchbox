@@ -25,16 +25,18 @@ TestCase {
                 property string game_id: "game-one"
                 property int sourceCount: 1
                 property int candidatesPerSource: 1
+                property string candidateName: "Super Mario Odyssey.xci/Super Mario Odyssey.xci"
                 function download_source_count() { return sourceCount }
                 function download_candidate_count() {
                     return sourceCount * candidatesPerSource
                 }
                 function download_source_bundle_at(index) { return index }
                 function bundle_file_count_at(index) { return candidatesPerSource }
+                function bundle_file_size_at(bundle, file) { return "7.4 GiB" }
                 function bundle_title_at(index) { return "Source " + index }
                 function bundle_detail_at(index) { return "5,475 indexed members" }
                 function bundle_file_name_at(bundle, file) {
-                    return "Super Mario Odyssey.xci/Super Mario Odyssey.xci"
+                    return candidateName
                 }
                 function bundle_file_detail_at(bundle, file) {
                     return "BEST MATCH · 7.4 GiB"
@@ -172,5 +174,19 @@ TestCase {
         expand.click()
         compare(firstSource.visibleCandidateCount, 8)
         verify(findChild(firstSource, "torrentCandidate-7"))
+    }
+
+    function test_long_filename_cannot_elide_the_separate_size() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.sources.width = 300
+        host.details.candidateName = "A very long translated game title with many regional and revision qualifiers ".repeat(5) + ".zip"
+        host.details.detail_revision += 1
+        const size = findChild(host.sources, "torrentCandidateSize-0-0")
+        verify(size)
+        compare(size.text, "7.4 GiB")
+        compare(size.elide, Text.ElideNone)
+        tryVerify(function() { return size.width >= size.implicitWidth })
+        verify(size.mapToItem(host.sources, size.width, 0).x <= host.sources.width)
     }
 }

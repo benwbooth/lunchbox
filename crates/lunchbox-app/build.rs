@@ -52,9 +52,11 @@ fn main() {
     CxxQtBuilder::new_qml_module(
         QmlModule::new("Lunchbox")
             .depend("QtQuick.Layouts")
+            .depend("QtCore")
             .depend("QtMultimedia")
             .qml_files([
                 "qml/AcceleratedWheelHandler.qml",
+                "qml/WindowPlacement.qml",
                 "qml/AlphabetRail.qml",
                 "qml/AppIcon.qml",
                 "qml/ArtworkMat.qml",

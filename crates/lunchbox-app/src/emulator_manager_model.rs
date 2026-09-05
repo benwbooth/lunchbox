@@ -909,9 +909,8 @@ fn select_managed_preference_identity(
             }
         }
     } else {
-        for (emulator_id, core_names, manager, package_id) in candidates {
+        for (emulator_id, _, manager, package_id) in candidates {
             if emulator_id == &row.emulator_id
-                && core_names.trim().is_empty()
                 && manager == &row.manager
                 && package_id == &row.package_id
             {
@@ -1103,6 +1102,24 @@ mod tests {
             "org.example.Other".into(),
         )];
         assert!(select_managed_preference_identity(&core, &wrong_package).is_none());
+    }
+
+    #[test]
+    fn standalone_default_allows_an_associated_retroarch_core() {
+        let mut emulator = row("DuckStation", true, false);
+        emulator.emulator_id = "duckstation-id".into();
+        emulator.manager = "flatpak".into();
+        emulator.package_id = "org.duckstation.DuckStation".into();
+        let candidates = vec![(
+            emulator.emulator_id.clone(),
+            "swanstation".into(),
+            emulator.manager.clone(),
+            emulator.package_id.clone(),
+        )];
+        let preference = select_managed_preference_identity(&emulator, &candidates).unwrap();
+        assert_eq!(preference.emulator_id, "duckstation-id");
+        assert_eq!(preference.runtime_kind, "standalone");
+        assert!(preference.core_name.is_empty());
     }
 
     #[test]

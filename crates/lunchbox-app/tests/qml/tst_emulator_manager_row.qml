@@ -57,9 +57,13 @@ TestCase {
         const installButton = findChild(host.emulatorRow, "emulatorInstallButton")
         const uninstallButton = findChild(host.emulatorRow, "emulatorUninstallButton")
         verify(installButton && uninstallButton)
+        const progress = findChild(host.emulatorRow, "emulatorInstallProgress")
+        verify(progress)
+        verify(progress.indeterminate)
 
         host.manager.busy = false
         tryCompare(host.emulatorRow, "managerBusy", false)
+        verify(!progress.indeterminate)
         compare(host.manager.can_install_at(0), true)
         tryCompare(host.emulatorRow, "installAvailable", true)
         tryCompare(host.emulatorRow, "installActionVisible", true)

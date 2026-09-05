@@ -22,6 +22,7 @@ Rectangle {
     readonly property int modelRevision: emulatorModel ? emulatorModel.revision : 0
     readonly property bool managerBusy: emulatorModel ? emulatorModel.busy : false
     readonly property int managerBusyIndex: emulatorModel ? emulatorModel.busy_index : -1
+    readonly property bool operationActive: managerBusy && managerBusyIndex === rowIndex
     readonly property string emulatorName: {
         modelRevision
         return emulatorModel ? emulatorModel.name_at(rowIndex) : ""
@@ -64,12 +65,25 @@ Rectangle {
     signal platformDefaultRequested(int rowIndex)
 
     width: ListView.view ? ListView.view.width : 720
-    height: defaultActionsAvailable ? 116 : 78
+    height: (defaultActionsAvailable ? 116 : 78) + (operationActive ? 12 : 0)
     radius: 10
     color: emulatorHover.hovered ? "#1b2330" : "#151c27"
     border.color: emulatorStatus === "MANAGED" ? "#28584f" : line
 
     HoverHandler { id: emulatorHover }
+
+    ProgressBar {
+        objectName: "emulatorInstallProgress"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: 17
+        anchors.rightMargin: 14
+        y: 78
+        height: 8
+        visible: row.operationActive
+        indeterminate: row.operationActive
+        Accessible.name: "Emulator operation in progress"
+    }
 
     RowLayout {
         anchors.left: parent.left

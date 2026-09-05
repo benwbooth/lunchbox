@@ -26,9 +26,11 @@ TestCase {
                 property string aggregate_speed: "0 B/s"
                 property string message: "Recent downloads are retained here."
                 property int refreshCount: 0
+                property int clearFinishedCount: 0
                 property string firstState: "IMPORTED"
 
                 function refresh() { ++refreshCount }
+                function clear_finished() { ++clearFinishedCount }
                 function job_title_at(index) { return index === 0 ? "Faxanadu" : "Contra" }
                 function job_platform_at(index) { return "Nintendo Entertainment System" }
                 function job_state_at(index) { return index === 0 ? firstState : "COMPLETE" }
@@ -64,6 +66,23 @@ TestCase {
         const rows = findChild(host.downloadStatus, "downloadRows")
         verify(rows)
         compare(rows.count, 2)
+    }
+
+    function test_clear_finished_is_available_with_history_even_during_downloads() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.downloadStatus.expanded = true
+        host.queueState.active_count = 1
+        const clear = findChild(host.downloadStatus, "clearFinishedDownloadsButton")
+        verify(clear)
+        verify(clear.enabled)
+        clear.click()
+        compare(host.queueState.clearFinishedCount, 1)
+        host.queueState.busy = true
+        verify(!clear.enabled)
+        host.queueState.busy = false
+        host.queueState.finished_count = 0
+        verify(!clear.enabled)
     }
 
     function test_new_active_download_opens_the_hideable_status() {
