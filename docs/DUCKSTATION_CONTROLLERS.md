@@ -48,9 +48,30 @@ identified the generic pads despite identical names/GUIDs. Additional mouse/LED/
 virtual-pointer joystick interfaces were also visible. Reported player-index
 hints must not be mistaken for DuckStation's final fallback assignments.
 
-The probe intentionally does not open controllers, consume emulator input
-events, or write settings. Physical-to-SDL input conversion, final player
-assignment, isolated effective configuration, and integration at launch remain.
+The probe can now optionally open explicitly selected gamepads to copy SDL's
+resolved bindings, including input/output axis ranges and hats. Default
+inventory queries still do not open devices. It never writes emulator settings.
+The Rust digital-input translator uses these bindings to produce DuckStation
+binding suffixes. For SDL 3.2.20's Linux classic backend, physical evdev-code
+lookup is also implemented from the kernel's read-only joystick maps, verified
+against SDL control counts. Hat axes are removed from the axis sequence and hats
+retain first-seen order. Other physical backends, axis rest/range interpretation,
+analog target conversion, final player assignment, isolated configuration, and
+launch integration remain.
+
+The installed `0a53bc47c` SDL backend marks raw axis events consumed using the
+**output** axis index, unlike its button/hat handling, which uses the input index.
+The translator models this version-specific behavior explicitly. Do not silently
+"correct" it or apply it to other revisions without verification. Whole hats
+are suppressed once any direction is mapped. Shared normalized outputs cannot
+stand in for independent physical controls. SDL's own binding order, inverted
+ranges, button-driven axes and axis-driven buttons also affect emitted events.
+
+Live verification on 2026-09-05 queried both selected generic pads inside the
+installed Flatpak: each returned 21 resolved bindings, 11 buttons, six axes, and
+one hat. The read-only physical maps matched those counts and retained distinct
+device paths. Missing-device and non-gamepad selections failed as expected.
+This verifies enumeration and numbering, not button presses in a running game.
 
 1. Resolve the exact launched executable/version, data root, game settings,
    selected input profile, and controller device type. Do not silently replace

@@ -1,5 +1,5 @@
-//! Isolated SDL3 inventory for emulator adapters. Does not open controllers,
-//! create virtual inputs, send rumble, or write emulator configuration.
+//! Isolated SDL3 inventory for emulator adapters. Optionally opens explicitly
+//! selected gamepads to query resolved bindings; never sends rumble or writes settings.
 //! The caller must supply a trusted SDL library from the target runtime.
 use anyhow::{Context, Result, bail, ensure};
 use libloading::Library;
@@ -10,6 +10,10 @@ use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::path::{Path, PathBuf};
 
 const SUBSYSTEMS: u32 = 0x00000200 | 0x00002000; // SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD
+
+pub mod bindings;
+pub mod duckstation;
+pub mod linux_classic;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
@@ -25,6 +29,12 @@ pub struct Device {
     /// SDL's hint before opening; DuckStation can choose a different fallback.
     pub reported_player_index: i32,
     pub mapping: Option<String>,
+    /// Absent unless explicitly requested and queried from an opened gamepad.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved: Option<bindings::ResolvedGamepad>,
+    /// Present only for a verified Linux classic backend with matching counts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linux_classic: Option<linux_classic::ClassicMap>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -136,6 +146,26 @@ pub fn inspect(
     mapping_db: Option<&Path>,
     hints: BTreeMap<String, String>,
 ) -> Result<Snapshot> {
+    inspect_with_bindings(library_path, mapping_db, hints, &[])
+}
+
+/// Opening is opt-in by exact unique runtime path. SDL drivers may perform their
+/// normal device initialization, but this helper never requests LED/rumble changes.
+pub fn inspect_with_bindings(
+    library_path: &Path,
+    mapping_db: Option<&Path>,
+    hints: BTreeMap<String, String>,
+    binding_paths: &[String],
+) -> Result<Snapshot> {
+    let unique: std::collections::BTreeSet<_> = binding_paths.iter().collect();
+    ensure!(
+        unique.len() == binding_paths.len(),
+        "Duplicate binding path"
+    );
+    ensure!(
+        binding_paths.iter().all(|p| !p.is_empty()),
+        "Empty binding path"
+    );
     ensure!(
         library_path.is_absolute(),
         "Pass the absolute SDL3 library path from the target runtime"
@@ -279,11 +309,75 @@ pub fn inspect(
                 reported_player_index: player(*id),
                 is_gamepad: is_gamepad(*id),
                 mapping: string(raw_mapping)?,
+                resolved: None,
+                linux_classic: None,
             });
         }
+        // Validate the complete selection before opening any device. Never open
+        // another same-model pad when a selected pad disappears.
+        for path in binding_paths {
+            let matches: Vec<_> = devices
+                .iter()
+                .filter(|d| d.path.as_ref() == Some(path))
+                .collect();
+            ensure!(
+                matches.len() == 1,
+                "Binding path must identify exactly one SDL device: {path}"
+            );
+            ensure!(
+                matches[0].is_gamepad,
+                "Selected device is not an SDL gamepad: {path}"
+            );
+        }
+        for device in &mut devices {
+            if device
+                .path
+                .as_ref()
+                .is_some_and(|p| binding_paths.contains(p))
+            {
+                device.resolved = Some(query_bindings(
+                    &library,
+                    device.instance_id,
+                    free,
+                    get_error,
+                )?);
+                #[cfg(target_os = "linux")]
+                if version == 3_002_020
+                    && effective_hints
+                        .get("SDL_JOYSTICK_LINUX_CLASSIC")
+                        .and_then(Option::as_deref)
+                        == Some("1")
+                {
+                    let path = Path::new(device.path.as_ref().context("Missing SDL device path")?);
+                    // HIDAPI devices need their own physical adapter. Never apply
+                    // the classic numbering algorithm merely because a hint is set.
+                    if path.parent() == Some(Path::new("/dev/input"))
+                        && path
+                            .file_name()
+                            .and_then(|p| p.to_str())
+                            .is_some_and(|p| p.starts_with("js"))
+                    {
+                        let physical = linux_classic::read(path)?;
+                        physical.validate_counts(
+                            device
+                                .resolved
+                                .as_ref()
+                                .context("Missing resolved bindings")?,
+                        )?;
+                        device.linux_classic = Some(physical);
+                    }
+                }
+                // Verify that the selected instance still names the same path.
+                ensure!(
+                    string(get_path(device.instance_id))? == device.path,
+                    "SDL device identity changed while querying bindings"
+                );
+            }
+        }
         let mut warnings = vec![
-            "Snapshot only: controllers were not opened and emulator player fallback IDs are not established.".into(),
-            "Device hotplug, backend settings and mapping database changes require a new snapshot.".into(),
+            "Snapshot only: emulator player fallback IDs are not established.".into(),
+            "Device hotplug, backend settings and mapping database changes require a new snapshot."
+                .into(),
         ];
         for (name, value) in &hints {
             if effective_hints.get(name).and_then(Option::as_ref) != Some(value) {
@@ -293,7 +387,7 @@ pub fn inspect(
             }
         }
         Ok(Snapshot {
-            schema_version: 1,
+            schema_version: 2,
             host_os: std::env::consts::OS.into(),
             library: library_path,
             library_sha256,
@@ -305,6 +399,78 @@ pub fn inspect(
             devices,
             warnings,
         })
+    }
+}
+
+struct OpenGamepad {
+    pointer: *mut c_void,
+    close: unsafe extern "C" fn(*mut c_void),
+}
+impl Drop for OpenGamepad {
+    fn drop(&mut self) {
+        unsafe { (self.close)(self.pointer) }
+    }
+}
+
+unsafe fn query_bindings(
+    library: &Library,
+    id: u32,
+    free: Free,
+    get_error: GetString,
+) -> Result<bindings::ResolvedGamepad> {
+    unsafe {
+        let open =
+            *library.get::<unsafe extern "C" fn(u32) -> *mut c_void>(b"SDL_OpenGamepad\0")?;
+        let close = *library.get::<unsafe extern "C" fn(*mut c_void)>(b"SDL_CloseGamepad\0")?;
+        let get_joystick = *library
+            .get::<unsafe extern "C" fn(*mut c_void) -> *mut c_void>(b"SDL_GetGamepadJoystick\0")?;
+        let get_bindings = *library.get::<unsafe extern "C" fn(
+            *mut c_void,
+            *mut i32,
+        )
+            -> *mut *mut bindings::SdlBinding>(
+            b"SDL_GetGamepadBindings\0"
+        )?;
+        let count_axes = *library
+            .get::<unsafe extern "C" fn(*mut c_void) -> i32>(b"SDL_GetNumJoystickAxes\0")?;
+        let count_buttons = *library
+            .get::<unsafe extern "C" fn(*mut c_void) -> i32>(b"SDL_GetNumJoystickButtons\0")?;
+        let count_hats = *library
+            .get::<unsafe extern "C" fn(*mut c_void) -> i32>(b"SDL_GetNumJoystickHats\0")?;
+        let pointer = open(id);
+        ensure!(
+            !pointer.is_null(),
+            "Opening selected SDL gamepad {id}: {:?}",
+            string(get_error())?
+        );
+        let _gamepad = OpenGamepad { pointer, close };
+        let joystick = get_joystick(pointer);
+        ensure!(!joystick.is_null(), "SDL gamepad has no joystick");
+        let mut count = 0;
+        let list = get_bindings(pointer, &mut count);
+        ensure!(
+            !list.is_null(),
+            "Reading SDL bindings: {:?}",
+            string(get_error())?
+        );
+        let _list = Allocation {
+            pointer: list.cast(),
+            free,
+        };
+        ensure!((0..=4096).contains(&count), "Invalid SDL binding count");
+        let mut bindings = Vec::with_capacity(count as usize);
+        for binding in std::slice::from_raw_parts(list, count as usize) {
+            ensure!(!binding.is_null(), "Null SDL binding entry");
+            bindings.push((**binding).copy()?);
+        }
+        let result = bindings::ResolvedGamepad {
+            joystick_axes: count_axes(joystick).try_into()?,
+            joystick_buttons: count_buttons(joystick).try_into()?,
+            joystick_hats: count_hats(joystick).try_into()?,
+            bindings,
+        };
+        result.validate()?;
+        Ok(result)
     }
 }
 
@@ -337,6 +503,8 @@ mod tests {
                     is_gamepad: true,
                     reported_player_index: -1,
                     mapping: None,
+                    resolved: None,
+                    linux_classic: None,
                 })
                 .collect(),
         }

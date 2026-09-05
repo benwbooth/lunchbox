@@ -1774,6 +1774,7 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
+ "libc",
  "libloading",
  "serde",
  "serde_json",
