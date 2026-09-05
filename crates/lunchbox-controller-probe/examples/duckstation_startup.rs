@@ -1,5 +1,6 @@
-//! Actual installed-Flatpak startup oracle. No ROM, BIOS or user config is loaded.
-//! Run with a freshly captured player-probe snapshot as the single argument.
+//! Actual installed-Flatpak startup oracle. No ROM or BIOS is loaded.
+//! Pass a fresh player-probe snapshot; optionally --preserve-config to exercise
+//! a private copy of the user's configuration, with original settings untouched.
 #[cfg(not(target_os = "linux"))]
 fn main() -> anyhow::Result<()> {
     anyhow::bail!("This oracle requires the installed Linux DuckStation Flatpak")
@@ -121,18 +122,56 @@ fn main() -> anyhow::Result<()> {
         .join(APP)
         .join("config/duckstation/settings.ini");
     let before = fs::read(&original).context("Reading baseline config fingerprint")?;
+    let preserve = std::env::args_os()
+        .nth(2)
+        .map(|arg| {
+            ensure!(arg == "--preserve-config", "Unknown oracle option");
+            Ok(())
+        })
+        .transpose()?
+        .is_some();
+    let mut overlay = if preserve {
+        Some(
+            lunchbox_controller_probe::duckstation_config::LaunchConfig::stage(
+                original.parent().context("Missing source data root")?,
+                None,
+            )?,
+        )
+    } else {
+        None
+    };
     let directory = tempfile::Builder::new()
         .prefix("lunchbox-duckstation-startup-")
         .tempdir_in("/tmp")?
         .keep();
     eprintln!("Startup evidence: {}", directory.display());
-    let config_root = directory.join("config");
+    let config_root = overlay
+        .as_ref()
+        .map(|o| o.config_home())
+        .unwrap_or_else(|| directory.join("config"));
     let duck_root = config_root.join("duckstation");
     fs::create_dir_all(&duck_root)?;
-    fs::write(
-        duck_root.join("settings.ini"),
-        "[Main]\nSettingsVersion = 3\nSetupWizardIncomplete = false\n\n[Logging]\nLogLevel = Verbose\nLogToConsole = true\nLogTimestamps = false\n\n[InputSources]\nSDL = true\nSDLControllerEnhancedMode = false\nSDLPS5PlayerLED = false\n\n[SDLHints]\nSDL_JOYSTICK_LINUX_CLASSIC = 1\n\n[AutoUpdater]\nCheckAtStartup = false\n",
-    )?;
+    if let Some(overlay) = &mut overlay {
+        let mapping = overlay.data_root().join("gamecontrollerdb.txt");
+        if mapping.exists() {
+            ensure!(
+                snapshot.mapping_database_sha256.as_deref()
+                    == Some(format!("{:x}", Sha256::digest(fs::read(mapping)?)).as_str()),
+                "User SDL mapping database differs from the probe's mapping database"
+            );
+        }
+        overlay.enable_startup_diagnostics()?;
+        eprintln!(
+            "Private input layer: {:?}; Pad1 type: {}",
+            overlay.input_layer,
+            overlay.controller_type(1)?
+        );
+    } else {
+        fs::write(
+            duck_root.join("settings.ini"),
+            "[Main]\nSettingsVersion = 3\nSetupWizardIncomplete = false\n\n[Logging]\nLogLevel = Verbose\nLogToConsole = true\nLogTimestamps = false\n\n[InputSources]\nSDL = true\nSDLControllerEnhancedMode = false\nSDLPS5PlayerLED = false\n\n[SDLHints]\nSDL_JOYSTICK_LINUX_CLASSIC = 1\n\n[AutoUpdater]\nCheckAtStartup = false\n",
+        )?;
+    }
     let output_path = directory.join("startup.log");
     let output = fs::File::create(&output_path)?;
     let mut command = Command::new("flatpak");
@@ -141,6 +180,9 @@ fn main() -> anyhow::Result<()> {
         .arg("--die-with-parent")
         .arg(format!("--filesystem={}:rw", directory.display()))
         .arg("--command=/usr/bin/env");
+    if let Some(overlay) = &overlay {
+        command.arg(format!("--filesystem={}:rw", overlay.root().display()));
+    }
     for (name, value) in &snapshot.effective_hints {
         if let Some(value) = value {
             lunchbox_controller_probe::parse_hint(&format!("{name}={value}"))?;
@@ -221,9 +263,16 @@ fn main() -> anyhow::Result<()> {
         fs::read(&original)? == before,
         "Original DuckStation settings changed during oracle run"
     );
+    if let Some(overlay) = &overlay {
+        overlay.verify_originals_unchanged()?;
+    }
     check?;
     let log = fs::read_to_string(output_path)?;
     projection.verify_startup_log(&log)?;
+    if let Some(overlay) = &overlay {
+        overlay.verify_startup_routing(&log)?;
+        println!("Verified all 16 data-folder destinations in actual DuckStation startup output.");
+    }
     println!(
         "Verified {} actual device opens against the projection. Original settings unchanged. Evidence: {}",
         projection.assignments.len(),

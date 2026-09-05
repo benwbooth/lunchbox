@@ -13,6 +13,7 @@ const SUBSYSTEMS: u32 = 0x00000200 | 0x00002000; // SDL_INIT_JOYSTICK | SDL_INIT
 
 pub mod bindings;
 pub mod duckstation;
+pub mod duckstation_config;
 pub mod linux_classic;
 pub mod players;
 
@@ -168,14 +169,7 @@ pub fn inspect_with_bindings(
     hints: BTreeMap<String, String>,
     binding_paths: &[String],
 ) -> Result<Snapshot> {
-    inspect_target_runtime(
-        library_path,
-        mapping_db,
-        hints,
-        binding_paths,
-        None,
-        &[],
-    )
+    inspect_target_runtime(library_path, mapping_db, hints, binding_paths, None, &[])
 }
 
 /// Load explicit trusted runtime dependencies first, in dependency order.

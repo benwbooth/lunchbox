@@ -89,8 +89,19 @@ Flatpak reserves XDG paths at sandbox entry: the oracle sets its private XDG
 directories **inside** the sandbox via `env` executing the binary directly,
 without a shell. Passing `--env=XDG_CONFIG_HOME=...` to Flatpak did not isolate
 this installed application; the oracle caught that and now rejects wrong-root
-startup immediately. This proves fresh-root routing, not preservation of user
-saves, BIOS paths, game overrides or input profiles in a production overlay.
+startup immediately.
+
+Add `--preserve-config` after the snapshot to test a private copy of the user's
+configuration using `duckstation_config::LaunchConfig`. This mode copies the
+global/game/profile INIs, preserves the selected controller type, and rebases the
+sixteen data folders (only game/profile directories point to private copies).
+It checks all sixteen actual folder log records and verifies original config
+bytes after shutdown. No game is launched. Temporary copied settings, which may
+contain credentials, are removed when the owner drops; only diagnostic logs are
+retained. A local SDL database must match the probe's database fingerprint.
+The optional mode passed with the installed Flatpak and real global settings on
+2026-09-05. This is not proof of gameplay bindings or complete persistent-state
+preservation; production Play integration remains disabled.
 
 Verified on 2026-09-05: the target libudev removes non-gamepad LED/mouse/pointer
 interfaces, giving three devices on this host, with selected `/dev/input/js4`

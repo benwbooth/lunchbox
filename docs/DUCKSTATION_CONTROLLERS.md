@@ -36,11 +36,39 @@ before XDG configuration-directory routing. Changing XDG_CONFIG_HOME is thus a
 possible isolation mechanism, not proof of isolation for every installation.
 The installed revision's [data-root implementation](https://github.com/stenzek/duckstation/blob/0a53bc47c/src/core/host.cpp)
 also prioritizes portable files before XDG routing on Linux. Actual redirected
-startup has now been verified for a **fresh test root** (not a production overlay).
+startup has now been verified for both a fresh test root and a private copy of
+the user's settings with rebased data-folder paths (no game launched).
 Flatpak overrides XDG paths at sandbox entry, so the override must happen inside
 the sandbox, before executing DuckStation. The Rust startup oracle confirms the
-logged root and unchanged original settings. Preservation of user data and
-effective per-game/profile configuration still needs implementation/verification.
+logged root and unchanged original settings. Game-specific input interpretation
+and production Play integration still need runtime verification.
+
+The Rust `duckstation_config::LaunchConfig` stages global settings plus separate
+copies of game settings, input profiles, and any data-root SDL mapping database.
+It rebases all sixteen configured data folders, keeping BIOS, memory cards and
+saves at their original destinations while isolating the two configuration
+directories. Its owner retains the temporary directory until the child exits.
+Source settings are never written. The line-preserving editor retains unrelated
+repeated keys, comments and newline style; replacing a binding clears all of its
+old list entries and repeated application is idempotent.
+
+Input layer selection follows the [installed system implementation](https://github.com/stenzek/duckstation/blob/0a53bc47c/src/core/system.cpp):
+exact disc-set identity, optional separate-disc settings, the per-game controller
+flag, and named profiles. Missing separate-disc settings or missing profiles
+fall back as the emulator does. The caller must supply verified game/disc-set
+identity, not a guessed serial. There is no global type fallback for an active
+game/profile input layer. A digital patch cannot change an AnalogController to
+DigitalController. Analog bindings and specialty types still need contracts.
+
+On 2026-09-05, `duckstation_startup --preserve-config` exercised the installed
+Flatpak with the user's real global settings copied privately. Its Dev output
+confirmed all sixteen folder destinations, and the three device-open records
+matched a fresh runtime projection. Original configuration bytes were unchanged.
+The global Pad1 type remained AnalogController. Per-game/profile selection and
+digital patches have fixture tests, **not yet actual game-start verification**.
+Other data-root-relative files and persistent emulator databases still require
+an audit before enabling production isolation; a no-game startup does not prove
+all user state is preserved through gameplay.
 
 ## Implementation requirements
 
