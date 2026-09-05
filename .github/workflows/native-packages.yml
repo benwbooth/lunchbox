@@ -254,6 +254,13 @@ jobs:
       options: --privileged
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify locked Flatpak Cargo sources
+        run: |
+          rustc --edition=2024 -D warnings --test packaging/flatpak/verify-cargo-sources.rs -o /tmp/verify-cargo-sources-tests
+          /tmp/verify-cargo-sources-tests
+          rustc --edition=2024 -D warnings packaging/flatpak/verify-cargo-sources.rs -o /tmp/verify-cargo-sources
+          /tmp/verify-cargo-sources Cargo.lock packaging/flatpak/cargo-sources.json
       - name: Build bundle and repository
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:

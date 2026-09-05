@@ -10,6 +10,10 @@ Rectangle {
     property bool active: false
     property url iconSource: ""
     signal clicked()
+    activeFocusOnTab: true
+    Keys.onReturnPressed: clicked()
+    Keys.onEnterPressed: clicked()
+    Keys.onSpacePressed: clicked()
 
     width: ListView.view ? ListView.view.width : 228
     height: 43

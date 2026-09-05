@@ -96,6 +96,17 @@ device nodes. Launch-time remapping is shown as an available control only when
 the Linux InputPlumber provider can enumerate managed devices; direct gamepad
 navigation remains available independently on every supported desktop.
 
+In the desktop library, D-pad/stick directions follow visible screen positions,
+including movement between game cards and the platform sidebar, without row
+wrapping. Bumpers page the focused list/grid up or down; analog triggers jump to
+its beginning or end. Back paddles follow whichever standard buttons the device
+reports. Modal dialogs retain focus, and open combo boxes/sliders keep their
+normal editing controls. Couch Mode retains its existing zone-specific paging.
+Artwork shows only a small activity spinner during preview lookup/download;
+detailed media download progress stays in the lower-left sidebar.
+Long box-art titles scroll back and forth on hover, with a pause at each end;
+short titles stay still and leaving the card resets the title.
+
 Game Details includes a durable Release Profile for sort title, series, region,
 play mode, version, and release status. These local presentation values are
 searchable and available as exact list columns, filters, and sorts; Series also

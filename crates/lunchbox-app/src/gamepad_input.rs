@@ -126,6 +126,8 @@ enum NavigationAction {
     Right,
     PageLeft,
     PageRight,
+    ScrollFirst,
+    ScrollLast,
     Accept,
     Back,
     Favorite,
@@ -143,6 +145,8 @@ impl NavigationAction {
             Self::Right => "right",
             Self::PageLeft => "page_left",
             Self::PageRight => "page_right",
+            Self::ScrollFirst => "scroll_first",
+            Self::ScrollLast => "scroll_last",
             Self::Accept => "accept",
             Self::Back => "back",
             Self::Favorite => "favorite",
@@ -160,6 +164,8 @@ impl NavigationAction {
             "right" => Some(Self::Right),
             "page_left" => Some(Self::PageLeft),
             "page_right" => Some(Self::PageRight),
+            "scroll_first" => Some(Self::ScrollFirst),
+            "scroll_last" => Some(Self::ScrollLast),
             "accept" => Some(Self::Accept),
             "back" => Some(Self::Back),
             "favorite" => Some(Self::Favorite),
@@ -877,8 +883,10 @@ fn button_action(button: Button) -> Option<NavigationAction> {
         Button::DPadDown => Some(NavigationAction::Down),
         Button::DPadLeft => Some(NavigationAction::Left),
         Button::DPadRight => Some(NavigationAction::Right),
-        Button::LeftTrigger | Button::LeftTrigger2 => Some(NavigationAction::PageLeft),
-        Button::RightTrigger | Button::RightTrigger2 => Some(NavigationAction::PageRight),
+        Button::LeftTrigger => Some(NavigationAction::PageLeft),
+        Button::RightTrigger => Some(NavigationAction::PageRight),
+        Button::LeftTrigger2 => Some(NavigationAction::ScrollFirst),
+        Button::RightTrigger2 => Some(NavigationAction::ScrollLast),
         Button::South => Some(NavigationAction::Accept),
         Button::East => Some(NavigationAction::Back),
         Button::West => Some(NavigationAction::Favorite),
@@ -934,6 +942,8 @@ fn controller_button_label(layout: &str, action: &str) -> &'static str {
         ("playstation", "details") => "TRIANGLE",
         ("playstation", "page_left") => "L1",
         ("playstation", "page_right") => "R1",
+        ("playstation", "scroll_first") => "L2",
+        ("playstation", "scroll_last") => "R2",
         ("playstation", "menu") => "OPTIONS",
         ("playstation", "home") => "CREATE",
         ("nintendo", "accept") => "B",
@@ -942,6 +952,8 @@ fn controller_button_label(layout: &str, action: &str) -> &'static str {
         ("nintendo", "details") => "X",
         ("nintendo", "page_left") => "L",
         ("nintendo", "page_right") => "R",
+        ("nintendo", "scroll_first") => "ZL",
+        ("nintendo", "scroll_last") => "ZR",
         ("nintendo", "menu") => "+",
         ("nintendo", "home") => "−",
         ("xbox", "accept") => "A",
@@ -950,6 +962,8 @@ fn controller_button_label(layout: &str, action: &str) -> &'static str {
         ("xbox", "details") => "Y",
         ("xbox", "page_left") => "LB",
         ("xbox", "page_right") => "RB",
+        ("xbox", "scroll_first") => "LT",
+        ("xbox", "scroll_last") => "RT",
         ("xbox", "menu") => "MENU",
         ("xbox", "home") => "VIEW",
         (_, "accept") => "SOUTH",
@@ -958,6 +972,8 @@ fn controller_button_label(layout: &str, action: &str) -> &'static str {
         (_, "details") => "NORTH",
         (_, "page_left") => "L1",
         (_, "page_right") => "R1",
+        (_, "scroll_first") => "L2",
+        (_, "scroll_last") => "R2",
         (_, "menu") => "START",
         (_, "home") => "SELECT",
         _ => "BUTTON",
@@ -1043,6 +1059,28 @@ mod tests {
             Some(NavigationAction::PageLeft)
         );
         assert_eq!(button_action(Button::LeftThumb), None);
+        assert_eq!(
+            button_action(Button::RightTrigger),
+            Some(NavigationAction::PageRight)
+        );
+        assert_eq!(
+            button_action(Button::LeftTrigger2),
+            Some(NavigationAction::ScrollFirst)
+        );
+        assert_eq!(
+            button_action(Button::RightTrigger2),
+            Some(NavigationAction::ScrollLast)
+        );
+        assert_eq!(
+            NavigationAction::parse("scroll_first"),
+            Some(NavigationAction::ScrollFirst)
+        );
+        assert_eq!(
+            NavigationAction::parse("scroll_last"),
+            Some(NavigationAction::ScrollLast)
+        );
+        assert!(!NavigationAction::ScrollFirst.repeats());
+        assert!(!NavigationAction::ScrollLast.repeats());
 
         assert!(!NavigationAction::Accept.repeats());
         assert!(!NavigationAction::Back.repeats());

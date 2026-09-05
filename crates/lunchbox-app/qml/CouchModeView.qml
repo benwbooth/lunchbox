@@ -734,6 +734,10 @@ Item {
     function handleNavigation(action) {
         if (!active)
             return false
+        // Desktop gives analog triggers Home/End; keep the established couch
+        // paging shortcuts until this view's zone-specific navigation changes.
+        if (action === "scroll_first") action = "page_left"
+        if (action === "scroll_last") action = "page_right"
         forceActiveFocus()
         noteActivity()
         if (attractOpen) {

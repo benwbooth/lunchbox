@@ -9359,14 +9359,6 @@ ApplicationWindow {
                 library.media_revision
                 return library.automatic_video_state(gameId)
             }
-            readonly property string previewQueueMessage: {
-                library.media_pending_count
-                library.media_active_title
-                library.media_active_progress
-                library.media_setup_required
-                library.media_revision
-                return library.automatic_video_message(gameId)
-            }
             property int mediaRevision: library.media_revision
             property int favoriteRevision: library.favorite_revision
             property int favoritePendingRevision: library.favorite_pending_count
@@ -9648,57 +9640,18 @@ ApplicationWindow {
                         }
                     }
 
-                    BusyIndicator {
-                        z: previewPresentation.overlayLayer
-                        anchors.centerIn: parent
-                        width: 44 * card.expansion
-                        height: 44 * card.expansion
-                        running: tile.previewRequested
-                                 && library.hover_preview_game_id === tile.gameId
-                                 && library.hover_preview_loading
-                                 && tile.previewResolvedVideoUrl.toString().length === 0
-                        visible: running
-                    }
-
-                    Rectangle {
+                    MediaPreviewActivity {
                         id: previewStatus
                         z: previewPresentation.overlayLayer
-                        anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
-                        height: 50 * card.expansion
-                        visible: tile.previewRequested
+                        anchors.margins: 8
+                        requested: tile.previewRequested
                                  && library.hover_preview_game_id === tile.gameId
-                                 && !library.hover_preview_loading
-                                 && tile.previewResolvedVideoUrl.toString().length === 0
-                                 && root.hoverPreviewPlaybackError.length === 0
-                        color: library.media_setup_required ? "#e13a2b22" : "#dd111924"
-                        Text {
-                            anchors.fill: parent
-                            anchors.margins: 9 * card.expansion
-                            text: tile.previewQueueMessage
-                            color: library.media_setup_required ? root.accent : root.muted
-                            font.pixelSize: Math.round(9 * card.expansion)
-                            font.weight: Font.DemiBold
-                            font.kerning: true
-                            font.hintingPreference: Font.PreferVerticalHinting
-                            renderType: Text.NativeRendering
-                            wrapMode: Text.WordWrap
-                            maximumLineCount: 2
-                            elide: Text.ElideRight
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        TapHandler {
-                            enabled: tile.previewQueueState === "setup-required"
-                                     || tile.previewQueueState === "unavailable"
-                                     || tile.previewQueueState === "automatic"
-                            onTapped: {
-                                if (tile.previewQueueState === "setup-required")
-                                    root.openSettingsFor("emumovies")
-                                else
-                                    library.retry_game_video(tile.gameId)
-                            }
-                        }
+                        hasVideo: tile.previewResolvedVideoUrl.toString().length > 0
+                        playbackFailed: root.hoverPreviewPlaybackError.length > 0
+                        resolving: library.hover_preview_loading
+                        queueState: tile.previewQueueState
                     }
 
                     Rectangle {
@@ -9868,7 +9821,7 @@ ApplicationWindow {
                     }
                 }
 
-                Text {
+                HoverMarqueeText {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.leftMargin: 12 * card.expansion
@@ -9876,13 +9829,10 @@ ApplicationWindow {
                     anchors.top: artwork.bottom
                     anchors.topMargin: 10 * card.expansion
                     text: tile.gameTitle
+                    hovered: cardHover.hovered
                     color: root.ink
                     font.pixelSize: Math.round(14 * card.expansion)
                     font.weight: Font.DemiBold
-                    font.kerning: true
-                    font.hintingPreference: Font.PreferVerticalHinting
-                    renderType: Text.NativeRendering
-                    elide: Text.ElideRight
                 }
                 Text {
                     id: gridPlatformLabel

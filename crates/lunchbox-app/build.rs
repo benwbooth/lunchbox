@@ -98,6 +98,8 @@ fn main() {
                 "qml/HeaderButton.qml",
                 "qml/HorizontalWheelHandler.qml",
                 "qml/HoverPreviewPresentation.qml",
+                "qml/HoverMarqueeText.qml",
+                "qml/MediaPreviewActivity.qml",
                 "qml/InlineProgressBar.qml",
                 "qml/LaunchCommandPreview.qml",
                 "qml/LibraryAuditHistory.qml",
