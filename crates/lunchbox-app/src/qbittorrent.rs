@@ -62,9 +62,9 @@ struct ReviewedTorrentFile {
     byte_size: u64,
 }
 
-struct AddedTorrent {
-    files: Vec<(u32, String)>,
-    client_save_path: String,
+pub(crate) struct AddedTorrent {
+    pub(crate) files: Vec<(u32, String)>,
+    pub(crate) client_save_path: String,
     existed: bool,
 }
 
@@ -231,7 +231,7 @@ impl QbittorrentClient {
         .map(|added| added.files)
     }
 
-    fn add_with_placement(
+    pub(crate) fn add_with_placement(
         &self,
         torrent_bytes: &[u8],
         info_hash: &str,
@@ -2435,6 +2435,74 @@ mod tests {
             managed_native_download_path(Path::new("/native/downloads")),
             PathBuf::from("/native/downloads/lunchbox/roms")
         );
+    }
+
+    #[test]
+    fn existing_firmware_torrent_keeps_its_authoritative_download_directory() {
+        let (address, requests, worker) = mock_server(vec![
+            MockResponse {
+                body: "Ok.",
+                cookie: true,
+            },
+            MockResponse {
+                body: r#"[{"hash":"abc123","category":"lunchbox","save_path":"/downloads/torrent-library/_firmware/retroarch-system-files"}]"#,
+                cookie: false,
+            },
+            MockResponse {
+                body: r#"[{"index":1595,"name":"Pack/BIOS.zip","size":12,"progress":1.0}]"#,
+                cookie: false,
+            },
+            MockResponse {
+                body: "",
+                cookie: false,
+            },
+            MockResponse {
+                body: "",
+                cookie: false,
+            },
+            MockResponse {
+                body: "",
+                cookie: false,
+            },
+            MockResponse {
+                body: "",
+                cookie: false,
+            },
+        ]);
+        let client = QbittorrentClient::authenticated(&settings_for(address), "secret").unwrap();
+        let requested = vec![(1595, "Pack/BIOS.zip".to_owned())];
+        let added = client
+            .add_with_placement(
+                b"unused existing torrent metadata",
+                "abc123",
+                "/downloads/lunchbox-firmware",
+                &DownloadSelection::Exact(requested.clone()),
+                &requested,
+                false,
+            )
+            .unwrap();
+        assert!(added.existed);
+        assert_eq!(added.files, requested);
+        assert_eq!(
+            native_path_for_client_file(
+                Path::new("/mnt/stuff/Downloads"),
+                "/downloads",
+                &added.client_save_path,
+                &added.files[0].1,
+            )
+            .unwrap(),
+            PathBuf::from(
+                "/mnt/stuff/Downloads/torrent-library/_firmware/retroarch-system-files/Pack/BIOS.zip"
+            ),
+        );
+        let captured = (0..7).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(
+            captured
+                .iter()
+                .all(|request| !request.contains("/torrents/add ")
+                    && !request.contains("/torrents/setLocation "))
+        );
+        worker.join().unwrap();
     }
 
     #[test]

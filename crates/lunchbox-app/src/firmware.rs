@@ -1350,21 +1350,28 @@ fn acquire_minerva_package(
 
     progress(format!("Starting {} in qBittorrent…", status.package_name));
     let client = crate::qbittorrent::QbittorrentClient::authenticated(&settings, &password)?;
-    let actual_files = client.add(
+    let added = client.add_with_placement(
         &torrent_bytes,
         &info_hash,
         &client_root,
         &selection,
         &requested,
+        false,
     )?;
-    let actual_path = actual_files
+    let actual_path = added
+        .files
         .iter()
         .find(|(index, _)| index == file_index)
         .map(|(_, path)| path.clone())
         .context("qBittorrent did not return the reviewed firmware file")?;
-    let local_path = native_root.join(crate::qbittorrent::safe_torrent_relative_path(
+    // An existing torrent retains its own save directory. Map the authoritative
+    // qBittorrent location instead of assuming our requested destination won.
+    let mut local_path = crate::qbittorrent::native_path_for_client_file(
+        &settings.torrent_library_directory,
+        &settings.qbittorrent_container_torrent_library_directory,
+        &added.client_save_path,
         &actual_path,
-    )?);
+    )?;
     let mut receipt = FirmwareDownloadReceipt {
         source_id: status.source_id.clone(),
         package_name: status.package_name.clone(),
@@ -1391,6 +1398,15 @@ fn acquire_minerva_package(
         }
         let selected_file = (*file_index, actual_path.clone());
         let snapshot = client.snapshot(&info_hash, Some(std::slice::from_ref(&selected_file)))?;
+        if !snapshot.client_save_path.is_empty() {
+            local_path = crate::qbittorrent::native_path_for_client_file(
+                &settings.torrent_library_directory,
+                &settings.qbittorrent_container_torrent_library_directory,
+                &snapshot.client_save_path,
+                &actual_path,
+            )?;
+            receipt.local_path = local_path.to_string_lossy().into_owned();
+        }
         receipt.progress = snapshot.progress;
         receipt.message = snapshot.message.clone();
         receipt.state = match snapshot.state.as_str() {
@@ -1413,10 +1429,13 @@ fn acquire_minerva_package(
         }
         if snapshot.state == "complete" {
             if !local_path.is_file() {
-                bail!(
-                    "qBittorrent completed the package but {} is not visible at the configured native path",
+                receipt.state = "failed".into();
+                receipt.message = format!(
+                    "The BIOS archive finished downloading, but {} is not accessible locally. Check the qBittorrent path mapping in Settings.",
                     local_path.display()
                 );
+                store.record_firmware_download(&receipt)?;
+                bail!("{}", receipt.message);
             }
             receipt.message = "Downloaded; importing into the firmware store".into();
             receipt.updated_at = crate::settings::unix_timestamp();
