@@ -6,6 +6,21 @@ ColumnLayout {
     id: setup
     required property var settingsModel
     required property var gamepad
+    property bool testInput: false
+    readonly property bool calibrationActive: calibration.visible
+    readonly property var calibrationContentItem: calibration.contentItem
+    function openCalibrationFor(index, layoutId) {
+        calibration.openFor(settingsModel.controller_key_at(index), settingsModel.controller_name_at(index))
+        if (layoutId) {
+            const choice = calibration.catalog.layouts.findIndex(item => item.id === layoutId)
+            if (choice >= 0) calibration.resetLayout(choice)
+        }
+    }
+    ControllerCalibrationWizard {
+        id: calibration
+        settingsModel: setup.settingsModel
+        gamepad: setup.gamepad
+    }
     readonly property int revision: settingsModel.controller_revision
     readonly property var profiles: {
         revision
@@ -33,9 +48,15 @@ ColumnLayout {
     }
 
     Switch {
-        text: "Choose controllers and layouts automatically"
+        text: "Automatic selection for existing launch profiles"
         checked: setup.settingsModel.controller_automatic
         onToggled: setup.settingsModel.set_controller_automatic_enabled(checked)
+    }
+    Label {
+        Layout.fillWidth: true
+        text: "New diagram-based calibrations can be saved and previewed below. Their automatic emulator launch adapters are still being implemented; the existing launch profiles are separate."
+        color: "#ffb454"
+        wrapMode: Text.WordWrap
     }
     Label {
         Layout.fillWidth: true
@@ -86,17 +107,44 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         color: "#62d6c6"
     }
+    Switch {
+        text: "Test controller input — pause menu navigation"
+        checked: setup.testInput
+        onToggled: setup.testInput = checked
+    }
+    Label {
+        Layout.fillWidth: true
+        text: "Press a button: its controller row flashes and shows the reported control. South/East/West/North are the reported positions, not necessarily the labels printed on your pad. Test mode prevents presses from activating settings."
+        wrapMode: Text.WordWrap
+        color: "#95a2b6"
+    }
     Repeater {
         model: { setup.revision; return setup.settingsModel.controller_count() }
         delegate: ColumnLayout {
             id: device
             required property int index
             Layout.fillWidth: true
-            Label {
+            ControllerInputFeedback {
                 Layout.fillWidth: true
-                text: { setup.revision; return setup.settingsModel.controller_name_at(device.index) }
-                wrapMode: Text.WordWrap
-                font.bold: true
+                gamepad: setup.gamepad
+                controllerName: { setup.revision; return setup.settingsModel.controller_name_at(device.index) }
+                matchesInput: {
+                    setup.revision
+                    return setup.settingsModel.controller_receives_input(device.index, setup.gamepad.last_device_key)
+                }
+            }
+            TextField {
+                Layout.fillWidth: true
+                text: { setup.revision; return setup.settingsModel.controller_alias_at(device.index) }
+                placeholderText: "Name this controller (e.g. N30 or Retro Fighters)"
+                maximumLength: 80
+                onEditingFinished: setup.settingsModel.rename_controller(device.index, text)
+                Accessible.name: "Rename " + setup.settingsModel.controller_name_at(device.index)
+            }
+            Button {
+                text: "Choose layout and calibrate…"
+                onClicked: calibration.openFor(setup.settingsModel.controller_key_at(device.index),
+                    setup.settingsModel.controller_name_at(device.index))
             }
             ComboBox {
                 Layout.fillWidth: true

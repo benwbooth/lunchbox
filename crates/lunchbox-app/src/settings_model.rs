@@ -195,7 +195,41 @@ pub mod qobject {
         fn controller_name_at(self: &SettingsModel, index: i32) -> QString;
 
         #[qinvokable]
+        fn controller_alias_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn rename_controller(self: Pin<&mut SettingsModel>, index: i32, name: QString);
+
+        #[qinvokable]
         fn controller_detail_at(self: &SettingsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn controller_receives_input(self: &SettingsModel, index: i32, key: QString) -> bool;
+
+        #[qinvokable]
+        fn controller_key_at(self: &SettingsModel, index: i32) -> QString;
+        #[qinvokable]
+        fn controller_key_for_input(self: &SettingsModel, key: QString) -> QString;
+        #[qinvokable]
+        fn controller_catalog_json(self: &SettingsModel) -> QString;
+        #[qinvokable]
+        fn controller_diagram(self: &SettingsModel, layout: QString, active: QString) -> QString;
+        #[qinvokable]
+        fn controller_calibration_json(self: &SettingsModel, device: QString) -> QString;
+        #[qinvokable]
+        fn save_controller_calibration(
+            self: Pin<&mut SettingsModel>,
+            device: QString,
+            layout: QString,
+            bindings: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn controller_mapping_preview(
+            self: &SettingsModel,
+            layout: QString,
+            bindings: QString,
+            profile: QString,
+        ) -> QString;
 
         #[qinvokable]
         fn controller_action_at(self: &SettingsModel, index: i32) -> QString;
@@ -1416,6 +1450,14 @@ impl qobject::SettingsModel {
     pub fn controller_name_at(&self, index: i32) -> QString {
         self.controller_at(index)
             .map(|controller| {
+                if let Some(name) = self
+                    .rust()
+                    .controller_mapping
+                    .device_names
+                    .get(&controller.stable_id)
+                {
+                    return qstring(name);
+                }
                 if controller.vendor_id.as_deref() == Some("28de")
                     && controller.product_id.as_deref() == Some("11ff")
                 {
@@ -1433,6 +1475,175 @@ impl qobject::SettingsModel {
                 qstring(controller.name)
             })
             .unwrap_or_default()
+    }
+
+    pub fn controller_alias_at(&self, index: i32) -> QString {
+        self.controller_at(index)
+            .and_then(|device| {
+                self.rust()
+                    .controller_mapping
+                    .device_names
+                    .get(&device.stable_id)
+                    .cloned()
+            })
+            .map(qstring)
+            .unwrap_or_default()
+    }
+
+    pub fn controller_key_at(&self, index: i32) -> QString {
+        self.controller_at(index)
+            .map(|device| qstring(device.stable_id))
+            .unwrap_or_default()
+    }
+
+    pub fn controller_key_for_input(&self, key: QString) -> QString {
+        let Some(inventory) = &self.rust().controller_inventory else {
+            return QString::default();
+        };
+        inventory
+            .controllers
+            .iter()
+            .find(|device| {
+                controllers::controller_receives_input(
+                    &inventory.controllers,
+                    &device.stable_id,
+                    &key.to_string(),
+                )
+            })
+            .map(|device| qstring(&device.stable_id))
+            .unwrap_or_default()
+    }
+
+    pub fn controller_catalog_json(&self) -> QString {
+        let catalog = crate::controller_catalog::catalog();
+        qstring(serde_json::json!({"layouts":catalog.layouts,"emulator_profiles":catalog.emulator_profiles,"host_os":std::env::consts::OS}).to_string())
+    }
+
+    pub fn controller_diagram(&self, layout: QString, active: QString) -> QString {
+        let Some(layout) = crate::controller_catalog::catalog().layout(&layout.to_string()) else {
+            return QString::default();
+        };
+        let svg = crate::controller_catalog::svg(layout, &active.to_string());
+        let encoded: String = url::form_urlencoded::byte_serialize(svg.as_bytes()).collect();
+        // form_urlencoded uses '+' for spaces; data URLs require percent encoding.
+        qstring(format!(
+            "data:image/svg+xml;charset=utf-8,{}",
+            encoded.replace('+', "%20")
+        ))
+    }
+
+    pub fn controller_calibration_json(&self, device: QString) -> QString {
+        self.rust()
+            .controller_mapping
+            .calibrations
+            .get(&device.to_string())
+            .map(|calibration| {
+                qstring(serde_json::to_string(calibration).expect("calibration serializes"))
+            })
+            .unwrap_or_else(|| qstring("{}"))
+    }
+
+    pub fn save_controller_calibration(
+        mut self: Pin<&mut Self>,
+        device: QString,
+        layout: QString,
+        bindings: QString,
+    ) -> QString {
+        let id = device.to_string();
+        if !self
+            .as_ref()
+            .rust()
+            .controller_inventory
+            .as_ref()
+            .is_some_and(|inventory| {
+                inventory
+                    .controllers
+                    .iter()
+                    .any(|device| device.stable_id == id)
+            })
+        {
+            return qstring("Reconnect this controller before saving its calibration.");
+        }
+        let bindings = match serde_json::from_str(&bindings.to_string()) {
+            Ok(bindings) => bindings,
+            Err(error) => return qstring(format!("Invalid calibration: {error}")),
+        };
+        let calibration = crate::controller_catalog::Calibration {
+            layout: layout.to_string(),
+            os: std::env::consts::OS.into(),
+            backend: "gilrs-0.11".into(),
+            bindings,
+        };
+        if let Err(error) = calibration.validate() {
+            return qstring(error.to_string());
+        }
+        self.as_mut()
+            .rust_mut()
+            .controller_mapping
+            .calibrations
+            .insert(id, calibration);
+        self.as_mut().controller_settings_changed();
+        self.as_mut().set_message(qstring("Controller calibration recorded. Save settings to keep it. Emulator mappings are preview-only until their launch adapters are implemented and verified."));
+        QString::default()
+    }
+
+    pub fn controller_mapping_preview(
+        &self,
+        layout: QString,
+        bindings: QString,
+        profile: QString,
+    ) -> QString {
+        let result = (|| -> anyhow::Result<_> {
+            let cal = crate::controller_catalog::Calibration {
+                layout: layout.to_string(),
+                os: std::env::consts::OS.into(),
+                backend: "gilrs-0.11".into(),
+                bindings: serde_json::from_str(&bindings.to_string())?,
+            };
+            cal.plan(&profile.to_string())
+        })();
+        match result {
+            Ok(plan) => qstring(serde_json::to_string(&plan).expect("plan serializes")),
+            Err(error) => qstring(serde_json::json!({"rows":[],"warnings":[error.to_string()],"automatic_launch_ready":false}).to_string()),
+        }
+    }
+
+    pub fn rename_controller(mut self: Pin<&mut Self>, index: i32, name: QString) {
+        let Some(device) = self.as_ref().controller_at(index) else {
+            return;
+        };
+        let name = name.to_string().trim().to_owned();
+        if name.chars().count() > 80 || name.chars().any(char::is_control) {
+            self.as_mut().set_controller_status(qstring(
+                "Use a controller name of up to 80 printable characters.",
+            ));
+            return;
+        }
+        let previous = self
+            .as_ref()
+            .rust()
+            .controller_mapping
+            .device_names
+            .get(&device.stable_id)
+            .cloned()
+            .unwrap_or_default();
+        if name == previous {
+            return;
+        }
+        if name.is_empty() {
+            self.as_mut()
+                .rust_mut()
+                .controller_mapping
+                .device_names
+                .remove(&device.stable_id);
+        } else {
+            self.as_mut()
+                .rust_mut()
+                .controller_mapping
+                .device_names
+                .insert(device.stable_id, name);
+        }
+        self.as_mut().controller_settings_changed();
     }
 
     pub fn controller_detail_at(&self, index: i32) -> QString {
@@ -1454,6 +1665,20 @@ impl qobject::SettingsModel {
                 qstring(format!("{vid_pid} · {serial} · {}", controller.stable_id))
             })
             .unwrap_or_default()
+    }
+
+    pub fn controller_receives_input(&self, index: i32, key: QString) -> bool {
+        let Some(controller) = self.controller_at(index) else {
+            return false;
+        };
+        let Some(inventory) = &self.rust().controller_inventory else {
+            return false;
+        };
+        controllers::controller_receives_input(
+            &inventory.controllers,
+            &controller.stable_id,
+            &key.to_string(),
+        )
     }
 
     pub fn controller_action_at(&self, index: i32) -> QString {

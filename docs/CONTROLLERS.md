@@ -8,9 +8,32 @@ navigation while it captures the next physical control.
 
 ## Smart setup
 
+Each row now offers **Choose layout and calibrate**. Select a physical diagram,
+then press each highlighted control. The wizard ignores other controllers,
+requires release/neutral before advancing, and rejects assigning the same input
+twice. Missing or duplicate hardware controls can be skipped. Stick directions
+require analog events; C-buttons may be recorded as buttons or axis directions.
+**Use calibration** stages the result; the main **Save settings** persists it.
+Controller navigation is suspended while the wizard is open.
+
+The system/emulator preview composes the calibration with documented input
+contracts, including a suggested Brawler64-to-six-button layout. Missing controls
+and all known assumptions stay visible. It is explicitly preview-only: automatic
+launch adapters for these calibrated profiles are not yet implemented. Existing
+advanced InputPlumber mappings remain a separate path. See
+`crates/lunchbox-app/data/controllers/README.md` for coverage and provenance.
+
 Open Settings → Controllers. The live input check shows the device and the
 normalized control it reports. Known standard diamond devices are recognized;
 unusual pads are not assigned wiring based solely on their product name.
+Each controller row flashes for 1.2 seconds on input, highlights the reported
+button, and retains its last reported control. Enable **Test controller input**
+to pause menu navigation while identifying buttons; keyboard/mouse still work.
+Type a friendly name below that row, then save settings. Names are also used in
+the preferred-controller selectors; clearing a name restores the hardware label.
+Linux feedback matches the exact evdev source path, not a shared Xbox name or
+VID/PID. Portable backends refuse to highlight an ambiguous model-level identity
+when identical devices cannot be distinguished; the global input readout remains.
 In particular, generic Xbox 360 identity `045e:028e` does not establish a diamond
 layout: the connected USB pads both use it with different hardware revisions.
 Those entries display their revision and device node to distinguish them.
@@ -60,6 +83,10 @@ knowledge of every game's run/jump actions. Individual games may need overrides.
   button reporting where available.
 
 ## Verification
+
+`nix develop -c env QT_QPA_PLATFORM=offscreen target/release/lunchbox --controller-calibration-ui-probe --screenshot-output /tmp/lunchbox-calibration.png`
+opens the real calibration UI with the Brawler64 diagram against a connected
+controller and captures it without saving any calibration or changing routing.
 
 Regression coverage includes controller-family selection, unplugged preferences,
 explicit game overrides, per-device N64/Sega profiles, C-button YAML generation,

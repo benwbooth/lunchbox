@@ -374,7 +374,8 @@ ApplicationWindow {
                                                      : artworkProvider === "emumovies" ? "EmuMovies"
                                                      : artworkProvider === "screenscraper" ? "ScreenScraper"
                                                      : artworkProvider === "igdb" ? "IGDB" : "SteamGridDB"
-    readonly property bool controllerUiProbe: Qt.application.arguments.indexOf("--controller-ui-probe") >= 0
+    readonly property bool controllerCalibrationUiProbe: Qt.application.arguments.indexOf("--controller-calibration-ui-probe") >= 0
+    readonly property bool controllerUiProbe: controllerCalibrationUiProbe || Qt.application.arguments.indexOf("--controller-ui-probe") >= 0
     readonly property bool controllerProfileUiProbe: Qt.application.arguments.indexOf("--controller-profile-ui-probe") >= 0
     readonly property bool alternateTitleUiProbe: Qt.application.arguments.indexOf("--alternate-title-ui-probe") >= 0
     readonly property bool variantUiProbe: Qt.application.arguments.indexOf("--variant-ui-probe") >= 0
@@ -1835,6 +1836,8 @@ ApplicationWindow {
         id: gamepadInput
         navigation_enabled: (root.active || root.couchGamepadUiProbe) && !gameDetails.game_running
                             && !root.controllerLearnActive
+                            && !(settingsDialog.visible && controllerAutomaticSetup.testInput)
+                            && !controllerAutomaticSetup.calibrationActive
         onNavigation_enabledChanged: sync_navigation_enabled()
         Component.onCompleted: Qt.callLater(initialize)
     }
@@ -6910,9 +6913,19 @@ ApplicationWindow {
         interval: 800
         running: root.controllerUiProbe && !appSettings.controller_busy
         repeat: false
-        onTriggered: settingsScroll.contentItem.contentY = Math.max(
+        onTriggered: {
+            settingsScroll.contentItem.contentY = Math.max(
                          0, controllerSection.mapToItem(
                              settingsScroll.contentItem, 0, 0).y - 18)
+            if (root.controllerCalibrationUiProbe) {
+                if (appSettings.controller_count() === 0) {
+                    console.error("LUNCHBOX_CONTROLLER_UI_FAILED no connected controller for calibration probe")
+                    Qt.exit(2)
+                    return
+                }
+                controllerAutomaticSetup.openCalibrationFor(0, "brawler64")
+            }
+        }
     }
 
     Timer {
@@ -6928,7 +6941,9 @@ ApplicationWindow {
                 Qt.quit()
                 return
             }
-            settingsDialog.contentItem.grabToImage(function(result) {
+            const captureItem = root.controllerCalibrationUiProbe
+                ? controllerAutomaticSetup.calibrationContentItem : settingsDialog.contentItem
+            captureItem.grabToImage(function(result) {
                 if (!result.saveToFile(root.screenshotOutput)) {
                     console.error("LUNCHBOX_CONTROLLER_UI_FAILED screenshot="
                                   + root.screenshotOutput)
@@ -20080,6 +20095,7 @@ ApplicationWindow {
                     spacing: 9
 
                     ControllerAutomaticSetup {
+                        id: controllerAutomaticSetup
                         Layout.fillWidth: true
                         settingsModel: appSettings
                         gamepad: gamepadInput

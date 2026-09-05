@@ -59,6 +59,8 @@ fn main() {
                 "qml/WindowPlacement.qml",
                 "qml/DesktopGamepadNavigation.qml",
                 "qml/ControllerAutomaticSetup.qml",
+                "qml/ControllerInputFeedback.qml",
+                "qml/ControllerCalibrationWizard.qml",
                 "qml/AlphabetRail.qml",
                 "qml/AppIcon.qml",
                 "qml/ArtworkMat.qml",

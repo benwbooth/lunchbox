@@ -26,6 +26,10 @@ const MAX_EMULATOR_LIFECYCLE_HISTORY: usize = 200;
 const MAX_GAME_TAGS: usize = 32;
 static STORE_INITIALIZATION: Mutex<()> = Mutex::new(());
 pub(crate) const CONTROLLER_GAMEPAD_BUTTONS: &[&str] = &[
+    "LeftStickUp",
+    "LeftStickDown",
+    "LeftStickLeft",
+    "LeftStickRight",
     "RightStickUp",
     "RightStickDown",
     "RightStickLeft",
@@ -268,6 +272,10 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub device_layouts: HashMap<String, String>,
     #[serde(default)]
+    pub device_names: HashMap<String, String>,
+    #[serde(default)]
+    pub calibrations: HashMap<String, crate::controller_catalog::Calibration>,
+    #[serde(default)]
     pub preferred_devices: HashMap<String, String>,
     #[serde(default)]
     pub device_system_profiles: HashMap<String, HashMap<String, String>>,
@@ -299,6 +307,8 @@ impl Default for ControllerMappingSettings {
             enabled: false,
             automatic: false,
             device_layouts: HashMap::new(),
+            device_names: HashMap::new(),
+            calibrations: HashMap::new(),
             preferred_devices: HashMap::new(),
             device_system_profiles: HashMap::new(),
             provider: default_controller_provider(),
@@ -1149,6 +1159,25 @@ impl AppSettings {
 
 impl ControllerMappingSettings {
     pub fn validate(&self) -> Result<()> {
+        if self.device_names.len() > 64 {
+            bail!("too many saved controller names");
+        }
+        if self.calibrations.len() > 64 {
+            bail!("too many controller calibrations");
+        }
+        for (device, calibration) in &self.calibrations {
+            validate_controller_id(device)?;
+            calibration.validate()?;
+        }
+        for (device, name) in &self.device_names {
+            validate_controller_id(device)?;
+            if name.trim().is_empty()
+                || name.chars().count() > 80
+                || name.chars().any(char::is_control)
+            {
+                bail!("controller names must contain 1–80 printable characters");
+            }
+        }
         if self.device_layouts.len() > 64 || self.preferred_devices.len() > 512 {
             bail!("too many saved controller preferences");
         }

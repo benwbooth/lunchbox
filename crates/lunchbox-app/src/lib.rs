@@ -4,6 +4,7 @@ mod catalog;
 mod collection_identity;
 pub mod collection_identity_model;
 mod collections;
+mod controller_catalog;
 mod controllers;
 mod couch_theme;
 mod download_plan;
@@ -112,6 +113,29 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    let arguments: Vec<String> = std::env::args().collect();
+    if let Some(index) = arguments
+        .iter()
+        .position(|arg| arg == "--export-controller-svgs")
+    {
+        let Some(directory) = arguments.get(index + 1) else {
+            eprintln!("--export-controller-svgs requires a destination directory");
+            return 2;
+        };
+        return match controller_catalog::export_svg(std::path::Path::new(directory)) {
+            Ok(()) => {
+                println!(
+                    "Exported {} controller SVG diagrams",
+                    controller_catalog::catalog().layouts.len()
+                );
+                0
+            }
+            Err(error) => {
+                eprintln!("Controller export failed: {error:#}");
+                1
+            }
+        };
+    }
     if std::env::args().any(|argument| argument == "--emumovies-soundtrack-probe") {
         return match emumovies_model::soundtrack_saved_probe() {
             Ok(evidence) => {

@@ -1,0 +1,1626 @@
+{
+  "schema_version": 1,
+  "layouts": [
+    {
+      "id": "nes",
+      "name": "Nintendo NES — horizontal A/B",
+      "family": "two-button",
+      "shape": "rectangle",
+      "controls": [
+        {
+          "id": "b",
+          "label": "B",
+          "x": 70,
+          "y": 53,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "a",
+          "label": "A",
+          "x": 84,
+          "y": 53,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "select",
+          "label": "Select",
+          "x": 43,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 54,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 56,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ]
+    },
+    {
+      "id": "horizontal-four",
+      "name": "Horizontal four-button pad — A/B and X/Y pairs",
+      "family": "two-button",
+      "shape": "rectangle",
+      "controls": [
+        {
+          "id": "b",
+          "label": "B",
+          "x": 70,
+          "y": 57,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "a",
+          "label": "A",
+          "x": 84,
+          "y": 57,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "y",
+          "label": "Y",
+          "x": 70,
+          "y": 37,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "x",
+          "label": "X",
+          "x": 84,
+          "y": 37,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "select",
+          "label": "Select",
+          "x": 43,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 54,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 56,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ]
+    },
+    {
+      "id": "gameboy",
+      "name": "Nintendo Game Boy — A/B",
+      "family": "two-button",
+      "shape": "handheld",
+      "controls": [
+        {
+          "id": "b",
+          "label": "B",
+          "x": 66,
+          "y": 52,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "a",
+          "label": "A",
+          "x": 81,
+          "y": 42,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "select",
+          "label": "Select",
+          "x": 43,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 54,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 56,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ]
+    },
+    {
+      "id": "snes",
+      "name": "Super Nintendo — diamond A/B/X/Y",
+      "family": "diamond",
+      "shape": "dual-grip",
+      "controls": [
+        {
+          "id": "b",
+          "label": "B",
+          "x": 76,
+          "y": 64,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "a",
+          "label": "A",
+          "x": 87,
+          "y": 47,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "y",
+          "label": "Y",
+          "x": 65,
+          "y": 47,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "x",
+          "label": "X",
+          "x": 76,
+          "y": 30,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l",
+          "label": "L",
+          "x": 19,
+          "y": 14,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r",
+          "label": "R",
+          "x": 81,
+          "y": 14,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "select",
+          "label": "Select",
+          "x": 43,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 54,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 56,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ]
+    },
+    {
+      "id": "n64",
+      "name": "Nintendo 64 — original three-grip",
+      "family": "n64",
+      "shape": "three-grip",
+      "controls": [
+        {
+          "id": "a",
+          "label": "A",
+          "x": 72,
+          "y": 65,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "b",
+          "label": "B",
+          "x": 62,
+          "y": 48,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "c_up",
+          "label": "C ↑",
+          "x": 82,
+          "y": 24,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "c_down",
+          "label": "C ↓",
+          "x": 82,
+          "y": 48,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "c_left",
+          "label": "C ←",
+          "x": 74,
+          "y": 36,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "c_right",
+          "label": "C →",
+          "x": 90,
+          "y": 36,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l",
+          "label": "L",
+          "x": 18,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r",
+          "label": "R",
+          "x": 82,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "z",
+          "label": "Z (rear)",
+          "x": 50,
+          "y": 84,
+          "group": "rear",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 50,
+          "y": 29,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 35,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 51,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 43,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 43,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "stick_up",
+          "label": "Stick up",
+          "x": 50,
+          "y": 50,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_down",
+          "label": "Stick down",
+          "x": 50,
+          "y": 66,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_left",
+          "label": "Stick left",
+          "x": 45,
+          "y": 58,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_right",
+          "label": "Stick right",
+          "x": 55,
+          "y": 58,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        }
+      ]
+    },
+    {
+      "id": "brawler64",
+      "name": "Retro Fighters Brawler64 — N64 controls",
+      "family": "n64",
+      "shape": "dual-grip",
+      "source": "https://retrofighters.com/our-collection/brawler64-bluetooth-wireless-nintendo-switch-switch-online-pc-video-game-controller/",
+      "notes": "Schematic of common Brawler64 gameplay controls. Extra buttons vary by edition; choose Skip where absent. Calibration, not the marketing name, establishes wiring.",
+      "controls": [
+        {
+          "id": "b",
+          "label": "B",
+          "x": 66,
+          "y": 54,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "a",
+          "label": "A",
+          "x": 73,
+          "y": 72,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "c_left",
+          "label": "C ←",
+          "x": 72,
+          "y": 35,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "c_up",
+          "label": "C ↑",
+          "x": 83,
+          "y": 25,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "c_down",
+          "label": "C ↓",
+          "x": 82,
+          "y": 53,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "c_right",
+          "label": "C →",
+          "x": 92,
+          "y": 43,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l",
+          "label": "L",
+          "x": 18,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r",
+          "label": "R",
+          "x": 82,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "z",
+          "label": "Z left",
+          "x": 18,
+          "y": 84,
+          "group": "rear",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "z_right",
+          "label": "Z right",
+          "x": 82,
+          "y": 84,
+          "group": "rear",
+          "optional": true,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 50,
+          "y": 40,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "select",
+          "label": "− / Select",
+          "x": 40,
+          "y": 25,
+          "group": "menu",
+          "optional": true,
+          "analog": false
+        },
+        {
+          "id": "home",
+          "label": "Home",
+          "x": 60,
+          "y": 25,
+          "group": "menu",
+          "optional": true,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 32,
+          "y": 55,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 32,
+          "y": 71,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 27,
+          "y": 63,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 37,
+          "y": 63,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "stick_up",
+          "label": "Stick up",
+          "x": 18,
+          "y": 27,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_down",
+          "label": "Stick down",
+          "x": 18,
+          "y": 43,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_left",
+          "label": "Stick left",
+          "x": 13,
+          "y": 35,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_right",
+          "label": "Stick right",
+          "x": 23,
+          "y": 35,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        }
+      ]
+    },
+    {
+      "id": "genesis-3",
+      "name": "Sega Mega Drive / Genesis — three-button",
+      "family": "three-button",
+      "shape": "dual-grip",
+      "controls": [
+        {
+          "id": "a",
+          "label": "A",
+          "x": 64,
+          "y": 58,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "b",
+          "label": "B",
+          "x": 77,
+          "y": 50,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "c",
+          "label": "C",
+          "x": 90,
+          "y": 42,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 49,
+          "y": 37,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 56,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ]
+    },
+    {
+      "id": "genesis-6",
+      "name": "Sega Mega Drive / Genesis — six-button",
+      "family": "six-button",
+      "shape": "dual-grip",
+      "controls": [
+        {
+          "id": "a",
+          "label": "A",
+          "x": 64,
+          "y": 67,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "b",
+          "label": "B",
+          "x": 77,
+          "y": 59,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "c",
+          "label": "C",
+          "x": 90,
+          "y": 51,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "x",
+          "label": "X",
+          "x": 64,
+          "y": 43,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "y",
+          "label": "Y",
+          "x": 77,
+          "y": 35,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "z",
+          "label": "Z",
+          "x": 90,
+          "y": 27,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "mode",
+          "label": "Mode (top)",
+          "x": 50,
+          "y": 14,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 49,
+          "y": 50,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 56,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ]
+    },
+    {
+      "id": "saturn",
+      "name": "Sega Saturn — six-button with shoulders",
+      "family": "six-button",
+      "shape": "dual-grip",
+      "controls": [
+        {
+          "id": "a",
+          "label": "A",
+          "x": 64,
+          "y": 67,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "b",
+          "label": "B",
+          "x": 77,
+          "y": 59,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "c",
+          "label": "C",
+          "x": 90,
+          "y": 51,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "x",
+          "label": "X",
+          "x": 64,
+          "y": 43,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "y",
+          "label": "Y",
+          "x": 77,
+          "y": 35,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "z",
+          "label": "Z",
+          "x": 90,
+          "y": 27,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l",
+          "label": "L",
+          "x": 18,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r",
+          "label": "R",
+          "x": 82,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 49,
+          "y": 50,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 56,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ]
+    },
+    {
+      "id": "xbox",
+      "name": "Xbox-style — dual sticks and diamond",
+      "family": "diamond",
+      "shape": "dual-grip",
+      "controls": [
+        {
+          "id": "b",
+          "label": "A / South",
+          "x": 78,
+          "y": 57,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "a",
+          "label": "B / East",
+          "x": 90,
+          "y": 42,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "y",
+          "label": "X / West",
+          "x": 66,
+          "y": 42,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "x",
+          "label": "Y / North",
+          "x": 78,
+          "y": 27,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l",
+          "label": "LB",
+          "x": 18,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r",
+          "label": "RB",
+          "x": 82,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l2",
+          "label": "LT",
+          "x": 18,
+          "y": 84,
+          "group": "rear",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r2",
+          "label": "RT",
+          "x": 82,
+          "y": 84,
+          "group": "rear",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l3",
+          "label": "Left click",
+          "x": 29,
+          "y": 78,
+          "group": "stick",
+          "optional": true,
+          "analog": false
+        },
+        {
+          "id": "r3",
+          "label": "Right click",
+          "x": 71,
+          "y": 78,
+          "group": "stick",
+          "optional": true,
+          "analog": false
+        },
+        {
+          "id": "select",
+          "label": "Select",
+          "x": 43,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 54,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 33,
+          "y": 58,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 33,
+          "y": 74,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 28,
+          "y": 66,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 38,
+          "y": 66,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "stick_up",
+          "label": "Stick up",
+          "x": 19,
+          "y": 27,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_down",
+          "label": "Stick down",
+          "x": 19,
+          "y": 43,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_left",
+          "label": "Stick left",
+          "x": 14,
+          "y": 35,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_right",
+          "label": "Stick right",
+          "x": 24,
+          "y": 35,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_up",
+          "label": "Stick up",
+          "x": 59,
+          "y": 63,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_down",
+          "label": "Stick down",
+          "x": 59,
+          "y": 79,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_left",
+          "label": "Stick left",
+          "x": 54,
+          "y": 71,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_right",
+          "label": "Stick right",
+          "x": 64,
+          "y": 71,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        }
+      ]
+    },
+    {
+      "id": "dualshock",
+      "name": "PlayStation-style — dual sticks",
+      "family": "diamond",
+      "shape": "dual-grip",
+      "controls": [
+        {
+          "id": "b",
+          "label": "Cross",
+          "x": 78,
+          "y": 58,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "a",
+          "label": "Circle",
+          "x": 90,
+          "y": 42,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "y",
+          "label": "Square",
+          "x": 66,
+          "y": 42,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "x",
+          "label": "Triangle",
+          "x": 78,
+          "y": 26,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l",
+          "label": "L1",
+          "x": 18,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r",
+          "label": "R1",
+          "x": 82,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l2",
+          "label": "L2",
+          "x": 18,
+          "y": 84,
+          "group": "rear",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r2",
+          "label": "R2",
+          "x": 82,
+          "y": 84,
+          "group": "rear",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l3",
+          "label": "L3",
+          "x": 36,
+          "y": 84,
+          "group": "stick",
+          "optional": true,
+          "analog": false
+        },
+        {
+          "id": "r3",
+          "label": "R3",
+          "x": 65,
+          "y": 84,
+          "group": "stick",
+          "optional": true,
+          "analog": false
+        },
+        {
+          "id": "select",
+          "label": "Select",
+          "x": 43,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 54,
+          "y": 58,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 32,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 15,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 25,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "stick_up",
+          "label": "Stick up",
+          "x": 37,
+          "y": 64,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_down",
+          "label": "Stick down",
+          "x": 37,
+          "y": 80,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_left",
+          "label": "Stick left",
+          "x": 32,
+          "y": 72,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_right",
+          "label": "Stick right",
+          "x": 42,
+          "y": 72,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_up",
+          "label": "Stick up",
+          "x": 61,
+          "y": 64,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_down",
+          "label": "Stick down",
+          "x": 61,
+          "y": 80,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_left",
+          "label": "Stick left",
+          "x": 56,
+          "y": 72,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_right",
+          "label": "Stick right",
+          "x": 66,
+          "y": 72,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        }
+      ]
+    }
+  ],
+  "emulator_profiles": [
+    {
+      "id": "retroarch:fceumm:nes",
+      "name": "RetroArch · FCEUmm · NES gamepad",
+      "core": "fceumm",
+      "target_layout": "nes",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://docs.libretro.com/library/fceumm/#controller-tables",
+      "conditions": [
+        "Default core controls; no existing core/game remaps",
+        "Standard RetroPad joypad; not Zapper/paddle"
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "select": "Select",
+        "a": "East",
+        "b": "South"
+      }
+    },
+    {
+      "id": "retroarch:genesis_plus_gx:md3",
+      "name": "RetroArch · Genesis Plus GX · MD 3-button",
+      "core": "genesis_plus_gx",
+      "target_layout": "genesis-3",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://docs.libretro.com/library/genesis_plus_gx/#joypad",
+      "conditions": [
+        "MD Joypad 3 Button",
+        "Default core controls; no existing remaps"
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "a": "West",
+        "b": "South",
+        "c": "East"
+      }
+    },
+    {
+      "id": "retroarch:genesis_plus_gx:md6",
+      "name": "RetroArch · Genesis Plus GX · MD 6-button",
+      "core": "genesis_plus_gx",
+      "target_layout": "genesis-6",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://docs.libretro.com/library/genesis_plus_gx/#joypad",
+      "conditions": [
+        "MD Joypad 6 Button",
+        "Default core controls; no existing remaps"
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "a": "West",
+        "b": "South",
+        "c": "East",
+        "x": "LeftBumper",
+        "y": "North",
+        "z": "RightBumper",
+        "mode": "Select"
+      }
+    },
+    {
+      "id": "retroarch:mupen64plus_next:n64",
+      "name": "RetroArch · Mupen64Plus-Next · N64 gamepad",
+      "core": "mupen64plus_next",
+      "target_layout": "n64",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://docs.libretro.com/library/mupen64plus/#controller-tables",
+      "conditions": [
+        "Default core controls and C-button options",
+        "Right-stick C mapping; opposing simultaneous C directions require independent controls/profile support",
+        "No existing core/game remaps"
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "a": "South",
+        "b": "West",
+        "l": "LeftBumper",
+        "r": "RightBumper",
+        "z": "LeftTrigger",
+        "c_up": "RightStickUp",
+        "c_down": "RightStickDown",
+        "c_left": "RightStickLeft",
+        "c_right": "RightStickRight",
+        "stick_up": "LeftStickUp",
+        "stick_down": "LeftStickDown",
+        "stick_left": "LeftStickLeft",
+        "stick_right": "LeftStickRight"
+      }
+    }
+  ]
+}

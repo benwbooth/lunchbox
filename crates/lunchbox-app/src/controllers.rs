@@ -183,6 +183,10 @@ fn automatic_player_mappings(
 }
 
 pub const CONTROLLER_PROFILE_BUTTONS: &[(&str, &str)] = &[
+    ("LeftStickUp", "Left stick up"),
+    ("LeftStickDown", "Left stick down"),
+    ("LeftStickLeft", "Left stick left"),
+    ("LeftStickRight", "Left stick right"),
     ("RightStickUp", "Right stick up / C-up (axis mode)"),
     ("RightStickDown", "Right stick down / C-down (axis mode)"),
     ("RightStickLeft", "Right stick left / C-left (axis mode)"),
@@ -496,6 +500,29 @@ pub fn ordered_controllers(
     ids.into_iter()
         .filter_map(|id| by_id.get(&id).cloned())
         .collect()
+}
+
+// Device names, USB IDs and enumeration indices cannot distinguish identical
+// pads. Match the event's actual source, and refuse ambiguous portable keys.
+pub fn controller_receives_input(
+    controllers: &[ControllerDevice],
+    controller_id: &str,
+    key: &str,
+) -> bool {
+    if key.is_empty() {
+        return false;
+    }
+    let path = Path::new(key);
+    let mut matches = controllers.iter().filter(|device| {
+        device.device_path == path || device.event_paths.iter().any(|event| event == path)
+    });
+    let first = matches.next();
+    first.is_some_and(|device| device.stable_id == controller_id) && matches.next().is_none()
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn portable_input_device_key(uuid: &str, name: &str) -> String {
+    format!("gilrs://{uuid}/{}", slugify_id(name))
 }
 
 pub fn move_controller(
@@ -837,14 +864,13 @@ fn list_gilrs_controllers(warnings: &mut Vec<String>) -> Vec<ControllerDevice> {
             } else {
                 format!("{base_id}-instance-{occurrence}")
             };
-            let slug = slugify_id(name);
             Some(ControllerDevice {
                 stable_id,
                 name: name.to_owned(),
                 // The synthetic URI deliberately avoids leaking or assuming a
                 // host-specific device path. It is never passed to a backend
                 // that expects a native path on non-Linux hosts.
-                device_path: PathBuf::from(format!("gilrs://{uuid_hex}/{slug}")),
+                device_path: PathBuf::from(portable_input_device_key(&uuid_hex, name)),
                 event_paths: Vec::new(),
                 vendor_id,
                 product_id,
@@ -1608,11 +1634,16 @@ fn custom_profile_yaml(profile: &ControllerCustomProfile) -> String {
 
 fn profile_event_yaml(control: &str, indent: usize) -> String {
     let padding = " ".repeat(indent);
-    if let Some(direction) = control.strip_prefix("RightStick")
+    let axis = if control.starts_with("LeftStick") {
+        "LeftStick"
+    } else {
+        "RightStick"
+    };
+    if let Some(direction) = control.strip_prefix(axis)
         && matches!(direction, "Up" | "Down" | "Left" | "Right")
     {
         format!(
-            "{padding}axis:\n{padding}  name: RightStick\n{padding}  direction: {}\n{padding}  deadzone: 0.5\n",
+            "{padding}axis:\n{padding}  name: {axis}\n{padding}  direction: {}\n{padding}  deadzone: 0.5\n",
             direction.to_ascii_lowercase()
         )
     } else {
@@ -2059,6 +2090,64 @@ mod tests {
         steam.vendor_id = Some("28de".into());
         steam.product_id = Some("11ff".into());
         assert_eq!(detected_device_layout(&steam), "diamond");
+    }
+
+    #[test]
+    fn input_feedback_matches_exact_device_not_identical_names_or_ids() {
+        let mut first = controller("first", "Microsoft X-Box 360 pad");
+        first.event_paths = vec![PathBuf::from("/dev/input/event259")];
+        let mut second = controller("second", "Microsoft X-Box 360 pad");
+        second.event_paths = vec![PathBuf::from("/dev/input/event264")];
+        let pads = vec![first, second];
+        assert!(controller_receives_input(
+            &pads,
+            "first",
+            "/dev/input/event259"
+        ));
+        assert!(!controller_receives_input(
+            &pads,
+            "second",
+            "/dev/input/event259"
+        ));
+        assert!(controller_receives_input(
+            &pads,
+            "second",
+            "/dev/input/event264"
+        ));
+        assert!(!controller_receives_input(&pads, "first", ""));
+        assert!(!controller_receives_input(
+            &pads[..1],
+            "first",
+            "/dev/input/event264"
+        ));
+        let mut ambiguous = pads.clone();
+        ambiguous[1].event_paths = ambiguous[0].event_paths.clone();
+        assert!(!controller_receives_input(
+            &ambiguous,
+            "first",
+            "/dev/input/event259"
+        ));
+    }
+
+    #[test]
+    fn controller_aliases_roundtrip_and_validate_without_changing_identity() {
+        let mut mapping = ControllerMappingSettings::default();
+        mapping.device_names.insert("first".into(), "N30".into());
+        mapping
+            .device_names
+            .insert("second".into(), "Retro Fighters".into());
+        mapping.validate().unwrap();
+        let json = serde_json::to_string(&mapping).unwrap();
+        let restored: ControllerMappingSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.device_names["first"], "N30");
+        assert_eq!(restored.device_names["second"], "Retro Fighters");
+        mapping
+            .device_names
+            .insert("first".into(), "bad\nname".into());
+        assert!(mapping.validate().is_err());
+        mapping.device_names.insert("first".into(), "x".repeat(81));
+        assert!(mapping.validate().is_err());
+        assert!(profile_event_yaml("LeftStickUp", 2).contains("name: LeftStick"));
     }
 
     #[test]

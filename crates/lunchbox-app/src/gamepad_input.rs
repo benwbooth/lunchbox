@@ -17,6 +17,10 @@ pub mod qobject {
         #[qproperty(QString, status_message)]
         #[qproperty(QString, last_input)]
         #[qproperty(QString, last_control)]
+        #[qproperty(QString, last_device_key)]
+        #[qproperty(QString, last_binding)]
+        #[qproperty(QString, neutral_device_key)]
+        #[qproperty(i32, neutral_revision)]
         #[qproperty(i32, input_revision)]
         #[qproperty(bool, navigation_enabled)]
         #[qproperty(QString, navigation_action)]
@@ -64,6 +68,10 @@ pub struct GamepadInputRust {
     status_message: QString,
     last_input: QString,
     last_control: QString,
+    last_device_key: QString,
+    last_binding: QString,
+    neutral_device_key: QString,
+    neutral_revision: i32,
     input_revision: i32,
     navigation_enabled: bool,
     navigation_action: QString,
@@ -84,6 +92,10 @@ impl Default for GamepadInputRust {
             status_message: QString::from("Controller input initializes in the background."),
             last_input: QString::default(),
             last_control: QString::default(),
+            last_device_key: QString::default(),
+            last_binding: QString::default(),
+            neutral_device_key: QString::default(),
+            neutral_revision: 0,
             input_revision: 0,
             navigation_enabled: true,
             navigation_action: QString::default(),
@@ -353,6 +365,7 @@ impl qobject::GamepadInput {
                 }
 
                 let mut translators: HashMap<GamepadId, NavigationTranslator> = HashMap::new();
+                let mut diagnostics: HashMap<GamepadId, DiagnosticTracker> = HashMap::new();
                 while !stop.load(Ordering::Acquire) {
                     let event = gilrs.next_event_blocking(Some(EVENT_POLL_INTERVAL));
                     let now = Instant::now();
@@ -361,11 +374,27 @@ impl qobject::GamepadInput {
                         translators.clear();
                     }
                     if let Some(event) = event {
-                        if let Some(control) = diagnostic_control(event.event) {
+                        let (binding, neutral) =
+                            diagnostics.entry(event.id).or_default().handle(event.event);
+                        if neutral {
+                            let key = input_device_key(&gilrs.gamepad(event.id));
+                            let _ = qt_thread.queue(move |mut model| {
+                                model.as_mut().set_neutral_device_key(qstring(key));
+                                let revision = model.as_ref().neutral_revision().wrapping_add(1);
+                                model.as_mut().set_neutral_revision(revision);
+                            });
+                        }
+                        if let Some(binding) = binding {
+                            let control = binding.logical.clone();
+                            let encoded =
+                                serde_json::to_string(&binding).expect("input binding serializes");
                             let name = gilrs.gamepad(event.id).name().to_owned();
                             let number = usize::from(event.id) + 1;
                             let description = format!("Pad {number}: {name} · {control}");
+                            let device_key = input_device_key(&gilrs.gamepad(event.id));
                             let _ = qt_thread.queue(move |mut model| {
+                                model.as_mut().set_last_device_key(qstring(device_key));
+                                model.as_mut().set_last_binding(qstring(encoded));
                                 model.as_mut().set_last_input(qstring(description));
                                 model.as_mut().set_last_control(qstring(control));
                                 let revision = model.as_ref().input_revision().wrapping_add(1);
@@ -383,6 +412,7 @@ impl qobject::GamepadInput {
                         }
 
                         if connection_changed {
+                            diagnostics.remove(&event.id);
                             translators.remove(&event.id);
                             let snapshot = controller_snapshot(&gilrs, active_id);
                             active_id = snapshot.active_id;
@@ -510,8 +540,72 @@ impl qobject::GamepadInput {
     }
 }
 
+#[derive(Default)]
+struct DiagnosticTracker {
+    buttons: std::collections::HashSet<u32>,
+    axes: HashMap<u32, i8>,
+}
+
+impl DiagnosticTracker {
+    fn handle(
+        &mut self,
+        event: EventType,
+    ) -> (Option<crate::controller_catalog::InputBinding>, bool) {
+        let was_active = !self.buttons.is_empty() || !self.axes.is_empty();
+        let native = match event {
+            EventType::ButtonPressed(_, code) if self.buttons.insert(code.into_u32()) => {
+                Some((code.into_u32(), "button", 0))
+            }
+            EventType::ButtonReleased(_, code) => {
+                self.buttons.remove(&code.into_u32());
+                None
+            }
+            EventType::AxisChanged(axis, value, code)
+                if matches!(
+                    axis,
+                    Axis::LeftStickX | Axis::LeftStickY | Axis::RightStickX | Axis::RightStickY
+                ) =>
+            {
+                let code = code.into_u32();
+                if value.abs() <= AXIS_RELEASE {
+                    self.axes.remove(&code);
+                    None
+                } else if value.abs() >= AXIS_ENGAGE {
+                    let direction = if value < 0.0 { -1 } else { 1 };
+                    if self.axes.insert(code, direction) != Some(direction) {
+                        Some((code, "axis", direction))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            EventType::Disconnected => {
+                self.buttons.clear();
+                self.axes.clear();
+                None
+            }
+            _ => None,
+        };
+        let binding = native.and_then(|(code, kind, direction)| {
+            diagnostic_control(event).map(|logical| crate::controller_catalog::InputBinding {
+                code,
+                kind: kind.into(),
+                direction,
+                logical,
+            })
+        });
+        (
+            binding,
+            was_active && self.buttons.is_empty() && self.axes.is_empty(),
+        )
+    }
+}
+
 fn diagnostic_control(event: EventType) -> Option<String> {
     match event {
+        EventType::ButtonPressed(Button::Unknown, code) => Some(format!("Unmapped button {code}")),
         EventType::ButtonPressed(button, _) => Some(match button {
             Button::LeftThumb => "LeftStick".into(),
             Button::RightThumb => "RightStick".into(),
@@ -523,6 +617,22 @@ fn diagnostic_control(event: EventType) -> Option<String> {
             _ => format!("{button:?}"),
         }),
         EventType::AxisChanged(axis, value, _) if value.abs() >= AXIS_ENGAGE => match axis {
+            Axis::LeftStickX => Some(
+                if value < 0.0 {
+                    "LeftStickLeft"
+                } else {
+                    "LeftStickRight"
+                }
+                .into(),
+            ),
+            Axis::LeftStickY => Some(
+                if value < 0.0 {
+                    "LeftStickDown"
+                } else {
+                    "LeftStickUp"
+                }
+                .into(),
+            ),
             Axis::RightStickX => Some(
                 if value < 0.0 {
                     "RightStickLeft"
@@ -542,6 +652,18 @@ fn diagnostic_control(event: EventType) -> Option<String> {
             _ => None,
         },
         _ => None,
+    }
+}
+
+fn input_device_key(gamepad: &gilrs::Gamepad<'_>) -> String {
+    #[cfg(target_os = "linux")]
+    {
+        use gilrs::LinuxGamepadExt;
+        gamepad.devpath().to_string_lossy().into_owned()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        crate::controllers::portable_input_device_key(&hex::encode(gamepad.uuid()), gamepad.name())
     }
 }
 
@@ -679,6 +801,59 @@ fn gamepad_ui_probe_enabled() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn calibration_tracks_button_release_without_repeating_held_inputs() {
+        let mut tracker = DiagnosticTracker::default();
+        let code = Button::South.to_nec().unwrap();
+        let (binding, neutral) = tracker.handle(EventType::ButtonPressed(Button::South, code));
+        assert_eq!(binding.unwrap().logical, "South");
+        assert!(!neutral);
+        assert!(
+            tracker
+                .handle(EventType::ButtonPressed(Button::South, code))
+                .0
+                .is_none()
+        );
+        assert!(
+            tracker
+                .handle(EventType::ButtonReleased(Button::South, code))
+                .1
+        );
+        assert!(
+            !tracker
+                .handle(EventType::ButtonReleased(Button::South, code))
+                .1
+        );
+    }
+
+    #[test]
+    fn calibration_axis_hysteresis_waits_for_neutral() {
+        let mut tracker = DiagnosticTracker::default();
+        // The tracker treats native codes as opaque identifiers. This fixture
+        // exercises axis events without requiring a physical device in CI.
+        let code = Button::South.to_nec().unwrap();
+        let (binding, _) = tracker.handle(EventType::AxisChanged(Axis::RightStickY, 0.9, code));
+        assert_eq!(binding.unwrap().logical, "RightStickUp");
+        assert!(
+            tracker
+                .handle(EventType::AxisChanged(Axis::RightStickY, 0.8, code))
+                .0
+                .is_none()
+        );
+        assert!(
+            !tracker
+                .handle(EventType::AxisChanged(Axis::RightStickY, 0.5, code))
+                .1
+        );
+        assert!(
+            tracker
+                .handle(EventType::AxisChanged(Axis::RightStickY, 0.1, code))
+                .1
+        );
+        let (binding, _) = tracker.handle(EventType::AxisChanged(Axis::RightStickY, -0.9, code));
+        assert_eq!(binding.unwrap().direction, -1);
+    }
 
     #[test]
     fn standard_buttons_cover_every_couch_action_without_repeating_commands() {
