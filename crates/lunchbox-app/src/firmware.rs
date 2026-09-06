@@ -172,7 +172,13 @@ pub fn statuses_for_options(
     options
         .iter()
         .map(|option| {
-            let rules = load_rules(&connection, &platform_id, option)?;
+            let rules = load_rules(
+                &connection,
+                &platform_id,
+                option.runtime_kind,
+                &option.core_name,
+                &option.emulator_id,
+            )?;
             rules
                 .into_iter()
                 .map(|rule| {
@@ -248,16 +254,18 @@ pub fn open_firmware_directory(statuses: &[FirmwareStatus]) -> Result<PathBuf> {
 fn load_rules(
     connection: &Connection,
     platform_id: &str,
-    option: &RomEmulatorOption,
+    runtime_kind: EmulatorRuntimeKind,
+    core_name: &str,
+    emulator_id: &str,
 ) -> Result<Vec<FirmwareRuleRow>> {
-    let (condition, values): (&str, Vec<String>) = match option.runtime_kind {
+    let (condition, values): (&str, Vec<String>) = match runtime_kind {
         EmulatorRuntimeKind::RetroArch => (
-            "r.runtime_kind='retroarch' AND r.runtime_name=?2",
-            vec![platform_id.to_owned(), option.core_name.clone()],
+            "r.runtime_kind=?2",
+            vec![platform_id.to_owned(), "retroarch".to_owned()],
         ),
         EmulatorRuntimeKind::Standalone => (
             "r.runtime_kind<>'retroarch' AND r.emulator_id=?2",
-            vec![platform_id.to_owned(), option.emulator_id.clone()],
+            vec![platform_id.to_owned(), emulator_id.to_owned()],
         ),
     };
     let sql = format!(
@@ -292,7 +300,14 @@ fn load_rules(
             notes: row.get(14)?,
         })
     })?;
-    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    let mut rules = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    if runtime_kind == EmulatorRuntimeKind::RetroArch {
+        rules.retain(|rule| {
+            crate::emulator::canonical_retroarch_core_name(&rule.runtime_name)
+                == crate::emulator::canonical_retroarch_core_name(core_name)
+        });
+    }
+    Ok(rules)
 }
 
 fn status_for_rule(
@@ -2387,6 +2402,54 @@ mod tests {
             archive.write_all(contents).unwrap();
         }
         archive.finish().unwrap();
+    }
+
+    #[test]
+    fn canonical_core_keeps_alias_firmware_rules_and_platform_scope() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(
+            "CREATE TABLE firmware_sources(id TEXT, transport TEXT, locator_url TEXT, torrent_file TEXT, path_prefix TEXT);
+             CREATE TABLE firmware_rules(rule_key TEXT, platform_id TEXT, emulator_id TEXT, runtime_kind TEXT, runtime_name TEXT, source_id TEXT, source_package_name TEXT, target_subdir TEXT, install_mode TEXT, target_strategy TEXT, required INTEGER, supports_hle_fallback INTEGER, notes TEXT);
+             INSERT INTO firmware_sources VALUES('bios','local','','','');
+             INSERT INTO firmware_rules VALUES('psx-hw','psx','','retroarch','beetle_psx_hw','bios','bios.zip','','merge_tree','runtime_dir',1,0,'');
+             INSERT INTO firmware_rules VALUES('psx-sw','psx','','retroarch','beetle_psx','bios','bios.zip','','merge_tree','runtime_dir',1,0,'');
+             INSERT INTO firmware_rules VALUES('other-platform','other','','retroarch','beetle_psx_hw','bios','bios.zip','','merge_tree','runtime_dir',1,0,'');
+             INSERT INTO firmware_rules VALUES('standalone','psx','native','standalone','native','bios','bios.zip','','merge_tree','runtime_dir',1,0,'');"
+        ).unwrap();
+        for core in ["mednafen_psx_hw", "beetle_psx_hw"] {
+            let rules = load_rules(
+                &connection,
+                "psx",
+                EmulatorRuntimeKind::RetroArch,
+                core,
+                "native",
+            )
+            .unwrap();
+            assert_eq!(rules.len(), 1);
+            assert_eq!(rules[0].rule_key, "psx-hw");
+            assert!(rules[0].required);
+        }
+        assert!(
+            load_rules(
+                &connection,
+                "psx",
+                EmulatorRuntimeKind::RetroArch,
+                "unknown",
+                "native"
+            )
+            .unwrap()
+            .is_empty()
+        );
+        let rules = load_rules(
+            &connection,
+            "psx",
+            EmulatorRuntimeKind::Standalone,
+            "",
+            "native",
+        )
+        .unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].rule_key, "standalone");
     }
 
     #[test]

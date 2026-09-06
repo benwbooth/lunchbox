@@ -1400,9 +1400,7 @@ fn emulator_preference_matches_option(
     preference: &crate::settings::EmulatorPreference,
     option: &crate::emulator::RomEmulatorOption,
 ) -> bool {
-    preference.emulator_id == option.emulator_id
-        && preference.runtime_kind == option.runtime_kind.key()
-        && preference.core_name == option.core_name
+    option.matches_preference(preference)
 }
 
 fn emulator_preference_for_option(
@@ -4448,7 +4446,8 @@ impl qobject::GameDetailsModel {
         self.rust().rom_emulator_options.iter().position(|option| {
             if manager.trim() == "libretro" {
                 option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
-                    && option.core_name == package_id
+                    && crate::emulator::canonical_retroarch_core_name(&option.core_name)
+                        == crate::emulator::canonical_retroarch_core_name(package_id)
             } else {
                 option.runtime_kind == crate::emulator::EmulatorRuntimeKind::Standalone
                     && option.emulator_id == emulator_id

@@ -38,10 +38,11 @@ SELECT count(DISTINCT emulator_id), count(DISTINCT platform_id), count(*)
 FROM emulator_platforms;
 ```
 
-For core inventory, select nonempty `core_name` values, split each on `;`, trim,
-and deduplicate exactly as `load_platform_emulator_definitions` does in
-`crates/lunchbox-app/src/emulator.rs`. Do not count a semicolon list as one core,
-or confuse a core's marketing name with its library filename.
+For the raw baseline core inventory, select nonempty `core_name` values, split
+each on `;`, trim, and deduplicate. Discovery now additionally applies the explicit
+[core identity aliases](RETROARCH_CORE_IDENTITIES.md) before deduplication, so its
+canonical count can differ from the raw baseline. Do not count a semicolon list
+as one core or confuse a core's marketing name with its library filename.
 
 ## Work grouped by reusable capability
 
@@ -82,11 +83,11 @@ device number is accepted merely from an image-only table or a platform name.
 
 ## Cross-cutting gaps before all-core completion
 
-1. **Core identity normalization.** The emulator database contains names such as
-   `beetle_pce_fast`; controller contracts use `mednafen_pce_fast`.
-   `find_retroarch_core` currently constructs a filename directly from the catalog
-   token. Audit names against real library identities and explicit aliases before
-   treating a matching platform as an automatically discoverable contract.
+1. **Core identity normalization.** Eight confirmed Beetle aliases now resolve to
+   upstream Mednafen library names in catalog loading and filename discovery; see
+   [the identity table and test boundary](RETROARCH_CORE_IDENTITIES.md). Remaining
+   names still require identity evidence before adding aliases. Recognition alone
+   does not establish a controller contract.
 2. **Effective device and option layers.** Port type, remaps, overrides, per-game
    options, controller modes and multiplayer topology must agree with the plan.
    Resolve these as adapter/mode data; do not hide unresolved layers behind a

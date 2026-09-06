@@ -173,10 +173,18 @@ impl RomEmulatorOption {
         }
     }
 
-    fn matches_preference(&self, preference: &crate::settings::EmulatorPreference) -> bool {
+    pub(crate) fn matches_preference(
+        &self,
+        preference: &crate::settings::EmulatorPreference,
+    ) -> bool {
         self.emulator_id == preference.emulator_id
             && self.runtime_kind.key() == preference.runtime_kind
-            && self.core_name == preference.core_name
+            && if self.runtime_kind == EmulatorRuntimeKind::RetroArch {
+                canonical_retroarch_core_name(&self.core_name)
+                    == canonical_retroarch_core_name(&preference.core_name)
+            } else {
+                self.core_name == preference.core_name
+            }
     }
 }
 
@@ -1467,6 +1475,7 @@ fn load_platform_emulator_definitions(
                 .split(';')
                 .map(str::trim)
                 .filter(|core| !core.is_empty())
+                .map(canonical_retroarch_core_name)
                 .map(ToOwned::to_owned),
         );
     }
@@ -1593,6 +1602,36 @@ fn discover_retroarch_core(
     None
 }
 
+// Beetle project/catalog names differ from upstream Makefile TARGET_NAME values.
+// Keep this explicit: unrelated Beetle names must not acquire a guessed identity.
+pub(crate) fn canonical_retroarch_core_name(core_name: &str) -> &str {
+    match core_name {
+        "beetle_cygne" => "mednafen_wswan",
+        "beetle_lynx" => "mednafen_lynx",
+        "beetle_ngp" => "mednafen_ngp",
+        "beetle_pce_fast" => "mednafen_pce_fast",
+        "beetle_supergrafx" => "mednafen_supergrafx",
+        "beetle_psx" => "mednafen_psx",
+        "beetle_psx_hw" => "mednafen_psx_hw",
+        "beetle_vb" => "mednafen_vb",
+        _ => core_name,
+    }
+}
+
+pub(crate) fn catalog_retroarch_core_alias(core_name: &str) -> &str {
+    match canonical_retroarch_core_name(core_name) {
+        "mednafen_wswan" => "beetle_cygne",
+        "mednafen_lynx" => "beetle_lynx",
+        "mednafen_ngp" => "beetle_ngp",
+        "mednafen_pce_fast" => "beetle_pce_fast",
+        "mednafen_supergrafx" => "beetle_supergrafx",
+        "mednafen_psx" => "beetle_psx",
+        "mednafen_psx_hw" => "beetle_psx_hw",
+        "mednafen_vb" => "beetle_vb",
+        _ => core_name,
+    }
+}
+
 fn find_retroarch_core(
     core_name: &str,
     host: HostPlatform,
@@ -1603,6 +1642,7 @@ fn find_retroarch_core(
         HostPlatform::Windows => "dll",
         HostPlatform::MacOs => "dylib",
     };
+    let core_name = canonical_retroarch_core_name(core_name);
     let filename = format!("{core_name}_libretro.{suffix}");
     directories
         .iter()
@@ -3612,6 +3652,107 @@ del *.rom
         assert_eq!(emulator_catalog_platform_key("Arcade Laserdisc"), "arcade");
         assert_eq!(emulator_catalog_platform_key("Arcade Pinball"), "arcade");
         assert!(is_arcade_family_platform("arcade-laserdisc"));
+    }
+
+    #[test]
+    fn catalog_core_aliases_are_canonicalized_before_deduplication() {
+        let temp = TempDir::new().unwrap();
+        let database = temp.path().join("catalog.db");
+        let connection = Connection::open(&database).unwrap();
+        connection.execute_batch(
+            "CREATE TABLE emulators(id TEXT PRIMARY KEY, name TEXT);
+             CREATE TABLE emulator_host_systems(emulator_id TEXT, host_system_slug TEXT);
+             CREATE TABLE emulator_packages(emulator_id TEXT, host_system_slug TEXT, manager TEXT, package_id TEXT);
+             CREATE TABLE platforms(id TEXT PRIMARY KEY, normalized_name TEXT);
+             CREATE TABLE platform_aliases(platform_id TEXT, normalized_alias TEXT);
+             CREATE TABLE emulator_platforms(emulator_id TEXT, platform_id TEXT, core_name TEXT, recommended INTEGER);
+             INSERT INTO emulators VALUES('retroarch','RetroArch');
+             INSERT INTO emulator_host_systems VALUES('retroarch','linux');
+             INSERT INTO platforms VALUES('psx','sony-playstation');
+             INSERT INTO emulator_platforms VALUES('retroarch','psx',' beetle_psx ;mednafen_psx;;beetle_psx_hw ',1);
+             INSERT INTO emulator_platforms VALUES('retroarch','psx','mednafen_psx_hw',0);"
+        ).unwrap();
+        drop(connection);
+        let definitions =
+            load_platform_emulator_definitions(&database, HostPlatform::Linux, "Sony PlayStation")
+                .unwrap();
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].cores, ["mednafen_psx", "mednafen_psx_hw"]);
+        assert!(definitions[0].recommended);
+    }
+
+    #[test]
+    fn beetle_aliases_resolve_canonical_libraries_on_each_host() {
+        let aliases = [
+            ("beetle_cygne", "mednafen_wswan"),
+            ("beetle_lynx", "mednafen_lynx"),
+            ("beetle_ngp", "mednafen_ngp"),
+            ("beetle_pce_fast", "mednafen_pce_fast"),
+            ("beetle_supergrafx", "mednafen_supergrafx"),
+            ("beetle_psx", "mednafen_psx"),
+            ("beetle_psx_hw", "mednafen_psx_hw"),
+            ("beetle_vb", "mednafen_vb"),
+        ];
+        for (alias, canonical) in aliases {
+            assert_eq!(canonical_retroarch_core_name(alias), canonical);
+            assert_eq!(canonical_retroarch_core_name(canonical), canonical);
+            assert_eq!(catalog_retroarch_core_alias(canonical), alias);
+            assert_eq!(catalog_retroarch_core_alias(alias), alias);
+            for (host, suffix) in [
+                (HostPlatform::Linux, "so"),
+                (HostPlatform::Windows, "dll"),
+                (HostPlatform::MacOs, "dylib"),
+            ] {
+                let temp = TempDir::new().unwrap();
+                let directories = [temp.path().to_path_buf()];
+                assert!(find_retroarch_core(alias, host, &directories).is_none());
+                // Discovery only checks filenames; this fixture is never loaded.
+                let library = temp.path().join(format!("{canonical}_libretro.{suffix}"));
+                File::create(&library).unwrap();
+                assert_eq!(
+                    find_retroarch_core(alias, host, &directories),
+                    Some(library)
+                );
+            }
+        }
+        for unchanged in [
+            "beetle_unknown",
+            "beetle_saturn",
+            "mednafen_pcfx",
+            "mednafen_saturn",
+            "mesen",
+        ] {
+            assert_eq!(canonical_retroarch_core_name(unchanged), unchanged);
+        }
+    }
+
+    #[test]
+    fn saved_beetle_preference_matches_only_its_canonical_runtime() {
+        let mut option = RomEmulatorOption {
+            emulator_id: "psx".into(),
+            emulator_name: "Beetle PSX".into(),
+            runtime_kind: EmulatorRuntimeKind::RetroArch,
+            core_name: "mednafen_psx_hw".into(),
+            executable: EmulatorExecutable::Native(PathBuf::from("retroarch")),
+            core_path: None,
+            recommended: false,
+        };
+        let mut preference = crate::settings::EmulatorPreference {
+            emulator_id: "psx".into(),
+            runtime_kind: "retroarch".into(),
+            core_name: "beetle_psx_hw".into(),
+            scope: "game".into(),
+        };
+        assert!(option.matches_preference(&preference));
+        preference.core_name = "beetle_psx".into();
+        assert!(!option.matches_preference(&preference));
+        preference.core_name = "beetle_psx_hw".into();
+        preference.emulator_id = "other".into();
+        assert!(!option.matches_preference(&preference));
+        preference.emulator_id = "psx".into();
+        preference.runtime_kind = "standalone".into();
+        option.runtime_kind = EmulatorRuntimeKind::Standalone;
+        assert!(!option.matches_preference(&preference));
     }
 
     #[test]

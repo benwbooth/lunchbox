@@ -3717,8 +3717,25 @@ impl SettingsStore {
                         extra_arguments, command_template, updated_at
                  FROM emulator_launch_profiles
                  WHERE scope_kind=?1 AND scope_key=?2 AND emulator_id=?3
-                   AND runtime_kind=?4 AND core_name=?5",
-                params![scope_kind, scope_key, emulator_id, runtime_kind, core_name],
+                   AND runtime_kind=?4 AND core_name IN (?5, ?6, ?7)
+                 ORDER BY (core_name=?5) DESC, updated_at DESC, core_name LIMIT 1",
+                params![
+                    scope_kind,
+                    scope_key,
+                    emulator_id,
+                    runtime_kind,
+                    core_name,
+                    if runtime_kind == "retroarch" {
+                        crate::emulator::canonical_retroarch_core_name(core_name)
+                    } else {
+                        core_name
+                    },
+                    if runtime_kind == "retroarch" {
+                        crate::emulator::catalog_retroarch_core_alias(core_name)
+                    } else {
+                        core_name
+                    }
+                ],
                 |row| {
                     Ok(EmulatorLaunchProfile {
                         scope_kind: row.get(0)?,
@@ -3876,8 +3893,24 @@ impl SettingsStore {
         self.connection()?.execute(
             "DELETE FROM emulator_launch_profiles
              WHERE scope_kind=?1 AND scope_key=?2 AND emulator_id=?3
-               AND runtime_kind=?4 AND core_name=?5",
-            params![scope_kind, scope_key, emulator_id, runtime_kind, core_name],
+               AND runtime_kind=?4 AND core_name IN (?5, ?6, ?7)",
+            params![
+                scope_kind,
+                scope_key,
+                emulator_id,
+                runtime_kind,
+                core_name,
+                if runtime_kind == "retroarch" {
+                    crate::emulator::canonical_retroarch_core_name(core_name)
+                } else {
+                    core_name
+                },
+                if runtime_kind == "retroarch" {
+                    crate::emulator::catalog_retroarch_core_alias(core_name)
+                } else {
+                    core_name
+                }
+            ],
         )?;
         Ok(())
     }
@@ -9696,6 +9729,50 @@ mod tests {
 
         store.set_preferred_game_rom(game_uid, &path).unwrap();
         assert_eq!(store.preferred_game_rom(game_uid).unwrap(), Some(path));
+    }
+
+    #[test]
+    fn launch_profile_core_aliases_preserve_saved_customization() {
+        let (_directory, store) = store();
+        let mut profile = EmulatorLaunchProfile {
+            scope_kind: "game".into(),
+            scope_key: "one".into(),
+            emulator_id: "psx".into(),
+            runtime_kind: "retroarch".into(),
+            core_name: "beetle_psx_hw".into(),
+            extra_arguments: "--verbose".into(),
+            ..EmulatorLaunchProfile::default()
+        };
+        store.set_emulator_launch_profile(&profile).unwrap();
+        let read = |core| {
+            store
+                .emulator_launch_profile("game", "one", "psx", "retroarch", core)
+                .unwrap()
+        };
+        assert_eq!(
+            read("mednafen_psx_hw").unwrap().extra_arguments,
+            "--verbose"
+        );
+        assert!(read("mednafen_psx").is_none());
+        assert!(
+            store
+                .emulator_launch_profile("game", "two", "psx", "retroarch", "mednafen_psx_hw")
+                .unwrap()
+                .is_none()
+        );
+        profile.core_name = "mednafen_psx_hw".into();
+        profile.extra_arguments = "--fullscreen".into();
+        store.set_emulator_launch_profile(&profile).unwrap();
+        assert_eq!(
+            read("mednafen_psx_hw").unwrap().extra_arguments,
+            "--fullscreen"
+        );
+        assert_eq!(read("beetle_psx_hw").unwrap().extra_arguments, "--verbose");
+        store
+            .clear_emulator_launch_profile("game", "one", "psx", "retroarch", "mednafen_psx_hw")
+            .unwrap();
+        assert!(read("mednafen_psx_hw").is_none());
+        assert!(read("beetle_psx_hw").is_none());
     }
 
     #[test]

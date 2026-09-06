@@ -394,6 +394,7 @@ fn load_emulator_compatibility(
             .split(';')
             .map(str::trim)
             .filter(|core_name| !core_name.is_empty())
+            .map(crate::emulator::canonical_retroarch_core_name)
         {
             add_compatibility(
                 cores.entry(core_name.to_owned()).or_default(),
@@ -432,6 +433,7 @@ fn load_emulator_compatibility(
             .split(';')
             .map(str::trim)
             .filter(|core_name| !core_name.is_empty())
+            .map(crate::emulator::canonical_retroarch_core_name)
         {
             add_compatibility(
                 cores.entry(core_name.to_owned()).or_default(),
@@ -603,6 +605,24 @@ fn load_libretro_core_rows(
     receipts: &HashMap<(String, String, String), ManagedEmulatorInstall>,
     core_compatibility: &HashMap<String, EmulatorCompatibility>,
 ) -> Result<Vec<ManagedEmulator>> {
+    load_libretro_core_rows_with_installed(
+        connection,
+        host,
+        receipts,
+        core_compatibility,
+        &installed_libretro_cores(),
+        manager_available("libretro", "{}"),
+    )
+}
+
+fn load_libretro_core_rows_with_installed(
+    connection: &rusqlite::Connection,
+    host: &str,
+    receipts: &HashMap<(String, String, String), ManagedEmulatorInstall>,
+    core_compatibility: &HashMap<String, EmulatorCompatibility>,
+    installed_paths: &HashMap<String, String>,
+    available: bool,
+) -> Result<Vec<ManagedEmulator>> {
     let mut statement = connection.prepare(
         "SELECT ep.core_name, e.name
          FROM emulator_platforms ep
@@ -621,6 +641,7 @@ fn load_libretro_core_rows(
             .split(';')
             .map(str::trim)
             .filter(|name| !name.is_empty())
+            .map(crate::emulator::canonical_retroarch_core_name)
         {
             validate_package_id("libretro", core_name)?;
             cores
@@ -630,20 +651,25 @@ fn load_libretro_core_rows(
         }
     }
 
-    let installed_paths = installed_libretro_cores();
-    let available = manager_available("libretro", "{}");
     Ok(cores
         .into_iter()
         .map(|(core_name, names)| {
             let key = (host.to_owned(), "libretro".to_owned(), core_name.clone());
-            let receipt = receipts.get(&key);
+            let alias_key = (
+                host.to_owned(),
+                "libretro".to_owned(),
+                crate::emulator::catalog_retroarch_core_alias(&core_name).to_owned(),
+            );
+            let receipt = receipts.get(&key).or_else(|| receipts.get(&alias_key));
             let detected_path = installed_paths.get(&core_name).cloned().or_else(|| {
                 receipt
                     .filter(|receipt| Path::new(&receipt.install_path).is_file())
                     .map(|receipt| receipt.install_path.clone())
             });
             let installed = detected_path.is_some();
-            let managed = installed && receipt.is_some();
+            let managed = receipt.is_some_and(|receipt| {
+                detected_path.as_deref() == Some(receipt.install_path.as_str())
+            });
             let display_name = names
                 .iter()
                 .next()
@@ -663,7 +689,12 @@ fn load_libretro_core_rows(
                 name: format!("RetroArch: {display_name}"),
                 host_system_slug: host.to_owned(),
                 manager: "libretro".to_owned(),
-                package_id: core_name,
+                // Keep a legacy ownership key so update/uninstall addresses its
+                // original receipt; newly installed cores use canonical keys.
+                package_id: receipt
+                    .filter(|_| managed)
+                    .map(|receipt| receipt.package_id.clone())
+                    .unwrap_or(core_name),
                 metadata_json: "{}".to_owned(),
                 source_label: manager_label("libretro").to_owned(),
                 installed,
@@ -1232,6 +1263,7 @@ fn libretro_buildbot_target() -> Option<(&'static str, &'static str)> {
 
 fn libretro_core_file_name(core_name: &str) -> Result<String> {
     validate_package_id("libretro", core_name)?;
+    let core_name = crate::emulator::canonical_retroarch_core_name(core_name);
     let (_, extension) = libretro_buildbot_target()
         .context("Libretro buildbot does not publish cores for this host architecture")?;
     Ok(format!("{core_name}_libretro.{extension}"))
@@ -2988,12 +3020,88 @@ mod tests {
     }
 
     #[test]
+    fn manager_core_aliases_deduplicate_detect_and_preserve_receipt_identity() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection.execute_batch(
+            "CREATE TABLE emulators(id TEXT, name TEXT);
+             CREATE TABLE platforms(id TEXT, normalized_name TEXT);
+             CREATE TABLE platform_aliases(platform_id TEXT, normalized_alias TEXT);
+             CREATE TABLE emulator_platforms(emulator_id TEXT, platform_id TEXT, core_name TEXT, recommended INTEGER);
+             INSERT INTO emulators VALUES('psx','Beetle PSX');
+             INSERT INTO platforms VALUES('psx','sony-playstation');
+             INSERT INTO platform_aliases VALUES('psx','ps1');
+             INSERT INTO emulator_platforms VALUES('psx','psx','beetle_psx_hw; mednafen_psx_hw',1);"
+        ).unwrap();
+        let (_, compatibility) = load_emulator_compatibility(&connection).unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp
+            .path()
+            .join(libretro_core_file_name("beetle_psx_hw").unwrap());
+        File::create(&path).unwrap(); // Discovery fixture, never loaded.
+        let install_path = path.to_string_lossy().into_owned();
+        let installed = HashMap::from([("mednafen_psx_hw".into(), install_path.clone())]);
+        let rows = load_libretro_core_rows_with_installed(
+            &connection,
+            "linux",
+            &HashMap::new(),
+            &compatibility,
+            &installed,
+            true,
+        )
+        .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].package_id, "mednafen_psx_hw");
+        assert!(rows[0].installed);
+        assert!(!rows[0].managed);
+        assert!(rows[0].compatible_platform_keys.contains("ps1"));
+        assert!(
+            rows[0]
+                .recommended_platform_keys
+                .contains("sony-playstation")
+        );
+        for package_id in ["beetle_psx_hw", "mednafen_psx_hw"] {
+            let receipt = ManagedEmulatorInstall {
+                emulator_id: format!("libretro-core-{package_id}"),
+                host_system_slug: "linux".into(),
+                manager: "libretro".into(),
+                package_id: package_id.into(),
+                install_path: install_path.clone(),
+                installed_at: 1,
+                updated_at: 1,
+            };
+            let receipts = HashMap::from([(receipt_key(&receipt), receipt)]);
+            let rows = load_libretro_core_rows_with_installed(
+                &connection,
+                "linux",
+                &receipts,
+                &compatibility,
+                &installed,
+                true,
+            )
+            .unwrap();
+            assert_eq!(rows.len(), 1);
+            assert!(rows[0].managed);
+            assert_eq!(rows[0].package_id, package_id);
+            assert_eq!(rows[0].install_path, install_path);
+        }
+    }
+
+    #[test]
     fn libretro_core_download_is_host_specific_and_exact() {
         let url = libretro_core_url("mesen").unwrap();
         let (_, extension) = libretro_buildbot_target().unwrap();
         assert!(url.starts_with("https://buildbot.libretro.com/nightly/"));
         assert!(url.ends_with(&format!("/latest/mesen_libretro.{extension}.zip")));
         assert!(libretro_core_url("../mesen").is_err());
+        assert_eq!(
+            libretro_core_url("beetle_psx_hw").unwrap(),
+            libretro_core_url("mednafen_psx_hw").unwrap()
+        );
+        assert!(
+            libretro_core_url("beetle_psx_hw")
+                .unwrap()
+                .ends_with(&format!("/latest/mednafen_psx_hw_libretro.{extension}.zip"))
+        );
     }
 
     #[test]

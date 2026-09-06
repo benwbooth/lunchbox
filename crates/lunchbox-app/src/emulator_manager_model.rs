@@ -827,7 +827,9 @@ fn managed_row_matches_preference(
     preference: &crate::settings::EmulatorPreference,
 ) -> bool {
     if row.manager == "libretro" {
-        preference.runtime_kind == "retroarch" && preference.core_name == row.package_id
+        preference.runtime_kind == "retroarch"
+            && crate::emulator::canonical_retroarch_core_name(&preference.core_name)
+                == crate::emulator::canonical_retroarch_core_name(&row.package_id)
     } else {
         preference.runtime_kind == "standalone"
             && preference.core_name.is_empty()
@@ -896,11 +898,10 @@ fn select_managed_preference_identity(
     let mut identities = std::collections::BTreeSet::new();
     if row.manager == "libretro" {
         for (emulator_id, core_names, _, _) in candidates {
-            if core_names
-                .split(';')
-                .map(str::trim)
-                .any(|core| core == row.package_id)
-            {
+            if core_names.split(';').map(str::trim).any(|core| {
+                crate::emulator::canonical_retroarch_core_name(core)
+                    == crate::emulator::canonical_retroarch_core_name(&row.package_id)
+            }) {
                 identities.insert((
                     emulator_id.clone(),
                     "retroarch".to_owned(),
@@ -1068,6 +1069,17 @@ mod tests {
         assert_eq!(preference.emulator_id, "fceumm-emulator-id");
         assert_eq!(preference.runtime_kind, "retroarch");
         assert_eq!(preference.core_name, "fceumm");
+        assert!(managed_row_matches_preference(&core, &preference));
+        core.package_id = "mednafen_psx_hw".into();
+        let alias_candidates = vec![(
+            "psx".into(),
+            "beetle_psx_hw".into(),
+            "flatpak".into(),
+            "org.libretro.RetroArch".into(),
+        )];
+        let preference = select_managed_preference_identity(&core, &alias_candidates).unwrap();
+        assert_eq!(preference.emulator_id, "psx");
+        assert_eq!(preference.core_name, "mednafen_psx_hw");
         assert!(managed_row_matches_preference(&core, &preference));
     }
 
