@@ -134,7 +134,12 @@ impl Drop for RetroArch {
     }
 }
 
-fn await_keys(child: &mut RetroArch, replies: &Receiver<String>, expected: u16) -> Result<()> {
+fn await_keys(
+    child: &mut RetroArch,
+    replies: &Receiver<String>,
+    expected: u16,
+    psx: bool,
+) -> Result<()> {
     let deadline = Instant::now() + Duration::from_secs(10);
     let mut last = String::new();
     loop {
@@ -145,7 +150,11 @@ fn await_keys(child: &mut RetroArch, replies: &Receiver<String>, expected: u16) 
             .stdin
             .as_mut()
             .context("Missing stdin")?
-            .write_all(b"READ_CORE_MEMORY 02000000 8\n")?;
+            .write_all(if psx {
+                b"READ_CORE_MEMORY 00020000 36\n"
+            } else {
+                b"READ_CORE_MEMORY 02000000 8\n"
+            })?;
         let response = replies
             .recv_timeout(deadline.saturating_duration_since(Instant::now()))
             .context("RetroArch memory response timeout")?;
@@ -155,7 +164,16 @@ fn await_keys(child: &mut RetroArch, replies: &Receiver<String>, expected: u16) 
             .map(|s| u8::from_str_radix(s, 16))
             .collect::<std::result::Result<Vec<_>, _>>();
         if let Ok(bytes) = values {
-            if bytes.len() == 8
+            if psx
+                && bytes.len() == 36
+                && bytes[..4] == [0x4c, 0x42, 0x50, 0x53]
+                && bytes[32..34] == [0, 0x41]
+                && u16::from_le_bytes([bytes[34], bytes[35]]) == expected
+            {
+                return Ok(());
+            }
+            if !psx
+                && bytes.len() == 8
                 && bytes[4..] == [0x4e, 0x49, 0x42, 0x4c]
                 && u16::from_le_bytes([bytes[0], bytes[1]]) == expected
             {
@@ -166,7 +184,7 @@ fn await_keys(child: &mut RetroArch, replies: &Receiver<String>, expected: u16) 
         last.push_str(&response);
         ensure!(
             Instant::now() < deadline,
-            "Expected KEYINPUT {expected:04x}, last reply: {last}"
+            "Expected emulated buttons {expected:04x}, last reply: {last}"
         );
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -227,15 +245,38 @@ fn private_display_rejects_desktop_aliases_and_missing_desktop() {
 #[test]
 #[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, and trusted mGBA core; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
+    brawler64_hardware_oracle(false)
+}
+
+#[test]
+#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, trusted Beetle PSX core and local BIOS; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
+fn brawler64_config_reaches_psx_hardware_through_retroarch() -> Result<()> {
+    brawler64_hardware_oracle(true)
+}
+
+fn brawler64_hardware_oracle(psx: bool) -> Result<()> {
     use sha2::{Digest, Sha256};
-    let core =
-        PathBuf::from(std::env::var("LUNCHBOX_ORACLE_MGBA_CORE").context("Set trusted core path")?);
+    let (core_env, core_name, rom_name, expected_hash) = if psx {
+        (
+            "LUNCHBOX_ORACLE_PSX_CORE",
+            "mednafen_psx_libretro.so",
+            "input.exe",
+            "767bb60bd96d3f19806a9311d96638c9ca39272d1236035a752952bb4b4c1968",
+        )
+    } else {
+        (
+            "LUNCHBOX_ORACLE_MGBA_CORE",
+            "mgba_libretro.so",
+            "input.gba",
+            "768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4",
+        )
+    };
+    let core = PathBuf::from(std::env::var(core_env).context("Set trusted core path")?);
     ensure!(core.is_absolute(), "Core path must be absolute");
     let core_bytes = fs::read(&core)?;
     ensure!(
-        format!("{:x}", Sha256::digest(&core_bytes))
-            == "768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4",
-        "Unreviewed mGBA binary"
+        format!("{:x}", Sha256::digest(&core_bytes)) == expected_hash,
+        "Unreviewed diagnostic core binary"
     );
     let display =
         std::env::var("LUNCHBOX_ORACLE_DISPLAY").context("Set a private X server display")?;
@@ -244,6 +285,12 @@ fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
         &std::env::var("DISPLAY")
             .context("Desktop DISPLAY is required to rule out the user's display")?,
     )?;
+    let socket = PathBuf::from(format!(
+        "/tmp/.X11-unix/X{}",
+        local_display_number(&display)?
+    ));
+    let _display_connection = std::os::unix::net::UnixStream::connect(&socket)
+        .with_context(|| format!("Private X server is not listening at {}", socket.display()))?;
     let root = tempfile::Builder::new()
         .prefix("lunchbox-retroarch-oracle-")
         .tempdir()?;
@@ -253,11 +300,29 @@ fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
     ] {
         fs::create_dir(dir.join(name))?;
     }
-    fs::write(dir.join("mgba_libretro.so"), core_bytes)?;
+    fs::write(dir.join(core_name), core_bytes)?;
     fs::write(
-        dir.join("input.gba"),
-        lunchbox_controller_probe::libretro_input::gba_diagnostic_rom(),
+        dir.join(rom_name),
+        if psx {
+            lunchbox_controller_probe::libretro_input::psx_diagnostic_exe()
+        } else {
+            lunchbox_controller_probe::libretro_input::gba_diagnostic_rom()
+        },
     )?;
+    if psx {
+        let bios = PathBuf::from(
+            std::env::var("LUNCHBOX_ORACLE_PSX_BIOS_DIR")
+                .context("Set local PlayStation BIOS directory")?,
+        );
+        for name in ["scph5500.bin", "scph5501.bin", "scph5502.bin"] {
+            let source = bios.join(name);
+            ensure!(
+                fs::metadata(&source)?.len() == 512 * 1024,
+                "Unexpected BIOS size"
+            );
+            fs::copy(source, dir.join("system").join(name))?;
+        }
+    }
     let (mut calibration, _) = super::tests::calibrated_layout("brawler64");
     let mut index = 0;
     for binding in calibration
@@ -284,11 +349,18 @@ fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
         serde_json::from_slice(&fs::read(dir.join("calibration.json"))?)?;
     let (mut pad, path) = VirtualPad::create(&calibration)?;
     let numbering = JoydevMap::read(&path)?;
-    let profile = contract("mgba", "Nintendo Game Boy Advance").context("Missing mGBA contract")?;
-    fs::write(
-        dir.join("mapping.cfg"),
-        player_config(&calibration, profile, &numbering, 1)?,
-    )?;
+    let profile = if psx {
+        catalog().launch_mode("mednafen_psx", "PSX", 1)
+    } else {
+        contract("mgba", "Nintendo Game Boy Advance")
+    }
+    .context("Missing diagnostic core contract")?;
+    let mut mapping = player_config(&calibration, profile, &numbering, 1)?;
+    if psx {
+        mapping.push_str(&write_core_options_snapshot(profile, "", dir)?);
+        mapping.push_str("input_libretro_device_p2 = \"0\"\ninput_max_users = \"1\"\n");
+    }
+    fs::write(dir.join("mapping.cfg"), mapping)?;
     let mut config = String::from(
         "stdin_cmd_enable = \"true\"\ninput_driver = \"x\"\ninput_joypad_driver = \"linuxraw\"\ninput_poll_type_behavior = \"0\"\nvideo_driver = \"glcore\"\naudio_enable = \"false\"\nvideo_fullscreen = \"false\"\npause_nonactive = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\nauto_overrides_enable = \"false\"\nauto_remaps_enable = \"false\"\ninput_autodetect_enable = \"false\"\nhistory_list_enable = \"false\"\ngame_specific_options = \"false\"\ncore_info_cache_enable = \"false\"\n",
     );
@@ -326,6 +398,9 @@ fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
             "run",
             "--unshare=network",
             "--nosocket=wayland",
+            "--nodevice=all",
+            "--device=input",
+            "--device=shm",
             "--nofilesystem=host:reset",
             "--nofilesystem=home",
             "--command=env",
@@ -356,8 +431,8 @@ fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
         .arg("--appendconfig")
         .arg(dir.join("mapping.cfg"))
         .arg("-L")
-        .arg(dir.join("mgba_libretro.so"))
-        .arg(dir.join("input.gba"))
+        .arg(dir.join(core_name))
+        .arg(dir.join(rom_name))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -375,29 +450,52 @@ fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
             }
         }
     });
-    await_keys(&mut child, &replies, 0x3ff)?;
-    // Expected bits come from the GBA hardware register, not generated mapping.
-    for (controls, bits) in [
-        (vec!["a"], 1),
-        (vec!["b"], 2),
-        (vec!["select"], 4),
-        (vec!["start"], 8),
-        (vec!["right"], 16),
-        (vec!["left"], 32),
-        (vec!["up"], 64),
-        (vec!["down"], 128),
-        (vec!["r"], 256),
-        (vec!["l"], 512),
-        (vec!["a", "b"], 3),
-        (vec!["l", "r"], 768),
-    ] {
+    let released = if psx { 0xffff } else { 0x3ff };
+    await_keys(&mut child, &replies, released, psx)?;
+    // Expected bits come from console hardware protocols, not generated config.
+    let cases = if psx {
+        vec![
+            (vec!["a"], 1 << 14),      // Cross
+            (vec!["b"], 1 << 15),      // Square
+            (vec!["c_down"], 1 << 13), // Circle
+            (vec!["c_left"], 1 << 12), // Triangle
+            (vec!["select"], 1),
+            (vec!["start"], 1 << 3),
+            (vec!["up"], 1 << 4),
+            (vec!["right"], 1 << 5),
+            (vec!["down"], 1 << 6),
+            (vec!["left"], 1 << 7),
+            (vec!["z"], 1 << 8),
+            (vec!["z_right"], 1 << 9),
+            (vec!["l"], 1 << 10),
+            (vec!["r"], 1 << 11),
+            (vec!["a", "b"], (1 << 14) | (1 << 15)),
+            (vec!["l", "r"], (1 << 10) | (1 << 11)),
+        ]
+    } else {
+        vec![
+            (vec!["a"], 1),
+            (vec!["b"], 2),
+            (vec!["select"], 4),
+            (vec!["start"], 8),
+            (vec!["right"], 16),
+            (vec!["left"], 32),
+            (vec!["up"], 64),
+            (vec!["down"], 128),
+            (vec!["r"], 256),
+            (vec!["l"], 512),
+            (vec!["a", "b"], 3),
+            (vec!["l", "r"], 768),
+        ]
+    };
+    for (controls, bits) in cases {
         for id in &controls {
             pad.button(
                 (calibration.bindings[*id].native.as_ref().unwrap().code & 0xffff) as u16,
                 true,
             )?;
         }
-        await_keys(&mut child, &replies, 0x3ff & !bits)
+        await_keys(&mut child, &replies, released & !bits, psx)
             .with_context(|| format!("Pressed {controls:?}"))?;
         for id in &controls {
             pad.button(
@@ -405,7 +503,7 @@ fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
                 false,
             )?;
         }
-        await_keys(&mut child, &replies, 0x3ff)
+        await_keys(&mut child, &replies, released, psx)
             .with_context(|| format!("Released {controls:?}"))?;
     }
     Ok(())

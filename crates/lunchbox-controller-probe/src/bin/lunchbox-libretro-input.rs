@@ -12,6 +12,12 @@ struct Args {
     sha256: String,
     #[arg(long)]
     bitmask: bool,
+    /// Only call retro_api_version and retro_get_system_info; do not initialize the core.
+    #[arg(long)]
+    identity_only: bool,
+    /// Directory containing scph5500.bin, scph5501.bin, and scph5502.bin.
+    #[arg(long)]
+    bios_dir: Option<PathBuf>,
     #[arg(long, value_enum, default_value = "gba")]
     system: Diagnostic,
     #[arg(long, default_value_t = 15, value_parser = clap::value_parser!(u64).range(1..=120))]
@@ -19,6 +25,12 @@ struct Args {
 }
 fn run() -> Result<()> {
     let args = Args::parse();
+    if args.identity_only {
+        let identity =
+            lunchbox_controller_probe::libretro_input::core_identity(&args.core, &args.sha256)?;
+        println!("{}", serde_json::to_string_pretty(&identity)?);
+        return Ok(());
+    }
     let (done, receiver) = std::sync::mpsc::channel();
     let watchdog = std::thread::spawn(move || {
         if receiver
@@ -29,11 +41,12 @@ fn run() -> Result<()> {
             std::process::exit(124);
         }
     });
-    let result = lunchbox_controller_probe::libretro_input::inspect(
+    let result = lunchbox_controller_probe::libretro_input::inspect_with_system_directory(
         &args.core,
         &args.sha256,
         args.bitmask,
         args.system,
+        args.bios_dir.as_deref(),
     );
     let _ = done.send(());
     let _ = watchdog.join();

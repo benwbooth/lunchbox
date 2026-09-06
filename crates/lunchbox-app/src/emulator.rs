@@ -274,6 +274,12 @@ pub struct LaunchAvailability {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreparedRetroarchContent {
+    pub core: PathBuf,
+    pub content: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LaunchPlan {
     pub emulator_name: String,
     pub program: PathBuf,
@@ -281,6 +287,9 @@ pub struct LaunchPlan {
     pub current_directory: PathBuf,
     pub environment: Vec<(OsString, OsString)>,
     pub cleanup_paths: Vec<PathBuf>,
+    /// Exact paths after archive/playlist preparation, before CLI customization.
+    /// Consumers must validate that the final arguments still select these paths.
+    pub retroarch_content: Option<PreparedRetroarchContent>,
 }
 
 impl LaunchPlan {
@@ -1193,6 +1202,17 @@ fn build_prepared_rom_launch_plan(
         current_directory,
         environment: launch_environment(&option.executable),
         cleanup_paths: Vec::new(),
+        retroarch_content: if option.runtime_kind == EmulatorRuntimeKind::RetroArch {
+            Some(PreparedRetroarchContent {
+                core: option
+                    .core_path
+                    .clone()
+                    .context("Missing prepared RetroArch core")?,
+                content: rom_path.to_path_buf(),
+            })
+        } else {
+            None
+        },
     })
 }
 
@@ -2065,6 +2085,7 @@ fn build_plan_for_choice(
         current_directory: prepared.install_root.clone(),
         environment: launch_environment(&emulator.executable),
         cleanup_paths,
+        retroarch_content: None,
     })
 }
 
@@ -3775,6 +3796,21 @@ del *.rom
         let session = plan.cleanup_paths[0].clone();
         cleanup_after_launch(&plan.cleanup_paths);
         assert!(!session.exists());
+
+        let retroarch = RomEmulatorOption {
+            runtime_kind: EmulatorRuntimeKind::RetroArch,
+            core_name: "mednafen_psx".into(),
+            core_path: Some(temp.path().join("mednafen_psx_libretro.so")),
+            ..option
+        };
+        let plan = build_rom_launch_plan(&playlist, "Sony PlayStation", &retroarch).unwrap();
+        let identity = plan.retroarch_content.as_ref().unwrap();
+        assert_ne!(identity.content, playlist);
+        assert!(identity.content.is_file());
+        assert_eq!(Some(&identity.core), retroarch.core_path.as_ref());
+        assert_eq!(plan.arguments.last().unwrap(), identity.content.as_os_str());
+        crate::controller_psx::validate_arguments(&plan.arguments, identity).unwrap();
+        cleanup_after_launch(&plan.cleanup_paths);
     }
 
     #[test]

@@ -2294,6 +2294,222 @@
       }
     },
     {
+      "id": "retroarch:mednafen_psx:digital",
+      "retroarch_library": "Beetle PSX",
+      "name": "RetroArch · Beetle PSX · PlayStation digital controller",
+      "core": "mednafen_psx",
+      "target_layout": "playstation-digital",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/beetle-psx-libretro/blob/56f4732070835bb81078dd8ecab7246e203612a1/libretro.c",
+      "retroarch_launch": {
+        "platforms": [
+          "Sony Playstation",
+          "Sony - PlayStation",
+          "PlayStation",
+          "PS1",
+          "PSX"
+        ],
+        "device": 1,
+        "max_players": 2
+      },
+      "core_options": {
+        "beetle_psx_enable_multitap_port1": "disabled",
+        "beetle_psx_enable_multitap_port2": "disabled"
+      },
+      "conditions": [
+        "Two console ports; multitaps disabled only in the private core-options copy",
+        "Requested per-port device IDs are preserved when disc compatibility changes the required binding layout",
+        "Compatibility-enabled launches require a verified core build and prepared CUE, CHD, M3U or PS-X EXE identity; other media adapters remain unfinished",
+        "Per-core/game remaps, custom config chains and unresolved content arguments require separate effective-mode resolution",
+        "DualShock bindings require physical analog capabilities; analog toggle and broad compatibility settings are preserved",
+        "Physical rumble through linuxraw is not implemented"
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "select": "Select",
+        "a": "East",
+        "b": "South",
+        "x": "North",
+        "y": "West",
+        "l": "LeftBumper",
+        "r": "RightBumper",
+        "l2": "LeftTrigger",
+        "r2": "RightTrigger"
+      }
+    },
+    {
+      "id": "retroarch:mednafen_psx:dualshock",
+      "retroarch_library": "Beetle PSX",
+      "name": "RetroArch · Beetle PSX · DualShock",
+      "core": "mednafen_psx",
+      "target_layout": "dualshock",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/beetle-psx-libretro/blob/56f4732070835bb81078dd8ecab7246e203612a1/libretro.c",
+      "retroarch_launch": {
+        "platforms": [
+          "Sony Playstation",
+          "Sony - PlayStation",
+          "PlayStation",
+          "PS1",
+          "PSX"
+        ],
+        "device": 517,
+        "max_players": 2
+      },
+      "core_options": {
+        "beetle_psx_enable_multitap_port1": "disabled",
+        "beetle_psx_enable_multitap_port2": "disabled"
+      },
+      "conditions": [
+        "Two console ports; multitaps disabled only in the private core-options copy",
+        "Requested per-port device IDs are preserved when disc compatibility changes the required binding layout",
+        "Compatibility-enabled launches require a verified core build and prepared CUE, CHD, M3U or PS-X EXE identity; other media adapters remain unfinished",
+        "Per-core/game remaps, custom config chains and unresolved content arguments require separate effective-mode resolution",
+        "DualShock bindings require physical analog capabilities; analog toggle and broad compatibility settings are preserved",
+        "Physical rumble through linuxraw is not implemented"
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "select": "Select",
+        "a": "East",
+        "b": "South",
+        "x": "North",
+        "y": "West",
+        "l": "LeftBumper",
+        "r": "RightBumper",
+        "l2": "LeftTrigger",
+        "r2": "RightTrigger",
+        "l3": "LeftStick",
+        "r3": "RightStick",
+        "stick_up": "LeftStickUp",
+        "stick_down": "LeftStickDown",
+        "stick_left": "LeftStickLeft",
+        "stick_right": "LeftStickRight",
+        "right_stick_up": "RightStickUp",
+        "right_stick_down": "RightStickDown",
+        "right_stick_left": "RightStickLeft",
+        "right_stick_right": "RightStickRight"
+      }
+    },
+    {
+      "id": "retroarch:mednafen_psx_hw:digital",
+      "retroarch_library": "Beetle PSX HW",
+      "name": "RetroArch · Beetle PSX HW · PlayStation digital controller",
+      "core": "mednafen_psx_hw",
+      "target_layout": "playstation-digital",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/beetle-psx-libretro/blob/56f4732070835bb81078dd8ecab7246e203612a1/libretro.c",
+      "retroarch_launch": {
+        "platforms": [
+          "Sony Playstation",
+          "Sony - PlayStation",
+          "PlayStation",
+          "PS1",
+          "PSX"
+        ],
+        "device": 1,
+        "max_players": 2
+      },
+      "core_options": {
+        "beetle_psx_hw_enable_multitap_port1": "disabled",
+        "beetle_psx_hw_enable_multitap_port2": "disabled"
+      },
+      "conditions": [
+        "Two console ports; multitaps disabled only in the private core-options copy",
+        "Requested per-port device IDs are preserved when disc compatibility changes the required binding layout",
+        "Compatibility-enabled launches require a verified core build and prepared CUE, CHD, M3U or PS-X EXE identity; other media adapters remain unfinished",
+        "Per-core/game remaps, custom config chains and unresolved content arguments require separate effective-mode resolution",
+        "DualShock bindings require physical analog capabilities; analog toggle and broad compatibility settings are preserved",
+        "Physical rumble through linuxraw is not implemented"
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "select": "Select",
+        "a": "East",
+        "b": "South",
+        "x": "North",
+        "y": "West",
+        "l": "LeftBumper",
+        "r": "RightBumper",
+        "l2": "LeftTrigger",
+        "r2": "RightTrigger"
+      }
+    },
+    {
+      "id": "retroarch:mednafen_psx_hw:dualshock",
+      "retroarch_library": "Beetle PSX HW",
+      "name": "RetroArch · Beetle PSX HW · DualShock",
+      "core": "mednafen_psx_hw",
+      "target_layout": "dualshock",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/libretro/beetle-psx-libretro/blob/56f4732070835bb81078dd8ecab7246e203612a1/libretro.c",
+      "retroarch_launch": {
+        "platforms": [
+          "Sony Playstation",
+          "Sony - PlayStation",
+          "PlayStation",
+          "PS1",
+          "PSX"
+        ],
+        "device": 517,
+        "max_players": 2
+      },
+      "core_options": {
+        "beetle_psx_hw_enable_multitap_port1": "disabled",
+        "beetle_psx_hw_enable_multitap_port2": "disabled"
+      },
+      "conditions": [
+        "Two console ports; multitaps disabled only in the private core-options copy",
+        "Requested per-port device IDs are preserved when disc compatibility changes the required binding layout",
+        "Compatibility-enabled launches require a verified core build and prepared CUE, CHD, M3U or PS-X EXE identity; other media adapters remain unfinished",
+        "Per-core/game remaps, custom config chains and unresolved content arguments require separate effective-mode resolution",
+        "DualShock bindings require physical analog capabilities; analog toggle and broad compatibility settings are preserved",
+        "Physical rumble through linuxraw is not implemented"
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "start": "Start",
+        "select": "Select",
+        "a": "East",
+        "b": "South",
+        "x": "North",
+        "y": "West",
+        "l": "LeftBumper",
+        "r": "RightBumper",
+        "l2": "LeftTrigger",
+        "r2": "RightTrigger",
+        "l3": "LeftStick",
+        "r3": "RightStick",
+        "stick_up": "LeftStickUp",
+        "stick_down": "LeftStickDown",
+        "stick_left": "LeftStickLeft",
+        "stick_right": "LeftStickRight",
+        "right_stick_up": "RightStickUp",
+        "right_stick_down": "RightStickDown",
+        "right_stick_left": "RightStickLeft",
+        "right_stick_right": "RightStickRight"
+      }
+    },
+    {
       "id": "duckstation:digital-controller",
       "name": "DuckStation · PlayStation digital controller (preview)",
       "core": "duckstation",

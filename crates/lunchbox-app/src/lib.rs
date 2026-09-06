@@ -9,6 +9,7 @@ mod controller_catalog;
 mod controller_launch;
 mod controller_launch_modes;
 mod controller_layout;
+mod controller_psx;
 mod controllers;
 mod couch_theme;
 mod download_plan;

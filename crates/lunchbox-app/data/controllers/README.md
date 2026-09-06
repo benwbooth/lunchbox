@@ -145,6 +145,55 @@ Runtime observation also showed that RetroArch can save a per-core `.opt` under
 `rgui_config_directory` despite a private `core_options_path`; both the production
 options writer and the probe now redirect that additional path into the session.
 
+### Beetle PSX / Beetle PSX HW mode-aware adapter (in progress)
+
+Both cores now have digital device 1 and DualShock device 517 launch contracts.
+The private launch configuration retains each requested device ID separately
+from the layout used to generate physical bindings. The pinned core can force
+player 1 to digital for `SCUS-94900` or DualShock for `SCUS-9418A`; playlist
+launches bind the union required by their discs. Player 2 is not changed by
+these compatibility records. Missing physical analog controls remain explicit.
+
+Compatibility-enabled launches verify the exact core binary before relying on
+these recent overrides. Initially vetted buildbot SHA-256 values are
+`767bb60bd96d3f19806a9311d96638c9ca39272d1236035a752952bb4b4c1968`
+(software) and
+`54d48450def74a79669e883aebaaffd3218a1165ee51b6bef6c45e3ec5e11222`
+(HW), corresponding to source revision
+`56f4732070835bb81078dd8ecab7246e203612a1`. An unknown build is unresolved,
+not assumed to implement either old or new behavior. The adapter never disables
+the broad compatibility option to make a controller fit.
+
+Disc identity is read from `SYSTEM.CNF` in prepared CUE or CHD media, recursively
+through M3U playlists; PS-X EXEs have no disc compatibility identity. CHD parent
+chains are resolved by declared SHA-1 in the disc directory. Raw sectors must
+have valid EDC; error-correction-dependent sectors remain unresolved. PBP,
+CCD/TOC and other media adapters remain unfinished. Names of games/files are
+not accepted as serial-number evidence. Custom command arguments must still
+select the exact prepared content and core.
+
+The PlayStation mode-aware path reads the effective game, folder, per-core or
+global options file in RetroArch's precedence order and copies that single
+snapshot into the launch directory. Analog-toggle and compatibility options
+are preserved; only the two multitap settings are forced off. Automatic config
+overrides/remaps remain suspended, and existing `.cfg`/`.rmp` overrides still
+require further resolution. Existing settings files are not rewritten.
+
+Tests cover identity extraction, controller-mode composition, settings-file
+precedence, archive-prepared paths, checksums, and real `chdman`-generated
+zlib/LZMA/FLAC/Zstandard/uncompressed images, including linked parent images.
+Linked RetroArch remap files and directories are also checked rather than
+mistaken for absent overrides. These tests do not by themselves
+prove physical-controller-to-game behavior or complete all-core coverage.
+
+The opt-in runtime diagnostic now verifies 90 BIOS input-buffer observations
+per run on both cores, in both individual and bitmask callback modes: DualShock
+on both ports plus a mixed digital/DualShock configuration. A separate real
+RetroArch oracle verifies the generated Brawler64 digital mapping, including
+all fourteen controls, releases and simultaneous buttons, through Linux joydev
+and emulated PlayStation RAM. See [the oracle guide](../../../../docs/CONTROLLER_RETROARCH_ORACLE.md)
+for prerequisites and the remaining verification boundaries.
+
 Functional driver/configuration facts checked against RetroArch's
 [linuxraw driver](https://github.com/libretro/RetroArch/blob/master/input/drivers_joypad/linuxraw_joypad.c),
 [configuration reader](https://github.com/libretro/RetroArch/blob/master/configuration.c),

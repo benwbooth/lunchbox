@@ -23,6 +23,10 @@ pub fn configured_modes(config: &str, arguments: &[OsString], ports: usize) -> R
                 continue;
             }
             ensure!(
+                name.ends_with(|c: char| c.is_ascii_whitespace()),
+                "RetroArch requires whitespace before '=' in {key}"
+            );
+            ensure!(
                 !found,
                 "Duplicate {key}; resolve the ambiguous controller mode first"
             );
@@ -153,6 +157,7 @@ mod tests {
     #[test]
     fn rejects_ambiguous_or_unresolved_modes() {
         for config in [
+            "input_libretro_device_p1=261",
             "#include \"other.cfg\"",
             "input_libretro_device_p1=1\ninput_libretro_device_p1=261",
             "input_libretro_device_p1=\"261\"oops",

@@ -4,8 +4,10 @@
 explicitly supplied trusted core, verifies its SHA256, and runs an original
 diagnostic. The default mGBA backend runs an ARM program from memory, copying the
 emulated GBA KEYINPUT register to EWRAM alongside an execution marker. The Game
-Gear backend runs an original Z80 program in Genesis Plus GX. No BIOS or commercial
-game bytes are present, and no ROM or firmware download is needed.
+Gear backend runs an original Z80 program in Genesis Plus GX. Those two backends
+need no BIOS. The PlayStation backend runs an original MIPS diagnostic through
+user-supplied firmware. No commercial game or firmware bytes are included or
+downloaded by this helper.
 
 The GBA backend tests ten standard buttons, releases after every press, and
 A+B/L+R combinations. It checks active-low hardware bits, not just whether a
@@ -21,8 +23,10 @@ that does not return from a callback cannot hang the Lunchbox GUI because this
 helper is never loaded into that process. Native code is **not sandboxed** by the
 helper: a matching hash identifies a file, not whether its publisher is trusted.
 Use only trusted cores. Normal exits unload/deinitialize the core before releasing
-ROM/callback storage. System/save paths refer to a private temporary directory;
-abnormal termination may leave that temporary directory behind.
+ROM/callback storage. Save paths refer to a private temporary directory; system
+paths do too except for PlayStation, which uses the explicitly supplied BIOS
+directory. This is not a filesystem sandbox. Abnormal termination may leave the
+temporary directory behind.
 
 ## Evidence and scope
 
@@ -66,3 +70,22 @@ The pinned [frontend mapping](https://github.com/libretro/Genesis-Plus-GX/blob/a
 and [hardware I/O](https://github.com/libretro/Genesis-Plus-GX/blob/a7985a9c4278ac352f8ca7bb4d3cc6b36e9e3e7d/core/io_ctrl.c)
 provide the source contract. This does not verify physical input, RetroArch
 configuration processing, other Genesis Plus GX systems, or link-cable hardware.
+
+## PlayStation / Beetle PSX
+
+Select `--system psx`, a trusted Beetle PSX or Beetle PSX HW core and its expected
+SHA256, and `--bios-dir /absolute/path/to/bios`. The directory must contain
+`scph5500.bin`, `scph5501.bin`, and `scph5502.bin`, each 512 KiB. The helper records
+their hashes and sizes; these checks identify the supplied files, not their
+authenticity or redistribution rights. Obtain firmware independently and legally.
+
+The original PS-X EXE polls both emulated controller ports and records packet
+bytes in emulated RAM. Cases cover DualShock buttons and signed axes on both
+ports, then a mixed digital/DualShock configuration. Digital mode is checked not
+to request analog axes. Run both individual and `--bitmask` callback paths.
+Results appear in `psx_observations`, with firmware identities in `firmware`.
+
+This is a core-level input diagnostic, not a test of every game's compatibility
+rules or of physical-controller discovery and launch-time configuration. The
+application's prepared-disc compatibility checks and RetroArch launch oracle
+cover different boundaries; see [the launch oracle](../../docs/CONTROLLER_RETROARCH_ORACLE.md).

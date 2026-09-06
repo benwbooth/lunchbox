@@ -55,18 +55,39 @@ pub fn supports_profile(profile: &EmulatorProfile) -> bool {
     cfg!(target_os = "linux") && profile.retroarch_launch.is_some()
 }
 
-fn cfg_value(text: &str, key: &str) -> Option<String> {
-    text.lines()
-        .filter_map(|line| line.trim().split_once('='))
-        .filter(|(name, _)| name.trim() == key)
-        .filter_map(|(_, value)| {
-            value
-                .trim()
-                .strip_prefix('"')
-                .and_then(|value| value.split_once('"'))
-                .map(|(value, _)| value.to_string())
-        })
-        .next()
+fn cfg_value(text: &str, key: &str) -> Result<Option<String>> {
+    let mut result = None;
+    for line in text.lines() {
+        let Some((name, value)) = line.trim().split_once('=') else {
+            continue;
+        };
+        if name.trim() != key {
+            continue;
+        }
+        ensure!(
+            name.ends_with(|c: char| c.is_ascii_whitespace()),
+            "RetroArch requires whitespace before '=' in {key}"
+        );
+        ensure!(result.is_none(), "Duplicate {key} setting");
+        let value = value.trim();
+        let (value, rest) = if let Some(quoted) = value.strip_prefix('"') {
+            quoted
+                .split_once('"')
+                .with_context(|| format!("Unterminated {key} setting"))?
+        } else {
+            let end = value
+                .find(|c: char| c.is_ascii_whitespace() || c == '#')
+                .unwrap_or(value.len());
+            ensure!(end > 0, "Missing {key} value");
+            (&value[..end], &value[end..])
+        };
+        ensure!(
+            rest.trim().is_empty() || rest.trim_start().starts_with('#'),
+            "Unresolved {key} setting suffix"
+        );
+        result = Some(value.to_owned());
+    }
+    Ok(result)
 }
 
 fn core_options_overlay(baseline: &str, options: &BTreeMap<String, String>) -> Result<String> {
@@ -175,17 +196,106 @@ fn write_core_options(
         "Custom RetroArch configuration arguments need core-options resolution before calibrated launch with core options"
     );
     let (base, config) = retroarch_base(executable)?;
+    let baseline = read_core_options(&base, &config)?;
+    write_core_options_snapshot(profile, &baseline, directory)
+}
+
+fn read_core_options(base: &Path, config: &str) -> Result<String> {
     ensure!(
         !config
             .lines()
             .any(|line| line.trim_start().starts_with("#include")),
         "Included RetroArch configs require core-options resolution before calibrated launch with core options"
     );
-    let path = match cfg_value(&config, "core_options_path").filter(|v| !v.is_empty()) {
+    let path = match cfg_value(config, "core_options_path")?.filter(|v| !v.is_empty()) {
         Some(path) => configured_path(&path)?,
         None => base.join("retroarch-core-options.cfg"),
     };
-    let options = core_options_overlay(&read_optional(&path)?, &profile.core_options)?;
+    read_optional(&path)
+}
+
+fn config_bool(config: &str, key: &str, default: bool) -> Result<bool> {
+    let mut result = None;
+    for line in config.lines().map(str::trim) {
+        let Some((name, value)) = line.split_once('=') else {
+            continue;
+        };
+        if name.trim() != key {
+            continue;
+        }
+        ensure!(
+            name.ends_with(|c: char| c.is_ascii_whitespace()),
+            "RetroArch requires whitespace before '=' in {key}"
+        );
+        ensure!(result.is_none(), "Duplicate {key} setting");
+        let value = value.trim();
+        let value = if let Some(quoted) = value.strip_prefix('"') {
+            let (value, rest) = quoted
+                .split_once('"')
+                .context("Unterminated boolean setting")?;
+            ensure!(
+                rest.trim().is_empty() || rest.trim_start().starts_with('#'),
+                "Invalid boolean setting suffix"
+            );
+            value
+        } else {
+            value.split('#').next().unwrap().trim()
+        };
+        result = Some(match value {
+            "true" => true,
+            "false" => false,
+            _ => bail!("Unresolved {key} boolean setting"),
+        });
+    }
+    Ok(result.unwrap_or(default))
+}
+
+fn effective_mode_core_options(
+    base: &Path,
+    config: &str,
+    config_directory: &Path,
+    library: &str,
+    content: &Path,
+) -> Result<String> {
+    // RetroArch 1.22.2 runloop_init_core_options_path selects ONE file, not a
+    // merge: game -> folder -> per-core -> global. Its defaults enable game
+    // options and per-core storage (global_core_options = false).
+    let directory = config_directory.join(library);
+    let mut candidates = Vec::new();
+    if config_bool(config, "game_specific_options", true)? {
+        let game = content
+            .file_stem()
+            .context("Prepared content has no game basename")?;
+        let folder = content
+            .parent()
+            .and_then(Path::file_name)
+            .context("Prepared content has no folder basename")?;
+        for name in [game, folder] {
+            let mut filename = name.to_os_string();
+            filename.push(".opt");
+            candidates.push(directory.join(filename));
+        }
+    }
+    if !config_bool(config, "global_core_options", false)? {
+        candidates.push(directory.join(format!("{library}.opt")));
+    }
+    for path in candidates {
+        if path.exists() {
+            return read_optional(&path);
+        }
+    }
+    read_core_options(base, config)
+}
+
+fn write_core_options_snapshot(
+    profile: &EmulatorProfile,
+    baseline: &str,
+    directory: &Path,
+) -> Result<String> {
+    if profile.core_options.is_empty() {
+        return Ok(String::new());
+    }
+    let options = core_options_overlay(baseline, &profile.core_options)?;
     let output = directory.join("core-options.cfg");
     let output_text = output.to_str().context("Core-options path must be UTF-8")?;
     ensure!(
@@ -442,6 +552,21 @@ fn player_config(
     device: &JoydevMap,
     player: usize,
 ) -> Result<String> {
+    let requested = profile
+        .retroarch_launch
+        .as_ref()
+        .context("Preview-only controller contract")?
+        .device;
+    player_config_requested(calibration, profile, device, player, requested)
+}
+
+fn player_config_requested(
+    calibration: &Calibration,
+    profile: &EmulatorProfile,
+    device: &JoydevMap,
+    player: usize,
+    requested_mode: u32,
+) -> Result<String> {
     calibration.validate()?;
     ensure!(
         calibration.os == std::env::consts::OS && calibration.os == "linux",
@@ -451,6 +576,12 @@ fn player_config(
         .retroarch_launch
         .as_ref()
         .context("Preview-only controller contract")?;
+    ensure!(
+        requested_mode == launch.device
+            || (matches!(profile.core.as_str(), "mednafen_psx" | "mednafen_psx_hw")
+                && matches!(requested_mode, 1 | 517)),
+        "Requested controller mode disagrees with the binding contract"
+    );
     ensure!(
         (1..=launch.max_players).contains(&player),
         "Player number exceeds this input mode's port count"
@@ -498,7 +629,7 @@ fn player_config(
     values.insert(format!("input_player{player}_analog_dpad_mode"), "0".into());
     values.insert(
         format!("input_libretro_device_p{player}"),
-        launch.device.to_string(),
+        requested_mode.to_string(),
     );
     Ok(values
         .into_iter()
@@ -685,6 +816,27 @@ pub fn prepare(
     }))
 }
 
+fn ensure_no_mode_overrides(directory: &Path, library: &str) -> Result<()> {
+    if !directory.exists() {
+        return Ok(());
+    }
+    // RetroArch opens symlinked configs normally (common with declarative
+    // configuration). Follow them too; an unreadable/cyclic tree is unresolved,
+    // never evidence that no device-changing override exists.
+    for entry in walkdir::WalkDir::new(directory).follow_links(true) {
+        let entry = entry?;
+        ensure!(
+            !entry.file_type().is_file()
+                || !entry
+                    .path()
+                    .extension()
+                    .is_some_and(|ext| ext == "rmp" || ext == "cfg"),
+            "Saved {library} core/game overrides need effective controller-mode resolution before calibrated launch"
+        );
+    }
+    Ok(())
+}
+
 /// Independent target modes per console port, selected from the emulator's
 /// configuration, never inferred by downgrading an incompatible physical pad.
 fn prepare_mode_aware(
@@ -727,33 +879,45 @@ fn prepare_mode_aware(
     );
     // A saved core/game remap can select a device mode, not just button wiring.
     // Do not silently fall back to the base mode while those layers are unresolved.
-    let remaps = cfg_value(&config, "input_remapping_directory")
+    let remaps = cfg_value(&config, "input_remapping_directory")?
         .filter(|v| !v.is_empty())
         .map(|value| configured_path(&value))
         .transpose()?
         .unwrap_or_else(|| base.join("config/remaps"));
-    let overrides = cfg_value(&config, "rgui_config_directory")
+    let overrides = cfg_value(&config, "rgui_config_directory")?
         .filter(|v| !v.is_empty())
         .map(|value| configured_path(&value))
         .transpose()?
         .unwrap_or_else(|| base.join("config"));
     for directory in [remaps.join(library), overrides.join(library)] {
-        if directory.exists() {
-            for entry in walkdir::WalkDir::new(&directory) {
-                let entry = entry?;
-                ensure!(
-                    !entry.file_type().is_file()
-                        || !entry
-                            .path()
-                            .extension()
-                            .is_some_and(|ext| ext == "rmp" || ext == "cfg"),
-                    "Saved {library} core/game overrides need effective controller-mode resolution before calibrated launch"
-                );
-            }
-        }
+        ensure_no_mode_overrides(&directory, library)?;
     }
     let modes = crate::controller_launch_modes::configured_modes(&config, arguments, ports)?;
-    let players = mode_players(settings, &option.core_name, platform, &modes, devices)?;
+    // Read once: the same options determine compatibility and reach the core.
+    let (binding_modes, baseline_options) = if let Some(content) = beetle_launch_content(
+        &option.core_name,
+        arguments,
+        plan.retroarch_content.as_ref(),
+    )? {
+        let options =
+            effective_mode_core_options(&base, &config, &overrides, library, &content.content)?;
+        let bindings = crate::controller_psx::launch_binding_modes(
+            content,
+            &option.core_name,
+            &modes,
+            &options,
+        )?;
+        (bindings, options)
+    } else {
+        (modes.clone(), read_core_options(&base, &config)?)
+    };
+    let players = mode_players(
+        settings,
+        &option.core_name,
+        platform,
+        &binding_modes,
+        devices,
+    )?;
     let cache = directories::BaseDirs::new()
         .context("Finding controller launch cache")?
         .cache_dir()
@@ -782,13 +946,18 @@ fn prepare_mode_aware(
     for (port, profile, device) in &players {
         let calibration = &settings.controller_mapping.calibrations[&device.stable_id];
         let numbering = validated_numbering(calibration, profile, device)?;
-        output.push_str(&player_config(calibration, profile, &numbering, *port)?);
+        output.push_str(&player_config_requested(
+            calibration,
+            profile,
+            &numbering,
+            *port,
+            modes[*port - 1],
+        )?);
     }
     output.push_str(&format!("input_max_users = \"{highest_port}\"\n"));
-    output.push_str(&write_core_options(
+    output.push_str(&write_core_options_snapshot(
         first,
-        plan,
-        &option.executable,
+        &baseline_options,
         directory.path(),
     )?);
     let path = directory.path().join("controllers.cfg");
@@ -801,6 +970,21 @@ fn prepare_mode_aware(
             players.len()
         ),
     }))
+}
+
+/// Only Beetle needs disc identity to resolve compatibility-forced devices.
+/// Other mode-aware cores retain their own argument and option contracts.
+fn beetle_launch_content<'a>(
+    core: &str,
+    arguments: &[OsString],
+    prepared: Option<&'a crate::emulator::PreparedRetroarchContent>,
+) -> Result<Option<&'a crate::emulator::PreparedRetroarchContent>> {
+    if !matches!(core, "mednafen_psx" | "mednafen_psx_hw") {
+        return Ok(None);
+    }
+    let content = prepared.context("Missing prepared PlayStation content identity")?;
+    crate::controller_psx::validate_arguments(arguments, content)?;
+    Ok(Some(content))
 }
 
 fn mode_players<'a>(
@@ -1037,6 +1221,275 @@ mod tests {
         missing_click.bindings.remove("l3");
         assert!(!compatible(&missing_click, analog));
         assert!(catalog().launch_mode("swanstation", "PSX", 517).is_none());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn beetle_keeps_requested_devices_separate_from_effective_bindings() {
+        for core in ["mednafen_psx", "mednafen_psx_hw"] {
+            let digital = catalog().launch_mode(core, "PSX", 1).unwrap();
+            let analog = catalog().launch_mode(core, "PSX", 517).unwrap();
+            let (brawler, numbering) = calibrated_layout("brawler64");
+            let config = player_config_requested(&brawler, digital, &numbering, 1, 517).unwrap();
+            assert_eq!(
+                cfg_value(&config, "input_libretro_device_p1")
+                    .unwrap()
+                    .as_deref(),
+                Some("517")
+            );
+            assert_eq!(
+                cfg_value(&config, "input_player1_l_x_plus_axis")
+                    .unwrap()
+                    .as_deref(),
+                Some("nul")
+            );
+            let (_, cross) = numbering
+                .binding(brawler.bindings["a"].native.as_ref().unwrap())
+                .unwrap();
+            assert_eq!(
+                cfg_value(&config, "input_player1_b_btn").unwrap(),
+                Some(cross)
+            );
+            assert!(!compatible(&brawler, analog));
+            let (dualshock, numbering) = calibrated_layout("dualshock");
+            let config = player_config_requested(&dualshock, analog, &numbering, 1, 1).unwrap();
+            assert_eq!(
+                cfg_value(&config, "input_libretro_device_p1")
+                    .unwrap()
+                    .as_deref(),
+                Some("1")
+            );
+            assert_ne!(
+                cfg_value(&config, "input_player1_r_x_plus_axis")
+                    .unwrap()
+                    .as_deref(),
+                Some("nul")
+            );
+            assert!(player_config_requested(&dualshock, analog, &numbering, 1, 261).is_err());
+            let dir = tempfile::tempdir().unwrap();
+            let prefix = if core.ends_with("_hw") {
+                "beetle_psx_hw"
+            } else {
+                "beetle_psx"
+            };
+            let baseline = format!(
+                "{prefix}_compatibility_settings = \"enabled\"\n{prefix}_analog_toggle = \"enabled\"\n"
+            );
+            write_core_options_snapshot(digital, &baseline, dir.path()).unwrap();
+            let copy = std::fs::read_to_string(dir.path().join("core-options.cfg")).unwrap();
+            assert!(copy.starts_with(&baseline));
+            for port in [1, 2] {
+                assert_eq!(
+                    cfg_value(&copy, &format!("{prefix}_enable_multitap_port{port}"))
+                        .unwrap()
+                        .as_deref(),
+                    Some("disabled")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn beetle_content_validation_does_not_restrict_swanstation_arguments() {
+        let arguments = ["--sram-mode", "noload-nosave"].map(OsString::from);
+        assert!(
+            beetle_launch_content("swanstation", &arguments, None)
+                .unwrap()
+                .is_none()
+        );
+        let prepared = crate::emulator::PreparedRetroarchContent {
+            core: "/cores/mednafen_psx_libretro.so".into(),
+            content: "/games/title.cue".into(),
+        };
+        assert!(
+            beetle_launch_content("swanstation", &arguments, Some(&prepared))
+                .unwrap()
+                .is_none()
+        );
+        for core in ["mednafen_psx", "mednafen_psx_hw"] {
+            assert!(beetle_launch_content(core, &arguments, None).is_err());
+            assert!(beetle_launch_content(core, &arguments, Some(&prepared)).is_err());
+            let valid = [
+                OsString::from("-L"),
+                prepared.core.clone().into_os_string(),
+                prepared.content.clone().into_os_string(),
+            ];
+            assert!(
+                beetle_launch_content(core, &valid, Some(&prepared))
+                    .unwrap()
+                    .is_some()
+            );
+        }
+    }
+
+    #[test]
+    fn compact_option_syntax_cannot_change_effective_file_selection() {
+        for key in ["game_specific_options", "global_core_options"] {
+            for value in ["true", "false", "\"true\"", "\"false\""] {
+                assert!(config_bool(&format!("{key}={value}"), key, true).is_err());
+                assert!(config_bool(&format!("{key}={value}"), key, false).is_err());
+            }
+        }
+        for key in [
+            "core_options_path",
+            "rgui_config_directory",
+            "input_remapping_directory",
+        ] {
+            assert!(cfg_value(&format!("{key}=/custom/path"), key).is_err());
+        }
+    }
+
+    #[test]
+    fn path_settings_accept_quoted_and_unquoted_values_without_silent_fallback() {
+        for key in [
+            "core_options_path",
+            "rgui_config_directory",
+            "input_remapping_directory",
+        ] {
+            for suffix in [
+                "/custom/path",
+                "\"/custom/path\"",
+                "/custom/path # note",
+                "\"/custom/path\" # note",
+            ] {
+                assert_eq!(
+                    cfg_value(&format!("{key} = {suffix}"), key)
+                        .unwrap()
+                        .as_deref(),
+                    Some("/custom/path")
+                );
+            }
+            assert_eq!(
+                cfg_value(&format!("{key} = \"/path with # hash\""), key)
+                    .unwrap()
+                    .as_deref(),
+                Some("/path with # hash")
+            );
+            for value in [
+                "",
+                "# no value",
+                "\"unterminated",
+                "\"/custom/path\" extra",
+                "/custom/path extra",
+            ] {
+                assert!(cfg_value(&format!("{key} = {value}"), key).is_err());
+            }
+            assert!(cfg_value(&format!("{key} = /first\n{key} = /second"), key).is_err());
+            assert_eq!(cfg_value("# no setting", key).unwrap(), None);
+        }
+    }
+
+    #[test]
+    fn unquoted_custom_core_options_preserve_compatibility_choice() {
+        let temp = tempfile::tempdir().unwrap();
+        let custom = temp.path().join("custom.opt");
+        let contents = "beetle_psx_compatibility_settings = \"disabled\"\n";
+        std::fs::write(&custom, contents).unwrap();
+        std::fs::write(
+            temp.path().join("retroarch-core-options.cfg"),
+            "beetle_psx_compatibility_settings = \"enabled\"\n",
+        )
+        .unwrap();
+        let config = format!(
+            "core_options_path = {}\ngame_specific_options = false\nglobal_core_options = true\n",
+            custom.display()
+        );
+        let baseline = effective_mode_core_options(
+            temp.path(),
+            &config,
+            &temp.path().join("config"),
+            "Beetle PSX",
+            &temp.path().join("games/title.cue"),
+        )
+        .unwrap();
+        assert_eq!(baseline, contents);
+        let private = tempfile::tempdir().unwrap();
+        let profile = catalog().launch_mode("mednafen_psx", "PSX", 1).unwrap();
+        write_core_options_snapshot(profile, &baseline, private.path()).unwrap();
+        let written = std::fs::read_to_string(private.path().join("core-options.cfg")).unwrap();
+        assert_eq!(
+            cfg_value(&written, "beetle_psx_compatibility_settings")
+                .unwrap()
+                .as_deref(),
+            Some("disabled")
+        );
+        assert_eq!(std::fs::read_to_string(custom).unwrap(), contents);
+    }
+
+    #[test]
+    fn mode_options_follow_retroarch_file_precedence_without_merging() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path();
+        let configs = base.join("config");
+        let directory = configs.join("Beetle PSX");
+        std::fs::create_dir_all(&directory).unwrap();
+        let content = base.join("games/title.cue");
+        let global = base.join("retroarch-core-options.cfg");
+        std::fs::write(&global, "global_only=1\n").unwrap();
+        let resolve = |config: &str| {
+            effective_mode_core_options(base, config, &configs, "Beetle PSX", &content).unwrap()
+        };
+        assert_eq!(resolve(""), "global_only=1\n");
+        let core = directory.join("Beetle PSX.opt");
+        std::fs::write(&core, "beetle_psx_compatibility_settings = disabled\n").unwrap();
+        assert_eq!(
+            resolve(""),
+            "beetle_psx_compatibility_settings = disabled\n"
+        );
+        assert_eq!(resolve("global_core_options = true"), "global_only=1\n");
+        let folder = directory.join("games.opt");
+        std::fs::write(&folder, "folder_only=1\n").unwrap();
+        assert_eq!(resolve("global_core_options = true"), "folder_only=1\n");
+        let game = directory.join("title.opt");
+        std::fs::write(&game, "game_only=1\n").unwrap();
+        assert_eq!(resolve(""), "game_only=1\n");
+        assert_eq!(
+            resolve("game_specific_options = false"),
+            "beetle_psx_compatibility_settings = disabled\n"
+        );
+        assert_eq!(
+            resolve("game_specific_options = false\nglobal_core_options = true"),
+            "global_only=1\n"
+        );
+        assert_eq!(std::fs::read_to_string(&game).unwrap(), "game_only=1\n");
+        assert_eq!(std::fs::read_to_string(&global).unwrap(), "global_only=1\n");
+        assert!(
+            effective_mode_core_options(
+                base,
+                "game_specific_options = maybe",
+                &configs,
+                "Beetle PSX",
+                &content
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn mode_override_guard_follows_symlinked_files_and_directories() {
+        use std::os::unix::fs::symlink;
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("Beetle PSX");
+        std::fs::create_dir(&directory).unwrap();
+        let external = temp.path().join("managed");
+        std::fs::create_dir(&external).unwrap();
+        let options = external.join("core.opt");
+        std::fs::write(&options, "beetle_psx_compatibility_settings = disabled").unwrap();
+        symlink(&options, directory.join("Beetle PSX.opt")).unwrap();
+        ensure_no_mode_overrides(&directory, "Beetle PSX").unwrap();
+        let remap = external.join("game.rmp");
+        std::fs::write(&remap, "input_libretro_device_p1=517").unwrap();
+        let link = directory.join("game.rmp");
+        symlink(&remap, &link).unwrap();
+        assert!(ensure_no_mode_overrides(&directory, "Beetle PSX").is_err());
+        std::fs::remove_file(&link).unwrap();
+        symlink(&external, directory.join("nested")).unwrap();
+        assert!(ensure_no_mode_overrides(&directory, "Beetle PSX").is_err());
+        std::fs::remove_file(&remap).unwrap();
+        ensure_no_mode_overrides(&directory, "Beetle PSX").unwrap();
+        symlink(&directory, external.join("loop")).unwrap();
+        assert!(ensure_no_mode_overrides(&directory, "Beetle PSX").is_err());
     }
 
     #[test]
@@ -1532,6 +1985,7 @@ mod tests {
             current_directory: "/roms".into(),
             environment: vec![],
             cleanup_paths: vec![],
+            retroarch_content: None,
         };
         attach_config(
             &mut plan,
