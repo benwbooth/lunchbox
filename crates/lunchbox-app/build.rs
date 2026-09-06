@@ -65,6 +65,8 @@ fn main() {
                 "qml/ControllerCalibrationWizard.qml",
                 "qml/AlphabetRail.qml",
                 "qml/AppIcon.qml",
+                "qml/LibraryMenu.qml",
+                "qml/SemanticIcon.qml",
                 "qml/ArtworkMat.qml",
                 "qml/AuditMetric.qml",
                 "qml/CatalogLinkButton.qml",

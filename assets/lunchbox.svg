@@ -1,65 +1,50 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Retro metal lunchbox with a gamepad emblem">
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Lunchbox</title>
+  <desc id="desc">An amber enamel lunchbox with a carry handle, a directional pad and two mint game buttons.</desc>
   <defs>
-    <linearGradient id="handleMetal" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#a9b5c5"/>
-      <stop offset="0.32" stop-color="#657287"/>
-      <stop offset="0.58" stop-color="#273544"/>
-      <stop offset="1" stop-color="#718097"/>
+    <linearGradient id="enamel" x1="48" y1="96" x2="204" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffcd79"/>
+      <stop offset=".55" stop-color="#ffb454"/>
+      <stop offset="1" stop-color="#ee9038"/>
     </linearGradient>
-    <linearGradient id="caseMetal" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#95a2b6"/>
-      <stop offset="0.18" stop-color="#526176"/>
-      <stop offset="0.48" stop-color="#1b2735"/>
-      <stop offset="0.72" stop-color="#657287"/>
-      <stop offset="1" stop-color="#2b3647"/>
+    <linearGradient id="lid" x1="128" y1="72" x2="128" y2="108" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffdc96"/>
+      <stop offset="1" stop-color="#ffc26a"/>
     </linearGradient>
-    <linearGradient id="paint" x1="0" y1="0" x2="0.9" y2="1">
-      <stop offset="0" stop-color="#ffc579"/>
-      <stop offset="0.48" stop-color="#f2a13b"/>
-      <stop offset="1" stop-color="#c9792f"/>
-    </linearGradient>
-    <linearGradient id="badge" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1c2b3a"/>
-      <stop offset="1" stop-color="#0f1722"/>
+    <linearGradient id="grip" x1="128" y1="24" x2="128" y2="78" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3b4d60"/>
+      <stop offset="1" stop-color="#192a3b"/>
     </linearGradient>
   </defs>
 
-  <!-- Heavy chrome handle, drawn behind the case. -->
-  <path d="M79 80V57c0-18 14-32 32-32h34c18 0 32 14 32 32v23"
-        fill="none" stroke="#0b111a" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M79 80V57c0-18 14-32 32-32h34c18 0 32 14 32 32v23"
-        fill="none" stroke="url(#handleMetal)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M105 37h46" fill="none" stroke="#f4f7fb" stroke-opacity="0.46" stroke-width="4" stroke-linecap="round"/>
+  <!-- A broad, open handle keeps the lunchbox silhouette legible at 24 px. -->
+  <path d="M78 80V50c0-18 12-30 30-30h40c18 0 30 12 30 30v30h-18V51c0-8-4-12-12-12h-40c-8 0-12 4-12 12v29Z" fill="url(#grip)"/>
+  <path d="M100 26h56" stroke="#63758a" stroke-width="3" stroke-linecap="round" opacity=".55"/>
 
-  <!-- Latches sit above the stamped body like an old metal school lunchbox. -->
-  <g stroke="#0b111a" stroke-width="6" stroke-linejoin="round">
-    <path d="M49 67h34v32H49z" fill="url(#caseMetal)"/>
-    <path d="M173 67h34v32h-34z" fill="url(#caseMetal)"/>
-  </g>
-  <path d="M57 76h18v13H57zm124 0h18v13h-18z" fill="#273544"/>
+  <!-- Dark rolled edge and a quiet lower shadow; no decorative wear or screws. -->
+  <rect x="20" y="70" width="216" height="166" rx="34" fill="#142435"/>
+  <rect x="26" y="76" width="204" height="150" rx="28" fill="url(#enamel)"/>
+  <path d="M54 76h148c16 0 28 12 28 28v6H26v-6c0-16 12-28 28-28Z" fill="url(#lid)"/>
+  <path d="M28 110h200" stroke="#be732e" stroke-width="3"/>
+  <path d="M54 82h148" stroke="#fff0c9" stroke-width="3" stroke-linecap="round" opacity=".75"/>
+  <path d="M43 211c4 6 10 9 19 9h132c9 0 15-3 19-9" fill="none" stroke="#dc8333" stroke-width="3" stroke-linecap="round"/>
 
-  <!-- Rounded steel shell and inset painted panel. -->
-  <rect x="17" y="80" width="222" height="156" rx="27" fill="#0b111a"/>
-  <rect x="24" y="87" width="208" height="142" rx="21" fill="url(#caseMetal)"/>
-  <rect x="36" y="99" width="184" height="118" rx="13" fill="url(#paint)" stroke="#111923" stroke-width="5"/>
-  <path d="M42 113h172" stroke="#f4f7fb" stroke-opacity="0.42" stroke-width="5" stroke-linecap="round"/>
-  <path d="M42 202h172" stroke="#62dac8" stroke-opacity="0.72" stroke-width="5" stroke-linecap="round"/>
+  <!-- The clasp crosses the lid seam, making the object unmistakably a case. -->
+  <rect x="115" y="94" width="26" height="29" rx="7" fill="#b36d2e" opacity=".45"/>
+  <rect x="115" y="90" width="26" height="29" rx="7" fill="#223548"/>
+  <rect x="120" y="94" width="16" height="18" rx="3" fill="#dce9e8"/>
+  <path d="M123 98h10" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
 
-  <!-- A little stamped-metal wear without muddying the silhouette. -->
-  <path d="M53 129l21-12m-15 78l24-12m107-61l14-8m-20 86l19-11" stroke="#f4f7fb" stroke-opacity="0.25" stroke-width="4" stroke-linecap="round"/>
-  <g fill="#657287" stroke="#dce2eb" stroke-width="2">
-    <circle cx="38" cy="101" r="5"/>
-    <circle cx="218" cy="101" r="5"/>
-    <circle cx="38" cy="215" r="5"/>
-    <circle cx="218" cy="215" r="5"/>
-  </g>
-
-  <!-- Recessed badge and clean gamepad mark. -->
-  <path d="M77 137c5-17 19-27 36-27h30c17 0 31 10 36 27l12 38c4 13-10 24-22 16l-22-15h-38l-22 15c-12 8-26-3-22-16z"
-        fill="url(#badge)" stroke="#62dac8" stroke-width="6" stroke-linejoin="round"/>
-  <path d="M96 136v29m-14-14h29" stroke="#f4f7fb" stroke-width="10" stroke-linecap="round"/>
-  <circle cx="157" cy="142" r="7" fill="#62dac8"/>
-  <circle cx="174" cy="157" r="7" fill="#f2a13b"/>
-  <circle cx="126" cy="166" r="4" fill="#95a2b6"/>
-  <circle cx="140" cy="166" r="4" fill="#95a2b6"/>
+  <!-- The face itself is the controller, rather than a badge pasted onto it. -->
+  <path d="M74 138h16v19h19v16H90v19H74v-19H55v-16h19Z" fill="#cc7d34"/>
+  <path d="M76 134h12a2 2 0 0 1 2 2v17h17a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H90v17a2 2 0 0 1-2 2H76a2 2 0 0 1-2-2v-17H57a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h17v-17a2 2 0 0 1 2-2Z" fill="#223548"/>
+  <path d="M79 140h6v16" fill="none" stroke="#42566b" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="161" cy="177" r="16" fill="#cb7b34"/>
+  <circle cx="188" cy="150" r="16" fill="#cb7b34"/>
+  <circle cx="161" cy="173" r="16" fill="#223548"/>
+  <circle cx="188" cy="146" r="16" fill="#223548"/>
+  <circle cx="161" cy="172" r="11" fill="#65d8c5"/>
+  <circle cx="188" cy="145" r="11" fill="#65d8c5"/>
+  <path d="M156 166a8 8 0 0 1 9 0m18-27a8 8 0 0 1 9 0" fill="none" stroke="#b2f3df" stroke-width="2" stroke-linecap="round"/>
+  <rect x="117" y="195" width="22" height="5" rx="2.5" fill="#a95f2d" opacity=".65"/>
 </svg>

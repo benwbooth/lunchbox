@@ -9,20 +9,34 @@ Rectangle {
     property string count: ""
     property bool active: false
     property url iconSource: ""
+    property string iconName: ""
     signal clicked()
     activeFocusOnTab: true
     Keys.onReturnPressed: clicked()
     Keys.onEnterPressed: clicked()
     Keys.onSpacePressed: clicked()
 
-    width: ListView.view ? ListView.view.width : 228
+    width: ListView.view ? ListView.view.width : parent ? parent.width : 228
     height: 43
     radius: 9
     color: active ? "#272c34" : hover.hovered ? "#1b2330" : "transparent"
-    border.color: active ? "#443b31" : "transparent"
+    border.color: activeFocus ? "#ffb454" : active ? "#443b31" : "transparent"
+    opacity: enabled ? 1 : 0.45
 
     HoverHandler { id: hover }
     TapHandler { onTapped: nav.clicked() }
+    Accessible.role: Accessible.Button
+    Accessible.name: nav.label
+    Accessible.onPressAction: nav.clicked()
+
+    SemanticIcon {
+        name: nav.iconName
+        visible: name.length > 0
+        anchors.left: parent.left
+        anchors.leftMargin: 15
+        anchors.verticalCenter: parent.verticalCenter
+        color: nav.active ? "#ffb454" : "#8d99aa"
+    }
 
     Rectangle {
         visible: nav.active
@@ -49,8 +63,8 @@ Rectangle {
     }
     Text {
         text: nav.glyph
-        visible: nav.iconSource.toString().length === 0
-                 || navIcon.status === Image.Error
+        visible: nav.iconName.length === 0 && (nav.iconSource.toString().length === 0
+                 || navIcon.status === Image.Error)
         width: 28
         anchors.left: parent.left
         anchors.leftMargin: 13

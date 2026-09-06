@@ -10489,103 +10489,103 @@ ApplicationWindow {
         color: root.panel
         border.color: root.line
 
-        Column {
+        LibraryMenu {
             id: libraryNav
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.margins: 13
-            spacing: 3
-
-            Text {
-                text: "LIBRARY"
-                color: "#687488"
-                font.pixelSize: 10
-                font.weight: Font.Bold
-                font.letterSpacing: 1.4
-                leftPadding: 13
-                topPadding: 8
-                bottomPadding: 7
-            }
             SidebarNavButton {
                 label: "All Games"
+                iconName: "games"
                 glyph: "▦"
                 count: library.game_count.toString()
                 active: root.selectedPlatform === "" && root.availability === ""
-                onClicked: root.selectLibrary("")
+                onClicked: { libraryNav.close(); root.selectLibrary("") }
             }
             SidebarNavButton {
                 label: "My Collection"
+                iconName: "collection"
                 glyph: "◆"
                 count: library.local_game_count.toString()
                 active: root.selectedPlatform === "" && root.availability === "local"
-                onClicked: root.selectLibrary("local")
+                onClicked: { libraryNav.close(); root.selectLibrary("local") }
             }
             SidebarNavButton {
                 label: "Favorites"
+                iconName: "favorite"
                 glyph: "★"
                 count: library.favorite_count.toString()
                 active: root.selectedPlatform === "" && root.availability === "favorites"
-                onClicked: root.selectLibrary("favorites")
+                onClicked: { libraryNav.close(); root.selectLibrary("favorites") }
             }
             SidebarNavButton {
                 label: "Recently Played"
+                iconName: "recent"
                 glyph: "◷"
                 count: library.recent_count.toString()
                 active: root.selectedPlatform === "" && root.availability === "recent"
-                onClicked: root.selectLibrary("recent")
+                onClicked: { libraryNav.close(); root.selectLibrary("recent") }
             }
             SidebarNavButton {
                 label: "Minerva"
+                iconName: "download"
                 glyph: "↓"
                 count: library.downloadable_game_count.toString()
                 active: root.availability === "downloadable"
-                onClicked: root.selectLibrary("downloadable")
+                onClicked: { libraryNav.close(); root.selectLibrary("downloadable") }
             }
             SidebarNavButton {
                 label: "Import ROMs"
+                iconName: "import"
                 glyph: "+"
                 count: localImport.schedule_review_profile_count > 0
                        ? localImport.schedule_review_profile_count.toString() : ""
-                onClicked: root.openImportDialog()
+                onClicked: { libraryNav.close(); root.openImportDialog() }
             }
             SidebarNavButton {
                 label: "Torrent Sources"
+                iconName: "torrent"
                 glyph: "↓"
-                onClicked: root.openTorrentImport()
+                onClicked: { libraryNav.close(); root.openTorrentImport() }
             }
             SidebarNavButton {
                 label: "Library Audit"
+                iconName: "audit"
                 glyph: "✓"
                 count: libraryAudit.total_entry_count > 0
                        ? libraryAudit.issue_count.toString() : ""
                 onClicked: {
+                    libraryNav.close()
                     libraryAuditDialog.open()
                     libraryAudit.start_audit()
                 }
             }
             SidebarNavButton {
                 label: "Bulk Edit Library"
+                iconName: "edit"
                 glyph: "✎"
                 enabled: library.ready && library.filtered_count > 0
                          && !library.bulk_edit_busy
-                onClicked: bulkLibraryEditor.openForScope()
+                onClicked: { libraryNav.close(); bulkLibraryEditor.openForScope() }
             }
             SidebarNavButton {
                 label: "BIOS & Firmware"
+                iconName: "firmware"
                 glyph: "◆"
                 count: firmwareAudit.game_count > 0
                        ? (firmwareAudit.missing_count + firmwareAudit.manual_count
                           + firmwareAudit.no_runtime_count + firmwareAudit.error_count).toString()
                        : ""
-                onClicked: firmwareAuditDialog.openAndScan()
+                onClicked: { libraryNav.close(); firmwareAuditDialog.openAndScan() }
             }
             SidebarNavButton {
                 label: "Media Audit"
+                iconName: "media"
                 glyph: "▣"
                 count: mediaAudit.examined_count > 0
                        ? mediaAudit.missing_count.toString() : ""
-                onClicked: mediaAuditDialog.open()
+                onClicked: { libraryNav.close(); mediaAuditDialog.open() }
             }
         }
 
