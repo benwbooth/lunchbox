@@ -94,8 +94,13 @@ device number is accepted merely from an image-only table or a platform name.
    successful layout assignment.
 3. **Full one-calibration launch test.** Exercise physical discovery, persisted
    calibration, prepared content, device selection, generated configuration and
-   emulated input readback in one path. Existing component and diagnostic oracles
-   are useful but not proof of that entire workflow.
+   emulated input readback in one path. The [saved-calibration GBA
+   oracle](CONTROLLER_RETROARCH_ORACLE.md#saved-calibration-launch-path) now covers
+   real supported virtual-pad discovery, private settings persistence, the ROM
+   plan builder, production `prepare`, preferred-player selection, generated
+   Flatpak grants and arguments, and emulated input readback. Physical GUI capture,
+   automatic core selection and the desktop launch action remain unverified in
+   that complete path; the oracle is not all-core or physical-Brawler evidence.
 4. **Coverage accounting.** Track layout representability, assignment completeness,
    contract provenance, launch-adapter support and runtime evidence separately for
    every catalog core/platform/mode. A missing required capability remains visible.

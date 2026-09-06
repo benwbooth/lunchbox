@@ -12,7 +12,8 @@ independent of the generated configuration.
 This covers the native-numbering and RetroPad intermediary path, not physical
 GUI calibration capture, automatic device selection, the complete `prepare`
 entry point, standalone emulators, other operating systems, or all cores.
-The deliberately virtual device is not offered by normal physical-pad discovery.
+These two direct-config tests use deliberately hidden virtual devices. The
+additional saved-calibration test below exercises normal discovery and `prepare`.
 
 `controller_launch::oracle::brawler64_config_reaches_psx_hardware_through_retroarch`
 uses the same round-tripped calibration and native-numbering path with Beetle PSX
@@ -42,6 +43,43 @@ DualShock ports, in individual and bitmask callback modes. Each run makes 90
 observations. Its `contract_source_revision` describes the expected input
 contract; observed core hash and version identify the binary actually tested.
 
+## Saved-calibration launch path
+
+`controller_launch::oracle::saved_brawler64_calibration_prepares_and_controls_gba_through_retroarch`
+uses two explicitly labeled Steam-compatible virtual gamepads. Their supplied
+VID/PID (`28de:11ff`) select Lunchbox's existing supported virtual-gamepad class;
+they remain `BUS_VIRTUAL` and are asserted to be virtual in the actual discovery
+result. This does not impersonate a physical Brawler64 in the evidence: the
+saved physical-layout choice is explicitly `brawler64`, independent of USB identity.
+There is no injected inventory or test-only discovery exception. See the
+[Linux uinput interface](https://docs.kernel.org/input/uinput.html) for device setup.
+
+The test gets both stable IDs from real discovery, saves and reloads their
+calibrations through a private `SettingsStore`, and prefers the later discovery
+entry. It builds a production ROM launch plan and calls the public `prepare`
+entry point. The generated controller arguments and Flatpak filesystem grants
+are preserved when the isolated diagnostic process is launched; the test never
+calls `player_config` on this path. It checks the selected joydev index and
+single-player limit, then reads the same independent GBA hardware expectations
+as the direct-config test. The non-preferred pad holds conflicting A/L inputs
+throughout every selected-pad press/release check. Launch-session cleanup is
+checked after the emulator has been stopped.
+
+Run this test by replacing the test-name filter in the command below with
+`saved_brawler64_calibration_prepares_and_controls_gba_through_retroarch`.
+It still does not cover physical GUI button capture, automatic emulator/core
+discovery (the trusted core is supplied explicitly), the desktop launch action,
+mode-aware core preparation, standalone emulators, or other operating systems.
+No user settings database or emulator configuration is rewritten. The production
+preparation cache contains an owned temporary controller-config directory that is
+removed when the launch session ends.
+
+Verified on 2026-09-06 with the pinned mGBA binary and RetroArch 1.22.2
+(`69a4f0ea1e`): the later-discovered `/dev/input/js8` was selected over `js7`, all
+25 GBA hardware observations passed (initial release, ten individual controls,
+and two combinations with releases), and the generated config directory was
+removed after teardown. Joystick numbers describe that run, not saved assumptions.
+
 ## Prerequisites
 
 - A writable `/dev/uinput` and Linux joydev support.
@@ -63,7 +101,9 @@ LUNCHBOX_ORACLE_DISPLAY=:97 LUNCHBOX_ORACLE_MGBA_CORE=/absolute/path/mgba_libret
 ```
 
 The test does not start or stop the X server. Close controller-aware desktop
-applications first if they might react to a synthetic joystick. Button codes use
+applications first if they might react to a synthetic joystick. In particular,
+the saved-calibration test's Valve-class pads are visible to normal discovery and
+can be observed by host controller daemons. Button codes use
 the nonstandard trigger-happy range, not Guide/keyboard events, and the virtual
 device is destroyed on return or unwind.
 

@@ -1,5 +1,6 @@
 //! Opt-in real kernel -> generated config -> RetroArch -> emulated hardware test.
-//! This is not a substitute for physical calibration capture or launch discovery.
+//! Includes an opt-in saved-calibration -> discovery -> prepare integration path.
+//! Virtual fixtures are not evidence of physical Brawler64 calibration capture.
 use super::*;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -7,13 +8,14 @@ use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 struct VirtualPad(File);
 
 impl VirtualPad {
-    fn create(calibration: &Calibration) -> Result<(Self, PathBuf)> {
+    fn create(calibration: &Calibration, discoverable: bool) -> Result<(Self, PathBuf)> {
         let pad = Self(OpenOptions::new().write(true).open("/dev/uinput")?);
         let fd = pad.0.as_raw_fd();
         for (request, value) in [
@@ -37,9 +39,26 @@ impl VirtualPad {
             );
         }
         // Linux uinput_setup ABI: input_id (8), name (80), ff_effects_max (4).
-        let name = format!("Lunchbox input oracle {}", std::process::id());
+        static NEXT_PAD: AtomicU64 = AtomicU64::new(0);
+        let instance = NEXT_PAD.fetch_add(1, Ordering::Relaxed);
+        let name = format!(
+            "Lunchbox {} gamepad oracle {}-{instance}",
+            if discoverable {
+                "Steam-compatible virtual"
+            } else {
+                "virtual"
+            },
+            std::process::id()
+        );
+        ensure!(name.len() < 80, "Oracle device name exceeds uinput ABI");
         let mut setup = [0u8; 92];
         setup[..2].copy_from_slice(&0x06u16.to_ne_bytes()); // BUS_VIRTUAL
+        if discoverable {
+            // Exercise the existing Steam-compatible virtual-pad discovery class,
+            // not a test-only discovery override or a claim of physical hardware.
+            setup[2..4].copy_from_slice(&0x28deu16.to_ne_bytes());
+            setup[4..6].copy_from_slice(&0x11ffu16.to_ne_bytes());
+        }
         setup[8..8 + name.len()].copy_from_slice(name.as_bytes());
         ensure!(
             unsafe { libc::ioctl(fd, 0x405c5503 as libc::c_ulong, setup.as_ptr()) } >= 0,
@@ -245,16 +264,151 @@ fn private_display_rejects_desktop_aliases_and_missing_desktop() {
 #[test]
 #[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, and trusted mGBA core; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
-    brawler64_hardware_oracle(false)
+    brawler64_hardware_oracle(false, false)
 }
 
 #[test]
 #[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, trusted Beetle PSX core and local BIOS; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn brawler64_config_reaches_psx_hardware_through_retroarch() -> Result<()> {
-    brawler64_hardware_oracle(true)
+    brawler64_hardware_oracle(true, false)
 }
 
-fn brawler64_hardware_oracle(psx: bool) -> Result<()> {
+#[test]
+#[ignore = "requires writable uinput, isolated X display and trusted mGBA; creates two Steam-compatible virtual pads; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
+fn saved_brawler64_calibration_prepares_and_controls_gba_through_retroarch() -> Result<()> {
+    brawler64_hardware_oracle(false, true)
+}
+
+fn saved_calibration_plan(
+    directory: &Path,
+    calibration: &Calibration,
+    preferred_path: &Path,
+    other_path: &Path,
+) -> Result<(LaunchPlan, CalibratedLaunch)> {
+    let mut warnings = Vec::new();
+    let inventory = crate::controllers::list_local_controllers(&mut warnings);
+    let find = |path: &Path| -> Result<(usize, &ControllerDevice)> {
+        let matches = inventory
+            .iter()
+            .enumerate()
+            .filter(|(_, device)| device.device_path == path)
+            .collect::<Vec<_>>();
+        ensure!(
+            matches.len() == 1,
+            "Expected one discovered oracle pad at {}: {warnings:?}",
+            path.display()
+        );
+        let (index, device) = matches[0];
+        ensure!(
+            device.is_virtual
+                && device.vendor_id.as_deref() == Some("28de")
+                && device.product_id.as_deref() == Some("11ff")
+                && device.bus_type.as_deref() == Some("0006")
+                && device
+                    .name
+                    .starts_with("Lunchbox Steam-compatible virtual gamepad oracle "),
+            "Unexpected discovered oracle identity: {device:?}"
+        );
+        Ok((index, device))
+    };
+    let (preferred_index, preferred) = find(preferred_path)?;
+    let (other_index, other) = find(other_path)?;
+    ensure!(
+        other_index < preferred_index && other.stable_id != preferred.stable_id,
+        "Oracle requires two distinct pads with the preferred pad later in discovery order"
+    );
+
+    let store = crate::settings::SettingsStore::at(directory.join("lunchbox-state.db"))?;
+    let mut settings = AppSettings::default();
+    let mapping = &mut settings.controller_mapping;
+    mapping.calibrated_launch = true;
+    mapping.player_mappings.clear();
+    for device in [other, preferred] {
+        mapping
+            .calibrations
+            .insert(device.stable_id.clone(), calibration.clone());
+    }
+    let platform = "Nintendo Game Boy Advance";
+    mapping.preferred_devices.insert(
+        crate::controllers::system_layout(platform).to_owned(),
+        preferred.stable_id.clone(),
+    );
+    store.save(&settings)?;
+    drop(settings);
+    let settings = store.load()?;
+    ensure!(
+        serde_json::to_value(&settings.controller_mapping.calibrations[&preferred.stable_id])?
+            == serde_json::to_value(calibration)?,
+        "Saved calibration changed during persistence"
+    );
+    let option = RomEmulatorOption::retroarch(
+        "oracle-mgba".into(),
+        "mGBA".into(),
+        "mgba",
+        EmulatorExecutable::Flatpak {
+            command: "flatpak".into(),
+            app_id: "org.libretro.RetroArch".into(),
+        },
+        directory.join("mgba_libretro.so"),
+        true,
+    );
+    let mut plan =
+        crate::emulator::build_rom_launch_plan(&directory.join("input.gba"), platform, &option)?;
+    let boundary = plan
+        .arguments
+        .iter()
+        .position(|arg| arg == "org.libretro.RetroArch")
+        .context("Missing production Flatpak boundary")?;
+    // Only diagnostic I/O and private base-config flags are added by the oracle.
+    // prepare must select the pad and attach all controller arguments itself.
+    plan.arguments.splice(
+        boundary + 1..boundary + 1,
+        [
+            "--sram-mode".into(),
+            "noload-nosave".into(),
+            "-c".into(),
+            directory.join("base.cfg").into_os_string(),
+        ],
+    );
+    let session = prepare(&settings, platform, &option, &mut plan)?
+        .context("Saved calibration did not prepare a launch")?;
+    let path = session._directory.path().join("controllers.cfg");
+    let config = fs::read_to_string(&path)?;
+    let numbering = JoydevMap::read(preferred_path)?;
+    ensure!(
+        cfg_value(&config, "input_player1_joypad_index")? == Some(numbering.index.to_string()),
+        "prepare selected the wrong physical joystick"
+    );
+    ensure!(
+        cfg_value(&config, "input_max_users")?.as_deref() == Some("1"),
+        "GBA launch did not restrict the selected calibration to its one port"
+    );
+    ensure!(
+        plan.arguments.iter().any(|arg| arg == path.as_os_str()),
+        "Production plan omitted its controller config argument"
+    );
+    ensure!(
+        plan.arguments.iter().any(|arg| arg
+            == &OsString::from(format!(
+                "--filesystem={}",
+                session._directory.path().display()
+            ))),
+        "Production plan omitted its controller config filesystem grant"
+    );
+    ensure!(
+        plan.cleanup_paths.is_empty(),
+        "Unexpected diagnostic content transformation"
+    );
+    eprintln!(
+        "Saved-calibration oracle: {} -> {} ({})",
+        preferred.stable_id,
+        preferred_path.display(),
+        session.description
+    );
+    Ok((plan, session))
+}
+
+fn brawler64_hardware_oracle(psx: bool, saved_launch: bool) -> Result<()> {
     use sha2::{Digest, Sha256};
     let (core_env, core_name, rom_name, expected_hash) = if psx {
         (
@@ -347,7 +501,27 @@ fn brawler64_hardware_oracle(psx: bool) -> Result<()> {
     )?;
     let calibration: Calibration =
         serde_json::from_slice(&fs::read(dir.join("calibration.json"))?)?;
-    let (mut pad, path) = VirtualPad::create(&calibration)?;
+    // Both pads remain alive through readback. Prefer the later discovery entry
+    // so the test cannot pass by blindly selecting the first calibrated joystick.
+    let mut other_pad = if saved_launch {
+        Some(VirtualPad::create(&calibration, true)?)
+    } else {
+        None
+    };
+    let (mut pad, mut path) = VirtualPad::create(&calibration, saved_launch)?;
+    if let Some((other, other_path)) = &mut other_pad {
+        let inventory = crate::controllers::list_local_controllers(&mut Vec::new());
+        let position = |path: &Path| {
+            inventory
+                .iter()
+                .position(|device| device.device_path == path)
+                .context("Oracle pad missing from production discovery")
+        };
+        if position(&path)? < position(other_path)? {
+            std::mem::swap(&mut pad, other);
+            std::mem::swap(&mut path, other_path);
+        }
+    }
     let numbering = JoydevMap::read(&path)?;
     let profile = if psx {
         catalog().launch_mode("mednafen_psx", "PSX", 1)
@@ -355,12 +529,14 @@ fn brawler64_hardware_oracle(psx: bool) -> Result<()> {
         contract("mgba", "Nintendo Game Boy Advance")
     }
     .context("Missing diagnostic core contract")?;
-    let mut mapping = player_config(&calibration, profile, &numbering, 1)?;
-    if psx {
-        mapping.push_str(&write_core_options_snapshot(profile, "", dir)?);
-        mapping.push_str("input_libretro_device_p2 = \"0\"\ninput_max_users = \"1\"\n");
+    if !saved_launch {
+        let mut mapping = player_config(&calibration, profile, &numbering, 1)?;
+        if psx {
+            mapping.push_str(&write_core_options_snapshot(profile, "", dir)?);
+            mapping.push_str("input_libretro_device_p2 = \"0\"\ninput_max_users = \"1\"\n");
+        }
+        fs::write(dir.join("mapping.cfg"), mapping)?;
     }
-    fs::write(dir.join("mapping.cfg"), mapping)?;
     let mut config = String::from(
         "stdin_cmd_enable = \"true\"\ninput_driver = \"x\"\ninput_joypad_driver = \"linuxraw\"\ninput_poll_type_behavior = \"0\"\nvideo_driver = \"glcore\"\naudio_enable = \"false\"\nvideo_fullscreen = \"false\"\npause_nonactive = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\nauto_overrides_enable = \"false\"\nauto_remaps_enable = \"false\"\ninput_autodetect_enable = \"false\"\nhistory_list_enable = \"false\"\ngame_specific_options = \"false\"\ncore_info_cache_enable = \"false\"\n",
     );
@@ -389,7 +565,55 @@ fn brawler64_hardware_oracle(psx: bool) -> Result<()> {
         config.push_str(&format!("{key} = \"{}\"\n", dir.join(path).display()));
     }
     fs::write(dir.join("base.cfg"), config)?;
-    let mut command = Command::new("flatpak");
+    let (plan, calibrated_session) = if saved_launch {
+        let (_, other_path) = other_pad.as_ref().context("Missing second oracle pad")?;
+        let (plan, session) = saved_calibration_plan(dir, &calibration, &path, other_path)?;
+        (plan, Some(session))
+    } else {
+        (
+            LaunchPlan {
+                emulator_name: "RetroArch input oracle".into(),
+                program: "flatpak".into(),
+                arguments: vec![
+                    "run".into(),
+                    format!("--filesystem={}", dir.display()).into(),
+                    "org.libretro.RetroArch".into(),
+                    "--verbose".into(),
+                    "--sram-mode".into(),
+                    "noload-nosave".into(),
+                    "-c".into(),
+                    dir.join("base.cfg").into_os_string(),
+                    "--appendconfig".into(),
+                    dir.join("mapping.cfg").into_os_string(),
+                    "-L".into(),
+                    dir.join(core_name).into_os_string(),
+                    dir.join(rom_name).into_os_string(),
+                ],
+                current_directory: dir.to_owned(),
+                environment: Vec::new(),
+                cleanup_paths: Vec::new(),
+                retroarch_content: None,
+            },
+            None,
+        )
+    };
+    let generated_directory = calibrated_session
+        .as_ref()
+        .map(|session| session._directory.path().to_owned());
+    let boundary = plan
+        .arguments
+        .iter()
+        .position(|arg| arg == "org.libretro.RetroArch")
+        .context("Missing oracle Flatpak boundary")?;
+    ensure!(
+        plan.arguments.first().is_some_and(|arg| arg == "run"),
+        "Unexpected Flatpak plan"
+    );
+    ensure!(
+        plan.environment.is_empty(),
+        "Oracle isolation requires an unmodified launch environment"
+    );
+    let mut command = Command::new(&plan.program);
     command
         // Socket exposure is decided from the launcher's environment, before
         // Flatpak applies --env options or the sandbox's env command runs.
@@ -405,7 +629,9 @@ fn brawler64_hardware_oracle(psx: bool) -> Result<()> {
             "--nofilesystem=home",
             "--command=env",
         ])
-        .arg(format!("--filesystem={}", dir.display()))
+        // Retain the production filesystem grants, including the launch-scoped
+        // controller config. Do not repair missing grants in the test wrapper.
+        .args(&plan.arguments[1..boundary])
         .arg(format!("--env=DISPLAY={display}"))
         .arg("org.libretro.RetroArch")
         .arg("QT_QPA_PLATFORM=xcb")
@@ -420,19 +646,10 @@ fn brawler64_hardware_oracle(psx: bool) -> Result<()> {
         command.arg(format!("{key}={}", dir.join(suffix).display()));
     }
     command
-        .args([
-            "/app/bin/retroarch",
-            "--verbose",
-            "--sram-mode",
-            "noload-nosave",
-            "-c",
-        ])
-        .arg(dir.join("base.cfg"))
-        .arg("--appendconfig")
-        .arg(dir.join("mapping.cfg"))
-        .arg("-L")
-        .arg(dir.join(core_name))
-        .arg(dir.join(rom_name))
+        .arg("/app/bin/retroarch")
+        .args(&plan.arguments[boundary + 1..])
+        .current_dir(&plan.current_directory)
+        .envs(plan.environment.iter().cloned())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -452,6 +669,16 @@ fn brawler64_hardware_oracle(psx: bool) -> Result<()> {
     });
     let released = if psx { 0xffff } else { 0x3ff };
     await_keys(&mut child, &replies, released, psx)?;
+    if let Some((other, _)) = &mut other_pad {
+        // Keep conflicting inputs held across every selected-pad observation.
+        // An immediate released read alone could precede event consumption.
+        for id in ["a", "l"] {
+            other.button(
+                (calibration.bindings[id].native.as_ref().unwrap().code & 0xffff) as u16,
+                true,
+            )?;
+        }
+    }
     // Expected bits come from console hardware protocols, not generated config.
     let cases = if psx {
         vec![
@@ -505,6 +732,14 @@ fn brawler64_hardware_oracle(psx: bool) -> Result<()> {
         }
         await_keys(&mut child, &replies, released, psx)
             .with_context(|| format!("Released {controls:?}"))?;
+    }
+    drop(child);
+    drop(calibrated_session);
+    if let Some(directory) = generated_directory {
+        ensure!(
+            !directory.exists(),
+            "Launch-scoped controller config survived teardown"
+        );
     }
     Ok(())
 }

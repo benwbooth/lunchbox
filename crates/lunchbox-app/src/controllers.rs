@@ -2188,6 +2188,26 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
+    fn virtual_discovery_exception_requires_the_exact_steam_gamepad_identity() {
+        let mut device = controller("oracle", "Lunchbox virtual gamepad oracle");
+        device.is_virtual = true;
+        assert!(!should_show_linux_controller(&device));
+        device.vendor_id = Some("28de".into());
+        assert!(!should_show_linux_controller(&device));
+        device.product_id = Some("11ff".into());
+        assert!(should_show_linux_controller(&device));
+        device.product_id = Some("0001".into());
+        assert!(!should_show_linux_controller(&device));
+        device.product_id = Some("11ff".into());
+        device.vendor_id = Some("0001".into());
+        assert!(!should_show_linux_controller(&device));
+        device.vendor_id = Some("28de".into());
+        device.name = "Lunchbox oracle".into();
+        assert!(!should_show_linux_controller(&device));
+    }
+
+    #[test]
     fn filters_non_game_input_devices_on_every_platform() {
         assert!(is_likely_non_game_controller("USB Keyboard"));
         assert!(is_likely_non_game_controller("Wireless Mouse"));

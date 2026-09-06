@@ -149,6 +149,25 @@ pub struct RomEmulatorOption {
 }
 
 impl RomEmulatorOption {
+    pub(crate) fn retroarch(
+        emulator_id: String,
+        emulator_name: String,
+        core_name: &str,
+        executable: EmulatorExecutable,
+        core_path: PathBuf,
+        recommended: bool,
+    ) -> Self {
+        Self {
+            emulator_id,
+            emulator_name,
+            runtime_kind: EmulatorRuntimeKind::RetroArch,
+            core_name: canonical_retroarch_core_name(core_name).to_owned(),
+            executable,
+            core_path: Some(core_path),
+            recommended,
+        }
+    }
+
     pub fn label(&self) -> String {
         match self.runtime_kind {
             EmulatorRuntimeKind::Standalone => self.emulator_name.clone(),
@@ -926,15 +945,14 @@ pub fn inspect_rom_launch_availability(
             if let Some((executable, core_path)) =
                 discover_retroarch_core(core, host, &path_entries, &flatpak_apps)
             {
-                options.push(RomEmulatorOption {
-                    emulator_id: definition.emulator.id.clone(),
-                    emulator_name: definition.emulator.name.clone(),
-                    runtime_kind: EmulatorRuntimeKind::RetroArch,
-                    core_name: core.clone(),
+                options.push(RomEmulatorOption::retroarch(
+                    definition.emulator.id.clone(),
+                    definition.emulator.name.clone(),
+                    core,
                     executable,
-                    core_path: Some(core_path),
-                    recommended: definition.recommended,
-                });
+                    core_path,
+                    definition.recommended,
+                ));
             }
         }
     }
