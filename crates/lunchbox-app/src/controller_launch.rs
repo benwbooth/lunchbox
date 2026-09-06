@@ -9,6 +9,10 @@ use crate::emulator::{EmulatorExecutable, EmulatorRuntimeKind, LaunchPlan, RomEm
 use crate::settings::AppSettings;
 use anyhow::{Context, Result, bail, ensure};
 
+#[cfg(all(test, target_os = "linux"))]
+#[path = "controller_launch_oracle.rs"]
+mod oracle;
+
 pub struct CalibratedLaunch {
     // Keeps the private append config alive until the child exits, including errors.
     _directory: tempfile::TempDir,
@@ -934,7 +938,7 @@ mod tests {
     use super::*;
     use crate::controller_catalog::InputBinding;
 
-    fn calibrated_layout(layout: &str) -> (Calibration, JoydevMap) {
+    pub(super) fn calibrated_layout(layout: &str) -> (Calibration, JoydevMap) {
         let mut buttons = Vec::new();
         let mut bindings = BTreeMap::new();
         for control in &catalog().layout(layout).unwrap().controls {

@@ -49,6 +49,9 @@ libc = "0.2"
 cxx-qt-build.workspace = true
 quick-xml = "0.37"
 
+[dev-dependencies]
+lunchbox-controller-probe = { path = "../lunchbox-controller-probe" }
+
 [[bin]]
 name = "lunchbox"
 path = "src/main.rs"

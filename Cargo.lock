@@ -1746,6 +1746,7 @@ dependencies = [
  "keyring",
  "lava_torrent",
  "libc",
+ "lunchbox-controller-probe",
  "md-5",
  "quick-xml",
  "rars",
