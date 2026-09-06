@@ -76,6 +76,18 @@ pub struct RetroArchLaunch {
     pub device: u32,
     /// Player count for this device mode, not every mode the core supports.
     pub max_players: usize,
+    /// Some cores change their frontend port count through a core option.
+    /// The selected value must be resolved from the effective options file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player_topology: Option<PlayerTopology>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlayerTopology {
+    pub option: String,
+    pub default: String,
+    pub values: BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -312,6 +324,21 @@ impl Catalog {
                     !launch.platforms.is_empty() && (1..=16).contains(&launch.max_players),
                     "launch contract requires platform aliases and 1-16 player ports"
                 );
+                if let Some(topology) = &launch.player_topology {
+                    ensure!(
+                        valid_id(&topology.option)
+                            && profile.retroarch_library.is_some()
+                            && !profile.core_options.contains_key(&topology.option)
+                            && topology.values.contains_key(&topology.default)
+                            && topology.values.values().copied().max() == Some(launch.max_players)
+                            && topology.values.iter().all(|(value, ports)| {
+                                !value.is_empty()
+                                    && !value.chars().any(|c| c.is_control() || "\"\\".contains(c))
+                                    && (1..=launch.max_players).contains(ports)
+                            }),
+                        "invalid option-dependent controller topology"
+                    );
+                }
                 ensure!(
                     (launch.device & 0xff == 1
                         || (profile.target_layout == "dualshock"
@@ -766,6 +793,50 @@ mod tests {
     }
 
     #[test]
+    fn option_topology_requires_bounded_values_default_and_unmodified_model() {
+        let original = catalog().clone();
+        let index = original
+            .emulator_profiles
+            .iter()
+            .position(|p| p.id == "retroarch:sameboy:gameboy")
+            .unwrap();
+        for invalid in 0..8 {
+            let mut db = original.clone();
+            let profile = &mut db.emulator_profiles[index];
+            let topology = profile
+                .retroarch_launch
+                .as_mut()
+                .unwrap()
+                .player_topology
+                .as_mut()
+                .unwrap();
+            match invalid {
+                0 => topology.default = "unknown".into(),
+                1 => {
+                    topology.values.insert("Auto".into(), 0);
+                }
+                2 => {
+                    topology.values.insert("Auto".into(), 5);
+                }
+                3 => topology.option = "bad=key".into(),
+                4 => {
+                    topology.values.insert("bad\nvalue".into(), 1);
+                }
+                5 => topology.values.values_mut().for_each(|ports| *ports = 1),
+                6 => profile.retroarch_library = None,
+                7 => {
+                    profile
+                        .core_options
+                        .insert("sameboy_model".into(), "Auto".into());
+                }
+                _ => unreachable!(),
+            }
+            assert!(db.validate().is_err(), "invalid topology case {invalid}");
+        }
+        original.validate().unwrap();
+    }
+
+    #[test]
     fn transports_cannot_mix_retropad_with_standalone_setting_names() {
         let mut db = catalog().clone();
         let index = db
@@ -784,6 +855,7 @@ mod tests {
             platforms: vec!["Sony Playstation".into()],
             device: 1,
             max_players: 2,
+            player_topology: None,
         });
         assert!(db.validate().is_err());
         db.emulator_profiles[index].retroarch_launch = None;

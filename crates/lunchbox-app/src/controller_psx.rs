@@ -5,6 +5,7 @@ use crate::emulator::PreparedRetroarchContent;
 use anyhow::{Context, Result, bail, ensure};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
+#[cfg(test)]
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -12,84 +13,7 @@ use std::path::{Path, PathBuf};
 
 mod chd;
 
-pub fn validate_arguments(
-    arguments: &[OsString],
-    prepared: &PreparedRetroarchContent,
-) -> Result<()> {
-    ensure!(
-        prepared.core.is_absolute() && prepared.content.is_absolute(),
-        "PlayStation launch identity requires absolute prepared paths"
-    );
-    let mut core = false;
-    let mut content = false;
-    let mut index = 0;
-    while index < arguments.len() {
-        let argument = &arguments[index];
-        match argument.to_str() {
-            Some("--verbose" | "-v" | "--fullscreen" | "-f") => {}
-            Some("-L" | "--libretro") => {
-                index += 1;
-                ensure!(
-                    !core
-                        && arguments
-                            .get(index)
-                            .is_some_and(|path| path == prepared.core.as_os_str()),
-                    "Custom command selects a different or duplicate PlayStation core"
-                );
-                core = true;
-            }
-            Some("--device" | "-d" | "--nodevice" | "-N" | "--dualanalog" | "-A") => {
-                index += 1;
-                ensure!(index < arguments.len(), "Missing controller-mode argument");
-            }
-            Some("--") => {
-                ensure!(
-                    !content
-                        && arguments.len() == index + 2
-                        && arguments[index + 1] == prepared.content.as_os_str(),
-                    "Custom command changes PlayStation content"
-                );
-                content = true;
-                break;
-            }
-            Some(text) if text.starts_with("--libretro=") || text.starts_with("-L") => {
-                let path = text
-                    .strip_prefix("--libretro=")
-                    .or_else(|| text.strip_prefix("-L"))
-                    .unwrap();
-                ensure!(
-                    !core && Path::new(path) == prepared.core,
-                    "Custom command selects a different or duplicate PlayStation core"
-                );
-                core = true;
-            }
-            Some(text)
-                if [
-                    "--device=",
-                    "--nodevice=",
-                    "--dualanalog=",
-                    "-d",
-                    "-N",
-                    "-A",
-                ]
-                .iter()
-                .any(|prefix| text.starts_with(prefix) && text.len() > prefix.len()) => {}
-            _ => {
-                ensure!(
-                    !content && argument == prepared.content.as_os_str(),
-                    "Custom PlayStation arguments need content-identity resolution before calibrated launch"
-                );
-                content = true;
-            }
-        }
-        index += 1;
-    }
-    ensure!(
-        core && content,
-        "Custom command omits the prepared PlayStation core or content"
-    );
-    Ok(())
-}
+pub use crate::controller_launch_modes::validate_arguments;
 
 fn compatibility_enabled(options: &str, core: &str) -> Result<bool> {
     let key = match core {

@@ -89,3 +89,45 @@ This is a core-level input diagnostic, not a test of every game's compatibility
 rules or of physical-controller discovery and launch-time configuration. The
 application's prepared-disc compatibility checks and RetroArch launch oracle
 cover different boundaries; see [the launch oracle](../../docs/CONTROLLER_RETROARCH_ORACLE.md).
+
+## Game Boy / SameBoy
+
+Select `--system gameboy` with a trusted SameBoy core and its expected SHA256.
+The original 32 KiB LR35902 program samples both active-low halves of the Game
+Boy's JOYP register into WRAM, along with an execution marker. Buttons occupy
+the low byte's low nibble; directions occupy the high byte's low nibble. The
+comparison mask is `0x0f0f`. The hardware expectation comes from
+[Pan Docs' JOYP definition](https://gbdev.io/pandocs/Joypad_Input.html), independently
+of the application's generated mappings.
+
+The helper selects ordinary Game Boy hardware in its private diagnostic options.
+It allows up to 240 frames for SameBoy's built-in open-source boot ROM to finish,
+without modifying CPU state or supplying manufactured readback. The diagnostic
+cartridge has a blank logo area: no Nintendo logo, commercial game, or external
+firmware is included. A warning about absent `dmg_boot.bin` is expected before
+the core falls back to its built-in boot ROM.
+
+Each run checks all eight controls, releases, A+B, A+Right, and unassigned
+shoulders twice: once with device 1, then with advertised joypad subclass 257.
+The observation names record the selected device; there are 48 observations.
+Run both callback modes:
+
+```console
+nix develop -c cargo run -p lunchbox-controller-probe --bin lunchbox-libretro-input -- --system gameboy --core /absolute/trusted/sameboy_libretro.so --sha256 EXPECTED_SHA256
+nix develop -c cargo run -p lunchbox-controller-probe --bin lunchbox-libretro-input -- --system gameboy --core /absolute/trusted/sameboy_libretro.so --sha256 EXPECTED_SHA256 --bitmask
+```
+
+On 2026-09-06 the official Libretro Linux x86_64 nightly core reported
+`1.0.3 8230189`, SHA256
+`26b3de38033e14cb2185f47811d38340bd47f56d55dd82cb14cdbd39a88a8208`.
+Both callback modes passed all 48 observations and exposed 8192 bytes of WRAM.
+The individual run made 4432 individual input requests and zero mask requests;
+the bitmask run made 277 mask requests and zero individual requests.
+The pinned [upstream frontend](https://github.com/LIJI32/SameBoy/blob/8230189896a8bb6598574d302ba0ad3658f98ab4/libretro/libretro.c)
+matches the reported abbreviated source revision. The binary hash identifies the
+actual runtime artifact; the report's source fields identify the expected contract.
+
+This checks ordinary Game Boy emulated input, not SGB multiplayer, Game Boy Link,
+all model variants, RetroArch's generated configuration processing, physical
+controller calibration, or the desktop launch action. The application has
+separate [option-dependent topology tests](../../docs/SAMEBOY_CONTROLLERS.md).

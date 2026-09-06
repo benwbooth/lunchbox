@@ -765,7 +765,12 @@ pub fn prepare(
         "Calibrated launch for Wine RetroArch is not implemented yet"
     );
     let profile = contract(&option.core_name, platform).context("No automatic controller contract for this core/platform yet; disable Apply saved calibrations to use the emulator's native setup")?;
-    if catalog().launch_modes(&option.core_name, platform).len() > 1 {
+    if catalog().launch_modes(&option.core_name, platform).len() > 1
+        || profile
+            .retroarch_launch
+            .as_ref()
+            .is_some_and(|launch| launch.player_topology.is_some())
+    {
         return prepare_mode_aware(settings, platform, option, plan, &devices);
     }
     // A connected N30 must not prevent a calibrated Brawler64 from playing N64.
@@ -862,6 +867,8 @@ fn prepare_mode_aware(
             |profile| profile.retroarch_launch.as_ref().unwrap().max_players == ports
                 && profile.core_options == first.core_options
                 && profile.retroarch_library == first.retroarch_library
+                && profile.retroarch_launch.as_ref().unwrap().player_topology
+                    == first.retroarch_launch.as_ref().unwrap().player_topology
         ),
         "Controller modes disagree on port topology, library name or core options"
     );
@@ -892,24 +899,45 @@ fn prepare_mode_aware(
     for directory in [remaps.join(library), overrides.join(library)] {
         ensure_no_mode_overrides(&directory, library)?;
     }
-    let modes = crate::controller_launch_modes::configured_modes(&config, arguments, ports)?;
-    // Read once: the same options determine compatibility and reach the core.
-    let (binding_modes, baseline_options) = if let Some(content) = beetle_launch_content(
+    let beetle_content = beetle_launch_content(
         &option.core_name,
         arguments,
         plan.retroarch_content.as_ref(),
-    )? {
-        let options =
-            effective_mode_core_options(&base, &config, &overrides, library, &content.content)?;
-        let bindings = crate::controller_psx::launch_binding_modes(
+    )?;
+    let option_content = if first
+        .retroarch_launch
+        .as_ref()
+        .unwrap()
+        .player_topology
+        .is_some()
+    {
+        let content = plan
+            .retroarch_content
+            .as_ref()
+            .context("Option-dependent controller topology requires prepared content identity")?;
+        crate::controller_launch_modes::validate_arguments(arguments, content)?;
+        Some(content)
+    } else {
+        beetle_content
+    };
+    // Read once: the exact effective options determine both topology and the
+    // snapshot delivered to the core; per-game settings are not flattened away.
+    let baseline_options = if let Some(content) = option_content {
+        effective_mode_core_options(&base, &config, &overrides, library, &content.content)?
+    } else {
+        read_core_options(&base, &config)?
+    };
+    let (active_ports, snapshot_profile) = topology_snapshot(first, &baseline_options)?;
+    let modes = crate::controller_launch_modes::configured_modes(&config, arguments, active_ports)?;
+    let binding_modes = if let Some(content) = beetle_content {
+        crate::controller_psx::launch_binding_modes(
             content,
             &option.core_name,
             &modes,
-            &options,
-        )?;
-        (bindings, options)
+            &baseline_options,
+        )?
     } else {
-        (modes.clone(), read_core_options(&base, &config)?)
+        modes.clone()
     };
     let players = mode_players(
         settings,
@@ -956,7 +984,7 @@ fn prepare_mode_aware(
     }
     output.push_str(&format!("input_max_users = \"{highest_port}\"\n"));
     output.push_str(&write_core_options_snapshot(
-        first,
+        &snapshot_profile,
         &baseline_options,
         directory.path(),
     )?);
@@ -970,6 +998,38 @@ fn prepare_mode_aware(
             players.len()
         ),
     }))
+}
+
+/// Resolve a declared option-dependent port count without changing the selected
+/// model. Freeze that same value into the private options snapshot, including
+/// the declared default when the effective file omits it.
+fn topology_snapshot(
+    profile: &EmulatorProfile,
+    baseline: &str,
+) -> Result<(usize, EmulatorProfile)> {
+    let launch = profile
+        .retroarch_launch
+        .as_ref()
+        .context("Missing launch topology")?;
+    let mut snapshot = profile.clone();
+    let Some(topology) = &launch.player_topology else {
+        return Ok((launch.max_players, snapshot));
+    };
+    ensure!(
+        !baseline
+            .lines()
+            .any(|line| line.trim_start().starts_with("#include")),
+        "Included core-options files require effective player-topology resolution"
+    );
+    let value = cfg_value(baseline, &topology.option)?.unwrap_or_else(|| topology.default.clone());
+    let ports = *topology.values.get(&value).with_context(|| {
+        format!(
+            "Unverified controller topology for {} = {value}",
+            topology.option
+        )
+    })?;
+    snapshot.core_options.insert(topology.option.clone(), value);
+    Ok((ports, snapshot))
 }
 
 /// Only Beetle needs disc identity to resolve compatibility-forced devices.
@@ -1176,6 +1236,221 @@ mod tests {
                 axes: vec![3, 2, 1, 0],
             },
         )
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn sameboy_preserves_effective_model_and_its_frontend_port_count() {
+        let profile = contract("sameboy", "Nintendo Game Boy").unwrap();
+        for (model, count) in [
+            ("Auto", 1),
+            ("Auto (SGB)", 1),
+            ("Game Boy", 1),
+            ("Game Boy Pocket", 1),
+            ("Game Boy Color 0", 1),
+            ("Game Boy Color A", 1),
+            ("Game Boy Color B", 1),
+            ("Game Boy Color D", 1),
+            ("Game Boy Player", 1),
+            ("Game Boy Color C", 1),
+            ("Game Boy Color", 1),
+            ("Game Boy Advance", 1),
+            ("Super Game Boy", 4),
+            ("Super Game Boy PAL", 4),
+            ("Super Game Boy 2", 4),
+        ] {
+            let baseline =
+                format!("sameboy_model = \"{model}\"\nsameboy_mono_palette = \"olive\"\n");
+            let (ports, snapshot) = topology_snapshot(profile, &baseline).unwrap();
+            assert_eq!(ports, count, "{model}");
+            assert_eq!(snapshot.core_options["sameboy_model"], model);
+            let dir = tempfile::tempdir().unwrap();
+            let config = write_core_options_snapshot(&snapshot, &baseline, dir.path()).unwrap();
+            let output = std::fs::read_to_string(dir.path().join("core-options.cfg")).unwrap();
+            assert_eq!(
+                cfg_value(&output, "sameboy_model").unwrap().as_deref(),
+                Some(model)
+            );
+            assert!(output.contains("sameboy_mono_palette = \"olive\""));
+            assert!(config.contains("game_specific_options = \"false\""));
+            assert!(config.contains("rgui_config_directory"));
+            let modes = crate::controller_launch_modes::configured_modes("", &[], ports).unwrap();
+            assert_eq!(modes, vec![1; count]);
+        }
+        let (ports, snapshot) = topology_snapshot(profile, "").unwrap();
+        assert_eq!(ports, 1);
+        assert_eq!(snapshot.core_options["sameboy_model"], "Auto");
+        for bad in [
+            "sameboy_model = \"Future model\"",
+            "sameboy_model = \"\"",
+            "sameboy_model = \"Auto\"\nsameboy_model = \"Super Game Boy\"",
+            "sameboy_model=Auto",
+        ] {
+            assert!(topology_snapshot(profile, bad).is_err(), "{bad}");
+        }
+        assert!(topology_snapshot(profile, "#include \"hidden.opt\"").is_err());
+        assert!(contract("sameboy", "Nintendo Game Boy Advance").is_none());
+        assert!(contract("sameboy", "Super Nintendo Entertainment System").is_none());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn sameboy_topology_uses_one_effective_options_file_not_merged_defaults() {
+        let root = tempfile::tempdir().unwrap();
+        let base = root.path();
+        let configs = base.join("config");
+        let core_dir = configs.join("SameBoy");
+        std::fs::create_dir_all(&core_dir).unwrap();
+        let profile = contract("sameboy", "Game Boy").unwrap();
+        let content = base.join("roms/Game.gb");
+        let global = base.join("retroarch-core-options.cfg");
+        std::fs::write(&global, "sameboy_model = \"Super Game Boy 2\"\n").unwrap();
+        let resolve = || {
+            let options =
+                effective_mode_core_options(base, "", &configs, "SameBoy", &content).unwrap();
+            topology_snapshot(profile, &options).unwrap()
+        };
+        assert_eq!(resolve().0, 4);
+        std::fs::write(
+            core_dir.join("SameBoy.opt"),
+            "sameboy_model = \"Game Boy\"\n",
+        )
+        .unwrap();
+        assert_eq!(resolve().0, 1);
+        std::fs::write(
+            core_dir.join("roms.opt"),
+            "sameboy_model = \"Super Game Boy PAL\"\n",
+        )
+        .unwrap();
+        assert_eq!(resolve().0, 4);
+        // A game file replaces the folder/core/global file. Its absent model
+        // means the core's Auto default, not the lower-priority four-port value.
+        std::fs::write(
+            core_dir.join("Game.opt"),
+            "sameboy_mono_palette = \"olive\"\n",
+        )
+        .unwrap();
+        let (ports, snapshot) = resolve();
+        assert_eq!(ports, 1);
+        assert_eq!(snapshot.core_options["sameboy_model"], "Auto");
+        assert_eq!(
+            std::fs::read_to_string(&global).unwrap(),
+            "sameboy_model = \"Super Game Boy 2\"\n"
+        );
+        let identity = crate::emulator::PreparedRetroarchContent {
+            core: "/cores/sameboy_libretro.so".into(),
+            content,
+        };
+        let args = vec![
+            "-L".into(),
+            identity.core.clone().into_os_string(),
+            identity.content.clone().into_os_string(),
+        ];
+        crate::controller_launch_modes::validate_arguments(&args, &identity).unwrap();
+        for prefix in [
+            "--subsystem=gb_link_2p",
+            "--appendconfig=hidden.cfg",
+            "--config=hidden.cfg",
+        ] {
+            let mut altered = vec![prefix.into()];
+            altered.extend(args.clone());
+            assert!(
+                crate::controller_launch_modes::validate_arguments(&altered, &identity).is_err()
+            );
+        }
+        let mut changed = args;
+        *changed.last_mut().unwrap() = "/other/Game.gb".into();
+        assert!(crate::controller_launch_modes::validate_arguments(&changed, &identity).is_err());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn sameboy_composes_brawler_inputs_and_assigns_only_model_ports() {
+        let (calibration, numbering) = calibrated_layout("brawler64");
+        for mode in [1, 257] {
+            let profile = catalog()
+                .launch_mode("sameboy", "Game Boy Color", mode)
+                .unwrap();
+            let config = player_config(&calibration, profile, &numbering, 1).unwrap();
+            for (target, output) in [
+                ("up", "up"),
+                ("down", "down"),
+                ("left", "left"),
+                ("right", "right"),
+                ("a", "a"),
+                ("b", "b"),
+                ("start", "start"),
+                ("select", "select"),
+            ] {
+                let (_, button) = numbering
+                    .binding(calibration.bindings[target].native.as_ref().unwrap())
+                    .unwrap();
+                assert_eq!(
+                    cfg_value(&config, &format!("input_player1_{output}_btn")).unwrap(),
+                    Some(button)
+                );
+            }
+            assert_eq!(
+                cfg_value(&config, "input_libretro_device_p1").unwrap(),
+                Some(mode.to_string())
+            );
+            for unused in ["x", "y", "l", "r", "l2", "r2", "l3", "r3"] {
+                assert_eq!(
+                    cfg_value(&config, &format!("input_player1_{unused}_btn"))
+                        .unwrap()
+                        .as_deref(),
+                    Some("nul")
+                );
+            }
+        }
+        let devices = (0..5)
+            .map(|index| ControllerDevice {
+                stable_id: format!("pad{index}"),
+                name: "Identical name".into(),
+                device_path: format!("/dev/input/js{index}").into(),
+                event_paths: vec![],
+                vendor_id: None,
+                product_id: None,
+                version: None,
+                bus_type: None,
+                physical_path: None,
+                unique_id: None,
+                is_virtual: false,
+            })
+            .collect::<Vec<_>>();
+        let mut settings = AppSettings::default();
+        for device in &devices {
+            settings
+                .controller_mapping
+                .calibrations
+                .insert(device.stable_id.clone(), calibration.clone());
+        }
+        let order = devices.iter().rev().collect::<Vec<_>>();
+        for (model, count) in [("Auto", 1), ("Super Game Boy 2", 4)] {
+            let profile = contract("sameboy", "Game Boy").unwrap();
+            let (ports, _) =
+                topology_snapshot(profile, &format!("sameboy_model = \"{model}\"")).unwrap();
+            let modes = crate::controller_launch_modes::configured_modes(
+                "input_libretro_device_p1 = 257",
+                &[],
+                ports,
+            )
+            .unwrap();
+            let players = mode_players(&settings, "sameboy", "Game Boy", &modes, &order).unwrap();
+            assert_eq!(players.len(), count);
+            for (index, (port, _, device)) in players.iter().enumerate() {
+                assert_eq!(*port, index + 1);
+                assert_eq!(device.stable_id, order[index].stable_id);
+            }
+        }
+        let players =
+            mode_players(&settings, "sameboy", "Game Boy", &[257, 0, 1, 257], &order).unwrap();
+        assert_eq!(players.iter().map(|p| p.0).collect::<Vec<_>>(), [1, 3, 4]);
+        assert!(mode_players(&settings, "sameboy", "Game Boy", &[5], &order).is_err());
+        assert!(
+            crate::controller_launch_modes::configured_modes("", &["--device=2:257".into()], 1)
+                .is_err()
+        );
     }
 
     #[test]

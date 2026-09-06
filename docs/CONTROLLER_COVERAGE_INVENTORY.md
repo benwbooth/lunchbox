@@ -22,9 +22,11 @@ Database: `build/lunchbox.db`, SHA-256
 
 The database contains 253 platform records in total; 200 is the number linked
 through `emulator_platforms`, not the total. Emulator definitions and core names
-are discovery metadata, not necessarily installed executables. The in-progress
-Beetle PSX work adds four output profiles to the working tree; those are not
-included in the committed baseline counts above.
+are discovery metadata, not necessarily installed executables. The later Beetle
+PSX work added four output profiles; those are not included in the historical
+baseline counts above. With the subsequent [SameBoy contracts](SAMEBOY_CONTROLLERS.md),
+the catalog has 22 profiles, of which 18 enable automatic launch across 12 cores.
+This is contract coverage, not an all-core runtime result.
 
 The policy-v2 layout report evaluates all 256 ordered pairs of the current 16
 layouts. Of these, 146 cover all required target controls under the current rules;
@@ -53,7 +55,7 @@ their exact controls, modes and output IDs must be verified before activation.
 
 | Batch | Representative catalog targets/cores | Shared work needed |
 | --- | --- | --- |
-| Existing digital layouts, more contracts | NES: `nestopia`, `mesen`; GB: `sameboy`; SNES: `bsnes_hd_beta`, `mesen-s`; Mega Drive: `blastem`, `picodrive` | Reuse existing layouts. Verify each core's output IDs, devices, mode options and player topology; add contracts, not physical-controller pair tables. |
+| Existing digital layouts, more contracts | NES: `nestopia`, `mesen`; SNES: `bsnes_hd_beta`, `mesen-s`; Mega Drive: `blastem`, `picodrive` | Reuse existing layouts. Verify each core's output IDs, devices, mode options and player topology; add contracts, not physical-controller pair tables. SameBoy now has model-aware contracts; its SGB/link runtime gaps remain explicit. |
 | Missing small digital layouts | Atari 2600/`stella`, Atari 7800/`prosystem`, Neo Geo Pocket/`mednafen_ngp`, Lynx/`gearlynx`, Neo Geo/`geolith`, 3DO/`opera`, PC-FX/`mednafen_pcfx` | Describe face/control variants and console/menu actions. Separate game controls from console switches. Reuse button assignment once semantics are known. |
 | Multiple directional clusters | Virtual Boy/`beetle_vb`; WonderSwan/`mednafen_wswan` and `beetle_cygne` | Model digital clusters and orientation explicitly. Generalize the directional capability bridge, keeping direction/cluster identity and core rotation options consistent. |
 | Keypad/auxiliary panels | ColecoVision/`gearcoleco`, Intellivision/`freeintv`, Jaguar/`virtual_jaguar`, Atari 5200/`atari800` | Add keypad roles and an explicit strategy for insufficient buttons. Do not silently drop required keys or invent independent hardware inputs. |
@@ -81,6 +83,15 @@ enough:
 These documentation checks are planning evidence. No exact new core binding or
 device number is accepted merely from an image-only table or a platform name.
 
+Nestopia's standard-pad source audit is now pinned to
+[`4ed9d68bd251e122f1311895fabe68bde89da86a`](https://github.com/libretro/nestopia/blob/4ed9d68bd251e122f1311895fabe68bde89da86a/libretro/libretro.cpp#L579-L612):
+device 1 is Auto (potentially a database-selected peripheral), while explicit
+Gamepad is 257. Its adapter option selects NES/Famicom protocol, not port count;
+connecting pads three/four creates the multitap. Before activating a contract,
+resolve explicit device CLI overrides, automatic peripheral selection, shifted
+button mode, and the intended two/four-player topology. This audit does not add
+Nestopia to the enabled catalog or repurpose SameBoy's option-topology table for it.
+
 ## Cross-cutting gaps before all-core completion
 
 1. **Core identity normalization.** Eight confirmed Beetle aliases now resolve to
@@ -91,7 +102,8 @@ device number is accepted merely from an image-only table or a platform name.
 2. **Effective device and option layers.** Port type, remaps, overrides, per-game
    options, controller modes and multiplayer topology must agree with the plan.
    Resolve these as adapter/mode data; do not hide unresolved layers behind a
-   successful layout assignment.
+   successful layout assignment. SameBoy now resolves the effective model option
+   into one or four frontend ports without replacing the selected hardware model.
 3. **Full one-calibration launch test.** Exercise physical discovery, persisted
    calibration, prepared content, device selection, generated configuration and
    emulated input readback in one path. The [saved-calibration GBA

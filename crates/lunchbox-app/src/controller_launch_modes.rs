@@ -2,6 +2,88 @@
 //! emulated device when the user's selected mode requires missing controls.
 use anyhow::{Context, Result, ensure};
 use std::ffi::OsString;
+use std::path::Path;
+
+/// Confirm the effective core and content before using content-named options.
+/// Subsystems, content substitution and unresolved custom flags are not guessed.
+pub fn validate_arguments(
+    arguments: &[OsString],
+    prepared: &crate::emulator::PreparedRetroarchContent,
+) -> Result<()> {
+    ensure!(
+        prepared.core.is_absolute() && prepared.content.is_absolute(),
+        "RetroArch launch identity requires absolute prepared paths"
+    );
+    let mut core = false;
+    let mut content = false;
+    let mut index = 0;
+    while index < arguments.len() {
+        let argument = &arguments[index];
+        match argument.to_str() {
+            Some("--verbose" | "-v" | "--fullscreen" | "-f") => {}
+            Some("-L" | "--libretro") => {
+                index += 1;
+                ensure!(
+                    !core
+                        && arguments
+                            .get(index)
+                            .is_some_and(|path| path == prepared.core.as_os_str()),
+                    "Custom command selects a different or duplicate RetroArch core"
+                );
+                core = true;
+            }
+            Some("--device" | "-d" | "--nodevice" | "-N" | "--dualanalog" | "-A") => {
+                index += 1;
+                ensure!(index < arguments.len(), "Missing controller-mode argument");
+            }
+            Some("--") => {
+                ensure!(
+                    !content
+                        && arguments.len() == index + 2
+                        && arguments[index + 1] == prepared.content.as_os_str(),
+                    "Custom command changes RetroArch content"
+                );
+                content = true;
+                break;
+            }
+            Some(text) if text.starts_with("--libretro=") || text.starts_with("-L") => {
+                let path = text
+                    .strip_prefix("--libretro=")
+                    .or_else(|| text.strip_prefix("-L"))
+                    .unwrap();
+                ensure!(
+                    !core && Path::new(path) == prepared.core,
+                    "Custom command selects a different or duplicate RetroArch core"
+                );
+                core = true;
+            }
+            Some(text)
+                if [
+                    "--device=",
+                    "--nodevice=",
+                    "--dualanalog=",
+                    "-d",
+                    "-N",
+                    "-A",
+                ]
+                .iter()
+                .any(|prefix| text.starts_with(prefix) && text.len() > prefix.len()) => {}
+            _ => {
+                ensure!(
+                    !content && argument == prepared.content.as_os_str(),
+                    "Custom RetroArch arguments need content-identity resolution before calibrated launch"
+                );
+                content = true;
+            }
+        }
+        index += 1;
+    }
+    ensure!(
+        core && content,
+        "Custom command omits the prepared RetroArch core or content"
+    );
+    Ok(())
+}
 
 pub fn configured_modes(config: &str, arguments: &[OsString], ports: usize) -> Result<Vec<u32>> {
     ensure!((1..=16).contains(&ports), "Invalid controller port count");

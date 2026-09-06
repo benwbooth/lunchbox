@@ -107,6 +107,7 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
                 b"mgba_idle_optimization" => c"Don't Remove".as_ptr(),
                 b"genesis_plus_gx_system_hw" => c"game gear".as_ptr(),
                 b"genesis_plus_gx_bios" => c"disabled".as_ptr(),
+                b"sameboy_model" => c"Game Boy".as_ptr(),
                 _ => std::ptr::null(),
             };
             !variable.value.is_null()
@@ -264,6 +265,37 @@ pub fn gamegear_diagnostic_rom() -> Vec<u8> {
     rom
 }
 
+/// Original LR35902 loop. Sample the two active-low JOYP nibbles separately:
+/// buttons at C000 and directions at C001. SameBoy's built-in open boot ROM
+/// accepts our blank logo area; no Nintendo logo or firmware is embedded.
+pub fn gameboy_diagnostic_rom() -> Vec<u8> {
+    let mut rom = vec![0; 0x8000];
+    rom[0x100..0x104].copy_from_slice(&[0x00, 0xc3, 0x50, 0x01]); // nop; jp 0150
+    rom[0x134..0x141].copy_from_slice(b"LUNCHBOXINPUT");
+    let program = [
+        0xf3, // di
+        0x21, 0x04, 0xc0, // ld hl, c004 (execution marker)
+        0x36, 0x4e, 0x23, 0x36, 0x49, 0x23, 0x36, 0x42, 0x23, 0x36, 0x4c, 0x3e,
+        0x10, // loop at 015f: ld a, 10 (select buttons)
+        0xe0, 0x00, // ldh (00), a
+        0xf0, 0x00, 0xf0, 0x00, 0xf0, 0x00, 0xf0, 0x00, // settle then sample
+        0xea, 0x00, 0xc0, // ld (c000), a
+        0x3e, 0x20, // ld a, 20 (select directions)
+        0xe0, 0x00, 0xf0, 0x00, 0xf0, 0x00, 0xf0, 0x00, 0xf0, 0x00, 0xea, 0x01,
+        0xc0, // ld (c001), a
+        0xc3, 0x5f, 0x01, // jp loop
+    ];
+    rom[0x150..0x150 + program.len()].copy_from_slice(&program);
+    rom[0x14d] = rom[0x134..0x14d]
+        .iter()
+        .fold(0u8, |sum, byte| sum.wrapping_sub(*byte).wrapping_sub(1));
+    let checksum = rom
+        .iter()
+        .fold(0u16, |sum, byte| sum.wrapping_add(u16::from(*byte)));
+    rom[0x14e..0x150].copy_from_slice(&checksum.to_be_bytes());
+    rom
+}
+
 fn mips_i(op: u32, rs: u32, rt: u32, immediate: i16) -> u32 {
     (op << 26) | (rs << 21) | (rt << 16) | u32::from(immediate as u16)
 }
@@ -349,6 +381,7 @@ pub fn psx_diagnostic_exe() -> Vec<u8> {
 pub enum Diagnostic {
     Gba,
     Gamegear,
+    Gameboy,
     Psx,
 }
 
@@ -357,6 +390,7 @@ impl Diagnostic {
         match self {
             Self::Gba => ("mGBA", "input.gba", 1, 0x3ff),
             Self::Gamegear => ("Genesis Plus GX", "input.gg", 769, 0x803f),
+            Self::Gameboy => ("SameBoy", "input.gb", 257, 0x0f0f),
             Self::Psx => ("Beetle PSX", "input.exe", 517, 0xffff),
         }
     }
@@ -392,6 +426,21 @@ impl Diagnostic {
                 ("1+2", 1 | (1 << 8), 0x30),
                 ("1+Start", 1 | (1 << 3), 0x8010),
                 ("Select is unassigned", 1 << 2, 0),
+            ],
+            // JOYP buttons in the low byte, directions in the high byte.
+            Self::Gameboy => &[
+                ("released", 0, 0),
+                ("A", 1 << 8, 1),
+                ("B", 1, 1 << 1),
+                ("Select", 1 << 2, 1 << 2),
+                ("Start", 1 << 3, 1 << 3),
+                ("Right", 1 << 7, 1 << 8),
+                ("Left", 1 << 6, 1 << 9),
+                ("Up", 1 << 4, 1 << 10),
+                ("Down", 1 << 5, 1 << 11),
+                ("A+B", (1 << 8) | 1, 3),
+                ("A+Right", (1 << 8) | (1 << 7), 0x101),
+                ("Shoulders are unassigned", (1 << 10) | (1 << 11), 0),
             ],
             Self::Psx => &[],
         }
@@ -596,6 +645,7 @@ pub fn inspect_with_system_directory(
     let rom = match diagnostic {
         Diagnostic::Gba => gba_diagnostic_rom(),
         Diagnostic::Gamegear => gamegear_diagnostic_rom(),
+        Diagnostic::Gameboy => gameboy_diagnostic_rom(),
         Diagnostic::Psx => psx_diagnostic_exe(),
     };
     let rom_path = CString::new(
@@ -728,39 +778,76 @@ pub fn inspect_with_system_directory(
                 ),
             });
         }
-        let mut observations = Vec::new();
-        // Hardware register bits are independent of the core's RetroPad IDs.
-        for &(name, rp, hardware) in diagnostic.cases() {
-            for (step_name, mask, expected) in [
-                (name, rp, register_mask ^ hardware),
-                ("release", 0, register_mask),
-            ] {
-                PRESSED[0].store(mask, Ordering::Relaxed);
-                for _ in 0..4 {
-                    (core.run)();
-                }
+        if matches!(diagnostic, Diagnostic::Gameboy) {
+            // Allow the real built-in open boot ROM to finish. Do not patch
+            // CPU state or substitute memory for an executed diagnostic.
+            let mut booted = false;
+            for _ in 0..240 {
+                (core.run)();
                 ensure!(
                     (core.memory_size)(2) >= 8,
-                    "Diagnostic memory became unavailable"
+                    "Game Boy RAM unavailable during boot"
                 );
                 let memory = (core.memory)(2).cast::<u8>();
-                ensure!(!memory.is_null(), "No system RAM exposed by core");
+                ensure!(!memory.is_null(), "Game Boy RAM pointer unavailable");
                 let bytes = std::slice::from_raw_parts(memory, 8);
-                ensure!(
-                    u32::from_le_bytes(bytes[4..8].try_into().unwrap()) == 0x4c42494e,
-                    "Diagnostic program did not execute"
-                );
-                let observed = u16::from_le_bytes([bytes[0], bytes[1]]) & register_mask;
-                ensure!(
-                    observed == expected,
-                    "{step_name}: expected input register bits {expected:#06x}, observed {observed:#06x}"
-                );
-                observations.push(Observation {
-                    name: step_name.into(),
-                    retropad_mask: mask,
-                    expected_keyinput: expected,
-                    observed_keyinput: observed,
-                });
+                if u32::from_le_bytes(bytes[4..8].try_into().unwrap()) == 0x4c42494e {
+                    booted = true;
+                    break;
+                }
+            }
+            ensure!(
+                booted,
+                "Original Game Boy diagnostic did not boot in 240 frames"
+            );
+        }
+        let mut observations = Vec::new();
+        let device_modes = if matches!(diagnostic, Diagnostic::Gameboy) {
+            vec![1, 257]
+        } else {
+            vec![device]
+        };
+        for test_device in device_modes {
+            if matches!(diagnostic, Diagnostic::Gameboy) {
+                set_device(0, test_device);
+            }
+            // Hardware register bits are independent of the core's RetroPad IDs.
+            for &(name, rp, hardware) in diagnostic.cases() {
+                for (step_name, mask, expected) in [
+                    (name, rp, register_mask ^ hardware),
+                    ("release", 0, register_mask),
+                ] {
+                    PRESSED[0].store(mask, Ordering::Relaxed);
+                    for _ in 0..4 {
+                        (core.run)();
+                    }
+                    ensure!(
+                        (core.memory_size)(2) >= 8,
+                        "Diagnostic memory became unavailable"
+                    );
+                    let memory = (core.memory)(2).cast::<u8>();
+                    ensure!(!memory.is_null(), "No system RAM exposed by core");
+                    let bytes = std::slice::from_raw_parts(memory, 8);
+                    ensure!(
+                        u32::from_le_bytes(bytes[4..8].try_into().unwrap()) == 0x4c42494e,
+                        "Diagnostic program did not execute"
+                    );
+                    let observed = u16::from_le_bytes([bytes[0], bytes[1]]) & register_mask;
+                    ensure!(
+                        observed == expected,
+                        "{step_name}: expected input register bits {expected:#06x}, observed {observed:#06x}"
+                    );
+                    observations.push(Observation {
+                        name: if matches!(diagnostic, Diagnostic::Gameboy) {
+                            format!("{step_name} (device {test_device})")
+                        } else {
+                            step_name.into()
+                        },
+                        retropad_mask: mask,
+                        expected_keyinput: expected,
+                        observed_keyinput: observed,
+                    });
+                }
             }
         }
         ensure!(
@@ -782,6 +869,7 @@ pub fn inspect_with_system_directory(
             diagnostic: match diagnostic {
                 Diagnostic::Gba => "gba-keyinput",
                 Diagnostic::Gamegear => "gamegear-dc-00",
+                Diagnostic::Gameboy => "gameboy-joyp",
                 Diagnostic::Psx => unreachable!(),
             },
             core_sha256: hash,
@@ -796,8 +884,8 @@ pub fn inspect_with_system_directory(
             observations,
             psx_observations: Vec::new(),
             firmware,
-            contract_source_revision: None,
-            contract_source_url: None,
+            contract_source_revision: matches!(diagnostic, Diagnostic::Gameboy).then_some("8230189896a8bb6598574d302ba0ad3658f98ab4"),
+            contract_source_url: matches!(diagnostic, Diagnostic::Gameboy).then_some("https://github.com/LIJI32/SameBoy/blob/8230189896a8bb6598574d302ba0ad3658f98ab4/libretro/libretro.c"),
         })
     }
 }
@@ -1133,6 +1221,44 @@ mod tests {
             [0x00, 0x73, 0xff, 0xbf, 0xc0, 0x40, 0x80, 0x80]
         );
     }
+    #[test]
+    fn gameboy_rom_samples_both_joyp_halves_with_original_header() {
+        let rom = gameboy_diagnostic_rom();
+        assert_eq!(rom, gameboy_diagnostic_rom());
+        assert_eq!(rom.len(), 32768);
+        assert!(rom[0x104..0x134].iter().all(|b| *b == 0));
+        assert_eq!(&rom[0x100..0x104], &[0, 0xc3, 0x50, 1]);
+        assert_eq!(&rom[0x15f..0x163], &[0x3e, 0x10, 0xe0, 0]);
+        assert_eq!(&rom[0x16e..0x172], &[0x3e, 0x20, 0xe0, 0]);
+        assert_eq!(&rom[0x17d..0x180], &[0xc3, 0x5f, 1]);
+        assert_eq!(
+            rom[0x14d],
+            rom[0x134..0x14d]
+                .iter()
+                .fold(0u8, |sum, byte| sum.wrapping_sub(*byte).wrapping_sub(1))
+        );
+        let checksum = rom
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| ![0x14e, 0x14f].contains(index))
+            .fold(0u16, |sum, (_, byte)| sum.wrapping_add(u16::from(*byte)));
+        assert_eq!(
+            u16::from_be_bytes(rom[0x14e..0x150].try_into().unwrap()),
+            checksum
+        );
+        let (_, _, device, mask) = Diagnostic::Gameboy.identity();
+        assert_eq!((device, mask), (257, 0x0f0f));
+        let singles = &Diagnostic::Gameboy.cases()[1..9];
+        assert_eq!(singles.len(), 8);
+        let mut hardware_bits = 0;
+        for &(_, _, hardware) in singles {
+            assert_eq!(hardware.count_ones(), 1);
+            assert_eq!(hardware_bits & hardware, 0);
+            hardware_bits |= hardware;
+        }
+        assert_eq!(hardware_bits, mask);
+    }
+
     #[test]
     fn gamegear_rom_is_reproducible_with_valid_header_and_register_cases() {
         let rom = gamegear_diagnostic_rom();

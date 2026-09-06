@@ -1984,6 +1984,76 @@
       }
     },
     {
+      "id": "retroarch:sameboy:gameboy",
+      "name": "RetroArch · SameBoy · Game Boy / Super Game Boy gamepad",
+      "core": "sameboy",
+      "target_layout": "gameboy",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/LIJI32/SameBoy/blob/8230189896a8bb6598574d302ba0ad3658f98ab4/libretro/libretro.c",
+      "retroarch_library": "SameBoy",
+      "retroarch_launch": {
+        "platforms": ["Nintendo Game Boy", "Nintendo - Game Boy", "Game Boy", "Nintendo Game Boy Color", "Nintendo - Game Boy Color", "Game Boy Color"],
+        "device": 1,
+        "max_players": 4,
+        "player_topology": {
+          "option": "sameboy_model",
+          "default": "Auto",
+          "values": {
+            "Auto": 1, "Auto (SGB)": 1, "Game Boy": 1,
+            "Game Boy Pocket": 1, "Game Boy Color 0": 1, "Game Boy Color A": 1,
+            "Game Boy Color B": 1, "Game Boy Color D": 1, "Game Boy Player": 1,
+            "Game Boy Color C": 1, "Game Boy Color": 1, "Game Boy Advance": 1,
+            "Super Game Boy": 4, "Super Game Boy PAL": 4, "Super Game Boy 2": 4
+          }
+        }
+      },
+      "conditions": [
+        "Eight gameplay controls; the selected effective sameboy_model is preserved in a launch-scoped snapshot",
+        "The pinned frontend polls four ports only for explicit Super Game Boy models; Auto (SGB) still polls one port even when SGB hardware is detected",
+        "The GB link subsystem needs a distinct two-content launch adapter and is not accepted by this ordinary ROM contract; rumble and cartridge peripherals are not assigned"
+      ],
+      "bindings": {
+        "up": "DPadUp", "down": "DPadDown", "left": "DPadLeft", "right": "DPadRight",
+        "start": "Start", "select": "Select", "a": "East", "b": "South"
+      }
+    },
+    {
+      "id": "retroarch:sameboy:gameboy-subclass",
+      "name": "RetroArch · SameBoy · Explicit Game Boy / SGB device",
+      "core": "sameboy",
+      "target_layout": "gameboy",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://github.com/LIJI32/SameBoy/blob/8230189896a8bb6598574d302ba0ad3658f98ab4/libretro/libretro.c",
+      "retroarch_library": "SameBoy",
+      "retroarch_launch": {
+        "platforms": ["Nintendo Game Boy", "Nintendo - Game Boy", "Game Boy", "Nintendo Game Boy Color", "Nintendo - Game Boy Color", "Game Boy Color"],
+        "device": 257,
+        "max_players": 4,
+        "player_topology": {
+          "option": "sameboy_model",
+          "default": "Auto",
+          "values": {
+            "Auto": 1, "Auto (SGB)": 1, "Game Boy": 1,
+            "Game Boy Pocket": 1, "Game Boy Color 0": 1, "Game Boy Color A": 1,
+            "Game Boy Color B": 1, "Game Boy Color D": 1, "Game Boy Player": 1,
+            "Game Boy Color C": 1, "Game Boy Color": 1, "Game Boy Advance": 1,
+            "Super Game Boy": 4, "Super Game Boy PAL": 4, "Super Game Boy 2": 4
+          }
+        }
+      },
+      "conditions": [
+        "Same eight gameplay controls and model-dependent frontend ports as the default joypad contract",
+        "SameBoy advertises subclass 257 for both Game Boy and SGB; its device setter only logs and its input callback always polls base JOYPAD",
+        "GB link subsystem, rumble and cartridge peripherals are not assigned by this ordinary ROM contract"
+      ],
+      "bindings": {
+        "up": "DPadUp", "down": "DPadDown", "left": "DPadLeft", "right": "DPadRight",
+        "start": "Start", "select": "Select", "a": "East", "b": "South"
+      }
+    },
+    {
       "id": "retroarch:mgba:gba",
       "name": "RetroArch · mGBA · Game Boy Advance gamepad",
       "core": "mgba",
