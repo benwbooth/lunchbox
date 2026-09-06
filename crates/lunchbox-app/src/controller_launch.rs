@@ -1078,7 +1078,15 @@ mod tests {
             }
             assert!(player_config(&calibration, profile, &numbering, 2).is_err());
             calibration.bindings.remove("start");
-            assert!(!compatible(&calibration, profile));
+            // Richer layouts can supply Start with a spare gameplay button.
+            // Two-button pads have no such spare; reserved D-pad/menu inputs
+            // and hardware turbo repeats cannot stand in for independent keys.
+            let has_spare = matches!(layout, "horizontal-four" | "brawler64" | "xbox");
+            assert_eq!(compatible(&calibration, profile), has_spare, "{layout}");
+            if has_spare {
+                let config = player_config(&calibration, profile, &numbering, 1).unwrap();
+                assert!(!config.contains("input_player1_start_btn = \"nul\""));
+            }
         }
     }
 
@@ -1097,9 +1105,21 @@ mod tests {
         assert_eq!(gb.bindings.len(), 8);
         assert_eq!(gba.retroarch_launch.as_ref().unwrap().max_players, 1);
         assert!(catalog().launch_profile("mgba", "Nintendo DS").is_none());
-        let (n30, _) = calibrated_layout("horizontal-four");
+        let (n30, numbering) = calibrated_layout("horizontal-four");
         assert!(compatible(&n30, gb));
-        assert!(!compatible(&n30, gba));
+        assert!(compatible(&n30, gba));
+        let config = player_config(&n30, gba, &numbering, 1).unwrap();
+        for (target, physical) in [("l", "y"), ("r", "x")] {
+            let (_, button) = numbering
+                .binding(n30.bindings[physical].native.as_ref().unwrap())
+                .unwrap();
+            assert!(config.contains(&format!("input_player1_{target}_btn = \"{button}\"")));
+        }
+        let (turbo, _) = calibrated_layout("n30-turbo");
+        assert!(
+            !compatible(&turbo, gba),
+            "hardware repeats are not extra independent buttons"
+        );
         for (layout, physical_a, physical_b) in [
             ("gba", "a", "b"),
             ("brawler64", "a", "b"),

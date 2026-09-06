@@ -116,6 +116,7 @@ pub struct Calibration {
 
 #[derive(Debug, Serialize)]
 pub struct MappingPlan {
+    pub mapping_policy_version: u32,
     pub profile: String,
     pub transport: String,
     pub status: String,
@@ -132,6 +133,7 @@ pub struct MappingRow {
     pub physical: String,
     pub input: Option<InputBinding>,
     pub output: String,
+    pub reason: String,
 }
 
 pub fn catalog() -> &'static Catalog {
@@ -205,10 +207,22 @@ impl Catalog {
                 ),
                 "unknown shape"
             );
+            ensure!(
+                matches!(
+                    layout.family.as_str(),
+                    "two-button"
+                        | "horizontal-four"
+                        | "diamond"
+                        | "n64"
+                        | "three-button"
+                        | "six-button"
+                ),
+                "unknown layout-rule family"
+            );
             let mut controls = HashSet::new();
             ensure!(
-                layout.controls.iter().filter(|c| c.group == "face").count() <= 8,
-                "Face group exceeds assignment solver bound"
+                layout.controls.len() <= 64,
+                "Layout exceeds the 64-control assignment resource bound"
             );
             for control in &layout.controls {
                 ensure!(
@@ -216,6 +230,17 @@ impl Catalog {
                     "duplicate control ID"
                 );
                 ensure!(!control.label.is_empty(), "empty control label");
+                ensure!(
+                    matches!(
+                        control.group.as_str(),
+                        "face" | "shoulder" | "rear" | "menu" | "dpad" | "stick" | "turbo"
+                    ),
+                    "unknown control semantic group"
+                );
+                ensure!(
+                    control.group != "turbo" || control.repeat_of.is_some(),
+                    "Hardware turbo needs its repeated control"
+                );
                 if let Some(base) = &control.repeat_of {
                     ensure!(
                         control.group == "turbo"
@@ -473,17 +498,40 @@ impl Calibration {
                     .into(),
             );
         }
-        let assignments = crate::controller_layout::assignments(source, target);
+        let resolution = crate::controller_layout::resolve(
+            source,
+            target,
+            &self.bindings.keys().map(String::as_str).collect(),
+            &profile.bindings.keys().map(String::as_str).collect(),
+        );
         let rows: Vec<MappingRow> = profile
             .bindings
             .iter()
             .map(|(target_id, output)| {
-                let physical = assignments
+                let physical = resolution
+                    .assignments
                     .get(target_id)
                     .and_then(|source_id| source.controls.iter().find(|c| c.id == *source_id));
                 let input = physical.and_then(|c| self.bindings.get(&c.id)).cloned();
                 if input.is_none() {
-                    warnings.push(format!("Missing physical input for {target_id}"));
+                    warnings.push(format!(
+                        "Missing physical input for {target_id}: {}",
+                        resolution.missing[target_id].description()
+                    ));
+                }
+                if let (Some(physical), Some(rule)) = (physical, resolution.rules.get(target_id)) {
+                    if matches!(
+                        rule,
+                        crate::controller_layout::Rule::FacePosition
+                            | crate::controller_layout::Rule::SameHandShoulder
+                            | crate::controller_layout::Rule::DigitalOverflow
+                    ) {
+                        warnings.push(format!(
+                            "{target_id} uses {}: {}",
+                            physical.label,
+                            rule.description()
+                        ));
+                    }
                 }
                 MappingRow {
                     target_id: target_id.clone(),
@@ -500,6 +548,12 @@ impl Calibration {
                         .unwrap_or_else(|| "Not available".into()),
                     input,
                     output: output.clone(),
+                    reason: resolution
+                        .rules
+                        .get(target_id)
+                        .map(|rule| rule.description())
+                        .unwrap_or_else(|| resolution.missing[target_id].description())
+                        .to_string(),
                 }
             })
             .collect();
@@ -516,6 +570,7 @@ impl Calibration {
                         .any(|c| c.id == row.target_id && c.optional)
             });
         Ok(MappingPlan {
+            mapping_policy_version: resolution.policy_version,
             profile: profile.name.clone(),
             transport: profile.transport.clone(),
             status: profile.status.clone(),
@@ -645,17 +700,11 @@ mod tests {
         assert_eq!(control("l2").physical_id.as_deref(), Some("z"));
         assert_eq!(control("r2").physical_id.as_deref(), Some("z_right"));
         brawler.bindings.remove("z_right");
-        assert!(
-            brawler
-                .plan(&profile.id)
-                .unwrap()
-                .rows
-                .iter()
-                .find(|r| r.target_id == "r2")
-                .unwrap()
-                .input
-                .is_none()
-        );
+        let partial = brawler.plan(&profile.id).unwrap();
+        let r2 = partial.rows.iter().find(|r| r.target_id == "r2").unwrap();
+        assert!(r2.input.is_some(), "an unused C button can supply R2");
+        assert_ne!(r2.physical_id.as_deref(), Some("z_right"));
+        assert!(r2.reason.contains("Spare gameplay button"));
         let standard_n64 = calibration("n64").plan(&profile.id).unwrap();
         for id in ["r2", "select"] {
             assert!(
@@ -665,7 +714,7 @@ mod tests {
                     .find(|r| r.target_id == id)
                     .unwrap()
                     .input
-                    .is_none()
+                    .is_some()
             );
         }
     }
@@ -897,6 +946,80 @@ mod tests {
             plan.rows.iter().find(|r| r.target == "A").unwrap().physical,
             "A / South"
         );
+    }
+    #[test]
+    fn partial_calibration_is_resolved_before_assignment_not_afterwards() {
+        let mut cal = calibration("xbox");
+        cal.bindings.remove("y");
+        let plan = cal.plan("retroarch:fceumm:nes").unwrap();
+        assert!(plan.rows.iter().all(|row| row.input.is_some()));
+        assert!(
+            plan.rows
+                .iter()
+                .all(|row| row.physical_id.as_deref() != Some("y"))
+        );
+        assert_eq!(
+            plan.mapping_policy_version,
+            crate::controller_layout::POLICY_VERSION
+        );
+        assert!(plan.rows.iter().all(|row| !row.reason.is_empty()));
+        let primary = plan.rows.iter().find(|row| row.target_id == "a").unwrap();
+        assert_eq!(primary.physical_id.as_deref(), Some("b"));
+        assert!(plan.rows.iter().any(|row| row.reason.contains("position")));
+    }
+
+    #[test]
+    fn every_source_composes_with_every_adapter_without_changing_the_contract() {
+        let db = catalog();
+        for source in &db.layouts {
+            let cal = calibration(&source.id);
+            for profile in &db.emulator_profiles {
+                let plan = cal.plan(&profile.id).unwrap();
+                assert_eq!(plan.rows.len(), profile.bindings.len());
+                let mut used = HashSet::new();
+                for row in &plan.rows {
+                    assert_eq!(row.output, profile.bindings[&row.target_id]);
+                    assert!(!row.reason.is_empty());
+                    if let Some(physical) = &row.physical_id {
+                        assert!(used.insert(physical));
+                        assert_eq!(row.input.as_ref(), cal.bindings.get(physical));
+                    } else {
+                        assert!(row.input.is_none());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn layout_rule_schema_rejects_typoes_and_bounds_polynomial_solver_resources() {
+        let mut db = catalog().clone();
+        db.layouts[0].family = "diamondd".into();
+        assert!(db.validate().is_err());
+        db = catalog().clone();
+        db.layouts[0].controls[0].group = "facce".into();
+        assert!(db.validate().is_err());
+        db = catalog().clone();
+        let mut layout = db.layouts[0].clone();
+        layout.id = "large-pad".into();
+        let template = layout.controls[0].clone();
+        layout.controls = (0..64)
+            .map(|index| {
+                let mut c = template.clone();
+                c.id = format!("button_{index}");
+                c
+            })
+            .collect();
+        db.layouts.push(layout);
+        assert!(
+            db.validate().is_ok(),
+            "solver no longer has an eight-face limit"
+        );
+        let layout = db.layouts.last_mut().unwrap();
+        let mut extra = template;
+        extra.id = "button_64".into();
+        layout.controls.push(extra);
+        assert!(db.validate().is_err());
     }
     #[test]
     fn svg_export_is_reproducible() {

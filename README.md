@@ -96,6 +96,13 @@ device nodes. Launch-time remapping is shown as an available control only when
 the Linux InputPlumber provider can enumerate managed devices; direct gamepad
 navigation remains available independently on every supported desktop.
 
+Calibrated emulator mappings use one [shared layout-rule solver](docs/CONTROLLER_LAYOUT_RULES.md)
+for every source/target layout pair, composed with reusable core output contracts.
+The solver considers calibrated capabilities, ergonomic family rules and button
+positions; missing hardware remains explicit. The all-pairs audit covers all 256
+ordered combinations of the 16 catalog layouts, separately from launch-adapter
+and runtime-core coverage.
+
 In the desktop library, D-pad/stick directions follow visible screen positions,
 including movement between game cards and the platform sidebar, without row
 wrapping. Bumpers page the focused list/grid up or down; analog triggers jump to
