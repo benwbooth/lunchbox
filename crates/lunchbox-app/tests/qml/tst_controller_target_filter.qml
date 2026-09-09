@@ -1,0 +1,29 @@
+import QtQuick
+import QtTest
+import "../../qml" as Lunchbox
+
+TestCase {
+    name: "ControllerTargetFilter"
+    Lunchbox.ControllerTargetFilter { id: filter }
+    property var profiles: [
+        {id: "ps", core: "duckstation", transport: "duckstation-settings", target_layout: "dualshock"},
+        {id: "ps-digital", core: "duckstation", transport: "duckstation-settings", target_layout: "playstation-digital"},
+        {id: "other-emulator", core: "mednafen", transport: "mednafen", target_layout: "dualshock"},
+        {id: "dc", core: "flycast", transport: "retropad", target_layout: "dreamcast", retroarch_launch: {platforms: ["Sega Dreamcast"]}},
+        {id: "arcade", core: "flycast", transport: "retropad", target_layout: "arcade-six-button", retroarch_launch: {platforms: ["Arcade"]}},
+        {id: "wheel", core: "flycast", transport: "retropad", target_layout: "wheel", retroarch_launch: {platforms: ["Arcade"]}}
+    ]
+    function test_only_selected_emulator_and_system() {
+        compare(filter.applicable(profiles, "DuckStation", "Sony Playstation").map(p => p.id), ["ps", "ps-digital"])
+        compare(filter.applicable(profiles, "DuckStation", "Sega Genesis"), [])
+    }
+    function test_multisystem_core() {
+        compare(filter.applicable(profiles, "RetroArch · Flycast (flycast)", "Sega Dreamcast").map(p => p.id), ["dc"])
+        compare(filter.applicable(profiles, "RetroArch · Flycast (flycast)", "Arcade").map(p => p.id), ["arcade"])
+    }
+    function test_unknown_never_opens_catalog() {
+        compare(filter.applicable(profiles, "", "Sony Playstation"), [])
+        compare(filter.applicable(profiles, "unknown", "Sony Playstation"), [])
+        compare(filter.applicable(profiles, "RetroArch", "Sony Playstation"), [])
+    }
+}

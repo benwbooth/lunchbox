@@ -65,6 +65,7 @@ fn main() {
                 "qml/ProbeArguments.qml",
                 "qml/DesktopGamepadNavigation.qml",
                 "qml/ControllerAutomaticSetup.qml",
+                "qml/ControllerTargetFilter.qml",
                 "qml/ControllerInputFeedback.qml",
                 "qml/ControllerCalibrationWizard.qml",
                 "qml/AlphabetRail.qml",
