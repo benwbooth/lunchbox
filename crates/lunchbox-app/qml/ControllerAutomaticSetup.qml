@@ -129,10 +129,21 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         color: "#95a2b6"
     }
+    CheckBox {
+        id: showVirtualControllers
+        text: "Show virtual controllers"
+        checked: false
+    }
     Repeater {
         model: { setup.revision; return setup.settingsModel.controller_count() }
         delegate: ColumnLayout {
             id: device
+            visible: {
+                setup.revision
+                const review = JSON.parse(setup.settingsModel.controller_model_review(
+                    setup.settingsModel.controller_key_at(index), ""))
+                return showVirtualControllers.checked || !review.steam_virtual
+            }
             required property int index
             Layout.fillWidth: true
             ControllerInputFeedback {
