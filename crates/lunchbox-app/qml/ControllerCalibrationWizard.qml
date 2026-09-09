@@ -15,6 +15,7 @@ Dialog {
     property string status: ""
     property bool waitingForRelease: false
     property bool showPreview: false
+    property bool reviewingSaved: false
     property int profileIndex: 0
     readonly property var layout: catalog.layouts[layoutIndex]
     readonly property var calibrationControls: layout ? layout.controls.filter(control => !control.repeat_of) : []
@@ -35,15 +36,17 @@ Dialog {
         layoutIndex = Math.max(0, catalog.layouts.findIndex(item => item.id === saved.layout))
         bindings = saved.os === catalog.host_os ? (saved.bindings || {}) : ({})
         step = 0; waitingForRelease = false; showPreview = false
-        status = "Choose the closest physical layout, then press the highlighted control."
+        reviewingSaved = layout && layout.id === saved.layout && saved.os === catalog.host_os && Object.keys(bindings).length > 0
+        status = reviewingSaved ? "Your layout and recorded buttons are saved. Re-record only if you want to change them." : "Choose the closest physical layout, then press the highlighted control."
         open()
     }
     function resetLayout(index) {
+        reviewingSaved = false
         layoutIndex = index; bindings = ({}); step = 0; waitingForRelease = false
         status = "Press the highlighted control. Release it before the next prompt."
     }
     function receiveInput() {
-        if (!visible || !currentControl || waitingForRelease || showPreview) return
+        if (!visible || reviewingSaved || !currentControl || waitingForRelease || showPreview) return
         if (settingsModel.controller_key_for_input(gamepad.last_device_key) !== deviceId) {
             status = "That input came from another controller. Use " + deviceName + "."
             return
@@ -147,7 +150,7 @@ Dialog {
             }
             Label {
                 Layout.fillWidth: true
-                text: wizard.currentControl ? "Press " + wizard.currentControl.label
+                text: wizard.reviewingSaved ? "Saved layout" : wizard.currentControl ? "Press " + wizard.currentControl.label
                     + (wizard.currentControl.optional ? " (optional)" : "") : "Controls recorded"
                 font.pixelSize: 24
                 font.bold: true
@@ -165,12 +168,13 @@ Dialog {
                 color: "#bfcddb"
             }
             RowLayout {
+                Button { text: "Re-record buttons"; visible: wizard.reviewingSaved; onClicked: wizard.reviewingSaved = false }
                 Button {
                     text: "Back"
-                    enabled: wizard.step > 0
+                    enabled: !wizard.reviewingSaved && wizard.step > 0
                     onClicked: { wizard.step--; wizard.waitingForRelease = false; wizard.status = "Press the highlighted control to replace its binding." }
                 }
-                Button { text: "Skip / not present"; enabled: !!wizard.currentControl; onClicked: wizard.skip() }
+                Button { text: "Skip / not present"; enabled: !wizard.reviewingSaved && !!wizard.currentControl; onClicked: wizard.skip() }
                 Button { text: "Start over"; onClicked: wizard.resetLayout(wizard.layoutIndex) }
             }
             CheckBox {
@@ -225,8 +229,9 @@ Dialog {
         }
     }
     footer: DialogButtonBox {
-        Button { text: "Cancel"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole; onClicked: wizard.close() }
+        Button { text: wizard.reviewingSaved ? "Close" : "Cancel"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole; onClicked: wizard.close() }
         Button {
+            visible: !wizard.reviewingSaved
             text: "Use calibration"
             enabled: Object.keys(wizard.bindings).length > 0 && !wizard.waitingForRelease
             DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
