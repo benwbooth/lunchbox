@@ -106,7 +106,7 @@ pub(crate) fn review(
     let query = normalized(query);
     let rows: Vec<_> = models()
         .iter()
-        .filter(|model| platform_matches(model, os))
+        .filter(|model| !query.is_empty() || platform_matches(model, os))
         .filter(|model| {
             if query.is_empty() {
                 hardware_matches(model, device)
@@ -182,5 +182,12 @@ mod tests {
             rows.iter()
                 .any(|m| m.name.to_lowercase().contains("brawler"))
         );
+    }
+
+    #[test]
+    fn manual_search_includes_models_with_only_foreign_platform_profiles() {
+        let result = review(&device(), None, "brawler64", "linux");
+        assert!(!result["candidates"].as_array().unwrap().is_empty());
+        assert!(result["detected"].is_null());
     }
 }
