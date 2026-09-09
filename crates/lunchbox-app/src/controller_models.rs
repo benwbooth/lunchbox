@@ -42,9 +42,6 @@ fn normalized(name: &str) -> String {
 fn hex(value: Option<&String>) -> Option<u16> {
     u16::from_str_radix(value?, 16).ok()
 }
-fn platform_matches(model: &Model, os: &str) -> bool {
-    model.os == os || model.os == "any"
-}
 fn hardware_matches(model: &Model, device: &ControllerDevice) -> bool {
     model.vendor.is_some()
         && model.product.is_some()
@@ -104,20 +101,21 @@ pub(crate) fn review(
     let selected = saved.and_then(model);
     let automatic = detected(models(), device, os);
     let query = normalized(query);
-    let rows: Vec<_> = models()
+    let mut rows: Vec<_> = models()
         .iter()
-        .filter(|model| !query.is_empty() || platform_matches(model, os))
         .filter(|model| {
-            if query.is_empty() {
-                hardware_matches(model, device)
-                    || normalized(&model.device_name) == normalized(&device.name)
-            } else {
-                normalized(&model.name).contains(&query)
-                    || normalized(&model.device_name).contains(&query)
-            }
+            normalized(&model.name).contains(&query)
+                || normalized(&model.device_name).contains(&query)
         })
         .collect();
-    json!({"selected":selected.map(summary),"detected":automatic.map(summary),"candidates":rows.iter().take(150).map(|m| summary(m)).collect::<Vec<_>>(),"total":rows.len(),"device_name":device.name,
+    rows.sort_by_cached_key(|model| (normalized(&model.name), model.os.clone(), model.id.clone()));
+    let unique_id = device
+        .unique_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
+    json!({"selected":selected.map(summary),"detected":automatic.map(summary),"candidates":rows.iter().map(|m| summary(m)).collect::<Vec<_>>(),"total":rows.len(),"device_name":device.name,
+        "hardware_unique_id":unique_id,"connection_id":device.stable_id,
         "message": if selected.is_some() { "Model selected by you" } else if automatic.is_some() { "Detected from hardware identity and reported name" } else { "Choose your model; this device identity is not conclusive" }})
 }
 
@@ -189,5 +187,22 @@ mod tests {
         let result = review(&device(), None, "brawler64", "linux");
         assert!(!result["candidates"].as_array().unwrap().is_empty());
         assert!(result["detected"].is_null());
+    }
+
+    #[test]
+    fn empty_search_lists_every_profile_and_ids_are_not_confused() {
+        let mut device = device();
+        let result = review(&device, None, "", "linux");
+        assert_eq!(
+            result["candidates"].as_array().unwrap().len(),
+            models().len()
+        );
+        assert!(result["hardware_unique_id"].is_null());
+        assert_eq!(result["connection_id"], "unit-one");
+        device.unique_id = Some("serial-123".into());
+        assert_eq!(
+            review(&device, None, "8bitdo", "linux")["hardware_unique_id"],
+            "serial-123"
+        );
     }
 }

@@ -20,6 +20,14 @@ Recognition requires matching hardware identifiers and reported name, excludes
 virtual devices and generic Xbox/XInput aliases, and declines ambiguous matches.
 Users may explicitly select a profile. Selections use the existing per-device
 identity, not the model GUID, and do not overwrite nicknames or calibration.
+Manual search includes all profiles alphabetically, including other platforms,
+so a retro model with only a Windows profile remains selectable on Linux.
+This does not establish compatibility with that platform's button numbering.
+
+Controller cards expose the hardware unique ID when the input backend reports
+one. If absent, the UI explicitly says so and labels the existing Lunchbox
+connection ID separately. A connection ID may be port/session-dependent and
+must not be described as a manufacturer serial number.
 
 Imported button indices are not automatically applied to GilRs capture codes.
 Backend translation and physical-layout correspondence must be verified before
