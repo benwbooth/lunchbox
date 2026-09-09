@@ -463,7 +463,12 @@ fn profile_button_order(button: &str) -> usize {
 
 pub fn controller_inventory() -> ControllerInventory {
     let mut warnings = Vec::new();
-    let controllers = list_local_controllers(&mut warnings);
+    let mut controllers = list_local_controllers(&mut warnings);
+    let (native_sdl, sdl_status) = crate::controller_sdl3::devices();
+    controllers.extend(native_sdl);
+    if sdl_status.contains("unavailable") {
+        warnings.push(sdl_status);
+    }
     let (provider, managed_device_count, supported_targets) = inputplumber_inventory(&mut warnings);
     ControllerInventory {
         provider,
@@ -509,7 +514,13 @@ pub fn controller_receives_input(
     controller_id: &str,
     key: &str,
 ) -> bool {
-    if key.is_empty() {
+    if key.is_empty()
+        || controllers
+            .iter()
+            .filter(|device| device.stable_id == controller_id)
+            .count()
+            != 1
+    {
         return false;
     }
     let path = Path::new(key);
@@ -2119,6 +2130,13 @@ mod tests {
             &pads[..1],
             "first",
             "/dev/input/event264"
+        ));
+        let mut ambiguous = pads.clone();
+        ambiguous[1].stable_id = ambiguous[0].stable_id.clone();
+        assert!(!controller_receives_input(
+            &ambiguous,
+            "first",
+            "/dev/input/event259"
         ));
         let mut ambiguous = pads.clone();
         ambiguous[1].event_paths = ambiguous[0].event_paths.clone();

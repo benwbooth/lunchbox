@@ -18,6 +18,19 @@ finish-args:
   - --talk-name=org.freedesktop.secrets
 
 modules:
+  - name: sdl3
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DSDL_SHARED=ON
+      - -DSDL_STATIC=OFF
+      - -DSDL_TESTS=OFF
+      - -DSDL_EXAMPLES=OFF
+      - -DSDL_VIDEO=OFF
+      - -DSDL_AUDIO=OFF
+    sources:
+      - type: archive
+        url: https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12.tar.gz
+        sha256: f07b958a9ac5020fb7a44cadb957f658b2149c3c8abb4f63145fac9303249db7
   - name: lunchbox
     buildsystem: simple
     build-options:
@@ -26,6 +39,7 @@ modules:
         CARGO_HOME: /run/build/lunchbox/cargo
         CARGO_NET_OFFLINE: 'true'
         QMAKE: /usr/bin/qmake6
+        LUNCHBOX_SDL3_LIBRARY: /app/lib/libSDL3.so.0
     build-commands:
       - cargo build --locked --offline --release --package lunchbox-app
       - cargo run --locked --offline --release --package lunchbox-db -- extract --archive artifacts/lunchbox.db.7z --output database

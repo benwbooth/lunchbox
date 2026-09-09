@@ -17,6 +17,8 @@ pub(crate) struct Model {
     pub bus: Option<u16>,
     pub version: Option<u16>,
     pub bindings: BTreeMap<String, String>,
+    #[serde(default)]
+    pub manual_setup: bool,
 }
 #[derive(Deserialize)]
 struct Database {
@@ -25,8 +27,34 @@ struct Database {
 pub(crate) fn models() -> &'static [Model] {
     static DB: OnceLock<Database> = OnceLock::new();
     &DB.get_or_init(|| {
-        serde_json::from_str(include_str!("../data/controller-models/models.json"))
-            .expect("validated controller model database")
+        let mut database: Database =
+            serde_json::from_str(include_str!("../data/controller-models/models.json"))
+                .expect("validated controller model database");
+        // Keep imported IDs and reported names intact for saved selections and matching.
+        // These are legacy database profiles, not evidence for the 2026 generation.
+        for model in &mut database.models {
+            if matches!(
+                model.name.as_str(),
+                "Steam Controller" | "Valve Steam Controller" | "Wireless Steam Controller"
+            ) {
+                model.name = format!("{} — legacy profile", model.name);
+            }
+        }
+        database.models.push(Model {
+            id: crate::controller_sdl3::MODEL_ID.into(),
+            name: "Steam Controller 2 (2026) — SDL3 native".into(),
+            device_name: "Steam Controller (2026)".into(),
+            source: "SDL3 native driver".into(),
+            os: "any".into(),
+            driver: "hidapi-steam-triton".into(),
+            vendor: None,
+            product: None,
+            bus: None,
+            version: None,
+            bindings: BTreeMap::new(),
+            manual_setup: false,
+        });
+        database
     })
     .models
 }
@@ -70,7 +98,8 @@ pub(crate) fn detected<'a>(
     let exact: Vec<_> = rows
         .iter()
         .filter(|model| {
-            model.os == os
+            !model.manual_setup
+                && model.os == os
                 && hardware_matches(model, device)
                 && normalized(&model.device_name) == name
         })
@@ -90,7 +119,7 @@ pub(crate) fn detected<'a>(
     }
 }
 pub(crate) fn summary(model: &Model) -> Value {
-    json!({"id":model.id,"name":model.name,"device_name":model.device_name,"source":model.source,"os":model.os,"driver":model.driver,"mapping_entries":model.bindings.len()})
+    json!({"id":model.id,"name":model.name,"device_name":model.device_name,"source":model.source,"os":model.os,"driver":model.driver,"mapping_entries":model.bindings.len(),"manual_setup":model.manual_setup})
 }
 pub(crate) fn review(
     device: &ControllerDevice,
@@ -99,7 +128,12 @@ pub(crate) fn review(
     os: &str,
 ) -> Value {
     let selected = saved.and_then(model);
-    let automatic = detected(models(), device, os);
+    let native = crate::controller_sdl3::connected(&device.stable_id);
+    let automatic = if native {
+        model(crate::controller_sdl3::MODEL_ID)
+    } else {
+        detected(models(), device, os)
+    };
     let query = normalized(query);
     let mut rows: Vec<_> = models()
         .iter()
@@ -116,6 +150,8 @@ pub(crate) fn review(
         .filter(|id| !id.is_empty());
     json!({"selected":selected.map(summary),"detected":automatic.map(summary),"candidates":rows.iter().map(|m| summary(m)).collect::<Vec<_>>(),"total":rows.len(),"device_name":device.name,
         "hardware_unique_id":unique_id,"connection_id":device.stable_id,
+        "native_sdl3":native,"runtime_mapping":crate::controller_sdl3::mapping(&device.stable_id),
+        "steam_virtual":hex(device.vendor_id.as_ref())==Some(0x28de) && hex(device.product_id.as_ref())==Some(0x11ff),
         "message": if selected.is_some() { "Model selected by you" } else if automatic.is_some() { "Detected from hardware identity and reported name" } else { "Choose your model; this device identity is not conclusive" }})
 }
 
@@ -150,6 +186,7 @@ mod tests {
             bus: Some(3),
             version: Some(0x100),
             bindings: BTreeMap::new(),
+            manual_setup: false,
         }
     }
     #[test]
@@ -204,5 +241,38 @@ mod tests {
             review(&device, None, "8bitdo", "linux")["hardware_unique_id"],
             "serial-123"
         );
+    }
+
+    #[test]
+    fn steam_generations_are_distinct_and_new_generation_has_no_borrowed_mapping() {
+        let newer = model(crate::controller_sdl3::MODEL_ID).unwrap();
+        assert!(!newer.manual_setup);
+        assert!(newer.bindings.is_empty());
+        assert!(newer.vendor.is_none() && newer.product.is_none());
+        let results = review(&device(), Some(&newer.id), "steam controller", "linux");
+        assert_eq!(results["selected"]["id"], newer.id);
+        assert!(
+            results["candidates"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|row| row["id"] == newer.id)
+        );
+        for old in models().iter().filter(|m| {
+            m.source != "Lunchbox"
+                && matches!(
+                    m.device_name.as_str(),
+                    "Steam Controller" | "Valve Steam Controller" | "Wireless Steam Controller"
+                )
+        }) {
+            assert!(old.name.contains("legacy profile"));
+            assert!(!old.bindings.is_empty());
+        }
+        let mut reported = device();
+        reported.name = "Steam Controller 2".into();
+        assert!(detected(models(), &reported, "linux").is_none());
+        let search = review(&reported, None, "steam controller 2", "linux");
+        assert_eq!(search["candidates"].as_array().unwrap().len(), 1);
+        assert_eq!(search["candidates"][0]["id"], newer.id);
     }
 }

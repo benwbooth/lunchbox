@@ -6,11 +6,12 @@ pub mod collection_identity_model;
 mod collections;
 mod controller_axis;
 mod controller_catalog;
-mod controller_models;
 mod controller_launch;
 mod controller_launch_modes;
 mod controller_layout;
+mod controller_models;
 mod controller_psx;
+mod controller_sdl3;
 mod controllers;
 mod couch_theme;
 mod download_plan;
@@ -119,6 +120,19 @@ pub fn initialize_qt() {
 }
 
 pub fn run() -> i32 {
+    if std::env::args().any(|arg| arg == "--sdl3-input-stream" || arg == "--sdl3-input-inspect") {
+        let once = std::env::args().any(|arg| arg == "--sdl3-input-inspect");
+        return match lunchbox_controller_probe::live_sdl3::stream(
+            &controller_sdl3::runtime_path(),
+            once,
+        ) {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!("SDL3 native input: {error:#}");
+                1
+            }
+        };
+    }
     if std::env::args().any(|arg| arg == "--controller-numbering-probe") {
         return match controller_launch::numbering_probe() {
             Ok(()) => 0,

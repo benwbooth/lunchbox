@@ -1,5 +1,26 @@
 # Controller model database
 
+## Steam Controller generations
+
+The runtime catalog labels the imported, ambiguously named Steam Controller
+records as legacy profiles (not Steam Controller 2), preserving their original
+IDs, reported names and mappings. The separate entry
+`lunchbox:steam-controller-2026:sdl3` uses the native SDL3 Triton driver, not a
+fabricated mapping-database row. Detection comes from the live SDL3 runtime.
+The controller card offers "Use SDL3 mapping" for standard controls, grip
+buttons and pad clicks. See [native input integration](../../../../docs/CONTROLLER_SDL3_NATIVE.md)
+for scope and verification boundaries.
+
+Valve distinguishes the generations in its official support and store pages:
+- https://help.steampowered.com/en/faqs/view/33E8-5EDF-24E6-4CFB
+- https://store.steampowered.com/app/353370/Steam_Controller_2015/
+
+This runtime identity entry is separate from the reproducible upstream snapshot
+and survives its regeneration. Do not infer generation from a user nickname,
+an Xbox virtual device or the original generation's profile name.
+
+## Upstream snapshots
+
 Derived, normalized snapshots of SDL_GameControllerDB (zlib license) and
 libretro/retroarch-joypad-autoconfig (MIT profiles, with upstream's additional
 zlib notice). Redistribution is permitted subject to the accompanying notices;

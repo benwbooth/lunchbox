@@ -19,6 +19,7 @@ pub mod qobject {
         #[qproperty(QString, last_control)]
         #[qproperty(QString, last_device_key)]
         #[qproperty(QString, last_binding)]
+        #[qproperty(bool, last_capture_started)]
         #[qproperty(QString, neutral_device_key)]
         #[qproperty(QString, neutral_binding)]
         #[qproperty(QString, neutral_error)]
@@ -72,6 +73,7 @@ pub struct GamepadInputRust {
     last_control: QString,
     last_device_key: QString,
     last_binding: QString,
+    last_capture_started: bool,
     neutral_device_key: QString,
     neutral_binding: QString,
     neutral_error: QString,
@@ -98,6 +100,7 @@ impl Default for GamepadInputRust {
             last_control: QString::default(),
             last_device_key: QString::default(),
             last_binding: QString::default(),
+            last_capture_started: false,
             neutral_device_key: QString::default(),
             neutral_binding: QString::default(),
             neutral_error: QString::default(),
@@ -343,6 +346,74 @@ impl qobject::GamepadInput {
 
         self.as_mut()
             .set_status_message(qstring("Starting cross-platform gamepad input…"));
+        let sdl_stop = Arc::clone(&self.as_ref().rust().stop);
+        let sdl_qt = self.as_ref().qt_thread();
+        let sdl_thread = std::thread::Builder::new()
+            .name("lunchbox-sdl3-input".into())
+            .spawn(move || {
+                let result = crate::controller_sdl3::run(&sdl_stop, |event| {
+                    let _ = sdl_qt.queue(move |mut model| match event {
+                        crate::controller_sdl3::InputEvent::Press {
+                            key,
+                            binding,
+                            first,
+                        } => {
+                            let action = match binding.logical.as_str() {
+                                "South" => Some(NavigationAction::Accept),
+                                "East" => Some(NavigationAction::Back),
+                                "DPadUp" | "LeftStickUp" => Some(NavigationAction::Up),
+                                "DPadDown" | "LeftStickDown" => Some(NavigationAction::Down),
+                                "DPadLeft" | "LeftStickLeft" => Some(NavigationAction::Left),
+                                "DPadRight" | "LeftStickRight" => Some(NavigationAction::Right),
+                                "Start" => Some(NavigationAction::Menu),
+                                _ => None,
+                            };
+                            model.as_mut().set_last_device_key(qstring(key));
+                            model.as_mut().set_last_binding(qstring(
+                                serde_json::to_string(&binding).expect("SDL binding serializes"),
+                            ));
+                            model.as_mut().set_last_control(qstring(&binding.logical));
+                            model.as_mut().set_last_input(qstring(format!(
+                                "Steam Controller 2 · {}",
+                                binding.logical
+                            )));
+                            model.as_mut().set_last_capture_started(first);
+                            let revision = model.as_ref().input_revision().wrapping_add(1);
+                            model.as_mut().set_input_revision(revision);
+                            if let Some(action) = action {
+                                model.as_mut().publish_action(
+                                    action,
+                                    "Steam Controller 2 (2026)".into(),
+                                    "xbox".into(),
+                                );
+                            }
+                        }
+                        crate::controller_sdl3::InputEvent::Neutral {
+                            key,
+                            binding,
+                            error,
+                        } => {
+                            model.as_mut().set_neutral_device_key(qstring(key));
+                            model.as_mut().set_neutral_binding(qstring(
+                                binding
+                                    .map(|b| {
+                                        serde_json::to_string(&b).expect("SDL binding serializes")
+                                    })
+                                    .unwrap_or_default(),
+                            ));
+                            model.as_mut().set_neutral_error(qstring(error));
+                            let revision = model.as_ref().neutral_revision().wrapping_add(1);
+                            model.as_mut().set_neutral_revision(revision);
+                        }
+                    });
+                });
+                if let Err(error) = result {
+                    crate::controller_sdl3::failed(&format!("{error:#}"));
+                }
+            });
+        if let Err(error) = sdl_thread {
+            crate::controller_sdl3::failed(&error.to_string());
+        }
         let stop = Arc::clone(&self.as_ref().rust().stop);
         let navigation_gate = Arc::clone(&self.as_ref().rust().navigation_gate);
         let qt_thread = self.as_ref().qt_thread();
@@ -395,6 +466,10 @@ impl qobject::GamepadInput {
                         if let Some(mut binding) = binding {
                             binding.native = native_input(&gilrs.gamepad(event.id), event.event);
                             let key = input_device_key(&gilrs.gamepad(event.id));
+                            // Later presses still feed diagnostics, but cannot
+                            // become a new wizard recording while this capture
+                            // owns the pending neutral/measurement result.
+                            let capture_started = !captures.contains_key(&event.id);
                             captures.entry(event.id).or_insert_with(|| PendingCalibration::new(binding.clone(), &key));
                             let control = binding.logical.clone();
                             let encoded =
@@ -406,6 +481,7 @@ impl qobject::GamepadInput {
                             let _ = qt_thread.queue(move |mut model| {
                                 model.as_mut().set_last_device_key(qstring(device_key));
                                 model.as_mut().set_last_binding(qstring(encoded));
+                                model.as_mut().set_last_capture_started(capture_started);
                                 model.as_mut().set_last_input(qstring(description));
                                 model.as_mut().set_last_control(qstring(control));
                                 let revision = model.as_ref().input_revision().wrapping_add(1);
@@ -633,6 +709,15 @@ impl PendingCalibration {
                         // Raw measured motion, not a guess based on a normalized
                         // Xbox/GilRs label (which may be inverted by its mapping).
                         native.direction = measured.direction();
+                    }
+                    // GilRs may label an analog trigger as a button and emit
+                    // ButtonPressed/Released. Its measured evdev transport is
+                    // still an axis. Preserve that capability in calibration;
+                    // the logical press direction is positive while raw
+                    // polarity remains in native.direction above.
+                    if self.binding.kind == "button" {
+                        self.binding.kind = "axis".to_owned();
+                        self.binding.direction = 1;
                     }
                     self.binding.axis = Some(measured);
                     self.axis = None;

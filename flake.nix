@@ -72,6 +72,7 @@
           dontUseNinjaBuild = true;
           dontUseNinjaInstall = true;
           QMAKE = "${qtEnv}/bin/qmake";
+          LUNCHBOX_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
           preBuild = ''
             export PATH="${qtEnv}/bin:${qtEnv}/libexec:$PATH"
             export QMAKE="${qtEnv}/bin/qmake"
@@ -141,6 +142,7 @@
         };
 
         devShells.default = pkgs.mkShell {
+          LUNCHBOX_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
           packages = (with pkgs; [
             cargo
             cmake

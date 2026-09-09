@@ -42,6 +42,7 @@ uuid.workspace = true
 walkdir.workspace = true
 zip.workspace = true
 tempfile = "3.14"
+lunchbox-controller-probe = { path = "../lunchbox-controller-probe" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
@@ -49,9 +50,6 @@ libc = "0.2"
 [build-dependencies]
 cxx-qt-build.workspace = true
 quick-xml = "0.37"
-
-[dev-dependencies]
-lunchbox-controller-probe = { path = "../lunchbox-controller-probe" }
 
 [[bin]]
 name = "lunchbox"

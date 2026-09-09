@@ -216,6 +216,8 @@ pub mod qobject {
         #[qinvokable]
         fn controller_catalog_json(self: &SettingsModel) -> QString;
         #[qinvokable]
+        fn use_sdl3_controller_mapping(self: Pin<&mut SettingsModel>, device: QString) -> QString;
+        #[qinvokable]
         fn controller_model_review(
             self: &SettingsModel,
             device: QString,
@@ -1597,7 +1599,7 @@ impl qobject::SettingsModel {
         let calibration = crate::controller_catalog::Calibration {
             layout: layout.to_string(),
             os: std::env::consts::OS.into(),
-            backend: "gilrs-0.11".into(),
+            backend: crate::controller_sdl3::backend(&bindings).into(),
             bindings,
         };
         if let Err(error) = calibration.validate() {
@@ -1620,17 +1622,40 @@ impl qobject::SettingsModel {
         profile: QString,
     ) -> QString {
         let result = (|| -> anyhow::Result<_> {
+            let bindings = serde_json::from_str(&bindings.to_string())?;
             let cal = crate::controller_catalog::Calibration {
                 layout: layout.to_string(),
                 os: std::env::consts::OS.into(),
-                backend: "gilrs-0.11".into(),
-                bindings: serde_json::from_str(&bindings.to_string())?,
+                backend: crate::controller_sdl3::backend(&bindings).into(),
+                bindings,
             };
             cal.plan(&profile.to_string())
         })();
         match result {
             Ok(plan) => qstring(serde_json::to_string(&plan).expect("plan serializes")),
             Err(error) => qstring(serde_json::json!({"rows":[],"warnings":[error.to_string()],"automatic_launch_ready":false}).to_string()),
+        }
+    }
+
+    pub fn use_sdl3_controller_mapping(mut self: Pin<&mut Self>, device: QString) -> QString {
+        let id = device.to_string();
+        let result = (|| -> anyhow::Result<_> {
+            anyhow::ensure!(!*self.as_ref().busy(), "Wait for settings to finish saving");
+            let calibration = crate::controller_sdl3::standard_calibration(&id)?;
+            SettingsStore::open_default()?.save_controller_calibration(&id, &calibration)?;
+            Ok(calibration)
+        })();
+        match result {
+            Ok(calibration) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .calibrations
+                    .insert(id, calibration);
+                self.as_mut().bump_controller_revision();
+                qstring("")
+            }
+            Err(error) => qstring(format!("{error:#}")),
         }
     }
 

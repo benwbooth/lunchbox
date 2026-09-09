@@ -63,6 +63,13 @@ jobs:
           $stage = Join-Path $PWD 'dist\Lunchbox'
           New-Item -ItemType Directory -Force "$stage\bin", "$stage\share\lunchbox" | Out-Null
           Copy-Item 'target\release\lunchbox.exe' "$stage\bin\lunchbox.exe"
+          $sdlArchive = Join-Path $env:RUNNER_TEMP 'SDL3-3.4.12-x64.zip'
+          Invoke-WebRequest 'https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12-win32-x64.zip' -OutFile $sdlArchive
+          if ((Get-FileHash $sdlArchive -Algorithm SHA256).Hash.ToLower() -ne '326e9f5ae2cbab478c03a9e2b22a560e5a9358b5f5eed8e61f5a7c8333750cf1') { throw 'SDL3 archive checksum mismatch' }
+          $sdlStage = Join-Path $env:RUNNER_TEMP 'lunchbox-sdl3'
+          Expand-Archive $sdlArchive -DestinationPath $sdlStage -Force
+          Copy-Item (Get-ChildItem $sdlStage -Recurse -Filter SDL3.dll | Select-Object -First 1).FullName "$stage\bin\SDL3.dll"
+          Get-ChildItem $sdlStage -Recurse -Filter 'LICENSE*' | ForEach-Object { Copy-Item $_.FullName "$stage\share\lunchbox\SDL3-LICENSE.txt" }
           cargo run --locked --release --package lunchbox-db -- extract --archive 'artifacts\lunchbox.db.7z' --output "$stage\share\lunchbox"
           windeployqt --release --qmldir 'crates\lunchbox-app\qml' "$stage\bin\lunchbox.exe"
           if (-not (Test-Path "$stage\share\lunchbox\lunchbox.db")) { throw 'database staging failed' }
@@ -114,6 +121,14 @@ jobs:
           rm -rf dist/Lunchbox.app
           mkdir -p dist/Lunchbox.app/Contents/MacOS dist/Lunchbox.app/Contents/share/lunchbox
           install -m 0755 target/release/lunchbox dist/Lunchbox.app/Contents/MacOS/lunchbox
+          sdl_source="$(mktemp -d "${RUNNER_TEMP}/lunchbox-sdl3.XXXXXX")"
+          curl --fail --location --retry 3 https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12.tar.gz -o "$sdl_source/source.tar.gz"
+          echo "f07b958a9ac5020fb7a44cadb957f658b2149c3c8abb4f63145fac9303249db7  $sdl_source/source.tar.gz" | shasum -a 256 -c -
+          tar -xzf "$sdl_source/source.tar.gz" -C "$sdl_source" --strip-components=1
+          cmake -S "$sdl_source" -B "$sdl_source/build" -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DSDL_VIDEO=OFF -DSDL_AUDIO=OFF
+          cmake --build "$sdl_source/build" --config Release --parallel 3
+          cp -L "$sdl_source/build/libSDL3.0.dylib" dist/Lunchbox.app/Contents/MacOS/libSDL3.dylib
+          install -m 0644 "$sdl_source/LICENSE.txt" dist/Lunchbox.app/Contents/share/lunchbox/SDL3-LICENSE.txt
           install -m 0644 packaging/macos/Info.plist dist/Lunchbox.app/Contents/Info.plist
           version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "lunchbox-app") | .version')"
           plutil -replace CFBundleShortVersionString -string "$version" dist/Lunchbox.app/Contents/Info.plist

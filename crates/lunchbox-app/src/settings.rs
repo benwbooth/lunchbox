@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use directories::ProjectDirs;
 use lava_torrent::torrent::v1::Torrent;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
@@ -2165,6 +2165,34 @@ impl SettingsStore {
                 settings.onboarding_complete,
                 settings.minimize_during_game,
             ],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub(crate) fn save_controller_calibration(
+        &self,
+        device: &str,
+        calibration: &crate::controller_catalog::Calibration,
+    ) -> Result<()> {
+        calibration.validate()?;
+        let mut connection = self.connection()?;
+        let transaction =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let json: String = transaction
+            .query_row(
+                "SELECT controller_mapping_json FROM app_settings WHERE id=1",
+                [],
+                |row| row.get(0),
+            )
+            .context("Save initial application settings before setting up controllers")?;
+        let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
+        mapping
+            .calibrations
+            .insert(device.to_owned(), calibration.clone());
+        transaction.execute(
+            "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
+            [serde_json::to_string(&mapping)?],
         )?;
         transaction.commit()?;
         Ok(())

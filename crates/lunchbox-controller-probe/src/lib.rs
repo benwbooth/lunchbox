@@ -16,6 +16,7 @@ pub mod duckstation;
 pub mod duckstation_config;
 pub mod libretro_input;
 pub mod linux_classic;
+pub mod live_sdl3;
 pub mod players;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

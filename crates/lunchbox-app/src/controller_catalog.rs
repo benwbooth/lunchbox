@@ -151,8 +151,10 @@ pub struct MappingRow {
 pub fn catalog() -> &'static Catalog {
     static DB: OnceLock<Catalog> = OnceLock::new();
     DB.get_or_init(|| {
-        let db: Catalog = serde_json::from_str(include_str!("../data/controllers/catalog.json"))
-            .expect("bundled controller catalog must parse");
+        let mut db: Catalog =
+            serde_json::from_str(include_str!("../data/controllers/catalog.json"))
+                .expect("bundled controller catalog must parse");
+        crate::controller_sdl3::add_layout(&mut db);
         db.validate()
             .expect("bundled controller catalog must validate");
         db
@@ -438,7 +440,7 @@ impl Calibration {
             "Unsupported calibration OS"
         );
         ensure!(
-            self.backend == "gilrs-0.11",
+            matches!(self.backend.as_str(), "gilrs-0.11" | "sdl3-gamepad"),
             "Unsupported calibration input backend"
         );
         ensure!(
@@ -448,6 +450,20 @@ impl Calibration {
         let mut inputs = HashSet::new();
         let mut native_inputs = HashSet::new();
         for (id, input) in &self.bindings {
+            ensure!(
+                crate::controller_sdl3::is_binding(input) == (self.backend == "sdl3-gamepad"),
+                "Mixed SDL3 and GilRs calibration inputs"
+            );
+            if self.backend == "sdl3-gamepad" {
+                ensure!(
+                    crate::controller_sdl3::valid_binding(input),
+                    "Invalid SDL3 logical control"
+                );
+                ensure!(
+                    input.native.is_none() && input.axis.is_none(),
+                    "SDL3 input cannot be treated as measured evdev input"
+                );
+            }
             let control = layout
                 .controls
                 .iter()
@@ -508,7 +524,11 @@ impl Calibration {
             .ok_or_else(|| anyhow::anyhow!("Unknown emulator profile"))?;
         let target = db.layout(&profile.target_layout).unwrap();
         let mut warnings = profile.conditions.clone();
-        let adapter = crate::controller_launch::supports_profile(profile);
+        let adapter =
+            self.backend != "sdl3-gamepad" && crate::controller_launch::supports_profile(profile);
+        if self.backend == "sdl3-gamepad" {
+            warnings.push("SDL3 native input is ready for setup and mapping preview. This target still requires an SDL3-aware launch transport; SDL logical codes are not evdev codes.".into());
+        }
         warnings.push(if adapter {
             "Native Linux RetroArch launch adapter available. Physical bindings and connected-device numbering are checked again at launch; automatic RetroArch remaps/overrides are suspended for that session."
         } else {

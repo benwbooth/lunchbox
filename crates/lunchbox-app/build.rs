@@ -46,6 +46,10 @@ struct GeneratedArcadeEntry {
 }
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=LUNCHBOX_SDL3_LIBRARY");
+    if let Ok(path) = std::env::var("LUNCHBOX_SDL3_LIBRARY") {
+        println!("cargo:rustc-env=LUNCHBOX_SDL3_LIBRARY={path}");
+    }
     generate_arcade_lookup();
     let platform_resources = generate_platform_resources();
 

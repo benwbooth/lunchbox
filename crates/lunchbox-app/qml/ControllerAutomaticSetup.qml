@@ -157,6 +157,19 @@ ColumnLayout {
                 onClicked: calibration.openFor(setup.settingsModel.controller_key_at(device.index),
                     setup.settingsModel.controller_name_at(device.index))
             }
+            ColumnLayout {
+                visible: { setup.revision; return setup.settingsModel.controller_key_at(device.index).startsWith("sdl3:") }
+                Layout.fillWidth: true
+                Button {
+                    text: "Use native SDL3 mapping"
+                    enabled: !setup.settingsModel.busy
+                    onClicked: {
+                        const error = setup.settingsModel.use_sdl3_controller_mapping(setup.settingsModel.controller_key_at(device.index))
+                        nativeSdlResult.text = error || "SDL3 mapping saved. Choose layout and calibrate to review or edit it."
+                    }
+                }
+                Label { id: nativeSdlResult; Layout.fillWidth: true; wrapMode: Text.WordWrap; visible: text.length > 0 }
+            }
             ComboBox {
                 Layout.fillWidth: true
                 model: setup.layouts
