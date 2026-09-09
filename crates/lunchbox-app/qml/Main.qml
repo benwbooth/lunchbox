@@ -123,6 +123,11 @@ ApplicationWindow {
                 ? downloadQueue.job_index_for_game(selectedGameId) : -1
     }
     property int selectedDatabaseId: 0
+    readonly property bool selectedDownloadImported: {
+        downloadQueue.revision
+        return selectedDownloadJobIndex >= 0
+                && downloadQueue.job_state_at(selectedDownloadJobIndex) === "IMPORTED"
+    }
     property double selectedMediaId: 0
     property url selectedArtworkUrl: ""
     property url selectedFanartUrl: ""
@@ -11718,10 +11723,7 @@ ApplicationWindow {
 
                     GamePlayHero {
                         width: parent.width
-                        local: gameDetails.local
-                               || (root.selectedDownloadJobIndex >= 0
-                                   && downloadQueue.job_state_at(
-                                       root.selectedDownloadJobIndex) === "IMPORTED")
+                        local: gameDetails.local || root.selectedDownloadImported
                         loading: gameDetails.loading
                         canLaunch: gameDetails.can_launch
                         discoveryBusy: gameDetails.launch_discovery_busy
@@ -11783,18 +11785,12 @@ ApplicationWindow {
                     GameTorrentSources {
                         width: parent.width
                         detailsModel: gameDetails
-                        installed: gameDetails.local
-                                   || (root.selectedDownloadJobIndex >= 0
-                                       && downloadQueue.job_state_at(
-                                           root.selectedDownloadJobIndex) === "IMPORTED")
+                        installed: gameDetails.local || root.selectedDownloadImported
                         alternativesExpanded: root.downloadAlternativesExpanded
                         showAddSource: !gameDetails.loading
                                        && !gameDetails.local
                                        && gameDetails.game_id.length > 0
-                                       && !(root.selectedDownloadJobIndex >= 0
-                                            && downloadQueue.job_state_at(
-                                                root.selectedDownloadJobIndex)
-                                               === "IMPORTED")
+                                       && !root.selectedDownloadImported
                         ink: root.ink
                         muted: root.muted
                         line: root.line

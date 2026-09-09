@@ -1220,11 +1220,11 @@ fn load_supplemental_media(details: &mut GameDetails) -> Result<()> {
 }
 
 fn load_prepared_state(details: &mut GameDetails) -> Result<()> {
+    let store = crate::settings::SettingsStore::open_default()?;
+    load_native_game_files(details, &store)?;
     if !details.local {
         return Ok(());
     }
-    let store = crate::settings::SettingsStore::open_default()?;
-    load_native_game_files(details, &store)?;
     details.managed_installation =
         crate::ingest::inspect_managed_installation(&store, &details.id)?;
     details.prepared_install = crate::exo_install::cached_install(&store, &details.id)?;
@@ -1344,6 +1344,12 @@ fn load_native_game_files(
         .cloned()
         .unwrap_or_default();
     details.local_file_paths = paths;
+    // Library cards can still carry the pre-download flag while an import
+    // refresh is in flight. Existing files, not that UI hint, establish locality.
+    details.local |= !details.local_file_paths.is_empty();
+    if details.local {
+        details.downloadable = false;
+    }
     Ok(())
 }
 
@@ -2903,12 +2909,18 @@ mod tests {
         store.record_installed(&job, &path, &[receipt]).unwrap();
         let mut details = GameDetails {
             id: job.game_id,
-            local: true,
+            local: false,
+            downloadable: true,
             ..GameDetails::default()
         };
 
         load_native_game_files(&mut details, &store).unwrap();
 
+        assert!(
+            details.local,
+            "a completed import overrides a stale library flag"
+        );
+        assert!(!details.downloadable);
         assert_eq!(details.local_file_path, path);
         assert_eq!(
             details.local_file_paths,
