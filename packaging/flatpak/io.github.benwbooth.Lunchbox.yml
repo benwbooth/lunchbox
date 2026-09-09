@@ -43,9 +43,10 @@ modules:
         QMAKE: /usr/bin/qmake6
         LUNCHBOX_SDL3_LIBRARY: /app/lib/libSDL3.so.0
     build-commands:
-      - cargo build --locked --offline --release --package lunchbox-app
+      - cargo build --locked --offline --release --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - cargo run --locked --offline --release --package lunchbox-db -- extract --archive artifacts/lunchbox.db.7z --output database
       - install -Dm0755 target/release/lunchbox /app/bin/lunchbox
+      - install -Dm0755 target/release/lunchbox-controller-probe /app/bin/lunchbox-controller-probe
       - install -Dm0644 database/lunchbox.db /app/share/lunchbox/lunchbox.db
       - install -Dm0644 packaging/io.github.benwbooth.Lunchbox.desktop /app/share/applications/io.github.benwbooth.Lunchbox.desktop
       - install -Dm0644 packaging/io.github.benwbooth.Lunchbox.metainfo.xml /app/share/metainfo/io.github.benwbooth.Lunchbox.metainfo.xml

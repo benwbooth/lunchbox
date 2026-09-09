@@ -1866,6 +1866,261 @@
         }
       ],
       "notes": "Standard two-button gameplay layout. Turbo controls, when present, repeat I/II rather than providing additional game inputs."
+    },
+    {
+      "id": "master-system",
+      "name": "Sega Master System — two-button pad",
+      "family": "two-button",
+      "shape": "rectangle",
+      "notes": "D-pad and buttons 1/2 only. Pause and Reset are console controls, not pad buttons. Native SMSHawk adapter integration is incomplete and untested.",
+      "controls": [
+        {
+          "id": "b",
+          "label": "1",
+          "x": 76,
+          "y": 54,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "a",
+          "label": "2",
+          "x": 88,
+          "y": 44,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 16,
+          "y": 38,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 16,
+          "y": 54,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 11,
+          "y": 46,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 21,
+          "y": 46,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ],
+      "source": "BizHawk 8c6b8958bbbe623eaaa36bc82af858b812893628: SMSControllers.cs and SMSControllerDeck.cs; Lunchbox schematic geometry."
+    },
+    {
+      "id": "ngp",
+      "name": "SNK Neo Geo Pocket / Color — A/B and Option",
+      "family": "two-button",
+      "shape": "handheld",
+      "source": "https://github.com/libretro/beetle-ngp-libretro/blob/a50d5ac288a81f2104ddf43195a4efdd15c72227/libretro.c#L450-L465",
+      "notes": "Left A/right B pair. Option is the handheld menu control; there is no separate Select.",
+      "controls": [
+        {
+          "id": "a",
+          "label": "A",
+          "x": 70,
+          "y": 53,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "b",
+          "label": "B",
+          "x": 84,
+          "y": 53,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Option",
+          "x": 52,
+          "y": 60,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 40,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 56,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 14,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 26,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        }
+      ]
+    },
+    {
+      "id": "arcade-six-button",
+      "name": "Arcade — six buttons (1 2 3 / 4 5 6)",
+      "family": "arcade-rows",
+      "shape": "rectangle",
+      "source": "Lunchbox physical arcade-layout convention; native wiring is defined separately by each emulator profile.",
+      "notes": "Street Fighter-style rows: buttons 1/2/3 above 4/5/6. Calibrate physical positions, not printed console button names. Action labels remain game-specific.",
+      "controls": [
+        {
+          "id": "up",
+          "label": "Joystick up",
+          "x": 18,
+          "y": 35,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Joystick down",
+          "x": 18,
+          "y": 65,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Joystick left",
+          "x": 8,
+          "y": 50,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Joystick right",
+          "x": 28,
+          "y": 50,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "button1",
+          "label": "1 — upper left",
+          "x": 52,
+          "y": 35,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "button2",
+          "label": "2 — upper middle",
+          "x": 70,
+          "y": 35,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "button3",
+          "label": "3 — upper right",
+          "x": 88,
+          "y": 35,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "button4",
+          "label": "4 — lower left",
+          "x": 52,
+          "y": 65,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "button5",
+          "label": "5 — lower middle",
+          "x": 70,
+          "y": 65,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "button6",
+          "label": "6 — lower right",
+          "x": 88,
+          "y": 65,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 62,
+          "y": 10,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "select",
+          "label": "Coin / Select",
+          "x": 42,
+          "y": 10,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        }
+      ]
     }
   ],
   "emulator_profiles": [

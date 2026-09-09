@@ -149,6 +149,21 @@ pub struct RomEmulatorOption {
 }
 
 impl RomEmulatorOption {
+    pub(crate) fn standalone(
+        emulator_id: String,
+        emulator_name: String,
+        executable: EmulatorExecutable,
+    ) -> Self {
+        Self {
+            emulator_id,
+            emulator_name,
+            executable,
+            runtime_kind: EmulatorRuntimeKind::Standalone,
+            core_name: String::new(),
+            core_path: None,
+            recommended: false,
+        }
+    }
     pub(crate) fn retroarch(
         emulator_id: String,
         emulator_name: String,

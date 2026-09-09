@@ -24,6 +24,7 @@ QtObject {
         })
     }
     function platformsFor(profile) {
+        if (profile.native_launch) return profile.native_launch.platforms || []
         if (profile.transport === "retropad") return (profile.retroarch_launch || {}).platforms || []
         const nativeSystems = {
             "dualshock": ["sony playstation"], "playstation-digital": ["sony playstation"],
@@ -51,6 +52,7 @@ QtObject {
     }
     function playerLimit(profile) {
         if (!profile) return 0
+        if (profile.native_launch) return profile.native_launch.max_players || 1
         if (profile.retroarch_launch) return profile.retroarch_launch.max_players || 1
         if (profile.target_layout === "dolphin-native-gamecube") return 4
         if (["psp", "gameboy", "gba", "gamegear", "lynx", "ngp", "virtualboy", "wonderswan"].indexOf(profile.target_layout) >= 0) return 1

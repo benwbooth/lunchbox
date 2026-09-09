@@ -68,6 +68,39 @@ pub struct Resolution {
 }
 
 fn preferred<'a>(source: &Layout, target: &Layout, id: &'a str) -> &'a str {
+    if target.family == "arcade-rows" {
+        let slot = match id {
+            "button1" => Some(0),
+            "button2" => Some(1),
+            "button3" => Some(2),
+            "button4" => Some(3),
+            "button5" => Some(4),
+            "button6" => Some(5),
+            "button7" => Some(6),
+            "button8" => Some(7),
+            _ => None,
+        };
+        if let Some(slot) = slot {
+            return match source.family.as_str() {
+                "diamond" | "horizontal-four" => ["y", "x", "r", "b", "a", "l", "l3", "r3"][slot],
+                "six-button" | "three-button" => ["x", "y", "z", "a", "b", "c", "l", "r"][slot],
+                _ => id,
+            };
+        }
+    }
+    if source.family == "arcade-rows" && target.family == "six-button" {
+        return match id {
+            "x" => "button1",
+            "y" => "button2",
+            "z" => "button3",
+            "a" => "button4",
+            "b" => "button5",
+            "c" => "button6",
+            "l" => "button7",
+            "r" => "button8",
+            other => other,
+        };
+    }
     if source.family == "diamond" && target.family == "n64" {
         return match id {
             "a" => "b",
@@ -233,6 +266,13 @@ fn candidate(
         )
     {
         return Some((1, Rule::FamilyPreference));
+    }
+    if target.family == "arcade-rows"
+        && to.group == "face"
+        && matches!(from.group.as_str(), "face" | "shoulder" | "stick")
+        && from.id == wanted
+    {
+        return Some((0, Rule::FamilyPreference));
     }
     // Explicit shoulder-to-upper-row conversion (and its reverse); no arbitrary
     // cross-group nearest-neighbour fallback. Existing shoulders win by cost.

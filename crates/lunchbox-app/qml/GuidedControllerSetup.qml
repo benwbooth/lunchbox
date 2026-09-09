@@ -418,7 +418,12 @@ ColumnLayout {
                 }
             }
         }
-        Label { text: "This preview saves button choices. Applying them at launch depends on support for the selected emulator and input backend."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        Label {
+            text: setup.profile && setup.profile.native_launch
+                ? "Saved mappings are applied when you press Play. Lunchbox checks the emulator’s input support before starting the game."
+                : "This preview saves button choices. Applying them at launch depends on support for the selected emulator and input backend."
+            Layout.fillWidth: true; wrapMode: Text.WordWrap
+        }
         RowLayout {
             Button { text: "Back: target"; enabled: !setup.dirty; onClicked: setup.stage = 1 }
             Button { text: "Reset to automatic"; onClicked: { setup.choices = ({}); setup.generate(); setup.dirty = true } }

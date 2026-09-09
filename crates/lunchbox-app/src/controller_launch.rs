@@ -52,7 +52,8 @@ pub fn contract(core: &str, platform: &str) -> Option<&'static EmulatorProfile> 
 }
 
 pub fn supports_profile(profile: &EmulatorProfile) -> bool {
-    cfg!(target_os = "linux") && profile.retroarch_launch.is_some()
+    (cfg!(target_os = "linux") && profile.retroarch_launch.is_some())
+        || profile.transport == "ares-settings"
 }
 
 fn cfg_value(text: &str, key: &str) -> Result<Option<String>> {
@@ -784,6 +785,25 @@ pub fn prepare(
     }
     if devices.is_empty() {
         return Ok(None);
+    }
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("ares")
+    {
+        let directory = crate::controller_ares::prepare(
+            settings,
+            platform,
+            option,
+            plan,
+            &devices,
+            &std::sync::atomic::AtomicBool::new(false),
+        )?;
+        return Ok(Some(CalibratedLaunch {
+            _directory: directory,
+            description: format!(
+                "ares: applied {} player mapping(s) to a private settings file",
+                devices.len()
+            ),
+        }));
     }
     ensure!(
         option.runtime_kind == EmulatorRuntimeKind::RetroArch,
@@ -2196,7 +2216,8 @@ mod tests {
         for profile in &catalog().emulator_profiles {
             assert_eq!(
                 supports_profile(profile),
-                cfg!(target_os = "linux") && profile.retroarch_launch.is_some()
+                (cfg!(target_os = "linux") && profile.retroarch_launch.is_some())
+                    || profile.native_launch.is_some()
             );
             if let Some(launch) = &profile.retroarch_launch {
                 for alias in &launch.platforms {

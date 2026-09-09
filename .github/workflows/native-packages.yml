@@ -56,13 +56,14 @@ jobs:
           modules: qtimageformats qtmultimedia qtquick3d qtshadertools
           cache: true
       - name: Build release executable
-        run: cargo build --locked --release --package lunchbox-app
+        run: cargo build --locked --release --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - name: Stage Qt runtime and database
         shell: pwsh
         run: |
           $stage = Join-Path $PWD 'dist\Lunchbox'
           New-Item -ItemType Directory -Force "$stage\bin", "$stage\share\lunchbox" | Out-Null
           Copy-Item 'target\release\lunchbox.exe' "$stage\bin\lunchbox.exe"
+          Copy-Item 'target\release\lunchbox-controller-probe.exe' "$stage\bin\lunchbox-controller-probe.exe"
           $sdlArchive = Join-Path $env:RUNNER_TEMP 'SDL3-3.4.12-x64.zip'
           Invoke-WebRequest 'https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12-win32-x64.zip' -OutFile $sdlArchive
           if ((Get-FileHash $sdlArchive -Algorithm SHA256).Hash.ToLower() -ne '326e9f5ae2cbab478c03a9e2b22a560e5a9358b5f5eed8e61f5a7c8333750cf1') { throw 'SDL3 archive checksum mismatch' }
@@ -115,12 +116,13 @@ jobs:
           modules: qtimageformats qtmultimedia qtquick3d qtshadertools
           cache: true
       - name: Build release executable
-        run: cargo build --locked --release --package lunchbox-app
+        run: cargo build --locked --release --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - name: Assemble application bundle
         run: |
           rm -rf dist/Lunchbox.app
           mkdir -p dist/Lunchbox.app/Contents/MacOS dist/Lunchbox.app/Contents/share/lunchbox
           install -m 0755 target/release/lunchbox dist/Lunchbox.app/Contents/MacOS/lunchbox
+          install -m 0755 target/release/lunchbox-controller-probe dist/Lunchbox.app/Contents/MacOS/lunchbox-controller-probe
           sdl_source="$(mktemp -d "${RUNNER_TEMP}/lunchbox-sdl3.XXXXXX")"
           curl --fail --location --retry 3 https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12.tar.gz -o "$sdl_source/source.tar.gz"
           echo "f07b958a9ac5020fb7a44cadb957f658b2149c3c8abb4f63145fac9303249db7  $sdl_source/source.tar.gz" | shasum -a 256 -c -
@@ -225,12 +227,13 @@ jobs:
           modules: qtimageformats qtmultimedia qtquick3d qtshadertools
           cache: true
       - name: Build release executable
-        run: cargo build --locked --release --package lunchbox-app
+        run: cargo build --locked --release --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - name: Stage AppDir
         run: |
           rm -rf dist/AppDir dist/appimage-assets
           mkdir -p dist/AppDir/usr/bin dist/AppDir/usr/share/lunchbox dist/appimage-assets
           install -m 0755 target/release/lunchbox dist/AppDir/usr/bin/lunchbox
+          install -m 0755 target/release/lunchbox-controller-probe dist/AppDir/usr/bin/lunchbox-controller-probe
           install -m 0644 assets/lunchbox.svg dist/appimage-assets/io.github.benwbooth.Lunchbox.svg
           cargo run --locked --release --package lunchbox-db -- extract --archive artifacts/lunchbox.db.7z --output dist/AppDir/usr/share/lunchbox
           test -f dist/AppDir/usr/share/lunchbox/lunchbox.db

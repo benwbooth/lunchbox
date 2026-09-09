@@ -79,7 +79,7 @@
             export QT_INCLUDE_PATH="${qtEnv}/include"
             export QT_LIBEXEC_PATH="${qtEnv}/libexec"
           '';
-          cargoBuildFlags = [ "--package" "lunchbox-app" ];
+          cargoBuildFlags = [ "--package" "lunchbox-app" "--package" "lunchbox-controller-probe" "--bin" "lunchbox" "--bin" "lunchbox-controller-probe" ];
           doCheck = true;
           checkPhase = ''
             runHook preCheck

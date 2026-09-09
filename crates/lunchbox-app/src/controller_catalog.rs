@@ -52,6 +52,9 @@ pub struct EmulatorProfile {
     pub core: String,
     pub target_layout: String,
     pub transport: String,
+    /// System and player limits for an implemented native configuration writer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_launch: Option<NativeLaunch>,
     pub status: String,
     pub source: String,
     pub conditions: Vec<String>,
@@ -65,6 +68,13 @@ pub struct EmulatorProfile {
     /// Documented preview profiles do not implicitly become launch contracts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retroarch_launch: Option<RetroArchLaunch>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeLaunch {
+    pub platforms: Vec<String>,
+    pub max_players: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -157,6 +167,7 @@ pub fn catalog() -> &'static Catalog {
             serde_json::from_str(include_str!("../data/controllers/catalog.json"))
                 .expect("bundled controller catalog must parse");
         crate::controller_sdl3::add_layout(&mut db);
+        crate::controller_ares::add_profiles(&mut db).expect("ares controller profiles");
         db.validate()
             .expect("bundled controller catalog must validate");
         db
@@ -232,6 +243,7 @@ impl Catalog {
                         | "n64"
                         | "three-button"
                         | "six-button"
+                        | "arcade-rows"
                 ),
                 "unknown layout-rule family"
             );
@@ -298,7 +310,7 @@ impl Catalog {
                 profile.status == "documented"
                     && matches!(
                         profile.transport.as_str(),
-                        "retropad" | "duckstation-settings"
+                        "retropad" | "duckstation-settings" | "ares-settings"
                     ),
                 "unsupported profile contract"
             );
@@ -306,6 +318,16 @@ impl Catalog {
                 profile.source.starts_with("https://") && !profile.conditions.is_empty(),
                 "profile lacks provenance or assumptions"
             );
+            if let Some(native) = &profile.native_launch {
+                ensure!(
+                    profile.transport == "ares-settings"
+                        && profile.core == "ares"
+                        && profile.retroarch_launch.is_none()
+                        && !native.platforms.is_empty()
+                        && (1..=5).contains(&native.max_players),
+                    "Invalid native launch metadata"
+                );
+            }
             if profile.transport == "duckstation-settings" {
                 ensure!(
                     profile.core == "duckstation"
@@ -384,6 +406,7 @@ impl Catalog {
                     "unknown target control"
                 );
                 let known = match profile.transport.as_str() {
+                    "ares-settings" => crate::controller_ares::valid_output(profile, output),
                     "retropad" => {
                         crate::settings::CONTROLLER_GAMEPAD_BUTTONS.contains(&output.as_str())
                     }
@@ -556,12 +579,14 @@ impl Calibration {
             .ok_or_else(|| anyhow::anyhow!("Unknown emulator profile"))?;
         let target = db.layout(&profile.target_layout).unwrap();
         let mut warnings = profile.conditions.clone();
-        let adapter =
-            self.backend != "sdl3-gamepad" && crate::controller_launch::supports_profile(profile);
-        if self.backend == "sdl3-gamepad" {
+        let adapter = (self.backend != "sdl3-gamepad" || profile.transport == "ares-settings")
+            && crate::controller_launch::supports_profile(profile);
+        if self.backend == "sdl3-gamepad" && profile.transport != "ares-settings" {
             warnings.push("SDL3 native input is ready for setup and mapping preview. This target still requires an SDL3-aware launch transport; SDL logical codes are not evdev codes.".into());
         }
-        warnings.push(if adapter {
+        warnings.push(if profile.transport == "ares-settings" {
+            "ares 148+: saved player assignments and button choices are applied to a private settings file. The emulator's SDL device identities are checked at launch."
+        } else if adapter {
             "Native Linux RetroArch launch adapter available. Physical bindings and connected-device numbering are checked again at launch; automatic RetroArch remaps/overrides are suspended for that session."
         } else {
             "Preview only: an automatic launch adapter for this contract is not implemented."
@@ -640,16 +665,18 @@ impl Calibration {
             })
             .collect();
         let automatic_launch_ready = adapter
-            && self.os == "linux"
+            && (self.os == "linux"
+                || (profile.transport == "ares-settings" && self.backend == "sdl3-gamepad"))
             && self.os == std::env::consts::OS
             && rows.iter().all(|row| {
-                row.input
-                    .as_ref()
-                    .is_some_and(|input| input.native.is_some())
-                    || target
-                        .controls
-                        .iter()
-                        .any(|c| c.id == row.target_id && c.optional)
+                row.input.as_ref().is_some_and(|input| {
+                    input.native.is_some()
+                        || (profile.transport == "ares-settings"
+                            && crate::controller_sdl3::valid_binding(input))
+                }) || target
+                    .controls
+                    .iter()
+                    .any(|c| c.id == row.target_id && c.optional)
             });
         Ok(MappingPlan {
             mapping_policy_version: resolution.policy_version,

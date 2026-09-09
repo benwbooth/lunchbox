@@ -38,4 +38,14 @@ TestCase {
         compare(filter.playerLimit({retroarch_launch: {max_players: 4}}), 4)
         compare(filter.playerLimit(null), 0)
     }
+    function test_ares_metadata_filters_system_and_players() {
+        const profiles = [
+            {id: "ares-n64", core: "ares", transport: "ares-settings", target_layout: "n64", native_launch: {platforms: ["Nintendo 64"], max_players: 4}},
+            {id: "ares-nes", core: "ares", transport: "ares-settings", target_layout: "nes", native_launch: {platforms: ["Nintendo Entertainment System"], max_players: 2}}
+        ]
+        const targets = filter.applicable(profiles, "ares", "Nintendo 64")
+        compare(targets.map(p => p.id), ["ares-n64"])
+        compare(filter.playerLimit(targets[0]), 4)
+        compare(filter.applicable(profiles, "RetroArch (ares)", "Nintendo 64"), [])
+    }
 }
