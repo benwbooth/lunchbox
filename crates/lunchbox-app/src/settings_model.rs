@@ -249,6 +249,11 @@ pub mod qobject {
         ) -> QString;
 
         #[qinvokable]
+        fn controller_player_order_json(self: &SettingsModel) -> QString;
+        #[qinvokable]
+        fn save_controller_player_order(self: Pin<&mut SettingsModel>, players: QString) -> QString;
+        #[qinvokable]
+
         fn controller_action_at(self: &SettingsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -1613,6 +1618,77 @@ impl qobject::SettingsModel {
         self.as_mut().controller_settings_changed();
         self.as_mut().set_message(qstring("Controller calibration recorded. Save settings to keep it. Supported launch adapters will apply it automatically; other emulators still need adapter support."));
         QString::default()
+    }
+
+    pub fn controller_player_order_json(&self) -> QString {
+        qstring(
+            serde_json::to_string(
+                &self
+                    .rust()
+                    .controller_mapping
+                    .player_mappings
+                    .iter()
+                    .map(|player| player.controller_id.clone().unwrap_or_default())
+                    .collect::<Vec<_>>(),
+            )
+            .expect("player order serializes"),
+        )
+    }
+
+    pub fn save_controller_player_order(mut self: Pin<&mut Self>, players: QString) -> QString {
+        let result = (|| -> anyhow::Result<_> {
+            anyhow::ensure!(!*self.as_ref().busy(), "Wait for settings to finish saving");
+            let mut ids: Vec<String> = serde_json::from_str(&players.to_string())?;
+            while ids.last().is_some_and(String::is_empty) {
+                ids.pop();
+            }
+            anyhow::ensure!(ids.len() <= 16, "Too many players");
+            let mut seen = std::collections::HashSet::new();
+            for id in &ids {
+                anyhow::ensure!(
+                    !id.is_empty(),
+                    "Assign earlier players before later players"
+                );
+                anyhow::ensure!(
+                    seen.insert(id),
+                    "A controller can only be assigned to one player"
+                );
+                anyhow::ensure!(
+                    self.as_ref()
+                        .rust()
+                        .controller_mapping
+                        .calibrations
+                        .contains_key(id),
+                    "Set up each controller before assigning players"
+                );
+            }
+            let model = self.as_ref();
+            let mapping = &model.rust().controller_mapping;
+            let players: Vec<_> = ids
+                .into_iter()
+                .map(|id| {
+                    mapping
+                        .player_mappings
+                        .iter()
+                        .find(|p| p.controller_id.as_deref() == Some(id.as_str()))
+                        .cloned()
+                        .unwrap_or(crate::settings::ControllerPlayerMapping {
+                            controller_id: Some(id),
+                            ..Default::default()
+                        })
+                })
+                .collect();
+            SettingsStore::open_default()?.save_controller_player_order(&players)?;
+            Ok(players)
+        })();
+        match result {
+            Ok(players) => {
+                self.as_mut().rust_mut().controller_mapping.player_mappings = players;
+                self.as_mut().bump_controller_revision();
+                qstring("")
+            }
+            Err(error) => qstring(error.to_string()),
+        }
     }
 
     pub fn controller_mapping_preview(

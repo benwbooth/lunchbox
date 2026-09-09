@@ -26,4 +26,16 @@ TestCase {
         compare(filter.applicable(profiles, "unknown", "Sony Playstation"), [])
         compare(filter.applicable(profiles, "RetroArch", "Sony Playstation"), [])
     }
+    function test_settings_can_choose_context() {
+        verify(filter.emulators(profiles).indexOf("duckstation") >= 0)
+        compare(filter.systems(profiles, "duckstation"), ["sony playstation"])
+        compare(filter.applicable(profiles, "duckstation", filter.systems(profiles, "duckstation")[0]).length, 2)
+        compare(filter.systems(profiles, "RetroArch · flycast (flycast)"), ["Arcade", "Sega Dreamcast"])
+    }
+    function test_player_limits() {
+        compare(filter.playerLimit(profiles[0]), 2)
+        compare(filter.playerLimit({target_layout: "psp"}), 1)
+        compare(filter.playerLimit({retroarch_launch: {max_players: 4}}), 4)
+        compare(filter.playerLimit(null), 0)
+    }
 }

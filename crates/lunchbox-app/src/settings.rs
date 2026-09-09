@@ -2170,6 +2170,28 @@ impl SettingsStore {
         Ok(())
     }
 
+    pub(crate) fn save_controller_player_order(
+        &self,
+        players: &[ControllerPlayerMapping],
+    ) -> Result<()> {
+        let mut connection = self.connection()?;
+        let transaction =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let json: String = transaction.query_row(
+            "SELECT controller_mapping_json FROM app_settings WHERE id=1",
+            [],
+            |row| row.get(0),
+        )?;
+        let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
+        mapping.player_mappings = players.to_vec();
+        transaction.execute(
+            "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
+            [serde_json::to_string(&mapping)?],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub(crate) fn save_controller_calibration(
         &self,
         device: &str,
@@ -7918,6 +7940,36 @@ fn i64_to_u64(value: i64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn player_order_save_preserves_controller_settings() {
+        let (_directory, store) = store();
+        let mut original = AppSettings::default();
+        original.qbittorrent_host = "unchanged.example".into();
+        original
+            .controller_mapping
+            .device_names
+            .insert("pad-a".into(), "Blue pad".into());
+        store.save(&original).unwrap();
+        let players = vec![
+            ControllerPlayerMapping {
+                controller_id: Some("pad-b".into()),
+                ..Default::default()
+            },
+            ControllerPlayerMapping {
+                controller_id: Some("pad-a".into()),
+                ..Default::default()
+            },
+        ];
+        store.save_controller_player_order(&players).unwrap();
+        let saved = store.load().unwrap();
+        assert_eq!(saved.controller_mapping.player_mappings, players);
+        assert_eq!(
+            saved.controller_mapping.device_names,
+            original.controller_mapping.device_names
+        );
+        assert_eq!(saved.qbittorrent_host, original.qbittorrent_host);
+    }
 
     fn store() -> (tempfile::TempDir, SettingsStore) {
         let directory = tempfile::tempdir().unwrap();

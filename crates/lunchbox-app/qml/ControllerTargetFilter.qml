@@ -14,6 +14,17 @@ QtObject {
             mednafen_supergrafx: "beetle_supergrafx", mednafen_psx: "beetle_psx",
             mednafen_psx_hw: "beetle_psx_hw", mednafen_vb: "beetle_vb"}
         const core = retroarch ? (aliases[rawCore] || rawCore) : rawCore
+        return profiles.filter(function(profile) {
+            if ((profile.transport === "retropad") !== retroarch) return false
+            if (key(profile.core) !== core && !(retroarch && key(profile.retroarch_library) === core)) return false
+            if (!platformsFor(profile).some(value => key(value) === system)) return false
+            if (["arcade", "sega naomi", "sega naomi 2", "sammy atomiswave"].indexOf(system) >= 0)
+                return ["arcade-six-button", "arcade-eight-button"].indexOf(profile.target_layout) >= 0
+            return true
+        })
+    }
+    function platformsFor(profile) {
+        if (profile.transport === "retropad") return (profile.retroarch_launch || {}).platforms || []
         const nativeSystems = {
             "dualshock": ["sony playstation"], "playstation-digital": ["sony playstation"],
             "dolphin-native-gamecube": ["nintendo gamecube"], "psp": ["sony psp"],
@@ -27,15 +38,22 @@ QtObject {
             "pce-6": ["nec turbografx-16", "nec turbografx-cd", "pc engine", "nec pc engine supergrafx"],
             "virtualboy": ["nintendo virtual boy"], "wonderswan": ["wonderswan", "wonderswan color"]
         }
-        return profiles.filter(function(profile) {
-            if ((profile.transport === "retropad") !== retroarch) return false
-            if (key(profile.core) !== core && !(retroarch && key(profile.retroarch_library) === core)) return false
-            const platforms = retroarch ? ((profile.retroarch_launch || {}).platforms || [])
-                : (nativeSystems[profile.target_layout] || [])
-            if (!platforms.some(value => key(value) === system)) return false
-            if (["arcade", "sega naomi", "sega naomi 2", "sammy atomiswave"].indexOf(system) >= 0)
-                return ["arcade-six-button", "arcade-eight-button"].indexOf(profile.target_layout) >= 0
-            return true
-        })
+        return nativeSystems[profile.target_layout] || []
+    }
+    function emulatorFor(profile) {
+        return profile.transport === "retropad" ? "RetroArch · " + (profile.retroarch_library || profile.core) + " (" + profile.core + ")" : profile.core
+    }
+    function emulators(profiles) {
+        return Array.from(new Set(profiles.filter(p => platformsFor(p).length > 0).map(p => emulatorFor(p)))).sort()
+    }
+    function systems(profiles, emulator) {
+        return Array.from(new Set(profiles.filter(p => emulatorFor(p) === emulator).reduce((all, p) => all.concat(platformsFor(p)), []))).sort()
+    }
+    function playerLimit(profile) {
+        if (!profile) return 0
+        if (profile.retroarch_launch) return profile.retroarch_launch.max_players || 1
+        if (profile.target_layout === "dolphin-native-gamecube") return 4
+        if (["psp", "gameboy", "gba", "gamegear", "lynx", "ngp", "virtualboy", "wonderswan"].indexOf(profile.target_layout) >= 0) return 1
+        return 2
     }
 }
