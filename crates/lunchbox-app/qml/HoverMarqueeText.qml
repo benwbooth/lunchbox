@@ -16,11 +16,12 @@ Item {
 
     Text {
         id: label
+        objectName: "marqueeText"
         x: marquee.scrolling ? -marquee.overflow * marquee.progress : 0
         width: marquee.scrolling ? implicitWidth : marquee.width
         elide: marquee.scrolling ? Text.ElideNone : Text.ElideRight
         font.kerning: true
-        font.hintingPreference: Font.PreferVerticalHinting
+        font.hintingPreference: Font.PreferDefaultHinting
         renderType: Text.NativeRendering
         onTextChanged: marquee.restart()
     }

@@ -45,12 +45,12 @@ ApplicationWindow {
     title: downloadPlanUiProbe ? "Lunchbox - Download Review Probe" : "Lunchbox"
     color: palette.window
     // Keep each host's native UI family (Noto Sans on this KDE session,
-    // Segoe UI on Windows, and the system UI font on macOS). Avoid grid-fitting
-    // logical glyphs to uneven device pixels on fractional-scale displays.
+    // Segoe UI on Windows, and the system UI font on macOS), including its
+    // default hinting. The native renderer is selected before QML loads.
     font.family: Qt.application.font.family
     font.kerning: true
     font.preferShaping: true
-    font.hintingPreference: Font.PreferNoHinting
+    font.hintingPreference: Font.PreferDefaultHinting
 
     readonly property color ink: "#f4f7fb"
     readonly property color muted: "#8d99aa"
@@ -9158,8 +9158,8 @@ ApplicationWindow {
         font.weight: Font.Bold
         font.kerning: true
         font.preferShaping: true
-        font.hintingPreference: Font.PreferNoHinting
-        renderType: Text.CurveRendering
+        font.hintingPreference: Font.PreferDefaultHinting
+        renderType: Text.NativeRendering
         renderTypeQuality: 8
         verticalAlignment: Text.AlignVCenter
     }
@@ -9169,8 +9169,8 @@ ApplicationWindow {
         font.pixelSize: 12
         font.kerning: true
         font.preferShaping: true
-        font.hintingPreference: Font.PreferNoHinting
-        renderType: Text.CurveRendering
+        font.hintingPreference: Font.PreferDefaultHinting
+        renderType: Text.NativeRendering
         renderTypeQuality: 8
         verticalAlignment: Text.AlignVCenter
         Layout.fillWidth: true
@@ -9635,7 +9635,7 @@ ApplicationWindow {
                             font.weight: Font.Bold
                             font.letterSpacing: Math.round(0.8 * card.expansion)
                             font.kerning: true
-                            font.hintingPreference: Font.PreferVerticalHinting
+                            font.hintingPreference: Font.PreferDefaultHinting
                             renderType: Text.NativeRendering
                             elide: Text.ElideRight
                         }
@@ -9675,7 +9675,7 @@ ApplicationWindow {
                             color: "#ffb2b9"
                             font.pixelSize: Math.round(9 * card.expansion)
                             font.kerning: true
-                            font.hintingPreference: Font.PreferVerticalHinting
+                            font.hintingPreference: Font.PreferDefaultHinting
                             renderType: Text.NativeRendering
                             wrapMode: Text.WordWrap
                         }
@@ -9693,7 +9693,7 @@ ApplicationWindow {
                                                      parent.height * 0.38))
                         font.weight: Font.Black
                         font.kerning: true
-                        font.hintingPreference: Font.PreferVerticalHinting
+                        font.hintingPreference: Font.PreferDefaultHinting
                         renderType: Text.NativeRendering
                         visible: coverImage.status !== Image.Ready && !tile.previewActive
                     }
@@ -9727,7 +9727,7 @@ ApplicationWindow {
                             font.weight: Font.Bold
                             font.letterSpacing: Math.round(0.8 * card.expansion)
                             font.kerning: true
-                            font.hintingPreference: Font.PreferVerticalHinting
+                            font.hintingPreference: Font.PreferDefaultHinting
                             renderType: Text.NativeRendering
                         }
                     }
@@ -9846,10 +9846,9 @@ ApplicationWindow {
                     text: tile.gamePlatform.length > 0 ? tile.gamePlatform : "Unassigned platform"
                     color: root.muted
                     font.pixelSize: Math.round(11 * card.expansion)
-                    fontSizeMode: Text.HorizontalFit
-                    minimumPixelSize: Math.round(7 * card.expansion)
+                    elide: Text.ElideRight
                     font.kerning: true
-                    font.hintingPreference: Font.PreferVerticalHinting
+                    font.hintingPreference: Font.PreferDefaultHinting
                     renderType: Text.NativeRendering
                 }
                 Rectangle {
@@ -9872,7 +9871,7 @@ ApplicationWindow {
                         font.pixelSize: Math.round(8 * card.expansion)
                         font.weight: Font.DemiBold
                         font.kerning: true
-                        font.hintingPreference: Font.PreferVerticalHinting
+                        font.hintingPreference: Font.PreferDefaultHinting
                         renderType: Text.NativeRendering
                     }
                 }

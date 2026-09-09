@@ -129,7 +129,7 @@ Item {
 
     component CrispText: Text {
         font.kerning: true
-        font.hintingPreference: Font.PreferVerticalHinting
+        font.hintingPreference: Font.PreferDefaultHinting
         renderType: Text.NativeRendering
     }
 

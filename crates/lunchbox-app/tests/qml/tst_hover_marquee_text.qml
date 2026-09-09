@@ -26,6 +26,12 @@ TestCase {
         verify(!title.scrolling)
         compare(title.progress, 0)
     }
+    function test_title_uses_shared_rendering_policy() {
+        const label = findChild(title, "marqueeText")
+        verify(label !== null)
+        compare(label.renderType, Text.NativeRendering)
+        compare(label.font.hintingPreference, Font.PreferDefaultHinting)
+    }
     function test_hover_scrolls_long_title_and_exit_resets() {
         verify(title.overflow > 0)
         verify(!title.scrolling)

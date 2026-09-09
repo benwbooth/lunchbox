@@ -11,12 +11,10 @@ TextField {
 
     rightPadding: text.length > 0 ? 40 : 12
     selectByMouse: true
-    // Curve rendering keeps glyph outlines and advances stable under fractional
-    // Wayland scales (the development display is 1.3x). Native glyph bitmaps
-    // otherwise land on different device-pixel phases as text is edited.
-    renderType: Text.CurveRendering
+    // Match the application-wide native renderer and host font metrics.
+    renderType: Text.NativeRendering
     verticalAlignment: TextInput.AlignVCenter
-    font.hintingPreference: Font.PreferNoHinting
+    font.hintingPreference: Font.PreferDefaultHinting
     font.kerning: true
     font.preferShaping: true
     Accessible.name: placeholderText
