@@ -1930,6 +1930,38 @@ ApplicationWindow {
         id: library
     }
 
+    ControllerLayoutExplorer {
+        id: gameControllerMapping
+        settingsModel: appSettings
+        gamepad: gamepadInput
+    }
+
+    // Opt-in visual review uses the real selected game and connected devices.
+    Timer {
+        id: controllerSetupReview
+        interval: 1000
+        repeat: true
+        running: root.visible && Qt.application.arguments.indexOf("--controller-setup-review") >= 0
+        onTriggered: {
+            if (gameDetails.loading || !gameDetails.title) return
+            stop()
+            gameControllerMapping.openForGame(gameDetails.title, gameDetails.platform, gameDetails.emulator_name)
+            controllerSetupSnapshot.start()
+        }
+    }
+    Timer {
+        id: controllerSetupSnapshot
+        interval: 1500
+        onTriggered: {
+            if (!root.screenshotOutput) return
+            if (Qt.application.arguments.indexOf("--controller-font-review") >= 0)
+                gameControllerMapping.reviewCalibrationFont()
+            gameControllerMapping.contentItem.parent.grabToImage(function(result) {
+                console.log("LUNCHBOX_CONTROLLER_SETUP_REVIEW screenshot=" + result.saveToFile(root.screenshotOutput))
+            })
+        }
+    }
+
     GameDetailsModel {
         id: gameDetails
     }
@@ -1940,6 +1972,8 @@ ApplicationWindow {
                             && !root.controllerLearnActive
                             && !(settingsDialog.visible && controllerAutomaticSetup.testInput)
                             && !controllerAutomaticSetup.calibrationActive
+                            && !gameControllerMapping.calibrationActive
+                            && !gameControllerMapping.visible
         onNavigation_enabledChanged: sync_navigation_enabled()
         Component.onCompleted: Qt.callLater(initialize)
     }
@@ -11747,6 +11781,7 @@ ApplicationWindow {
                         line: root.line
                         accentCool: root.accentCool
                         onPlayRequested: gameDetails.launch_game()
+                        onControllerMappingRequested: gameControllerMapping.openForGame(gameDetails.title, gameDetails.platform, gameDetails.emulator_name)
                         onCancelLaunchRequested: gameDetails.cancel_launch()
                         onSetupRequested: {
                             if (gameDetails.emulator_option_count === 0)
@@ -20174,13 +20209,17 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: 9
 
-                    ControllerAutomaticSetup {
+                    GuidedControllerSetup {
                         id: controllerAutomaticSetup
                         Layout.fillWidth: true
                         settingsModel: appSettings
                         gamepad: gamepadInput
                     }
 
+                    CheckBox { id: advancedControllerTools; text: "Advanced controller tools" }
+                    ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: advancedControllerTools.checked
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 12
@@ -21065,6 +21104,8 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
+
                 }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }

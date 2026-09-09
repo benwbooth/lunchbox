@@ -296,6 +296,8 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub player_mappings: Vec<ControllerPlayerMapping>,
     #[serde(default)]
+    pub explicit_player_selection: bool,
+    #[serde(default)]
     pub platform_profile_ids: HashMap<String, String>,
     #[serde(default)]
     pub game_profile_ids: HashMap<String, String>,
@@ -327,6 +329,7 @@ impl Default for ControllerMappingSettings {
             default_profile_id: None,
             profile_controller_ids: Vec::new(),
             player_mappings: Vec::new(),
+            explicit_player_selection: false,
             platform_profile_ids: HashMap::new(),
             game_profile_ids: HashMap::new(),
             hidden_controller_ids: Vec::new(),
@@ -2184,6 +2187,7 @@ impl SettingsStore {
         )?;
         let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
         mapping.player_mappings = players.to_vec();
+        mapping.explicit_player_selection = true;
         transaction.execute(
             "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
             [serde_json::to_string(&mapping)?],
@@ -7964,6 +7968,7 @@ mod tests {
         store.save_controller_player_order(&players).unwrap();
         let saved = store.load().unwrap();
         assert_eq!(saved.controller_mapping.player_mappings, players);
+        assert!(saved.controller_mapping.explicit_player_selection);
         assert_eq!(
             saved.controller_mapping.device_names,
             original.controller_mapping.device_names

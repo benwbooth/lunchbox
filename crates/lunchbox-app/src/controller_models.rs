@@ -119,7 +119,41 @@ pub(crate) fn detected<'a>(
     }
 }
 pub(crate) fn summary(model: &Model) -> Value {
-    json!({"id":model.id,"name":model.name,"device_name":model.device_name,"source":model.source,"os":model.os,"driver":model.driver,"mapping_entries":model.bindings.len(),"manual_setup":model.manual_setup})
+    json!({"id":model.id,"name":model.name,"device_name":model.device_name,"source":model.source,"os":model.os,"driver":model.driver,"mapping_entries":model.bindings.len(),"manual_setup":model.manual_setup,"layout":suggested_layout(model)})
+}
+
+/// This is a physical-layout hint for an already identified or explicitly chosen
+/// model, not hardware detection. In particular, a generic Xbox USB identity must
+/// never turn an unidentified retro pad into an Xbox controller.
+fn suggested_layout(model: &Model) -> Option<&'static str> {
+    let name = normalized(&model.name);
+    if model.id == crate::controller_sdl3::MODEL_ID {
+        Some("steam-controller-2026")
+    } else if name.contains("brawler64") {
+        Some("brawler64")
+    } else if name.contains("8bitdo") {
+        if name.contains("m30") {
+            Some("genesis-6")
+        } else if (name.contains("n30") || name.contains("nes30")) && !name.contains("pro") {
+            Some("n30-turbo")
+        } else if (name.contains("sn30") || name.contains("sfc30") || name.contains("sf30"))
+            && !name.contains("pro")
+        {
+            Some("snes")
+        } else {
+            None
+        }
+    } else if name.contains("dualshock")
+        || name.contains("dualsense")
+        || name.contains("ps4 controller")
+        || name.contains("ps5 controller")
+    {
+        Some("dualshock")
+    } else if name.contains("xbox") && !name.contains("adapter") {
+        Some("xbox")
+    } else {
+        None
+    }
 }
 pub(crate) fn review(
     device: &ControllerDevice,
@@ -224,6 +258,34 @@ mod tests {
         let result = review(&device(), None, "brawler64", "linux");
         assert!(!result["candidates"].as_array().unwrap().is_empty());
         assert!(result["detected"].is_null());
+        assert!(
+            result["candidates"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|row| row["layout"] == "brawler64")
+        );
+    }
+
+    #[test]
+    fn layout_hints_never_relabel_a_pro_controller_as_a_two_button_pad() {
+        let mut model = row("hint-test");
+        model.name = "8BitDo N30".into();
+        assert_eq!(suggested_layout(&model), Some("n30-turbo"));
+        model.name = "8BitDo N30 Pro 2".into();
+        assert_eq!(suggested_layout(&model), None);
+        for model in models() {
+            if let Some(layout) = suggested_layout(model) {
+                assert!(
+                    crate::controller_catalog::catalog()
+                        .layout(layout)
+                        .is_some(),
+                    "{} -> {}",
+                    model.name,
+                    layout
+                );
+            }
+        }
     }
 
     #[test]

@@ -216,6 +216,41 @@ pub mod qobject {
         #[qinvokable]
         fn controller_catalog_json(self: &SettingsModel) -> QString;
         #[qinvokable]
+        fn save_guided_controller_mapping(
+            self: Pin<&mut SettingsModel>,
+            device: QString,
+            profile: QString,
+            choices: QString,
+            expected: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn persist_controller_calibration(
+            self: Pin<&mut SettingsModel>,
+            device: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn guided_controller_preview(
+            self: &SettingsModel,
+            device: QString,
+            profile: QString,
+            choices: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn save_controller_calibration_if_unchanged(
+            self: Pin<&mut SettingsModel>,
+            device: QString,
+            layout: QString,
+            bindings: QString,
+            expected: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn validate_controller_capture(
+            self: &SettingsModel,
+            layout: QString,
+            control: QString,
+            binding: QString,
+        ) -> QString;
+        #[qinvokable]
         fn use_sdl3_controller_mapping(self: Pin<&mut SettingsModel>, device: QString) -> QString;
         #[qinvokable]
         fn controller_model_review(
@@ -251,9 +286,9 @@ pub mod qobject {
         #[qinvokable]
         fn controller_player_order_json(self: &SettingsModel) -> QString;
         #[qinvokable]
-        fn save_controller_player_order(self: Pin<&mut SettingsModel>, players: QString) -> QString;
+        fn save_controller_player_order(self: Pin<&mut SettingsModel>, players: QString)
+        -> QString;
         #[qinvokable]
-
         fn controller_action_at(self: &SettingsModel, index: i32) -> QString;
 
         #[qinvokable]
@@ -1547,6 +1582,195 @@ impl qobject::SettingsModel {
             .unwrap_or_default()
     }
 
+    pub fn validate_controller_capture(
+        &self,
+        layout: QString,
+        control: QString,
+        binding: QString,
+    ) -> QString {
+        let result = (|| -> anyhow::Result<()> {
+            let layout = layout.to_string();
+            let control = control.to_string();
+            let binding = binding.to_string();
+            anyhow::ensure!(
+                layout.len() <= 1024 && control.len() <= 1024 && binding.len() <= 65536,
+                "Completed controller recording is oversized"
+            );
+            let input: crate::controller_catalog::InputBinding = serde_json::from_str(&binding)?;
+            let backend = if crate::controller_sdl3::is_binding(&input) {
+                crate::controller_sdl3::BACKEND
+            } else {
+                "gilrs-0.11"
+            };
+            crate::controller_catalog::Calibration {
+                target_mappings: Default::default(),
+                layout,
+                os: std::env::consts::OS.into(),
+                backend: backend.into(),
+                bindings: std::collections::BTreeMap::from([(control, input)]),
+            }
+            .validate()
+        })();
+        match result {
+            Ok(()) => qstring(""),
+            Err(error) => qstring(format!("Invalid completed recording: {error:#}")),
+        }
+    }
+
+    pub fn save_controller_calibration_if_unchanged(
+        self: Pin<&mut Self>,
+        device: QString,
+        layout: QString,
+        bindings: QString,
+        expected: QString,
+    ) -> QString {
+        // Compare the exact serialized baseline returned to the wizard. Both
+        // comparison and the existing write execute synchronously on this
+        // settings model; unrelated controller changes do not invalidate it.
+        if self
+            .as_ref()
+            .controller_calibration_json(device.clone())
+            .to_string()
+            != expected.to_string()
+        {
+            return qstring(
+                "This controller's saved calibration changed while the wizard was open. Nothing was overwritten. Cancel and reopen calibration to load the current bindings.",
+            );
+        }
+        self.save_controller_calibration(device, layout, bindings)
+    }
+
+    pub fn guided_controller_preview(
+        &self,
+        device: QString,
+        profile: QString,
+        choices: QString,
+    ) -> QString {
+        let result = (|| -> anyhow::Result<_> {
+            use anyhow::Context;
+            let mut calibration = self
+                .rust()
+                .controller_mapping
+                .calibrations
+                .get(&device.to_string())
+                .context("Set up this controller first")?
+                .clone();
+            anyhow::ensure!(
+                calibration.os == std::env::consts::OS,
+                "Record this controller on this operating system first"
+            );
+            let profile = profile.to_string();
+            calibration
+                .target_mappings
+                .insert(profile.clone(), serde_json::from_str(&choices.to_string())?);
+            let plan = calibration.plan(&profile)?;
+            Ok(
+                serde_json::json!({"rows":plan.rows,"error":"", "launch_ready":plan.automatic_launch_ready}),
+            )
+        })();
+        qstring(match result {
+            Ok(value) => value.to_string(),
+            Err(error) => {
+                serde_json::json!({"rows":[],"error":error.to_string(),"launch_ready":false})
+                    .to_string()
+            }
+        })
+    }
+
+    pub fn persist_controller_calibration(mut self: Pin<&mut Self>, device: QString) -> QString {
+        let result = (|| -> anyhow::Result<()> {
+            use anyhow::Context;
+            anyhow::ensure!(!*self.as_ref().busy(), "Wait for settings to finish saving");
+            let calibration = self
+                .as_ref()
+                .rust()
+                .controller_mapping
+                .calibrations
+                .get(&device.to_string())
+                .context("Set up this controller first")?
+                .clone();
+            SettingsStore::open_default()?
+                .save_controller_calibration(&device.to_string(), &calibration)
+        })();
+        match result {
+            Ok(()) => {
+                self.as_mut().bump_controller_revision();
+                qstring("")
+            }
+            Err(error) => qstring(format!("Could not save controller: {error:#}")),
+        }
+    }
+
+    pub fn save_guided_controller_mapping(
+        mut self: Pin<&mut Self>,
+        device: QString,
+        profile: QString,
+        choices: QString,
+        expected: QString,
+    ) -> QString {
+        let result = (|| -> anyhow::Result<_> {
+            use anyhow::{Context, ensure};
+            ensure!(!*self.as_ref().busy(), "Wait for settings to finish saving");
+            ensure!(
+                self.as_ref()
+                    .controller_calibration_json(device.clone())
+                    .to_string()
+                    == expected.to_string(),
+                "Controller setup changed. Select it again before saving"
+            );
+            let mut calibration = self
+                .as_ref()
+                .rust()
+                .controller_mapping
+                .calibrations
+                .get(&device.to_string())
+                .context("Set up this controller first")?
+                .clone();
+            let profile_id = profile.to_string();
+            ensure!(
+                calibration.os == std::env::consts::OS,
+                "Record this controller on this operating system first"
+            );
+            calibration.target_mappings.insert(
+                profile_id.clone(),
+                serde_json::from_str(&choices.to_string())?,
+            );
+            let plan = calibration.plan(&profile_id)?;
+            let db = crate::controller_catalog::catalog();
+            let profile = db
+                .emulator_profiles
+                .iter()
+                .find(|p| p.id == profile_id)
+                .context("Choose a target")?;
+            let target = db
+                .layout(&profile.target_layout)
+                .context("Missing target layout")?;
+            ensure!(
+                plan.rows.iter().all(|row| row.input.is_some()
+                    || target
+                        .controls
+                        .iter()
+                        .any(|c| c.id == row.target_id && c.optional)),
+                "Some required controls are missing. Record them or choose another controller"
+            );
+            SettingsStore::open_default()?
+                .save_controller_calibration(&device.to_string(), &calibration)?;
+            Ok(calibration)
+        })();
+        match result {
+            Ok(calibration) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .calibrations
+                    .insert(device.to_string(), calibration);
+                self.as_mut().bump_controller_revision();
+                qstring("")
+            }
+            Err(error) => qstring(error.to_string()),
+        }
+    }
+
     pub fn controller_catalog_json(&self) -> QString {
         let catalog = crate::controller_catalog::catalog();
         qstring(serde_json::json!({"layouts":catalog.layouts,"emulator_profiles":catalog.emulator_profiles,"host_os":std::env::consts::OS}).to_string())
@@ -1601,7 +1825,8 @@ impl qobject::SettingsModel {
             Ok(bindings) => bindings,
             Err(error) => return qstring(format!("Invalid calibration: {error}")),
         };
-        let calibration = crate::controller_catalog::Calibration {
+        let mut calibration = crate::controller_catalog::Calibration {
+            target_mappings: Default::default(),
             layout: layout.to_string(),
             os: std::env::consts::OS.into(),
             backend: crate::controller_sdl3::backend(&bindings).into(),
@@ -1609,6 +1834,35 @@ impl qobject::SettingsModel {
         };
         if let Err(error) = calibration.validate() {
             return qstring(error.to_string());
+        }
+        // Preserve unaffected logical gestures, but never carry a measurement
+        // onto a different physical control just because its semantic ID stayed.
+        let previous = self
+            .as_ref()
+            .rust()
+            .controller_mapping
+            .calibrations
+            .get(&id)
+            .cloned();
+        if let Some(old) = previous
+            .as_ref()
+            .filter(|old| old.layout == calibration.layout && old.os == calibration.os)
+        {
+            calibration.target_mappings = old
+                .target_mappings
+                .iter()
+                .map(|(profile, choices)| {
+                    let retained = choices
+                        .iter()
+                        .filter(|(_, source)| {
+                            old.bindings.get(*source) == calibration.bindings.get(*source)
+                                && calibration.bindings.contains_key(*source)
+                        })
+                        .map(|(a, b)| (a.clone(), b.clone()))
+                        .collect();
+                    (profile.clone(), retained)
+                })
+                .collect();
         }
         self.as_mut()
             .rust_mut()
@@ -1656,10 +1910,20 @@ impl qobject::SettingsModel {
                 anyhow::ensure!(
                     self.as_ref()
                         .rust()
-                        .controller_mapping
-                        .calibrations
-                        .contains_key(id),
-                    "Set up each controller before assigning players"
+                        .controller_inventory
+                        .as_ref()
+                        .is_some_and(|inventory| inventory
+                            .controllers
+                            .iter()
+                            .any(|device| device.stable_id == *id))
+                        || self
+                            .as_ref()
+                            .rust()
+                            .controller_mapping
+                            .player_mappings
+                            .iter()
+                            .any(|player| player.controller_id.as_deref() == Some(id)),
+                    "Reconnect this controller before assigning it to a player"
                 );
             }
             let model = self.as_ref();
@@ -1684,6 +1948,10 @@ impl qobject::SettingsModel {
         match result {
             Ok(players) => {
                 self.as_mut().rust_mut().controller_mapping.player_mappings = players;
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .explicit_player_selection = true;
                 self.as_mut().bump_controller_revision();
                 qstring("")
             }
@@ -1700,6 +1968,7 @@ impl qobject::SettingsModel {
         let result = (|| -> anyhow::Result<_> {
             let bindings = serde_json::from_str(&bindings.to_string())?;
             let cal = crate::controller_catalog::Calibration {
+                target_mappings: Default::default(),
                 layout: layout.to_string(),
                 os: std::env::consts::OS.into(),
                 backend: crate::controller_sdl3::backend(&bindings).into(),

@@ -27,6 +27,8 @@ modules:
       - -DSDL_EXAMPLES=OFF
       - -DSDL_VIDEO=OFF
       - -DSDL_AUDIO=OFF
+      # SDL is used for controller input; Qt owns the application windows.
+      - -DSDL_UNIX_CONSOLE_BUILD=ON
     sources:
       - type: archive
         url: https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-3.4.12.tar.gz

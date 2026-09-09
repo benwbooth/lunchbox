@@ -12,6 +12,7 @@ pub const POLICY_VERSION: u32 = 2;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Rule {
+    UserChoice,
     Identity,
     FamilyPreference,
     FacePosition,
@@ -23,6 +24,7 @@ pub enum Rule {
 impl Rule {
     pub fn description(self) -> &'static str {
         match self {
+            Self::UserChoice => "Your saved choice",
             Self::Identity => "Same semantic control",
             Self::FamilyPreference => "Shared layout-family ergonomic rule",
             Self::FacePosition => "Available face button chosen by global position matching",
@@ -351,6 +353,50 @@ fn minimum_assignment(costs: &[Vec<i64>]) -> Vec<usize> {
         }
     }
     result
+}
+
+pub fn resolve_with_choices(
+    source: &Layout,
+    target: &Layout,
+    available: &BTreeSet<&str>,
+    requested: &BTreeSet<&str>,
+    choices: &BTreeMap<String, String>,
+) -> anyhow::Result<Resolution> {
+    let mut used = BTreeSet::new();
+    for (to, from) in choices {
+        anyhow::ensure!(
+            requested.contains(to.as_str()),
+            "Unknown target control: {to}"
+        );
+        anyhow::ensure!(
+            available.contains(from.as_str()),
+            "Record {from} before assigning it"
+        );
+        anyhow::ensure!(
+            used.insert(from.as_str()),
+            "{from} is assigned more than once"
+        );
+        let physical = source.controls.iter().find(|c| c.id == *from);
+        let destination = target.controls.iter().find(|c| c.id == *to);
+        anyhow::ensure!(
+            physical
+                .zip(destination)
+                .is_some_and(|(a, b)| candidate(source, target, a, b).is_some()),
+            "{from} cannot supply {to}; choose a compatible control"
+        );
+    }
+    let remaining_inputs = available.difference(&used).copied().collect();
+    let remaining_targets = requested
+        .iter()
+        .copied()
+        .filter(|id| !choices.contains_key(*id))
+        .collect();
+    let mut result = resolve(source, target, &remaining_inputs, &remaining_targets);
+    for (to, from) in choices {
+        result.assignments.insert(to.clone(), from.clone());
+        result.rules.insert(to.clone(), Rule::UserChoice);
+    }
+    Ok(result)
 }
 
 pub fn resolve(

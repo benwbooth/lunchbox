@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write;
 use std::sync::OnceLock;
 
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -120,6 +120,8 @@ pub struct NativeInput {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Calibration {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub target_mappings: BTreeMap<String, BTreeMap<String, String>>,
     pub layout: String,
     pub os: String,
     pub backend: String,
@@ -247,7 +249,14 @@ impl Catalog {
                 ensure!(
                     matches!(
                         control.group.as_str(),
-                        "face" | "shoulder" | "rear" | "menu" | "dpad" | "stick" | "turbo"
+                        "face"
+                            | "shoulder"
+                            | "rear"
+                            | "menu"
+                            | "dpad"
+                            | "stick"
+                            | "turbo"
+                            | "auxiliary"
                     ),
                     "unknown control semantic group"
                 );
@@ -432,6 +441,29 @@ fn valid_id(id: &str) -> bool {
 
 impl Calibration {
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.target_mappings.len() <= catalog().emulator_profiles.len(),
+            "Too many target mappings"
+        );
+        for (profile_id, choices) in &self.target_mappings {
+            let profile = catalog()
+                .emulator_profiles
+                .iter()
+                .find(|p| p.id == *profile_id)
+                .context("Saved mapping references an unknown target")?;
+            let mut used = HashSet::new();
+            for (target, source) in choices {
+                ensure!(
+                    profile.bindings.contains_key(target),
+                    "Unknown saved target control"
+                );
+                ensure!(
+                    self.bindings.contains_key(source),
+                    "Saved choice requires an unrecorded control"
+                );
+                ensure!(used.insert(source), "Saved choices reuse a physical input");
+            }
+        }
         let layout = catalog()
             .layout(&self.layout)
             .ok_or_else(|| anyhow::anyhow!("Unknown controller layout"))?;
@@ -545,12 +577,15 @@ impl Calibration {
                     .into(),
             );
         }
-        let resolution = crate::controller_layout::resolve(
+        let resolution = crate::controller_layout::resolve_with_choices(
             source,
             target,
             &self.bindings.keys().map(String::as_str).collect(),
             &profile.bindings.keys().map(String::as_str).collect(),
-        );
+            self.target_mappings
+                .get(&profile.id)
+                .unwrap_or(&BTreeMap::new()),
+        )?;
         let rows: Vec<MappingRow> = profile
             .bindings
             .iter()
@@ -972,6 +1007,7 @@ mod tests {
     }
     fn calibration(layout: &str) -> Calibration {
         Calibration {
+            target_mappings: Default::default(),
             layout: layout.into(),
             os: std::env::consts::OS.into(),
             backend: "gilrs-0.11".into(),

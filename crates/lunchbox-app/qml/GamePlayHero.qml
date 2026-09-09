@@ -29,6 +29,7 @@ Rectangle {
     required property color accentCool
 
     signal playRequested()
+    signal controllerMappingRequested()
     signal cancelLaunchRequested()
     signal setupRequested()
     signal prepareRequested()
@@ -218,6 +219,12 @@ Rectangle {
                     contentItem: Text { text: parent.text; color: hero.muted; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 }
             }
+        }
+
+        Button {
+            width: parent.width
+            text: "Controller mapping…"
+            onClicked: hero.controllerMappingRequested()
         }
 
         Button {

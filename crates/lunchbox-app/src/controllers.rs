@@ -117,6 +117,7 @@ fn automatic_player_mappings(
 ) -> ControllerMappingSettings {
     let mut resolved = mapping.clone();
     if !mapping.automatic
+        || mapping.explicit_player_selection
         || mapping
             .player_mappings
             .iter()
@@ -2000,6 +2001,37 @@ mod tests {
             unique_id: None,
             is_virtual: false,
         }
+    }
+
+    #[test]
+    fn explicit_players_never_append_unselected_controllers_or_promote_a_missing_player() {
+        let mut mapping = ControllerMappingSettings {
+            automatic: true,
+            explicit_player_selection: true,
+            player_mappings: vec![
+                ControllerPlayerMapping {
+                    controller_id: Some("unplugged-player-one".into()),
+                    ..Default::default()
+                },
+                ControllerPlayerMapping {
+                    controller_id: Some("player-two".into()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let pads = vec![
+            controller("unselected", "Extra pad"),
+            controller("player-two", "Pad"),
+        ];
+        let resolved = automatic_player_mappings(&mapping, &pads, Some("NES"), None);
+        assert_eq!(resolved.player_mappings, mapping.player_mappings);
+        mapping.player_mappings.clear();
+        assert!(
+            automatic_player_mappings(&mapping, &pads, Some("NES"), None)
+                .player_mappings
+                .is_empty()
+        );
     }
 
     #[test]

@@ -676,6 +676,19 @@ fn selected_devices<'a>(
     platform: &str,
 ) -> Vec<&'a ControllerDevice> {
     let mapping = &settings.controller_mapping;
+    if mapping.explicit_player_selection {
+        // Preserve the chosen order exactly. Missing players are rejected by the
+        // launch guard below, rather than silently promoting P2 to P1.
+        return mapping
+            .player_mappings
+            .iter()
+            .filter_map(|player| {
+                devices
+                    .iter()
+                    .find(|device| player.controller_id.as_deref() == Some(&device.stable_id))
+            })
+            .collect();
+    }
     let system = crate::controllers::system_layout(platform);
     let preferred = mapping
         .preferred_devices
@@ -749,6 +762,26 @@ pub fn prepare(
     let mut warnings = Vec::new();
     let inventory = crate::controllers::list_local_controllers(&mut warnings);
     let mut devices = selected_devices(settings, &inventory, platform);
+    if settings.controller_mapping.explicit_player_selection {
+        ensure!(
+            devices.len() == settings.controller_mapping.player_mappings.len(),
+            "A selected player's controller is disconnected. Reconnect it or change the players in Controller setup."
+        );
+        for (index, device) in devices.iter().enumerate() {
+            ensure!(
+                settings
+                    .controller_mapping
+                    .calibrations
+                    .contains_key(&device.stable_id)
+                    && !settings
+                        .controller_mapping
+                        .hidden_controller_ids
+                        .contains(&device.stable_id),
+                "Finish setting up Player {} in Controller setup before launching.",
+                index + 1
+            );
+        }
+    }
     if devices.is_empty() {
         return Ok(None);
     }
@@ -1225,6 +1258,7 @@ mod tests {
         buttons.reverse();
         (
             Calibration {
+                target_mappings: Default::default(),
                 layout: layout.into(),
                 os: "linux".into(),
                 backend: "gilrs-0.11".into(),
@@ -2376,6 +2410,7 @@ mod tests {
             })
             .collect();
         Calibration {
+            target_mappings: Default::default(),
             layout: "nes".into(),
             os: "linux".into(),
             backend: "gilrs-0.11".into(),
