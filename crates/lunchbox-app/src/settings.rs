@@ -274,6 +274,8 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub device_names: HashMap<String, String>,
     #[serde(default)]
+    pub device_models: HashMap<String, String>,
+    #[serde(default)]
     pub calibrations: HashMap<String, crate::controller_catalog::Calibration>,
     #[serde(default = "default_true")]
     pub calibrated_launch: bool,
@@ -314,6 +316,7 @@ impl Default for ControllerMappingSettings {
             automatic: false,
             device_layouts: HashMap::new(),
             device_names: HashMap::new(),
+            device_models: HashMap::new(),
             calibrations: HashMap::new(),
             calibrated_launch: true,
             preferred_devices: HashMap::new(),
@@ -2060,6 +2063,43 @@ impl SettingsStore {
             crate::media::effective_provider_priority(&settings.media_provider_priority);
         settings.validate()?;
         Ok(settings)
+    }
+
+    pub(crate) fn save_controller_model(&self, device: &str, model: &str) -> Result<()> {
+        ensure!(
+            !device.is_empty() && device.len() <= 4096,
+            "Invalid controller identity"
+        );
+        ensure!(
+            model.is_empty() || crate::controller_models::model(model).is_some(),
+            "Unknown controller model"
+        );
+        let mut connection = self.connection()?;
+        let transaction =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let json: String = transaction.query_row(
+            "SELECT controller_mapping_json FROM app_settings WHERE id=1",
+            [],
+            |row| row.get(0),
+        )?;
+        let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
+        if model.is_empty() {
+            mapping.device_models.remove(device);
+        } else {
+            mapping
+                .device_models
+                .insert(device.to_owned(), model.to_owned());
+        }
+        ensure!(
+            mapping.device_models.len() <= 64,
+            "Too many saved controller models"
+        );
+        transaction.execute(
+            "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
+            [serde_json::to_string(&mapping)?],
+        )?;
+        transaction.commit()?;
+        Ok(())
     }
 
     pub fn save(&self, settings: &AppSettings) -> Result<()> {

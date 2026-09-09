@@ -216,6 +216,18 @@ pub mod qobject {
         #[qinvokable]
         fn controller_catalog_json(self: &SettingsModel) -> QString;
         #[qinvokable]
+        fn controller_model_review(
+            self: &SettingsModel,
+            device: QString,
+            query: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn save_controller_model(
+            self: Pin<&mut SettingsModel>,
+            device: QString,
+            model: QString,
+        ) -> QString;
+        #[qinvokable]
         fn controller_diagram(self: &SettingsModel, layout: QString, active: QString) -> QString;
         #[qinvokable]
         fn controller_calibration_json(self: &SettingsModel, device: QString) -> QString;
@@ -1619,6 +1631,74 @@ impl qobject::SettingsModel {
         match result {
             Ok(plan) => qstring(serde_json::to_string(&plan).expect("plan serializes")),
             Err(error) => qstring(serde_json::json!({"rows":[],"warnings":[error.to_string()],"automatic_launch_ready":false}).to_string()),
+        }
+    }
+
+    pub fn controller_model_review(&self, device: QString, query: QString) -> QString {
+        let id = device.to_string();
+        let Some(device) = self
+            .rust()
+            .controller_inventory
+            .as_ref()
+            .and_then(|i| i.controllers.iter().find(|d| d.stable_id == id))
+        else {
+            return qstring(r#"{"candidates":[],"message":"Reconnect this controller"}"#);
+        };
+        qstring(
+            crate::controller_models::review(
+                device,
+                self.rust()
+                    .controller_mapping
+                    .device_models
+                    .get(&id)
+                    .map(String::as_str),
+                &query.to_string(),
+                std::env::consts::OS,
+            )
+            .to_string(),
+        )
+    }
+
+    pub fn save_controller_model(
+        mut self: Pin<&mut Self>,
+        device: QString,
+        model: QString,
+    ) -> QString {
+        let id = device.to_string();
+        let model = model.to_string();
+        let result = (|| -> anyhow::Result<()> {
+            anyhow::ensure!(!*self.as_ref().busy(), "Wait for settings to finish saving");
+            let count = self
+                .rust()
+                .controller_inventory
+                .as_ref()
+                .map(|i| i.controllers.iter().filter(|d| d.stable_id == id).count())
+                .unwrap_or(0);
+            anyhow::ensure!(
+                count == 1,
+                "Reconnect this controller; its identity is missing or ambiguous"
+            );
+            SettingsStore::open_default()?.save_controller_model(&id, &model)
+        })();
+        match result {
+            Ok(()) => {
+                if model.is_empty() {
+                    self.as_mut()
+                        .rust_mut()
+                        .controller_mapping
+                        .device_models
+                        .remove(&id);
+                } else {
+                    self.as_mut()
+                        .rust_mut()
+                        .controller_mapping
+                        .device_models
+                        .insert(id, model);
+                }
+                self.as_mut().bump_controller_revision();
+                qstring("")
+            }
+            Err(error) => qstring(error.to_string()),
         }
     }
 
