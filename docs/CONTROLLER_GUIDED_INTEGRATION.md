@@ -12,9 +12,9 @@ The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
 - RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **17/249 (6.8%)**, including ares, bsnes and Stella.
-- Combined source entry presence: **110/343 (32.1%)**.
-- Existing native adapters consuming guided choices: **17/17 (100.0%)**.
+- Standalone partial source dispatch: **18/249 (7.2%)**, including ares, bsnes, Stella and VICE.
+- Combined source entry presence: **111/343 (32.4%)**.
+- Existing native adapters consuming guided choices: **18/18 (100.0%)**.
 - Overall finished/verified coverage: **not established**.
 
 The native integration count includes runtime-setup and host/backend restrictions,
@@ -176,6 +176,16 @@ selected with `-basedir`, with `event_ver` pinned; the launch and probe run
 with `SDL_JOYSTICK_LINUX_CLASSIC=1` (the DuckStation-verified classic
 backend numbering). Two players; console switches on player one. See
 [STELLA_NATIVE_CONTROLLER_CONTRACT.md](STELLA_NATIVE_CONTROLLER_CONTRACT.md).
+Contract encoding and rendering are unit-tested; runtime behavior is
+unverified.
+
+## Step 13 — VICE standalone Commodore joystick
+
+`controller_vice_native` adds a native adapter for VICE: a private
+`-config`/`-joymap` pair binds the selected host devices to control ports one
+and two and maps the digital joystick pins, probed over the trusted SDL2
+runtime. Two players across the Commodore 8-bit platforms. See
+[VICE_NATIVE_CONTROLLER_CONTRACT.md](VICE_NATIVE_CONTROLLER_CONTRACT.md).
 Contract encoding and rendering are unit-tested; runtime behavior is
 unverified.
 

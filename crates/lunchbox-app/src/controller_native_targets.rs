@@ -16,7 +16,56 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     ds.controls
         .retain(|control| routes.contains_key(control.id.as_str()));
     db.layouts.push(ds);
+    let mut joystick = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    joystick.id = "vice-joystick-panel".into();
+    joystick.name = "Commodore — digital joystick".into();
+    joystick.family = "two-button".into();
+    joystick.source = "https://sourceforge.net/p/vice-emu/".into();
+    joystick.notes = "Native VICE control-port joystick pins. Fire2/fire3 serve the extra buttons of joyport expansions; keysets, paddles and potentiometer axes are separate contracts.".into();
+    joystick.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("fire", "Fire", 70.0, 50.0, "face", true),
+        ("fire2", "Fire 2", 80.0, 35.0, "face", false),
+        ("fire3", "Fire 3", 80.0, 65.0, "face", false),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(joystick);
+
     for (core, layout, players, platforms, source) in [
+        (
+            "vice",
+            "vice-joystick-panel",
+            2,
+            vec![
+                "Commodore 64",
+                "Commodore 128",
+                "Commodore Plus 4",
+                "Commodore VIC-20",
+                "Commodore PET",
+                "Commodore MAX Machine",
+            ],
+            "https://sourceforge.net/p/vice-emu/code/HEAD/tree/trunk/vice/src/joyport/joystick.c",
+        ),
         (
             "stella",
             "atari2600-stella-panel",
@@ -102,6 +151,18 @@ pub(crate) fn add(
     Ok(())
 }
 
+/// Preview labels for the VICE joystick pins, kept as static strings so the
+/// route table stays one type across adapters.
+const VICE_PIN_ROUTES: [(&str, &str); 7] = [
+    ("up", "pin 1 Up"),
+    ("down", "pin 2 Down"),
+    ("left", "pin 4 Left"),
+    ("right", "pin 8 Right"),
+    ("fire", "pin 16 Fire"),
+    ("fire2", "pin 32 Fire 2"),
+    ("fire3", "pin 64 Fire 3"),
+];
+
 fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if core == "bizhawk" {
         return crate::controller_bizhawk::guided::routes(layout);
@@ -160,6 +221,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             .collect::<BTreeMap<&str, &str>>(),
         ("stella", "atari2600-stella-panel") => crate::controller_stella_native::CONTROLS
             .into_iter()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("vice", "vice-joystick-panel") => VICE_PIN_ROUTES
+            .iter()
+            .copied()
             .collect::<BTreeMap<&str, &str>>(),
         ("pcsx2", "dualshock") => crate::controller_pcsx2::visual_routes(),
         ("rpcs3", "dualshock") => crate::controller_rpcs3::visual_routes(),

@@ -274,6 +274,8 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub(crate) stella_native_launches: Vec<crate::controller_stella_native::settings::SavedSetup>,
     #[serde(default)]
+    pub(crate) vice_native_launches: Vec<crate::controller_vice_native::settings::SavedSetup>,
+    #[serde(default)]
     pub(crate) mednafen_launches: Vec<crate::controller_mednafen::settings::SavedSetup>,
     #[serde(default)]
     pub(crate) mame_native_launches: Vec<crate::controller_mame_native::settings::SavedSetup>,
@@ -391,6 +393,7 @@ impl Default for ControllerMappingSettings {
             sameboy_launches: Vec::new(),
             bsnes_launches: Vec::new(),
             stella_native_launches: Vec::new(),
+            vice_native_launches: Vec::new(),
             mednafen_launches: Vec::new(),
             mame_native_launches: Vec::new(),
             flycast_native_launches: Vec::new(),
@@ -1349,6 +1352,7 @@ impl ControllerMappingSettings {
         crate::controller_sameboy::settings::validate_setups(&self.sameboy_launches)?;
         crate::controller_bsnes::settings::validate_setups(&self.bsnes_launches)?;
         crate::controller_stella_native::settings::validate_setups(&self.stella_native_launches)?;
+        crate::controller_vice_native::settings::validate_setups(&self.vice_native_launches)?;
         crate::controller_mednafen::settings::validate_setups(&self.mednafen_launches)?;
         crate::controller_mame_native::settings::validate_setups(&self.mame_native_launches)?;
         crate::controller_flycast_native::settings::validate_setups(&self.flycast_native_launches)?;

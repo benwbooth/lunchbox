@@ -28,6 +28,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "melonDS",
     "bsnes",
     "Stella",
+    "VICE",
 ];
 
 pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
