@@ -87,6 +87,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
 
     for (core, layout, players, platforms, source) in [
         (
+            "desmume",
+            "nds-native-buttons",
+            1,
+            vec!["Nintendo DS"],
+            "https://github.com/TASEmulators/desmume/blob/b3915949700be824253a35affa7f7b8248e84e46/desmume/src/frontend/posix/shared/ctrlssdl.cpp",
+        ),
+        (
             "hatari",
             "hatari-native-joystick",
             2,
@@ -262,6 +269,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             .collect::<BTreeMap<&str, &str>>(),
         ("stella", "atari2600-stella-panel") => crate::controller_stella_native::CONTROLS
             .into_iter()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("desmume", "nds-native-buttons") => crate::controller_desmume_native::KEYS
+            .iter()
+            .copied()
             .collect::<BTreeMap<&str, &str>>(),
         ("hatari", "hatari-native-joystick") => crate::controller_hatari_native::CONTROLS
             .iter()

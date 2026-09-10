@@ -93,6 +93,21 @@ pub(super) fn reuse(
                 mapping.fceux_launches.push(setup);
             }
         }
+        "desmume"
+            if !mapping
+                .desmume_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(
+                &mapping.desmume_native_launches,
+                emulator,
+                &["controller_id"],
+            )? {
+                setup.content = content(plan, &[])?;
+                mapping.desmume_native_launches.push(setup);
+            }
+        }
         "hatari"
             if !mapping
                 .hatari_native_launches

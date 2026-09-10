@@ -13,6 +13,7 @@ mod controller_bsnes;
 mod controller_catalog;
 mod controller_coverage;
 mod controller_crocods;
+mod controller_desmume_native;
 mod controller_dolphin;
 mod controller_duckstation;
 mod controller_ep128emu;

@@ -39,6 +39,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "stella"
                 | "vice"
                 | "hatari"
+                | "desmume"
         )
 }
 
@@ -288,6 +289,16 @@ pub(crate) fn settings_for_launch<'a>(
         }
         "ppsspp" => {
             for setup in &mut mapping.ppsspp_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "desmume" => {
+            for setup in &mut mapping.desmume_native_launches {
                 if !matches(&setup.emulator_id, &setup.content) {
                     continue;
                 }

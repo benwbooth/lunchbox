@@ -12,9 +12,9 @@ The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
 - RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **19/249 (7.6%)**, including ares, bsnes, Stella, VICE and Hatari.
-- Combined source entry presence: **112/343 (32.7%)**.
-- Existing native adapters consuming guided choices: **19/19 (100.0%)**.
+- Standalone partial source dispatch: **20/249 (8.0%)**, including ares, bsnes, Stella, VICE, Hatari and DeSmuME.
+- Combined source entry presence: **113/343 (33.0%)**.
+- Existing native adapters consuming guided choices: **20/20 (100.0%)**.
 - Overall finished/verified coverage: **not established**.
 
 The native integration count includes runtime-setup and host/backend restrictions,
@@ -198,6 +198,15 @@ Hatari's hardcoded SDL axes 0/1 with hat 0 override. See
 [HATARI_NATIVE_CONTROLLER_CONTRACT.md](HATARI_NATIVE_CONTROLLER_CONTRACT.md).
 Contract rendering and constraints are unit-tested; runtime behavior is
 unverified.
+
+## Step 15 — DeSmuME standalone DS buttons
+
+`controller_desmume_native` adds a native adapter for DeSmuME's posix
+frontends: the private `[JOYKEYS]` keyfile under an isolated XDG_CONFIG_HOME
+maps the twelve standard DS controls with the 4-hex-digit joypad codes.
+Single player, reusing the DS buttons-only layout. See
+[DESMUME_NATIVE_CONTROLLER_CONTRACT.md](DESMUME_NATIVE_CONTROLLER_CONTRACT.md).
+Code encoding and rendering are unit-tested; runtime behavior is unverified.
 
 ## Remaining work
 
