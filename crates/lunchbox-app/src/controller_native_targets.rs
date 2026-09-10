@@ -120,6 +120,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
 
     for (core, layout, players, platforms, source) in [
         (
+            "blastem",
+            "genesis-6",
+            2,
+            vec!["Sega Genesis", "Sega CD", "Sega 32X"],
+            "https://github.com/libretro/blastem/blob/b4d75247ebad8852fd9bc385b423df704c6c5af5/bindings.c",
+        ),
+        (
             "mesen2",
             "nes",
             1,
@@ -324,6 +331,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             .collect::<BTreeMap<&str, &str>>(),
         ("stella", "atari2600-stella-panel") => crate::controller_stella_native::CONTROLS
             .into_iter()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("blastem", "genesis-6") => crate::controller_blastem_native::CONTROLS
+            .iter()
+            .copied()
             .collect::<BTreeMap<&str, &str>>(),
         ("mesen2", "nes") => crate::controller_mesen2_native::CONTROLS
             .iter()

@@ -80,7 +80,10 @@ ignored, defaults for missing members; the NES standard controller is
 "NesController" (SettingTypes.h) and unset ports are "None". Ready to
 implement: {"Nes":{"Port1":{"Type":"NesController","Mapping1":{...}},"Port2":{"Type":"None"}}}. NES scope: two ports.
 
-Update 2026-09-10: research checkpoints for the next two candidates.
+Update 2026-09-10 (later): BlastEm standalone Genesis pad dispatch was
+implemented from its checkpoint (`BLASTEM_NATIVE_CONTROLLER_CONTRACT.md`),
+bringing the native adapter list to twenty-three. Research checkpoints for
+the next two candidates follow.
 xemu (mborgerson/xemu fd0ae0c): `config_spec.yml`/`ui/xemu-input.c` pin the
 contract — `input.bindings.port1..4` hold SDL GUID strings (empty unbinds),
 `portN_driver` selects `usb-xbox-gamepad`(-s), and `input.gamepad_mappings[]`
@@ -105,7 +108,7 @@ parse_binding_target; `n` = device+1). Config dir is `$HOME/blastem`
 (paths.c), so a private HOME isolates reads/writes. Ready to implement as a
 single/dual digital-pad contract over the SameBoy SDL2 probe.
 
-Next: continue ordinary standalone gamepad configuration beyond these twenty-two;
+Next: continue ordinary standalone gamepad configuration beyond these twenty-three;
 do not resume the arcade-peripheral audit.
 
 The notes below are historical and do not reopen the excluded peripheral scope.

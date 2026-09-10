@@ -284,6 +284,8 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub(crate) mesen2_native_launches: Vec<crate::controller_mesen2_native::settings::SavedSetup>,
     #[serde(default)]
+    pub(crate) blastem_native_launches: Vec<crate::controller_blastem_native::settings::SavedSetup>,
+    #[serde(default)]
     pub(crate) mednafen_launches: Vec<crate::controller_mednafen::settings::SavedSetup>,
     #[serde(default)]
     pub(crate) mame_native_launches: Vec<crate::controller_mame_native::settings::SavedSetup>,
@@ -406,6 +408,7 @@ impl Default for ControllerMappingSettings {
             desmume_native_launches: Vec::new(),
             openmsx_native_launches: Vec::new(),
             mesen2_native_launches: Vec::new(),
+            blastem_native_launches: Vec::new(),
             mednafen_launches: Vec::new(),
             mame_native_launches: Vec::new(),
             flycast_native_launches: Vec::new(),
@@ -1369,6 +1372,7 @@ impl ControllerMappingSettings {
         crate::controller_desmume_native::settings::validate_setups(&self.desmume_native_launches)?;
         crate::controller_openmsx_native::settings::validate_setups(&self.openmsx_native_launches)?;
         crate::controller_mesen2_native::settings::validate_setups(&self.mesen2_native_launches)?;
+        crate::controller_blastem_native::settings::validate_setups(&self.blastem_native_launches)?;
         crate::controller_mednafen::settings::validate_setups(&self.mednafen_launches)?;
         crate::controller_mame_native::settings::validate_setups(&self.mame_native_launches)?;
         crate::controller_flycast_native::settings::validate_setups(&self.flycast_native_launches)?;

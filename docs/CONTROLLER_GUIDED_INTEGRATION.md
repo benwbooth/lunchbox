@@ -12,9 +12,9 @@ The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
 - RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **22/249 (8.8%)**, including ares, bsnes, Stella, VICE, Hatari, DeSmuME, openMSX and Mesen2.
-- Combined source entry presence: **115/343 (33.5%)**.
-- Existing native adapters consuming guided choices: **22/22 (100.0%)**.
+- Standalone partial source dispatch: **23/249 (9.2%)**, including ares, bsnes, Stella, VICE, Hatari, DeSmuME, openMSX, Mesen2 and BlastEm.
+- Combined source entry presence: **116/343 (33.8%)**.
+- Existing native adapters consuming guided choices: **23/23 (100.0%)**.
 - Overall finished/verified coverage: **not established**.
 
 The native integration count includes runtime-setup and host/backend restrictions,
@@ -226,6 +226,14 @@ evdev-keyed KeyMapping UInt16s under an isolated XDG_DATA_HOME, with the
 sole-qualifying-gamepad constraint pinning the pad slot. See
 [MESEN2_NATIVE_CONTROLLER_CONTRACT.md](MESEN2_NATIVE_CONTROLLER_CONTRACT.md).
 Encoding and rendering are unit-tested; runtime behavior is unverified.
+
+## Step 18 — BlastEm standalone Genesis pads
+
+`controller_blastem_native` adds a native adapter for BlastEm: a private
+HOME carries the tern-config pad bindings keyed by SDL device index with
+`gamepads.<port>.<button>` targets for the six-button Genesis pad. See
+[BLASTEM_NATIVE_CONTROLLER_CONTRACT.md](BLASTEM_NATIVE_CONTROLLER_CONTRACT.md).
+Rendering is unit-tested; runtime behavior is unverified.
 
 ## Remaining work
 

@@ -1367,6 +1367,7 @@ impl Catalog {
                             | "desmume-native-settings"
                             | "openmsx-native-settings"
                             | "mesen2-native-settings"
+                            | "blastem-native-settings"
                             | "bizhawk-native-settings"
                     ),
                 "unsupported profile contract"
@@ -1623,7 +1624,8 @@ impl Catalog {
                         | "hatari-native-settings"
                         | "desmume-native-settings"
                         | "openmsx-native-settings"
-                        | "mesen2-native-settings" => {
+                        | "mesen2-native-settings"
+                        | "blastem-native-settings" => {
                             crate::controller_native_targets::valid_output(profile, target, output)
                         }
                         "retropad" => {
