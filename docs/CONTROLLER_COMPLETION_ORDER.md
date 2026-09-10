@@ -48,12 +48,14 @@ melonDS now also has partial Linux standard-button dispatch.
 That is 14/249 standalone candidates (5.6%), not complete platform/mode support
 or tested compatibility.
 Installation, host compatibility and per-platform readiness are not inferred.
-Update 2026-09-09: bsnes v115 standalone SNES gamepad dispatch was added
+Update 2026-09-10: Stella 7.x standalone Atari 2600 dispatch was added
+(`STELLA_NATIVE_CONTROLLER_CONTRACT.md`), bringing the native adapter list to
+seventeen. Update 2026-09-09: bsnes v115 standalone SNES gamepad dispatch was added
 (`BSNES_CONTROLLER_CONTRACT.md`), bringing the native adapter list to sixteen.
 The probe also gained a generic read-only `--evdev-catalog` capability dump.
 No runtime verification was performed.
 
-Next: continue ordinary standalone gamepad configuration beyond these sixteen;
+Next: continue ordinary standalone gamepad configuration beyond these seventeen;
 do not resume the arcade-peripheral audit.
 
 The notes below are historical and do not reopen the excluded peripheral scope.

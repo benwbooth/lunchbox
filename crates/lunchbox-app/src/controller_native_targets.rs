@@ -18,6 +18,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     db.layouts.push(ds);
     for (core, layout, players, platforms, source) in [
         (
+            "stella",
+            "atari2600-stella-panel",
+            2,
+            vec!["Atari 2600"],
+            "https://github.com/stella-emu/stella/blob/c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1/src/common/PJoystickHandler.cxx",
+        ),
+        (
             "bsnes",
             "snes",
             2,
@@ -149,6 +156,9 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     }
     let routes = match (core, layout) {
         ("bsnes", "snes") => crate::controller_bsnes::CONTROLS
+            .into_iter()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("stella", "atari2600-stella-panel") => crate::controller_stella_native::CONTROLS
             .into_iter()
             .collect::<BTreeMap<&str, &str>>(),
         ("pcsx2", "dualshock") => crate::controller_pcsx2::visual_routes(),

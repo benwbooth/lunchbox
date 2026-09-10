@@ -93,6 +93,19 @@ pub(super) fn reuse(
                 mapping.fceux_launches.push(setup);
             }
         }
+        "stella"
+            if !mapping
+                .stella_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.stella_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.stella_native_launches.push(setup);
+            }
+        }
         "bsnes"
             if !mapping
                 .bsnes_launches

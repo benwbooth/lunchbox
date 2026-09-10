@@ -47,6 +47,7 @@ mod controller_simcp;
 mod controller_snes9x;
 mod controller_steemsse;
 mod controller_stella;
+mod controller_stella_native;
 mod controller_target;
 mod controllers;
 mod couch_theme;

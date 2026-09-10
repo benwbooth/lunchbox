@@ -44,6 +44,8 @@ pub struct CalibratedLaunch {
     #[cfg(target_os = "linux")]
     bsnes_native: Option<crate::controller_bsnes::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
+    stella_native: Option<crate::controller_stella_native::native_command::NativeSession>,
+    #[cfg(target_os = "linux")]
     mednafen_native: Option<crate::controller_mednafen::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
     mame_native: Option<crate::controller_mame_native::native_command::NativeSession>,
@@ -291,6 +293,10 @@ impl CalibratedLaunch {
         }
         #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.bsnes_native {
+            return native.spawn(plan, cancel);
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(native) = &mut self.stella_native {
             return native.spawn(plan, cancel);
         }
         #[cfg(target_os = "linux")]
@@ -700,6 +706,8 @@ impl CalibratedLaunch {
             #[cfg(target_os = "linux")]
             bsnes_native: None,
             #[cfg(target_os = "linux")]
+            stella_native: None,
+            #[cfg(target_os = "linux")]
             mednafen_native: None,
             #[cfg(target_os = "linux")]
             mame_native: None,
@@ -747,6 +755,10 @@ impl CalibratedLaunch {
         }
         #[cfg(target_os = "linux")]
         if let Some(native) = &self.bsnes_native {
+            native.verify(&std::sync::atomic::AtomicBool::new(false))?;
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(native) = &self.stella_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
         #[cfg(target_os = "linux")]
@@ -855,6 +867,10 @@ impl CalibratedLaunch {
         }
         #[cfg(target_os = "linux")]
         if let Some(native) = &self.bsnes_native {
+            native.check_health()?;
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(native) = &self.stella_native {
             native.check_health()?;
         }
         #[cfg(target_os = "linux")]
@@ -1402,6 +1418,8 @@ pub(crate) fn attach_fbneo_session(
         sameboy_native: None,
         #[cfg(target_os = "linux")]
         bsnes_native: None,
+        #[cfg(target_os = "linux")]
+        stella_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]
@@ -3162,6 +3180,8 @@ pub(crate) fn prepare_mame_calibrated_session(
         sameboy_native: None,
         #[cfg(target_os = "linux")]
         bsnes_native: None,
+        #[cfg(target_os = "linux")]
+        stella_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]
@@ -5380,6 +5400,8 @@ pub fn prepare_with_cancellation(
                 sameboy_native: None,
             #[cfg(target_os = "linux")]
             bsnes_native: None,
+            #[cfg(target_os = "linux")]
+            stella_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5459,6 +5481,8 @@ pub fn prepare_with_cancellation(
                 sameboy_native: None,
             #[cfg(target_os = "linux")]
             bsnes_native: None,
+            #[cfg(target_os = "linux")]
+            stella_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5538,6 +5562,8 @@ pub fn prepare_with_cancellation(
                 sameboy_native: None,
             #[cfg(target_os = "linux")]
             bsnes_native: None,
+            #[cfg(target_os = "linux")]
+            stella_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5617,6 +5643,8 @@ pub fn prepare_with_cancellation(
                 sameboy_native: None,
             #[cfg(target_os = "linux")]
             bsnes_native: None,
+            #[cfg(target_os = "linux")]
+            stella_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5681,6 +5709,8 @@ pub fn prepare_with_cancellation(
                 sameboy_native: None,
             #[cfg(target_os = "linux")]
             bsnes_native: None,
+            #[cfg(target_os = "linux")]
+            stella_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: Some(native),
@@ -5751,6 +5781,8 @@ pub fn prepare_with_cancellation(
                 sameboy_native: None,
             #[cfg(target_os = "linux")]
             bsnes_native: None,
+            #[cfg(target_os = "linux")]
+            stella_native: None,
                 mednafen_native: Some(native),
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5822,6 +5854,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 bsnes_native: Some(native),
                 #[cfg(target_os = "linux")]
+                stella_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5837,6 +5871,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -5852,6 +5887,80 @@ pub fn prepare_with_cancellation(
                 puae: None,
                 stella: None,
                 description: "bsnes settings.bml: calibrated SNES gamepad controls through the SDL joypad driver; private per-launch settings file; partial Linux support; Mouse/Super Multitap/Super Scope/Justifier targets not covered"
+                    .into(),
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Stella")
+    {
+        let matches: Vec<_> = mapping
+            .stella_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Stella saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_stella_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                mgba: None,
+                #[cfg(target_os = "linux")]
+                dolphin_native: None,
+                snes9x_native: None,
+                fceux_native: None,
+                sameboy_native: None,
+                #[cfg(target_os = "linux")]
+                bsnes_native: None,
+                #[cfg(target_os = "linux")]
+                stella_native: Some(native),
+                #[cfg(target_os = "linux")]
+                mednafen_native: None,
+                #[cfg(target_os = "linux")]
+                mame_native: None,
+                #[cfg(target_os = "linux")]
+                flycast_native: None,
+                #[cfg(target_os = "linux")]
+                pcsx2_native: None,
+                #[cfg(target_os = "linux")]
+                rpcs3_native: None,
+                #[cfg(target_os = "linux")]
+                melonds_native: None,
+                ppsspp: None,
+                duckstation: None,
+                _directory: None,
+                bizhawk: None,
+                #[cfg(target_os = "linux")]
+                bizhawk_topology: None,
+                transports: Vec::new(),
+                crocods: None,
+                ep128emu: None,
+                hatari: None,
+                simcp: None,
+                steemsse: None,
+                scummvm: None,
+                dolphin: None,
+                same_cdi: None,
+                fbneo: None,
+                mame: None,
+                puae: None,
+                stella: None,
+                description: "Stella 7.x: calibrated Atari 2600 joystick, Booster Grip/Genesis buttons and console switches through the private -basedir stella.sqlite3; SDL classic backend pinned; partial Linux support; paddles, driving controllers, keypads and Stelladaptors not covered"
                     .into(),
             }));
         }
@@ -5893,6 +6002,8 @@ pub fn prepare_with_cancellation(
                 sameboy_native: None,
             #[cfg(target_os = "linux")]
             bsnes_native: None,
+            #[cfg(target_os = "linux")]
+            stella_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -5967,6 +6078,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 bsnes_native: None,
                 #[cfg(target_os = "linux")]
+                stella_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6040,6 +6153,8 @@ pub fn prepare_with_cancellation(
                 sameboy_native: None,
             #[cfg(target_os = "linux")]
             bsnes_native: None,
+            #[cfg(target_os = "linux")]
+            stella_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6113,6 +6228,8 @@ pub fn prepare_with_cancellation(
                 sameboy_native: None,
                 #[cfg(target_os = "linux")]
                 bsnes_native: None,
+                #[cfg(target_os = "linux")]
+                stella_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6188,6 +6305,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 bsnes_native: None,
                 #[cfg(target_os = "linux")]
+                stella_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6259,6 +6378,8 @@ pub fn prepare_with_cancellation(
                 sameboy_native: None,
                 #[cfg(target_os = "linux")]
                 bsnes_native: None,
+                #[cfg(target_os = "linux")]
+                stella_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -7097,6 +7218,8 @@ pub fn prepare_with_cancellation(
         #[cfg(target_os = "linux")]
         bsnes_native: None,
         #[cfg(target_os = "linux")]
+        stella_native: None,
+        #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]
         mame_native: None,
@@ -7501,6 +7624,8 @@ fn prepare_mode_aware(
         sameboy_native: None,
         #[cfg(target_os = "linux")]
         bsnes_native: None,
+        #[cfg(target_os = "linux")]
+        stella_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]

@@ -1361,6 +1361,7 @@ impl Catalog {
                             | "flycast-native-settings"
                             | "mame-native-settings"
                             | "bsnes-native-settings"
+                            | "stella-native-settings"
                             | "bizhawk-native-settings"
                     ),
                 "unsupported profile contract"
@@ -1611,7 +1612,8 @@ impl Catalog {
                         | "flycast-native-settings"
                         | "mame-native-settings"
                         | "bizhawk-native-settings"
-                        | "bsnes-native-settings" => {
+                        | "bsnes-native-settings"
+                        | "stella-native-settings" => {
                             crate::controller_native_targets::valid_output(profile, target, output)
                         }
                         "retropad" => {

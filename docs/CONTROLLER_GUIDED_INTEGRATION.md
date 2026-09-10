@@ -12,9 +12,9 @@ The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
 - RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **16/249 (6.4%)**, including ares and bsnes.
-- Combined source entry presence: **109/343 (31.8%)**.
-- Existing native adapters consuming guided choices: **16/16 (100.0%)**.
+- Standalone partial source dispatch: **17/249 (6.8%)**, including ares, bsnes and Stella.
+- Combined source entry presence: **110/343 (32.1%)**.
+- Existing native adapters consuming guided choices: **17/17 (100.0%)**.
 - Overall finished/verified coverage: **not established**.
 
 The native integration count includes runtime-setup and host/backend restrictions,
@@ -167,6 +167,17 @@ launch with the trusted library; the user's own settings file is never touched.
 Guided target `bsnes:standalone-snes` (two players) plus per-game setup reuse.
 See [BSNES_CONTROLLER_CONTRACT.md](BSNES_CONTROLLER_CONTRACT.md). Contract
 encoding and rendering are unit-tested; runtime behavior is unverified.
+
+## Step 12 — Stella standalone Atari 2600 panel
+
+`controller_stella_native` adds a native adapter for Stella 7.x: mappings are
+written as the `joymap` JSON into a private persistent `stella.sqlite3`
+selected with `-basedir`, with `event_ver` pinned; the launch and probe run
+with `SDL_JOYSTICK_LINUX_CLASSIC=1` (the DuckStation-verified classic
+backend numbering). Two players; console switches on player one. See
+[STELLA_NATIVE_CONTROLLER_CONTRACT.md](STELLA_NATIVE_CONTROLLER_CONTRACT.md).
+Contract encoding and rendering are unit-tested; runtime behavior is
+unverified.
 
 ## Remaining work
 
