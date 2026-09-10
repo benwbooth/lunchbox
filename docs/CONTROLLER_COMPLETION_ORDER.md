@@ -59,6 +59,17 @@ twenty-one, after DeSmuME standalone DS button dispatch
 The probe also gained a generic read-only `--evdev-catalog` capability dump.
 No runtime verification was performed.
 
+Update 2026-09-10: FS-UAE was researched and deliberately deferred: in
+fs-uae f362278 the C-side gamepad→joystick mapping code is entirely `#if 0`
+and the live mapping lives in the bundled Python layer, which is not part of
+the repository — a contract cannot be pinned from available source without
+runtime verification. Mesen2 (SourMesen/Mesen2 b9fa69d) research began:
+per-port `KeyMapping` objects hold one UInt16 per control (A/B/X/Y/L/R/Up/
+Down/Left/Right/Start/Select/Turbo*, persisted through the settings JSON),
+but the UInt16 gamepad-button encoding had not yet been located; resume by
+finding where raw gamepad events become those codes (Core interop layer),
+then implement the adapter.
+
 Next: continue ordinary standalone gamepad configuration beyond these twenty-one;
 do not resume the arcade-peripheral audit.
 
