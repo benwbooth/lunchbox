@@ -18,6 +18,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     db.layouts.push(ds);
     for (core, layout, players, platforms, source) in [
         (
+            "bsnes",
+            "snes",
+            2,
+            vec!["Super Nintendo Entertainment System"],
+            "https://github.com/bsnes-emu/bsnes/blob/7d5aa1e656b9171524d01b1b22917197d8121cb4/bsnes/target-bsnes/input/input.cpp",
+        ),
+        (
             "pcsx2",
             "dualshock",
             8,
@@ -141,6 +148,9 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
         );
     }
     let routes = match (core, layout) {
+        ("bsnes", "snes") => crate::controller_bsnes::CONTROLS
+            .into_iter()
+            .collect::<BTreeMap<&str, &str>>(),
         ("pcsx2", "dualshock") => crate::controller_pcsx2::visual_routes(),
         ("rpcs3", "dualshock") => crate::controller_rpcs3::visual_routes(),
         ("melonds", "nds-native-buttons") => crate::controller_melonds::visual_routes(),

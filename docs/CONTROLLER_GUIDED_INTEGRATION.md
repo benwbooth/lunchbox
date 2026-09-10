@@ -12,9 +12,9 @@ The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
 - RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **15/249 (6.0%)**, including ares.
-- Combined source entry presence: **108/343 (31.5%)**.
-- Existing native adapters consuming guided choices: **15/15 (100.0%)**.
+- Standalone partial source dispatch: **16/249 (6.4%)**, including ares and bsnes.
+- Combined source entry presence: **109/343 (31.8%)**.
+- Existing native adapters consuming guided choices: **16/16 (100.0%)**.
 - Overall finished/verified coverage: **not established**.
 
 The native integration count includes runtime-setup and host/backend restrictions,
@@ -157,6 +157,16 @@ emulator's own probe. Copying another game's identity would break the exact
 identity rule, so those cores keep the explicit per-game setup requirement.
 Dolphin recomputes its game ID and revision from the new disc's raw header;
 that classification is re-verified by the existing launch checks.
+
+## Step 11 — bsnes standalone SNES gamepad
+
+`controller_bsnes` adds a native adapter for bsnes v115 (SDL joypad driver):
+assignments `0x{id}/{group}/{input}[/{Lo|Hi}]` written into a private
+`settings.bml` handed over with `--settings=`; SDL2 numbering is probed at
+launch with the trusted library; the user's own settings file is never touched.
+Guided target `bsnes:standalone-snes` (two players) plus per-game setup reuse.
+See [BSNES_CONTROLLER_CONTRACT.md](BSNES_CONTROLLER_CONTRACT.md). Contract
+encoding and rendering are unit-tested; runtime behavior is unverified.
 
 ## Remaining work
 

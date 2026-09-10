@@ -9,6 +9,7 @@ mod controller_axis;
 mod controller_bizhawk;
 #[cfg(target_os = "linux")]
 mod controller_bizhawk_guard;
+mod controller_bsnes;
 mod controller_catalog;
 mod controller_coverage;
 mod controller_crocods;

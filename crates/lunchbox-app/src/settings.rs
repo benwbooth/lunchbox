@@ -270,6 +270,8 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub(crate) sameboy_launches: Vec<crate::controller_sameboy::settings::SavedSetup>,
     #[serde(default)]
+    pub(crate) bsnes_launches: Vec<crate::controller_bsnes::settings::SavedSetup>,
+    #[serde(default)]
     pub(crate) mednafen_launches: Vec<crate::controller_mednafen::settings::SavedSetup>,
     #[serde(default)]
     pub(crate) mame_native_launches: Vec<crate::controller_mame_native::settings::SavedSetup>,
@@ -385,6 +387,7 @@ impl Default for ControllerMappingSettings {
             snes9x_launches: Vec::new(),
             fceux_launches: Vec::new(),
             sameboy_launches: Vec::new(),
+            bsnes_launches: Vec::new(),
             mednafen_launches: Vec::new(),
             mame_native_launches: Vec::new(),
             flycast_native_launches: Vec::new(),
@@ -1341,6 +1344,7 @@ impl ControllerMappingSettings {
         crate::controller_snes9x::settings::validate_setups(&self.snes9x_launches)?;
         crate::controller_fceux::settings::validate_setups(&self.fceux_launches)?;
         crate::controller_sameboy::settings::validate_setups(&self.sameboy_launches)?;
+        crate::controller_bsnes::settings::validate_setups(&self.bsnes_launches)?;
         crate::controller_mednafen::settings::validate_setups(&self.mednafen_launches)?;
         crate::controller_mame_native::settings::validate_setups(&self.mame_native_launches)?;
         crate::controller_flycast_native::settings::validate_setups(&self.flycast_native_launches)?;

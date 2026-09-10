@@ -35,6 +35,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "flycast"
                 | "mame"
                 | "bizhawk"
+                | "bsnes"
         )
 }
 
@@ -289,6 +290,23 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "bsnes" => {
+            for setup in &mut mapping.bsnes_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_bsnes::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
                 setup.review(&mapping.calibrations)?;
             }
         }

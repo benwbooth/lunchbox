@@ -93,6 +93,17 @@ pub(super) fn reuse(
                 mapping.fceux_launches.push(setup);
             }
         }
+        "bsnes"
+            if !mapping
+                .bsnes_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(&mapping.bsnes_launches, emulator, &["players"])? {
+                setup.content = content(plan, &[])?;
+                mapping.bsnes_launches.push(setup);
+            }
+        }
         "snes9x"
             if !mapping
                 .snes9x_launches

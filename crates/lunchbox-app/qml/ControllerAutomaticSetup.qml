@@ -131,6 +131,16 @@ ColumnLayout {
         settingsModel: setup.settingsModel
     }
     Button {
+        text: "bsnes standalone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "bsnes"
+            duckstationEditor.text = setup.settingsModel.bsnes_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch writes a private settings.bml through --settings; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
         text: "DuckStation standalone setups…"
         onClicked: {
             duckstationSetups.adapter = "duckstation"
@@ -149,13 +159,14 @@ ColumnLayout {
         readonly property bool snes9x: adapter === "snes9x"
         readonly property bool fceux: adapter === "fceux"
         readonly property bool sameboy: adapter === "sameboy"
+        readonly property bool bsnes: adapter === "bsnes"
         readonly property bool mednafen: adapter === "mednafen"
         readonly property bool flycastNative: adapter === "flycast-native"
         readonly property bool melonds: adapter === "melonds"
         readonly property bool rpcs3: adapter === "rpcs3"
         readonly property bool pcsx2: adapter === "pcsx2"
         readonly property var catalog: JSON.parse(setup.settingsModel.controller_catalog_json())
-        title: melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
+        title: melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
         width: Math.min(900, setup.width)
         height: 640
         modal: true
@@ -174,6 +185,8 @@ ColumnLayout {
                     ? "Standalone Flycast: edit a JSON list with emulator_id, content, game_id (native ID, not library title), executable_sha256, source_config, probe_program, sdl_library and players. Paths must be absolute. Each player has player (1–4), controller_id, panel (six by default or eight), and source_controls linking every target to a calibrated physical layout ID. Targets: up/down/left/right/start/coin/button1–6 or button1–8. Example source_controls entry: button1 maps to b. Review displays source/destination diagrams. Partial native Linux launch dispatch is connected. Startup checks can reject mismatched controllers. Internal routing and runtime compatibility remain unverified. Review opens no devices."
                     : duckstationSetups.mednafen
                     ? "Mednafen: edit a JSON list with emulator_id, content, base_directory, bubblewrap_program, executable_sha256, gamepad (game-boy, game-boy-advance, lynx, neo-geo-pocket, wonder-swan, virtual-boy, game-gear, master-system, pce-two, pce-six, pce-fast-two, pce-fast-six, nes-two, nes-four-score, nes-famicom-four, snes, snes-faust, md-three, md-six, saturn-digital play-station-digital or play-station-dual-analog), and players containing player and controller_id (handhelds: player 1; Master System: ports 1–2; PC Engine: ports 1–5; NES: 1–2 or 1–4 according to adapter; SNES/SNES Faust: 1–8, with 3–5 on the port-two tap and 6–8 on the port-one tap). Each player may optionally specify gamepad: pce-two or pce-six (or pce-fast-two/pce-fast-six for the fast module) to override the default within the same native module. Genesis: md_tap is none (default), port-one, port-two, dual or four-way; player ports are sequential native virtual ports, up to 2/5/5/8/4 respectively. Per-player md-three/md-six overrides allow mixed pads. Saturn: saturn_multitaps is [port1-enabled, port2-enabled], default [false, false], with 2/7/12 sequential virtual slots. PlayStation: psx_multitaps is [port1-enabled, port2-enabled], default [false, false], with 2/5/8 sequential virtual slots. Per-player play-station-digital/play-station-dual-analog overrides permit mixed pads. Dual Analog uses four centered proportional axes, no rumble or mode switch. PlayStation, Saturn and PC Engine accept .ccd and UTF-8 .cue discs with companion-file tracking. Native CD firmware is required. TOC/M3U and firmware identity remain incomplete. Paths must be absolute. Native GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine joydev launch dispatch is connected. Child internal IDs and other native input drivers remain unverified. NES currently accepts raw iNES .nes and conventional UNIF .unf/.unif content and rejects ROM-device conflicts. Review opens no devices."
+                    : duckstationSetups.bsnes
+                    ? "bsnes v115+ settings.bml: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library (the SDL2 library the bsnes build links), executable_sha256, and players. Each player has player (1–2) and controller_id. Paths must be absolute. Launch writes a private settings.bml via --settings and probes SDL2 numbering at launch with the trusted library; the user's own settings file is never touched. Two controller ports; Mouse, Super Multitap, Super Scope and Justifier targets are not covered. Runtime testing remains deferred; review opens no devices."
                     : duckstationSetups.sameboy
                     ? "SameBoy SDL v1.0.3: edit a JSON list with emulator_id, content, source_config (binary preferences file), probe_program, sdl_library, bubblewrap_program, executable_sha256, runtime, and players containing exactly one entry with player: 1 and controller_id. All paths must be absolute. Native SDL device zero must be the selected controller. Runtime declares abi: sdl103-enums32-bool8 and data_directory: {kind: not-compiled} or {kind: compiled, path: absolute-directory}. These must describe the trusted executable build; they are not automatically verified. Native dispatch is connected; tilt-game axis behavior remains unresolved. Review opens no devices."
                     : duckstationSetups.fceux
@@ -236,6 +249,8 @@ ColumnLayout {
                             ? setup.settingsModel.review_flycast_native_setups(duckstationEditor.text)
                             : duckstationSetups.mednafen
                             ? setup.settingsModel.review_mednafen_setups(duckstationEditor.text)
+                            : duckstationSetups.bsnes
+                            ? setup.settingsModel.review_bsnes_setups(duckstationEditor.text)
                             : duckstationSetups.sameboy
                             ? setup.settingsModel.review_sameboy_setups(duckstationEditor.text)
                             : duckstationSetups.fceux
@@ -270,6 +285,8 @@ ColumnLayout {
                             ? setup.settingsModel.stage_flycast_native_setups(duckstationEditor.text)
                             : duckstationSetups.mednafen
                             ? setup.settingsModel.stage_mednafen_setups(duckstationEditor.text)
+                            : duckstationSetups.bsnes
+                            ? setup.settingsModel.stage_bsnes_setups(duckstationEditor.text)
                             : duckstationSetups.sameboy
                             ? setup.settingsModel.stage_sameboy_setups(duckstationEditor.text)
                             : duckstationSetups.fceux
@@ -293,6 +310,8 @@ ColumnLayout {
                             ? "Staged. Save settings on the main page. Standalone Flycast uses partial native Linux launch mapping; no devices were opened during review."
                             : duckstationSetups.mednafen
                             ? "Staged. Save settings in the main page. Mednafen GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine native dispatch is partial and untested; no devices were opened."
+                            : duckstationSetups.bsnes
+                            ? "Staged. Save settings in the main page. bsnes native dispatch writes a private settings.bml at launch; no devices were opened."
                             : duckstationSetups.sameboy
                             ? "Staged. Save settings in the main page. SameBoy native dispatch is partial; runtime details are user-declared and tilt-game axes remain unresolved; no devices were opened."
                             : duckstationSetups.fceux
