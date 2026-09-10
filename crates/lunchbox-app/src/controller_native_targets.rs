@@ -120,6 +120,16 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
 
     for (core, layout, players, platforms, source) in [
         (
+            "mesen2",
+            "nes",
+            1,
+            vec![
+                "Nintendo Entertainment System",
+                "Nintendo Famicom Disk System",
+            ],
+            "https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/Linux/LinuxGameController.cpp",
+        ),
+        (
             "openmsx",
             "openmsx-native-joystick",
             2,
@@ -314,6 +324,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             .collect::<BTreeMap<&str, &str>>(),
         ("stella", "atari2600-stella-panel") => crate::controller_stella_native::CONTROLS
             .into_iter()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("mesen2", "nes") => crate::controller_mesen2_native::CONTROLS
+            .iter()
+            .copied()
             .collect::<BTreeMap<&str, &str>>(),
         ("openmsx", "openmsx-native-joystick") => crate::controller_openmsx_native::CONTROLS
             .iter()

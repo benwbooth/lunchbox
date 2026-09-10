@@ -32,6 +32,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "Hatari",
     "DeSmuME",
     "openMSX",
+    "Mesen",
 ];
 
 pub fn report(selections: &HashMap<String, String>) -> Result<Value> {

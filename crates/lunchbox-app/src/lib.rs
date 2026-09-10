@@ -31,6 +31,7 @@ mod controller_mame;
 mod controller_mame_native;
 mod controller_mednafen;
 mod controller_melonds;
+mod controller_mesen2_native;
 mod controller_mgba;
 mod controller_models;
 #[cfg(target_os = "linux")]

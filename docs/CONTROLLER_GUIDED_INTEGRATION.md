@@ -12,9 +12,9 @@ The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
 - RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **21/249 (8.4%)**, including ares, bsnes, Stella, VICE, Hatari, DeSmuME and openMSX.
-- Combined source entry presence: **114/343 (33.2%)**.
-- Existing native adapters consuming guided choices: **21/21 (100.0%)**.
+- Standalone partial source dispatch: **22/249 (8.8%)**, including ares, bsnes, Stella, VICE, Hatari, DeSmuME, openMSX and Mesen2.
+- Combined source entry presence: **115/343 (33.5%)**.
+- Existing native adapters consuming guided choices: **22/22 (100.0%)**.
 - Overall finished/verified coverage: **not established**.
 
 The native integration count includes runtime-setup and host/backend restrictions,
@@ -217,6 +217,15 @@ port when two players are selected. See
 [OPENMSX_NATIVE_CONTROLLER_CONTRACT.md](OPENMSX_NATIVE_CONTROLLER_CONTRACT.md).
 Spec, dict and settings rendering are unit-tested; runtime behavior is
 unverified.
+
+## Step 17 — Mesen2 standalone NES controller
+
+`controller_mesen2_native` adds a native adapter for Mesen2's Linux
+frontend: the private settings.json maps the NES Port1 controls with the
+evdev-keyed KeyMapping UInt16s under an isolated XDG_DATA_HOME, with the
+sole-qualifying-gamepad constraint pinning the pad slot. See
+[MESEN2_NATIVE_CONTROLLER_CONTRACT.md](MESEN2_NATIVE_CONTROLLER_CONTRACT.md).
+Encoding and rendering are unit-tested; runtime behavior is unverified.
 
 ## Remaining work
 

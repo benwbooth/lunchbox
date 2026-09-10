@@ -48,7 +48,9 @@ melonDS now also has partial Linux standard-button dispatch.
 That is 14/249 standalone candidates (5.6%), not complete platform/mode support
 or tested compatibility.
 Installation, host compatibility and per-platform readiness are not inferred.
-Update 2026-09-10: openMSX standalone MSX joystick dispatch was added
+Update 2026-09-10: Mesen2 standalone NES controller dispatch was added
+(`MESEN2_NATIVE_CONTROLLER_CONTRACT.md`), bringing the native adapter list
+to twenty-two. openMSX standalone MSX joystick dispatch was added
 (`OPENMSX_NATIVE_CONTROLLER_CONTRACT.md`), bringing the native adapter list to
 twenty-one, after DeSmuME standalone DS button dispatch
 (`DESMUME_NATIVE_CONTROLLER_CONTRACT.md`) brought it to twenty, after Hatari standalone Atari ST joystick dispatch
@@ -78,7 +80,7 @@ ignored, defaults for missing members; the NES standard controller is
 "NesController" (SettingTypes.h) and unset ports are "None". Ready to
 implement: {"Nes":{"Port1":{"Type":"NesController","Mapping1":{...}},"Port2":{"Type":"None"}}}. NES scope: two ports.
 
-Next: continue ordinary standalone gamepad configuration beyond these twenty-one;
+Next: continue ordinary standalone gamepad configuration beyond these twenty-two;
 do not resume the arcade-peripheral audit.
 
 The notes below are historical and do not reopen the excluded peripheral scope.

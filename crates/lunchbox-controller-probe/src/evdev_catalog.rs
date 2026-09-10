@@ -7,7 +7,7 @@
 //! interpret a frontend's device-id scheme or control ordering; consumers own
 //! those contracts.
 use anyhow::{Context, Result, ensure};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
     io::Read,
@@ -37,7 +37,7 @@ const EV_KEY: u16 = 0x01;
 const KEY_CNT: usize = 0x300;
 const ABS_CNT: usize = 0x40;
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AbsInfo {
     pub value: i32,
     pub minimum: i32,
@@ -47,7 +47,7 @@ pub struct AbsInfo {
     pub resolution: i32,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UsbRoot {
     /// udev devpath of the enclosing usb_device, without a /sys prefix.
     pub devpath: String,
@@ -58,7 +58,7 @@ pub struct UsbRoot {
     pub serial: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SysfsIdentity {
     /// /sys path of the enclosing inputN device.
     pub input: PathBuf,
@@ -70,7 +70,7 @@ pub struct SysfsIdentity {
 }
 
 /// One /dev/input/event node's raw kernel view, in kernel code order.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EvdevDevice {
     /// The exact node that was read, as an absolute /dev/input path.
     pub event: PathBuf,
@@ -85,13 +85,13 @@ pub struct EvdevDevice {
     pub identity: SysfsIdentity,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AbsAxis {
     pub code: u16,
     pub info: AbsInfo,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EvdevCatalog {
     pub devices: Vec<EvdevDevice>,
 }

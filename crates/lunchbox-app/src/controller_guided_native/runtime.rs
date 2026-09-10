@@ -93,6 +93,21 @@ pub(super) fn reuse(
                 mapping.fceux_launches.push(setup);
             }
         }
+        "mesen2"
+            if !mapping
+                .mesen2_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(
+                &mapping.mesen2_native_launches,
+                emulator,
+                &["controller_id"],
+            )? {
+                setup.content = content(plan, &[])?;
+                mapping.mesen2_native_launches.push(setup);
+            }
+        }
         "openmsx"
             if !mapping
                 .openmsx_native_launches

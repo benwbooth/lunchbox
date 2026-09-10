@@ -54,6 +54,8 @@ pub struct CalibratedLaunch {
     #[cfg(target_os = "linux")]
     openmsx_native: Option<crate::controller_openmsx_native::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
+    mesen2_native: Option<crate::controller_mesen2_native::native_command::NativeSession>,
+    #[cfg(target_os = "linux")]
     mednafen_native: Option<crate::controller_mednafen::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
     mame_native: Option<crate::controller_mame_native::native_command::NativeSession>,
@@ -321,6 +323,10 @@ impl CalibratedLaunch {
         }
         #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.openmsx_native {
+            return native.spawn(plan, cancel);
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(native) = &mut self.mesen2_native {
             return native.spawn(plan, cancel);
         }
         #[cfg(target_os = "linux")]
@@ -740,6 +746,8 @@ impl CalibratedLaunch {
             #[cfg(target_os = "linux")]
             openmsx_native: None,
             #[cfg(target_os = "linux")]
+            mesen2_native: None,
+            #[cfg(target_os = "linux")]
             mednafen_native: None,
             #[cfg(target_os = "linux")]
             mame_native: None,
@@ -807,6 +815,10 @@ impl CalibratedLaunch {
         }
         #[cfg(target_os = "linux")]
         if let Some(native) = &self.openmsx_native {
+            native.verify(&std::sync::atomic::AtomicBool::new(false))?;
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(native) = &self.mesen2_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
         #[cfg(target_os = "linux")]
@@ -935,6 +947,10 @@ impl CalibratedLaunch {
         }
         #[cfg(target_os = "linux")]
         if let Some(native) = &self.openmsx_native {
+            native.check_health()?;
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(native) = &self.mesen2_native {
             native.check_health()?;
         }
         #[cfg(target_os = "linux")]
@@ -1492,6 +1508,8 @@ pub(crate) fn attach_fbneo_session(
         desmume_native: None,
         #[cfg(target_os = "linux")]
         openmsx_native: None,
+        #[cfg(target_os = "linux")]
+        mesen2_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]
@@ -3262,6 +3280,8 @@ pub(crate) fn prepare_mame_calibrated_session(
         desmume_native: None,
         #[cfg(target_os = "linux")]
         openmsx_native: None,
+        #[cfg(target_os = "linux")]
+        mesen2_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]
@@ -5490,6 +5510,8 @@ pub fn prepare_with_cancellation(
             desmume_native: None,
             #[cfg(target_os = "linux")]
             openmsx_native: None,
+            #[cfg(target_os = "linux")]
+            mesen2_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5579,6 +5601,8 @@ pub fn prepare_with_cancellation(
             desmume_native: None,
             #[cfg(target_os = "linux")]
             openmsx_native: None,
+            #[cfg(target_os = "linux")]
+            mesen2_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5668,6 +5692,8 @@ pub fn prepare_with_cancellation(
             desmume_native: None,
             #[cfg(target_os = "linux")]
             openmsx_native: None,
+            #[cfg(target_os = "linux")]
+            mesen2_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5757,6 +5783,8 @@ pub fn prepare_with_cancellation(
             desmume_native: None,
             #[cfg(target_os = "linux")]
             openmsx_native: None,
+            #[cfg(target_os = "linux")]
+            mesen2_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5831,6 +5859,8 @@ pub fn prepare_with_cancellation(
             desmume_native: None,
             #[cfg(target_os = "linux")]
             openmsx_native: None,
+            #[cfg(target_os = "linux")]
+            mesen2_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: Some(native),
@@ -5911,6 +5941,8 @@ pub fn prepare_with_cancellation(
             desmume_native: None,
             #[cfg(target_os = "linux")]
             openmsx_native: None,
+            #[cfg(target_os = "linux")]
+            mesen2_native: None,
                 mednafen_native: Some(native),
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5991,6 +6023,8 @@ pub fn prepare_with_cancellation(
                 desmume_native: None,
                 #[cfg(target_os = "linux")]
                 openmsx_native: None,
+                #[cfg(target_os = "linux")]
+                mesen2_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6074,6 +6108,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
+                mesen2_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6155,6 +6191,8 @@ pub fn prepare_with_cancellation(
                 desmume_native: None,
                 #[cfg(target_os = "linux")]
                 openmsx_native: None,
+                #[cfg(target_os = "linux")]
+                mesen2_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6238,6 +6276,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
+                mesen2_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6319,6 +6359,8 @@ pub fn prepare_with_cancellation(
                 desmume_native: Some(native),
                 #[cfg(target_os = "linux")]
                 openmsx_native: None,
+                #[cfg(target_os = "linux")]
+                mesen2_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6402,6 +6444,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 openmsx_native: Some(native),
                 #[cfg(target_os = "linux")]
+                mesen2_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6433,6 +6477,90 @@ pub fn prepare_with_cancellation(
                 puae: None,
                 stella: None,
                 description: "openMSX: calibrated MSX joysticks through a private OPENMSX_HOME and settings file with the msxjoystickN_config dicts; SDL2 numbering probed with the trusted runtime; partial Linux support; mice, JoyMega and paddle devices not covered"
+                    .into(),
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Mesen")
+    {
+        let matches: Vec<_> = mapping
+            .mesen2_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Mesen2 saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_mesen2_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                mgba: None,
+                #[cfg(target_os = "linux")]
+                dolphin_native: None,
+                snes9x_native: None,
+                fceux_native: None,
+                sameboy_native: None,
+                #[cfg(target_os = "linux")]
+                bsnes_native: None,
+                #[cfg(target_os = "linux")]
+                stella_native: None,
+                #[cfg(target_os = "linux")]
+                vice_native: None,
+                #[cfg(target_os = "linux")]
+                hatari_native: None,
+                #[cfg(target_os = "linux")]
+                desmume_native: None,
+                #[cfg(target_os = "linux")]
+                openmsx_native: None,
+                #[cfg(target_os = "linux")]
+                mesen2_native: Some(native),
+                #[cfg(target_os = "linux")]
+                mednafen_native: None,
+                #[cfg(target_os = "linux")]
+                mame_native: None,
+                #[cfg(target_os = "linux")]
+                flycast_native: None,
+                #[cfg(target_os = "linux")]
+                pcsx2_native: None,
+                #[cfg(target_os = "linux")]
+                rpcs3_native: None,
+                #[cfg(target_os = "linux")]
+                melonds_native: None,
+                ppsspp: None,
+                duckstation: None,
+                _directory: None,
+                bizhawk: None,
+                #[cfg(target_os = "linux")]
+                bizhawk_topology: None,
+                transports: Vec::new(),
+                crocods: None,
+                ep128emu: None,
+                hatari: None,
+                simcp: None,
+                steemsse: None,
+                scummvm: None,
+                dolphin: None,
+                same_cdi: None,
+                fbneo: None,
+                mame: None,
+                puae: None,
+                stella: None,
+                description: "Mesen2: calibrated NES controller through a private XDG_DATA_HOME settings.json using the evdev-keyed KeyMapping codes; the selected controller must be the sole qualifying gamepad; partial Linux support; Zapper, Power Pad, Four Score and non-NES systems not covered"
                     .into(),
             }));
         }
@@ -6484,6 +6612,8 @@ pub fn prepare_with_cancellation(
             desmume_native: None,
             #[cfg(target_os = "linux")]
             openmsx_native: None,
+            #[cfg(target_os = "linux")]
+            mesen2_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6568,6 +6698,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
+                mesen2_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6651,6 +6783,8 @@ pub fn prepare_with_cancellation(
             desmume_native: None,
             #[cfg(target_os = "linux")]
             openmsx_native: None,
+            #[cfg(target_os = "linux")]
+            mesen2_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6734,6 +6868,8 @@ pub fn prepare_with_cancellation(
                 desmume_native: None,
                 #[cfg(target_os = "linux")]
                 openmsx_native: None,
+                #[cfg(target_os = "linux")]
+                mesen2_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6819,6 +6955,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
+                mesen2_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6900,6 +7038,8 @@ pub fn prepare_with_cancellation(
                 desmume_native: None,
                 #[cfg(target_os = "linux")]
                 openmsx_native: None,
+                #[cfg(target_os = "linux")]
+                mesen2_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -7748,6 +7888,8 @@ pub fn prepare_with_cancellation(
         #[cfg(target_os = "linux")]
         openmsx_native: None,
         #[cfg(target_os = "linux")]
+        mesen2_native: None,
+        #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]
         mame_native: None,
@@ -8162,6 +8304,8 @@ fn prepare_mode_aware(
         desmume_native: None,
         #[cfg(target_os = "linux")]
         openmsx_native: None,
+        #[cfg(target_os = "linux")]
+        mesen2_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]
