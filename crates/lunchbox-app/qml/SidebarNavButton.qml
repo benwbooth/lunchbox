@@ -82,8 +82,8 @@ Rectangle {
         anchors.rightMargin: 8
         anchors.verticalCenter: parent.verticalCenter
         elide: Text.ElideRight
-        fontSizeMode: Text.HorizontalFit
-        minimumPixelSize: 10
+        maximumLineCount: 1
+        wrapMode: Text.NoWrap
         color: nav.active ? "#f4f7fb" : "#c0c8d4"
         font.pixelSize: 14
         font.weight: nav.active ? Font.DemiBold : Font.Medium

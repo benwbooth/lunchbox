@@ -265,6 +265,59 @@ impl EmulatorUpdatePreferences {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ControllerMappingSettings {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) fceux_launches: Vec<crate::controller_fceux::settings::SavedSetup>,
+    #[serde(default)]
+    pub(crate) sameboy_launches: Vec<crate::controller_sameboy::settings::SavedSetup>,
+    #[serde(default)]
+    pub(crate) mednafen_launches: Vec<crate::controller_mednafen::settings::SavedSetup>,
+    #[serde(default)]
+    pub(crate) mame_native_launches: Vec<crate::controller_mame_native::settings::SavedSetup>,
+    #[serde(default)]
+    pub(crate) flycast_native_launches: Vec<crate::controller_flycast_native::settings::SavedSetup>,
+    #[serde(default)]
+    pub(crate) pcsx2_launches: Vec<crate::controller_pcsx2::settings::SavedSetup>,
+    #[serde(default)]
+    pub(crate) rpcs3_launches: Vec<crate::controller_rpcs3::settings::SavedSetup>,
+    #[serde(default)]
+    pub(crate) melonds_launches: Vec<crate::controller_melonds::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) snes9x_launches: Vec<crate::controller_snes9x::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) dolphin_launches: Vec<crate::controller_dolphin::standalone::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) mgba_launches: Vec<crate::controller_mgba::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) ppsspp_launches: Vec<crate::controller_ppsspp::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) duckstation_launches: Vec<crate::controller_duckstation::SavedSetup>,
+    /// Automatic digital arcade fallback. Exact saved setups always win.
+    #[serde(default = "default_mame_arcade_layout")]
+    pub(crate) mame_arcade_layout: Option<crate::controller_mame::DigitalLayout>,
+    /// Search the selected archive's directory for split/nonmerged dependencies.
+    #[serde(default)]
+    pub(crate) mame_discover_sibling_dependencies: bool,
+    #[serde(default)]
+    pub(crate) relative_devices:
+        Vec<crate::controller_axis::relative_settings::RelativeDeviceSettings>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) absolute_devices:
+        Vec<crate::controller_axis::absolute_settings::AbsoluteDeviceSettings>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) mame_launches: Vec<crate::controller_mame::NativeLaunchSettings>,
+    /// Explicit per-content FBNeo contracts; no automatic game-title matching.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fbneo_launches: Vec<crate::controller_fbneo::NativeLaunchSettings>,
+    /// Explicit native runtime setup; absent settings leave existing launches unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bizhawk_launch: Option<crate::controller_bizhawk::NativeLaunchSettings>,
+    /// Additional exact emulator/system scopes; the legacy entry remains readable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bizhawk_launches: Vec<crate::controller_bizhawk::NativeLaunchSettings>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub sdl2_calibrations: HashMap<String, crate::controller_bizhawk::LogicalCalibration>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sdl2_runtime_calibrations: Vec<crate::controller_bizhawk::RuntimeLogicalCalibration>,
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
@@ -277,6 +330,11 @@ pub struct ControllerMappingSettings {
     pub device_models: HashMap<String, String>,
     #[serde(default)]
     pub calibrations: HashMap<String, crate::controller_catalog::Calibration>,
+    #[serde(default)]
+    pub launch_mode_selections: HashMap<String, String>,
+    /// Guided target choice, scoped independently for standalone and libretro.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub guided_target_selections: HashMap<String, String>,
     #[serde(default = "default_true")]
     pub calibrated_launch: bool,
     #[serde(default)]
@@ -295,6 +353,8 @@ pub struct ControllerMappingSettings {
     pub profile_controller_ids: Vec<String>,
     #[serde(default)]
     pub player_mappings: Vec<ControllerPlayerMapping>,
+    /// The guided player picker selects exactly these players, not a preference
+    /// order followed by every other connected controller.
     #[serde(default)]
     pub explicit_player_selection: bool,
     #[serde(default)]
@@ -311,15 +371,44 @@ fn default_true() -> bool {
     true
 }
 
+fn default_mame_arcade_layout() -> Option<crate::controller_mame::DigitalLayout> {
+    Some(crate::controller_mame::DigitalLayout::SixButton)
+}
+
 impl Default for ControllerMappingSettings {
     fn default() -> Self {
         Self {
+            fbneo_launches: Vec::new(),
+            duckstation_launches: Vec::new(),
+            ppsspp_launches: Vec::new(),
+            mgba_launches: Vec::new(),
+            snes9x_launches: Vec::new(),
+            fceux_launches: Vec::new(),
+            sameboy_launches: Vec::new(),
+            mednafen_launches: Vec::new(),
+            mame_native_launches: Vec::new(),
+            flycast_native_launches: Vec::new(),
+            pcsx2_launches: Vec::new(),
+            rpcs3_launches: Vec::new(),
+            melonds_launches: Vec::new(),
+            dolphin_launches: Vec::new(),
+            mame_arcade_layout: default_mame_arcade_layout(),
+            mame_discover_sibling_dependencies: false,
+            relative_devices: Vec::new(),
+            absolute_devices: Vec::new(),
+            mame_launches: Vec::new(),
+            bizhawk_launch: None,
+            bizhawk_launches: Vec::new(),
+            sdl2_calibrations: HashMap::new(),
+            sdl2_runtime_calibrations: Vec::new(),
             enabled: false,
             automatic: false,
             device_layouts: HashMap::new(),
             device_names: HashMap::new(),
             device_models: HashMap::new(),
             calibrations: HashMap::new(),
+            launch_mode_selections: HashMap::new(),
+            guided_target_selections: HashMap::new(),
             calibrated_launch: true,
             preferred_devices: HashMap::new(),
             device_system_profiles: HashMap::new(),
@@ -1171,7 +1260,273 @@ impl AppSettings {
 }
 
 impl ControllerMappingSettings {
+    pub(crate) fn native_logical_calibration(
+        &self,
+        native: &crate::controller_bizhawk::NativeLaunchSettings,
+        controller: &str,
+    ) -> Option<&crate::controller_bizhawk::LogicalCalibration> {
+        self.logical_calibration_for(&native.emulator_id, native.scope_id(), controller)
+            .map(|(calibration, _)| calibration)
+    }
+
+    /// The boolean identifies runtime-scoped data rather than legacy fallback.
+    pub(crate) fn logical_calibration_for(
+        &self,
+        emulator: &str,
+        scope: &str,
+        controller: &str,
+    ) -> Option<(&crate::controller_bizhawk::LogicalCalibration, bool)> {
+        self.sdl2_runtime_calibrations
+            .iter()
+            .find(|entry| {
+                entry.emulator_id == emulator
+                    && entry.scope == scope
+                    && entry.controller_id == controller
+            })
+            .map(|entry| (&entry.calibration, true))
+            .or_else(|| {
+                self.sdl2_calibrations
+                    .get(controller)
+                    .map(|calibration| (calibration, false))
+            })
+    }
+    pub(crate) fn native_launch_for(
+        &self,
+        emulator: &str,
+        platform: &str,
+    ) -> Result<Option<&crate::controller_bizhawk::NativeLaunchSettings>> {
+        let mut selected = None;
+        for native in self.bizhawk_launch.iter().chain(&self.bizhawk_launches) {
+            native.validate()?;
+            if native.emulator_id == emulator && native.matches_platform(platform) {
+                anyhow::ensure!(
+                    selected.is_none(),
+                    "Multiple native controller setups match this emulator and platform"
+                );
+                selected = Some(native);
+            }
+        }
+        Ok(selected)
+    }
+
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.mame_launches.len() <= 1024,
+            "Too many saved MAME controller setups"
+        );
+        let mut mame_keys = std::collections::BTreeSet::new();
+        for setup in &self.mame_launches {
+            // Preserve legacy reviewed data so it can be opened and reinspected.
+            // Staging and launch enforce the current snapshot contract separately.
+            setup.validate_stored()?;
+            ensure!(
+                mame_keys.insert((&setup.emulator_id, &setup.core, &setup.content)),
+                "Duplicate MAME per-game controller setup"
+            );
+            for controller in setup.players.values() {
+                self.calibrations
+                    .get(controller)
+                    .context("MAME player has no saved calibration")?
+                    .validate()?;
+            }
+        }
+        ensure!(
+            self.fbneo_launches.len() <= 1024,
+            "Too many saved FBNeo per-game setups"
+        );
+        let mut fbneo_keys = std::collections::BTreeSet::new();
+        crate::controller_duckstation::validate_setups(&self.duckstation_launches)?;
+        crate::controller_ppsspp::settings::validate_setups(&self.ppsspp_launches)?;
+        crate::controller_mgba::settings::validate_setups(&self.mgba_launches)?;
+        crate::controller_snes9x::settings::validate_setups(&self.snes9x_launches)?;
+        crate::controller_fceux::settings::validate_setups(&self.fceux_launches)?;
+        crate::controller_sameboy::settings::validate_setups(&self.sameboy_launches)?;
+        crate::controller_mednafen::settings::validate_setups(&self.mednafen_launches)?;
+        crate::controller_mame_native::settings::validate_setups(&self.mame_native_launches)?;
+        crate::controller_flycast_native::settings::validate_setups(&self.flycast_native_launches)?;
+        crate::controller_pcsx2::settings::validate_setups(&self.pcsx2_launches)?;
+        crate::controller_rpcs3::settings::validate_setups(&self.rpcs3_launches)?;
+        crate::controller_melonds::settings::validate_setups(&self.melonds_launches)?;
+        crate::controller_dolphin::standalone::settings::validate_setups(&self.dolphin_launches)?;
+        for setup in &self.fbneo_launches {
+            setup.validate()?;
+            ensure!(
+                fbneo_keys.insert((&setup.emulator_id, &setup.core, &setup.content)),
+                "Duplicate FBNeo per-game controller setup"
+            );
+            for player in &setup.players {
+                let calibration = self
+                    .calibrations
+                    .get(&player.controller_id)
+                    .context("FBNeo player has no saved physical calibration")?;
+                calibration.validate()?;
+                ensure!(
+                    player
+                        .assignments
+                        .iter()
+                        .all(|assignment| calibration.bindings.contains_key(&assignment.source)),
+                    "FBNeo assignment references an uncalibrated physical control"
+                );
+            }
+        }
+        crate::controller_axis::relative_settings::validate_devices(&self.relative_devices)?;
+        crate::controller_axis::absolute_settings::validate_devices(&self.absolute_devices)?;
+        ensure!(
+            self.sdl2_runtime_calibrations.len() <= 128,
+            "Too many runtime SDL2 calibrations"
+        );
+        let mut runtime_bindings = std::collections::BTreeSet::new();
+        for entry in &self.sdl2_runtime_calibrations {
+            ensure!(
+                !entry.emulator_id.trim().is_empty()
+                    && entry.emulator_id.len() <= 1024
+                    && !entry.emulator_id.chars().any(char::is_control),
+                "Invalid calibration emulator identity"
+            );
+            validate_controller_id(&entry.controller_id)?;
+            ensure!(
+                matches!(
+                    entry.scope.as_str(),
+                    "nymashock"
+                        | "neshawk"
+                        | "snes9x"
+                        | "master-system"
+                        | "gamegear"
+                        | "sg1000"
+                        | "pcehawk"
+                        | "turbonyma"
+                        | "gpgx"
+                ),
+                "Unknown runtime SDL2 calibration scope"
+            );
+            ensure!(
+                runtime_bindings.insert((&entry.emulator_id, &entry.scope, &entry.controller_id)),
+                "Duplicate runtime SDL2 calibration scope"
+            );
+        }
+        for (id, logical) in self.sdl2_calibrations.iter().chain(
+            self.sdl2_runtime_calibrations
+                .iter()
+                .map(|entry| (&entry.controller_id, &entry.calibration)),
+        ) {
+            let physical = self
+                .calibrations
+                .get(id)
+                .context("SDL2 calibration has no physical controller calibration")?;
+            ensure!(
+                logical.layout == physical.layout,
+                "SDL2 and physical calibration layouts disagree"
+            );
+            logical.validate()?;
+            ensure!(
+                logical
+                    .bindings
+                    .keys()
+                    .all(|control| physical.bindings.contains_key(control)),
+                "SDL2 logical binding has no calibrated physical control"
+            );
+        }
+        anyhow::ensure!(
+            self.bizhawk_launches.len() <= 63,
+            "Too many native controller setups"
+        );
+        let mut native_scopes = std::collections::BTreeSet::new();
+        let mut native_pce_emulators = std::collections::BTreeSet::new();
+        for native in self.bizhawk_launch.iter().chain(&self.bizhawk_launches) {
+            native.validate()?;
+            if native.pcehawk_ports.is_some() || native.turbonyma_topology.is_some() {
+                anyhow::ensure!(
+                    native_pce_emulators.insert(&native.emulator_id),
+                    "PCEHawk and TurboNyma cannot both route the same emulator's PC Engine platforms; remove the conflicting setup or use distinct emulator IDs"
+                );
+            }
+            anyhow::ensure!(
+                native_scopes.insert((&native.emulator_id, native.scope_id())),
+                "Duplicate native controller emulator/system scope"
+            );
+            for player in &native.players {
+                let calibration = self
+                    .calibrations
+                    .get(&player.controller_id)
+                    .context("Native BizHawk player has no saved calibration")?;
+                calibration.validate()?;
+                if native.snes9x_ports.is_some() {
+                    crate::controller_bizhawk::snes9x::validate_saved_pad(calibration)
+                        .with_context(|| {
+                            format!("Native SNES player {}", player.virtual_port + 1)
+                        })?;
+                }
+                if let Some(ports) = native.neshawk_ports {
+                    let port = crate::controller_bizhawk::neshawk::player_port(
+                        ports,
+                        player.virtual_port + 1,
+                    )?;
+                    crate::controller_bizhawk::neshawk::validate_saved_pad(port, calibration)
+                        .with_context(|| {
+                            format!("Native NES player {}", player.virtual_port + 1)
+                        })?;
+                }
+                if let Some(system) = native.smshawk_system {
+                    crate::controller_bizhawk::smshawk::validate_saved_pad(system, calibration)
+                        .with_context(|| {
+                            format!("Native SMSHawk player {}", player.virtual_port + 1)
+                        })?;
+                }
+                if native.pcehawk_ports.is_some() {
+                    crate::controller_bizhawk::pcehawk::validate_saved_pad(calibration)
+                        .with_context(|| {
+                            format!("Native PCEHawk player {}", player.virtual_port + 1)
+                        })?;
+                }
+                if native.turbonyma_topology.is_some() {
+                    crate::controller_bizhawk::turbonyma::validate_saved_pad(calibration)
+                        .with_context(|| {
+                            format!("Native TurboNyma player {}", player.virtual_port + 1)
+                        })?;
+                }
+                if let Some(topology) = native.gpgx_topology {
+                    topology
+                        .validate_saved_player(player.virtual_port + 1, calibration)
+                        .with_context(|| {
+                            format!("Native GPGX player {}", player.virtual_port + 1)
+                        })?;
+                }
+                if let Some(id) = &player.analog_toggle_id {
+                    if !calibration.bindings.contains_key(id) {
+                        bail!("Native BizHawk analog toggle is not calibrated");
+                    }
+                }
+            }
+        }
+        if self.guided_target_selections.len() > 4096 {
+            bail!("too many saved guided controller target selections");
+        }
+        for (key, profile) in &self.guided_target_selections {
+            crate::controller_target::Scope::from_key(key)?;
+            ensure!(
+                !profile.is_empty()
+                    && profile.len() <= 256
+                    && !profile.chars().any(char::is_control),
+                "Invalid guided controller target"
+            );
+            // Unknown/removed profiles must not prevent loading the user's
+            // calibrations. Applicability is checked again at selection/launch.
+        }
+        if self.launch_mode_selections.len() > 4096 {
+            bail!("too many saved controller launch mode selections");
+        }
+        for (key, profile) in &self.launch_mode_selections {
+            let parts: [String; 2] =
+                serde_json::from_str(key).context("Invalid controller mode key")?;
+            if parts.iter().any(|part| {
+                part.is_empty() || part.len() > 256 || part.chars().any(char::is_control)
+            }) || profile.is_empty()
+                || profile.len() > 256
+                || profile.chars().any(char::is_control)
+            {
+                bail!("Invalid controller launch mode selection");
+            }
+        }
         if self.device_names.len() > 64 {
             bail!("too many saved controller names");
         }
@@ -2068,43 +2423,6 @@ impl SettingsStore {
         Ok(settings)
     }
 
-    pub(crate) fn save_controller_model(&self, device: &str, model: &str) -> Result<()> {
-        ensure!(
-            !device.is_empty() && device.len() <= 4096,
-            "Invalid controller identity"
-        );
-        ensure!(
-            model.is_empty() || crate::controller_models::model(model).is_some(),
-            "Unknown controller model"
-        );
-        let mut connection = self.connection()?;
-        let transaction =
-            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        let json: String = transaction.query_row(
-            "SELECT controller_mapping_json FROM app_settings WHERE id=1",
-            [],
-            |row| row.get(0),
-        )?;
-        let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
-        if model.is_empty() {
-            mapping.device_models.remove(device);
-        } else {
-            mapping
-                .device_models
-                .insert(device.to_owned(), model.to_owned());
-        }
-        ensure!(
-            mapping.device_models.len() <= 64,
-            "Too many saved controller models"
-        );
-        transaction.execute(
-            "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
-            [serde_json::to_string(&mapping)?],
-        )?;
-        transaction.commit()?;
-        Ok(())
-    }
-
     pub fn save(&self, settings: &AppSettings) -> Result<()> {
         settings.validate()?;
         let mut connection = self.connection()?;
@@ -2173,6 +2491,39 @@ impl SettingsStore {
         Ok(())
     }
 
+    /// Persist one target choice without saving unrelated settings drafts.
+    pub(crate) fn save_controller_target(
+        &self,
+        scope: &crate::controller_target::Scope,
+        profile: &str,
+    ) -> Result<()> {
+        scope.profile(crate::controller_catalog::catalog(), profile)?;
+        let mut connection = self.connection()?;
+        let transaction =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let json: String = transaction.query_row(
+            "SELECT controller_mapping_json FROM app_settings WHERE id=1",
+            [],
+            |row| row.get(0),
+        )?;
+        let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
+        ensure!(
+            mapping.guided_target_selections.len() < 4096
+                || mapping.guided_target_selections.contains_key(&scope.key()),
+            "Too many saved controller targets"
+        );
+        mapping
+            .guided_target_selections
+            .insert(scope.key(), profile.to_owned());
+        transaction.execute(
+            "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
+            [serde_json::to_string(&mapping)?],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Persist player order without saving unrelated settings drafts.
     pub(crate) fn save_controller_player_order(
         &self,
         players: &[ControllerPlayerMapping],
@@ -2196,6 +2547,74 @@ impl SettingsStore {
         Ok(())
     }
 
+    /// Persist one physical controller without saving unrelated settings drafts.
+    pub(crate) fn save_controller_name(&self, device: &str, name: &str) -> Result<()> {
+        ensure!(
+            name.chars().count() <= 80 && !name.chars().any(char::is_control),
+            "Use a name of up to 80 printable characters"
+        );
+        let mut connection = self.connection()?;
+        let transaction =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let json: String = transaction.query_row(
+            "SELECT controller_mapping_json FROM app_settings WHERE id=1",
+            [],
+            |row| row.get(0),
+        )?;
+        let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
+        if name.is_empty() {
+            mapping.device_names.remove(device);
+        } else {
+            mapping
+                .device_names
+                .insert(device.to_owned(), name.to_owned());
+        }
+        transaction.execute(
+            "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
+            [serde_json::to_string(&mapping)?],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub(crate) fn save_controller_model(&self, device: &str, model: &str) -> Result<()> {
+        ensure!(
+            !device.is_empty() && device.len() <= 4096,
+            "Invalid controller identity"
+        );
+        ensure!(
+            model.is_empty() || crate::controller_models::model(model).is_some(),
+            "Unknown controller model"
+        );
+        let mut connection = self.connection()?;
+        let transaction =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let json: String = transaction.query_row(
+            "SELECT controller_mapping_json FROM app_settings WHERE id=1",
+            [],
+            |row| row.get(0),
+        )?;
+        let mut mapping: ControllerMappingSettings = serde_json::from_str(&json)?;
+        if model.is_empty() {
+            mapping.device_models.remove(device);
+        } else {
+            mapping
+                .device_models
+                .insert(device.to_owned(), model.to_owned());
+        }
+        ensure!(
+            mapping.device_models.len() <= 64,
+            "Too many saved controller models"
+        );
+        transaction.execute(
+            "UPDATE app_settings SET controller_mapping_json=?1 WHERE id=1",
+            [serde_json::to_string(&mapping)?],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Persist one physical controller without saving unrelated settings drafts.
     pub(crate) fn save_controller_calibration(
         &self,
         device: &str,
@@ -7945,6 +8364,12 @@ fn i64_to_u64(value: i64) -> u64 {
 mod tests {
     use super::*;
 
+    fn store() -> (tempfile::TempDir, SettingsStore) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
+        (directory, store)
+    }
+
     #[test]
     fn player_order_save_preserves_controller_settings() {
         let (_directory, store) = store();
@@ -7976,10 +8401,69 @@ mod tests {
         assert_eq!(saved.qbittorrent_host, original.qbittorrent_host);
     }
 
-    fn store() -> (tempfile::TempDir, SettingsStore) {
-        let directory = tempfile::tempdir().unwrap();
-        let store = SettingsStore::at(directory.path().join("state.db")).unwrap();
-        (directory, store)
+    #[test]
+    fn guided_controller_save_preserves_other_settings_and_devices() {
+        let (_directory, store) = store();
+        let original = AppSettings {
+            qbittorrent_host: "unchanged.example".into(),
+            ..AppSettings::default()
+        };
+        store.save(&original).unwrap();
+        let calibration: crate::controller_catalog::Calibration =
+            serde_json::from_value(serde_json::json!({
+                "layout":"nes", "os":"linux", "backend":"gilrs-0.11",
+                "bindings":{"a":{"code":1,"kind":"button","direction":0,"logical":"South"}}
+            }))
+            .unwrap();
+        store
+            .save_controller_calibration("first", &calibration)
+            .unwrap();
+        store
+            .save_controller_calibration("second", &calibration)
+            .unwrap();
+        let saved = store.load().unwrap();
+        assert_eq!(saved.qbittorrent_host, original.qbittorrent_host);
+        assert_eq!(saved.controller_mapping.calibrations.len(), 2);
+        assert_eq!(saved.controller_mapping.calibrations["first"], calibration);
+        assert_eq!(saved.controller_mapping.calibrations["second"], calibration);
+    }
+
+    #[test]
+    fn controller_names_persist_independently_and_can_be_cleared() {
+        let (_directory, store) = store();
+        let original = AppSettings {
+            qbittorrent_host: "unchanged.example".into(),
+            ..AppSettings::default()
+        };
+        store.save(&original).unwrap();
+        store.save_controller_name("first", "Blue pad").unwrap();
+        store.save_controller_name("second", "Red pad").unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.controller_mapping.device_names["first"], "Blue pad");
+        assert_eq!(loaded.controller_mapping.device_names["second"], "Red pad");
+        assert_eq!(loaded.qbittorrent_host, original.qbittorrent_host);
+        assert!(store.save_controller_name("first", "bad\nname").is_err());
+        store.save_controller_name("first", "").unwrap();
+        let loaded = store.load().unwrap();
+        assert!(!loaded.controller_mapping.device_names.contains_key("first"));
+        assert_eq!(loaded.controller_mapping.device_names["second"], "Red pad");
+    }
+
+    #[test]
+    fn controller_models_persist_per_unit_without_changing_names() {
+        let (_directory, store) = store();
+        store.save(&AppSettings::default()).unwrap();
+        let model = &crate::controller_models::models()[0].id;
+        store.save_controller_name("one", "Blue pad").unwrap();
+        store.save_controller_model("one", model).unwrap();
+        store.save_controller_model("two", model).unwrap();
+        assert!(store.save_controller_model("one", "not-a-profile").is_err());
+        store.save_controller_model("one", "").unwrap();
+        let saved = store.load().unwrap().controller_mapping;
+        assert!(!saved.device_models.contains_key("one"));
+        assert_eq!(&saved.device_models["two"], model);
+        assert_eq!(saved.device_names["one"], "Blue pad");
+        assert!(saved.calibrations.is_empty());
     }
 
     #[test]

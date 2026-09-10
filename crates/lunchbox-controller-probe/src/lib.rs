@@ -12,18 +12,27 @@ use std::path::{Path, PathBuf};
 const SUBSYSTEMS: u32 = 0x00000200 | 0x00002000; // SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD
 
 pub mod bindings;
+pub mod content_inspection;
 pub mod duckstation;
 pub mod duckstation_config;
 pub mod libretro_input;
+pub mod libretro_options;
 pub mod linux_classic;
 pub mod live_sdl3;
 pub mod players;
+pub mod sdl2;
+pub mod sdl2_evdev;
+pub mod sdl2_mapping;
+pub mod sdl2_physical;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
     /// Process-local SDL instance ID, not an emulator player number.
     pub instance_id: u32,
     pub name: Option<String>,
+    /// SDL gamepad-facing name; may differ from the joystick's name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gamepad_name: Option<String>,
     pub path: Option<String>,
     pub guid: String,
     pub vendor: u16,
@@ -119,7 +128,8 @@ unsafe fn string(pointer: *const c_char) -> Result<Option<String>> {
     ))
 }
 
-fn file_hash(path: &Path) -> Result<String> {
+/// SHA256 of the current file bytes, shared with request-building frontends.
+pub fn file_hash(path: &Path) -> Result<String> {
     use std::io::Read;
     let mut file =
         std::fs::File::open(path).with_context(|| format!("Reading {}", path.display()))?;
@@ -188,8 +198,8 @@ pub fn inspect_target_runtime(
     runtime_library_paths: &[PathBuf],
 ) -> Result<Snapshot> {
     ensure!(
-        player_contract.is_none_or(|c| c == players::CONTRACT),
-        "Unknown DuckStation player contract"
+        player_contract.is_none_or(|c| c == players::CONTRACT || c == players::PCSX2_CONTRACT),
+        "Unknown SDL player projection contract"
     );
     let unique: std::collections::BTreeSet<_> = binding_paths.iter().collect();
     ensure!(
@@ -290,6 +300,8 @@ pub fn inspect_target_runtime(
         let player = *library
             .get::<unsafe extern "C" fn(u32) -> c_int>(b"SDL_GetJoystickPlayerIndexForID\0")?;
         let is_gamepad = *library.get::<unsafe extern "C" fn(u32) -> bool>(b"SDL_IsGamepad\0")?;
+        let gamepad_name = *library
+            .get::<unsafe extern "C" fn(u32) -> *const c_char>(b"SDL_GetGamepadNameForID\0")?;
         let mapping = *library
             .get::<unsafe extern "C" fn(u32) -> *mut c_char>(b"SDL_GetGamepadMappingForID\0")?;
 
@@ -350,6 +362,11 @@ pub fn inspect_target_runtime(
             devices.push(Device {
                 instance_id: *id,
                 name: string(get_name(*id))?,
+                gamepad_name: if is_gamepad(*id) {
+                    string(gamepad_name(*id))?
+                } else {
+                    None
+                },
                 path: string(get_path(*id))?,
                 guid: get_guid(*id)
                     .data
@@ -422,7 +439,21 @@ pub fn inspect_target_runtime(
                         == Some("1"),
                 "Player probe currently requires verified SDL 3.2.20 Linux classic runtime"
             );
-            Some(players::observe(&library, &devices, get_error)?)
+            let mut session = players::observe(&library, &devices, get_error)?;
+            if player_contract == Some(players::PCSX2_CONTRACT) {
+                ensure!(
+                    session
+                        .report
+                        .assignments
+                        .iter()
+                        .all(|entry| entry.projected_player_id <= 255),
+                    "PCSX2 SDL player projection exceeds native binding field"
+                );
+                // Retain the schema field for existing consumers, but never
+                // label a PCSX2 projection as the DuckStation contract.
+                session.report.duckstation_revision = players::PCSX2_CONTRACT.into();
+            }
+            Some(session)
         } else {
             None
         };
@@ -616,6 +647,7 @@ mod tests {
                 .map(|(i, path)| Device {
                     instance_id: i as u32 + 1,
                     name: Some("Xbox 360 Pad".into()),
+                    gamepad_name: None,
                     path: path.map(str::to_owned),
                     guid: "same-reported-guid".into(),
                     vendor: 0x045e,

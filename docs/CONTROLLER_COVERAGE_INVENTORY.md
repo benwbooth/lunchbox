@@ -1,5 +1,9 @@
 # Controller coverage inventory
 
+See [the current implementation checkpoint and exhaustive core backlog](CONTROLLER_COVERAGE_PROGRESS.md)
+for current counts and the implementation-first sequence. The tables below retain
+their explicitly dated historical baseline and source-grounded capability groups.
+
 This is the remaining-work inventory for the original goal: calibrate a physical
 controller once, select its layout, and apply the composed mapping automatically
 at emulator launch. It is not a declaration that every listed emulator is covered.

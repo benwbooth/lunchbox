@@ -16,6 +16,7 @@ cxx-qt.workspace = true
 cxx-qt-lib.workspace = true
 crc32fast.workspace = true
 directories.workspace = true
+encoding_rs.workspace = true
 flate2.workspace = true
 fs2.workspace = true
 gilrs.workspace = true
@@ -24,6 +25,7 @@ keyring.workspace = true
 lava_torrent.workspace = true
 md5.workspace = true
 quick-xml = "0.37"
+toml_edit = "0.25.13"
 rusqlite.workspace = true
 reflink-copy.workspace = true
 rfd.workspace = true
@@ -50,6 +52,7 @@ libc = "0.2"
 [build-dependencies]
 cxx-qt-build.workspace = true
 quick-xml = "0.37"
+
 
 [[bin]]
 name = "lunchbox"

@@ -505,6 +505,9 @@ pub fn default_rom_launch_template_for(
     if emulator_name.eq_ignore_ascii_case("Hypseus Singe") && is_arcade_family_platform(platform) {
         return "%{hypseus_game} vldp -fullscreen -framefile %{hypseus_framefile} -homedir %{hypseus_support_root} -datadir %{hypseus_support_root} -romdir %{hypseus_romdir}".to_owned();
     }
+    if emulator_name.eq_ignore_ascii_case("AltirraQt") {
+        return "--image %f".to_owned();
+    }
     if emulator_name.eq_ignore_ascii_case("Altirra") {
         return "%{altirra_media_switch} %f".to_owned();
     }
@@ -953,6 +956,12 @@ pub fn inspect_rom_launch_availability(
                 recommended: definition.recommended,
             });
         }
+        // BizHawk's catalog core names describe native managed cores, not
+        // libretro libraries. A similarly named .so must not create a false
+        // RetroArch launch choice owned by BizHawk.
+        if definition.emulator.name.eq_ignore_ascii_case("BizHawk") {
+            continue;
+        }
         for core in &definition.cores {
             if is_arcade_family_platform(platform) && !is_arcade_archive(rom_path) {
                 continue;
@@ -1178,6 +1187,14 @@ fn build_prepared_rom_launch_plan(
                     platform,
                     option.emulator_name
                 );
+            } else if option.emulator_name.eq_ignore_ascii_case("AltirraQt") {
+                (
+                    vec![
+                        OsString::from("--image"),
+                        path_argument_for_executable(rom_path, &option.executable),
+                    ],
+                    0,
+                )
             } else if option.emulator_name.eq_ignore_ascii_case("Altirra") {
                 let media_switch = altirra_media_switch(rom_path);
                 template_values.insert(
@@ -1258,12 +1275,28 @@ fn build_prepared_rom_launch_plan(
 }
 
 pub fn spawn_launch_plan(plan: &LaunchPlan) -> Result<Child> {
+    spawn_launch_plan_stdio(plan, false)
+}
+
+/// The caller must promptly take and drain all three pipes and retain the child
+/// for cancellation/reaping. Ordinary launches keep their existing stdio policy.
+pub(crate) fn spawn_launch_plan_with_controller_pipes(plan: &LaunchPlan) -> Result<Child> {
+    spawn_launch_plan_stdio(plan, true)
+}
+
+fn spawn_launch_plan_stdio(plan: &LaunchPlan, controller_pipes: bool) -> Result<Child> {
     let mut command = host_command(&plan.program);
     command
         .args(&plan.arguments)
         .current_dir(&plan.current_directory)
         .envs(plan.environment.iter().cloned())
         .stdin(Stdio::null());
+    if controller_pipes {
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+    }
     command.spawn().with_context(|| {
         format!(
             "starting {} with {}",

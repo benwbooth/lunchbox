@@ -51,6 +51,7 @@ pub fn valid_output(profile: &EmulatorProfile, output: &str) -> bool {
 pub fn add_profiles(db: &mut Catalog) -> Result<()> {
     let specs: &[(&str, usize, &[&str])] = &[
         ("arcade-six-button", 2, &["Arcade"]),
+        ("arcade-eight-button", 2, &["Arcade"]),
         ("n64", 4, &["Nintendo 64", "Nintendo 64DD"]),
         (
             "nes",
@@ -96,12 +97,14 @@ pub fn add_profiles(db: &mut Catalog) -> Result<()> {
         let mut bindings = BTreeMap::new();
         for control in &layout.controls {
             let output = match (layout_id, control.id.as_str()) {
-                ("arcade-six-button", "button1") => "X..West",
-                ("arcade-six-button", "button2") => "A..South",
-                ("arcade-six-button", "button3") => "B..East",
-                ("arcade-six-button", "button4") => "Y..North",
-                ("arcade-six-button", "button5") => "L-Bumper",
-                ("arcade-six-button", "button6") => "R-Bumper",
+                ("arcade-six-button" | "arcade-eight-button", "button1") => "X..West",
+                ("arcade-six-button" | "arcade-eight-button", "button2") => "A..South",
+                ("arcade-six-button" | "arcade-eight-button", "button3") => "B..East",
+                ("arcade-six-button" | "arcade-eight-button", "button4") => "Y..North",
+                ("arcade-six-button" | "arcade-eight-button", "button5") => "L-Bumper",
+                ("arcade-six-button" | "arcade-eight-button", "button6") => "R-Bumper",
+                ("arcade-eight-button", "button7") => "L-Trigger",
+                ("arcade-eight-button", "button8") => "R-Trigger",
                 (_, "up") => "Pad.Up",
                 (_, "down") => "Pad.Down",
                 (_, "left") => "Pad.Left",

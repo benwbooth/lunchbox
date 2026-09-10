@@ -501,8 +501,7 @@ Dialog {
                             text: parent.text
                             color: parent.enabled ? "#071713" : dialog.muted
                             font.pixelSize: 9
-                            minimumPixelSize: 7
-                            fontSizeMode: Text.Fit
+                            elide: Text.ElideRight
                             font.weight: Font.Bold
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter

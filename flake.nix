@@ -124,6 +124,10 @@
           lunchbox = frontend;
           lunchbox-db = databaseTool;
           lunchbox-controller-probe = controllerProbe;
+        } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          simcoupe-controller = pkgs.callPackage ./packaging/simcoupe-controller.nix { };
+          retroarch-relative-routing = pkgs.callPackage ./packaging/retroarch-relative-routing.nix { };
+          mame-game-mouse-only = pkgs.callPackage ./packaging/mame-game-mouse-only.nix { };
         };
 
         apps.default = {

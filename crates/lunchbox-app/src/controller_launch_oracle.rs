@@ -364,15 +364,75 @@ fn saved_calibration_plan(
     plan.arguments.splice(
         boundary + 1..boundary + 1,
         [
-            "--sram-mode".into(),
+            "-M".into(),
             "noload-nosave".into(),
             "-c".into(),
             directory.join("base.cfg").into_os_string(),
         ],
     );
+    for flag in ["--device=1:5", "--nodevice=1", "-vd1:5", "--dev=1:5"] {
+        let mut conflicting = plan.clone();
+        conflicting.arguments.insert(boundary + 1, flag.into());
+        let unchanged = conflicting.clone();
+        let error = prepare(&settings, platform, &option, &mut conflicting)
+            .err()
+            .context("Conflicting device command unexpectedly prepared a calibrated launch")?;
+        ensure!(
+            error
+                .to_string()
+                .contains("conflicts with calibrated device")
+                || error.to_string().contains("Unresolved RetroArch option"),
+            "Unexpected rejection for {flag}: {error}"
+        );
+        ensure!(conflicting == unchanged, "Rejected launch mutated its plan");
+    }
+    let first = directory.join("preexisting-a.cfg");
+    let second = directory.join("preexisting-b.cfg");
+    fs::write(&first, "input_libretro_device_p1 = \"5\"\n")?;
+    fs::write(&second, "input_player1_b_btn = \"nul\"\n")?;
+    for flags in [
+        vec![
+            "--appendconfig".into(),
+            first.clone().into_os_string(),
+            "--appendconfig".into(),
+            second.clone().into_os_string(),
+        ],
+        vec![
+            format!("--appendconfig={}", first.display()).into(),
+            format!("--appendconfig={}", second.display()).into(),
+        ],
+    ] {
+        let mut conflicting = plan.clone();
+        conflicting
+            .arguments
+            .splice(boundary + 1..boundary + 1, flags);
+        let unchanged = conflicting.clone();
+        let error = prepare(&settings, platform, &option, &mut conflicting)
+            .err()
+            .context("Duplicate append configs unexpectedly prepared a launch")?;
+        ensure!(
+            error.to_string().contains("Multiple --appendconfig"),
+            "Unexpected duplicate-config error: {error}"
+        );
+        ensure!(
+            conflicting == unchanged,
+            "Rejected append configs mutated the plan"
+        );
+    }
+    plan.arguments.insert(
+        boundary + 1,
+        format!("--appendconfig={}|{}", first.display(), second.display()).into(),
+    );
+    // An explicit matching CLI device must still reach the real core. RetroArch
+    // applies this after reading Lunchbox's appended configuration.
+    plan.arguments.insert(boundary + 1, "--device=1:1".into());
     let session = prepare(&settings, platform, &option, &mut plan)?
         .context("Saved calibration did not prepare a launch")?;
-    let path = session._directory.path().join("controllers.cfg");
+    let directory = session
+        ._directory
+        .as_ref()
+        .context("Expected a generated controller config directory")?;
+    let path = directory.path().join("controllers.cfg");
     let config = fs::read_to_string(&path)?;
     let numbering = JoydevMap::read(preferred_path)?;
     ensure!(
@@ -383,16 +443,25 @@ fn saved_calibration_plan(
         cfg_value(&config, "input_max_users")?.as_deref() == Some("1"),
         "GBA launch did not restrict the selected calibration to its one port"
     );
+    let expected_append = OsString::from(format!(
+        "--appendconfig={}|{}|{}",
+        first.display(),
+        second.display(),
+        path.display()
+    ));
     ensure!(
-        plan.arguments.iter().any(|arg| arg == path.as_os_str()),
-        "Production plan omitted its controller config argument"
+        plan.arguments
+            .iter()
+            .filter(|arg| *arg == &expected_append)
+            .count()
+            == 1,
+        "Production plan did not retain the existing config list with calibrated config last"
     );
     ensure!(
-        plan.arguments.iter().any(|arg| arg
-            == &OsString::from(format!(
-                "--filesystem={}",
-                session._directory.path().display()
-            ))),
+        plan.arguments
+            .iter()
+            .any(|arg| arg
+                == &OsString::from(format!("--filesystem={}", directory.path().display()))),
         "Production plan omitted its controller config filesystem grant"
     );
     ensure!(
@@ -599,7 +668,8 @@ fn brawler64_hardware_oracle(psx: bool, saved_launch: bool) -> Result<()> {
     };
     let generated_directory = calibrated_session
         .as_ref()
-        .map(|session| session._directory.path().to_owned());
+        .and_then(|session| session._directory.as_ref())
+        .map(|directory| directory.path().to_owned());
     let boundary = plan
         .arguments
         .iter()

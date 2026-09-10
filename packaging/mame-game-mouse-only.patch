@@ -1,0 +1,44 @@
+diff --git a/src/osd/modules/input/input_retro.cpp b/src/osd/modules/input/input_retro.cpp
+--- a/src/osd/modules/input/input_retro.cpp
++++ b/src/osd/modules/input/input_retro.cpp
+@@ -28,1 +28,9 @@
+ #define BUTTON_MAX   0x80
++
++// Dedicated game-input builds may disable mouse-generated UI events/defaults.
++// Game mouse axes and button states remain available to explicit input fields.
++// Saved user UI sequences require separate launch-time isolation.
++#ifndef LUNCHBOX_MAME_GAME_MOUSE_ONLY
++#define LUNCHBOX_MAME_GAME_MOUSE_ONLY 0
++#endif
++
+@@ -838,3 +846,3 @@
+ 		// internal UI mouse
+-		if (i == 0)
++		if (i == 0 && !LUNCHBOX_MAME_GAME_MOUSE_ONLY)
+ 		{
+@@ -876,3 +884,3 @@
+ 			// internal UI
+-			if (i == 0)
++			if (i == 0 && !LUNCHBOX_MAME_GAME_MOUSE_ONLY)
+ 			{
+@@ -915,5 +923,5 @@
+ 			mousestate[i].button[MOUSE_LEFT] = 0;
+ 
+-			if (i == 0)
++			if (i == 0 && !LUNCHBOX_MAME_GAME_MOUSE_ONLY)
+ 			{
+ 				int cx = -1, cy = -1;
+@@ -1213,3 +1221,3 @@
+-		if (mouse_count == 0)
++		if (mouse_count == 0 && !LUNCHBOX_MAME_GAME_MOUSE_ONLY)
+ 		{
+ 			assignments.emplace_back(IPT_UI_SELECT, SEQ_TYPE_STANDARD, input_seq(MOUSECODE_BUTTON1_INDEXED(mouse_count)));
+@@ -1260,2 +1268,7 @@
+ 			sprintf(defname, "RetroMouse%d", i);
+-			create_device<retro_mouse_device>(DEVICE_CLASS_MOUSE, defname, defname);
++			char displayname[64];
++			snprintf(displayname, sizeof(displayname), "%s%s", defname,
++				LUNCHBOX_MAME_GAME_MOUSE_ONLY ? " [LunchboxGameMouseV1]" : "");
++			// Preserve IDs used for native route ownership; expose build mode
++			// separately through the read-only native device name.
++			create_device<retro_mouse_device>(DEVICE_CLASS_MOUSE, displayname, defname);

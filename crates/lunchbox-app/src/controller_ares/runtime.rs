@@ -227,8 +227,10 @@ pub fn prepare(
     devices: &[&ControllerDevice],
     cancel: &AtomicBool,
 ) -> Result<tempfile::TempDir> {
-    let profile = super::profile(platform)
-        .context("ares has no ordinary gamepad contract for this system yet")?;
+    let profile =
+        crate::controller_target::selected(&settings.controller_mapping, option, platform)?
+            .or_else(|| super::profile(platform))
+            .context("ares has no ordinary gamepad contract for this system yet")?;
     ensure!(
         devices.len() <= profile.native_launch.as_ref().unwrap().max_players,
         "Too many players selected for this ares system"

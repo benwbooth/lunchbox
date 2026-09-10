@@ -415,6 +415,34 @@
       }
     },
     {
+      "emulator": "AltirraQt",
+      "host": "linux",
+      "manager": "appimage",
+      "package_id": "benwbooth/altirraqt",
+      "metadata": {
+        "release_api": "https://api.github.com/repos/benwbooth/altirraqt/releases/tags/v0.1.5",
+        "archive_payload": "appimage",
+        "asset_terms": ["altirraqt-v0.1.5-", "x86_64"],
+        "supported_arches": ["x86_64"],
+        "executable_candidates": ["altirraqt"],
+        "update_strategy": "replace_from_github_release"
+      }
+    },
+    {
+      "emulator": "AltirraQt",
+      "host": "windows",
+      "manager": "github",
+      "package_id": "benwbooth/altirraqt",
+      "metadata": {
+        "release_api": "https://api.github.com/repos/benwbooth/altirraqt/releases/tags/v0.1.5",
+        "archive_format": "zip",
+        "asset_terms": ["altirraqt-v0.1.5-", "windows", "x86_64", "portable"],
+        "supported_arches": ["x86_64"],
+        "executable_candidates": ["altirraqt.exe"],
+        "update_strategy": "replace_from_github_release"
+      }
+    },
+    {
       "emulator": "jgenesis",
       "host": "linux",
       "manager": "appimage",

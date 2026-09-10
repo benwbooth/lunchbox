@@ -53,6 +53,24 @@ TestCase {
             function save_controller_model(id, model) {
                 const next=Object.assign({},models); next[id]={id:model,name:"Brawler64",layout:"brawler64"}; models=next; controller_revision++; return ""
             }
+            property var targetProfiles: ({})
+            property var guidedMappings: ({})
+            property var controllerNames: ({})
+            function controller_target_profile(emulator, platform) { return targetProfiles[emulator + "/" + platform] || "" }
+            function save_controller_target_profile(emulator, platform, profile) {
+                if (failure) return failure
+                const next=Object.assign({},targetProfiles); next[emulator + "/" + platform]=profile; targetProfiles=next
+                return ""
+            }
+            function save_controller_name(id, name) {
+                if (failure) return failure
+                const next=Object.assign({},controllerNames); next[id]=name; controllerNames=next; return ""
+            }
+            function save_guided_controller_mapping(id, profile, choices, expected) {
+                if (failure) return failure
+                const next=Object.assign({},guidedMappings); next[id]={profile:profile,choices:JSON.parse(choices)}; guidedMappings=next
+                return ""
+            }
             function guided_controller_preview(id, target, choices) { return '{"rows":[],"error":""}' }
             function controller_diagram(layout, active) { return "" }
             function validate_controller_capture(layout, control, binding) { return "" }

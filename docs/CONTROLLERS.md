@@ -8,6 +8,14 @@ navigation while it captures the next physical control.
 
 ## Smart setup
 
+**Controller coverage — implemented / remaining** opens a searchable inventory
+derived from the active emulator database and controller contracts. It includes
+missing cores and standalone adapters, not only supported entries. The mode tab
+shows source-layout capability gaps, composed physical → target → output bindings,
+and contract conditions/provenance. These are implementation and layout-capability
+indicators, not installation, actual-calibration readiness or runtime guarantees.
+See [the current coverage checkpoint](CONTROLLER_COVERAGE_PROGRESS.md).
+
 Each row now offers **Choose layout and calibrate**. Select a physical diagram,
 then press each highlighted control. The wizard ignores other controllers,
 requires release/neutral before advancing, and rejects assigning the same input
@@ -88,6 +96,38 @@ player counts in the catalog. Extra connected pads remain available in Lunchbox
 but only the highest-ranked compatible controllers fill the current input mode's
 ports. A Game Boy game no longer attempts to create a second player just because
 two calibrated controllers are connected. Preview-only contracts stay preview-only.
+
+Explicit mixed-port contracts can additionally declare `port_devices`: a
+one-based map of libretro port IDs to emulated attachment types. This is separate
+from the frontend player bindings. For example, the bsnes-hd five-player profile
+uses device 1 on console port one and device 257 (multitap) on console port two;
+frontend players 2–5 feed the multitap's four slots. An unassigned player-two
+slot must not disconnect that attachment or inherit an old keyboard/joypad
+binding. The private launch config preserves the attachment and clears that
+slot's bindings. Mesen-S currently offers four mapped players, because the
+inspected upstream core leaves its fifth player's key map unset. These mixed
+profiles require an explicit selection and remain untested during this phase.
+
+Every automatic RetroArch launch also checks command-line device selections
+against the final generated configuration. A matching explicit `--device` is
+accepted; a conflicting device, or a command that reconnects an unfilled port,
+stops preparation without changing the launch plan. Both single-mode and
+mode-aware contracts use this check. This is necessary because RetroArch
+[parses device arguments after configuration loading](https://github.com/libretro/RetroArch/blob/69a4f0ea1e8aaf442ae4858f2e7f2b31a1776576/retroarch.c#L7255-L7341).
+
+The resolver accepts explicit device/nodevice/dualanalog flags, verbose/fullscreen,
+core/config/appendconfig paths, SRAM mode (`--sram-mode` or `-M`), and the `--`
+content separator. It consumes option values so a path cannot be misread as a controller flag. Grouped
+short flags, abbreviated long flags and other unresolved options are rejected,
+not silently ignored. Some mode-aware contracts impose stricter content/config
+requirements. This does not yet resolve arbitrary custom commands or saved
+peripheral overrides; removing a conflicting custom device selection restores
+the contract's supported mode without recalibrating the physical controller.
+Use a single pipe-separated `--appendconfig` list for multiple existing files.
+Repeated append-config options are rejected because RetroArch uses only the last
+one, which could otherwise discard Lunchbox's generated mappings. Attachment uses
+the same parser as validation and never edits option values or content filenames
+that happen to resemble append-config flags.
 
 The original PlayStation digital controller is now a selectable layout. The
 DuckStation digital-controller preview shows its own configuration keys instead

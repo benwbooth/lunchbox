@@ -5497,9 +5497,9 @@ impl qobject::GameDetailsModel {
                     let controller_settings = crate::settings::SettingsStore::open_default()
                         .and_then(|store| store.load())
                         .context("loading controller mapping settings")?;
-                    let calibrated_session = match &launch_input {
-                        LaunchInput::Rom { platform, option, .. } => crate::controller_launch::prepare(
-                            &controller_settings, platform, option, &mut plan,
+                    let mut calibrated_session = match &launch_input {
+                        LaunchInput::Rom { platform, option, .. } => crate::controller_launch::prepare_with_cancellation(
+                            &controller_settings, platform, option, &mut plan, &launch_cancel,
                         ).context("applying calibrated controller mappings")?,
                         _ => None,
                     };
@@ -5524,10 +5524,27 @@ impl qobject::GameDetailsModel {
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
                         anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
-                    let mut child = crate::emulator::spawn_launch_plan(&plan)?;
+                    if let Some(session) = &calibrated_session {
+                        session.check_launch_inputs().context("checking calibrated controller inputs before launch")?;
+                    }
+                    let mut child = match calibrated_session.as_mut() {
+                        Some(session) => session.spawn_frontend(&plan, &launch_cancel)?,
+                        None => crate::emulator::spawn_launch_plan(&plan)?,
+                    };
                     let process_id = child.id();
-                    let startup_deadline = Instant::now() + Duration::from_millis(700);
+                    let startup_started = Instant::now();
+                    let startup_deadline = startup_started + Duration::from_millis(700);
+                    let controller_deadline = startup_started + Duration::from_secs(3);
                     loop {
+                        let controller_ready = match calibrated_session.as_ref()
+                            .map(|session| session.controller_startup_ready()).transpose() {
+                            Ok(ready) => ready.unwrap_or(true),
+                            Err(error) => {
+                                let _ = child.kill();
+                                let _ = child.wait();
+                                return Err(error.context("calibrated controller transport failed during emulator startup"));
+                            }
+                        };
                         if launch_cancel.load(AtomicOrdering::Relaxed) {
                             let _ = child.kill();
                             let _ = child.wait();
@@ -5542,7 +5559,13 @@ impl qobject::GameDetailsModel {
                                 plan.emulator_name
                             );
                         }
-                        if Instant::now() >= startup_deadline {
+                        let now = Instant::now();
+                        if !controller_ready && now >= controller_deadline {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            anyhow::bail!("Controller routing handshake did not complete before the emulator startup deadline");
+                        }
+                        if now >= startup_deadline && controller_ready {
                             break;
                         }
                         std::thread::sleep(Duration::from_millis(35));
@@ -5601,7 +5624,32 @@ impl qobject::GameDetailsModel {
                     } else {
                         false
                     };
-                    let status = child.wait();
+                    let mut controller_failure = None;
+                    let status = loop {
+                        if controller_failure.is_none()
+                            && let Some(session) = &calibrated_session
+                            && let Err(error) = session.check_health()
+                        {
+                            // The bridge already neutralizes/removes its own
+                            // failed device. Do not kill a running game and
+                            // risk unsaved progress; keyboard input stays native.
+                            let warning = format!("Calibrated controller disconnected or failed: {error:#}. The game remains running; reconnect and relaunch to restore this mapping.");
+                            controller_failure = Some(warning.clone());
+                            let warning_game_id = game_id.clone();
+                            let _ = started_thread.queue(move |mut model| {
+                                if generation == model.as_ref().rust().launch_generation
+                                    && model.as_ref().game_id().to_string() == warning_game_id
+                                {
+                                    model.as_mut().set_launch_status(qstring(warning));
+                                }
+                            });
+                        }
+                        match child.try_wait() {
+                            Ok(Some(status)) => break Ok(status),
+                            Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+                            Err(error) => break Err(error),
+                        }
+                    };
                     drop(controller_session);
                     drop(calibrated_session);
                     let status = status.context("waiting for the emulator process")?;
@@ -5612,7 +5660,10 @@ impl qobject::GameDetailsModel {
                     } else {
                         "failed"
                     };
-                    let mut tracking_warning = tracking_warning;
+                    let mut tracking_warning = match (tracking_warning, controller_failure) {
+                        (Some(existing), Some(failure)) => Some(format!("{existing} · {failure}")),
+                        (existing, failure) => existing.or(failure),
+                    };
                     if let Ok(play_session) = play_session
                         && let Err(error) =
                             crate::settings::SettingsStore::open_default().and_then(|store| {

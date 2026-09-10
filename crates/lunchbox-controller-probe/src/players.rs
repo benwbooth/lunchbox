@@ -10,6 +10,8 @@ use std::ffi::c_void;
 use std::time::{Duration, Instant};
 
 pub const CONTRACT: &str = "0a53bc47c";
+/// PCSX2 uses the same SDL added-event/open/post-open-player fallback sequence.
+pub const PCSX2_CONTRACT: &str = "pcsx2-98697735f1bb1a1452d975251269abd1019876d1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Assignment {

@@ -6,6 +6,7 @@ Acorn Atom,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,MAMEdev.MAM
 Acorn Electron,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,MAMEdev.MAME,mame,org.mamedev.MAME,mame,~/.mame/nvram;~/.mame/sta,.nv;.sta;.cfg,Multi-system emulator; winget package not yet available but ID reserved; also has MAME 2003/2010/2016 RetroArch cores for older ROM sets
 Amstrad CPC,Caprice32,Windows;Linux;macOS,https://github.com/ColinPitrat/caprice32,,,,,~/.config/cap32,.sna;.dsk,Highly accurate emulator; available as snap (caprice32); also has libretro core (cap32)
 Amstrad CPC,Caprice32 (libretro),Windows;Linux;macOS;Android;iOS,https://github.com/libretro/libretro-cap32,,,,cap32,RetroArch saves directory,.sna,RetroArch/libretro core; saves as 'content-name#.SNA' in content directory
+Amstrad CPC,CrocoDS,Linux;Android;iOS,https://github.com/libretro/libretro-crocods,,,,crocods,RetroArch states directory,.state,CPC disk and snapshot core; native Linux calibrated joystick mode resolves global and per-content INI input mappings; Flatpak input-state resolution remains pending
 Amstrad CPC,CaPriCe Forever,Windows,https://www.cpc-power.com/cpcarchives/index.php?page=articles&num=445,,,,,,%APPDATA%/CaPriCe Forever,.sna;.dsk
 Amstrad CPC,Arnold,Windows;Linux;macOS;FreeBSD,https://cpctech.cpcwiki.de/download.html,,,,,,./snapshots,.sna
 Amstrad CPC,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram,.nv;.sta;.cfg,Multi-system emulator; winget package not yet available but ID reserved; emulates cpc464/cpc664/cpc6128/gx4000
@@ -56,6 +57,7 @@ Atari 7800,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.m
 Atari 7800,A7800,Windows;Linux;macOS;FreeBSD,https://github.com/7800-devtools/a7800,,,,,~/.a7800/sta,.sta,Fork of MAME Atari 7800 driver with enhancements; GPLv2
 Atari 7800,ProSystem,Windows,https://github.com/gstanton/ProSystem1_3,,,,prosystem,~/.config/retroarch/saves,.state,Development ceased in 2008; RetroArch core still maintained; no SRAM saves only save states
 Atari 800,Altirra,Windows,https://www.virtualdub.org/altirra.html,,,,,~/.config/Altirra,.altstate,Windows-only; highly accurate cycle-exact emulation; excellent debugger; internal kernel available
+Atari 800,AltirraQt,Windows;Linux;macOS,https://github.com/benwbooth/altirraqt,,,,,,,Native Qt port; reviewed v0.1.5; launch media with --image; Linux AppImage and Windows portable ZIP managed by Lunchbox; macOS ARM64 DMG available upstream; automatic controller setup not yet supported
 Atari 800,Atari800,Windows;Linux;macOS;Android,https://atari800.github.io/,,atari800,,atari800,~/.atari800,.a8s,Cross-platform; config at ~/.atari800.cfg; also emulates Atari 5200
 Atari 800,Atari++,Windows;Linux;macOS;FreeBSD,http://www.xl-project.com/,,,,,~/.atari++,.snap,Cycle-precise; built-in ROM fallback; config at ~/.atari++.conf
 Atari Jaguar,BigPEmu,Windows;Linux;iOS;Android,https://www.richwhitehouse.com/jaguar/,,,com.richwhitehouse.BigPEmu,,~/.var/app/com.richwhitehouse.BigPEmu/data/UserData,.bigpcfg,First emulator with 100% retail compatibility; supports Jaguar CD; proprietary license; also available on App Store
@@ -70,6 +72,7 @@ Atari ST,Hatari,Windows;Linux;macOS;FreeBSD,https://www.hatari-emu.org/,,hatari,
 Atari ST,Steem SSE,Windows;Linux,https://sourceforge.net/projects/steemsse/,,,,steemsse,Documents/steem or AppData/steem,.sts,Highly accurate ST emulation; libretro core is Windows-only beta
 Atari ST,ARAnyM,Windows;Linux;macOS;FreeBSD,https://aranym.github.io/,,,,,~/.aranym,.config,68040 VM rather than strict emulator; supports TT/Falcon; requires TOS 4.04 or EmuTOS
 Atari XEGS,Altirra,Windows,https://www.virtualdub.org/altirra.html,,,,,~/.config/Altirra,.altstate,Windows-only; highly accurate cycle-exact emulation; excellent debugger; internal kernel available
+Atari XEGS,AltirraQt,Windows;Linux;macOS,https://github.com/benwbooth/altirraqt,,,,,,,Native Qt port; reviewed v0.1.5; launch media with --image; choose the appropriate machine profile in AltirraQt; automatic controller setup not yet supported
 Atari XEGS,Atari800,Windows;Linux;macOS;Android,https://atari800.github.io/,,atari800,,atari800,~/.atari800,.a8s,Cross-platform; config at ~/.atari800.cfg; also emulates Atari 5200
 Atari XEGS,Atari++,Windows;Linux,http://www.xl-project.com/,,,,,~/.atari++,.state,Cycle-precise; built-in ROM fallback; config at ~/.atari++.conf
 Bally Astrocade,MAME,Windows;Linux;macOS;FreeBSD,https://www.mamedev.org/,,mame,org.mamedev.MAME,mame,~/.mame/nvram;~/.mame/sta,.nv;.sta;.cfg,Multi-purpose emulation framework; only recommended emulator for this system

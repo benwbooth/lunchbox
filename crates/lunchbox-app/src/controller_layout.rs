@@ -7,18 +7,28 @@ use crate::controller_catalog::{Control, Layout};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const POLICY_VERSION: u32 = 2;
+pub const POLICY_VERSION: u32 = 7;
+
+/// Equivalent pressure roles; digital fallback buttons are not aliases.
+pub(crate) fn pressure_role(id: &str) -> Option<&'static str> {
+    match id {
+        "l2" | "trigger_left" => Some("left"),
+        "r2" | "trigger_right" => Some("right"),
+        _ => None,
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Rule {
-    UserChoice,
     Identity,
     FamilyPreference,
     FacePosition,
     SameHandShoulder,
     StickToDigital,
+    DirectionalCluster,
     DigitalOverflow,
+    UserChoice,
 }
 
 impl Rule {
@@ -30,6 +40,7 @@ impl Rule {
             Self::FacePosition => "Available face button chosen by global position matching",
             Self::SameHandShoulder => "Available shoulder/trigger on the same hand",
             Self::StickToDigital => "Analog stick direction supplies a digital C button",
+            Self::DirectionalCluster => "Same direction in the corresponding directional cluster",
             Self::DigitalOverflow => {
                 "Spare gameplay button supplies an auxiliary digital control; review this fallback"
             }
@@ -82,8 +93,11 @@ fn preferred<'a>(source: &Layout, target: &Layout, id: &'a str) -> &'a str {
         };
         if let Some(slot) = slot {
             return match source.family.as_str() {
-                "diamond" | "horizontal-four" => ["y", "x", "r", "b", "a", "l", "l3", "r3"][slot],
+                "diamond" | "horizontal-four" => ["y", "x", "r", "b", "a", "l", "l2", "r2"][slot],
                 "six-button" | "three-button" => ["x", "y", "z", "a", "b", "c", "l", "r"][slot],
+                "four-button-row" => [
+                    "a", "b", "c", "d", "button5", "button6", "button7", "button8",
+                ][slot],
                 _ => id,
             };
         }
@@ -98,6 +112,44 @@ fn preferred<'a>(source: &Layout, target: &Layout, id: &'a str) -> &'a str {
             "c" => "button6",
             "l" => "button7",
             "r" => "button8",
+            other => other,
+        };
+    }
+    if target.family == "four-button-row" {
+        let slot = match id {
+            "a" => Some(0),
+            "b" => Some(1),
+            "c" => Some(2),
+            "d" => Some(3),
+            _ => None,
+        };
+        if let Some(slot) = slot {
+            return match source.family.as_str() {
+                "arcade-rows" => [
+                    "button4",
+                    "button5",
+                    "button6",
+                    if source.controls.iter().any(|c| c.id == "button8") {
+                        "button8"
+                    } else {
+                        "button3"
+                    },
+                ][slot],
+                "diamond" | "horizontal-four" => ["y", "b", "a", "x"][slot],
+                "n64" => ["b", "a", "c_down", "c_right"][slot],
+                "three-button" | "six-button" => ["a", "b", "c", "y"][slot],
+                _ => id,
+            };
+        }
+    }
+    if source.family == "four-button-row"
+        && matches!(target.family.as_str(), "diamond" | "horizontal-four")
+    {
+        return match id {
+            "y" => "a",
+            "b" => "b",
+            "a" => "c",
+            "x" => "d",
             other => other,
         };
     }
@@ -185,11 +237,19 @@ fn preferred<'a>(source: &Layout, target: &Layout, id: &'a str) -> &'a str {
             other => other,
         };
     }
-    // Mode and Select are auxiliary menu roles, not Start or Home.
-    if id == "mode" && source.controls.iter().any(|c| c.id == "select") {
+    // Mode and Select are auxiliary menu roles, not Start or Home. The source
+    // layout's own control keeps its role; this only bridges a family that
+    // spells the role differently, and must not tie with identity mappings.
+    if id == "mode"
+        && !source.controls.iter().any(|c| c.id == "mode")
+        && source.controls.iter().any(|c| c.id == "select")
+    {
         return "select";
     }
-    if id == "select" && source.controls.iter().any(|c| c.id == "mode") {
+    if id == "select"
+        && !source.controls.iter().any(|c| c.id == "select")
+        && source.controls.iter().any(|c| c.id == "mode")
+    {
         return "mode";
     }
     id
@@ -214,6 +274,84 @@ fn shoulder_hand(id: &str) -> Option<bool> {
     }
 }
 
+/// A two-button thumb pair is an arrangement, not a manufacturer's A/B spelling.
+/// For example, the Neo Geo Pocket's left A/right B must not cross the user's
+/// comfortable physical pair merely because NES labels run in the other order.
+fn primary_pair_input<'a>(source: &'a Layout, target: &Layout, to: &Control) -> Option<&'a str> {
+    if !matches!(target.family.as_str(), "two-button" | "dual-direction") || to.group != "face" {
+        return None;
+    }
+    let face_pair = |layout: &'a Layout| {
+        let mut faces: Vec<_> = layout
+            .controls
+            .iter()
+            .filter(|control| {
+                control.group == "face" && !control.analog && control.repeat_of.is_none()
+            })
+            .collect();
+        faces.sort_by(|a, b| {
+            a.x.total_cmp(&b.x)
+                .then(a.y.total_cmp(&b.y))
+                .then(a.id.cmp(&b.id))
+        });
+        faces
+    };
+    let mut targets: Vec<_> = target
+        .controls
+        .iter()
+        .filter(|control| control.group == "face" && !control.analog && control.repeat_of.is_none())
+        .collect();
+    targets.sort_by(|a, b| {
+        a.x.total_cmp(&b.x)
+            .then(a.y.total_cmp(&b.y))
+            .then(a.id.cmp(&b.id))
+    });
+    if targets.len() != 2 {
+        return None;
+    }
+    let index = targets.iter().position(|control| control.id == to.id)?;
+    match source.family.as_str() {
+        "diamond" => Some(["y", "b"][index]),
+        "n64" | "horizontal-four" => Some(["b", "a"][index]),
+        "three-button" | "six-button" | "four-button-row" => Some(["a", "b"][index]),
+        "two-button" | "dual-direction" => {
+            let faces = face_pair(source);
+            (faces.len() == 2).then(|| faces[index].id.as_str())
+        }
+        _ => None,
+    }
+}
+
+/// A directional cluster retains direction and side when it moves between
+/// digital pads, a stick, or N64 C-buttons. Ordinary face buttons/shoulders are
+/// not assumed to form a second D-pad merely because four of them are present.
+fn directional_cluster<'a>(layout: &Layout, control: &'a Control) -> Option<(bool, &'a str)> {
+    let id = control.id.as_str();
+    let (right, direction) = match control.group.as_str() {
+        "dpad" => {
+            if let Some(direction) = id.strip_prefix("right_") {
+                (true, direction)
+            } else {
+                (false, id.strip_prefix("left_").unwrap_or(id))
+            }
+        }
+        "stick" if control.analog => {
+            if let Some(direction) = id.strip_prefix("right_stick_") {
+                (true, direction)
+            } else {
+                (
+                    false,
+                    id.strip_prefix("left_stick_")
+                        .or_else(|| id.strip_prefix("stick_"))?,
+                )
+            }
+        }
+        "face" if layout.family == "n64" => (true, id.strip_prefix("c_")?),
+        _ => return None,
+    };
+    matches!(direction, "up" | "down" | "left" | "right").then_some((right, direction))
+}
+
 /// An edge is allowed only by a semantic/capability rule; geometry cannot make
 /// Start into a face button, reverse an axis, or create an analog capability.
 fn candidate(
@@ -225,6 +363,9 @@ fn candidate(
     if to.analog && !from.analog {
         return None;
     }
+    if to.analog && from.is_pressure() != to.is_pressure() {
+        return None;
+    }
     if from.repeat_of.is_some()
         || to.repeat_of.is_some()
         || from.group == "turbo"
@@ -234,6 +375,20 @@ fn candidate(
             .then_some((0, Rule::Identity));
     }
     let wanted = preferred(source, target, &to.id);
+    if !to.analog
+        && let Some(target_direction) = directional_cluster(target, to)
+        && directional_cluster(source, from) == Some(target_direction)
+    {
+        let c_button = target.family == "n64" && to.id.starts_with("c_");
+        let rule = if from.analog && c_button {
+            Rule::StickToDigital
+        } else if from.id == to.id && from.group == to.group && !from.analog {
+            Rule::Identity
+        } else {
+            Rule::DirectionalCluster
+        };
+        return Some((if from.analog && !c_button { 2 } else { 0 }, rule));
+    }
     if target.family == "n64"
         && to.id.starts_with("c_")
         && from.id == format!("right_stick_{}", &to.id[2..])
@@ -242,9 +397,64 @@ fn candidate(
     {
         return Some((0, Rule::StickToDigital));
     }
+    // The seventh/eighth arcade buttons are physical triggers on a modern pad,
+    // irrespective of which frontend channels the emulator uses to carry them.
+    // A measured trigger half can drive a digital button; never flatten sticks
+    // or guess an unrecorded axis endpoint here.
+    if target.family == "arcade-rows" && to.group == "face" && !to.analog {
+        if from.group == "shoulder"
+            && pressure_role(&from.id).is_some()
+            && pressure_role(&from.id) == pressure_role(wanted)
+        {
+            return Some((0, Rule::FamilyPreference));
+        }
+        if matches!(source.family.as_str(), "diamond" | "horizontal-four")
+            && !from.analog
+            // Stick clicks only; some layouts spell unrelated menu keys "l3"/"r3".
+            && from.group == "stick"
+            && matches!(
+                (to.id.as_str(), from.id.as_str()),
+                ("button7", "l3") | ("button8", "r3")
+            )
+        {
+            return Some((1, Rule::DigitalOverflow));
+        }
+    }
     if from.analog || to.analog {
+        if from.analog
+            && to.analog
+            && from.group == "shoulder"
+            && to.group == "shoulder"
+            && pressure_role(&from.id).is_some()
+            && pressure_role(&from.id) == pressure_role(&to.id)
+        {
+            return Some((
+                0,
+                if from.id == to.id {
+                    Rule::Identity
+                } else {
+                    Rule::SameHandShoulder
+                },
+            ));
+        }
         return (from.id == to.id && from.group == to.group && from.analog == to.analog)
             .then_some((0, Rule::Identity));
+    }
+    if from.group == "face"
+        && let Some(pair_input) = primary_pair_input(source, target, to)
+    {
+        return Some(if from.id == pair_input {
+            (
+                0,
+                if from.id == to.id {
+                    Rule::Identity
+                } else {
+                    Rule::FamilyPreference
+                },
+            )
+        } else {
+            (4, Rule::FacePosition)
+        });
     }
     if from.id == wanted && from.group == to.group {
         return Some((
@@ -322,6 +532,7 @@ fn candidate(
     };
     if gameplay_button(from)
         && (gameplay_button(to)
+            || to.group == "auxiliary"
             || (to.group == "menu" && matches!(to.id.as_str(), "start" | "select" | "mode")))
     {
         return Some((8, Rule::DigitalOverflow));
@@ -575,6 +786,58 @@ mod tests {
     use super::*;
     use crate::controller_catalog::catalog;
     #[test]
+    fn guided_choices_reserve_inputs_before_automatic_assignment() {
+        let layout = catalog().layout("snes").unwrap();
+        let all = layout
+            .controls
+            .iter()
+            .filter(|c| c.repeat_of.is_none())
+            .map(|c| c.id.as_str())
+            .collect();
+        let choices = BTreeMap::from([("a".into(), "b".into())]);
+        let result = resolve_with_choices(layout, layout, &all, &all, &choices).unwrap();
+        assert_eq!(result.assignments["a"], "b");
+        assert_eq!(result.rules["a"], Rule::UserChoice);
+        assert_eq!(
+            result.assignments.values().filter(|id| *id == "b").count(),
+            1
+        );
+        assert!(result.missing.is_empty());
+    }
+
+    #[test]
+    fn guided_choices_reject_collisions_unknown_and_unrecorded_inputs() {
+        let layout = catalog().layout("snes").unwrap();
+        let all = layout.controls.iter().map(|c| c.id.as_str()).collect();
+        for choices in [
+            BTreeMap::from([("a".into(), "b".into()), ("x".into(), "b".into())]),
+            BTreeMap::from([("not-a-control".into(), "b".into())]),
+            BTreeMap::from([("a".into(), "not-recorded".into())]),
+        ] {
+            assert!(resolve_with_choices(layout, layout, &all, &all, &choices).is_err());
+        }
+        let choices = BTreeMap::from([("a".into(), "b".into())]);
+        assert!(resolve_with_choices(layout, layout, &BTreeSet::new(), &all, &choices).is_err());
+    }
+
+    #[test]
+    fn guided_choices_cannot_supply_analog_input_with_a_button() {
+        let source = catalog().layout("snes").unwrap();
+        let target = catalog().layout("dualshock").unwrap();
+        let all = source.controls.iter().map(|c| c.id.as_str()).collect();
+        let analog = target.controls.iter().find(|c| c.analog).unwrap();
+        assert!(
+            resolve_with_choices(
+                source,
+                target,
+                &all,
+                &BTreeSet::from([analog.id.as_str()]),
+                &BTreeMap::from([(analog.id.clone(), "a".into())])
+            )
+            .is_err()
+        );
+    }
+    #[test]
     fn n64_to_diamond_preserves_the_run_jump_thumb_pair() {
         let pairs = assignments(
             catalog().layout("brawler64").unwrap(),
@@ -610,14 +873,41 @@ mod tests {
                     assert!(candidate(source, target, from, to).is_some());
                     assert!(!to.analog || from.analog);
                     if to.analog {
-                        assert_eq!(to.id, from.id, "stick side/direction must be preserved");
+                        // Analog shoulders with the same pressure role are the
+                        // one intended cross-family analog equivalence.
+                        let same_pressure_role = to.group == "shoulder"
+                            && from.group == "shoulder"
+                            && pressure_role(&from.id).is_some()
+                            && pressure_role(&from.id) == pressure_role(&to.id);
+                        assert!(
+                            to.id == from.id || same_pressure_role,
+                            "stick side/direction must be preserved ({} -> {})",
+                            from.id,
+                            to.id
+                        );
                     }
                     if to.group == "dpad" {
-                        assert_eq!(to.group, from.group);
-                        assert_eq!(to.id, from.id);
+                        // A directional cluster keeps its side and direction;
+                        // only a matching dpad or left-stick half may supply it.
+                        assert_eq!(
+                            directional_cluster(source, from),
+                            directional_cluster(target, to),
+                            "{} -> {}: directional inputs keep their side and direction ({} -> {})",
+                            source.id,
+                            target.id,
+                            from.id,
+                            to.id
+                        );
+                        if from.group == "dpad" {
+                            assert_eq!(to.id, from.id);
+                        }
                     }
                     if from.group == "menu" {
-                        assert_eq!(to.group, from.group, "menu inputs are reserved");
+                        assert_eq!(
+                            to.group, from.group,
+                            "{} -> {}: menu inputs are reserved ({} -> {})",
+                            source.id, target.id, from.id, to.id
+                        );
                     }
                     if from.repeat_of.is_some() {
                         assert_eq!(to.repeat_of, from.repeat_of);
@@ -800,7 +1090,12 @@ mod tests {
                     target.id
                 );
                 if source.id == target.id {
-                    assert!(resolution.assignments.iter().all(|(to, from)| to == from));
+                    assert!(
+                        resolution.assignments.iter().all(|(to, from)| to == from),
+                        "identity mapping changed for {}: {:?}",
+                        source.id,
+                        resolution.assignments
+                    );
                 }
             }
         }

@@ -152,8 +152,19 @@ ColumnLayout {
             : ({rows: [], error: ""})
     }
     function chooseTarget() {
-        selectedProfile = applicableTargets.length === 1 ? applicableTargets[0].id : ""
+        const saved = settingsModel.controller_target_profile(gameEmulator, gamePlatform)
+        const arcadeDefault = applicableTargets.find(p => p.target_layout === "arcade-six-button")
+        selectedProfile = applicableTargets.some(p => p.id === saved) ? saved
+            : (applicableTargets.length === 1 ? applicableTargets[0].id : (arcadeDefault ? arcadeDefault.id : ""))
         loadMapping()
+    }
+    function saveTarget(id) {
+        const error = settingsModel.save_controller_target_profile(gameEmulator, gamePlatform, id)
+        if (error) { status = error; return false }
+        selectedProfile = id
+        loadMapping()
+        status = "Target controller saved for this emulator and system."
+        return true
     }
     function startForGame(title, platform, emulator) {
         gameTitle = title; gamePlatform = platform; gameEmulator = emulator
@@ -226,7 +237,10 @@ ColumnLayout {
                 required property string modelData
                 text: modelData; highlighted: setup.stage === index
                 enabled: !setup.dirty && (index === 0 || (setup.playersReady && (index === 1 || (!!setup.profile && setup.playerDevices.length <= setup.playerLimit))))
-                onClicked: setup.stage = index
+                onClicked: {
+                    if (index === 2 && !setup.saveTarget(setup.selectedProfile)) return
+                    setup.stage = index
+                }
             }
         }
     }
@@ -364,7 +378,7 @@ ColumnLayout {
             model: setup.applicableTargets; textRole: "name"
             currentIndex: model.findIndex(item => item.id === setup.selectedProfile)
             displayText: currentIndex < 0 ? "Choose the system’s controller" : currentText
-            onActivated: { setup.selectedProfile = model[currentIndex].id; setup.loadMapping() }
+            onActivated: setup.saveTarget(model[currentIndex].id)
         }
         Label {
             visible: !!setup.gameEmulator && setup.applicableTargets.length === 0
@@ -379,7 +393,10 @@ ColumnLayout {
             Button {
                 objectName: "nextReview"; text: "Next: review mapping"; highlighted: true
                 enabled: !!setup.profile && setup.playersReady && setup.playerDevices.length <= setup.playerLimit
-                onClicked: { setup.selectedPlayer = 0; setup.selectDevice(setup.playerDevices[0]); setup.stage = 2 }
+                onClicked: {
+                    if (!setup.saveTarget(setup.selectedProfile)) return
+                    setup.selectedPlayer = 0; setup.selectDevice(setup.playerDevices[0]); setup.stage = 2
+                }
             }
         }
     }
@@ -419,9 +436,9 @@ ColumnLayout {
             }
         }
         Label {
-            text: setup.profile && setup.profile.native_launch
+            text: setup.profile && setup.profile.transport === "ares-settings"
                 ? "Saved mappings are applied when you press Play. Lunchbox checks the emulator’s input support before starting the game."
-                : "This preview saves button choices. Applying them at launch depends on support for the selected emulator and input backend."
+                : "Your target choice and button mappings are saved together. Applying them at launch depends on this emulator’s runtime setup and input backend."
             Layout.fillWidth: true; wrapMode: Text.WordWrap
         }
         RowLayout {

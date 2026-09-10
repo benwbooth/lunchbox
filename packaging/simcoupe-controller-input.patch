@@ -1,0 +1,67 @@
+--- a/libretro/libretro-simcp.c
++++ b/libretro/libretro-simcp.c
+@@ -55,7 +55,7 @@ void retro_get_system_info(struct retro_system_info *info)
+ {
+    	memset(info, 0, sizeof(*info));
+    	info->library_name     = "SimCoupe";
+-   	info->library_version  = "v1";
++   	info->library_version  = "v1-lunchbox-controller1";
+    	info->valid_extensions = "sad|SAD|dsk|DSK|mgt|MGT";
+    	info->need_fullpath    = true;//false;
+    	//info->valid_extensions = NULL; // Anything is fine, we don't care.
+@@ -218,6 +218,8 @@ bool retro_load_game(const struct retro_game_info *info)
+     	full_path = info->path;
+ 
+-    	strcpy(RPATH,full_path); 
++        extern bool lunchbox_simcp_insert_disk(const char* path);
++        if (!lunchbox_simcp_insert_disk(full_path))
++            return false;
+ //g_fPaused= true;
+ 
+     	return true;
+--- a/SimCoupe/Retro/Input.cpp
++++ b/SimCoupe/Retro/Input.cpp
+@@ -180,6 +180,14 @@
+ }
+ 
+ #include "GUIDlg.h"
++
++extern "C" bool lunchbox_simcp_insert_disk(const char* path)
++{
++    if (!path || !*path || !pFloppy1 || GetOption(drive1) != drvFloppy)
++        return false;
++    // Use the same insertion/autoload path as the native disk-one dialog.
++    return pFloppy1->Insert(path, true);
++}
+ 
+ extern "C" void browsedsk1();
+ void browsedsk1(){
+@@ -203,6 +203,10 @@ void retro_joy0(unsigned char joy0){
+ 	if(joy0&0x02)nPosition |= HJ_DOWN;
+ 	if(joy0&0x04)nPosition |= HJ_LEFT;
+ 	Joystick::SetPosition(0, nPosition);
++	// Replace the entire button state on every poll, including releases.
++	// The SAM interfaces collapse either host button to their single fire line.
++	Joystick::SetButtons(0, ((joy0 & 0x10) ? 1u : 0u)
++	    | ((joy0 & 0x20) ? 2u : 0u));
+ 
+ 	return;
+ }
+--- a/libretro/simcp-mapper.c
++++ b/libretro/simcp-mapper.c
+@@ -364,6 +364,7 @@ void update_input(void)
+ 	}
+ 
+ 	if(SHOWKEY==1){
++		retro_joy0(0);
+ 
+ 		static int vkflag[5]={0,0,0,0,0};		
+ 		
+@@ -495,6 +496,7 @@ void update_input(void)
+ 
+ 	}
+ 	else {  //Mouse mode
++		retro_joy0(0);
+ 		fmousex=fmousey=0;
+ 
+ 		if (input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT))fmousex += PAS;

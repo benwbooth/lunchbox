@@ -222,10 +222,33 @@ impl ClassicMap {
 
 #[cfg(target_os = "linux")]
 pub fn read(path: &std::path::Path) -> Result<ClassicMap> {
-    use std::os::{fd::AsRawFd, unix::fs::FileTypeExt};
     ensure!(
         path.parent() == Some(std::path::Path::new("/dev/input")),
         "Expected /dev/input/jsN"
+    );
+    let raw = read_raw(path)?;
+    let mut result = ClassicMap::from_joydev(&raw.buttons, &raw.axes)?;
+    result.axis_corrections = raw.corrections;
+    Ok(result)
+}
+
+/// Original kernel order, including hat axes. Useful for non-SDL frontends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawMap {
+    pub buttons: Vec<u16>,
+    pub axes: Vec<u8>,
+    pub corrections: BTreeMap<u8, AxisCorrection>,
+}
+
+#[cfg(target_os = "linux")]
+pub fn read_raw(path: &std::path::Path) -> Result<RawMap> {
+    use std::os::{fd::AsRawFd, unix::fs::FileTypeExt};
+    ensure!(
+        matches!(
+            path.parent().and_then(|path| path.to_str()),
+            Some("/dev/input" | "/dev")
+        ),
+        "Expected /dev/input/jsN or /dev/jsN"
     );
     let suffix = path
         .file_name()
@@ -270,11 +293,11 @@ pub fn read(path: &std::path::Path) -> Result<ClassicMap> {
         usize::from(axis_count) <= axes.len(),
         "Invalid joystick axis count"
     );
-    let mut result = ClassicMap::from_joydev(
+    ClassicMap::from_joydev(
         &buttons[..usize::from(button_count)],
         &axes[..usize::from(axis_count)],
     )?;
-    result.axis_corrections = axes[..usize::from(axis_count)]
+    let axis_corrections = axes[..usize::from(axis_count)]
         .iter()
         .copied()
         .zip(corrections)
@@ -301,7 +324,11 @@ pub fn read(path: &std::path::Path) -> Result<ClassicMap> {
         axes == verify_axes && buttons == verify_buttons && corrections == verify_corrections,
         "Joystick numbering or correction changed during the probe"
     );
-    Ok(result)
+    Ok(RawMap {
+        buttons: buttons[..usize::from(button_count)].to_vec(),
+        axes: axes[..usize::from(axis_count)].to_vec(),
+        corrections: axis_corrections,
+    })
 }
 
 #[cfg(test)]

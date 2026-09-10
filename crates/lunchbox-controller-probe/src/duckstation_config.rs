@@ -326,6 +326,44 @@ impl LaunchConfig {
         }
     }
 
+    /// Guided setup owns topology only in the staged effective input layer.
+    pub fn configure_controller_ports(&mut self, ports: &[(u8, &str)]) -> Result<()> {
+        let mut seen = std::collections::BTreeSet::new();
+        ensure!(
+            !ports.is_empty() && ports.len() <= 8,
+            "Invalid DuckStation player count"
+        );
+        for &(pad, kind) in ports {
+            ensure!(
+                (1..=8).contains(&pad)
+                    && seen.insert(pad)
+                    && matches!(kind, "DigitalController" | "AnalogController"),
+                "Invalid DuckStation guided port"
+            );
+        }
+        let first_tap = seen.iter().any(|pad| (3..=5).contains(pad));
+        let second_tap = seen.iter().any(|pad| *pad >= 6);
+        let mode = match (first_tap, second_tap) {
+            (false, false) => "Disabled",
+            (true, false) => "Port1Only",
+            (false, true) => "Port2Only",
+            (true, true) => "BothPorts",
+        };
+        let path = self.input_path();
+        let mut input = self.documents[&path].clone();
+        input.set("ControllerPorts", "MultitapMode", mode)?;
+        for pad in 1..=8 {
+            let kind = ports
+                .iter()
+                .find(|(port, _)| *port == pad)
+                .map_or("None", |(_, kind)| *kind);
+            input.set(&format!("Pad{pad}"), "Type", kind)?;
+        }
+        fs::write(&path, &input.text)?;
+        self.documents.insert(path, input);
+        self.verify_originals_unchanged()
+    }
+
     /// The type comes from the whole selected layer, not a per-key global fallback.
     pub fn controller_type(&self, pad: u8) -> Result<String> {
         ensure!((1..=8).contains(&pad), "Invalid DuckStation pad slot");
@@ -407,6 +445,45 @@ impl LaunchConfig {
     }
 
     /// Diagnostic-only options for the no-game startup oracle.
+    pub fn configure_classic_sdl(&mut self) -> Result<BTreeMap<String, String>> {
+        let path = self.settings_path();
+        let global = self
+            .documents
+            .get_mut(&path)
+            .expect("staged global settings");
+        for (key, value) in [
+            ("SDL", "true"),
+            ("SDLControllerEnhancedMode", "false"),
+            ("SDLPS5PlayerLED", "false"),
+        ] {
+            global.set("InputSources", key, value)?;
+        }
+        global.set("SDLHints", "SDL_JOYSTICK_LINUX_CLASSIC", "1")?;
+        let mut hints = BTreeMap::new();
+        let mut section = false;
+        for line in global.text.lines() {
+            let line = line.trim_start_matches('\u{feff}').trim();
+            if let Some((name, _)) = line.strip_prefix('[').and_then(|line| line.split_once(']')) {
+                section = name.trim().eq_ignore_ascii_case("SDLHints");
+            } else if section
+                && !line.starts_with([';', '#'])
+                && let Some((key, value)) = line.split_once('=')
+            {
+                let key = key.trim();
+                ensure!(key.starts_with("SDL_"), "Invalid SDL hint name");
+                ensure!(
+                    hints
+                        .insert(key.to_owned(), value.trim().to_owned())
+                        .is_none(),
+                    "Duplicate SDL hint {key}"
+                );
+            }
+        }
+        self.flush()?;
+        Ok(hints)
+    }
+
+    /// Diagnostic options needed to confirm the child's actual startup routing.
     pub fn enable_startup_diagnostics(&mut self) -> Result<()> {
         let path = self.settings_path();
         let global = self

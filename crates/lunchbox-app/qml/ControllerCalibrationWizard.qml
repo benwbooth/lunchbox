@@ -608,15 +608,17 @@ Dialog {
                 Label {
                     Layout.fillWidth: true
                     visible: wizard.preview.transport === "duckstation-settings"
-                    text: "Outputs below are DuckStation setting names, not SDL button numbers. Automatic DuckStation launch is not available yet."
+                    text: "Outputs below are DuckStation setting names, not SDL button numbers. Launch also needs a compatible native runtime setup."
                     wrapMode: Text.WordWrap
                     color: "#a6b6c7"
                 }
                 Label {
                     Layout.fillWidth: true
                     text: wizard.preview.automatic_launch_ready
-                        ? "Ready for the native Linux RetroArch adapter — device checked again at launch"
-                        : "Preview only — missing physical inputs or launch adapter"
+                        ? "Mapping ready — controller and runtime checked again at launch"
+                        : wizard.preview.native_runtime_required
+                            ? "Guided native mapping — runtime setup and physical calibration required; see details below"
+                            : "Preview only — missing physical inputs or launch adapter"
                     color: "#ffb454"
                     wrapMode: Text.WordWrap
                 }

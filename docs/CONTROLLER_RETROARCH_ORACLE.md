@@ -82,6 +82,17 @@ removed after teardown. Joystick numbers describe that run, not saved assumption
 
 ## Prerequisites
 
+The saved-calibration variant also checks that conflicting device CLI selections
+(`--device=1:5`, `--nodevice=1`) and unresolved grouped/abbreviated flags fail
+during production preparation without mutating the launch plan. It also rejects
+two forms of duplicate append-config options. Its successful launch uses `-M`,
+one pipe-separated list of preexisting configs, and the matching `--device=1:1`,
+which RetroArch processes after the generated configuration. The preexisting
+configs deliberately contain a mismatched device and an unbound B button, so the
+hardware readback also verifies that Lunchbox's config is appended last.
+These checks exercise the single-mode mGBA path;
+unit tests separately check every launch contract and unfilled-port conflicts.
+
 - A writable `/dev/uinput` and Linux joydev support.
 - Installed Flatpak `org.libretro.RetroArch` (reviewed runtime: 1.22.2,
   Git `69a4f0ea1e`).

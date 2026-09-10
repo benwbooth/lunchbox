@@ -23,9 +23,13 @@ same saved physical calibrations shown in the UI.
 - Runs the installed ares settings parser against the private file before
   launching; every generated input key and binding must survive that check.
 
+Source update after `d52297d`: guided target choice now persists through launch,
+and an eight-button arcade panel is available. These subsequent changes have not
+been built or tested; see [guided integration status](CONTROLLER_GUIDED_INTEGRATION.md).
+
 Default target modes: N64 (four players), NES/SNES/Master System/SG-1000/
 Mega Drive-family/PlayStation digital (two), GB/GBC/GBA/Game Gear/NGP/NGPC/PCE
-(one), and an ordinary six-button arcade panel plus Start/Coin (two).
+(one), and ordinary six/eight-button arcade panels plus Start/Coin (two).
 These are default attached gamepad modes, not a claim of peripheral coverage.
 PCE multitaps, Mega Drive six-button attachments, PS analog-mode switching,
 and other non-default attachments are not configured by this adapter yet.

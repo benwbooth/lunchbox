@@ -1,0 +1,42 @@
+--- a/command.c
++++ b/command.c
+@@ -18,1 +18,2 @@
+ #include "input/input_driver.h"
++#include "gfx/video_driver.h"
+@@ -431,6 +432,7 @@ bool command_get_config_param(command_t *cmd, const char* arg)
+    const char *value              = "unsupported";
+    settings_t *settings           = config_get_ptr();
+    bool       video_fullscreen    = settings->bools.video_fullscreen;
++   char lunchbox_mouse_routes[512];
+    const char *dir_runtime_log    = settings->paths.directory_runtime_log;
+    const char *log_dir            = settings->paths.log_dir;
+    const char *directory_cache    = settings->paths.directory_cache;
+@@ -458,6 +460,28 @@ bool command_get_config_param(command_t *cmd, const char* arg)
+       value = directory_system;
+    else if (string_is_equal(arg, "netplay_nickname"))
+       value = path_username;
++   else if (string_is_equal(arg, "lunchbox_mouse_routes_v1"))
++   {
++      input_driver_state_t *input_st = input_state_get_ptr();
++      const char *driver = input_st && input_st->current_driver
++         ? input_st->current_driver->ident : NULL;
++      value = "unsupported\n";
++      if (driver && string_is_equal(driver, "udev"))
++      {
++         snprintf(lunchbox_mouse_routes, sizeof(lunchbox_mouse_routes),
++               "udev %u %u %u %u %u %u %u %u focus %u\n",
++               settings->uints.input_mouse_index[0],
++               settings->uints.input_mouse_index[1],
++               settings->uints.input_mouse_index[2],
++               settings->uints.input_mouse_index[3],
++               settings->uints.input_mouse_index[4],
++               settings->uints.input_mouse_index[5],
++               settings->uints.input_mouse_index[6],
++               settings->uints.input_mouse_index[7],
++               (unsigned)video_driver_has_focus());
++         value = lunchbox_mouse_routes;
++      }
++   }
+ #ifdef HAVE_BSV_MOVIE
+    else if (string_is_equal(arg, "active_replay"))
+    {

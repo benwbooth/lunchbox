@@ -2,8 +2,9 @@
 
 Lunchbox does not store an M-by-N table of controller-model mappings. It stores
 one semantic description per layout, one output contract per emulator/core mode,
-and one deterministic assignment algorithm. The current catalog contains 16
-layouts, so the all-pairs audit exercises 256 ordered source/target combinations.
+and one deterministic assignment algorithm. The current catalog contains 152
+layouts, defining 23,104 possible ordered source/target combinations. This is a
+catalog count, not a completed audit: the current policy has not been tested yet.
 Adding a layout within a supported family automatically participates in all pairs.
 
 The composition is:
@@ -17,7 +18,44 @@ same layout assignment is reused by every contract requesting the same target
 controls, including standalone contracts. A documented contract does not itself
 mean its launch adapter has been implemented or runtime-verified.
 
-## Policy version 2
+## Policy version 6 (implementation phase; verification deferred)
+
+The `arcade-rows` family adds six-button `1 2 3 / 4 5 6` and eight-button
+`1 2 3 7 / 4 5 6 8` geometry. The extra right-hand column preserves the ordering
+of the first six buttons. These are physical positions, not game-action labels.
+
+For arcade targets, diamond/horizontal-four sources prefer
+`Y X R / B A L`, with L3/R3 supplying the extra two digital positions where
+available. Sega rows prefer `X Y Z / A B C`, then L/R. The reverse Sega mapping
+uses the same rows. A Neo Geo target prefers the arcade lower row, taking its
+fourth button from position 8 on an eight-button layout or position 3 on six.
+The constrained solver still handles missing calibrated inputs explicitly.
+
+These family preferences do not change a core's output contract. In particular,
+MAME's native buttons 7/8 use RetroPad L3/R3, not L2/R2 analog triggers. MAME
+profiles require only observed active controls, reject too-small presets and
+leave unsupported fields visible. Analog, pressure, directional and repeat
+constraints still apply before digital family preferences.
+
+### Policy version 3 foundation
+
+The shared two-button preference now uses the target pair's left/right positions
+instead of assuming that every manufacturer prints B on the left and A on the
+right. It selects the primary thumb pair of the source family and composes that
+with the core's actual bindings. Neo Geo Pocket and NES therefore do not need
+controller-specific exceptions. The lower left/middle pair is used on Sega rows.
+
+The `auxiliary` group describes discrete emulated actions such as console reset,
+difficulty switches or a core-provided shake event. Spare calibrated gameplay
+buttons may supply these actions; host Home/system keys and directional inputs
+are still not generic donors. A digital shake event does not imply motion-sensor
+support. Per-port binding subsets keep player-one console panels out of player
+two's required capabilities. Source inspection and implementation are in progress;
+the recorded policy-v2 all-pairs counts are historical, not current policy-v6
+results. No all-pairs, catalog-composition or runtime checks were run in this
+implementation phase.
+
+### Rules inherited from policy version 2
 
 The source layout provides control IDs, groups, positions, analog capabilities,
 and hardware-repeat relationships. The caller supplies the subset of controls
@@ -96,7 +134,7 @@ nix develop -c cargo test -p lunchbox-app --lib controller_layout
 nix develop -c cargo test -p lunchbox-app --lib controller_catalog
 ```
 
-Tests cover every pair for injectivity, capability/direction preservation, identity,
+The existing test suite checks pairs for injectivity, capability/direction preservation, identity,
 input-order independence, and complete result explanations. A separate augmenting-
 path matcher verifies maximum required/optional coverage for every pair. Each
 source input is also removed in turn across every pair to test partial calibration.
@@ -105,8 +143,9 @@ Family fixtures check actual expected mappings, not only structural invariants.
 Catalog tests compose every source layout with every output contract and check that
 the output contract is unchanged.
 
-To export all 256 mappings, use a new absolute output filename (existing files are
-not overwritten):
+To export the current catalog's ordered mappings (23,104 with 152 layouts), use
+a new absolute output filename (existing files are not overwritten). This command
+is for the later testing phase and has not been run for policy 6:
 
 ```console
 LUNCHBOX_LAYOUT_REPORT=/absolute/path/layout-pairs.json nix develop -c cargo test -p lunchbox-app --lib controller_layout::tests::export_all_pairs_report -- --ignored --nocapture

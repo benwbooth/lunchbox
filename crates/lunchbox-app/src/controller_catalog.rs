@@ -40,8 +40,18 @@ pub struct Control {
     pub group: String,
     pub optional: bool,
     pub analog: bool,
+    /// Unipolar measured pressure independent of ergonomic group. Older
+    /// shoulder-axis layouts retain their existing pressure interpretation.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pressure: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_of: Option<String>,
+}
+
+impl Control {
+    pub(crate) fn is_pressure(&self) -> bool {
+        self.analog && (self.pressure || self.group == "shoulder")
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -59,6 +69,44 @@ pub struct EmulatorProfile {
     pub source: String,
     pub conditions: Vec<String>,
     pub bindings: BTreeMap<String, String>,
+    /// One-based frontend ports may request a subset of the contract controls.
+    /// Console controls can belong to player one without making every other
+    /// connected pad supply the same panel. Omitted ports use all bindings.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub port_controls: BTreeMap<usize, std::collections::BTreeSet<String>>,
+    /// A fixed topology can expose different semantic controls on each port.
+    /// IDs retain their transport bindings, while labels/layout rules follow
+    /// the target actually selected for that port.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub port_layouts: BTreeMap<usize, String>,
+    /// Complete binding replacement for a heterogeneous fixed-topology port.
+    /// Must have a matching port_layouts entry; cannot also use a subset.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub port_bindings: BTreeMap<usize, BTreeMap<String, String>>,
+    /// All frontend ports exposed by this core, including expansion ports that
+    /// must be explicitly disconnected. Defaults to the active mode's capacity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frontend_ports: Option<usize>,
+    /// One-based libretro port device overrides for a fixed, explicitly selected
+    /// console topology. Attachments such as a multitap stay connected even if
+    /// that port's first player slot has no physical controller assigned.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub port_devices: BTreeMap<usize, u32>,
+    /// Some cores restore controller device types from save states. Until the
+    /// state metadata is resolved, automatic state loading cannot preserve this
+    /// launch-time device contract.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub requires_fresh_start: bool,
+    /// Option-defined/topology modes require an explicit choice rather than
+    /// guessing from the number or capabilities of connected physical pads.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub explicit_selection: bool,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub content_extensions: std::collections::BTreeSet<String>,
+    /// Content-dependent peripheral selection must be checked before writing a
+    /// standard-pad launch configuration; filenames are not game identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_guard: Option<ContentGuard>,
     #[serde(default)]
     pub core_options: BTreeMap<String, String>,
     /// Exact core-reported library name used for RetroArch override directories.
@@ -77,6 +125,76 @@ pub struct NativeLaunch {
     pub max_players: usize,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentGuard {
+    DolphinGamecubeRaw,
+    ScummvmRetropadCursor,
+    SteemsseEmbeddedSte,
+    SimcpSamOne,
+    SimcpSamTwo,
+    SimcpKempston,
+    HatariStJoystick,
+    Ep128emuTvcDefaults,
+    Ep128emuZxDefaults,
+    Ep128emuEnterpriseDefaults,
+    Ep128emuCpcDefaults,
+    Quasi88Disk,
+    PuaeFixedInput,
+    AtariComputerMedia,
+    Atari5200Cartridge,
+    BkJoystick,
+    CrocodsJoystick,
+    GeolithStandardCartridge,
+    ViceJoystickPort1,
+    ViceJoystickPort2,
+    StellaJoysticks,
+    StellaGenesisPads,
+    #[serde(rename = "stella_booster_joy2b")]
+    StellaBoosterGripOrJoy2BPlus,
+}
+
+impl ContentGuard {
+    pub(crate) fn simcp_interface(self) -> Option<crate::controller_simcp::JoystickInterface> {
+        use crate::controller_simcp::JoystickInterface;
+        match self {
+            Self::SimcpSamOne => Some(JoystickInterface::SamOne),
+            Self::SimcpSamTwo => Some(JoystickInterface::SamTwo),
+            Self::SimcpKempston => Some(JoystickInterface::Kempston),
+            _ => None,
+        }
+    }
+
+    pub fn stella_contract(self) -> Option<crate::controller_stella::DigitalContract> {
+        use crate::controller_stella::DigitalContract;
+        match self {
+            Self::StellaJoysticks => Some(DigitalContract::Joysticks),
+            Self::StellaGenesisPads => Some(DigitalContract::GenesisPads),
+            Self::StellaBoosterGripOrJoy2BPlus => Some(DigitalContract::BoosterGripOrJoy2BPlus),
+            Self::HatariStJoystick
+            | Self::DolphinGamecubeRaw
+            | Self::ScummvmRetropadCursor
+            | Self::SteemsseEmbeddedSte
+            | Self::SimcpSamOne
+            | Self::SimcpSamTwo
+            | Self::SimcpKempston
+            | Self::Ep128emuTvcDefaults
+            | Self::Ep128emuZxDefaults
+            | Self::Ep128emuEnterpriseDefaults
+            | Self::Ep128emuCpcDefaults
+            | Self::GeolithStandardCartridge
+            | Self::ViceJoystickPort1
+            | Self::ViceJoystickPort2
+            | Self::CrocodsJoystick
+            | Self::BkJoystick
+            | Self::AtariComputerMedia
+            | Self::Atari5200Cartridge
+            | Self::PuaeFixedInput
+            | Self::Quasi88Disk => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RetroArchLaunch {
@@ -90,6 +208,49 @@ pub struct RetroArchLaunch {
     /// The selected value must be resolved from the effective options file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub player_topology: Option<PlayerTopology>,
+}
+
+impl EmulatorProfile {
+    pub fn launch_device_for_port(&self, port: usize) -> Option<u32> {
+        let launch = self.retroarch_launch.as_ref()?;
+        if !(1..=self.frontend_port_count()).contains(&port) {
+            return None;
+        }
+        Some(
+            self.port_devices
+                .get(&port)
+                .copied()
+                .unwrap_or(launch.device),
+        )
+    }
+
+    pub fn frontend_port_count(&self) -> usize {
+        self.frontend_ports.unwrap_or_else(|| {
+            self.retroarch_launch
+                .as_ref()
+                .map_or(0, |launch| launch.max_players)
+        })
+    }
+
+    pub fn for_port(&self, port: usize) -> std::borrow::Cow<'_, Self> {
+        let controls = self.port_controls.get(&port);
+        let layout = self.port_layouts.get(&port);
+        let bindings = self.port_bindings.get(&port);
+        if controls.is_none() && layout.is_none() && bindings.is_none() {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let mut profile = self.clone();
+        if let Some(bindings) = bindings {
+            profile.bindings.clone_from(bindings);
+        }
+        if let Some(controls) = controls {
+            profile.bindings.retain(|id, _| controls.contains(id));
+        }
+        if let Some(layout) = layout {
+            profile.target_layout.clone_from(layout);
+        }
+        std::borrow::Cow::Owned(profile)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -130,6 +291,7 @@ pub struct NativeInput {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Calibration {
+    /// Target-profile choices are separate from physical button measurements.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub target_mappings: BTreeMap<String, BTreeMap<String, String>>,
     pub layout: String,
@@ -145,6 +307,9 @@ pub struct MappingPlan {
     pub transport: String,
     pub status: String,
     pub automatic_launch_ready: bool,
+    /// A guided bridge exists, but the mapping alone cannot establish the
+    /// native runtime/content setup or backend compatibility required to launch.
+    pub native_runtime_required: bool,
     pub rows: Vec<MappingRow>,
     pub warnings: Vec<String>,
 }
@@ -168,6 +333,15 @@ pub fn catalog() -> &'static Catalog {
                 .expect("bundled controller catalog must parse");
         crate::controller_sdl3::add_layout(&mut db);
         crate::controller_ares::add_profiles(&mut db).expect("ares controller profiles");
+        crate::controller_native_targets::add_profiles(&mut db)
+            .expect("native controller profiles");
+        crate::controller_target::add_native_metadata(&mut db).expect("native controller metadata");
+        db.add_mame_analog_layouts()
+            .expect("MAME combined layouts require their bundled source layouts");
+        db.add_mame_directional_switch_layouts()
+            .expect("MAME directional switch layouts require fixed-channel panels");
+        db.add_fbneo_channel_layout()
+            .expect("FBNeo channel layout requires reference geometry");
         db.validate()
             .expect("bundled controller catalog must validate");
         db
@@ -175,6 +349,299 @@ pub fn catalog() -> &'static Catalog {
 }
 
 impl Catalog {
+    fn add_mame_directional_switch_layouts(&mut self) -> Result<()> {
+        for base in [
+            "mame-fixed-digital",
+            "mame-twin-digital",
+            "mame-fixed-digital-analog",
+            "mame-twin-digital-analog",
+        ] {
+            let mut layout = self
+                .layout(base)
+                .context("Missing MAME switch base")?
+                .clone();
+            layout.id = format!("{base}-switches");
+            ensure!(
+                self.layout(&layout.id).is_none(),
+                "Duplicate MAME switch panel"
+            );
+            layout.name.push_str(" + axis switches");
+            layout.shape = "grid".to_owned();
+            layout.notes.push_str(" Lower band: explicit threshold switches for four bipolar axes. Each negative/positive pair is coupled, not independent simultaneous buttons. These are frontend channels, not cabinet geometry.");
+            for control in &mut layout.controls {
+                control.y *= 0.64;
+            }
+            for (index, (id, label)) in [
+                ("axis_lx_negative_switch", "LX − switch"),
+                ("axis_lx_positive_switch", "LX + switch"),
+                ("axis_ly_negative_switch", "LY − switch"),
+                ("axis_ly_positive_switch", "LY + switch"),
+                ("axis_rx_negative_switch", "RX − switch"),
+                ("axis_rx_positive_switch", "RX + switch"),
+                ("axis_ry_negative_switch", "RY − switch"),
+                ("axis_ry_positive_switch", "RY + switch"),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                ensure!(
+                    !layout.controls.iter().any(|control| control.id == id),
+                    "Duplicate MAME directional switch identity"
+                );
+                layout
+                    .controls
+                    .push(serde_json::from_value(serde_json::json!({
+                        "id":id,"label":label,"x":([15.0,38.0,62.0,85.0][index % 4]),
+                        "y":if index < 4 {78.0} else {94.0},
+                        "group":"stick","optional":true,"analog":false
+                    }))?);
+            }
+            self.layouts.push(layout);
+        }
+        Ok(())
+    }
+
+    fn add_fbneo_channel_layout(&mut self) -> Result<()> {
+        let mouse_controls = [
+            ("mouse_x", "X delta"),
+            ("mouse_y", "Y delta"),
+            ("mouse_left", "Left button"),
+            ("mouse_right", "Right button"),
+            ("mouse_middle", "Middle button"),
+            ("mouse_button4", "Button 4"),
+            ("mouse_button5", "Button 5"),
+            ("wheel_up", "Wheel up"),
+            ("wheel_down", "Wheel down"),
+            ("horizontal_wheel_up", "Horizontal wheel up"),
+            ("horizontal_wheel_down", "Horizontal wheel down"),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, (id, label))| {
+            serde_json::json!({
+                "id":id,"label":label,"x":15.0 + (index % 3) as f64 * 35.0,
+                "y":15.0 + (index / 3) as f64 * 20.0,
+            "group":"pointer","optional":true,"analog":false
+            })
+        })
+        .collect::<Vec<_>>();
+        ensure!(
+            self.layout("fbneo-mouse-channels").is_none(),
+            "Duplicate FBNeo mouse panel"
+        );
+        self.layouts.push(serde_json::from_value(serde_json::json!({
+            "id":"fbneo-mouse-channels","name":"FBNeo — relative mouse channels",
+            "family":"pointer","shape":"grid","source":"libretro mouse callback identities",
+            "notes":"Logical event panel, not physical cabinet geometry. Delta axes are relative events, not proportional joystick controls. Wheel conversion and live relative routing remain separate requirements; diagram availability does not establish mapping support.",
+            "controls":mouse_controls
+        }))?);
+        let mut layout = self
+            .layout("xbox")
+            .context("Missing gamepad reference geometry")?
+            .clone();
+        layout.id = "fbneo-retropad-channels".into();
+        layout.name = "FBNeo frontend RetroPad channels".into();
+        layout.source = "FBNeo native address translation and libretro RetroPad channels; original schematic geometry".into();
+        layout.notes = "Virtual frontend channels, not a physical Xbox controller or an original arcade cabinet. Input part distinguishes digital buttons, pressure and axis directions; native action labels remain per-game.".into();
+        for control in &mut layout.controls {
+            control.optional = true;
+            // This virtual channel panel supports both digital and analog
+            // button values, not a claim about pressure sensors in an Xbox pad.
+            control.analog = true;
+            control.label = match control.id.as_str() {
+                "b" => "B / South",
+                "a" => "A / East",
+                "y" => "Y / West",
+                "x" => "X / North",
+                _ => continue,
+            }
+            .into();
+        }
+        ensure!(
+            self.layout(&layout.id).is_none(),
+            "Duplicate FBNeo channel layout"
+        );
+        self.layouts.push(layout);
+        let id = "fbneo-lightgun-buttons";
+        ensure!(self.layout(id).is_none(), "Duplicate FBNeo lightgun panel");
+        let controls = [
+            ("gun_trigger", "Trigger"),
+            ("gun_offscreen_shot", "Offscreen shot"),
+            ("gun_aux_a", "Aux A"),
+            ("gun_aux_b", "Aux B"),
+            ("gun_aux_c", "Aux C"),
+            ("gun_start", "Start / Pause"),
+            ("gun_select", "Select"),
+            ("gun_dpad_up", "Up"),
+            ("gun_dpad_down", "Down"),
+            ("gun_dpad_left", "Left"),
+            ("gun_dpad_right", "Right"),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, (id, label))| Control {
+            id: id.into(),
+            label: label.into(),
+            x: 12.0 + (index % 4) as f64 * 25.0,
+            y: 20.0 + (index / 4) as f64 * 30.0,
+            group: "auxiliary".into(),
+            optional: true,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        })
+        .collect();
+        self.layouts.push(Layout {
+            id: id.into(), name: "FBNeo frontend lightgun buttons".into(),
+            family: "pointer".into(), shape: "grid".into(),
+            source: "RetroArch lightgun binding fields used by the pinned FBNeo adapter".into(),
+            notes: "Logical button panel, not a physical gun. Coordinate capture and offscreen status are separate inputs; the offscreen-shot button alone does not establish either.".into(),
+            controls,
+        });
+        Ok(())
+    }
+
+    /// Derive combined panels from the existing button geometries and measured
+    /// analog control definitions. No extra emulator coverage is implied.
+    fn add_mame_analog_layouts(&mut self) -> Result<()> {
+        // These are frontend switch channels, not guessed cabinet buttons.
+        // Dedicated IDs keep switch-only calibration digital even when the
+        // derived analog panel also exposes proportional L2/R2 controls.
+        for id in ["mame-fixed-digital", "mame-twin-digital"] {
+            let layout = self
+                .layouts
+                .iter_mut()
+                .find(|layout| layout.id == id)
+                .ok_or_else(|| anyhow::anyhow!("Missing MAME switch layout {id}"))?;
+            let twin = id == "mame-twin-digital";
+            // Optional controls reach y=95; the gamepad rectangle ends above
+            // them. These are logical channel panels, not physical shells.
+            layout.shape = "grid".to_owned();
+            if twin {
+                // Preserve native action identities even when numbering is
+                // sparse. These are logical positions, not a cabinet replica.
+                for number in 1..=16 {
+                    let control_id = format!("button{number}");
+                    let x = [15.0, 35.0, 65.0, 85.0][(number - 1) % 4];
+                    let y = [5.0, 20.0, 80.0, 95.0][(number - 1) / 4];
+                    if let Some(control) = layout
+                        .controls
+                        .iter_mut()
+                        .find(|control| control.id == control_id)
+                    {
+                        control.x = x;
+                        control.y = y;
+                    } else {
+                        layout
+                            .controls
+                            .push(serde_json::from_value(serde_json::json!({
+                                "id":control_id,"label":format!("Button {number}"),
+                                "x":x,"y":y,"group":"face","optional":true,"analog":false
+                            }))?);
+                    }
+                }
+            }
+            for (id, label, x) in [
+                (
+                    "trigger_left_switch",
+                    "L2 switch",
+                    if twin { 43.0 } else { 38.0 },
+                ),
+                (
+                    "trigger_right_switch",
+                    "R2 switch",
+                    if twin { 57.0 } else { 60.0 },
+                ),
+            ] {
+                ensure!(
+                    !layout.controls.iter().any(|control| control.id == id),
+                    "Duplicate MAME trigger switch control"
+                );
+                layout
+                    .controls
+                    .push(serde_json::from_value(serde_json::json!({
+                    "id":id,"label":label,"x":x,"y":if twin { 70.0 } else { 95.0 },"group":"shoulder",
+                        "optional":true,"analog":false
+                    }))?);
+            }
+            layout.notes.push_str(" Optional L2/R2 switch positions are frontend axis-threshold channels, not native numbered buttons or cabinet geometry.");
+        }
+        let mut analog: Vec<_> = self
+            .layout("xbox")
+            .ok_or_else(|| anyhow::anyhow!("Missing analog reference layout"))?
+            .controls
+            .iter()
+            .filter(|control| control.analog)
+            .cloned()
+            .collect();
+        analog.extend(
+            self.layout("dualshock2-pressure")
+                .ok_or_else(|| anyhow::anyhow!("Missing pressure reference layout"))?
+                .controls
+                .iter()
+                .filter(|control| matches!(control.id.as_str(), "l2" | "r2"))
+                .cloned(),
+        );
+        ensure!(analog.len() == 10, "Unexpected analog reference controls");
+        ensure!(
+            analog.iter().all(|control| control.analog),
+            "Analog reference contains a digital substitute"
+        );
+        for base in [
+            "mame-fixed-digital",
+            "mame-twin-digital",
+            "arcade-six-button",
+            "arcade-eight-button",
+            "neogeo",
+        ] {
+            let mut layout = self
+                .layout(base)
+                .ok_or_else(|| anyhow::anyhow!("Missing MAME base layout {base}"))?
+                .clone();
+            layout.id = format!("{base}-analog");
+            ensure!(
+                self.layout(&layout.id).is_none(),
+                "Duplicate generated MAME layout"
+            );
+            layout.name.push_str(" + analog channels");
+            layout.shape = "grid".to_owned();
+            layout.notes.push_str(" Combined schematic: original digital arrangement above; native analog channels below. Only requested controls need calibration.");
+            // Preserve horizontal ordering and relative digital geometry while
+            // reserving a separate lower band for the analog channel controls.
+            for control in &mut layout.controls {
+                control.y *= 0.62;
+            }
+            for mut control in analog.clone() {
+                let (x, y) = match control.id.as_str() {
+                    "stick_left" => (12.0, 80.0),
+                    "stick_right" => (28.0, 80.0),
+                    "stick_up" => (20.0, 68.0),
+                    "stick_down" => (20.0, 92.0),
+                    "right_stick_left" => (47.0, 80.0),
+                    "right_stick_right" => (63.0, 80.0),
+                    "right_stick_up" => (55.0, 68.0),
+                    "right_stick_down" => (55.0, 92.0),
+                    "l2" => (80.0, 74.0),
+                    "r2" => (92.0, 88.0),
+                    _ => anyhow::bail!("Unexpected analog reference control"),
+                };
+                ensure!(
+                    !layout
+                        .controls
+                        .iter()
+                        .any(|existing| existing.id == control.id),
+                    "Combined MAME control ID collision"
+                );
+                control.x = x;
+                control.y = y;
+                control.optional = true;
+                layout.controls.push(control);
+            }
+            self.layouts.push(layout);
+        }
+        Ok(())
+    }
+
     pub fn layout(&self, id: &str) -> Option<&Layout> {
         self.layouts.iter().find(|layout| layout.id == id)
     }
@@ -188,10 +655,18 @@ impl Catalog {
     }
 
     pub fn launch_modes(&self, core: &str, platform: &str) -> Vec<&EmulatorProfile> {
+        self.platform_profiles(core, platform)
+            .into_iter()
+            .filter(|profile| !profile.explicit_selection)
+            .collect()
+    }
+
+    pub fn platform_profiles(&self, core: &str, platform: &str) -> Vec<&EmulatorProfile> {
         self.emulator_profiles
             .iter()
             .filter(|profile| {
-                profile.core == core
+                crate::emulator::canonical_retroarch_core_name(&profile.core)
+                    == crate::emulator::canonical_retroarch_core_name(core)
                     && profile.retroarch_launch.as_ref().is_some_and(|launch| {
                         launch
                             .platforms
@@ -230,20 +705,30 @@ impl Catalog {
             ensure!(
                 matches!(
                     layout.shape.as_str(),
-                    "rectangle" | "handheld" | "dual-grip" | "three-grip"
+                    "rectangle" | "handheld" | "dual-grip" | "three-grip" | "grid"
                 ),
                 "unknown shape"
             );
             ensure!(
                 matches!(
                     layout.family.as_str(),
-                    "two-button"
+                    "one-button"
+                        | "pointer"
+                        | "atari-console"
+                        | "channel-f"
+                        | "keypad"
+                        | "two-button"
                         | "horizontal-four"
                         | "diamond"
                         | "n64"
                         | "three-button"
                         | "six-button"
                         | "arcade-rows"
+                        | "four-button-row"
+                        | "dual-direction"
+                        | "twist-controller"
+                        | "dance-pad"
+                        | "rhythm-nine"
                 ),
                 "unknown layout-rule family"
             );
@@ -259,9 +744,20 @@ impl Catalog {
                 );
                 ensure!(!control.label.is_empty(), "empty control label");
                 ensure!(
+                    !control.pressure
+                        || (control.analog
+                            && matches!(
+                                control.group.as_str(),
+                                "face" | "dpad" | "shoulder" | "rear"
+                            )
+                            && control.repeat_of.is_none()),
+                    "Pressure requires an analog face, direction or shoulder control"
+                );
+                ensure!(
                     matches!(
                         control.group.as_str(),
                         "face"
+                            | "pointer"
                             | "shoulder"
                             | "rear"
                             | "menu"
@@ -299,6 +795,545 @@ impl Catalog {
         let mut profiles = HashSet::new();
         let mut launch_targets = HashSet::new();
         for profile in &self.emulator_profiles {
+            if profile.core == "pcsx2" && profile.retroarch_launch.is_some() {
+                let target = self
+                    .layout(&profile.target_layout)
+                    .context("Unknown LRPS2 controller layout")?;
+                crate::controller_lrps2::validate_profile(profile, target)?;
+            }
+            if profile.content_guard == Some(ContentGuard::PuaeFixedInput) {
+                ensure!(
+                    profile.core == "puae"
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.retroarch_library.as_deref() == Some("PUAE")
+                        && profile.core_options.contains_key("puae_model")
+                        && profile.frontend_port_count() == 6,
+                    "PUAE configuration guard requires an explicit fresh-start machine profile and all six frontend ports"
+                );
+                if profile.target_layout == "puae-cd32" {
+                    ensure!(
+                        matches!(
+                            profile.core_options.get("puae_model").map(String::as_str),
+                            Some("CD32" | "CD32FR")
+                        ) && profile
+                            .core_options
+                            .get("puae_cd32pad_options")
+                            .map(String::as_str)
+                            == Some("disabled")
+                            && profile
+                                .core_options
+                                .get("puae_mapper_start")
+                                .map(String::as_str)
+                                == Some("---")
+                            && profile
+                                .retroarch_launch
+                                .as_ref()
+                                .is_some_and(
+                                    |launch| launch.device == 517 && launch.max_players == 2
+                                ),
+                        "PUAE CD32 layout requires fixed normal serial pads without a Return binding on Play/Pause"
+                    );
+                }
+            }
+            if matches!(
+                profile.content_guard,
+                Some(ContentGuard::AtariComputerMedia | ContentGuard::Atari5200Cartridge)
+            ) {
+                let console = profile.content_guard == Some(ContentGuard::Atari5200Cartridge);
+                ensure!(
+                    profile.core == "atari800"
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.core_options.get("atari800_cfg").map(String::as_str)
+                            == Some("disabled")
+                        && profile
+                            .core_options
+                            .get("atari800_opt2")
+                            .map(String::as_str)
+                            == Some("none")
+                        && profile
+                            .core_options
+                            .get("paddle_active")
+                            .map(String::as_str)
+                            == Some("disabled")
+                        && profile
+                            .core_options
+                            .get("atari800_xep80")
+                            .map(String::as_str)
+                            == Some("disabled")
+                        && profile
+                            .core_options
+                            .get("atari800_system")
+                            .is_some_and(|model| (model == "5200") == console)
+                        && profile.frontend_port_count() == 4
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == if console { 769 } else { 513 }),
+                    "Atari800 input contracts require fixed system, port and legacy-configuration state"
+                );
+            }
+            if profile.content_guard == Some(ContentGuard::BkJoystick) {
+                ensure!(
+                    profile.core == "bk"
+                        && profile.target_layout == "bk-four-button-joystick"
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile
+                            .core_options
+                            .get("bk_peripheral")
+                            .map(String::as_str)
+                            == Some("joystick")
+                        && matches!(
+                            profile.core_options.get("bk_model").map(String::as_str),
+                            Some(
+                                "BK-0010"
+                                    | "BK-0010.01"
+                                    | "BK-0010.01 + FDD"
+                                    | "BK-0011M + FDD"
+                                    | "Slow BK-0011M"
+                            )
+                        )
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == 1 && launch.max_players == 1)
+                        && profile.frontend_port_count() == 2,
+                    "BK joystick guard requires an explicit BK model and one shared emulated joystick"
+                );
+            }
+            if profile
+                .content_guard
+                .and_then(ContentGuard::simcp_interface)
+                .is_some()
+            {
+                ensure!(
+                    profile.core == "simcp"
+                        && profile.target_layout == "simcp-patched-joystick"
+                        && profile.retroarch_library.as_deref() == Some("SimCoupe")
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.frontend_port_count() == 1
+                        && profile.core_options.is_empty()
+                        && profile.content_extensions.len() == 3
+                        && ["sad", "dsk", "mgt"]
+                            .iter()
+                            .all(|ext| profile.content_extensions.contains(*ext))
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == 1 && launch.max_players == 1),
+                    "SimCoupe interface guards require the explicit patched one-player disk contract"
+                );
+            }
+            if profile.content_guard == Some(ContentGuard::SteemsseEmbeddedSte) {
+                ensure!(
+                    profile.core == "steemsse"
+                        && profile.target_layout == "steemsse-st-joystick"
+                        && profile.retroarch_library.as_deref() == Some("SteemSSE")
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.frontend_port_count() == 2
+                        && profile.core_options.get("sse_st_type").map(String::as_str)
+                            == Some("STE")
+                        && profile.core_options.get("sse_st_os").map(String::as_str) == Some("Emu")
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == 1 && launch.max_players == 2),
+                    "Steem SSE embedded-ROM joystick mode requires explicit fresh STE/EmuTOS with two frontend ports"
+                );
+            }
+            if profile.content_guard == Some(ContentGuard::ScummvmRetropadCursor) {
+                ensure!(
+                    profile.core == "scummvm"
+                        && profile.target_layout == "scummvm-retropad-cursor"
+                        && profile.retroarch_library.as_deref() == Some("ScummVM")
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.frontend_port_count() == 1
+                        && profile.content_extensions.len() == 1
+                        && profile.content_extensions.contains("scummvm")
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == 1 && launch.max_players == 1),
+                    "ScummVM fixed cursor guard requires explicit fresh one-port RetroPad mode"
+                );
+                crate::controller_scummvm::validate_options(&profile.core_options)?;
+            }
+            if profile.content_guard == Some(ContentGuard::DolphinGamecubeRaw) {
+                ensure!(
+                    profile.core == "dolphin"
+                        && profile.target_layout == "dolphin-gamecube-mixed-triggers"
+                        && profile.retroarch_library.as_deref() == Some("dolphin-emu")
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.frontend_port_count() == 4
+                        && profile.content_extensions
+                            == std::collections::BTreeSet::from(["iso".into(), "gcm".into()])
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == 1 && launch.max_players == 4),
+                    "Dolphin raw GameCube guard requires explicit fresh four-port pad mode"
+                );
+                crate::controller_dolphin::validate_gamecube_options(&profile.core_options)?;
+            }
+            if profile.content_guard == Some(ContentGuard::HatariStJoystick) {
+                let jump = match profile.target_layout.as_str() {
+                    "hatari-st-joystick-jump" => "enabled",
+                    "hatari-st-joystick-space" => "disabled",
+                    _ => bail!("Hatari ST guard requires the matching jump or Space layout"),
+                };
+                ensure!(
+                    profile.core == "hatari"
+                        && profile.retroarch_library.as_deref() == Some("hatari")
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.frontend_port_count() == 6
+                        && profile
+                            .core_options
+                            .get("hatari_machinetype")
+                            .map(String::as_str)
+                            == Some("st")
+                        && profile
+                            .core_options
+                            .get("hatari_joystick_port1")
+                            .map(String::as_str)
+                            == Some("real")
+                        && profile
+                            .core_options
+                            .get("hatari_joystick_autofire")
+                            .map(String::as_str)
+                            == Some("disabled")
+                        && profile
+                            .core_options
+                            .get("hatari_joystick_jump_fire2")
+                            .map(String::as_str)
+                            == Some(jump)
+                        && profile.retroarch_launch.as_ref().is_some_and(|launch| {
+                            launch.device == 1
+                                && matches!(launch.max_players, 1 | 2)
+                                && profile
+                                    .core_options
+                                    .get("hatari_joystick_port0")
+                                    .map(String::as_str)
+                                    == Some(if launch.max_players == 2 {
+                                        "real"
+                                    } else {
+                                        "none"
+                                    })
+                        }),
+                    "Hatari ST guard requires fixed machine, reversed ST ports and matching shortcut options"
+                );
+            }
+            if profile.content_guard == Some(ContentGuard::CrocodsJoystick) {
+                ensure!(
+                    profile.core == "crocods"
+                        && profile.target_layout == "crocods-joystick-keyboard"
+                        && profile.retroarch_library.as_deref() == Some("crocods")
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.content_extensions.len() == 1
+                        && profile.content_extensions.contains("dsk")
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == 1 && launch.max_players == 1)
+                        && profile.core_options.is_empty(),
+                    "CrocoDS guard requires its explicit fresh disk/joystick contract"
+                );
+            }
+            if profile.content_guard == Some(ContentGuard::Ep128emuCpcDefaults) {
+                ensure!(
+                    profile.core == "ep128emu-core"
+                        && profile.target_layout == "ep128emu-two-fire-shortcuts"
+                        && profile.retroarch_library.as_deref() == Some("ep128emu")
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.content_extensions.len() == 2
+                        && profile.content_extensions.contains("dsk")
+                        && profile.content_extensions.contains("cdt")
+                        && profile.frontend_port_count() == 2
+                        && profile.for_port(2).target_layout == "ep128emu-cpc-joystick-two"
+                        && profile
+                            .core_options
+                            .get("ep128emu_zoom")
+                            .map(String::as_str)
+                            == Some("R3")
+                        && profile
+                            .core_options
+                            .get("ep128emu_info")
+                            .map(String::as_str)
+                            == Some("L3")
+                        && profile
+                            .core_options
+                            .get("ep128emu_afbt")
+                            .map(String::as_str)
+                            == Some("None")
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == 1 && launch.max_players == 2),
+                    "ep128emu CPC guard requires fresh default two-port joysticks and fixed shortcut/autofire options"
+                );
+            }
+            if profile.content_guard == Some(ContentGuard::Ep128emuEnterpriseDefaults) {
+                ensure!(
+                    profile.core == "ep128emu-core"
+                        && profile.target_layout == "ep128emu-one-fire-shortcuts"
+                        && profile.retroarch_library.as_deref() == Some("ep128emu")
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.content_extensions.len() == 1
+                        && profile.content_extensions.contains("tap")
+                        && profile.frontend_port_count() == 6
+                        && (2..=6)
+                            .all(|port| profile.for_port(port).target_layout == "ep128emu-one-fire")
+                        && profile
+                            .core_options
+                            .get("ep128emu_zoom")
+                            .map(String::as_str)
+                            == Some("R3")
+                        && profile
+                            .core_options
+                            .get("ep128emu_info")
+                            .map(String::as_str)
+                            == Some("L3")
+                        && profile
+                            .core_options
+                            .get("ep128emu_afbt")
+                            .map(String::as_str)
+                            == Some("None")
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == 1 && launch.max_players == 6),
+                    "ep128emu Enterprise guard requires fresh default six-port topology and fixed shortcut/autofire options"
+                );
+            }
+            if profile.content_guard == Some(ContentGuard::Ep128emuZxDefaults) {
+                ensure!(
+                    profile.core == "ep128emu-core"
+                        && profile.target_layout == "ep128emu-one-fire-shortcuts"
+                        && profile.retroarch_library.as_deref() == Some("ep128emu")
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.content_extensions.len() == 2
+                        && profile.content_extensions.contains("tzx")
+                        && profile.content_extensions.contains("tap")
+                        && profile.frontend_port_count() == 4
+                        && profile.for_port(2).target_layout == "ep128emu-zx-sinclair-one"
+                        && profile.for_port(3).target_layout == "ep128emu-zx-sinclair-two"
+                        && profile.for_port(4).target_layout == "ep128emu-zx-protek"
+                        && profile
+                            .core_options
+                            .get("ep128emu_zoom")
+                            .map(String::as_str)
+                            == Some("R3")
+                        && profile
+                            .core_options
+                            .get("ep128emu_info")
+                            .map(String::as_str)
+                            == Some("L3")
+                        && profile
+                            .core_options
+                            .get("ep128emu_afbt")
+                            .map(String::as_str)
+                            == Some("None")
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == 1 && launch.max_players == 4),
+                    "ep128emu ZX guard requires fresh four-adapter defaults and fixed shortcut/autofire options"
+                );
+            }
+            if profile.content_guard == Some(ContentGuard::Ep128emuTvcDefaults) {
+                ensure!(
+                    profile.core == "ep128emu-core"
+                        && profile.target_layout == "ep128emu-one-fire-shortcuts"
+                        && profile.retroarch_library.as_deref() == Some("ep128emu")
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.content_extensions.len() == 2
+                        && profile.content_extensions.contains("tvcwav")
+                        && profile.content_extensions.contains("crt")
+                        && profile.frontend_port_count() == 5
+                        && (2..=5)
+                            .all(|port| profile.for_port(port).target_layout == "ep128emu-one-fire")
+                        && profile
+                            .core_options
+                            .get("ep128emu_zoom")
+                            .map(String::as_str)
+                            == Some("R3")
+                        && profile
+                            .core_options
+                            .get("ep128emu_info")
+                            .map(String::as_str)
+                            == Some("L3")
+                        && profile
+                            .core_options
+                            .get("ep128emu_afbt")
+                            .map(String::as_str)
+                            == Some("None")
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == 1 && launch.max_players == 5),
+                    "ep128emu TVC guard requires fresh five-port defaults and fixed shortcut/autofire options"
+                );
+            }
+            if let Some(
+                guard @ (ContentGuard::ViceJoystickPort1 | ContentGuard::ViceJoystickPort2),
+            ) = profile.content_guard
+            {
+                let port = if guard == ContentGuard::ViceJoystickPort1 {
+                    "1"
+                } else {
+                    "2"
+                };
+                ensure!(
+                    matches!(
+                        profile.core.as_str(),
+                        "vice_x64" | "vice_x64sc" | "vice_x128" | "vice_xplus4"
+                    ) && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.core_options.get("vice_joyport").map(String::as_str)
+                            == Some(port)
+                        && profile
+                            .core_options
+                            .get("vice_read_vicerc")
+                            .map(String::as_str)
+                            == Some("disabled")
+                        && !profile.content_extensions.is_empty()
+                        && profile.content_extensions.iter().all(|extension| !matches!(
+                            extension.as_str(),
+                            "cmd" | "m3u" | "vfl" | "vsf" | "zip" | "7z" | "gz"
+                        )),
+                    "VICE joystick guard requires explicit fresh direct-content routing with vicerc disabled"
+                );
+            }
+            if profile
+                .content_guard
+                .and_then(|guard| guard.stella_contract())
+                .is_some()
+            {
+                ensure!(
+                    profile.core == "stella"
+                        && profile.target_layout == "atari2600-stella-panel"
+                        && profile.retroarch_library.as_deref() == Some("Stella 2023")
+                        && profile.explicit_selection
+                        && profile.requires_fresh_start
+                        && profile.core_options.is_empty()
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.device == 1
+                                && launch.max_players == 2
+                                && launch.player_topology.is_none())
+                        && profile.frontend_port_count() == 2,
+                    "Stella runtime guard requires an explicit fresh two-controller detection contract"
+                );
+            }
+            ensure!(
+                profile
+                    .content_extensions
+                    .iter()
+                    .all(|extension| !extension.is_empty()
+                        && extension.len() <= 16
+                        && extension
+                            .bytes()
+                            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())),
+                "Invalid controller profile content extension"
+            );
+            ensure!(
+                !profile.explicit_selection
+                    || profile
+                        .retroarch_launch
+                        .as_ref()
+                        .is_some_and(|launch| launch.player_topology.is_none()),
+                "Explicit controller modes must declare a fixed topology"
+            );
+            ensure!(
+                profile.frontend_ports.is_none() || profile.retroarch_launch.is_some(),
+                "Frontend port count requires a launch contract"
+            );
+            ensure!(
+                !profile.requires_fresh_start || profile.retroarch_launch.is_some(),
+                "Fresh-start guard requires a launch contract"
+            );
+            ensure!(
+                profile.port_devices.is_empty()
+                    || (profile.explicit_selection
+                        && profile.retroarch_launch.as_ref().is_some_and(|launch| {
+                            launch.player_topology.is_none()
+                                && profile.port_devices.iter().all(|(port, device)| {
+                                    (1..=profile.frontend_port_count()).contains(port)
+                                        && *device <= u16::MAX.into()
+                                        && (*device & 0xff == 1
+                                            || (*port > launch.max_players && *device & 0xff == 3))
+                                })
+                        })),
+                "Per-port attachments require an explicit fixed topology; native keyboard pass-through must be outside player slots"
+            );
+            ensure!(
+                profile.port_controls.iter().all(|(port, controls)| {
+                    profile
+                        .retroarch_launch
+                        .as_ref()
+                        .is_some_and(|launch| (1..=launch.max_players).contains(port))
+                        && !controls.is_empty()
+                        && controls.iter().all(|id| profile.bindings.contains_key(id))
+                }),
+                "Invalid per-port controller control subset"
+            );
+            for (port, layout_id) in &profile.port_layouts {
+                ensure!(
+                    profile.explicit_selection
+                        && profile
+                            .retroarch_launch
+                            .as_ref()
+                            .is_some_and(|launch| launch.player_topology.is_none()
+                                && (1..=launch.max_players).contains(port)),
+                    "Per-port target layouts require an explicit fixed topology"
+                );
+                let layout = self
+                    .layout(layout_id)
+                    .context("Unknown per-port target layout")?;
+                let resolved = profile.for_port(*port);
+                ensure!(
+                    resolved
+                        .bindings
+                        .keys()
+                        .all(|id| layout.controls.iter().any(|control| control.id == *id))
+                        && layout
+                            .controls
+                            .iter()
+                            .filter(|control| !control.optional && control.repeat_of.is_none())
+                            .all(|control| resolved.bindings.contains_key(&control.id)),
+                    "Per-port target layout and active bindings disagree"
+                );
+            }
+            for (port, bindings) in &profile.port_bindings {
+                ensure!(
+                    profile.transport == "retropad"
+                        && profile.port_layouts.contains_key(port)
+                        && !profile.port_controls.contains_key(port)
+                        && !bindings.is_empty(),
+                    "Per-port binding replacement requires an explicit RetroPad layout and cannot also use a subset"
+                );
+                let mut outputs = HashSet::new();
+                ensure!(
+                    bindings
+                        .values()
+                        .all(|output| crate::settings::CONTROLLER_GAMEPAD_BUTTONS
+                            .contains(&output.as_str())
+                            && outputs.insert(output)),
+                    "Unknown or conflicting per-port output bindings"
+                );
+            }
             ensure!(
                 profiles.insert(&profile.id),
                 "duplicate emulator profile ID"
@@ -310,7 +1345,22 @@ impl Catalog {
                 profile.status == "documented"
                     && matches!(
                         profile.transport.as_str(),
-                        "retropad" | "duckstation-settings" | "ares-settings"
+                        "retropad"
+                            | "ares-settings"
+                            | "duckstation-settings"
+                            | "ppsspp-settings"
+                            | "mgba-settings"
+                            | "snes9x-gtk-settings"
+                            | "fceux-qt-settings"
+                            | "sameboy-sdl-settings"
+                            | "mednafen-settings"
+                            | "dolphin-settings"
+                            | "pcsx2-native-settings"
+                            | "rpcs3-native-settings"
+                            | "melonds-native-settings"
+                            | "flycast-native-settings"
+                            | "mame-native-settings"
+                            | "bizhawk-native-settings"
                     ),
                 "unsupported profile contract"
             );
@@ -320,11 +1370,10 @@ impl Catalog {
             );
             if let Some(native) = &profile.native_launch {
                 ensure!(
-                    profile.transport == "ares-settings"
-                        && profile.core == "ares"
+                    profile.transport != "retropad"
                         && profile.retroarch_launch.is_none()
                         && !native.platforms.is_empty()
-                        && (1..=5).contains(&native.max_players),
+                        && (1..=16).contains(&native.max_players),
                     "Invalid native launch metadata"
                 );
             }
@@ -338,7 +1387,110 @@ impl Catalog {
                     "unreviewed DuckStation input mode"
                 );
             }
+            if profile.transport.ends_with("-native-settings") {
+                crate::controller_native_targets::validate(profile)?;
+            }
+            if profile.transport == "ppsspp-settings" {
+                ensure!(
+                    profile.core == "ppsspp"
+                        && profile.target_layout == "psp"
+                        && profile.retroarch_launch.is_none(),
+                    "Standalone PPSSPP profile must not be dispatched through RetroArch"
+                );
+            }
+            if profile.transport == "mgba-settings" {
+                ensure!(
+                    profile.core == "mgba"
+                        && matches!(profile.target_layout.as_str(), "gba" | "gameboy")
+                        && profile.retroarch_launch.is_none(),
+                    "Native mGBA profile must not use RetroArch dispatch"
+                );
+            }
+            if profile.transport == "snes9x-gtk-settings" {
+                ensure!(
+                    profile.core == "snes9x"
+                        && profile.target_layout == "snes"
+                        && profile.retroarch_launch.is_none(),
+                    "Native Snes9x GTK profile cannot use RetroArch dispatch"
+                );
+            }
+            if profile.transport == "fceux-qt-settings" {
+                ensure!(
+                    profile.core == "fceux"
+                        && profile.target_layout == "nes"
+                        && profile.retroarch_launch.is_none(),
+                    "Native FCEUX Qt profile cannot use RetroArch dispatch"
+                );
+            }
+            if profile.transport == "sameboy-sdl-settings" {
+                ensure!(
+                    profile.core == "sameboy"
+                        && profile.target_layout == "gameboy"
+                        && profile.retroarch_launch.is_none(),
+                    "Native SameBoy SDL profile cannot use RetroArch dispatch"
+                );
+            }
+            if profile.transport == "mednafen-settings" {
+                ensure!(
+                    profile.core == "mednafen"
+                        && matches!(
+                            profile.target_layout.as_str(),
+                            "gameboy"
+                                | "gba"
+                                | "lynx"
+                                | "ngp"
+                                | "wonderswan"
+                                | "virtualboy"
+                                | "gamegear"
+                                | "mednafen-master-system"
+                                | "snes"
+                                | "saturn-digital"
+                                | "playstation-digital"
+                                | "dualshock"
+                                | "genesis-3"
+                                | "genesis-6"
+                                | "pce-2"
+                                | "pce-6"
+                                | "nes"
+                        )
+                        && profile.retroarch_launch.is_none(),
+                    "Native Mednafen profile cannot use RetroArch dispatch"
+                );
+            }
+            if profile.transport == "dolphin-settings" {
+                ensure!(
+                    profile.core == "dolphin"
+                        && profile.target_layout == "dolphin-native-gamecube"
+                        && profile.retroarch_launch.is_none(),
+                    "Native Dolphin GameCube mapping cannot use RetroArch dispatch"
+                );
+            }
             if let Some(launch) = &profile.retroarch_launch {
+                if profile.content_guard == Some(ContentGuard::GeolithStandardCartridge) {
+                    ensure!(
+                        profile.core == "geolith"
+                            && profile.explicit_selection
+                            && profile.content_extensions.len() == 1
+                            && profile.content_extensions.contains("neo")
+                            && profile
+                                .core_options
+                                .get("geolith_4player")
+                                .map(String::as_str)
+                                == Some("off")
+                            && matches!(
+                                profile
+                                    .core_options
+                                    .get("geolith_system_type")
+                                    .map(String::as_str),
+                                Some("aes" | "mvs")
+                            ),
+                        "Geolith cartridge guard requires an explicit standard AES/MVS NEO mode with four-player disabled"
+                    );
+                }
+                ensure!(
+                    (launch.max_players..=16).contains(&profile.frontend_port_count()),
+                    "Frontend port count cannot be smaller than the mode's active player count"
+                );
                 if let Some(library) = &profile.retroarch_library {
                     ensure!(
                         !library.is_empty()
@@ -374,10 +1526,21 @@ impl Catalog {
                 }
                 ensure!(
                     (launch.device & 0xff == 1
+                        || (profile.core == "fbneo"
+                            && matches!(
+                                profile.target_layout.as_str(),
+                                "arcade-six-button" | "arcade-eight-button"
+                            )
+                            && launch.device == 261)
+                        || (profile.core == "puae"
+                            && profile.target_layout == "puae-cd32"
+                            && profile.content_guard == Some(ContentGuard::PuaeFixedInput)
+                            && launch.device == 517)
                         || (profile.target_layout == "dualshock"
                             && matches!(
                                 (profile.core.as_str(), launch.device),
-                                ("swanstation", 261) | ("mednafen_psx" | "mednafen_psx_hw", 517)
+                                ("swanstation", 261)
+                                    | ("mednafen_psx" | "mednafen_psx_hw" | "pcsx_rearmed", 517)
                             )))
                         && launch.device <= u16::MAX.into(),
                     "launch writer requires a reviewed joypad or analog device mode"
@@ -390,42 +1553,149 @@ impl Catalog {
                         "invalid launch platform alias"
                     );
                     ensure!(
-                        launch_targets.insert((
-                            profile.core.clone(),
-                            alias.to_ascii_lowercase(),
-                            launch.device
-                        )),
+                        profile.explicit_selection
+                            || launch_targets.insert((
+                                profile.core.clone(),
+                                alias.to_ascii_lowercase(),
+                                launch.device
+                            )),
                         "duplicate or ambiguous core/platform launch contract"
                     );
                 }
             }
+            if profile.core == "dolphin"
+                && profile.target_layout == "dolphin-gamecube-mixed-triggers"
+            {
+                crate::controller_dolphin::validate_gamecube_options(&profile.core_options)?;
+                ensure!(
+                    profile.explicit_selection,
+                    "Dolphin mixed-trigger mode requires explicit selection"
+                );
+            }
             let mut outputs = HashSet::new();
+            if profile.core == "same_cdi" {
+                crate::controller_same_cdi::mode_for_layout(&profile.target_layout)?;
+                crate::controller_same_cdi::validate_options(&profile.core_options)?;
+                ensure!(
+                    profile.explicit_selection,
+                    "SAME CD-i pointer mode requires explicit selection"
+                );
+                ensure!(
+                    profile.retroarch_library.as_deref() == Some("SAME_CDI")
+                        && profile.requires_fresh_start
+                        && profile.frontend_ports == Some(6),
+                    "SAME CD-i pointer mode requires native library identity, fresh start and six frontend ports"
+                );
+                if let Some(launch) = &profile.retroarch_launch {
+                    ensure!(
+                        launch.device == 1
+                            && launch.max_players == 1
+                            && launch.player_topology.is_none()
+                            && profile.port_devices.is_empty(),
+                        "SAME CD-i pointer modes use one calibrated RetroPad and clear the other native input ports"
+                    );
+                }
+            }
             for (target, output) in &profile.bindings {
                 ensure!(
                     layout.controls.iter().any(|control| control.id == *target),
                     "unknown target control"
                 );
-                let known = match profile.transport.as_str() {
-                    "ares-settings" => crate::controller_ares::valid_output(profile, output),
-                    "retropad" => {
-                        crate::settings::CONTROLLER_GAMEPAD_BUTTONS.contains(&output.as_str())
-                    }
-                    "duckstation-settings" => {
-                        [
-                            "Up", "Down", "Left", "Right", "Start", "Select", "Cross", "Circle",
-                            "Square", "Triangle", "L1", "R1", "L2", "R2",
-                        ]
-                        .contains(&output.as_str())
-                            || (profile.target_layout == "dualshock"
-                                && [
-                                    "L3", "R3", "LLeft", "LRight", "LUp", "LDown", "RLeft",
-                                    "RRight", "RUp", "RDown",
-                                ]
-                                .contains(&output.as_str()))
-                    }
-                    _ => false,
-                };
+                let known =
+                    match profile.transport.as_str() {
+                        "ares-settings" => crate::controller_ares::valid_output(profile, output),
+                        "pcsx2-native-settings"
+                        | "rpcs3-native-settings"
+                        | "melonds-native-settings"
+                        | "flycast-native-settings"
+                        | "mame-native-settings"
+                        | "bizhawk-native-settings" => {
+                            crate::controller_native_targets::valid_output(profile, target, output)
+                        }
+                        "retropad" => {
+                            crate::settings::CONTROLLER_GAMEPAD_BUTTONS.contains(&output.as_str())
+                        }
+                        "duckstation-settings" => {
+                            [
+                                "Up", "Down", "Left", "Right", "Start", "Select", "Cross",
+                                "Circle", "Square", "Triangle", "L1", "R1", "L2", "R2",
+                            ]
+                            .contains(&output.as_str())
+                                || (profile.target_layout == "dualshock"
+                                    && [
+                                        "L3", "R3", "LLeft", "LRight", "LUp", "LDown", "RLeft",
+                                        "RRight", "RUp", "RDown",
+                                    ]
+                                    .contains(&output.as_str()))
+                        }
+                        "ppsspp-settings" => {
+                            crate::controller_ppsspp::GAMEPLAY_KEYS.contains(&output.as_str())
+                        }
+                        "mgba-settings" => {
+                            crate::controller_mgba::KEYS.contains(&output.as_str())
+                                && (profile.target_layout == "gba"
+                                    || !matches!(output.as_str(), "L" | "R"))
+                        }
+                        "snes9x-gtk-settings" => crate::controller_snes9x::configuration::CONTROLS
+                            .contains(&output.as_str()),
+                        "dolphin-settings" => crate::controller_dolphin::standalone::CONTROLS
+                            .contains(&output.as_str()),
+                        "fceux-qt-settings" => {
+                            crate::controller_fceux::profile::CONTROLS.contains(&output.as_str())
+                        }
+                        "sameboy-sdl-settings" => {
+                            crate::controller_sameboy::CONTROLS.contains(&output.as_str())
+                        }
+                        "mednafen-settings" => {
+                            use crate::controller_mednafen::profiles::Gamepad;
+                            let gamepad = match profile.target_layout.as_str() {
+                                "gba" => Gamepad::GameBoyAdvance,
+                                "lynx" => Gamepad::Lynx,
+                                "ngp" => Gamepad::NeoGeoPocket,
+                                "wonderswan" => Gamepad::WonderSwan,
+                                "virtualboy" => Gamepad::VirtualBoy,
+                                "gamegear" => Gamepad::GameGear,
+                                "mednafen-master-system" => Gamepad::MasterSystem,
+                                "pce-2" => Gamepad::PceTwo,
+                                "pce-6" => Gamepad::PceSix,
+                                "nes" => Gamepad::NesTwo,
+                                "snes" => Gamepad::Snes,
+                                "saturn-digital" => Gamepad::SaturnDigital,
+                                "playstation-digital" => Gamepad::PlayStationDigital,
+                                "dualshock" => Gamepad::PlayStationDualAnalog,
+                                "genesis-3" => Gamepad::MdThree,
+                                "genesis-6" => Gamepad::MdSix,
+                                _ => Gamepad::GameBoy,
+                            };
+                            gamepad.controls().contains(&output.as_str())
+                        }
+                        _ => false,
+                    };
                 ensure!(known, "unknown output control for this transport");
+                if profile.transport == "dolphin-settings" {
+                    ensure!(
+                        layout
+                            .controls
+                            .iter()
+                            .find(|control| control.id == *target)
+                            .unwrap()
+                            .analog
+                            == crate::controller_dolphin::standalone::analog_target(output),
+                        "Dolphin native analog setting differs from the visual target capability"
+                    );
+                }
+                if profile.transport == "ppsspp-settings" {
+                    ensure!(
+                        layout
+                            .controls
+                            .iter()
+                            .find(|control| control.id == *target)
+                            .unwrap()
+                            .analog
+                            == output.starts_with("An."),
+                        "PPSSPP analog setting does not match the target control capability"
+                    );
+                }
                 if profile.transport == "duckstation-settings" {
                     let analog_output = [
                         "LLeft", "LRight", "LUp", "LDown", "RLeft", "RRight", "RUp", "RDown",
@@ -442,12 +1712,56 @@ impl Catalog {
                         "DuckStation control and output disagree on analog capability"
                     );
                 }
-                ensure!(outputs.insert(output), "conflicting output controls");
+                let mixed_trigger_pair = profile.transport == "retropad"
+                    && profile.core == "dolphin"
+                    && profile.target_layout == "dolphin-gamecube-mixed-triggers"
+                    && match output.as_str() {
+                        "LeftTrigger" | "RightTrigger" => {
+                            let (pressure, fallback) = if output == "LeftTrigger" {
+                                ("trigger_left", "l2")
+                            } else {
+                                ("trigger_right", "r2")
+                            };
+                            let assigned: HashSet<_> = profile
+                                .bindings
+                                .iter()
+                                .filter(|(_, value)| *value == output)
+                                .map(|(id, _)| id.as_str())
+                                .collect();
+                            assigned == HashSet::from([pressure, fallback])
+                                && layout.controls.iter().any(|c| {
+                                    c.id == pressure
+                                        && c.analog
+                                        && c.group == "shoulder"
+                                        && !c.optional
+                                })
+                                && layout
+                                    .controls
+                                    .iter()
+                                    .any(|c| c.id == fallback && !c.analog && c.optional)
+                        }
+                        _ => false,
+                    };
+                ensure!(
+                    outputs.insert(output) || mixed_trigger_pair,
+                    "conflicting output controls"
+                );
             }
             for control in layout.controls.iter().filter(|control| !control.optional) {
+                // Native PCE saves the two/six-button mode as a device setting
+                // and deliberately clears the mode-toggle input binding.
+                let fixed_native_pce_mode = control.id == "mode"
+                    && layout.id == "pce-6"
+                    && profile.transport == "mednafen-settings"
+                    && matches!(
+                        profile.id.as_str(),
+                        "mednafen:standalone-pce6" | "mednafen:standalone-pce-fast6"
+                    );
                 ensure!(
-                    profile.bindings.contains_key(&control.id),
-                    "incomplete emulator contract"
+                    profile.bindings.contains_key(&control.id) || fixed_native_pce_mode,
+                    "incomplete emulator contract: {} lacks {}",
+                    profile.id,
+                    control.id
                 );
             }
         }
@@ -564,21 +1878,78 @@ impl Calibration {
                     "Measured axis does not match the physical input direction"
                 );
             }
+            // Pressure measurement is an evdev gesture; other OSes have no
+            // measured release/full-press source wired to this validation yet.
+            if control.is_pressure() && self.os == "linux" {
+                let measured = input.axis.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "{} requires measured release and full-press values; recalibrate this pressure control",
+                        control.label
+                    )
+                })?;
+                crate::controller_axis::PressureAxis::from_measurement(measured)?;
+            }
         }
         Ok(())
     }
 
     pub fn plan(&self, profile_id: &str) -> Result<MappingPlan> {
-        self.validate()?;
         let db = catalog();
-        let source = db.layout(&self.layout).unwrap();
         let profile = db
             .emulator_profiles
             .iter()
             .find(|p| p.id == profile_id)
             .ok_or_else(|| anyhow::anyhow!("Unknown emulator profile"))?;
+        self.plan_profile(profile)
+    }
+
+    pub(crate) fn plan_profile(&self, profile: &EmulatorProfile) -> Result<MappingPlan> {
+        self.validate()?;
+        let db = catalog();
+        let mut measured_source = db.layout(&self.layout).unwrap().clone();
         let target = db.layout(&profile.target_layout).unwrap();
         let mut warnings = profile.conditions.clone();
+        // Catalog buttons describe a layout, not the capabilities of every
+        // device sold in that shape. Promote only the requested pressure role
+        // when this calibration includes a real proportional evdev gesture.
+        // Keep digital-target planning unchanged (including N64 Z presets).
+        for control in &mut measured_source.controls {
+            if control.analog {
+                continue;
+            }
+            let Some(requested) = target.controls.iter().find(|requested| {
+                (requested.id == control.id
+                    || (crate::controller_layout::pressure_role(&control.id).is_some()
+                        && crate::controller_layout::pressure_role(&control.id)
+                            == crate::controller_layout::pressure_role(&requested.id)))
+                    && (requested.group == control.group
+                        || (requested.group == "shoulder" && control.group == "rear"))
+                    && requested.is_pressure()
+            }) else {
+                continue;
+            };
+            let Some(binding) = self.bindings.get(&control.id) else {
+                continue;
+            };
+            let Some(measured) = binding.axis.as_ref() else {
+                continue;
+            };
+            if binding
+                .native
+                .as_ref()
+                .is_some_and(|native| native.code >> 16 == 3)
+                && crate::controller_axis::PressureAxis::from_measurement(measured).is_ok()
+            {
+                control.analog = true;
+                control.pressure = true;
+                control.group = requested.group.clone();
+                warnings.push(format!(
+                    "{} supplies measured proportional pressure for this profile; launch requires a session-local normalized gamepad and writable /dev/uinput.",
+                    control.label
+                ));
+            }
+        }
+        let source = &measured_source;
         let adapter = (self.backend != "sdl3-gamepad" || profile.transport == "ares-settings")
             && crate::controller_launch::supports_profile(profile);
         if self.backend == "sdl3-gamepad" && profile.transport != "ares-settings" {
@@ -586,11 +1957,18 @@ impl Calibration {
         }
         warnings.push(if profile.transport == "ares-settings" {
             "ares 148+: saved player assignments and button choices are applied to a private settings file. The emulator's SDL device identities are checked at launch."
+        } else if profile.transport == "mgba-settings" {
+            "Native Linux mGBA SDL discovers runtime paths at launch and applies guided Player 1. An existing config.ini and physical calibration are required; this plan does not establish runtime readiness."
+        } else if crate::controller_guided_native::supports(profile) {
+            "Guided players and target choices are connected to this native adapter. A matching native runtime setup and physical calibration are still required; the preview does not establish runtime readiness."
         } else if adapter {
             "Native Linux RetroArch launch adapter available. Physical bindings and connected-device numbering are checked again at launch; automatic RetroArch remaps/overrides are suspended for that session."
         } else {
             "Preview only: an automatic launch adapter for this contract is not implemented."
         }.into());
+        if profile.explicit_selection {
+            warnings.push("This input/topology mode must be explicitly selected in Controller setup or Controller coverage; connected pads do not select it automatically.".into());
+        }
         if self.os != std::env::consts::OS {
             warnings.push(
                 "This calibration was recorded on another OS; recalibrate before use.".into(),
@@ -664,6 +2042,59 @@ impl Calibration {
                 }
             })
             .collect();
+        if profile.core == "mame"
+            && matches!(
+                profile.target_layout.as_str(),
+                "mame-twin-digital" | "mame-twin-digital-analog"
+            )
+        {
+            // Each row is an observed native input. Optional catalog controls
+            // describe absent actions, not permission to omit an observed one.
+            for (index, row) in rows.iter().enumerate() {
+                let native = row
+                    .input
+                    .as_ref()
+                    .and_then(|input| input.native.as_ref())
+                    .with_context(|| {
+                        format!(
+                            "MAME twin-stick input {} needs a physical calibration",
+                            row.target
+                        )
+                    })?;
+                for previous in &rows[..index] {
+                    let Some(other) = previous
+                        .input
+                        .as_ref()
+                        .and_then(|input| input.native.as_ref())
+                    else {
+                        continue;
+                    };
+                    if native.code != other.code {
+                        continue;
+                    }
+                    let opposite = matches!(
+                        (previous.target_id.as_str(), row.target_id.as_str()),
+                        ("up", "down")
+                            | ("down", "up")
+                            | ("left", "right")
+                            | ("right", "left")
+                            | ("right_up", "right_down")
+                            | ("right_down", "right_up")
+                            | ("right_left", "right_right")
+                            | ("right_right", "right_left")
+                    );
+                    ensure!(
+                        native.code >> 16 == 3
+                            && opposite
+                            && native.direction != 0
+                            && native.direction == -other.direction,
+                        "MAME twin-stick controls {} and {} share a physical input; calibrate independent controls",
+                        previous.target,
+                        row.target
+                    );
+                }
+            }
+        }
         let automatic_launch_ready = adapter
             && (self.os == "linux"
                 || (profile.transport == "ares-settings" && self.backend == "sdl3-gamepad"))
@@ -684,6 +2115,8 @@ impl Calibration {
             transport: profile.transport.clone(),
             status: profile.status.clone(),
             automatic_launch_ready,
+            native_runtime_required: profile.transport != "ares-settings"
+                && crate::controller_guided_native::supports(profile),
             rows,
             warnings,
         })
@@ -702,6 +2135,7 @@ fn xml(value: &str) -> String {
 /// Original vector schematics, generated from the same IDs as calibration.
 pub fn svg(layout: &Layout, active: &str) -> String {
     let outline = match layout.shape.as_str() {
+        "grid" => "M45 25H855Q875 25 875 45V430Q875 450 855 450H45Q25 450 25 430V45Q25 25 45 25Z",
         "rectangle" => {
             "M70 60H830Q850 60 850 85V365Q850 390 820 390H80Q50 390 50 360V90Q50 60 70 60Z"
         }
@@ -741,8 +2175,10 @@ pub fn svg(layout: &Layout, active: &str) -> String {
                 "↓"
             } else if control.id.ends_with("left") {
                 "←"
-            } else {
+            } else if control.id.ends_with("right") {
                 "→"
+            } else {
+                &control.label
             }
         } else {
             &control.label
@@ -759,7 +2195,20 @@ pub fn svg(layout: &Layout, active: &str) -> String {
             xml(label)
         );
     }
-    svg.push_str("<text x=\"450\" y=\"477\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"15\" fill=\"#a9bbca\">Front view · rear controls shown at bottom · schematic, not to scale</text></svg>");
+    let caption = if layout.id.starts_with("mame-")
+        || matches!(
+            layout.id.as_str(),
+            "arcade-six-button-analog" | "arcade-eight-button-analog" | "neogeo-analog"
+        ) {
+        "Logical frontend channels · not cabinet geometry or physical button placement"
+    } else {
+        "Front view · rear controls shown at bottom · schematic, not to scale"
+    };
+    let _ = write!(
+        svg,
+        "<text x=\"450\" y=\"477\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"15\" fill=\"#a9bbca\">{}</text></svg>",
+        xml(caption)
+    );
     svg
 }
 
@@ -1034,7 +2483,7 @@ mod tests {
     }
     fn calibration(layout: &str) -> Calibration {
         Calibration {
-            target_mappings: Default::default(),
+            target_mappings: BTreeMap::new(),
             layout: layout.into(),
             os: std::env::consts::OS.into(),
             backend: "gilrs-0.11".into(),
@@ -1045,6 +2494,26 @@ mod tests {
                 .iter()
                 .enumerate()
                 .map(|(i, c)| {
+                    // Pressure controls measure a real evdev gesture on Linux.
+                    let (native, axis) = if c.is_pressure() && std::env::consts::OS == "linux" {
+                        (
+                            Some(NativeInput {
+                                code: 0x30000 + i as u32,
+                                direction: 1,
+                            }),
+                            Some(crate::controller_axis::AxisMeasurement {
+                                minimum: 0,
+                                maximum: 255,
+                                flat: 0,
+                                fuzz: 0,
+                                resolution: 0,
+                                released: 0,
+                                pressed: 255,
+                            }),
+                        )
+                    } else {
+                        (None, None)
+                    };
                     (
                         c.id.clone(),
                         InputBinding {
@@ -1052,8 +2521,8 @@ mod tests {
                             kind: if c.analog { "axis" } else { "button" }.into(),
                             direction: if c.analog { 1 } else { 0 },
                             logical: c.label.clone(),
-                            native: None,
-                            axis: None,
+                            native,
+                            axis,
                         },
                     )
                 })

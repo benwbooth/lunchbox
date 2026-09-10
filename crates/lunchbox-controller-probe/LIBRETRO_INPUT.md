@@ -131,3 +131,10 @@ This checks ordinary Game Boy emulated input, not SGB multiplayer, Game Boy Link
 all model variants, RetroArch's generated configuration processing, physical
 controller calibration, or the desktop launch action. The application has
 separate [option-dependent topology tests](../../docs/SAMEBOY_CONTROLLERS.md).
+
+Reports additionally include the latest `input_descriptors` notification from
+the core: port, device, index, id and copied UTF-8 description. Capture requires
+a terminating record within 4096 entries and labels no longer than 1024 bytes.
+Malformed capture prevents a successful report. This additive collection code
+has not yet been built or run; it does not expand the supported diagnostics to
+FBNeo or establish that every core control is described.

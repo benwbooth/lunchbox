@@ -68,7 +68,7 @@ Button {
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             Column {
                 id: menuColumn
-                width: parent.width
+                width: menuScroll.availableWidth
                 spacing: 3
                 Keys.onDownPressed: menu.moveFocus(1)
                 Keys.onUpPressed: menu.moveFocus(-1)

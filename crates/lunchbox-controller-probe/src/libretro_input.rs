@@ -3,6 +3,7 @@
 use anyhow::{Context, Result, ensure};
 use libloading::Library;
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::Path;
 use std::sync::{
@@ -13,6 +14,178 @@ use std::sync::{
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static SYSTEM_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
 static SAVE_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
+static INSPECTION_OPTIONS: Mutex<Option<crate::libretro_options::OptionEnvironment>> =
+    Mutex::new(None);
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InputQuery {
+    pub port: u32,
+    pub device: u32,
+    pub index: u32,
+    pub id: u32,
+}
+
+struct QueryCapture {
+    calls: u64,
+    addresses: std::collections::BTreeSet<InputQuery>,
+    failure: Option<String>,
+}
+static INSPECTION_QUERIES: Mutex<QueryCapture> = Mutex::new(QueryCapture {
+    calls: 0,
+    addresses: std::collections::BTreeSet::new(),
+    failure: None,
+});
+type ControllerChoices = Vec<Vec<ControllerChoice>>;
+static CONTROLLER_CHOICES: Mutex<Result<Option<ControllerChoices>, String>> = Mutex::new(Ok(None));
+
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ControllerChoice {
+    pub description: String,
+    pub id: u32,
+}
+
+#[repr(C)]
+struct NativeControllerChoice {
+    description: *const c_char,
+    id: u32,
+}
+#[repr(C)]
+struct NativeControllerInfo {
+    types: *const NativeControllerChoice,
+    count: u32,
+}
+
+unsafe fn capture_controller_choices(
+    data: *const NativeControllerInfo,
+) -> Result<ControllerChoices> {
+    let mut ports = Vec::new();
+    for port in 0..=16 {
+        let info = unsafe { &*data.add(port) };
+        if info.types.is_null() {
+            ensure!(
+                info.count == 0,
+                "Core controller-info terminator has a nonzero type count"
+            );
+            return Ok(ports);
+        }
+        ensure!(
+            port < 16 && info.count <= 64,
+            "Core controller choices exceed capture limits"
+        );
+        let mut choices = Vec::new();
+        for index in 0..info.count as usize {
+            let choice = unsafe { &*info.types.add(index) };
+            ensure!(
+                !choice.description.is_null(),
+                "Core controller choice has no label"
+            );
+            let mut bytes = Vec::new();
+            let mut terminated = false;
+            for offset in 0..=1024 {
+                let byte = unsafe { *choice.description.add(offset) } as u8;
+                if byte == 0 {
+                    terminated = true;
+                    break;
+                }
+                bytes.push(byte);
+            }
+            ensure!(
+                terminated && bytes.len() <= 1024,
+                "Core controller choice label exceeds capture limit"
+            );
+            choices.push(ControllerChoice {
+                description: String::from_utf8(bytes)
+                    .context("Core controller choice is not UTF-8")?,
+                id: choice.id,
+            });
+        }
+        ports.push(choices);
+    }
+    anyhow::bail!("Core controller-info list is not terminated")
+}
+
+fn controller_choice_snapshot() -> Result<Option<ControllerChoices>> {
+    CONTROLLER_CHOICES
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Controller choice capture lock poisoned"))?
+        .clone()
+        .map_err(anyhow::Error::msg)
+}
+struct DescriptorCapture {
+    updates: u64,
+    descriptors: Result<Vec<InputDescriptor>, String>,
+}
+static INPUT_DESCRIPTORS: Mutex<DescriptorCapture> = Mutex::new(DescriptorCapture {
+    updates: 0,
+    descriptors: Ok(Vec::new()),
+});
+
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InputDescriptor {
+    pub port: u32,
+    pub device: u32,
+    pub index: u32,
+    pub id: u32,
+    pub description: String,
+}
+
+#[repr(C)]
+struct NativeInputDescriptor {
+    port: u32,
+    device: u32,
+    index: u32,
+    id: u32,
+    description: *const c_char,
+}
+
+// The explicitly trusted core owns valid pointers for this callback's duration.
+// Bound traversal and copy strings immediately; never retain native pointers.
+unsafe fn capture_input_descriptors(
+    data: *const NativeInputDescriptor,
+) -> Result<Vec<InputDescriptor>> {
+    let mut captured = Vec::new();
+    for index in 0..4096 {
+        let descriptor = unsafe { &*data.add(index) };
+        if descriptor.description.is_null() {
+            return Ok(captured);
+        }
+        let mut label = Vec::new();
+        let mut terminated = false;
+        for offset in 0..=1024 {
+            let byte = unsafe { *descriptor.description.add(offset) } as u8;
+            if byte == 0 {
+                terminated = true;
+                break;
+            }
+            label.push(byte);
+        }
+        ensure!(
+            terminated && label.len() <= 1024,
+            "Core input descriptor label exceeds capture limit"
+        );
+        captured.push(InputDescriptor {
+            port: descriptor.port,
+            device: descriptor.device,
+            index: descriptor.index,
+            id: descriptor.id,
+            description: String::from_utf8(label)
+                .context("Core input descriptor label is not UTF-8")?,
+        });
+    }
+    anyhow::bail!("Core input descriptors have no terminator within capture limit")
+}
+
+fn input_descriptor_snapshot() -> Result<(u64, Vec<InputDescriptor>)> {
+    let capture = INPUT_DESCRIPTORS
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Input descriptor capture lock poisoned"))?;
+    Ok((
+        capture.updates,
+        capture.descriptors.clone().map_err(anyhow::Error::msg)?,
+    ))
+}
 static PRESSED: [AtomicU16; 2] = [AtomicU16::new(0), AtomicU16::new(0)];
 // [port 0 LX, LY, RX, RY, port 1 LX, LY, RX, RY].
 static ANALOG: [AtomicI16; 8] = [
@@ -63,6 +236,16 @@ type Poll = unsafe extern "C" fn();
 // Callback values are static or retained until after core deinitialization.
 unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
     let command = command & !0x10000; // libretro experimental flag
+    {
+        let Ok(mut options) = INSPECTION_OPTIONS.lock() else {
+            return false;
+        };
+        if let Some(options) = options.as_mut() {
+            if let Some(result) = unsafe { options.handle(command, data) } {
+                return result;
+            }
+        }
+    }
     if command == 51 {
         return BITMASK.load(Ordering::Relaxed);
     }
@@ -94,7 +277,33 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             true
         }
         10 => unsafe { *data.cast::<u32>() <= 2 },
-        11 | 16 | 35 | 36 | 37 => true, // descriptors/options/maps/geometry notifications
+        11 => {
+            let captured = unsafe { capture_input_descriptors(data.cast()) }
+                .map_err(|error| error.to_string());
+            let valid = captured.is_ok();
+            let Ok(mut slot) = INPUT_DESCRIPTORS.lock() else {
+                return false;
+            };
+            let Some(updates) = slot.updates.checked_add(1) else {
+                slot.descriptors = Err("Input descriptor update count overflowed".into());
+                return false;
+            };
+            slot.updates = updates;
+            slot.descriptors = captured;
+            valid
+        }
+        35 => {
+            let captured = unsafe { capture_controller_choices(data.cast()) }
+                .map(Some)
+                .map_err(|error| error.to_string());
+            let valid = captured.is_ok();
+            let Ok(mut choices) = CONTROLLER_CHOICES.lock() else {
+                return false;
+            };
+            *choices = captured;
+            valid
+        }
+        16 | 36 | 37 => true, // options/maps/geometry notifications
         15 => {
             let variable = unsafe { &mut *data.cast::<Variable>() };
             if variable.key.is_null() {
@@ -179,6 +388,9 @@ impl Drop for Lease {
         }
         if let Ok(mut directory) = SAVE_DIRECTORY.lock() {
             *directory = None;
+        }
+        if let Ok(mut options) = INSPECTION_OPTIONS.lock() {
+            *options = None;
         }
         ACTIVE.store(false, Ordering::Release);
     }
@@ -455,7 +667,8 @@ pub struct Observation {
     pub observed_keyinput: u16,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FirmwareIdentity {
     pub filename: String,
     pub sha256: String,
@@ -476,7 +689,8 @@ pub struct PsxObservation {
     pub observed_pad_buffer: Vec<u8>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CoreIdentity {
     pub core_sha256: String,
     pub core_name: String,
@@ -493,6 +707,9 @@ pub struct Report {
     pub core_sha256: String,
     pub core_name: String,
     pub core_version: String,
+    pub input_descriptors: Vec<InputDescriptor>,
+    pub input_descriptor_updates: u64,
+    pub controller_choices: Option<ControllerChoices>,
     pub input_mode: &'static str,
     pub input_polls: u64,
     pub bitmask_requests: u64,
@@ -542,6 +759,284 @@ pub fn core_identity(path: &Path, expected_sha256: &str) -> Result<CoreIdentity>
             block_extract: info.block_extract,
         })
     }
+}
+
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContentControllerReport {
+    pub schema_version: u32,
+    pub core: CoreIdentity,
+    pub content_filename: String,
+    pub staged_files: Vec<FirmwareIdentity>,
+    pub requested_devices: BTreeMap<u32, u32>,
+    pub effective_options: BTreeMap<String, String>,
+    pub controller_choices: ControllerChoices,
+    pub input_descriptor_updates_before_refresh: u64,
+    pub input_descriptor_updates: u64,
+    pub input_descriptors: Vec<InputDescriptor>,
+    /// Unique input callback addresses requested during the idle refresh frame.
+    /// Conditional paths that require held input are not exhaustively observed.
+    pub input_queries: Vec<InputQuery>,
+    pub input_query_calls: u64,
+    pub refresh_frames: u32,
+}
+
+/// Load real content in a fresh helper process, with private content, system
+/// and save directories. Explicit dependencies preserve their original basenames.
+/// This is descriptor inspection, not a controller-behavior or gameplay test.
+/// Only full-path cores are accepted. The caller must trust the pinned core and
+/// enforce an external process timeout; native loading/running cannot be safely
+/// interrupted inside this function.
+pub fn inspect_content_controllers(
+    path: &Path,
+    expected_sha256: &str,
+    expected_core_name: &str,
+    content: &Path,
+    content_dependencies: &[std::path::PathBuf],
+    system_files: &[std::path::PathBuf],
+    overrides: BTreeMap<String, String>,
+    requested_devices: BTreeMap<u32, u32>,
+) -> Result<ContentControllerReport> {
+    ensure!(
+        !requested_devices.is_empty() && requested_devices.keys().all(|port| *port < 16),
+        "Inspection requires explicit device selections on bounded ports"
+    );
+    ensure!(
+        content_dependencies.len() <= 256 && system_files.len() <= 256,
+        "Too many inspection dependency files"
+    );
+    let options = crate::libretro_options::OptionEnvironment::new(overrides)?;
+    let path = path.canonicalize()?;
+    ensure!(
+        ACTIVE
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok(),
+        "Only one core inspection may run in this process"
+    );
+    let _lease = Lease;
+    let directory = tempfile::tempdir()?;
+    let content_directory = directory.path().join("content");
+    let system_directory = directory.path().join("system");
+    let save_directory = directory.path().join("save");
+    for target in [&content_directory, &system_directory, &save_directory] {
+        std::fs::create_dir(target)?;
+    }
+    let mut staged_files = Vec::new();
+    let mut stage =
+        |source: &Path, target_directory: &Path, group: &str| -> Result<std::path::PathBuf> {
+            let source = source.canonicalize()?;
+            ensure!(
+                source.is_file(),
+                "Inspection dependency is not a regular file"
+            );
+            let filename = source.file_name().context("Dependency has no filename")?;
+            let target = target_directory.join(filename);
+            let mut input = std::fs::File::open(&source)?;
+            let mut output = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&target)
+                .with_context(|| {
+                    format!("Staging unique inspection dependency {}", target.display())
+                })?;
+            let bytes = std::io::copy(&mut input, &mut output)?;
+            drop(output);
+            staged_files.push(FirmwareIdentity {
+                filename: format!(
+                    "{group}/{}",
+                    filename.to_str().context("UTF-8 filename required")?
+                ),
+                sha256: crate::file_hash(&target)?,
+                bytes,
+            });
+            Ok(target)
+        };
+    let staged_content = stage(content, &content_directory, "content")?;
+    for source in content_dependencies {
+        stage(source, &content_directory, "content")?;
+    }
+    for source in system_files {
+        stage(source, &system_directory, "system")?;
+    }
+    let core_identity = core_identity(&path, expected_sha256)?;
+    ensure!(
+        core_identity.core_name == expected_core_name,
+        "Unexpected core identity"
+    );
+    ensure!(
+        core_identity.need_fullpath,
+        "Content inspection requires a full-path core"
+    );
+    *SYSTEM_DIRECTORY
+        .lock()
+        .map_err(|_| anyhow::anyhow!("System-directory lock poisoned"))? = Some(CString::new(
+        system_directory
+            .to_str()
+            .context("UTF-8 system path required")?,
+    )?);
+    *SAVE_DIRECTORY
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Save-directory lock poisoned"))? = Some(CString::new(
+        save_directory
+            .to_str()
+            .context("UTF-8 save path required")?,
+    )?);
+    *INSPECTION_OPTIONS
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Core-option lock poisoned"))? = Some(options);
+    *CONTROLLER_CHOICES
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Controller-choice lock poisoned"))? = Ok(None);
+    *INPUT_DESCRIPTORS
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Descriptor lock poisoned"))? = DescriptorCapture {
+        updates: 0,
+        descriptors: Ok(Vec::new()),
+    };
+    BITMASK.store(false, Ordering::Relaxed);
+    let content_path = CString::new(
+        staged_content
+            .to_str()
+            .context("UTF-8 content path required")?,
+    )?;
+    unsafe {
+        let library = Library::new(&path).context("Loading trusted inspection core")?;
+        let init = *library.get::<unsafe extern "C" fn()>(b"retro_init\0")?;
+        let load =
+            *library.get::<unsafe extern "C" fn(*const GameInfo) -> bool>(b"retro_load_game\0")?;
+        let mut core = Core {
+            deinit: *library.get(b"retro_deinit\0")?,
+            unload: *library.get(b"retro_unload_game\0")?,
+            run: *library.get(b"retro_run\0")?,
+            memory: *library.get(b"retro_get_memory_data\0")?,
+            memory_size: *library.get(b"retro_get_memory_size\0")?,
+            set_device: *library.get(b"retro_set_controller_port_device\0")?,
+            initialized: false,
+            loaded: false,
+            _library: library,
+        };
+        macro_rules! callback {
+            ($symbol:literal, $ty:ty, $callback:ident) => {
+                core._library.get::<unsafe extern "C" fn($ty)>($symbol)?($callback);
+            };
+        }
+        callback!(b"retro_set_environment\0", Environment, environment);
+        callback!(b"retro_set_video_refresh\0", Video, video);
+        callback!(b"retro_set_audio_sample\0", Audio, audio);
+        callback!(b"retro_set_audio_sample_batch\0", AudioBatch, audio_batch);
+        callback!(b"retro_set_input_poll\0", Poll, poll);
+        callback!(b"retro_set_input_state\0", Input, neutral_input);
+        init();
+        core.initialized = true;
+        ensure!(
+            load(&GameInfo {
+                path: content_path.as_ptr(),
+                data: std::ptr::null(),
+                size: 0,
+                meta: std::ptr::null()
+            }),
+            "Core rejected staged inspection content"
+        );
+        core.loaded = true;
+        let choices =
+            controller_choice_snapshot()?.context("Core did not advertise controller choices")?;
+        for (&port, &device) in &requested_devices {
+            ensure!(
+                choices
+                    .get(port as usize)
+                    .is_some_and(|choices| choices.iter().any(|choice| choice.id == device)),
+                "Requested device {device} is not advertised on port {port}"
+            );
+            (core.set_device)(port, device);
+        }
+        let (before, _) = input_descriptor_snapshot()?;
+        *INSPECTION_QUERIES
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Input-query lock poisoned"))? = QueryCapture {
+            calls: 0,
+            addresses: std::collections::BTreeSet::new(),
+            failure: None,
+        };
+        (core.run)();
+        let (input_descriptor_updates, input_descriptors) = input_descriptor_snapshot()?;
+        ensure!(
+            input_descriptor_updates > before,
+            "Core did not refresh input descriptors during the inspection frame"
+        );
+        let controller_choices =
+            controller_choice_snapshot()?.context("Core withdrew controller choices")?;
+        for (&port, &device) in &requested_devices {
+            ensure!(
+                controller_choices
+                    .get(port as usize)
+                    .is_some_and(|choices| choices.iter().any(|choice| choice.id == device)),
+                "Requested device {device} is no longer advertised on port {port}"
+            );
+        }
+        let effective_options = INSPECTION_OPTIONS
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Core-option lock poisoned"))?
+            .as_ref()
+            .context("Inspection options disappeared")?
+            .effective_values()?;
+        let (input_queries, input_query_calls) = {
+            let queries = INSPECTION_QUERIES
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Input-query lock poisoned"))?;
+            ensure!(
+                queries.failure.is_none(),
+                "Input-query capture failed: {:?}",
+                queries.failure
+            );
+            ensure!(
+                queries.calls > 0,
+                "Core did not query input during the inspection frame"
+            );
+            (queries.addresses.iter().cloned().collect(), queries.calls)
+        };
+        Ok(ContentControllerReport {
+            schema_version: 1,
+            core: core_identity,
+            content_filename: staged_content
+                .file_name()
+                .and_then(|name| name.to_str())
+                .context("UTF-8 content filename required")?
+                .to_owned(),
+            staged_files,
+            requested_devices,
+            effective_options,
+            controller_choices,
+            input_descriptor_updates_before_refresh: before,
+            input_descriptor_updates,
+            input_descriptors,
+            input_queries,
+            input_query_calls,
+            refresh_frames: 1,
+        })
+    }
+}
+
+// Inspection deliberately presents an idle frontend, with no host devices.
+unsafe extern "C" fn neutral_input(port: u32, device: u32, index: u32, id: u32) -> i16 {
+    if let Ok(mut queries) = INSPECTION_QUERIES.lock() {
+        if queries.failure.is_none() {
+            if port >= 16 || queries.calls >= 65536 {
+                queries.failure = Some("Input-query address/call limit exceeded".into());
+            } else {
+                queries.calls += 1;
+                queries.addresses.insert(InputQuery {
+                    port,
+                    device,
+                    index,
+                    id,
+                });
+                if queries.addresses.len() > 4096 {
+                    queries.failure = Some("Too many distinct input-query addresses".into());
+                }
+            }
+        }
+    }
+    0
 }
 
 /// Loads native executable code. Caller must trust the supplied core. This
@@ -634,6 +1129,16 @@ pub fn inspect_with_system_directory(
         axis.store(0, Ordering::Relaxed);
     }
     POLLS.store(0, Ordering::Relaxed);
+    *CONTROLLER_CHOICES
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Controller choice capture lock poisoned"))? = Ok(None);
+    *INPUT_DESCRIPTORS
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Input descriptor capture lock poisoned"))? =
+        DescriptorCapture {
+            updates: 0,
+            descriptors: Ok(Vec::new()),
+        };
     MASK_REQUESTS.store(0, Ordering::Relaxed);
     SINGLE_REQUESTS.store(0, Ordering::Relaxed);
     ANALOG_REQUESTS.store(0, Ordering::Relaxed);
@@ -757,12 +1262,16 @@ pub fn inspect_with_system_directory(
                 },
                 "Core did not exercise the requested input callback mode"
             );
+            let (input_descriptor_updates, input_descriptors) = input_descriptor_snapshot()?;
             return Ok(Report {
                 schema_version: 3,
                 diagnostic: "psx-bios-pad-devices",
                 core_sha256: hash,
                 core_name: name,
                 core_version: revision,
+                input_descriptors,
+                input_descriptor_updates,
+                controller_choices: controller_choice_snapshot()?,
                 input_mode: if bitmask { "bitmask" } else { "individual" },
                 input_polls: POLLS.load(Ordering::Relaxed),
                 bitmask_requests,
@@ -864,6 +1373,7 @@ pub fn inspect_with_system_directory(
             },
             "Core did not exercise the requested input callback mode"
         );
+        let (input_descriptor_updates, input_descriptors) = input_descriptor_snapshot()?;
         Ok(Report {
             schema_version: 1,
             diagnostic: match diagnostic {
@@ -875,6 +1385,9 @@ pub fn inspect_with_system_directory(
             core_sha256: hash,
             core_name: name,
             core_version: revision,
+            input_descriptors,
+            input_descriptor_updates,
+            controller_choices: controller_choice_snapshot()?,
             input_mode: if bitmask { "bitmask" } else { "individual" },
             input_polls: POLLS.load(Ordering::Relaxed),
             bitmask_requests,

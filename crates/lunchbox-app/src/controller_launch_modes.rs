@@ -86,6 +86,20 @@ pub fn validate_arguments(
 }
 
 pub fn configured_modes(config: &str, arguments: &[OsString], ports: usize) -> Result<Vec<u32>> {
+    Ok(resolve_arguments(config, arguments, ports)?.0)
+}
+
+/// Locate the one effective append-config option using the same argument grammar
+/// as mode validation. Option values and content after `--` are not options.
+pub fn append_config_index(arguments: &[OsString]) -> Result<Option<usize>> {
+    Ok(resolve_arguments("", arguments, 16)?.1)
+}
+
+fn resolve_arguments(
+    config: &str,
+    arguments: &[OsString],
+    ports: usize,
+) -> Result<(Vec<u32>, Option<usize>)> {
     ensure!((1..=16).contains(&ports), "Invalid controller port count");
     ensure!(
         !config
@@ -129,14 +143,26 @@ pub fn configured_modes(config: &str, arguments: &[OsString], ports: usize) -> R
             *mode = number(value)?;
         }
     }
+    let mut append_config = None;
     let mut index = 0;
     while index < arguments.len() {
         let Some(argument) = arguments[index].to_str() else {
+            ensure!(
+                arguments[index].as_encoded_bytes().first() != Some(&b'-'),
+                "Non-UTF-8 RetroArch option needs controller-mode resolution"
+            );
             index += 1;
             continue;
         };
         if argument == "--" {
             break;
+        }
+        if argument == "--appendconfig" || argument.starts_with("--appendconfig=") {
+            ensure!(
+                append_config.is_none(),
+                "Multiple --appendconfig options can discard the calibrated configuration; use one pipe-separated list"
+            );
+            append_config = Some(index);
         }
         let matched = [
             ("--device", "-d", None),
@@ -179,10 +205,52 @@ pub fn configured_modes(config: &str, arguments: &[OsString], ports: usize) -> R
                 "Controller mode selects a port outside this verified mode"
             );
             modes[port - 1] = mode;
+        } else if matches!(argument, "-v" | "--verbose" | "-f" | "--fullscreen") {
+            // Flags without arguments cannot hide a device selection.
+        } else if matches!(
+            argument,
+            "-L" | "--libretro" | "-c" | "--config" | "--appendconfig" | "-M" | "--sram-mode"
+        ) {
+            index += 1;
+            ensure!(index < arguments.len(), "Missing RetroArch option argument");
+        } else if [
+            "--libretro=",
+            "--config=",
+            "--appendconfig=",
+            "--sram-mode=",
+        ]
+        .iter()
+        .any(|prefix| argument.starts_with(prefix))
+            || argument.starts_with("-L")
+            || argument.starts_with("-c")
+            || argument.starts_with("-M")
+        {
+            // An attached path/value is not another command-line option.
+        } else {
+            ensure!(
+                !argument.starts_with('-'),
+                "Unresolved RetroArch option {argument}; use explicit supported options for calibrated launch"
+            );
         }
         index += 1;
     }
-    Ok(modes)
+    Ok((modes, append_config))
+}
+
+/// RetroArch parses device CLI options after loading the appended configuration.
+/// Check the final generated configuration, including disabled/unfilled ports,
+/// rather than assuming a config entry can override the command line.
+pub fn validate_generated_modes(config: &str, arguments: &[OsString], ports: usize) -> Result<()> {
+    let expected = configured_modes(config, &[], ports)?;
+    let effective = configured_modes(config, arguments, ports)?;
+    for (index, (expected, effective)) in expected.iter().zip(&effective).enumerate() {
+        ensure!(
+            expected == effective,
+            "RetroArch command-line device {effective} conflicts with calibrated device {expected} on port {}; remove the conflicting device option or select a supported mode",
+            index + 1
+        );
+    }
+    Ok(())
 }
 
 fn number(value: &str) -> Result<u32> {
@@ -254,6 +322,83 @@ mod tests {
             args(&["--nodevice=0"]),
         ] {
             assert!(configured_modes("", &arguments, 2).is_err());
+        }
+    }
+
+    #[test]
+    fn generated_devices_must_survive_cli_precedence_including_empty_ports() {
+        let config = "input_libretro_device_p1 = 257\ninput_libretro_device_p2 = 0\n";
+        for arguments in [
+            args(&[]),
+            args(&["--device=1:257", "--nodevice=2"]),
+            args(&["-d", "1:0x101", "-N2"]),
+            args(&["-d1:1", "--device", "1:0401"]),
+            args(&["--", "--device=1:5"]),
+        ] {
+            validate_generated_modes(config, &arguments, 2).unwrap();
+        }
+        for arguments in [
+            args(&["--device=1:1"]),
+            args(&["--nodevice", "1"]),
+            args(&["-A1"]),
+            args(&["--device=2:257"]),
+            args(&["-d1:257", "-d1:1"]),
+            args(&["--device=3:0"]),
+        ] {
+            assert!(
+                validate_generated_modes(config, &arguments, 2).is_err(),
+                "{arguments:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn cli_mode_resolution_consumes_values_and_rejects_unresolved_option_syntax() {
+        for arguments in [
+            args(&["-M", "noload-nosave"]),
+            args(&["-Mnoload-nosave"]),
+            args(&["-M", "--device=1:5"]),
+            args(&["-v", "-f", "-L", "-d1:5", "-c", "-N1", "game.gba"]),
+            args(&[
+                "--libretro=-d1:5",
+                "--config=-N1",
+                "--sram-mode",
+                "noload-nosave",
+            ]),
+            args(&["-L-d1:5", "-c-N1", "--appendconfig", "-A1"]),
+            args(&[
+                "--verbose",
+                "--fullscreen",
+                "--libretro",
+                "core.so",
+                "--config",
+                "base.cfg",
+            ]),
+        ] {
+            assert_eq!(configured_modes("", &arguments, 1).unwrap(), [1]);
+        }
+        // getopt accepts grouped short flags and abbreviated long options. Until
+        // we resolve their full semantics, never miss a device override in them.
+        for arguments in [
+            args(&["-vd1:5"]),
+            args(&["-fN1"]),
+            args(&["--dev=1:5"]),
+            args(&["--nodev=1"]),
+            args(&["--dual=1"]),
+            args(&["--unknown"]),
+            args(&["--config"]),
+            args(&["-M"]),
+        ] {
+            assert!(
+                configured_modes("", &arguments, 1).is_err(),
+                "{arguments:?}"
+            );
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            let arguments = [OsString::from_vec(b"-d1:5\xff".to_vec())];
+            assert!(configured_modes("", &arguments, 1).is_err());
         }
     }
 }

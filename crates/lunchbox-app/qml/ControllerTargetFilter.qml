@@ -2,6 +2,14 @@ import QtQml
 
 QtObject {
     function key(value) { return (value || "").trim().toLowerCase() }
+    function canonicalCore(value) {
+        const aliases = {beetle_cygne: "mednafen_wswan", beetle_lynx: "mednafen_lynx",
+            beetle_ngp: "mednafen_ngp", beetle_pce_fast: "mednafen_pce_fast",
+            beetle_supergrafx: "mednafen_supergrafx", beetle_psx: "mednafen_psx",
+            beetle_psx_hw: "mednafen_psx_hw", beetle_vb: "mednafen_vb"}
+        const core = key(value).replace(/_libretro$/, "")
+        return aliases[core] || core
+    }
     function applicable(profiles, emulator, platform) {
         const host = key(emulator)
         const system = key(platform)
@@ -9,14 +17,11 @@ QtObject {
         const retroarch = host.startsWith("retroarch")
         const coreMatch = host.match(/\(([^()]+)\)$/)
         const rawCore = retroarch && coreMatch ? key(coreMatch[1]).replace(/_libretro$/, "") : host
-        const aliases = {mednafen_wswan: "beetle_cygne", mednafen_lynx: "beetle_lynx",
-            mednafen_ngp: "beetle_ngp", mednafen_pce_fast: "beetle_pce_fast",
-            mednafen_supergrafx: "beetle_supergrafx", mednafen_psx: "beetle_psx",
-            mednafen_psx_hw: "beetle_psx_hw", mednafen_vb: "beetle_vb"}
-        const core = retroarch ? (aliases[rawCore] || rawCore) : rawCore
+        const core = retroarch ? canonicalCore(rawCore) : rawCore
         return profiles.filter(function(profile) {
             if ((profile.transport === "retropad") !== retroarch) return false
-            if (key(profile.core) !== core && !(retroarch && key(profile.retroarch_library) === core)) return false
+            if ((retroarch ? canonicalCore(profile.core) : key(profile.core)) !== core
+                    && !(retroarch && canonicalCore(profile.retroarch_library) === core)) return false
             if (!platformsFor(profile).some(value => key(value) === system)) return false
             if (["arcade", "sega naomi", "sega naomi 2", "sammy atomiswave"].indexOf(system) >= 0)
                 return ["arcade-six-button", "arcade-eight-button"].indexOf(profile.target_layout) >= 0
