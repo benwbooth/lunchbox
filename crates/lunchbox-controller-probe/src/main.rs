@@ -46,6 +46,7 @@ struct Args {
 
 fn run() -> Result<()> {
     let args = Args::parse();
+    #[cfg(target_os = "linux")]
     if !args.evdev_catalog.is_empty() {
         ensure!(
             !args.sdl2_inventory
@@ -65,6 +66,11 @@ fn run() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&catalog)?);
         return Ok(());
     }
+    #[cfg(not(target_os = "linux"))]
+    ensure!(
+        args.evdev_catalog.is_empty(),
+        "Evdev catalog mode requires Linux"
+    );
     if args.sdl2_inventory {
         ensure!(
             args.mapping_db.is_none()

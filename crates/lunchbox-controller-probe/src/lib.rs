@@ -15,6 +15,7 @@ pub mod bindings;
 pub mod content_inspection;
 pub mod duckstation;
 pub mod duckstation_config;
+#[cfg(target_os = "linux")]
 pub mod evdev_catalog;
 pub mod libretro_input;
 pub mod libretro_options;
