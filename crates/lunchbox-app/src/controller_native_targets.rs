@@ -16,6 +16,39 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     ds.controls
         .retain(|control| routes.contains_key(control.id.as_str()));
     db.layouts.push(ds);
+    let mut msx = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    msx.id = "openmsx-native-joystick".into();
+    msx.name = "MSX — digital joystick".into();
+    msx.family = "two-button".into();
+    msx.source = "https://openmsx.org/".into();
+    msx.notes = "Native openMSX control-port joystick with two triggers mapped through the msxjoystickN_config dicts.".into();
+    msx.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("a", "Trigger A", 70.0, 50.0, "face", true),
+        ("b", "Trigger B", 80.0, 35.0, "face", false),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(msx);
     let mut st = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -86,6 +119,18 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     db.layouts.push(joystick);
 
     for (core, layout, players, platforms, source) in [
+        (
+            "openmsx",
+            "openmsx-native-joystick",
+            2,
+            vec![
+                "Microsoft MSX",
+                "Microsoft MSX2",
+                "Microsoft MSX2+",
+                "Spectravideo",
+            ],
+            "https://github.com/openMSX/openMSX/blob/25179d6b8d5ec69ad68252f3854721c9a02594eb/src/input/MSXJoystick.cc",
+        ),
         (
             "desmume",
             "nds-native-buttons",
@@ -269,6 +314,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             .collect::<BTreeMap<&str, &str>>(),
         ("stella", "atari2600-stella-panel") => crate::controller_stella_native::CONTROLS
             .into_iter()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("openmsx", "openmsx-native-joystick") => crate::controller_openmsx_native::CONTROLS
+            .iter()
+            .map(|(target, key, _)| (*target, *key))
             .collect::<BTreeMap<&str, &str>>(),
         ("desmume", "nds-native-buttons") => crate::controller_desmume_native::KEYS
             .iter()

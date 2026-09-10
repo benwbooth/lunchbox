@@ -48,9 +48,10 @@ melonDS now also has partial Linux standard-button dispatch.
 That is 14/249 standalone candidates (5.6%), not complete platform/mode support
 or tested compatibility.
 Installation, host compatibility and per-platform readiness are not inferred.
-Update 2026-09-10: DeSmuME standalone DS button dispatch was added
-(`DESMUME_NATIVE_CONTROLLER_CONTRACT.md`), bringing the native adapter list to
-twenty, after Hatari standalone Atari ST joystick dispatch
+Update 2026-09-10: openMSX standalone MSX joystick dispatch was added
+(`OPENMSX_NATIVE_CONTROLLER_CONTRACT.md`), bringing the native adapter list to
+twenty-one, after DeSmuME standalone DS button dispatch
+(`DESMUME_NATIVE_CONTROLLER_CONTRACT.md`) brought it to twenty, after Hatari standalone Atari ST joystick dispatch
 (`HATARI_NATIVE_CONTROLLER_CONTRACT.md`) brought it to nineteen, after VICE standalone Commodore joystick dispatch
 (`VICE_NATIVE_CONTROLLER_CONTRACT.md`) brought it to eighteen, after Stella 7.x standalone Atari 2600 dispatch
 (`STELLA_NATIVE_CONTROLLER_CONTRACT.md`) brought it to seventeen. Update 2026-09-09: bsnes v115 standalone SNES gamepad dispatch was added
@@ -58,7 +59,7 @@ twenty, after Hatari standalone Atari ST joystick dispatch
 The probe also gained a generic read-only `--evdev-catalog` capability dump.
 No runtime verification was performed.
 
-Next: continue ordinary standalone gamepad configuration beyond these twenty;
+Next: continue ordinary standalone gamepad configuration beyond these twenty-one;
 do not resume the arcade-peripheral audit.
 
 The notes below are historical and do not reopen the excluded peripheral scope.

@@ -36,6 +36,7 @@ mod controller_models;
 #[cfg(target_os = "linux")]
 mod controller_native_process;
 mod controller_native_targets;
+mod controller_openmsx_native;
 mod controller_pcsx2;
 mod controller_ppsspp;
 mod controller_psx;

@@ -12,9 +12,9 @@ The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
 - RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **20/249 (8.0%)**, including ares, bsnes, Stella, VICE, Hatari and DeSmuME.
-- Combined source entry presence: **113/343 (33.0%)**.
-- Existing native adapters consuming guided choices: **20/20 (100.0%)**.
+- Standalone partial source dispatch: **21/249 (8.4%)**, including ares, bsnes, Stella, VICE, Hatari, DeSmuME and openMSX.
+- Combined source entry presence: **114/343 (33.2%)**.
+- Existing native adapters consuming guided choices: **21/21 (100.0%)**.
 - Overall finished/verified coverage: **not established**.
 
 The native integration count includes runtime-setup and host/backend restrictions,
@@ -207,6 +207,16 @@ maps the twelve standard DS controls with the 4-hex-digit joypad codes.
 Single player, reusing the DS buttons-only layout. See
 [DESMUME_NATIVE_CONTROLLER_CONTRACT.md](DESMUME_NATIVE_CONTROLLER_CONTRACT.md).
 Code encoding and rendering are unit-tested; runtime behavior is unverified.
+
+## Step 16 — openMSX standalone MSX joysticks
+
+`controller_openmsx_native` adds a native adapter for openMSX: a private
+`OPENMSX_HOME` plus `-setting` file carries the `msxjoystickN_config` TCL
+dicts built from the calibrated controls, with `-command` plugging the second
+port when two players are selected. See
+[OPENMSX_NATIVE_CONTROLLER_CONTRACT.md](OPENMSX_NATIVE_CONTROLLER_CONTRACT.md).
+Spec, dict and settings rendering are unit-tested; runtime behavior is
+unverified.
 
 ## Remaining work
 

@@ -93,6 +93,19 @@ pub(super) fn reuse(
                 mapping.fceux_launches.push(setup);
             }
         }
+        "openmsx"
+            if !mapping
+                .openmsx_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.openmsx_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.openmsx_native_launches.push(setup);
+            }
+        }
         "desmume"
             if !mapping
                 .desmume_native_launches
