@@ -72,10 +72,11 @@ LinuxGameController.cpp: 0=BTN_A 1=BTN_B 2=BTN_C 3=BTN_X 4=BTN_Y 5=BTN_Z
 12=BTN_THUMBL 13=BTN_THUMBR, 14/15=ABS_X+/-, 16/17=ABS_Y+/-, 18/19=ABS_Z,
 20-25=ABS_RX/RY/RZ halves, 26/27=ABS_HAT0X +/- (or BTN_DPAD_RIGHT/LEFT).
 Per-port config: Configuration → Nes → Port1/Port2 (Type + Mapping1-4 with
-one UInt16 per control), persisted at $XDG_DATA_HOME/Mesen2/settings.json
-(System.Text.Json source-gen context — verify exact property casing and the
-ControllerType JSON form while implementing). NES scope: two ports,
-standard controller.
+one UInt16 per control), persisted at $XDG_DATA_HOME/Mesen2/settings.json. JSON form verified:
+PascalCase properties, indented, enums as strings, unknown members
+ignored, defaults for missing members; the NES standard controller is
+"NesController" (SettingTypes.h) and unset ports are "None". Ready to
+implement: {"Nes":{"Port1":{"Type":"NesController","Mapping1":{...}},"Port2":{"Type":"None"}}}. NES scope: two ports.
 
 Next: continue ordinary standalone gamepad configuration beyond these twenty-one;
 do not resume the arcade-peripheral audit.
