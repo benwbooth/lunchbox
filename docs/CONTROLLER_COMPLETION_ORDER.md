@@ -80,6 +80,31 @@ ignored, defaults for missing members; the NES standard controller is
 "NesController" (SettingTypes.h) and unset ports are "None". Ready to
 implement: {"Nes":{"Port1":{"Type":"NesController","Mapping1":{...}},"Port2":{"Type":"None"}}}. NES scope: two ports.
 
+Update 2026-09-10: research checkpoints for the next two candidates.
+xemu (mborgerson/xemu fd0ae0c): `config_spec.yml`/`ui/xemu-input.c` pin the
+contract — `input.bindings.port1..4` hold SDL GUID strings (empty unbinds),
+`portN_driver` selects `usb-xbox-gamepad`(-s), and `input.gamepad_mappings[]`
+entries key on `gamepad_id` GUID with `controller_mapping` tables whose
+values are SDL_Gamepad button/axis indices (validated against
+SDL_GAMEPAD_*_COUNT at runtime, invalid entries reset). Physical→Xbox
+translation is two-layer: SDL's own gamepad translation (optionally a custom
+`gamecontrollerdb_path`) plus this standard→Xbox table; consuming Lunchbox
+calibration requires generating an SDL3 mapping string for the private DB
+(sdl2_mapping.rs is a gesture context, not a generator — one must be
+written), and the probe's classic-backend translation path is pinned to SDL
+3.2.20 while xemu bundles its own SDL3 revision. Implementation must resolve
+the version coupling and same-GUID identity limits first.
+BlastEm (libretro/blastem mirror b4d7524, upstream Mercurial): config is the
+tern tree serialized as nested `key value` blocks with `{`/`}` (config.c
+serialize_config); pads live under `bindings pads <idx>` where idx is the
+SDL device index (fallbacks: GUID type_id, controller-type key, `default`);
+children are `dpads 0 up|down|left|right <target>`, `buttons <n> <target>`
+and axis bindings; targets are `gamepads.<1-8|n>.<button>` with buttons
+up/down/left/right/a/b/c/x/y/z/start/mode (bindings.c get_pad_buttons,
+parse_binding_target; `n` = device+1). Config dir is `$HOME/blastem`
+(paths.c), so a private HOME isolates reads/writes. Ready to implement as a
+single/dual digital-pad contract over the SameBoy SDL2 probe.
+
 Next: continue ordinary standalone gamepad configuration beyond these twenty-two;
 do not resume the arcade-peripheral audit.
 
