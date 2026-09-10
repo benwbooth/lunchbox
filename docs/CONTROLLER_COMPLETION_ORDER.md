@@ -63,12 +63,19 @@ Update 2026-09-10: FS-UAE was researched and deliberately deferred: in
 fs-uae f362278 the C-side gamepad→joystick mapping code is entirely `#if 0`
 and the live mapping lives in the bundled Python layer, which is not part of
 the repository — a contract cannot be pinned from available source without
-runtime verification. Mesen2 (SourMesen/Mesen2 b9fa69d) research began:
-per-port `KeyMapping` objects hold one UInt16 per control (A/B/X/Y/L/R/Up/
-Down/Left/Right/Start/Select/Turbo*, persisted through the settings JSON),
-but the UInt16 gamepad-button encoding had not yet been located; resume by
-finding where raw gamepad events become those codes (Core interop layer),
-then implement the adapter.
+runtime verification. Mesen2 (SourMesen/Mesen2 b9fa69d) research is COMPLETE and ready to
+implement. The UInt16 encoding is `0x1000 + pad*0x100 + buttonIndex`
+(IKeyManager.h BaseGamepadIndex; LinuxKeyManager.cpp), where pad is the
+evdev device slot order and buttonIndex maps straight to kernel codes via
+LinuxGameController.cpp: 0=BTN_A 1=BTN_B 2=BTN_C 3=BTN_X 4=BTN_Y 5=BTN_Z
+6=BTN_TL 7=BTN_TR 8=BTN_TL2 9=BTN_TR2 10=BTN_SELECT 11=BTN_START
+12=BTN_THUMBL 13=BTN_THUMBR, 14/15=ABS_X+/-, 16/17=ABS_Y+/-, 18/19=ABS_Z,
+20-25=ABS_RX/RY/RZ halves, 26/27=ABS_HAT0X +/- (or BTN_DPAD_RIGHT/LEFT).
+Per-port config: Configuration → Nes → Port1/Port2 (Type + Mapping1-4 with
+one UInt16 per control), persisted at $XDG_DATA_HOME/Mesen2/settings.json
+(System.Text.Json source-gen context — verify exact property casing and the
+ControllerType JSON form while implementing). NES scope: two ports,
+standard controller.
 
 Next: continue ordinary standalone gamepad configuration beyond these twenty-one;
 do not resume the arcade-peripheral audit.
