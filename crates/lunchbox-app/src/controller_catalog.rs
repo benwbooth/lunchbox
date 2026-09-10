@@ -1363,6 +1363,7 @@ impl Catalog {
                             | "bsnes-native-settings"
                             | "stella-native-settings"
                             | "vice-native-settings"
+                            | "hatari-native-settings"
                             | "bizhawk-native-settings"
                     ),
                 "unsupported profile contract"
@@ -1615,7 +1616,8 @@ impl Catalog {
                         | "bizhawk-native-settings"
                         | "bsnes-native-settings"
                         | "stella-native-settings"
-                        | "vice-native-settings" => {
+                        | "vice-native-settings"
+                        | "hatari-native-settings" => {
                             crate::controller_native_targets::valid_output(profile, target, output)
                         }
                         "retropad" => {

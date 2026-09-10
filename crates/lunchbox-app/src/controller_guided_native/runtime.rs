@@ -93,6 +93,19 @@ pub(super) fn reuse(
                 mapping.fceux_launches.push(setup);
             }
         }
+        "hatari"
+            if !mapping
+                .hatari_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.hatari_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.hatari_native_launches.push(setup);
+            }
+        }
         "vice"
             if !mapping
                 .vice_native_launches

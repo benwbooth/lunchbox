@@ -12,9 +12,9 @@ The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
 - RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **18/249 (7.2%)**, including ares, bsnes, Stella and VICE.
-- Combined source entry presence: **111/343 (32.4%)**.
-- Existing native adapters consuming guided choices: **18/18 (100.0%)**.
+- Standalone partial source dispatch: **19/249 (7.6%)**, including ares, bsnes, Stella, VICE and Hatari.
+- Combined source entry presence: **112/343 (32.7%)**.
+- Existing native adapters consuming guided choices: **19/19 (100.0%)**.
 - Overall finished/verified coverage: **not established**.
 
 The native integration count includes runtime-setup and host/backend restrictions,
@@ -187,6 +187,16 @@ and two and maps the digital joystick pins, probed over the trusted SDL2
 runtime. Two players across the Commodore 8-bit platforms. See
 [VICE_NATIVE_CONTROLLER_CONTRACT.md](VICE_NATIVE_CONTROLLER_CONTRACT.md).
 Contract encoding and rendering are unit-tested; runtime behavior is
+unverified.
+
+## Step 14 — Hatari standalone Atari ST joystick
+
+`controller_hatari_native` adds a native adapter for Hatari: a private HOME
+and `-c` configuration bind the selected SDL devices to the two ST ports with
+fire-slot button indices and the declared TOS image; directions are pinned to
+Hatari's hardcoded SDL axes 0/1 with hat 0 override. See
+[HATARI_NATIVE_CONTROLLER_CONTRACT.md](HATARI_NATIVE_CONTROLLER_CONTRACT.md).
+Contract rendering and constraints are unit-tested; runtime behavior is
 unverified.
 
 ## Remaining work

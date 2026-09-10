@@ -16,6 +16,40 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     ds.controls
         .retain(|control| routes.contains_key(control.id.as_str()));
     db.layouts.push(ds);
+    let mut st = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    st.id = "hatari-native-joystick".into();
+    st.name = "Atari ST — digital joystick".into();
+    st.family = "two-button".into();
+    st.source = "https://hatari-emu.org/".into();
+    st.notes = "Native Hatari control-port joystick. Directions are pinned to SDL axes 0/1 with hat 0 override; fire 2/3 are joyport expansions.".into();
+    st.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("fire", "Fire", 70.0, 50.0, "face", true),
+        ("fire2", "Fire 2", 80.0, 35.0, "face", false),
+        ("fire3", "Fire 3", 80.0, 65.0, "face", false),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(st);
     let mut joystick = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -52,6 +86,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     db.layouts.push(joystick);
 
     for (core, layout, players, platforms, source) in [
+        (
+            "hatari",
+            "hatari-native-joystick",
+            2,
+            vec!["Atari ST"],
+            "https://github.com/hatari/hatari/blob/11964da62914bf232ca84eacf0cedf1d25223e08/src/sdl/joy_ui.c",
+        ),
         (
             "vice",
             "vice-joystick-panel",
@@ -221,6 +262,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             .collect::<BTreeMap<&str, &str>>(),
         ("stella", "atari2600-stella-panel") => crate::controller_stella_native::CONTROLS
             .into_iter()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("hatari", "hatari-native-joystick") => crate::controller_hatari_native::CONTROLS
+            .iter()
+            .map(|(target, output, _)| (*target, *output))
             .collect::<BTreeMap<&str, &str>>(),
         ("vice", "vice-joystick-panel") => VICE_PIN_ROUTES
             .iter()
