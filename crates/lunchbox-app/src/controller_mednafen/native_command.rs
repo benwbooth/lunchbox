@@ -70,6 +70,7 @@ pub(crate) fn prepare(
     inventory: &[ControllerDevice],
     option: &RomEmulatorOption,
     original: &LaunchPlan,
+    platform: &str,
     cancel: &AtomicBool,
 ) -> Result<NativeSession> {
     cancelled(cancel)?;
@@ -186,6 +187,16 @@ pub(crate) fn prepare(
         setup.base_directory.as_os_str().to_owned(),
     ];
     inputs.configuration.append_mounts(&mut plan.arguments)?;
+    // Firmware: bind the Lunchbox-managed manual-import directory over the
+    // base dir's firmware/ subpath so Mednafen's default
+    // filesys.path_firmware resolution finds user-dropped BIOS files.
+    let firmware_host_dir = crate::firmware::manual_firmware_dir("mednafen", "mednafen", platform)?;
+    std::fs::create_dir_all(&firmware_host_dir)?;
+    plan.arguments.extend([
+        "--bind".into(),
+        firmware_host_dir.as_os_str().to_owned(),
+        setup.base_directory.join("firmware").into_os_string(),
+    ]);
     plan.arguments.extend([
         "--chdir".into(),
         cwd.into_os_string(),

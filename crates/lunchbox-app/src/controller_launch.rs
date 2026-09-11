@@ -6009,6 +6009,7 @@ pub fn prepare_with_cancellation(
                 &inventory,
                 option,
                 plan,
+                platform,
                 cancel,
             )?;
             *plan = native.plan.clone();

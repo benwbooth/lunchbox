@@ -643,6 +643,18 @@ fn resolve_platform_id(connection: &Connection, platform: &str) -> Result<String
     }
 }
 
+/// The Lunchbox-managed directory where the user drops firmware for one
+/// runtime/platform pair (per the platform_records capture and the
+/// manual-import firmware rules). Launch adapters point the emulator's
+/// own firmware search path here.
+pub(crate) fn manual_firmware_dir(
+    runtime_kind: &str,
+    runtime_name: &str,
+    platform: &str,
+) -> Result<PathBuf> {
+    manual_directory(runtime_kind, runtime_name, platform)
+}
+
 fn manual_directory(runtime_kind: &str, runtime_name: &str, platform: &str) -> Result<PathBuf> {
     let root = ProjectDirs::from("com", "Lunchbox", "Lunchbox")
         .map(|dirs| dirs.data_local_dir().join("firmware/manual"))
