@@ -110,6 +110,331 @@ pub(crate) fn config_toml(p1: &[(u8, &str, Binding)]) -> Result<String> {
     Ok(result)
 }
 
+/// Native SDL3 launch-time verification and private config ownership.
+pub(crate) mod session {
+    use super::{Binding, CONTROLS, config_toml};
+    use crate::controller_bizhawk_guard::InputTopology;
+    use crate::controller_catalog::Calibration;
+    use crate::controller_native_process::{cancelled, capture};
+    use crate::controllers::ControllerDevice;
+    use anyhow::{Context, Result, ensure};
+    use lunchbox_controller_probe::{Snapshot, file_hash};
+    use std::{collections::HashMap, process::Command, sync::atomic::AtomicBool};
+
+    pub(crate) struct PreparedSession {
+        pub(crate) directory: tempfile::TempDir,
+        pub(crate) config_path: std::path::PathBuf,
+        pub(crate) runtime_path: String,
+        pub(crate) topology: InputTopology,
+        setup: crate::controller_jgenesis_native::settings::SavedSetup,
+        hashes: std::collections::BTreeMap<std::path::PathBuf, String>,
+        initial: Snapshot,
+    }
+
+    fn observe(
+        setup: &crate::controller_jgenesis_native::settings::SavedSetup,
+        path: Option<&str>,
+        cancel: &AtomicBool,
+    ) -> Result<Snapshot> {
+        let mut command = Command::new(&setup.probe_program);
+        command.arg("--sdl-library").arg(&setup.sdl_library);
+        if let Some(path) = path {
+            command.arg("--bindings-for-path").arg(path);
+        }
+        let (output, _) = capture(&mut command, cancel)?;
+        let snapshot: Snapshot =
+            serde_json::from_slice(&output).context("Invalid jgenesis SDL capture")?;
+        ensure!(
+            snapshot.library.canonicalize()? == setup.sdl_library.canonicalize()?
+                && snapshot.library_sha256 == file_hash(&setup.sdl_library)?,
+            "jgenesis helper inspected a different SDL runtime"
+        );
+        Ok(snapshot)
+    }
+
+    fn routing(mut snapshot: Snapshot) -> Snapshot {
+        for device in &mut snapshot.devices {
+            device.resolved = None;
+            device.linux_classic = None;
+        }
+        snapshot
+    }
+
+    impl PreparedSession {
+        pub(crate) fn prepare(
+            setup: &crate::controller_jgenesis_native::settings::SavedSetup,
+            calibrations: &HashMap<String, Calibration>,
+            inventory: &[ControllerDevice],
+            cancel: &AtomicBool,
+        ) -> Result<Self> {
+            cancelled(cancel)?;
+            setup.validate().map_err(|e| anyhow::anyhow!("{e:#}"))?;
+            let mut matches = inventory
+                .iter()
+                .filter(|device| device.stable_id == setup.controller_id);
+            let device = matches
+                .next()
+                .context("jgenesis selected controller is disconnected")?;
+            ensure!(
+                matches.next().is_none() && !device.is_virtual,
+                "jgenesis requires an unambiguous physical controller"
+            );
+            let selected = device.device_path.clone();
+            let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
+            let initial = routing(observe(setup, None, cancel)?);
+            let runtime_path = topology.resolve_runtime_path(
+                &selected,
+                initial
+                    .devices
+                    .iter()
+                    .filter_map(|device| device.path.as_deref()),
+            )?;
+            let captured = observe(setup, Some(&runtime_path), cancel)?;
+            let device_index = captured
+                .devices
+                .iter()
+                .find(|device| device.path.as_deref() == Some(runtime_path.as_str()))
+                .map(|device| device.instance_id)
+                .context("jgenesis device disappeared")?;
+            let calibration = calibrations
+                .get(&setup.controller_id)
+                .context("jgenesis calibration disappeared")?;
+            let profile = crate::controller_catalog::catalog()
+                .emulator_profiles
+                .iter()
+                .find(|p| p.id == "jgenesis:standalone-genesis")
+                .context("Missing native jgenesis profile")?;
+            let plan = calibration.plan_profile(profile)?;
+            let mut entries = Vec::new();
+            for row in plan.rows {
+                let field = super::CONTROLS
+                    .iter()
+                    .find(|(control, _)| *control == row.target_id)
+                    .map(|(_, field)| *field)
+                    .with_context(|| {
+                        format!("jgenesis target {} is outside the contract", row.target_id)
+                    })?;
+                let input = row
+                    .input
+                    .as_ref()
+                    .context("jgenesis control not calibrated")?;
+                let native = input
+                    .native
+                    .as_ref()
+                    .context("jgenesis requires measured native controls")?;
+                let code = native.code & 0xffff;
+                let binding = match native.code >> 16 {
+                    1 => Binding::Button(u32::from(code as u16)),
+                    3 => Binding::Axis {
+                        index: u32::from(code as u16),
+                        positive: native.direction > 0,
+                    },
+                    other => anyhow::bail!("jgenesis cannot consume input class {other}"),
+                };
+                entries.push((0u8, field, binding));
+            }
+            let directory = tempfile::Builder::new()
+                .prefix("lunchbox-jgenesis-")
+                .tempdir()?;
+            let config_path = directory.path().join("jgenesis-config.toml");
+            std::fs::write(&config_path, config_toml(&entries)?)?;
+            let mut hashes = std::collections::BTreeMap::new();
+            for path in [&setup.probe_program, &setup.sdl_library, &setup.content] {
+                hashes.insert(path.clone(), file_hash(path)?);
+            }
+            hashes.insert(config_path.clone(), file_hash(&config_path)?);
+            let session = Self {
+                directory,
+                config_path,
+                runtime_path,
+                topology,
+                setup: setup.clone(),
+                hashes,
+                initial,
+            };
+            let _ = device_index;
+            session.verify(cancel)?;
+            Ok(session)
+        }
+
+        pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
+            cancelled(cancel)?;
+            self.topology.verify()?;
+            for (path, expected) in &self.hashes {
+                ensure!(
+                    file_hash(path)? == *expected,
+                    "jgenesis launch input changed"
+                );
+            }
+            let fresh = routing(observe(&self.setup, None, cancel)?);
+            ensure!(
+                fresh
+                    .devices
+                    .iter()
+                    .any(|device| device.path.as_deref() == Some(self.runtime_path.as_str())),
+                "jgenesis controller disappeared"
+            );
+            self.topology.verify()
+        }
+
+        pub(crate) fn check_health(&self) -> Result<()> {
+            self.topology.verify()
+        }
+
+        pub(crate) fn overlay_arguments(
+            &self,
+            arguments: &[std::ffi::OsString],
+        ) -> Result<Vec<std::ffi::OsString>> {
+            ensure!(
+                self.config_path.is_absolute(),
+                "jgenesis private config path must be absolute"
+            );
+            let mut result = Vec::with_capacity(arguments.len() + 2);
+            result.push("--config".into());
+            result.push(self.config_path.as_os_str().to_owned());
+            result.extend_from_slice(arguments);
+            Ok(result)
+        }
+    }
+}
+
+/// Saved native launch setup; no device I/O.
+pub(crate) mod settings {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub(crate) struct SavedSetup {
+        pub emulator_id: String,
+        pub content: std::path::PathBuf,
+        pub controller_id: String,
+        pub probe_program: std::path::PathBuf,
+        pub sdl_library: std::path::PathBuf,
+        pub executable_sha256: String,
+    }
+
+    impl SavedSetup {
+        pub(crate) fn validate(&self) -> anyhow::Result<()> {
+            anyhow::ensure!(
+                !self.emulator_id.trim().is_empty(),
+                "jgenesis needs an emulator identity"
+            );
+            anyhow::ensure!(
+                !self.controller_id.trim().is_empty(),
+                "jgenesis needs a controller identity"
+            );
+            for path in [&self.content, &self.probe_program, &self.sdl_library] {
+                anyhow::ensure!(path.is_absolute(), "jgenesis paths must be absolute");
+            }
+            anyhow::ensure!(
+                self.executable_sha256.len() == 64
+                    && self
+                        .executable_sha256
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit()),
+                "jgenesis needs a trusted executable SHA-256"
+            );
+            Ok(())
+        }
+    }
+
+    pub(crate) fn validate_setups(setups: &[SavedSetup]) -> anyhow::Result<()> {
+        anyhow::ensure!(setups.len() <= 1024, "Too many jgenesis saved setups");
+        Ok(())
+    }
+}
+
+/// Native SDL3 launch-time verification and private config ownership.
+#[cfg(target_os = "linux")]
+pub(crate) mod native_command {
+    use super::settings::SavedSetup;
+    use crate::controller_bizhawk_guard::InputTopology;
+    use crate::controller_catalog::Calibration;
+    use crate::controller_native_process::{cancelled, capture};
+    use crate::controllers::ControllerDevice;
+    use crate::emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption};
+    use anyhow::{Context, Result, ensure};
+    use lunchbox_controller_probe::{Snapshot, file_hash};
+    use std::{collections::HashMap, process::Command, sync::atomic::AtomicBool};
+
+    pub(crate) struct NativeSession {
+        pub(crate) inputs: crate::controller_jgenesis_native::session::PreparedSession,
+        pub(crate) executable: std::path::PathBuf,
+        pub(crate) setup: SavedSetup,
+        pub(crate) plan: LaunchPlan,
+    }
+
+    impl NativeSession {
+        pub(crate) fn check_health(&self) -> anyhow::Result<()> {
+            self.inputs.check_health()
+        }
+
+        pub(crate) fn spawn(
+            &mut self,
+            plan: &LaunchPlan,
+            cancel: &AtomicBool,
+        ) -> anyhow::Result<std::process::Child> {
+            ensure!(
+                plan == &self.plan,
+                "jgenesis launch plan changed after preparation"
+            );
+            self.verify(cancel)?;
+            crate::emulator::spawn_launch_plan(plan)
+        }
+
+        pub(crate) fn verify(&self, cancel: &AtomicBool) -> anyhow::Result<()> {
+            cancelled(cancel)?;
+            ensure!(
+                file_hash(&self.executable)? == self.setup.executable_sha256,
+                "jgenesis executable differs from the saved trusted runtime"
+            );
+            self.inputs.verify(cancel)
+        }
+    }
+
+    pub(crate) fn prepare(
+        setup: &SavedSetup,
+        calibrations: &HashMap<String, crate::controller_catalog::Calibration>,
+        inventory: &[ControllerDevice],
+        option: &RomEmulatorOption,
+        original: &LaunchPlan,
+        cancel: &AtomicBool,
+    ) -> anyhow::Result<NativeSession> {
+        cancelled(cancel)?;
+        setup.validate()?;
+        let EmulatorExecutable::Native(executable) = &option.executable else {
+            anyhow::bail!("jgenesis calibrated launch requires native Linux, not Wine/Flatpak");
+        };
+        ensure!(
+            setup.emulator_id == option.emulator_id && original.environment.is_empty(),
+            "jgenesis identity differs or custom environment needs resolution"
+        );
+        let executable = executable.canonicalize()?;
+        ensure!(
+            executable == original.program.canonicalize()?,
+            "jgenesis launch executable differs from selection"
+        );
+        ensure!(
+            original.arguments.len() == 1 && original.arguments[0] == setup.content.as_os_str(),
+            "jgenesis native calibrated launch requires exactly the saved game argument"
+        );
+        let inputs = crate::controller_jgenesis_native::session::PreparedSession::prepare(
+            setup,
+            calibrations,
+            inventory,
+            cancel,
+        )?;
+        let mut plan = original.clone();
+        plan.arguments = inputs.overlay_arguments(&original.arguments)?;
+        Ok(NativeSession {
+            inputs,
+            executable,
+            setup: setup.clone(),
+            plan,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
