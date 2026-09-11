@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "slug": "gearcoleco",
+  "emulator": "Gearcoleco",
+  "sources": [
+    { "kind": "source", "repo": "drhelius/Gearcoleco", "commit": "8ad5f92c45e7ca616535a057495557c2352a9115", "role": "config root/INI path resolution, input config keys, save/state/bios file construction, libretro BIOS lookup" },
+    { "kind": "docs", "url": "https://github.com/drhelius/Gearcoleco#readme", "role": "platform availability (Windows x64/ARM64, macOS Apple Silicon/Intel + Homebrew cask, Linux PPA/RPM/Ubuntu builds, SDL3)" },
+    { "kind": "docs", "url": "https://abdess.github.io/retrobios/emulators/gearcoleco/", "role": "colecovision.rom/coleco.rom 8192-byte BIOS, size-only validation, region patch at 0x69, no extra SGM BIOS" },
+    { "kind": "source", "repo": "lunchbox crates/lunchbox-app/data/controllers/catalog.json", "role": "existing retroarch:gearcoleco core profile only; standalone desktop config contract is new coverage" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/Gearcoleco/config.ini (SDL_GetPrefPath(\"Geardome\", \"Gearcoleco\"), so $XDG_CONFIG_HOME/Gearcoleco/ when XDG_CONFIG_HOME is set); imgui.ini alongside. Portable mode: a portable.ini beside the executable or the --portable flag keeps everything in the executable's directory instead. The guessed names Gearcoleco.cfg / gearcoleco.ini do NOT exist - the file is config.ini (mINI format, [General] Version gate rewrites outdated files back to defaults), verified back through release 1.5.5",
+          "evidence": [
+            "source:platforms/shared/desktop/config.cpp config_init (SDL_GetPrefPath(\"Geardome\", GEARCOLECO_TITLE), config_emu_file_path = root + \"config.ini\", portable.ini/get_portable_path) @ 8ad5f92",
+            "source:src/definitions.h GEARCOLECO_TITLE \"Gearcoleco\" @ 8ad5f92",
+            "source:platforms/shared/desktop/main.cpp --portable flag (Store configuration and user data beside the application) @ 8ad5f92",
+            "source:platforms/desktop-shared/config.cpp @ tag 1.5.5 (same SDL_GetPrefPath(\"Geardome\", ...) + config.ini)"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "Controller bindings live inside config.ini itself, no separate key file: [InputA]/[InputB] hold one SDL_Scancode integer per ColecoVision key (KeyLeft/KeyRight/KeyUp/KeyDown, KeyLeftButton/KeyRightButton, KeyBlue/KeyPurple, Key0..Key9, KeyAsterisk, KeyHash; InputA defaults = arrows + A/S/D/F + numpad 0-9,*,/; InputB = J/L/I/K cluster) plus SDL gamepad fields as integer button/axis indices (Gamepad, GamepadDirectional 0=dpad/1=stick, GamepadInvertX/Y, GamepadX/GamepadY, GamepadLeftButton/GamepadRightButton, GamepadBlue/GamepadPurple, Gamepad0..Gamepad9, GamepadAsterisk, GamepadHash); [Hotkeys] stores <Name>Scancode/<Name>Mod int pairs (SaveState Ctrl+S, LoadState Ctrl+L, SelectSlot1..5 Ctrl+1..5); [InputGamepadShortcuts1]/[InputGamepadShortcuts2] map hotkeys to gamepad buttons. ColecoVision key set (GC_Keys) = 12-key keypad 0-9 + * + # , 4 joystick directions, Left/Right buttons, Super Action Controller Blue/Purple buttons. The bundled platforms/shared/gamecontrollerdb.txt (SDL GUID mappings) is loaded from beside the executable at startup. Super Action Controller spinner via [Emulator] Spinner + SpinnerSensitivity (mouse wheel/roller modes)",
+            "evidence": [
+            "source:platforms/shared/desktop/config_definitions.inc.h [InputA]/[InputB] CONFIG_SCANCODE/CONFIG_INT keys with keyboard_defaults, [Hotkeys] CONFIG_HOTKEY, [InputGamepadShortcuts1/2] @ 8ad5f92",
+            "source:platforms/shared/desktop/events.cpp input_poll_controller button_map {scancode, GC_Keys, gamepad button} table + dpad/stick directional handling @ 8ad5f92",
+            "source:src/definitions.h enum GC_Keys (Keypad_0..9, Asterisk, Hash, Key_Up/Right/Down/Left, Key_Left_Button/Key_Right_Button, Key_Blue/Key_Purple) @ 8ad5f92",
+            "source:platforms/shared/desktop/gamepad.cpp loads gamecontrollerdb.txt from exe_path @ 8ad5f92",
+            "gap:lunchbox data/controllers/catalog.json only has retroarch:gearcoleco profiles; no standalone gearcoleco input contract yet"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Battery/cartridge saves go to <ROM basename>.sav (extension of the cartridge path replaced with 'sav') in the directory chosen by [Emulator] SaveFilesDirOption: 0 = default config root (~/.config/Gearcoleco/), 1 = beside the ROM, 2 = custom [Emulator] SaveFilesPath; written at ROM load/reset/unload and exit. Only written when the active mapper exposes save data (SaveDataSize > 0)",
+          "naming": "<ROM filename with extension swapped to .sav>, e.g. /roms/venture.col -> venture.sav; no slot suffix, no header - raw mapper save data. ColecoVision Super Game Module games need no save file (SGM = emulated 32KB SGM RAM + AY-3-8910, no extra BIOS); ADAM is not emulated",
+          "evidence": [
+            "source:src/GearcolecoCore.cpp SaveRam/LoadRam (path from szPath + cartridge filename, extension replaced with \"sav\") @ 8ad5f92",
+            "source:platforms/shared/desktop/emu.cpp save_ram/load_ram + get_configurated_dir (Directory_Location_Default/ROM/Custom) @ 8ad5f92",
+            "source:platforms/shared/desktop/emu.h enum Directory_Location {Default=0, ROM=1, Custom=2} @ 8ad5f92"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Save states go to the directory chosen by [Emulator] SaveStatesDirOption (0 = default config root, 1 = beside the ROM, 2 = custom [Emulator] SaveStatesPath); .gst is NOT used - the extension is .state<slot>; each state embeds a screenshot shown in the slot UI; plus a 10-second rewind buffer ([Rewind] Enabled=true by default) held in RAM only",
+          "naming": "<ROM basename>.state<slot> with slots 1..5 only (config [Emulator] SaveSlot ranges 0..4 and the GUI adds 1 before calling SaveState/LoadState, so files are game.state1..game.state5); 'save as file' via the file dialog writes the exact chosen path (index -1 bypasses the suffix)",
+          "evidence": [
+            "source:src/GearcolecoCore.cpp GetSaveStatePath (basename, replace 3 chars after last dot with \"state\", append slot index) @ 8ad5f92",
+            "source:platforms/shared/desktop/gui.cpp emu_save_state_slot(config_emulator.save_slot + 1) / emu_load_state_slot(config_emulator.save_slot + 1), slot selection 0..4 @ 8ad5f92",
+            "source:platforms/shared/desktop/emu.cpp update_savestates_data loops i+1 over 5 slots via GetSaveStateHeader(i + 1, dir, ...) @ 8ad5f92",
+            "source:platforms/shared/desktop/config_definitions.inc.h CONFIG_INT_RANGE(\"Emulator\", \"SaveSlot\", ..., 0, 0, 4) @ 8ad5f92"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "ColecoVision BIOS ROM selected by [Emulator] BiosPath in config.ini (string, default empty; chosen via GUI file dialog and loaded once at GUI init) - any filename is accepted, but the file must be exactly 0x2000 = 8192 bytes (8KB) or it is rejected ('Incorrect BIOS size'); Gearcoleco performs NO checksum validation and patches byte 0x69 for region (0x3C NTSC / 0x32 PAL) after load. The BIOS is effectively required: without it RunToVBlank refuses to run and the screen shows the embedded blank kNoBiosImage. The libretro build of the same core looks up <system>/colecovision.rom with fallback <system>/coleco.rom; community-standard NTSC image is commonly cited as MD5 2c66f5911e5b42b8ebe1131fd33062ca (8192 bytes), unverified by the emulator itself. Super Game Module needs no extra BIOS file",
+          "evidence": [
+            "source:platforms/shared/desktop/config_definitions.inc.h CONFIG_STRING(\"Emulator\", \"BiosPath\", ...) @ 8ad5f92",
+            "source:platforms/shared/desktop/gui.cpp gui_init loads config_emulator.bios_path via emu_load_bios @ 8ad5f92",
+            "source:src/Memory.cpp LoadBios (size != 0x2000 rejected, no hash check; Reset patches m_pBios[0x69] 0x32 PAL / 0x3C NTSC) @ 8ad5f92",
+            "source:src/GearcolecoCore.cpp RunToVBlank returns before running when !IsBiosLoaded; src/no_bios.h kNoBiosImage placeholder @ 8ad5f92",
+            "source:platforms/libretro/libretro.cpp bios_path \"colecovision.rom\" fallback \"coleco.rom\", error 'BIOS not found: coleco.rom' @ 8ad5f92",
+            "docs:abdess.github.io/retrobios/emulators/gearcoleco (colecovision.rom/coleco.rom, 8192 bytes required, size-only validation, 0x69 region patch, no SGM BIOS)",
+            "gap:sources/firmware-rules.json has no standalone gearcoleco rule - only retroarch:fbneo:ColecoVision sourcing 'Coleco - ColecoVision (Gearcoleco).zip' for RetroArch cores, so a standalone Gearcoleco runtime would fail the firmware audit"
+          ]
+        }
+      ],
+      "notes": "All user data (config.ini, imgui.ini, default saves/states) sits in one SDL_GetPrefPath root, so a private XDG_CONFIG_HOME or --portable isolates it; native saves/states keep their configured or ROM-side locations."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\Geardome\\Gearcoleco\\config.ini (SDL_GetPrefPath(\"Geardome\", \"Gearcoleco\") under the user's Roaming profile); imgui.ini alongside; portable.ini beside gearcoleco.exe or --portable keeps everything beside the executable",
+          "evidence": [
+            "source:platforms/shared/desktop/config.cpp config_init + get_portable_path (SDL base path / portable.ini) @ 8ad5f92",
+            "docs:github.com/drhelius/Gearcoleco#readme official Windows desktop x64 and ARM64 builds"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "Same config.ini sections as Linux: [InputA]/[InputB] SDL_Scancode ints for keypad 0-9/*/ # + directions + Left/Right/Blue/Purple buttons, SDL gamepad button/axis ints, [Hotkeys] <Name>Scancode/<Name>Mod pairs, [InputGamepadShortcuts1/2]; gamecontrollerdb.txt ships beside the executable",
+          "evidence": [
+            "source:platforms/shared/desktop/config_definitions.inc.h + events.cpp button_map @ 8ad5f92",
+            "source:platforms/shared/desktop/gamepad.cpp gamecontrollerdb.txt load @ 8ad5f92"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<dir>\\<ROM basename>.sav where <dir> follows [Emulator] SaveFilesDirOption (0 default config root, 1 beside ROM, 2 custom SaveFilesPath)",
+          "naming": "Identical to Linux: cartridge filename with the extension replaced by .sav (e.g. venture.col -> venture.sav), raw mapper save data, no slots; SGM games persist nothing unless the mapper exposes save data",
+          "evidence": [
+            "source:src/GearcolecoCore.cpp SaveRam/LoadRam extension replacement @ 8ad5f92",
+            "source:platforms/shared/desktop/emu.cpp save_ram/get_configurated_dir @ 8ad5f92"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<dir>\\<ROM basename>.state<slot> under [Emulator] SaveStatesDirOption directory (0 config root, 1 beside ROM, 2 custom SaveStatesPath)",
+          "naming": "Identical to Linux: .state1..state5 for the five GUI slots (SaveSlot 0..4 + 1), screenshot embedded, no .gst extension",
+          "evidence": [
+            "source:src/GearcolecoCore.cpp GetSaveStatePath @ 8ad5f92",
+            "source:platforms/shared/desktop/gui.cpp save_slot + 1 calls @ 8ad5f92"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "ColecoVision BIOS (8192 bytes) anywhere on disk, path stored in [Emulator] BiosPath; any filename, size-only validation; libretro build expects colecovision.rom then coleco.rom in the RetroArch system directory",
+          "evidence": [
+            "source:src/Memory.cpp LoadBios 0x2000 check @ 8ad5f92",
+            "source:platforms/libretro/libretro.cpp load_bios_file/colecovision.rom fallback @ 8ad5f92",
+            "docs:abdess.github.io/retrobios/emulators/gearcoleco (8KB required, no hash check)",
+            "gap:no standalone gearcoleco entry in sources/firmware-rules.json"
+          ]
+        }
+      ],
+      "notes": "Windows is the only platform with both x64 and ARM64 official desktop builds (docs:github README downloads table, Gearcoleco-1.6.13-desktop-windows-*.zip)."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/Geardome/Gearcoleco/config.ini (SDL_GetPrefPath(\"Geardome\", \"Gearcoleco\") under the user's Application Support); imgui.ini alongside; portable mode detects portable.ini in the folder containing the .app (relative to .app/Contents) or beside the bare executable",
+          "evidence": [
+            "source:platforms/shared/desktop/config.cpp get_portable_path __APPLE__ branch (.app/Contents detection) + SDL_GetPrefPath @ 8ad5f92",
+            "docs:github.com/drhelius/Gearcoleco#readme macOS verified: Homebrew cask drhelius/geardome/gearcoleco plus Apple Silicon and Intel desktop builds (Gearcoleco-1.6.13-desktop-macos-*.zip)"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "Same config.ini [InputA]/[InputB] scancode and SDL gamepad-button integer keys as Linux/Windows, [Hotkeys] scancode/mod pairs ([InputGamepadShortcuts1/2] for pad shortcuts); Cmd uses SDL_KMOD_GUI in hotkey strings; gamecontrollerdb.txt ships inside the app bundle",
+          "evidence": [
+            "source:platforms/shared/desktop/config_definitions.inc.h + config.cpp config_update_hotkey_string (SDL_KMOD_GUI -> Cmd+) @ 8ad5f92",
+            "source:platforms/shared/desktop/gamepad.cpp gamecontrollerdb.txt load @ 8ad5f92"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<dir>/<ROM basename>.sav with <dir> from [Emulator] SaveFilesDirOption (0 default config root under Application Support, 1 beside ROM, 2 custom SaveFilesPath)",
+          "naming": "Identical to Linux: cartridge extension swapped to .sav, raw mapper data, no slots; nothing written for ROMs whose mapper has no save data",
+          "evidence": [
+            "source:src/GearcolecoCore.cpp SaveRam/LoadRam @ 8ad5f92",
+            "source:platforms/shared/desktop/emu.cpp get_configurated_dir @ 8ad5f92"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<dir>/<ROM basename>.state<slot> under the [Emulator] SaveStatesDirOption directory (default config root under Application Support)",
+          "naming": "Identical to Linux: .state1..state5 (SaveSlot 0..4 + 1), embedded screenshot, no .gst extension",
+          "evidence": [
+            "source:src/GearcolecoCore.cpp GetSaveStatePath @ 8ad5f92",
+            "source:platforms/shared/desktop/gui.cpp emu_save_state_slot/save_slot + 1 @ 8ad5f92"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "ColecoVision BIOS (8192 bytes) path stored in [Emulator] BiosPath; any filename, size-only validation; libretro build expects colecovision.rom then coleco.rom",
+          "evidence": [
+            "source:src/Memory.cpp LoadBios 0x2000 check @ 8ad5f92",
+            "source:platforms/libretro/libretro.cpp colecovision.rom/coleco.rom lookup @ 8ad5f92",
+            "docs:abdess.github.io/retrobios/emulators/gearcoleco (8KB required, no hash check)",
+            "gap:no standalone gearcoleco entry in sources/firmware-rules.json"
+          ]
+        }
+      ],
+      "notes": "macOS availability verified from the README downloads table: Homebrew cask drhelius/geardome/gearcoleco plus official Apple Silicon and Intel desktop archives; SDL3-based and identical to other desktop builds apart from the .app portable path and Cmd modifiers."
+    }
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "slug": "rmg",
+  "emulator": "RMG",
+  "sources": [
+    { "kind": "source", "repo": "Rosalie241/RMG", "commit": "3e8b366be", "role": "directory layout, config sections, save/state naming, PIF/64DD settings (VERSION v0.9.0)" },
+    { "kind": "docs", "url": "https://github.com/Rosalie241/RMG#download", "role": "platform support: Windows releases; Linux AppImage/Flathub/AUR/COPR; no macOS" },
+    { "kind": "docs", "url": "https://flathub.org/apps/details/com.github.Rosalie241.RMG", "role": "Linux Flatpak app id com.github.Rosalie241.RMG" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/RMG/mupen64plus.cfg (or $XDG_CONFIG_HOME/RMG/): RMG passes CoreGetUserConfigDirectory() as the mupen64plus ConfigDirOverride, and stores ALL of its own GUI settings through the core's config API, so one INI holds the [Core] section plus RMG sections 'Rosalie's Mupen GUI', 'Rosalie's Mupen GUI Core' (+ Overlay/Settings/64DD/PIF/Gameboy sub-sections), 'Rosalie's Mupen GUI KeyBindings', 'Rosalie's Mupen GUI RomBrowser', and plugin sections. Controller configuration is RMG's own input plugin (RMG-Input, SDL3): per-port profiles are config sections 'Rosalie's Mupen GUI - Input Plugin Profile <1..4>' (SDL3 keyboard/gamepad bindings, pak, rumble packs, deadzone), shared named profiles are sections 'Rosalie's Mupen GUI - Input Plugin User Profile \"<name>\"', and per-game overrides live in a section named after the ROM's internal name (UseGameProfile key); a bundled SDL_GameControllerDB gamecontrollerdb.txt is loaded from the shared-data directory at plugin start",
+          "evidence": [
+            "source:RMG-Core/Directories.cpp CoreGetUserConfigDirectory = $XDG_CONFIG_HOME/RMG or $HOME/.config/RMG (PORTABLE_INSTALL branch aside) @3e8b366be",
+            "source:RMG-Core/Core.cpp CoreInit: m64p::Core.Startup(config dir = CoreGetUserConfigDirectory(), shared dir = CoreGetSharedDataDirectory()) and config_override_user_dirs -> Config.OverrideUserPaths(data, cache) @3e8b366be",
+            "source:RMG-Core/Settings.cpp SETTING_SECTION_GUI 'Rosalie's Mupen GUI' + SETTING_SECTION_CORE/KEYBIND/ROMBROWSER/PIF/64DD definitions @3e8b366be",
+            "source:RMG-Input/main.cpp userProfileSectionBase 'Rosalie's Mupen GUI - Input Plugin User Profile', section 'Rosalie's Mupen GUI - Input Plugin Profile <i>', per-game section UseGameProfile @3e8b366be",
+            "source:RMG-Input/main.cpp sdl_init loads SDL_GameControllerDB/gamecontrollerdb.txt from the shared data directory @3e8b366be"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.local/share/RMG/Save/Game (or $XDG_DATA_HOME/RMG/Save/Game): RMG force-writes the core [Core] SaveSRAMPath key (ForceUseSetAlways) to CoreGetDefaultSaveDirectory() = user data dir + 'Save/Game'",
+          "naming": "mupen64plus core naming: <save filename>.eep | .sra | .fla | .mpk for EEPROM/SRAM/FlashRAM/Controller-Pak. Default SaveFilenameFormat=1 yields '<goodname (max 32 chars)>-<first 8 hex of ROM MD5>'; a legacy <goodname>.<ext> file is still used when present; format 0 uses the raw ROM header name. Game Boy (Transfer Pak) RAM is <gbrom>.<player#>.sav",
+          "evidence": [
+            "source:RMG-Core/Settings.cpp Core_SaveSRAMPath -> 'Core'/SaveSRAMPath default CoreGetDefaultSaveDirectory(), ForceUseSetAlways @3e8b366be",
+            "source:RMG-Core/Directories.cpp CoreGetDefaultSaveDirectory = CoreGetUserDataDirectory()/Save/Game; data dir = $XDG_DATA_HOME/RMG or $HOME/.local/share/RMG @3e8b366be",
+            "source:RMG-Core/Settings.cpp Core_SaveFileNameFormat -> 'Core'/SaveFilenameFormat default 1 @3e8b366be",
+            "source:3rdParty/mupen64plus-core/src/main/main.c get_save_filename goodname32-MD5[0:8]; *.mpk/*.eep/*.sra/*.fla with legacy fallback; gb '%s%s.%u.sav' @3e8b366be"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.local/share/RMG/Save/State: the [Core] SaveStatePath key is force-set to CoreGetDefaultSaveStateDirectory() = user data dir + 'Save/State'",
+          "naming": "<goodname (max 32)>-<MD5[0:8]>.st<slot> with slots 0..9 (CoreGetSaveStatePath builds .st<slot>; keeps a legacy <goodname>.st<slot> file if it exists; filename characters :<>\"/\\|?* are sanitized to '_'); format 0 uses the ROM header name instead of goodname-MD5",
+          "evidence": [
+            "source:RMG-Core/Settings.cpp Core_SaveStatePath -> 'Core'/SaveStatePath default CoreGetDefaultSaveStateDirectory() @3e8b366be",
+            "source:RMG-Core/SaveState.cpp CoreGetSaveStatePath: .st<slot> extension, legacy goodname path reuse, SaveFileNameFormat branch, char sanitization @3e8b366be",
+            "source:RMG-Core/SaveState.cpp CoreIncrease/DecreaseSaveStateSlot clamp slot >= 0 (0..9 range with the GUI slot counter) @3e8b366be",
+            "source:RMG-Core/Directories.cpp CoreGetDefaultSaveStateDirectory = data dir + 'Save/State' @3e8b366be"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required. PIF/CIC are emulated by default: the optional user PIF ROMs are configured in section 'Rosalie's Mupen GUI Core PIF' (PIF_Use=false by default, PIF_NTSC / PIF_PAL file paths; skipped when the dynarec CPU emulator is selected, and MD5-validated by the core before use). 64DD discs additionally need IPL ROM paths in 'Rosalie's Mupen GUI Core 64DD' (64DD_JapaneseIPL / 64DD_AmericanIPL / 64DD_DevelopmentIPL, blank by default)",
+          "evidence": [
+            "source:RMG-Core/Settings.cpp Core_PIF_Use (default false), Core_PIF_NTSC/PIF_PAL (default ''), Core_64DD_JapaneseIPL/AmericanIPL/DevelopmentIPL @3e8b366be",
+            "source:RMG-Core/Emulation.cpp open_pif_rom: only when PIF_Use is set and the file exists; M64CMD_PIF_OPEN; skipped when cpuEmulator >= 2 (dynarec) @3e8b366be",
+            "source:3rdParty/mupen64plus-core/src/main/main.c open_pif MD5-whitelists old/new NTSC and PAL PIF ROMs @3e8b366be",
+            "db:firmware_rules has no N64 rows (gap: an optional manual rule for 64DD IPL is the only candidate; cart games need no firmware)"
+          ]
+        }
+      ],
+      "notes": "Flatpak com.github.Rosalie241.RMG relocates the same tree under ~/.var/app/com.github.Rosalie241.RMG/{config,data,cache}/RMG. Lunchbox launches with a private data root; native saves/states stay in Save/Game and Save/State unless a portable install is used."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\RMG\\Config\\mupen64plus.cfg (SHGetSpecialFolderLocation CSIDL_APPDATA + '\\RMG\\Config'; falls back to the executable directory when AppData cannot be resolved). Portable installs (portable.txt or a Config\\mupen64plus.cfg beside the exe) keep everything in the install directory instead. Same single-INI section layout and RMG-Input controller sections as Linux",
+          "evidence": [
+            "source:RMG-Core/Directories.cpp get_appdata_directory (CSIDL_APPDATA + '/RMG/' + dir) and CoreGetPortableDirectoryMode (portable.txt or Config/mupen64plus.cfg next to exe) @3e8b366be",
+            "source:RMG-Core/Core.cpp CoreStartup config dir = CoreGetUserConfigDirectory() @3e8b366be",
+            "source:RMG-Core/Settings.cpp + RMG-Input/main.cpp section definitions as on Linux @3e8b366be"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "%APPDATA%\\RMG\\Save\\Game (the Windows getter appends 'Save/Game' to the AppData root directly); portable installs: <install dir>\\Save\\Game",
+          "naming": "<goodname (max 32)>-<MD5[0:8]>.eep | .sra | .fla | .mpk (SaveFilenameFormat=1 default, legacy <goodname>.<ext> fallback); Game Boy RAM <gbrom>.<player#>.sav",
+          "evidence": [
+            "source:RMG-Core/Directories.cpp CoreGetDefaultSaveDirectory _WIN32 branch = get_appdata_directory(\"Save/Game\") @3e8b366be",
+            "source:RMG-Core/Settings.cpp SaveSRAMPath force-set to the default save directory @3e8b366be",
+            "source:3rdParty/mupen64plus-core/src/main/main.c save filename formats @3e8b366be"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "%APPDATA%\\RMG\\Save\\State; portable installs: <install dir>\\Save\\State",
+          "naming": "<goodname (max 32)>-<MD5[0:8]>.st<slot>, slots 0..9, legacy <goodname>.st<slot> reuse and filename sanitization as on Linux",
+          "evidence": [
+            "source:RMG-Core/Directories.cpp CoreGetDefaultSaveStateDirectory _WIN32 branch @3e8b366be",
+            "source:RMG-Core/SaveState.cpp CoreGetSaveStatePath naming @3e8b366be"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required; optional PIF ROM paths (PIF_NTSC/PIF_PAL) and 64DD IPL paths (64DD_JapaneseIPL/64DD_AmericanIPL/64DD_DevelopmentIPL) live in the same mupen64plus.cfg sections as on Linux",
+          "evidence": [
+            "source:RMG-Core/Settings.cpp PIF and 64DD setting defaults @3e8b366be",
+            "source:RMG-Core/Emulation.cpp open_pif_rom @3e8b366be"
+          ]
+        }
+      ],
+      "notes": "Upstream ships an installer and portable zip for Windows; RMG has no macOS build (README lists Windows and Linux only), so no macos platform is captured. The Lunchbox DB Gopher64/RMG rows also miss macOS for Gopher64 (RMG correctly Windows;Linux)."
+    }
+  }
+}

@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "slug": "nestopia-ue",
+  "emulator": "Nestopia UE",
+  "sources": [
+    { "kind": "source", "repo": "0ldsk00l/nestopia", "tag": "1.53.2", "role": "fltkui (SDL2) config/save/state/input/bios handling for linux and macos" },
+    { "kind": "source", "repo": "0ldsk00l/nestopia", "tag": "1.53.2", "role": "win32 UI configuration, paths, input and FDS sources for windows" },
+    { "kind": "source", "repo": "0ldsk00l/nestopia", "tag": "1.48", "role": "legacy SDL unix port paths (README.unix, ~/.nestopia)" },
+    { "kind": "docs", "url": "https://github.com/0ldsk00l/nestopia#readme", "role": "linux/macos build status and transition to Nestopia JG + QTea" },
+    { "kind": "docs", "url": "https://github.com/0ldsk00l/nestopia/releases", "role": "release assets: 1.53.2 ships win32 only; linux/macos build from source" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "$XDG_CONFIG_HOME/nestopia/ (fallback ~/.config/nestopia/) containing nestopia.conf and input.conf; nestopia.conf is INI with a [frontend] section and a [nestopia] core section (controller port device selection port1/port2/port3/port4/portexp lives in [nestopia])",
+          "evidence": [
+            "source:fltkui/setmanager.cpp L163-177 confpath from XDG_CONFIG_HOME else $HOME/.config/<coreinfo.name>, coreinfo.name = \"nestopia\"",
+            "source:fltkui/setmanager.cpp L214-243 writes '; Nestopia UE Configuration File', [frontend] and [<core>] sections plus input.conf",
+            "source:fltkui/jg.cpp settings_nst[] port1/port2/port3/port4/portexp device strings (tag 1.53.2)",
+            "docs:README.unix@1.48 legacy SDL port used ~/.nestopia/nestopia.conf - superseded by XDG layout in 1.53.x fltkui"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "input.conf in the config directory (same dir as nestopia.conf): one INI section per emulated device (nespad1, nespad2, ..., plus \"ui\") whose values are raw SDL keysym integers, and a sibling <device>j section per device for joysticks using codes j<button>b<N>, j<button>h<N>, j<button>a<N>; pad buttons are Up/Down/Left/Right/Select/Start/A/B/TurboA/TurboB",
+          "evidence": [
+            "source:fltkui/inputmanager.cpp remap_kb() L161-217 (keysym ints per device+button name) and remap_js() L220-298 (jN.b/jN.h/jN.a pattern)",
+            "source:fltkui/inputmanager.cpp set_inputdef() L301-389 writes the same jN.* codes back",
+            "source:fltkui/jg/jg_nes.h defs_nespad (tag 1.53.2)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "$XDG_DATA_HOME/nestopia/save/ (fallback ~/.local/share/nestopia/save/)",
+          "naming": "battery/EEPROM/tape/turbofile saves are <rom filename stem>.sav in the save dir; Famicom Disk System disk data is persisted as a UPS patch <rom filename stem>.ups in the same save dir (IPS patches are only auto-applied on load)",
+          "evidence": [
+            "source:fltkui/jgmanager.cpp set_paths() L114-132 (XDG_DATA_HOME/nestopia base, save = base + /save)",
+            "source:fltkui/jg.cpp nst_cb_files LOAD/SAVE_BATTERY..SAVE_TURBOFILE L416-441 (<pathinfo.save>/<gameinfo.name>.sav)",
+            "source:fltkui/jg.cpp LOAD_FDS/SAVE_FDS L445-470 (<save>/<game>.ups, User::File::PATCH_UPS)",
+            "source:fltkui/jgmanager.cpp load_game() L98 gamename = rom filename stem"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "$XDG_DATA_HOME/nestopia/state/ (fallback ~/.local/share/nestopia/state/); screenshots/ is a sibling directory",
+          "naming": "quick-save slots are <rom filename stem>_<slot>.nst with slot = 0..4 (menu Slot 0..Slot 4); File > Save State writes a user-chosen *.nst file",
+          "evidence": [
+            "source:fltkui/jgmanager.cpp state_qload/state_qsave L194-227 (basepath + /state/ + gamename + _ + slot + .nst)",
+            "source:fltkui/fltkui.cpp L120-124 quick save menu Slot 0..4, L367/L397 'Nestopia States\\t*.nst' filter",
+            "source:fltkui/jgmanager.cpp set_paths() L134-136 creates state/ and screenshots/ dirs"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "$XDG_DATA_HOME/nestopia/ (fallback ~/.local/share/nestopia/) is the bios/user-asset path; core assets (NstDatabase.xml, palettes) come from the install datadir ($(datadir)/nestopia)",
+          "naming": "no BIOS for base NES cartridge/NSF play; Famicom Disk System requires disksys.rom in the base path (or an auxiliary BIOS supplied by the frontend); lunchbox db has no nestopia firmware_rules entries to import it",
+          "evidence": [
+            "source:fltkui/jgmanager.cpp set_paths() L114-148 (pathinfo.bios = basepath; corepath = NST_DATADIR)",
+            "source:fltkui/jg.cpp jg_game_load() L1425-1459 FDS: uses aux bios else pathinfo.bios + /disksys.rom, logs 'Failed to load FDS BIOS'",
+            "source:Makefile.am databasedir = $(datadir)/nestopia (tag 1.53.2)",
+            "db:firmware_rules catalog sources/firmware-rules.json has 124 rules and no nestopia entry (verified 2026-09-11)"
+          ]
+        }
+      ],
+      "notes": "Captured from the 1.53.2 FLTK/SDL2 UI (the current 0ldsk00l GUI); the 1.4x SDL port it replaced kept everything in ~/.nestopia/ instead. Lunchbox launches with a private data root; native saves/states stay in the XDG locations."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "nestopia.xml next to nestopia.exe by default; if launched with the -lua flag the config lives in %LOCALAPPDATA%\\Nestopia\\nestopia.xml (this fork renamed the classic upstream NESTOPIA.CFG to nestopia.xml, same XML Configuration format)",
+          "evidence": [
+            "source:win32/NstApplicationConfiguration.cpp L67-68/L141-142 loads and saves Instance::GetConfigPath(L\"nestopia.xml\") (tag 1.53.2)",
+            "source:win32/NstApplicationInstance.cpp Instance ctor L104-149 (configPath = GetModuleFileName dir, or CSIDL_LOCAL_APPDATA + \\Nestopia under -lua) and GetConfigPath() L307-310"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "inside nestopia.xml: [input]/keys/<device> with DirectInput DIK_* codes per button (pad-1/pad-2/pad-3/pad-4, powerpad, powerglove, horitrack, pachinko, ... plus emulation/file/machine/nsf/view/help command sections); [input]/joysticks holds per-device GUID and axis/button mappings; port device selection is [machine]/adapter (auto|nes|famicom) and [machine]/port-1..port-5 with values pad1..pad4, zapper, paddle, powerpad, powerglove, mouse, rob, familytrainer, familykeyboard, suborkeyboard, doremikkokeyboard, horitrack, pachinko, ...",
+          "evidence": [
+            "source:win32/NstDialogInput.cpp Settings::map L151-171 (\"pad-1\",\"left\"->DIK_LEFT, \"pad-1\",\"start\"->DIK_RETURN, \"pad-1\",\"a\"->DIK_PERIOD, ...) and Load/Save L543-560, L640-708 (input/keys, input/joysticks)",
+            "source:win32/NstManagerInput.cpp Input::Load L221-260 (machine/adapter, machine/port-# strings) and Input::Save L340-375 (machine/port-x = pad1|zapper|paddle|...)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "the Paths dialog saves directory (config key paths/saves/directory), default save\\ relative to the application directory; FDS patch files use the paths/patches/directory, default patches\\",
+          "naming": "battery/EEPROM saves are <rom base filename>.sav; FDS disk data is saved as <rom base filename>.ups in the patches directory (auto-applied patches may also fall back to .ips on load)",
+          "evidence": [
+            "source:win32/NstManagerPaths.cpp GetSavePath() L368-383 (DIR_SAVE dir + image file + L\"sav\" for cartridges, DIR_PATCHES + .ups otherwise)",
+            "source:win32/NstDialogPaths.cpp dirs table L76-77 (DIR_SAVE default L\"save\\\\\", DIR_PATCHES L\"patches\\\\\") and Save() L304-316 (paths/saves/directory, paths/states/directory)",
+            "source:win32/NstManagerPaths.cpp GetPatchPath() L385-396 (.ups then .ips fallback)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "the Paths dialog states directory (config key paths/states/directory), default states\\ relative to the application directory",
+          "naming": "File > Save State writes <rom base filename>.nst (optionally zlib-compressed per paths/states/use-compression); the 9 quick slots live in memory and are auto-imported/exported (default on) as <rom base filename>.ns1 .. .ns9 in the states directory",
+          "evidence": [
+            "source:win32/NstManagerPaths.cpp L135-137 (extension LUT: BATTERY sav, STATE|SLOTS nst) and GetDefaultDirectory L258-283 (STATE|SLOTS|MOVIE -> DIR_STATE)",
+            "source:win32/NstManagerSaveStates.cpp ExportSlot/ImportSlots L293-330 (path.Extension() = L\"ns1\"; path.Back() = '1' + index; 9 slots)",
+            "source:win32/NstManagerSaveStates.cpp L352-358 Save State -> STATE file, NstDialogPaths.cpp L88-94 auto-import/auto-export/compress defaults"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "FDS BIOS file configured in the FDS dialog (config key fds/bios); the default resolves to disksys.rom looked up through the file search paths (application/image directories); no BIOS is used for cartridge or NSF play",
+          "naming": "disksys.rom; when absent the FDS dialog prompts for a BIOS file and warns IDS_FDS_ERR_INVALIDBIOS on invalid images",
+          "evidence": [
+            "source:win32/NstDialogFds.cpp L91-106 (fds/bios, default \"disksys.rom\" via paths.FindFile) and L136-165 (QueryBiosFile/SubmitBios -> Fds::SetBIOS)",
+            "source:win32/NstManagerFds.cpp L298-300 EVENT_DISK_QUERY_BIOS -> dialog->QueryBiosFile()"
+          ]
+        }
+      ],
+      "notes": "The win32 UI keeps everything portable beside the exe unless -lua is passed; the only release artifact at 1.53.2 is nestopia_1.53.2-win32.zip."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "same fltkui build as linux, so the identical code paths apply: $XDG_CONFIG_HOME/nestopia/ else ~/.config/nestopia/ with nestopia.conf + input.conf (XDG vars are normally unset on macOS, so the $HOME fallbacks are what users see)",
+          "evidence": [
+            "source:fltkui/setmanager.cpp L163-172 platform-independent XDG fallback logic (tag 1.53.2)",
+            "docs:README.md Linux/macOS Build section (autotools fltkui build; project is transitioning to Nestopia JG + QTea)",
+            "docs:configure.ac@1.53.2 L84-91 requires fltk-config on all hosts, darwin* branch for link flags"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "input.conf in the config directory, identical linux format: per-device INI sections (nespad1, ..., ui) with SDL keysym integers and <device>j sections with jN.b/jN.h/jN.a joystick codes",
+          "evidence": [
+            "source:fltkui/inputmanager.cpp remap_kb/remap_js (SDL2 keyboard codes, platform-independent, tag 1.53.2)",
+            "docs:README.md Linux/macOS Build section (single fltkui frontend shared by linux and macOS)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "$XDG_DATA_HOME/nestopia/save/ else ~/.local/share/nestopia/save/",
+          "naming": "<rom filename stem>.sav for battery/EEPROM/tape/turbofile; FDS disk data as <rom filename stem>.ups UPS patch in the same directory",
+          "evidence": [
+            "source:fltkui/jgmanager.cpp set_paths() L114-132 (no #ifdef around the XDG fallback, so macOS uses $HOME/.local/share/nestopia)",
+            "source:fltkui/jg.cpp nst_cb_files L416-470 (.sav and .ups naming, tag 1.53.2)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "$XDG_DATA_HOME/nestopia/state/ else ~/.local/share/nestopia/state/",
+          "naming": "quick slots <rom filename stem>_<slot>.nst, slot 0..4; File > Save State writes *.nst",
+          "evidence": [
+            "source:fltkui/jgmanager.cpp L134-136, L194-227 (state dir + slot naming, platform-independent)",
+            "source:fltkui/fltkui.cpp L120-124 (Slot 0..4 menu)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "$XDG_DATA_HOME/nestopia/ else ~/.local/share/nestopia/ as bios/user path; core assets from the install datadir",
+          "naming": "disksys.rom required only for Famicom Disk System titles; no firmware needed for cartridge/NSF; lunchbox db firmware_rules has no nestopia entries",
+          "evidence": [
+            "source:fltkui/jg.cpp jg_game_load() L1433-1455 (pathinfo.bios + /disksys.rom fallback)",
+            "db:firmware_rules catalog sources/firmware-rules.json has no nestopia entry (verified 2026-09-11)",
+            "docs:GitHub releases - no macOS binary asset at 1.53.2, macOS users build from source (make dist / autotools)"
+          ]
+        }
+      ],
+      "notes": "macOS is source-build only at 1.53.2 (no release asset); the autotools build has an explicit darwin branch and shares the fltkui frontend, so linux and macOS layouts match with $HOME fallbacks instead of XDG env vars."
+    }
+  }
+}

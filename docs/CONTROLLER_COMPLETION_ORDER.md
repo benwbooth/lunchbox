@@ -112,6 +112,14 @@ parse_binding_target; `n` = device+1). Config dir is `$HOME/blastem`
 (paths.c), so a private HOME isolates reads/writes. Ready to implement as a
 single/dual digital-pad contract over the SameBoy SDL2 probe.
 
+Batch 2 platform records landed: jgenesis, Nestopia UE, puNES,
+Gearcoleco, Gopher64, simple64 and RMG (27 records total). Notable
+findings: jgenesis has no macOS build; puNES/Gearcoleco/Nestopia/
+the N64 trio all lack database firmware rules (only the 64DD IPL is
+worth adding as an optional manual rule); simple64 is archived
+upstream and missing from the DB emulators table entirely; melonDS's
+Flatpak id is net.kuribo64.melonDS.
+
 Platform-record follow-ups captured by the research fan-out
 (emulator_details/records/): the Windows PCSX2 BIOS root mismatch in
 firmware.rs was fixed; the Lunchbox openMSX adapter's macOS config root

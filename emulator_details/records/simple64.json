@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "slug": "simple64",
+  "emulator": "simple64",
+  "sources": [
+    { "kind": "source", "repo": "simple64/simple64", "commit": "d8c969c7b", "role": "GUI/core/input-plugin path evidence (monorepo merges simple64-gui, mupen64plus-core and simple64-input-qt as subtrees)" },
+    { "kind": "docs", "url": "https://github.com/simple64/simple64#downloads", "role": "platform support: Windows releases + Linux Flathub only; 'Mac OS: No releases currently, requires a maintainer'; project archived, gopher64 named as successor" },
+    { "kind": "docs", "url": "https://flathub.org/apps/details/io.github.simple64.simple64", "role": "Linux Flatpak app id io.github.simple64.simple64" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Two layers. (1) GUI settings: simple64-gui.ini (QSettings IniFormat) written next to the simple64-gui executable by default; if that location is not writable it falls back to QSettings(\"simple64\", \"gui\") = ~/.config/simple64/simple64-gui.ini. Its \"configDirPath\" key selects the mupen64plus config directory passed to CoreStartup (Settings dialog 'Config Dir Path', default button sets it to the application directory; unset = core default ~/.config/mupen64plus). (2) Core config: <config dir>/mupen64plus.cfg (INI, MUPEN64PLUS_CFG_NAME) holding the [Core] section and plugin sections. Controller configuration does NOT use Mupen64Plus input-SDL2 sections: simple64 ships its own Qt input plugin (simple64-input-qt) which stores SDL2-gamepad-style profiles in <core config dir>/input-profiles.ini (profile sections with SDL Game Controller button/axis integer bindings) and per-port assignments in <core config dir>/input-settings.ini (keys Controller1..4: Profile, Gamepad, Pak); GUI hotkeys are QSettings keys in simple64-gui.ini",
+          "evidence": [
+            "source:simple64-gui/mainwindow.cpp (ini_path = applicationDirPath/simple64-gui.ini; fallback new QSettings(\"simple64\", \"gui\"); configDirPath passed to CoreStartup as ConfigDirOverride, else NULL) @d8c969c7b",
+            "source:simple64-gui/settingsdialog.cpp handleAppPathButton sets configDirPath = applicationDirPath; handleClearConfigButton removes the override @d8c969c7b",
+            "source:mupen64plus-core/src/api/config.c #define MUPEN64PLUS_CFG_NAME \"mupen64plus.cfg\"; ConfigGetUserConfigPath honors l_ConfigDirOverride else osal_get_user_configpath() @d8c969c7b",
+            "source:mupen64plus-core/src/osal/files_unix.c get_xdg_dir XDG_CONFIG_HOME/mupen64plus else $HOME/.config/mupen64plus @d8c969c7b",
+            "source:simple64-input-qt/main.cpp PluginStartup: QSettings(ini_path/input-profiles.ini) and (ini_path/input-settings.ini) with ini_path = ConfigGetUserConfigPath() @d8c969c7b"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "mupen64plus core user-data save directory: the GUI overrides only the config dir, so the data dir stays at the core default $XDG_DATA_HOME/mupen64plus/save i.e. ~/.local/share/mupen64plus/save (core [Core] SaveSRAMPath key overrides)",
+          "naming": "<save filename>.eep | .sra | .fla | .mpk for EEPROM/SRAM/FlashRAM/Controller-Pak. Default SaveFilenameFormat=1 gives '<goodname (max 32 chars)>-<first 8 hex of ROM MD5>'; a legacy file named <goodname>.<ext> is still read if it exists. Format 0 uses the raw ROM header name. Game Boy (Transfer Pak) RAM is <gbrom>.<player#>.sav",
+          "evidence": [
+            "source:mupen64plus-core/src/main/main.c get_savepathdefault (\"%ssave\" under ConfigGetUserDataPath, mkdirp), get_savesrampath (SaveSRAMPath or default), get_save_filename (SaveFilenameFormat 0=headername / 1=goodname32-MD5[0:8]) @d8c969c7b",
+            "source:mupen64plus-core/src/main/main.c get_mempak_path/get_eeprom_path/get_sram_path/get_flashram_path format \"...%s.mpk/.eep/.sra/.fla\" with legacy goodname fallback; gb_savesram \"%s%s.%u.sav\" @d8c969c7b",
+            "source:mupen64plus-core/src/main/main.c:433 ConfigSetDefaultInt(SaveFilenameFormat, 1) @d8c969c7b",
+            "source:simple64-gui/mainwindow.cpp CoreStartup passes only ConfigDir + SharedDir, never a data-dir override @d8c969c7b",
+            "source:mupen64plus-core/src/osal/files_unix.c user data = XDG_DATA_HOME/mupen64plus else $HOME/.local/share/mupen64plus @d8c969c7b"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Same core convention: [Core] SaveStatePath key, else ~/.local/share/mupen64plus/save (the GUI does not override it)",
+          "naming": "<save filename>.st<slot> with slots 0..9 (GUI File > Change Save Slot 0-9 drives M64CMD_STATE_SET_SLOT; the core falls back to the legacy <goodname>.st<slot> name when that file already exists)",
+          "evidence": [
+            "source:mupen64plus-core/src/main/savestates.c formatstr(\"%s%s.st%d\", get_savestatepath(), get_savestatefilename(), slot) with legacy goodname fallback @d8c969c7b",
+            "source:simple64-gui/mainwindow.cpp SaveSlot menu loop i in 0..10 -> M64CMD_STATE_SET_SLOT @d8c969c7b",
+            "source:mupen64plus-core/src/main/main.c:427 SaveStatePath default blank = ${UserDataPath}/save @d8c969c7b"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required. The N64 PIF ROM is supplied as bundled shared-data files pif.ntsc.rom / pif.pal.rom copied beside the app by build.sh and resolved through ConfigGetSharedDataFilepath; open_pif MD5-validates them (genuine old/new NTSC + PAL digests). PIF/CIC behaviour is otherwise emulated; 64DD discs additionally need a user-supplied IPL ROM delivered through the GUI media loader",
+          "evidence": [
+            "source:mupen64plus-core/src/main/main.c get_pifrom path = pif.pal.rom / pif.ntsc.rom via ConfigGetSharedDataFilepath; open_pif md5 whitelist @d8c969c7b",
+            "source:build.sh cp mupen64plus-core/data/pif* into the install dir; data/ contains pif.ntsc.rom, pif.pal.rom @d8c969c7b",
+            "source:mupen64plus-core/src/main/main.c DD IPL ROM comes from g_media_loader.get_dd_rom (GUI), failure just 'Disabling 64DD' @d8c969c7b",
+            "db:firmware_rules has no N64 rows at all (gap: 64DD IPL is the only firmware a Lunchbox rule could target; none needed for cart games)"
+          ]
+        }
+      ],
+      "notes": "simple64 is archived upstream (README points to gopher64 as successor); captured at the final main HEAD. Flatpak io.github.simple64.simple64 relocates everything under ~/.var/app/io.github.simple64.simple64/. macOS is NOT supported ('No releases currently'), so no macos platform is captured."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Official Windows releases are portable zip layouts: simple64-gui.ini sits next to simple64-gui.exe (QSettings ini beside the executable) and configDirPath defaults to the application directory, so mupen64plus.cfg, input-profiles.ini and input-settings.ini live beside the exe; if the configDirPath override is cleared the core default is %APPDATA%\\Mupen64Plus (CSIDL_APPDATA + 'Mupen64Plus' for config, data and cache alike)",
+          "evidence": [
+            "source:simple64-gui/mainwindow.cpp applicationDirPath/simple64-gui.ini + configDirPath -> CoreStartup @d8c969c7b",
+            "source:simple64-gui/settingsdialog.cpp 'Use Application Path' default @d8c969c7b",
+            "source:mupen64plus-core/src/osal/files_win32.c osal_get_user_configpath = CSIDL_APPDATA\\Mupen64Plus; osal_get_user_datapath/cachepath 'in windows, these are all the same' @d8c969c7b"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<core data dir>\\save: <app dir>\\save when the config dir is the application directory (portable default), otherwise %APPDATA%\\Mupen64Plus\\save; [Core] SaveSRAMPath overrides",
+          "naming": "<goodname (max 32)>-<MD5[0:8]>.eep | .sra | .fla | .mpk (SaveFilenameFormat=1 default, legacy <goodname>.<ext> fallback); Game Boy RAM <gbrom>.<player#>.sav",
+          "evidence": [
+            "source:mupen64plus-core/src/main/main.c get_savepathdefault/get_save_filename/get_*_path @d8c969c7b",
+            "source:mupen64plus-core/src/osal/files_win32.c appdata\\Mupen64Plus default @d8c969c7b"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Same directory as saves ([Core] SaveStatePath else <data dir>\\save)",
+          "naming": "<save filename>.st<slot>, slots 0..9 (GUI slot menu 0-9)",
+          "evidence": [
+            "source:mupen64plus-core/src/main/savestates.c \"%s%s.st%d\" @d8c969c7b",
+            "source:simple64-gui/mainwindow.cpp SaveSlot menu 0..9 @d8c969c7b"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required; pif.ntsc.rom / pif.pal.rom ship as shared-data files beside the app and are MD5-validated by the core; 64DD IPL ROMs are user-supplied via the GUI only",
+          "evidence": [
+            "source:mupen64plus-core/src/main/main.c open_pif + shared-data PIF lookup; DD IPL via media loader @d8c969c7b",
+            "source:build.sh installs data/pif* beside the exe @d8c969c7b"
+          ]
+        }
+      ],
+      "notes": "If simple64-gui.ini is placed somewhere read-only, QSettings(\"simple64\", \"gui\") falls back to the Windows registry (HKCU\\Software\\simple64\\gui) for GUI keys only; core/config-dir resolution is unchanged."
+    }
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "slug": "gopher64",
+  "emulator": "Gopher64",
+  "sources": [
+    { "kind": "source", "repo": "gopher64/gopher64", "commit": "0bb9fbba6", "role": "config format, save/state naming, input profiles, built-in PIF ROM" },
+    { "kind": "docs", "url": "https://github.com/gopher64/gopher64#download", "role": "platform support: Windows exe, macOS aarch64 bundle + Homebrew cask, Linux binary + Flatpak io.github.gopher64.gopher64, Android" },
+    { "kind": "docs", "url": "https://github.com/gopher64/gopher64#portable-mode", "role": "portable.txt beside the executable switches to portable_data/" },
+    { "kind": "docs", "url": "https://docs.rs/dirs/7.0.0/dirs/fn.config_dir.html", "role": "dirs crate 7.0 per-platform config/data directory resolution (Cargo.toml pins dirs = \"7.0\")" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/gopher64/config.json (or $XDG_CONFIG_HOME/gopher64/); portable.txt next to the executable switches config to <exe dir>/portable_data/config. Config is a single JSON document written by serde_json (pretty). Controller configuration lives inside it under the \"input\" key: \"input_profiles\" is a map of profile name -> {\"inputs\": [[binding, binding] x 19 logical N64 inputs (dpad, start, Z, A/B/C-buttons/triggers, analog axis, hotkey)], \"dinput\": bool, \"deadzone\": int} where each binding is null or {\"Key\":{\"id\":N}} (keyboard), {\"ControllerButton\":{\"id\":N}}, {\"ControllerAxis\":{\"id\",\"axis\",\"initial_state\"}} (SDL3 gamepad), or {\"JoystickButton\"}/{\"JoystickHat\"}/{\"JoystickAxis\"} (raw joystick); \"input_profile_binding\" [4] names the profile per player port (a \"default\" profile with SDL3 keyboard + Xbox-style gamepad defaults is created on first run and cannot be deleted); \"controller_assignment\" [4], \"controller_enabled\" [4], \"transfer_pak\" [4], \"gb_rom_path\"/\"gb_ram_path\" [4]. cheats.json and retroachievements.json sit beside config.json",
+          "evidence": [
+            "source:src/ui/config.rs write_config/Config::new (config_dir/config.json, serde_json::to_writer_pretty) and Input/InputProfile/InputItem structs @0bb9fbba6",
+            "source:src/ui.rs get_dirs (dirs::config_dir().join(\"gopher64\"), portable.txt -> portable_data/config) @0bb9fbba6",
+            "source:src/ui/input_profile.rs PROFILE_SIZE=19 logical inputs, configure_input_profile, DEADZONE_DEFAULT=5 @0bb9fbba6",
+            "source:src/ui/config.rs Config::new falls back to restoring \"input\" from older config files; \"default\" profile seeded in first-run constructor @0bb9fbba6",
+            "source:Cargo.toml dirs = \"7.0\"; docs:dirs crate config_dir = $XDG_CONFIG_HOME or $HOME/.config on Linux"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.local/share/gopher64/saves (or $XDG_DATA_HOME/gopher64/saves; portable: portable_data/data/saves)",
+          "naming": "<name>-<sha256>.eep | .sra | .fla | .mpk for EEPROM/SRAM/FlashRAM/Controller-Pak, plus .img (Transfer-Pak SD card) and .romsave (homebrew 64 saves); <name> is the sanitized internal header name (bytes 0x20..0x34, non [a-zA-Z0-9_ -] stripped) or the 3-char game id (bytes 0x3B..0x3E, \"UNK\" fallback); <sha256> is the full uppercase SHA-256 of the ROM (calculate_hash)",
+          "evidence": [
+            "source:src/ui/storage.rs init() builds eep/sra/fla/pak/sdcard/romsave_file_path as saves_path + format!(\"{}-{}.{}\", prefix, game_hash, ext) @0bb9fbba6",
+            "source:src/ui/storage.rs get_game_name (regex [^a-zA-Z0-9_ -] over rom[0x20..0x34]) and prefix fallback to ui.game_id @0bb9fbba6",
+            "source:src/device/cart/rom.rs calculate_hash = uppercase hex Sha256 of the full ROM; game_id from rom[0x3B..0x3E] @0bb9fbba6",
+            "source:src/ui.rs get_dirs data_dir = dirs::data_dir()/gopher64; lib.rs create_dir_all(data_dir/saves) @0bb9fbba6"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.local/share/gopher64/states (or $XDG_DATA_HOME/gopher64/states; portable: portable_data/data/states)",
+          "naming": "<name>-<sha256>.state<slot> with slot 0..9 (u32; CLI --load-state accepts slot 0-9; the runtime HUD switches the active slot and set_extension(\"state<N>\") re-targets the file)",
+          "evidence": [
+            "source:src/ui/storage.rs savestate_file_path = states_path + format!(\"{}-{}.state{}\", prefix, game_hash, save_state_slot) @0bb9fbba6",
+            "source:src/ui/video.rs savestate callback: save_state_slot switch + .set_extension(format!(\"state{}\", slot)) @0bb9fbba6",
+            "source:src/lib.rs CLI help \"Load savestate from slot 0-9\" and error \"Savestate slot must be between 0 and 9\" @0bb9fbba6"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required. The PIF ROM is compiled in: src/device/pif/rom.rs holds NTSC_PIF_ROM and PAL_PIF_ROM (1984-byte constants) and device/pif::init selects NTSC vs PAL from the ROM region, so no user firmware is consumed",
+          "evidence": [
+            "source:src/device/pif.rs pif::init assigns rom::PAL_PIF_ROM / rom::NTSC_PIF_ROM @0bb9fbba6",
+            "source:src/device/pif/rom.rs pub const NTSC_PIF_ROM / PAL_PIF_ROM [u8; 1984] @0bb9fbba6",
+            "db:firmware_rules has no rows for any N64 emulator; gopher64 correctly needs none (gap note: none to add for carts)"
+          ]
+        }
+      ],
+      "notes": "Flatpak io.github.gopher64.gopher64 redirects these directories into ~/.var/app/io.github.gopher64.gopher64/ and needs --filesystem=host:ro to open ROMs outside the sandbox (README). Lunchbox launches with a private data root; native saves/states stay in the directories above unless portable mode is used."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\gopher64\\config.json (dirs crate resolves config_dir to FOLDERID_RoamingAppData); portable.txt next to gopher64-windows-x86_64.exe switches to <exe dir>\\portable_data\\config. Same JSON layout as Linux for the \"input\" controller sections (input_profiles / input_profile_binding / controller_assignment)",
+          "evidence": [
+            "source:src/ui.rs get_dirs (dirs::config_dir().join(\"gopher64\") on non-Android; portable branch) @0bb9fbba6",
+            "source:src/ui/config.rs write_config/Config::new @0bb9fbba6",
+            "docs:dirs crate 7.0 config_dir/data_dir on Windows = {FOLDERID_RoamingAppData}"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "%APPDATA%\\gopher64\\saves (data_dir resolves to the same Roaming AppData root as config_dir on Windows)",
+          "naming": "<name>-<sha256>.eep | .sra | .fla | .mpk (+ .img, .romsave) exactly as on Linux",
+          "evidence": [
+            "source:src/ui/storage.rs init() naming; src/ui.rs data_dir = dirs::data_dir()/gopher64 @0bb9fbba6",
+            "docs:dirs crate 7.0 data_dir on Windows = {FOLDERID_RoamingAppData}"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "%APPDATA%\\gopher64\\states",
+          "naming": "<name>-<sha256>.state<slot>, slots 0..9",
+          "evidence": [
+            "source:src/ui/storage.rs savestate_file_path format; src/lib.rs slot 0-9 clamp @0bb9fbba6"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required; built-in NTSC/PAL PIF ROM constants cover both regions",
+          "evidence": [
+            "source:src/device/pif.rs + src/device/pif/rom.rs @0bb9fbba6"
+          ]
+        }
+      ],
+      "notes": "Upstream ships a standalone exe (itch.io / GitHub latest release asset gopher64-windows-x86_64.exe); portable.txt is the supported way to keep data beside it."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/gopher64/config.json (dirs crate resolves config_dir to $HOME/Library/Application Support on macOS); portable.txt next to the app binary switches to portable_data/config",
+          "evidence": [
+            "source:src/ui.rs get_dirs (no __APPLE__ special case; dirs::config_dir()/gopher64) @0bb9fbba6",
+            "docs:dirs crate 7.0 config_dir on macOS = $HOME/Library/Application Support",
+            "docs:README#download macOS App Bundle gopher64-macos-aarch64.zip and Homebrew cask gopher64"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Library/Application Support/gopher64/saves (data_dir and config_dir coincide on macOS)",
+          "naming": "<name>-<sha256>.eep | .sra | .fla | .mpk (+ .img, .romsave) exactly as on Linux",
+          "evidence": [
+            "source:src/ui/storage.rs init(); src/ui.rs data_dir = dirs::data_dir()/gopher64 @0bb9fbba6"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Library/Application Support/gopher64/states",
+          "naming": "<name>-<sha256>.state<slot>, slots 0..9",
+          "evidence": [
+            "source:src/ui/storage.rs savestate_file_path format @0bb9fbba6"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required; built-in NTSC/PAL PIF ROM constants cover both regions",
+          "evidence": [
+            "source:src/device/pif.rs + src/device/pif/rom.rs @0bb9fbba6"
+          ]
+        }
+      ],
+      "notes": "Official macOS builds are aarch64-only app bundles (plus brew install --cask gopher64); the Lunchbox DB row for Gopher64 lists only 'Windows;Linux' and should gain macOS."
+    }
+  }
+}

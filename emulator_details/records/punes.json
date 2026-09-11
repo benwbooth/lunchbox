@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "slug": "punes",
+  "emulator": "puNES",
+  "sources": [
+    { "kind": "source", "repo": "punesemu/puNES", "commit": "b1758ec26", "role": "paths, naming and input config contract" },
+    { "kind": "docs", "url": "https://github.com/punesemu/puNES#readme", "role": "supported platforms (Linux/FreeBSD/OpenBSD/Windows only), portable mode" },
+    { "kind": "docs", "url": "https://github.com/flathub/io.github.punesemu.puNES/blob/master/io.github.punesemu.puNES.yml", "role": "flatpak finish-args: home mounted read-only, so writes land in the sandbox HOME" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/puNES/puNES.cfg (portable mode: puNES.cfg beside the executable instead; XDG_CONFIG_HOME respected)",
+          "naming": "puNES.cfg main settings, input.cfg key bindings, recent.cfg recent ROMs, plus cheat/, pgs/, shp/, jsc/ subdirs under the same folder",
+          "evidence": ["source:src/gui/qt.cpp gui_config_folder = QStandardPaths::GenericConfigLocation + NAME", "source:src/core/version.h NAME=\"puNES\"", "source:src/core/common.h CFGFILENAME/INPFILENAME/RECENTROMSFILENAME", "source:src/gui/mainApplication.cpp control_base_folders creates cheat/pgs/shp/jsc under config folder"]
+        },
+        {
+          "purpose": "keys",
+          "path": "~/.config/puNES/input.cfg",
+          "naming": "INI groups [port 1]..[port 4]; per port: controller N=standard|zapper|snes mouse|arkanoid paddle|disable, pad N type=auto|original|3rdparty, PNJ GUID=<SDL joystick GUID or NULL>, PNK A/B/Select/Start/Up/Down/Left/Right/TurboA/TurboB=<Qt key name>, P1 TA Delay/P1 TB Delay=[shortcuts] group holds hotkeys; joystick bindings are stored per-device GUID, never fuzzy-matched",
+          "evidence": ["source:src/gui/settings.h default table (\"port 1\",\"P1K A\",\"S\") etc.", "source:src/gui/objSettings.cpp group parse [port 1] SET_INP_P1J_GUID/SET_INP_P1K_A", "local:~/.var/app/io.github.punesemu.puNES/config/puNES/input.cfg [port 1] P1K A=S, P1J GUID=NULL"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.local/share/puNES/prb/ (XDG_DATA_HOME respected; NOT beside the ROM)",
+          "naming": "<ROM basename with extension stripped>.prb — raw WRAM/NVRAM image written on power-off/ROM change (and every 180 s if 'save battery ram file every 180 sec=yes')",
+          "evidence": ["source:src/core/memmap.c nvram_file = gui_data_folder() + PRB_FOLDER \"/prb\" + basename + \".prb\"", "source:src/core/common.h PRB_FOLDER \"/prb\"", "source:src/gui/mainApplication.cpp creates prb under data folder"]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.local/share/puNES/save/ (XDG_DATA_HOME respected)",
+          "naming": "<ROM basename>.pXX with XX = two hex digits of the slot index, slots 0..11 so .p00..p0B (12 slots); NSF playback uses .nXX",
+          "evidence": ["source:src/core/save_slot.c name_slot_file = gui_data_folder() + SAVE_FOLDER + basename, ext \".p%02X\" (\".n%02X\" for NSF)", "source:src/core/save_slot.h SAVE_SLOTS=12", "source:src/core/common.h SAVE_FOLDER \"/save\""]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.local/share/puNES/bios/ — no BIOS needed for cart games; FDS (Famicom Disk System) needs disksys.rom, optional",
+          "naming": "FDS BIOS search order: 1) 'fds bios file' from puNES.cfg, 2) disksys.rom in the working directory, 3) disksys.rom beside the .fds file, 4) <data folder>/bios/disksys.rom; Game Genie ROM also lives in bios/",
+          "evidence": ["source:src/core/fds.c fds_load_bios search order, BIOSFILE \"disksys.rom\", step 4 = gui_data_folder() + BIOS_FOLDER + BIOSFILE", "source:src/core/cheat.c Game Genie rom under BIOS_FOLDER", "db:firmware_rules has no punes entry (checked build/lunchbox.db) — NES needs no mandatory firmware"]
+        }
+      ],
+      "notes": "Native (non-flatpak) layout per source; only the flatpak build is installed on this machine, so no native ~/.config/puNES exists here to inspect."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/io.github.punesemu.puNES/config/puNES/puNES.cfg (sandbox HOME; io.github.punesemu.puNES v0.111 installed here)",
+          "naming": "same files as native linux: puNES.cfg, input.cfg, recent.cfg, plus cheat/, pgs/, shp/, jsc/ — all four subdirs present on this machine",
+          "evidence": ["local:~/.var/app/io.github.punesemu.puNES/config/puNES/ contains puNES.cfg, input.cfg, recent.cfg, cheat/, jsc/, pgs/, shp/", "docs:flathub manifest finish-args mount home read-only (--filesystem=home:ro), so Qt GenericConfigLocation resolves inside the sandbox HOME", "source:src/gui/qt.cpp gui_config_folder", "source:src/core/common.h file name defines"]
+        },
+        {
+          "purpose": "keys",
+          "path": "~/.var/app/io.github.punesemu.puNES/config/puNES/input.cfg",
+          "naming": "same [port 1]..[port 4] INI format as native linux (verified on this machine: P1K A=S, P1K B=A, P1J GUID=NULL)",
+          "evidence": ["local:~/.var/app/io.github.punesemu.puNES/config/puNES/input.cfg [port 1] bindings read and confirmed", "source:src/gui/settings.h default table"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/io.github.punesemu.puNES/data/puNES/prb/",
+          "naming": "<ROM basename>.prb raw battery/NVRAM image; bios/, diff/, prb/, save/, screenshot/ subdirs confirmed present on this machine",
+          "evidence": ["local:~/.var/app/io.github.punesemu.puNES/data/puNES/ contains bios, diff, prb, save, screenshot dirs", "source:src/core/memmap.c nvram_file = data folder + /prb + basename + .prb", "source:src/gui/mainApplication.cpp creates prb under data folder"]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/io.github.punesemu.puNES/data/puNES/save/",
+          "naming": "<ROM basename>.pXX, XX = hex slot index 00..0B (12 slots); .nXX for NSF",
+          "evidence": ["local:data/puNES/save/ exists in the sandbox data tree", "source:src/core/save_slot.c name_slot_file ext \".p%02X\"", "source:src/core/save_slot.h SAVE_SLOTS=12"]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.var/app/io.github.punesemu.puNES/data/puNES/bios/ — optional disksys.rom for FDS only",
+          "naming": "disksys.rom; same 4-step search order as native linux (bios/ dir is the last fallback)",
+          "evidence": ["local:data/puNES/bios/ exists (empty)", "source:src/core/fds.c fds_load_bios", "db:firmware_rules has no punes entry (checked build/lunchbox.db)"]
+        }
+      ],
+      "notes": "Flatpak v0.111 from flathub; README ships a DISABLE_PORTABLE_MODE build option 'useful with sandbox environments like Flatpak'."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\puNES\\puNES.cfg (C:\\Users\\<user>\\AppData\\Roaming\\puNES; portable mode keeps everything beside the exe)",
+          "naming": "puNES.cfg, input.cfg, recent.cfg plus cheat/, pgs/, shp/, jsc/ under the same folder",
+          "evidence": ["source:src/gui/qt.cpp gui_config_folder = QStandardPaths::GenericConfigLocation + NAME (Roaming AppData on Windows)", "source:src/core/common.h file name defines", "source:src/gui/mainApplication.cpp control_base_folders"]
+        },
+        {
+          "purpose": "keys",
+          "path": "%APPDATA%\\puNES\\input.cfg",
+          "naming": "same [port 1]..[port 4] format with PNJ GUID / PNK <button> entries as linux",
+          "evidence": ["source:src/gui/objSettings.cpp group parse [port 1]..[port 4]", "source:src/gui/settings.h default table"]
+        },
+        {
+          "purpose": "saves",
+          "path": "%APPDATA%\\puNES\\prb\\ (on Windows the data folder also resolves to the config location, unlike Linux/macOS data layouts)",
+          "naming": "<ROM basename>.prb raw battery/NVRAM image",
+          "evidence": ["source:src/gui/qt.cpp gui_data_folder: #if defined(_WIN32) uses GenericConfigLocation, else GenericDataLocation", "source:src/core/memmap.c nvram_file"]
+        },
+        {
+          "purpose": "states",
+          "path": "%APPDATA%\\puNES\\save\\",
+          "naming": "<ROM basename>.pXX, XX = hex slot index 00..0B (12 slots); .nXX for NSF",
+          "evidence": ["source:src/core/save_slot.c name_slot_file", "source:src/core/save_slot.h SAVE_SLOTS=12"]
+        },
+        {
+          "purpose": "bios",
+          "path": "%APPDATA%\\puNES\\bios\\ — optional disksys.rom for FDS only",
+          "naming": "disksys.rom; same 4-step search order as linux",
+          "evidence": ["source:src/core/fds.c fds_load_bios step 4 = data folder + bios/ + disksys.rom", "db:firmware_rules has no punes entry (checked build/lunchbox.db)"]
+        }
+      ],
+      "notes": "Windows builds (32/64 bit, OpenGL or Direct3D9) are official per README and CI (mingw windows-latest job)."
+    }
+  },
+  "notes": "macOS: not captured — puNES has no macOS port. README lists only Linux, FreeBSD, OpenBSD and Windows, nightly builds are AppImage/Windows only, and .github/workflows/build.yml builds only ubuntu-22.04 and windows-latest (checked at master b1758ec26). lunchbox DB: emulators row 6320fd6a-3589-5ff5-a5a0-9ae7d3cdfd2f (normalized_name 'punes') records save_directory '~/.local/share/puNES/save' with extension '.sav', which is imprecise per source: save/ holds save states (.pXX) and battery NVRAM is <basename>.prb under prb/; firmware_rules contains no punes rows (verified in build/lunchbox.db)."
+}
