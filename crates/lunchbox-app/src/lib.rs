@@ -25,6 +25,7 @@ mod controller_guided_native;
 mod controller_hatari;
 mod controller_hatari_native;
 mod controller_jgenesis_native;
+mod controller_kronos;
 mod controller_launch;
 mod controller_launch_modes;
 mod controller_layout;
