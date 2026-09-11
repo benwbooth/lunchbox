@@ -112,7 +112,16 @@ parse_binding_target; `n` = device+1). Config dir is `$HOME/blastem`
 (paths.c), so a private HOME isolates reads/writes. Ready to implement as a
 single/dual digital-pad contract over the SameBoy SDL2 probe.
 
-Next: continue ordinary standalone gamepad configuration beyond these twenty-four;
+Platform-record follow-ups captured by the research fan-out
+(emulator_details/records/): the Windows PCSX2 BIOS root mismatch in
+firmware.rs was fixed; the Lunchbox openMSX adapter's macOS config root
+diverges from upstream (~/.openMSX everywhere — relevant only if the
+adapter leaves Linux); the database has no firmware rules for standalone
+Mednafen or VICE (only the RetroArch Beetle PSX cores and other systems),
+and the DeSmuME Flathub manifest is stale (2015 appstream vs 2024 master
+build).
+
+Next: continue ordinary standalone gamepad configuration beyond these twenty-five;
 do not resume the arcade-peripheral audit.
 
 The notes below are historical and do not reopen the excluded peripheral scope.
