@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "slug": "dolphin",
+  "emulator": "Dolphin",
+  "sources": [
+    { "kind": "source", "repo": "dolphin-emu/dolphin", "commit": "6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4", "role": "pinned Dolphin 2606 source (matches docs/DOLPHIN_STANDALONE_PROGRESS.md pin) for all path and naming facts" },
+    { "kind": "contract", "url": "docs/DOLPHIN_CONTROLLER_CONTRACT.md", "role": "controller contract: GCPadNew.ini, Config/Profiles/GCPad, PadProfileN game-INI selection" },
+    { "kind": "docs", "url": "docs/DOLPHIN_STANDALONE_PROGRESS.md", "role": "standalone GCPadNew.ini writer and profile staging notes" },
+    { "kind": "docs", "url": "https://github.com/flathub/org.DolphinEmu.dolphin-emu", "role": "flatpak application id org.DolphinEmu.dolphin-emu" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Dolphin.ini, GCPadNew.ini, WiimoteNew.ini, GCKeyNew.ini and Profiles/GCPad/*.ini + Profiles/Wiimote/*.ini under ~/.config/dolphin-emu/Config/ (XDG_CONFIG_HOME); the remaining user trees (GameSettings/<game id>[r<rev>].ini overlays, GC, Wii, StateSaves) root at ~/.local/share/dolphin-emu; a legacy monolithic ~/.dolphin-emu is used when it exists and /.flatpak-info is absent; portable.txt next to the binary or $DOLPHIN_EMU_USERPATH redirect the whole root (portable dir is named user)",
+          "evidence": [
+            "source:UICommon.cpp SetUserDirectory (portable.txt, DOLPHIN_EMU_USERPATH, legacy ~/.dolphin-emu, XDG data/config/cache split) @6094cfcf",
+            "source:CommonPaths.h CONFIG_DIR, DOLPHIN_CONFIG, GCPAD_CONFIG=GCPadNew.ini, WIIPAD_CONFIG=WiimoteNew.ini @6094cfcf",
+            "source:InputConfig.cpp GetUserProfileDirectoryPath = Config/Profiles/<name>/ and GetProfileKey PadProfileN/WiimoteProfileN game-INI keys @6094cfcf",
+            "controller syntax: pad sections [GCPad1..4]/[Wiimote1..4] and profile [Profile] sections serialize Device = <backend>/<index>/<devicename> plus group/control keys Buttons/A, D-Pad/Up, Main Stick/Up, C-Stick/Up, Triggers/L, Triggers/L-Analog with optional <key>/Range — ControllerEmu.cpp 'Device' key, ControlGroup/ControlGroup.cpp expression/Range keys, HW/GCPadEmu.h group names @6094cfcf",
+            "contract: docs/DOLPHIN_CONTROLLER_CONTRACT.md"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "raw GC memory cards at ~/.local/share/dolphin-emu/GC/MemoryCardA.<region>.raw (slot B: MemoryCardB), GCI-folder mode at GC/<region>/Card A (slot B: Card B), Wii save data under ~/.local/share/dolphin-emu/Wii/title/00010000/<title-id-low>/data/",
+          "naming": "MemoryCardA/MemoryCardB + .USA/.EUR/.JAP + optional .<blocks> for non-251-block cards + .raw (e.g. GC/MemoryCardA.USA.raw); GCI-folder saves are <maker>-<game code>-<internal filename>.gci (e.g. 01-GALE01-....gci) under GC/<region>/Card A; Wii disc-title saves live at Wii/title/00010000/<lower title id>/data (TitleType::Game = 0x00010000)",
+          "evidence": [
+            "source:Core/Config/MainSettings.cpp GetMemcardPath/GetGCIFolderPath @6094cfcf",
+            "source:Core/HW/GCMemcard/GCMemcardDirectory.cpp GenerateFilename @6094cfcf",
+            "source:Common/NandPaths.cpp GetTitlePath/GetTitleDataPath; Core/IOS/ES/Formats.h TitleType::Game=0x00010000 @6094cfcf"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.local/share/dolphin-emu/StateSaves/",
+          "naming": "<game id>.s<slot 01-10> for both GameCube and Wii (e.g. StateSaves/GALE01.s01), plus lastState.sav and undo.dtm; there is no .gci/.gcs state format — .gci is a memory-card save image",
+          "evidence": [
+            "source:Core/State.cpp MakeStateFilename = {StateSaves}/{GameID}.s{slot:02d}, lastState.sav, undo.dtm @6094cfcf",
+            "source:Core/State.h NUM_STATES=10 @6094cfcf"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "optional GC IPL dumps at ~/.local/share/dolphin-emu/GC/<USA|EUR|JAP>/IPL.bin (region-specific file, not a single GC/IPL.bin; falls back to the shipped Sys/GC/<region>/IPL.bin); Wii requires no firmware dump",
+          "evidence": [
+            "source:Core/Config/MainSettings.cpp GetBootROMPath = GC/<region>/IPL.bin with Sys fallback @6094cfcf",
+            "source:CommonPaths.h GC_IPL=IPL.bin, GC_SYS_DIR, EUR/USA/JAP region dirs @6094cfcf"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "none user-supplied: Wii root keys and the default ECC private key are compiled into the emulator, and the emulated NAND under Wii/ is generated, not dumped",
+          "evidence": [
+            "source:Core/IOS/IOSC.cpp constexpr ROOT_PUBLIC_KEY/DEFAULT_PRIVATE_KEY key material @6094cfcf"
+          ]
+        }
+      ],
+      "notes": "Lunchbox firmware adapter roots at ~/.local/share/dolphin-emu with the ~/.dolphin-emu legacy fallback (crates/lunchbox-app/src/firmware.rs)."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "org.DolphinEmu.dolphin-emu: Config tree (Dolphin.ini, GCPadNew.ini, WiimoteNew.ini, Profiles/GCPad/*.ini, Profiles/Wiimote/*.ini) at ~/.var/app/org.DolphinEmu.dolphin-emu/config/dolphin-emu/Config/; the rest of the user dir (GC, Wii, StateSaves, GameSettings) roots at ~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/ — the sandbox /.flatpak-info check forces the XDG layout, so the legacy ~/.dolphin-emu branch never applies",
+          "evidence": [
+            "source:UICommon.cpp File::Exists(\"/.flatpak-info\") forces XDG_DATA_HOME/XDG_CONFIG_HOME roots @6094cfcf",
+            "flathub:org.DolphinEmu.dolphin-emu",
+            "app:crates/lunchbox-app/src/firmware.rs flatpak dolphin root .var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/GC/ memory cards and GCI folders, and Wii/title/00010000/ save data under the same root",
+          "naming": "identical to native Linux: MemoryCardA.<USA|EUR|JAP>.raw / MemoryCardB.<region>.raw, GC/<region>/Card A with <maker>-<game code>-<name>.gci files, and Wii/title/00010000/<title-id-low>/data/",
+          "evidence": [
+            "source:Core/Config/MainSettings.cpp GetMemcardPath/GetGCIFolderPath @6094cfcf",
+            "source:Common/NandPaths.cpp GetTitlePath @6094cfcf"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/StateSaves/",
+          "naming": "<game id>.s<slot 01-10> (e.g. RMGE01.s01) plus lastState.sav and undo.dtm",
+          "evidence": [
+            "source:Core/State.cpp MakeStateFilename @6094cfcf",
+            "source:UICommon.cpp XDG data root under flatpak @6094cfcf"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "optional GC IPL dumps at ~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/GC/<USA|EUR|JAP>/IPL.bin; Wii needs no firmware",
+          "evidence": [
+            "source:Core/Config/MainSettings.cpp GetBootROMPath @6094cfcf",
+            "app:crates/lunchbox-app/src/firmware.rs flatpak dolphin root"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "none user-supplied: Wii key material is compiled in and the NAND is generated",
+          "evidence": [
+            "source:Core/IOS/IOSC.cpp constexpr key material @6094cfcf"
+          ]
+        }
+      ],
+      "notes": "Flatpak sets XDG_DATA_HOME/XDG_CONFIG_HOME to the ~/.var/app/org.DolphinEmu.dolphin-emu sandbox, which the pinned XDG code path consumes directly."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%/Dolphin Emulator/ is the default user dir (Config/Dolphin.ini, Config/GCPadNew.ini, Config/WiimoteNew.ini, Config/Profiles/GCPad/*.ini, Config/Profiles/Wiimote/*.ini; GameSettings, GC, Wii, StateSaves all under the same root); a pre-PR-10708 Documents/Dolphin Emulator dir keeps being used when present; portable.txt or HKCU LocalUserConfig selects <exe dir>/User, HKCU UserConfigPath overrides arbitrarily",
+          "evidence": [
+            "source:UICommon.cpp SetUserDirectory Windows cases 1-6 (portable.txt, LocalUserConfig, UserConfigPath, Documents fallback, RoamingAppData default) @6094cfcf",
+            "source:CommonPaths.h NORMAL_USER_DIR='Dolphin Emulator', PORTABLE_USER_DIR='User', GCPAD_CONFIG/WIIPAD_CONFIG @6094cfcf",
+            "controller syntax: same Device/Buttons/A/Triggers/L-Analog group-control keys as Linux, in [GCPad1..4]/[Wiimote1..4] or Config/Profiles/GCPad|Wiimote [Profile] files — ControllerEmu.cpp, ControlGroup/ControlGroup.cpp, HW/GCPadEmu.h @6094cfcf",
+            "contract: docs/DOLPHIN_CONTROLLER_CONTRACT.md",
+            "app:crates/lunchbox-app/src/firmware.rs windows adapter roots at Documents/Dolphin Emulator"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<user dir>/GC/MemoryCardA.<region>.raw (slot B MemoryCardB), GCI-folder mode <user dir>/GC/<region>/Card A|B, Wii save data under <user dir>/Wii/title/00010000/<title-id-low>/data/",
+          "naming": "MemoryCardA.<USA|EUR|JAP>.raw with an optional .<blocks> size suffix; GCI-folder saves are <maker>-<game code>-<internal filename>.gci; Wii disc-title saves at Wii/title/00010000/<lower title id>/data (TitleType::Game = 0x00010000)",
+          "evidence": [
+            "source:Core/Config/MainSettings.cpp GetMemcardPath/GetGCIFolderPath @6094cfcf",
+            "source:Core/HW/GCMemcard/GCMemcardDirectory.cpp GenerateFilename @6094cfcf",
+            "source:Common/NandPaths.cpp GetTitlePath/GetTitleDataPath @6094cfcf"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<user dir>/StateSaves/",
+          "naming": "<game id>.s<slot 01-10> for GameCube and Wii alike (e.g. GALE01.s01), plus lastState.sav and undo.dtm",
+          "evidence": [
+            "source:Core/State.cpp MakeStateFilename @6094cfcf",
+            "source:Core/State.h NUM_STATES=10 @6094cfcf"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "optional GC IPL dumps at <user dir>/GC/<USA|EUR|JAP>/IPL.bin (region-specific, with the Sys/GC/<region>/IPL.bin fallback); Wii requires no firmware dump",
+          "evidence": [
+            "source:Core/Config/MainSettings.cpp GetBootROMPath @6094cfcf",
+            "source:CommonPaths.h GC_IPL=IPL.bin @6094cfcf"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "none user-supplied: Wii root/default keys are compiled into IOSC and the emulated NAND is generated",
+          "evidence": [
+            "source:Core/IOS/IOSC.cpp constexpr ROOT_PUBLIC_KEY/DEFAULT_PRIVATE_KEY @6094cfcf"
+          ]
+        }
+      ],
+      "notes": "Modern Windows default moved the user dir from Documents to %APPDATA% (PR 10708 compatibility logic in SetUserDirectory); the repo firmware adapter still resolves the Documents root."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/Dolphin/ (NORMAL_USER_DIR) holds Config/Dolphin.ini, GCPadNew.ini, WiimoteNew.ini, Profiles/GCPad/*.ini, Profiles/Wiimote/*.ini plus GC, Wii, StateSaves and GameSettings in one root; a bundle-embedded Contents/Resources/User dir takes precedence when present, and portable.txt next to the binary selects <exe dir>/User",
+          "evidence": [
+            "source:UICommon.cpp SetUserDirectory POSIX branch (EMBEDDED_USER_DIR, portable.txt, DOLPHIN_EMU_USERPATH, __APPLE__ default home+NORMAL_USER_DIR) @6094cfcf",
+            "source:CommonPaths.h __APPLE__ NORMAL_USER_DIR='Library/Application Support/Dolphin', EMBEDDED_USER_DIR='Contents/Resources/User' @6094cfcf",
+            "controller syntax: same Device/group-control keys ([GCPad1..4] Device = ..., Buttons/A = ..., Triggers/L-Analog = ...) in Config/GCPadNew.ini or Config/Profiles/GCPad|Wiimote profiles — ControllerEmu.cpp, ControlGroup/ControlGroup.cpp @6094cfcf",
+            "app:crates/lunchbox-app/src/firmware.rs macos adapter Library/Application Support/Dolphin"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Library/Application Support/Dolphin/GC/MemoryCardA.<region>.raw (slot B MemoryCardB), GCI folders GC/<region>/Card A|B, Wii save data under Wii/title/00010000/<title-id-low>/data/",
+          "naming": "MemoryCardA.<USA|EUR|JAP>.raw (optional .<blocks> size suffix); GCI-folder saves <maker>-<game code>-<internal filename>.gci; Wii disc-title saves at Wii/title/00010000/<lower title id>/data",
+          "evidence": [
+            "source:Core/Config/MainSettings.cpp GetMemcardPath/GetGCIFolderPath @6094cfcf",
+            "source:Common/NandPaths.cpp GetTitlePath @6094cfcf",
+            "source:Core/HW/GCMemcard/GCMemcardDirectory.cpp GenerateFilename @6094cfcf"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Library/Application Support/Dolphin/StateSaves/",
+          "naming": "<game id>.s<slot 01-10> (e.g. GALE01.s01) plus lastState.sav and undo.dtm; same format for GameCube and Wii",
+          "evidence": [
+            "source:Core/State.cpp MakeStateFilename @6094cfcf",
+            "source:CommonPaths.h STATESAVES_DIR='StateSaves' @6094cfcf"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "optional GC IPL dumps at ~/Library/Application Support/Dolphin/GC/<USA|EUR|JAP>/IPL.bin; Wii requires no firmware dump",
+          "evidence": [
+            "source:Core/Config/MainSettings.cpp GetBootROMPath @6094cfcf",
+            "source:CommonPaths.h GC_IPL=IPL.bin @6094cfcf"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "none user-supplied: Wii key material is compiled in and the NAND is generated",
+          "evidence": [
+            "source:Core/IOS/IOSC.cpp constexpr key material @6094cfcf"
+          ]
+        }
+      ],
+      "notes": "No XDG split on macOS: one user root under ~/Library/Application Support/Dolphin carries Config, GC, Wii and StateSaves."
+    }
+  }
+}
