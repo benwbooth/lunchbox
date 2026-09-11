@@ -96,6 +96,7 @@ mod media_audit;
 pub mod media_audit_model;
 mod media_repair_batch;
 mod native_file_dialog;
+mod platform_locations;
 mod platform_process;
 mod profile_backup;
 mod provider_image;
