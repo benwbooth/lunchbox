@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "slug": "pcsx2",
+  "emulator": "PCSX2",
+  "sources": [
+    { "kind": "source", "repo": "PCSX2/pcsx2", "commit": "98697735f1bb1a1452d975251269abd1019876d1", "role": "data roots, folder defaults, naming" },
+    { "kind": "docs", "url": "https://pcsx2.net/docs/setup/bios", "role": "bios requirement" },
+    { "kind": "docs", "url": "https://flathub.org/apps/net.pcsx2.PCSX2", "role": "flatpak app id" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/PCSX2/inis/PCSX2.ini (or $XDG_CONFIG_HOME/PCSX2/inis when that variable is set and absolute; portable.ini or portable.txt next to the binary, or -portable, keeps all data under the install dir with absolute priority; -datapath <dir> relocates the data root to <dir>/PCSX2)",
+          "naming": "Main settings in PCSX2.ini: controller bindings in [InputSources], [Pad] (multitap ports, pointer scale) and [Pad1]..[Pad8] per pad slot; hotkeys in [Hotkeys] (the Qt build has no PCSX2_keys.ini); optional inis/secrets.ini layer; named input profiles in inputprofiles/<name>.ini selected via EmuCore/InputProfileName; per-game settings in gamesettings/",
+          "evidence": [
+            "source:pcsx2/Pcsx2Config.cpp EmuFolders::SetDataDirectory, SetDefaults, Settings=DataRoot/inis (commit 98697735f1bb1a1452d975251269abd1019876d1)",
+            "source:pcsx2-qt/QtHost.cpp InitializeConfig reads EmuFolders::Settings/PCSX2.ini and secrets.ini; ParseCommandLineOptions handles -portable and -datapath",
+            "source:pcsx2/SIO/Pad/Pad.cpp GetConfigSection returns fmt::format(\"Pad{}\", pad_index + 1)",
+            "source:pcsx2/Input/InputManager.cpp reads hotkey bindings from the \"Hotkeys\" settings section",
+            "repo:crates/lunchbox-app/src/controller_pcsx2/configuration.rs (InputSources/Pad/Pad1-Pad8 section ownership)",
+            "repo:docs/PCSX2_STANDALONE_PROGRESS.md (pinned commit and -datapath launch plan)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/PCSX2/memcards/ (default [Folders] MemoryCards=memcards under the data root; user-overridable to any absolute path)",
+          "naming": "Default slot files Mcd001.ps2 and Mcd002.ps2 (\"Mcd%03u.ps2\"); multitap slots \"Mcd-Multitap<port>-Slot<slot>.ps2\"; slots are wired by [MemoryCards] SlotN_Filename (MultitapN_SlotM_Filename) and resolved against the memcards folder via FullpathToMcd; folder memory cards are directories whose name ends in .ps2 and contains a _pcsx2_superblock marker; image extensions .ps2/.mcr/.mcd/.bin/.mc2 are accepted (.bin/.mc2 are converted no-ECC images); per-game saves are served by serial-filtered folder cards (sioSetGameSerial -> ReIndex), PCSX2 does not auto-create serial-named card files",
+          "evidence": [
+            "source:pcsx2/Pcsx2Config.cpp Mcd[slot].Filename = FileMcd_GetDefaultName(slot); [MemoryCards] Slot%u_Filename entries; FullpathToMcd = Path::Combine(EmuFolders::MemoryCards, Mcd[slot].Filename)",
+            "source:pcsx2/SIO/Memcard/MemoryCardFile.cpp FileMcd_GetDefaultName (\"Mcd%03u.ps2\", \"Mcd-Multitap%u-Slot%02u.ps2\"), FileMcd_GetAvailableCards extensions, s_folder_mem_card_id_file = \"_pcsx2_superblock\"",
+            "source:pcsx2/SIO/Memcard/MemoryCardFolder.cpp ReIndex(enableFiltering, filter) / \"FolderMcd: Indexing slot %u with filter\"",
+            "source:pcsx2/SIO/Sio.cpp sioSetGameSerial passes the disc serial to mcds[port][slot].ReIndex",
+            "source:pcsx2/Pcsx2Config.cpp EmuFolders::SetDefaults/LoadConfig Folders MemoryCards=memcards"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.config/PCSX2/sstates/ (default [Folders] Savestates=sstates under the data root)",
+          "naming": "\"<SERIAL> (<CRC32 as 8-digit zero-padded uppercase hex>).<slot as 2 digits>.p2s\", e.g. SLUS-20228 (0C1EE0F2).01.p2s; resume state \"<serial> (<crc>).resume.p2s\"; backups append .backup; the savestate screenshot is embedded inside the .p2s archive rather than written alongside it",
+          "evidence": [
+            "source:pcsx2/VMManager.cpp VMManager::GetSaveStateFileName format strings: \"{} ({:08X}).{:02d}.p2s\", \"{} ({:08X}).resume.p2s\", \"{} ({:08X}).{:02d}.p2s.backup\"; SaveState_SaveScreenshot feeds the embedded screenshot",
+            "source:pcsx2/Pcsx2Config.cpp EmuFolders::SetDefaults Folders Savestates=sstates; filenames joined to EmuFolders::Savestates"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.config/PCSX2/bios/ (default [Folders] Bios=bios under the data root)",
+          "naming": "Filenames are free-form; PCSX2 scans the folder and identifies dumps itself (console dumps are typically files prefixed by the console model and ending .rom0/.rom1/.nvm etc.). Required for play: the docs state \"PCSX2 cannot play games without a BIOS, and no open-source alternative exists\" and that BIOS files must be dumped from your own console; SHA-1 hashes for verifying dumps are maintained by the ReDump project, so do not hardcode checksums here",
+          "evidence": [
+            "docs:https://pcsx2.net/docs/setup/bios (requirement, dump file extensions, ReDump SHA-1 verification)",
+            "source:pcsx2/Pcsx2Config.cpp EmuFolders::SetDefaults Folders Bios=bios",
+            "source:pcsx2/Docs/Configuration_Guide/Configuration_Guide.md first-time wizard BIOS folder step",
+            "repo:crates/lunchbox-app/src/firmware.rs (pcsx2 linux bios root ~/.config/PCSX2/bios)"
+          ]
+        }
+      ],
+      "notes": "AppImage builds place the data root next to the AppImage when no other root applies. Lunchbox launches PCSX2 with -datapath into a private tree (fresh inis/PCSX2.ini plus inputprofiles/) and rejects portable markers because the native source gives them priority; native memcards/sstates/bios keep their configured locations."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/net.pcsx2.PCSX2/config/PCSX2/inis/PCSX2.ini (Flatpak sandboxes XDG_CONFIG_HOME to ~/.var/app/net.pcsx2.PCSX2/config, so the same EmuFolders::SetDataDirectory logic lands there)",
+          "naming": "Same layout as native Linux: PCSX2.ini with [InputSources], [Pad], [Pad1]..[Pad8] and [Hotkeys]; inputprofiles/<name>.ini profiles; gamesettings/ per-game files",
+          "evidence": [
+            "docs:https://flathub.org/apps/net.pcsx2.PCSX2 (flatpak id net.pcsx2.PCSX2)",
+            "source:pcsx2/Pcsx2Config.cpp EmuFolders::SetDataDirectory honors $XDG_CONFIG_HOME when set and absolute",
+            "repo:crates/lunchbox-app/src/controller_pcsx2/configuration.rs"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/net.pcsx2.PCSX2/config/PCSX2/memcards/",
+          "naming": "Identical to native Linux: default Mcd001.ps2/Mcd002.ps2 (\"Mcd%03u.ps2\"), multitap \"Mcd-Multitap<port>-Slot<slot>.ps2\", .ps2-named folder cards with _pcsx2_superblock, [MemoryCards] SlotN_Filename selection, serial-filtered folder cards for per-game saves",
+          "evidence": [
+            "source:pcsx2/SIO/Memcard/MemoryCardFile.cpp FileMcd_GetDefaultName and _pcsx2_superblock",
+            "source:pcsx2/Pcsx2Config.cpp FullpathToMcd resolves against EmuFolders::MemoryCards",
+            "repo:crates/lunchbox-app/src/firmware.rs (flatpak pcsx2 root ~/.var/app/net.pcsx2.PCSX2/config/PCSX2)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/net.pcsx2.PCSX2/config/PCSX2/sstates/",
+          "naming": "\"<SERIAL> (<CRC32 8-digit uppercase hex>).<slot 2-digit>.p2s\" plus .resume.p2s and .backup variants, identical to native Linux",
+          "evidence": [
+            "source:pcsx2/VMManager.cpp GetSaveStateFileName format strings",
+            "source:pcsx2/Pcsx2Config.cpp Folders Savestates=sstates under the data root"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.var/app/net.pcsx2.PCSX2/config/PCSX2/bios/",
+          "naming": "Free-form filenames scanned by PCSX2; BIOS required for play, dump verification hashes live with the ReDump project (see https://pcsx2.net/docs/setup/bios)",
+          "evidence": [
+            "docs:https://pcsx2.net/docs/setup/bios",
+            "repo:crates/lunchbox-app/src/firmware.rs (flatpak pcsx2 bios root)"
+          ]
+        }
+      ],
+      "notes": "Flatpak id net.pcsx2.PCSX2 from Flathub; inside the sandbox XDG_CONFIG_HOME is ~/.var/app/net.pcsx2.PCSX2/config, which PCSX2's own $XDG_CONFIG_HOME handling then joins with PCSX2/."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%USERPROFILE%\\Documents\\PCSX2\\inis\\PCSX2.ini (FOLDERID_Documents + \"PCSX2\" to match old installs; portable.ini or portable.txt next to pcsx2-qt.exe, or -portable, keeps data under the install dir with absolute priority; -datapath relocates to <dir>\\PCSX2)",
+          "naming": "Same INI layout on every platform: [InputSources], [Pad], [Pad1]..[Pad8], [Hotkeys] in PCSX2.ini; inputprofiles\\<name>.ini profiles; inis\\secrets.ini; the Qt build has no PCSX2_keys.ini (0 code-search hits in PCSX2/pcsx2)",
+          "evidence": [
+            "source:pcsx2/Pcsx2Config.cpp EmuFolders::SetDataDirectory _WIN32 branch: SHGetKnownFolderPath(FOLDERID_Documents) + \"PCSX2\" with comment \"On Windows, use My Documents\\PCSX2 to match old installs\"",
+            "source:pcsx2/SIO/Pad/Pad.cpp GetConfigSection -> [PadN]; source:pcsx2/Input/InputManager.cpp [Hotkeys] section",
+            "repo:crates/lunchbox-app/src/controller_pcsx2/configuration.rs"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "%USERPROFILE%\\Documents\\PCSX2\\memcards\\",
+          "naming": "Default slot files Mcd001.ps2 and Mcd002.ps2 (\"Mcd%03u.ps2\"); multitap \"Mcd-Multitap<port>-Slot<slot>.ps2\"; .ps2-named folder memory card directories containing _pcsx2_superblock; slots chosen by [MemoryCards] SlotN_Filename; per-game saves via serial-filtered folder cards, not serial-named files",
+          "evidence": [
+            "source:pcsx2/SIO/Memcard/MemoryCardFile.cpp FileMcd_GetDefaultName, FileMcd_GetAvailableCards, s_folder_mem_card_id_file",
+            "source:pcsx2/Pcsx2Config.cpp Mcd defaults, [MemoryCards] entries, FullpathToMcd",
+            "source:pcsx2/SIO/Sio.cpp sioSetGameSerial -> ReIndex"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "%USERPROFILE%\\Documents\\PCSX2\\sstates\\",
+          "naming": "\"<SERIAL> (<CRC32 8-digit uppercase hex>).<slot 2-digit>.p2s\", e.g. SLUS-20228 (0C1EE0F2).01.p2s; .resume.p2s and .p2s.backup variants; screenshot embedded in the archive",
+          "evidence": [
+            "source:pcsx2/VMManager.cpp GetSaveStateFileName format strings",
+            "source:pcsx2/Pcsx2Config.cpp Folders Savestates=sstates"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "%USERPROFILE%\\Documents\\PCSX2\\bios\\",
+          "naming": "Free-form filenames; PCSX2 scans and identifies the dump itself. Required for play (\"PCSX2 cannot play games without a BIOS, and no open-source alternative exists\"); verify dump integrity against ReDump's published SHA-1 hashes rather than hardcoded values",
+          "evidence": [
+            "docs:https://pcsx2.net/docs/setup/bios",
+            "source:pcsx2/Pcsx2Config.cpp EmuFolders::SetDataDirectory Windows data root; Folders Bios=bios",
+            "source:pcsx2/Docs/Configuration_Guide/Configuration_Guide.md"
+          ]
+        }
+      ],
+      "notes": "The pinned source puts the Windows data root in Documents\\PCSX2 (FOLDERID_Documents), not AppData. Lunchbox's firmware.rs currently resolves the Windows PCSX2 BIOS root from the roaming config dir (config_dir()/PCSX2/bios), which does not match the pinned source; captured here for follow-up, not changed by this record."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/PCSX2/inis/PCSX2.ini (MAC_DATA_DIR = \"Library/Application Support/PCSX2\"; portable.ini/portable.txt next to the app binary or -portable overrides; -datapath relocates to <dir>/PCSX2)",
+          "naming": "Same INI layout as other platforms: [InputSources], [Pad], [Pad1]..[Pad8], [Hotkeys]; inputprofiles/<name>.ini; inis/secrets.ini; no separate PCSX2_keys.ini in the Qt build",
+          "evidence": [
+            "source:pcsx2/Pcsx2Config.cpp EmuFolders::SetDataDirectory __APPLE__ branch: MAC_DATA_DIR \"Library/Application Support/PCSX2\"",
+            "source:pcsx2/SIO/Pad/Pad.cpp GetConfigSection -> [PadN]; source:pcsx2/Input/InputManager.cpp [Hotkeys] section",
+            "repo:crates/lunchbox-app/src/controller_pcsx2/configuration.rs"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Library/Application Support/PCSX2/memcards/",
+          "naming": "Default slot files Mcd001.ps2 and Mcd002.ps2 (\"Mcd%03u.ps2\"); multitap \"Mcd-Multitap<port>-Slot<slot>.ps2\"; .ps2-named folder memory card directories with _pcsx2_superblock; [MemoryCards] SlotN_Filename selection; per-game saves via serial-filtered folder cards",
+          "evidence": [
+            "source:pcsx2/SIO/Memcard/MemoryCardFile.cpp FileMcd_GetDefaultName, _pcsx2_superblock, accepted extensions",
+            "source:pcsx2/Pcsx2Config.cpp [MemoryCards] entries and FullpathToMcd",
+            "source:pcsx2/SIO/Sio.cpp sioSetGameSerial -> ReIndex"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Library/Application Support/PCSX2/sstates/",
+          "naming": "\"<SERIAL> (<CRC32 8-digit uppercase hex>).<slot 2-digit>.p2s\" plus .resume.p2s and .backup variants, identical to other platforms",
+          "evidence": [
+            "source:pcsx2/VMManager.cpp GetSaveStateFileName format strings",
+            "source:pcsx2/Pcsx2Config.cpp Folders Savestates=sstates"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/Library/Application Support/PCSX2/bios/",
+          "naming": "Free-form filenames scanned by PCSX2; BIOS required for play, ReDump SHA-1 hashes used for dump verification (see https://pcsx2.net/docs/setup/bios)",
+          "evidence": [
+            "docs:https://pcsx2.net/docs/setup/bios",
+            "source:pcsx2/Pcsx2Config.cpp macOS data root and Folders Bios=bios",
+            "repo:crates/lunchbox-app/src/firmware.rs (pcsx2 macOS bios root ~/Library/Application Support/PCSX2/bios)"
+          ]
+        }
+      ],
+      "notes": "Data root follows the macOS convention via MAC_DATA_DIR; portable markers next to the binary still take priority per EmuFolders::SetDataDirectory."
+    }
+  }
+}
