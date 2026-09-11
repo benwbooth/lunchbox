@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "slug": "retroarch",
+  "emulator": "RetroArch",
+  "sources": [
+    { "kind": "source", "repo": "libretro/RetroArch", "commit": "0dc3b26c7c560f0e48a7b15002997a8c0676105f", "role": "config discovery, per-OS application data, default directories, save/state path construction" },
+    { "kind": "source", "repo": "libretro/RetroArch", "commit": "v1.19.1", "role": "stable-branch confirmation of config discovery and default directories" },
+    { "kind": "source", "repo": "libretro/retroarch-joypad-autoconfig", "role": "controller autoconfig profile syntax, per-driver layout, vid:pid matching" },
+    { "kind": "docs", "url": "https://docs.libretro.com/guides/controller-autoconfiguration/", "role": "autoconfig directories, matching, profile format, saving profiles" },
+    { "kind": "docs", "url": "https://docs.libretro.com/library/bios/", "role": "system directory and per-core firmware naming" },
+    { "kind": "docs", "url": "https://docs.libretro.com/guides/change-directories/", "role": "directory semantics when unset" },
+    { "kind": "docs", "url": "https://docs.flatpak.org/en/latest/conventions.html", "role": "flatpak XDG base-directory redirection" },
+    { "kind": "manifest", "repo": "flathub/org.libretro.RetroArch", "role": "flatpak app id, sandbox finish-args, pinned resource directories" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/retroarch/retroarch.cfg ($XDG_CONFIG_HOME/retroarch/retroarch.cfg when that variable is set; legacy fallback ~/.retroarch.cfg; a first-time config is created in the XDG directory using the /etc/retroarch.cfg skeleton, GLOBAL_CONFIG_DIR); controller autoconfig profiles in ~/.config/retroarch/autoconfig/<input-driver>/ (joypad_autoconfig_dir default, active when input_autodetect_enable = true)",
+          "naming": "retroarch.cfg is libretro config syntax (key = \"value\"); per-port binds live in the main config as input_playerN_<button>_btn/_axis plus hotkeys; autoconfig profiles are <Device Name>.cfg under a per-joypad-driver subfolder (udev/, sdl/, linuxraw/, ...) keyed by input_driver, input_device, input_vendor_id and input_product_id (decimal vid:pid, optional _alt1.._alt9 identity variants) containing RetroPad binds input_<button>_btn / input_<axis>_axis (e.g. input_b_btn, input_l_x_plus_axis, h0up hat notation) and optional input_*_label descriptors; generated via Settings -> Input -> RetroPad Binds -> Port 1 Controls -> Save Controller Profile",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c file_path_special.c fill_pathname_application_data ($XDG_CONFIG_HOME/retroarch or $HOME/.config/retroarch)",
+            "source:libretro/RetroArch@0dc3b26c retroarch.c --config help text ($XDG_CONFIG_HOME/retroarch/retroarch.cfg, $HOME/.config/retroarch/retroarch.cfg, $HOME/.retroarch.cfg, skeleton GLOBAL_CONFIG_DIR/retroarch.cfg)",
+            "source:libretro/RetroArch@0dc3b26c configuration.c config-open path (appdata join then $HOME/.retroarch.cfg fallback, creation from skeleton)",
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_unix.c frontend_unix_env_get (DEFAULT_DIR_AUTOCONFIG = base_path/autoconfig)",
+            "source:libretro/RetroArch@0dc3b26c retroarch.cfg comments (joypad_autoconfig_dir, input_autodetect_enable, input_playerN_*_btn binds)",
+            "docs:https://docs.libretro.com/guides/controller-autoconfiguration/ (Linux default ~/.config/retroarch/autoconfig, profile format, vid:pid matching, Save Controller Profile)",
+            "source:libretro/retroarch-joypad-autoconfig udev/Sony DualShock 4 Controller.cfg and README.md (input_driver/input_device/input_vendor_id/input_product_id decimal, input_b_btn/input_l2_axis/_label keys, vid+pid+name matching)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/retroarch/saves/ (savefile_directory default from DEFAULT_DIR_SRAM; when savefile_directory is unset the files are written next to the content file instead)",
+          "naming": "<content-basename>.srm where the basename is the content path minus directory and extension (archive content uses the inner file name); related save sidecars (.bsv, .rtc, .psrm) share the same directory and basename; subsystem content saves under each ROM's basename with the subsystem's declared extension; sort_savefiles_enable appends saves/<core library_name>/ and sort_savefiles_by_content_enable appends the content directory name; netplay clients add a .netplay/ segment",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c runloop.c runloop_path_set_basename / runloop_path_set_names (fill_pathname(basename, \".srm\"), FILE_PATH_SRM_EXTENSION \".srm\" in file_path_special.h)",
+            "source:libretro/RetroArch@0dc3b26c runloop.c runloop_path_set_redirect (empty dir -> content basedir; sort_savefiles_enable -> library_name subdir; sort_savefiles_by_content_enable -> content dir name; netplay .netplay)",
+            "source:libretro/RetroArch@0dc3b26c retroarch.cfg comments (\"Save all save files (*.srm) to this directory. This includes related files like .bsv, .rtc, .psrm, etc\")",
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_unix.c (DEFAULT_DIR_SRAM = base_path/saves) and configuration.c default-dir installation into settings",
+            "docs:https://docs.libretro.com/guides/change-directories/ (when directories are unset, saves are placed in the same folder as the ROMs)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.config/retroarch/states/ (savestate_directory default from DEFAULT_DIR_SAVESTATE; when unset the files are written next to the content file instead)",
+          "naming": "<content-basename>.state for slot 0, <content-basename>.stateN for slots N>=1, <content-basename>.state.auto when the slot is set to Auto (savestate_auto_index increments the index before saving and has no upper bound; savestate_auto_save/auto_load use the same .auto name) and <content-basename>.stateN.entry for playlist entry states; sort_savestates_enable appends states/<core library_name>/ and sort_savestates_by_content_enable appends the content directory name; the naming is frontend-uniform for every core",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c runloop.c runloop_get_savestate_path (slot 0 -> base, slot>0 -> printf %d, slot<0 -> join_delim \"auto\"; runloop_get_entry_state_path -> \"%d.entry\")",
+            "source:libretro/RetroArch@0dc3b26c runloop.c runloop_path_set_names (fill_pathname(basename, \".state\"), FILE_PATH_STATE_EXTENSION \".state\" in file_path_special.h)",
+            "source:libretro/RetroArch@0dc3b26c retroarch.cfg comments (savestate_auto_index: index automatically increased before saving, set to highest existing index on load, no upper bound; savestate_auto_save: path is $SRAM_PATH.auto)",
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_unix.c (DEFAULT_DIR_SAVESTATE = base_path/states)",
+            "source:libretro/RetroArch@0dc3b26c runloop.c runloop_path_set_redirect (per-core and per-content-directory savestate sorting)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.config/retroarch/system/ (system_directory default from DEFAULT_DIR_SYSTEM; the LIBRETRO_SYSTEM_DIRECTORY environment variable overrides it at startup; the special value \"default\" resolves to the content directory)",
+          "naming": "firmware file names, extensions, subfolders and md5 hashes are defined per core on its docs.libretro.com library page (some cores expect a subfolder of the system directory); cores without firmware needs simply leave the directory unused",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_unix.c (libretro_system_directory env else base_path/system) and retroarch.cfg comments (\"Sets the System/BIOS directory. Implementations can query for this directory to load BIOSes, system-specific configs, etc.\")",
+            "docs:https://docs.libretro.com/library/bios/ (place BIOS in the system folder, Settings->Directory->System/BIOS; exact name and hash per core information page, possible subfolder)",
+            "docs:https://docs.libretro.com/guides/change-directories/ (system_directory = \"default\" resolves to the content directory)",
+            "db:firmware_rules retroarch:* runtime_dir entries (sources/firmware-rules.json)"
+          ]
+        }
+      ],
+      "notes": "One record covers all cores: RetroArch has a single retroarch.cfg, saves/, states/ and system/ shared by every core. Core-specific exceptions: (1) firmware names/subfolders in system/ are per core (docs.libretro.com library pages; lunchbox firmware_rules retroarch:* target the runtime system dir); (2) sort_savefiles_enable/sort_savestates_enable create per-core subdirectories named after the core's reported library_name; (3) cores control SRAM usage, so cores without SRAM never produce a .srm, and subsystem-based content (e.g. MAME softlists) uses subsystem-declared extensions; (4) savestate file naming has no frontend-level per-core variants - documented defaults are .state/.stateN/.state.auto for all cores (core docs such as Beetle PSX only note compatibility caveats, not different file names)."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg (Flatpak always sets XDG_CONFIG_HOME to ~/.var/app/<app-id>/config, overriding host values, and RetroArch resolves its config from $XDG_CONFIG_HOME/retroarch); user-generated controller autoconfig goes to ~/.var/app/org.libretro.RetroArch/config/retroarch/autoconfig/<input-driver>/, while the manifest pins joypad_autoconfig_dir to the read-only bundled profiles at /app/share/libretro/autoconfig (installed from the /app/etc/retroarch.cfg skeleton)",
+          "naming": "same retroarch.cfg / autoconfig syntax as the linux platform: per-port input_playerN_<button>_btn/_axis binds in the main config; autoconfig profiles <Device Name>.cfg per input-driver subfolder keyed by input_driver, input_device, input_vendor_id, input_product_id (decimal vid:pid) with RetroPad input_<button>_btn / input_<axis>_axis binds and optional _label descriptors",
+          "evidence": [
+            "docs:https://docs.flatpak.org/en/latest/conventions.html (XDG_CONFIG_HOME = ~/.var/app/<app-id>/config, always set, overrides host values)",
+            "source:libretro/RetroArch@0dc3b26c file_path_special.c fill_pathname_application_data (config base = $XDG_CONFIG_HOME/retroarch)",
+            "manifest:flathub/org.libretro.RetroArch app-id org.libretro.RetroArch, post-install skeleton retroarch.cfg with joypad_autoconfig_dir = @prefix@/share/libretro/autoconfig (FLATPAK_DEST=/app), retroarch-joypad-autoconfig module",
+            "docs:https://docs.libretro.com/guides/controller-autoconfiguration/ (flatpak: bundled profiles at /app/share/libretro/autoconfig, recommended writable profile location ~/.var/app/org.libretro.RetroArch/config/retroarch/autoconfig)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/saves/ (frontend savefile_directory default derives from the sandbox XDG config base; the flatpak skeleton does not pin savefile_directory; unset => next to the content file, which can live anywhere thanks to --filesystem=host)",
+          "naming": "identical to linux: <content-basename>.srm (plus .bsv/.rtc/.psrm sidecars, subsystem extensions, sort_savefiles_enable per-core subdirs named after library_name, sort_savefiles_by_content_enable content-dir subdirs, .netplay/ segment for netplay clients)",
+          "evidence": [
+            "docs:https://docs.flatpak.org/en/latest/conventions.html (sandbox XDG base directories)",
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_unix.c (DEFAULT_DIR_SRAM = XDG config base + /saves)",
+            "manifest:flathub/org.libretro.RetroArch retroarch.cfg skeleton (only resource directories are pinned; savefile_directory untouched)",
+            "source:libretro/RetroArch@0dc3b26c runloop.c runloop_path_set_names / runloop_path_set_redirect (.srm naming and redirects)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/states/ (savestate_directory default derived from the sandbox XDG config base; unset => next to the content file)",
+          "naming": "identical to linux: <content-basename>.state (slot 0), .stateN (slot N>=1), .state.auto (Auto slot / savestate_auto_index / savestate_auto_save), .stateN.entry (entry states), optional per-core or per-content-directory subdirs via sort_savestates_enable / sort_savestates_by_content_enable",
+          "evidence": [
+            "docs:https://docs.flatpak.org/en/latest/conventions.html (sandbox XDG base directories)",
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_unix.c (DEFAULT_DIR_SAVESTATE = XDG config base + /states)",
+            "source:libretro/RetroArch@0dc3b26c runloop.c runloop_get_savestate_path (slot/index/entry naming)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/system/ (system_directory default derived from the sandbox XDG config base; LIBRETRO_SYSTEM_DIRECTORY is not passed by the manifest)",
+          "naming": "per-core firmware names/extensions/hashes as on each core's docs.libretro.com library page; some cores use subfolders of the system directory",
+          "evidence": [
+            "docs:https://docs.flatpak.org/en/latest/conventions.html (sandbox XDG base directories)",
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_unix.c (DEFAULT_DIR_SYSTEM = XDG config base + /system unless libretro_system_directory env)",
+            "docs:https://docs.libretro.com/library/bios/ (system directory, per-core names and hashes)",
+            "db:firmware_rules retroarch:* runtime_dir entries (sources/firmware-rules.json)"
+          ]
+        }
+      ],
+      "notes": "Gap: the save/state/system defaults under ~/.var/app/org.libretro.RetroArch/config/retroarch/ are derived (Flatpak XDG redirection + RetroArch frontend defaults) rather than stated verbatim in flathub documentation; the controller guide does explicitly confirm the .var/app config path for autoconfig. The manifest grants --filesystem=host and --filesystem=/run/udev:ro, so content files and controller device access work from any host location."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "retroarch.cfg in the application directory next to retroarch.exe (primary; a first-time config is created there with config_save_on_exit = true); fallback %APPDATA%\\retroarch.cfg (current source joins %APPDATA% directly with retroarch.cfg - no RetroArch segment); controller autoconfig in <appdir>\\autoconfig\\<input-driver>\\ (joypad_autoconfig_dir default \":\\\\autoconfig\" = application directory, active when input_autodetect_enable = true)",
+          "naming": "same config syntax as other platforms: input_playerN_<button>_btn/_axis binds and hotkeys in retroarch.cfg; autoconfig profiles <Device Name>.cfg under per-joypad-driver subfolders (dinput/, x/, sdl/...) keyed by input_driver, input_device, input_vendor_id, input_product_id (decimal vid:pid) with RetroPad input_<button>_btn / input_<axis>_axis binds and optional input_*_label descriptors",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c configuration.c config-open path (_WIN32: fill_pathname_application_dir + retroarch.cfg first, then %APPDATA% join, creation next to the exe; identical in v1.19.1)",
+            "source:libretro/RetroArch@0dc3b26c retroarch.c --config help text (\"Defaults to retroarch.cfg in same directory as retroarch.exe\")",
+            "source:libretro/RetroArch@0dc3b26c file_path_special.c fill_pathname_application_data (Windows branch returns %APPDATA%)",
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_win32.c frontend_win32_env_get (DEFAULT_DIR_AUTOCONFIG = \":\\\\autoconfig\"; identical in v1.19.1)",
+            "source:libretro/RetroArch@0dc3b26c libretro-common/file/nbio/../file_path.c fill_pathname_expand_special (leading ':' expands to the application directory)",
+            "source:libretro/retroarch-joypad-autoconfig dinput/ and x/ profile directories and README.md (vid+pid+device-name matching)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<application directory>\\saves\\ (DEFAULT_DIR_SRAM = \":\\\\saves\", i.e. next to retroarch.exe; unset savefile_directory => files land next to the content file)",
+          "naming": "identical to linux: <content-basename>.srm (plus .bsv/.rtc/.psrm sidecars, subsystem extensions, sort_savefiles_enable per-core subdirs named after library_name, sort_savefiles_by_content_enable content-dir subdirs, .netplay/ segment for netplay clients)",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_win32.c frontend_win32_env_get (DEFAULT_DIR_SRAM = \":\\\\saves\"; identical in v1.19.1)",
+            "source:libretro/RetroArch@0dc3b26c runloop.c runloop_path_set_names / runloop_path_set_redirect (basename + .srm, directory redirects)",
+            "source:libretro/RetroArch@0dc3b26c retroarch.cfg comments (\"Save all save files (*.srm) to this directory...\" also lists .bsv, .rtc, .psrm)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<application directory>\\states\\ (DEFAULT_DIR_SAVESTATE = \":\\\\states\"; unset savestate_directory => files land next to the content file)",
+          "naming": "identical to linux: <content-basename>.state (slot 0), .stateN (slot N>=1), .state.auto (Auto slot / savestate_auto_index / savestate_auto_save), .stateN.entry (entry states), optional per-core or per-content-directory subdirs",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_win32.c frontend_win32_env_get (DEFAULT_DIR_SAVESTATE = \":\\\\states\"; identical in v1.19.1)",
+            "source:libretro/RetroArch@0dc3b26c runloop.c runloop_get_savestate_path (slot/index/entry naming)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<application directory>\\system\\ (DEFAULT_DIR_SYSTEM = \":\\\\system\" unless LIBRETRO_SYSTEM_DIRECTORY is set; the special value \"default\" resolves to the content directory)",
+          "naming": "per-core firmware names/extensions/hashes as documented on each core's docs.libretro.com library page; some cores use subfolders of the system directory",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_win32.c frontend_win32_env_get (DEFAULT_DIR_SYSTEM = \":\\\\system\" or LIBRETRO_SYSTEM_DIRECTORY)",
+            "docs:https://docs.libretro.com/library/bios/ (system directory, per-core names and hashes)",
+            "db:firmware_rules retroarch:* runtime_dir entries (sources/firmware-rules.json)"
+          ]
+        }
+      ],
+      "notes": "Windows RetroArch is portable-first: the distributed layout is a single RetroArch install folder holding retroarch.cfg, saves\\, states\\, system\\ and autoconfig\\ together. Gap: the widely repeated %APPDATA%\\RetroArch\\retroarch.cfg location does not match current master or v1.19.1, which use retroarch.cfg next to the exe first and %APPDATA%\\retroarch.cfg (no RetroArch segment) as fallback; capture follows the source."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/RetroArch/config/retroarch.cfg (grouped with menu configs and remaps; the config directory is created on first run); portable installs - a portable.txt next to the .app, the RAPortableInstall Info key, or the Steam build - instead keep <directory-containing-the-.app>/config/retroarch.cfg; controller autoconfig in ~/Library/Application Support/RetroArch/autoconfig/<input-driver>/ (portable: <dir-of-app>/autoconfig/)",
+          "naming": "same config syntax as other platforms: input_playerN_<button>_btn/_axis binds and hotkeys in retroarch.cfg; autoconfig profiles <Device Name>.cfg under per-joypad-driver subfolders (mfi/, hid/, sdl/...) keyed by input_driver, input_device, input_vendor_id, input_product_id (decimal vid:pid) with RetroPad input_<button>_btn / input_<axis>_axis binds and optional input_*_label descriptors",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c configuration.c config-open path (TARGET_OS_OSX: fill_pathname_application_data, strlcat \"/config\", join retroarch.cfg; identical in v1.19.1)",
+            "source:libretro/RetroArch@0dc3b26c file_path_special.c fill_pathname_application_data (macOS: dir of .app when portable.txt/RAPortableInstall/Steam, else ~/Library/Application Support/RetroArch)",
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_darwin.m (DEFAULT_DIR_AUTOCONFIG = application_data/autoconfig)",
+            "source:libretro/retroarch-joypad-autoconfig mfi/ and hid/ profile directories"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Documents/RetroArch/saves/ (DEFAULT_DIR_SRAM under the user-visible documents dir; portable installs use <dir-of-app>/saves; unset savefile_directory => next to the content file)",
+          "naming": "identical to linux: <content-basename>.srm (plus .bsv/.rtc/.psrm sidecars, subsystem extensions, sort_savefiles_enable per-core subdirs named after library_name, sort_savefiles_by_content_enable content-dir subdirs, .netplay/ segment for netplay clients)",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_darwin.m frontend_darwin_env_get (documents_dir_buf = ~/Documents/RetroArch; DEFAULT_DIR_SRAM = documents_dir_buf/saves; \"this stuff we expect the user to find easily, possibly sync across iCloud\")",
+            "source:libretro/RetroArch@0dc3b26c runloop.c runloop_path_set_names / runloop_path_set_redirect (basename + .srm, directory redirects)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Documents/RetroArch/states/ (DEFAULT_DIR_SAVESTATE under the documents dir; portable installs use <dir-of-app>/states; unset savestate_directory => next to the content file)",
+          "naming": "identical to linux: <content-basename>.state (slot 0), .stateN (slot N>=1), .state.auto (Auto slot / savestate_auto_index / savestate_auto_save), .stateN.entry (entry states), optional per-core or per-content-directory subdirs",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_darwin.m frontend_darwin_env_get (DEFAULT_DIR_SAVESTATE = documents_dir_buf/states)",
+            "source:libretro/RetroArch@0dc3b26c runloop.c runloop_get_savestate_path (slot/index/entry naming)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/Documents/RetroArch/system/ (DEFAULT_DIR_SYSTEM under the documents dir; portable installs use <dir-of-app>/system; the special value \"default\" resolves to the content directory)",
+          "naming": "per-core firmware names/extensions/hashes as documented on each core's docs.libretro.com library page; some cores use subfolders of the system directory",
+          "evidence": [
+            "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_darwin.m frontend_darwin_env_get (DEFAULT_DIR_SYSTEM = documents_dir_buf/system)",
+            "docs:https://docs.libretro.com/library/bios/ (system directory, per-core names and hashes)",
+            "db:firmware_rules retroarch:* runtime_dir entries (sources/firmware-rules.json)"
+          ]
+        }
+      ],
+      "notes": "macOS defaults split data: retroarch.cfg and autoconfig/ live under ~/Library/Application Support/RetroArch (config/ subdir for the main config), while saves/, states/ and system/ default to ~/Documents/RetroArch so users can find and sync them. Portable installs (portable.txt, RAPortableInstall, Steam) concentrate everything next to the .app bundle. Verified on master and v1.19.1; older builds that wrote retroarch.cfg directly under ~/Library/Application Support/RetroArch (without the config/ segment) were not separately pinned."
+    }
+  }
+}
