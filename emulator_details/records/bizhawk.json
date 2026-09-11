@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "slug": "bizhawk",
+  "emulator": "BizHawk",
+  "sources": [
+    { "kind": "source", "repo": "TASEmulators/BizHawk", "commit": "8c6b8958bbbe623eaaa36bc82af858b812893628", "role": "portable config default, PathEntries defaults, SaveRAM/savestate/movie naming, firmware scan" },
+    { "kind": "docs", "url": "https://tasvideos.org/Bizhawk/Firmwares", "role": "required firmware per system" },
+    { "kind": "docs", "url": "https://tasvideos.org/Bizhawk/FAQ", "role": "Firmware folder error message" },
+    { "kind": "contract", "repo": "TASEmulators/BizHawk", "commit": "8c6b8958bbbe623eaaa36bc82af858b812893628", "role": "pinned controller config encoding: docs/BIZHAWK_SNES9X_CONTROLLER_CONTRACT.md, docs/BIZHAWK_GPGX_CONTROLLER_CONTRACT.md, docs/BIZHAWK_NESHAWK_CONTROLLER_CONTRACT.md, docs/BIZHAWK_PCEHAWK_CONTROLLER_CONTRACT.md, docs/BIZHAWK_SMSHAWK_CONTROLLER_CONTRACT.md, docs/BIZHAWK_TURBONYMA_CONTROLLER_CONTRACT.md; Unix BIZHAWK_HOME/BIZHAWK_DATA_HOME in docs/BIZHAWK_DEFINITION_CAPTURE.md" }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "config.ini in the EmuHawk program directory (portable); Program.cs falls back to PathUtils.ExeDirectoryPath/config.ini when no --config argument is given. The file is JSON-formatted despite the .ini name (ConfigService uses Newtonsoft.Json). Controller bindings live in the AllTrollers map keyed by per-system deck names (SNES Controller, NES Controller, GPGX Genesis Controller, PC Engine Controller) with P<n> <button> keys, alongside AllTrollersAnalog/AllTrollersFeedbacks/AllTrollersAutoFire; per-core port and device settings sit under CoreSyncSettings.<full core type name> (e.g. BizHawk.Emulation.Cores.Nintendo.SNES9X.Snes9x); core choice is PreferredCores.<SYSTEM> with DontTryOtherCores; the PathEntries table in the same file holds every path override (%exe%/%rom% and per-system Base supported)",
+          "evidence": [
+            "source:src/BizHawk.Client.EmuHawk/Program.cs configPath default",
+            "source:src/BizHawk.Client.Common/config/ConfigService.cs JSON serializer",
+            "source:src/BizHawk.Client.Common/config/Config.cs AllTrollers/CoreSyncSettings/PreferredCores",
+            "contract:docs/BIZHAWK_SNES9X_CONTROLLER_CONTRACT.md",
+            "contract:docs/BIZHAWK_GPGX_CONTROLLER_CONTRACT.md",
+            "contract:docs/BIZHAWK_DEFINITION_CAPTURE.md (ArgParser --config, step 387)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Per-system Save RAM directory from the PathEntries table: default ./SaveRAM under each system Base, resolving to <programdir>/<System dir>/SaveRAM (e.g. <programdir>/SNES/SaveRAM); NDS, Atari 2600, AmstradCPC, Channel F, Coleco and Doom omit Save RAM by default",
+          "naming": "<rom FilesystemSafeName>.SaveRAM with a .SaveRAM.bak written alongside. Two-slot model: with AutosaveSaveRAM enabled, periodic flushes write <name>.AutoSaveRAM.SaveRAM while normal saves write <name>.SaveRAM, and LoadSaveRam picks the newer of the two (prompting when the autosave is newer); while a movie is active both names gain a .<movie filename without extension> suffix before .SaveRAM, isolating movie play from normal play",
+          "evidence": [
+            "source:src/BizHawk.Client.Common/config/PathEntryCollectionExtensions.cs SaveRamAbsolutePath/AutoSaveRamAbsolutePath",
+            "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults (Save RAM = ./SaveRAM per system)",
+            "source:src/BizHawk.Client.EmuHawk/MainForm.cs LoadSaveRam/FlushSaveRAM"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Per-system Savestates directory from PathEntries: default ./State under each system Base, resolving to <programdir>/<System dir>/State (e.g. <programdir>/SNES/State); movies go to the global Movies entry (default <programdir>/Movies) with backups in Movies/backup",
+          "naming": "<rom FilesystemSafeName>.<CoreName>.QuickSave<N>.State where N = slot % 10 (slots 1-10; slot 10 writes QuickSave0); the prefix additionally carries the bsnes profile and, while a movie is active, .<movie filename without extension>; Save State As writes arbitrary .State files; movies are .bk2 files (Bk2Movie.Extension = bk2)",
+          "evidence": [
+            "source:src/BizHawk.Client.EmuHawk/MainForm.cs SaveStatePrefix/SaveQuickSave/LoadQuickSave",
+            "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults (Savestates = ./State, Movies = ./Movies, Movie backups = ./Movies/backup)",
+            "source:src/BizHawk.Client.Common/movie/bk2/Bk2Movie.cs Extension"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Global Firmware directory from PathEntries: default <programdir>/Firmware; FirmwareManager.DoScanAndResolve scans that directory and EmuHawk opens its firmware manager (Config > Firmware) when a core needs a missing file",
+          "naming": "Per-system firmware files: FDS disksys.rom, PCE CD PCECDBIOS.pce, Colecovision ColecoBios.bin, GBA gbabios.rom, Atari Lynx BIOS, TI-83 ti83_107.rom, SNES coprocessor ROMs (cx4.rom, dsp1b.rom, st010.rom, sgb.sfc etc.), PlayStation ps-30a.bin/ps-30e.bin/ps-30j.bin, Sega CD/Saturn and SMS regional BIOSes, 7800/Intellivision/C64/Apple IIe files; none are distributed with BizHawk",
+          "evidence": [
+            "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults (Firmware = ./Firmware)",
+            "source:src/BizHawk.Client.Common/fwmanager/FirmwareManager.cs DoScanAndResolve(FirmwareAbsolutePath)",
+            "docs:tasvideos.org/Bizhawk/Firmwares",
+            "docs:tasvideos.org/Bizhawk/FAQ"
+          ]
+        }
+      ],
+      "notes": "Primary platform: EmuHawk.exe from GitHub releases (README requires at least Win10 22H2 or Win11 21H2; a 1.13.2 backport exists for XP/7/8.1). Lunchbox launches with a private --config copy and leaves PathEntries-directed save/state locations untouched."
+    },
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "config.ini in the effective EmuHawk installation directory (portable); Program.cs falls back to PathUtils.ExeDirectoryPath/config.ini, and at the pinned revision the Unix PathExtensions derives that directory from BIZHAWK_HOME (and the data directory from BIZHAWK_DATA_HOME) when set. Same JSON layout as Windows: AllTrollers deck maps, CoreSyncSettings, PreferredCores, PathEntries",
+          "evidence": [
+            "source:src/BizHawk.Client.EmuHawk/Program.cs configPath default",
+            "contract:docs/BIZHAWK_DEFINITION_CAPTURE.md (steps 389, 445: BIZHAWK_HOME/BIZHAWK_DATA_HOME on Unix)",
+            "contract:docs/BIZHAWK_GPGX_CONTROLLER_CONTRACT.md (PathUtils DllDirectoryPath from BIZHAWK_HOME or executable directory)",
+            "source:src/BizHawk.Client.Common/config/ConfigService.cs JSON serializer"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Per-system Save RAM directory from the PathEntries table: default ./SaveRAM under each system Base, resolving to <programdir>/<System dir>/SaveRAM (e.g. <programdir>/Genesis/SaveRAM); NDS, Atari 2600, AmstradCPC, Channel F, Coleco and Doom omit Save RAM by default",
+          "naming": "<rom FilesystemSafeName>.SaveRAM with a .SaveRAM.bak written alongside. Two-slot model: with AutosaveSaveRAM enabled, periodic flushes write <name>.AutoSaveRAM.SaveRAM while normal saves write <name>.SaveRAM, and LoadSaveRam picks the newer of the two; while a movie is active both names gain a .<movie filename without extension> suffix before .SaveRAM",
+          "evidence": [
+            "source:src/BizHawk.Client.Common/config/PathEntryCollectionExtensions.cs SaveRamAbsolutePath/AutoSaveRamAbsolutePath",
+            "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults",
+            "source:src/BizHawk.Client.EmuHawk/MainForm.cs LoadSaveRam/FlushSaveRAM"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Per-system Savestates directory from PathEntries: default ./State under each system Base (e.g. <programdir>/Genesis/State); movies go to the global Movies entry (default <programdir>/Movies) with backups in Movies/backup",
+          "naming": "<rom FilesystemSafeName>.<CoreName>.QuickSave<N>.State where N = slot % 10 (slots 1-10; slot 10 writes QuickSave0); movie-active prefixes gain .<movie filename without extension>; movies are .bk2 files (Bk2Movie.Extension = bk2)",
+          "evidence": [
+            "source:src/BizHawk.Client.EmuHawk/MainForm.cs SaveStatePrefix/SaveQuickSave",
+            "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults",
+            "source:src/BizHawk.Client.Common/movie/bk2/Bk2Movie.cs Extension"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Global Firmware directory from PathEntries: default <programdir>/Firmware; FirmwareManager.DoScanAndResolve scans that directory and the firmware manager prompts for missing files",
+          "naming": "Same firmware set as Windows: FDS disksys.rom, PCE CD PCECDBIOS.pce, GBA gbabios.rom, PlayStation ps-30a/e/j.bin, SNES coprocessor ROMs, Sega CD/Saturn/SMS BIOSes, TI-83, 7800, Intellivision, C64, Apple IIe; not distributed with BizHawk",
+          "evidence": [
+            "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults (Firmware = ./Firmware)",
+            "source:src/BizHawk.Client.Common/fwmanager/FirmwareManager.cs DoScanAndResolve",
+            "docs:tasvideos.org/Bizhawk/Firmwares"
+          ]
+        }
+      ],
+      "notes": "Supported: bizhawk-monort release started with EmuHawkMono.sh (runtime deps glibc, Mono complete, OpenAL, Lua 5.4); README calls the port about at parity with Mupen64Plus (N64) the notable omission, in a Windows-centric project. Lunchbox's direct-Mono launch supplies BIZHAWK_HOME/BIZHAWK_DATA_HOME explicitly and passes a private --config copy (docs/BIZHAWK_DEFINITION_CAPTURE.md)."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Legacy only: config.ini in the EmuHawk program directory, same portable layout as Windows (Program.cs ExeDirectoryPath/config.ini fallback; JSON-formatted file with AllTrollers/CoreSyncSettings/PreferredCores/PathEntries); current BizHawk does not run on macOS, so only the legacy 1.x port or the old 2.x source fork use this layout there",
+          "evidence": [
+            "source:src/BizHawk.Client.EmuHawk/Program.cs configPath default (platform-independent exe-relative layout)",
+            "readme:macOS (legacy BizHawk) section at the pinned commit"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Legacy only: per-system Save RAM directory, default ./SaveRAM under each system Base relative to the program directory (e.g. <programdir>/SNES/SaveRAM)",
+          "naming": "<rom FilesystemSafeName>.SaveRAM (+ .SaveRAM.bak); autosave slot <name>.AutoSaveRAM.SaveRAM chosen over the normal slot when newer; movie-active names gain a .<movie filename without extension> suffix before .SaveRAM",
+          "evidence": [
+            "source:src/BizHawk.Client.Common/config/PathEntryCollectionExtensions.cs SaveRamAbsolutePath/AutoSaveRamAbsolutePath",
+            "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Legacy only: per-system Savestates directory, default ./State under each system Base (e.g. <programdir>/SNES/State); movies in the global Movies directory (default <programdir>/Movies)",
+          "naming": "<rom FilesystemSafeName>.<CoreName>.QuickSave<N>.State with N = slot % 10; Save State As writes .State files; movies are .bk2",
+          "evidence": [
+            "source:src/BizHawk.Client.EmuHawk/MainForm.cs SaveStatePrefix/SaveQuickSave",
+            "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults",
+            "source:src/BizHawk.Client.Common/movie/bk2/Bk2Movie.cs Extension"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Legacy only: global Firmware directory, default <programdir>/Firmware, scanned by the firmware manager",
+          "naming": "Same firmware set as Windows (disksys.rom, gbabios.rom, ps-30a/e/j.bin etc.); not distributed with BizHawk",
+          "evidence": [
+            "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults (Firmware = ./Firmware)",
+            "docs:tasvideos.org/Bizhawk/Firmwares"
+          ]
+        }
+      ],
+      "notes": "macOS support level: none for current releases. The README section macOS (legacy BizHawk) lists the options: use Windows/Linux or an x86_64 VM, run Sappharad's older 1.x port via Rosetta, or build his old 2.x source fork; Apple silicon would need x86_64 plus Rosetta. Paths above follow the pinned source's platform-independent exe-relative layout and apply to those legacy builds."
+    }
+  }
+}
