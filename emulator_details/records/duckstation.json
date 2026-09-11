@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "slug": "duckstation",
+  "emulator": "DuckStation",
+  "sources": [
+    { "kind": "source", "repo": "stenzel/duckstation", "commit": "0a53bc47c", "role": "controller contract" },
+    { "kind": "docs", "url": "https://www.duckstation.org/wiki/FAQ", "role": "paths" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.local/share/duckstation/settings.ini (portable mode disables this)",
+          "evidence": ["docs:FAQ", "controller contract: docs/CONTROLLERS.md"]
+        },
+        {
+          "purpose": "saves",
+          "path": " covers/ and the memory card directory from settings; per-game memory cards are <serial>.mcr / <serial>.sanyo.mcr keyed by DuckStation's disc serial",
+          "naming": "Memory cards named from the disc serial (e.g. SCUS-94163.mcr); shared card slots use the names configured in settings",
+          "evidence": ["docs:FAQ", "source:duckstation_config GameIdentity/serial usage"]
+        },
+        {
+          "purpose": "states",
+          "path": "savestates/ in the user directory",
+          "naming": "<serial>.<slot>.sav with a savestate screenshot alongside; slots 1..10 plus resume",
+          "evidence": ["docs:FAQ"]
+        },
+        {
+          "purpose": "bios",
+          "path": "bios/ in the user directory",
+          "naming": "Standard PlayStation BIOS images (scph1001 etc.); DuckStation HLE BIOS is the no-firmware fallback",
+          "evidence": ["docs:FAQ", "db:firmware_rules duckstation entries"]
+        }
+      ],
+      "notes": "Lunchbox launches with a private data root; native saves stay in their configured locations."
+    }
+  }
+}
