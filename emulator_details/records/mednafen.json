@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "slug": "mednafen",
+  "emulator": "Mednafen",
+  "sources": [
+    { "kind": "docs", "url": "https://mednafen.github.io/documentation/", "role": "base directory, filesys.path_*/fname_* settings, input mapping format" },
+    { "kind": "docs", "url": "https://mednafen.github.io/releases/", "role": "platform support verification (Windows binaries + source; Linux/BSD compile; no official macOS builds)" },
+    { "kind": "source", "repo": "libretro-mirrors/mednafen-git", "commit": "f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc", "role": "save/state filename construction, per-system save extensions, BIOS settings, base-directory logic" },
+    { "kind": "source", "repo": "lunchbox crates/lunchbox-app/src/controller_mednafen + data/controllers/catalog.json", "role": "pinned setting-name and input-expression contract (mednafen-settings transport)" },
+    { "kind": "repo", "repo": "docs/MEDNAFEN_STANDALONE_PROGRESS.md", "role": "lunchbox pinned Mednafen standalone adapter progress and private-config staging contract" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.mednafen/mednafen.cfg (base directory is $MEDNAFEN_HOME if set, else $HOME/.mednafen); module overrides <base>/<system>.cfg and per-game <base>/<filesys.path_pgconfig, default pgconfig>/<FileBase>.<system>.cfg; settings are flat 'key value' lines with ';'#' comments and a legacy ';VERSION 0.' header format rejected by lunchbox. Controller bindings live in the same cfg layers as <system>.input.port<n>.<device>.<button> keys, e.g. gb.input.port1.gamepad.a or psx.input.port2.dualanalog.circle; device selection via <system>.input.port<n> (gamepad|dualanalog|none), multitaps via psx.input.pport<n>.multitap and ss.input.sport<n>.multitap, global input.joystick.axis_threshold (default 75); values are native expressions 'joystick 0x<128-bit id> button_<n>' / 'abs_<n>[-+][ scale]'; any setting can also be overridden on the command line as -<setting> <value> (main.cpp usage example: -pce.stretch aspect)",
+          "evidence": [
+            "docs:mednafen.github.io/documentation (mednafen.cfg under base directory; written at shutdown)",
+            "docs:mednafen.github.io/documentation#Section_input_mapping_format (input expression format)",
+            "source:drivers/main.cpp GetBaseDirectory + DoArgs usage @ f0ee9d5",
+            "repo:controller_mednafen/discovery.rs + paths.rs (mednafen.cfg, <system>.cfg, pgconfig/<FileBase>.<system>.cfg; legacy header rejected)",
+            "repo:controller_mednafen/profiles.rs + psx.rs + saturn.rs + nes.rs (<system>.input.portN.gamepad.<key>, device none, pport/sport multitap)",
+            "repo:controller_catalog.rs mednafen-settings transport + data/controllers/catalog.json mednafen:standalone-* profiles",
+            "repo:docs/MEDNAFEN_STANDALONE_PROGRESS.md (pinned input contracts)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<base>/sav/ (filesys.path_sav, default 'sav' under the base directory, not beside the ROM); backups in <base>/b/",
+          "naming": "saveram naming = ROM basename (FileBase) + per-system extension via filesys.fname_sav default %f.%M%x: PSX <base>.<slot>.mcr (e.g. gamename.0.mcr), GB <base>.sav, NES <base>.sav (FDS <base>.fds), SNES <base>.srm (+ .rtc), Saturn <base>.bkr, NGP <base>.flash, Virtual Boy <base>.sav, GBA <base>.sav plus <base>.eep for EEPROM",
+          "evidence": [
+            "docs:mednafen.github.io/documentation (filesys.path_sav, filesys.fname_sav %f.%M%x, %x warning)",
+            "source:general.cpp MDFN_MakeFName MDFNMKF_SAV @ f0ee9d5",
+            "source:psx.cpp '%d.mcr', gb.cpp 'sav', nes/cart.cpp 'sav', nes/fds.cpp 'fds', snes/interface.cpp 'srm'/'rtc', ss.cpp 'bkr', ngp/neopop.cpp 'flash', vb/vb.cpp 'sav', gba/GBA.cpp 'sav'/'eep' @ f0ee9d5"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<base>/mcs/ (filesys.path_state, default 'mcs' directory under the base directory)",
+          "naming": "filesys.fname_state default %f.%M%X: generic gzip-compressed save states named <base>.mc<slot> for slots 0-9 (the uniform 'mcs' extension with the slot digit replacing its last character); no per-ROM .nst and no per-system state extension - the .mcs/mc<N> scheme is shared by all emulation modules",
+          "evidence": [
+            "docs:mednafen.github.io/documentation (filesys.path_state, filesys.fname_state %f.%M%X, gzip state_comp_level)",
+            "source:general.cpp MDFN_MakeFName MDFNMKF_STATE (%x defaults to 'mcs', slot merged into X) + state.cpp MDFN_MakeFName(MDFNMKF_STATE, CurrentState, NULL) @ f0ee9d5"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<base>/firmware/ (filesys.path_firmware; BIOS setting values are resolved there unless absolute); per-system keys: psx.bios_jp/psx.bios_na/psx.bios_eu (defaults scph5500.bin/scph5501.bin/scph5502.bin with documented SHA-256), ss.bios_jp (sega_101.bin), ss.bios_na_eu (mpr-17933.bin) plus ss.bios_stv_* variants, pce.cdbios (syscard3.pce) and pce.gecdbios, pce_fast.cdbios, optional gba.bios (default empty), NES FDS disksys.rom",
+          "evidence": [
+            "source:general.cpp MDFNMKF_FIRMWARE resolution via filesys.path_firmware @ f0ee9d5",
+            "source:psx.cpp psx.bios_* with SHA-256, ss.cpp ss.bios_*, pce.cpp pce.cdbios/pce.gecdbios, gba/GBA.cpp gba.bios, nes/fds.cpp disksys.rom @ f0ee9d5",
+            "repo:docs/MEDNAFEN_STANDALONE_PROGRESS.md (FDS disksys.rom firmware must pre-exist; Saturn/PSX native BIOS still required, firmware identity unverified)",
+            "gap:sources/firmware-rules.json has no standalone-mednafen firmware rules (only retroarch beetle_psx/beetle_psx_hw PS1 BIOS packs); the pinned gb module exposes no BIOS setting"
+          ]
+        }
+      ],
+      "notes": "Lunchbox pins deep Mednafen contracts (docs/MEDNAFEN_STANDALONE_PROGRESS.md; controller_catalog mednafen-settings transport) and launches with a child-only MEDNAFEN_HOME private base, staged private config layers and bubblewrap mounts; only configuration files are replaced, native save/state locations are retained (controller_mednafen/native_command.rs, discovery.rs, isolation). Native 128-bit joystick IDs come from joydev/evdev inventory, never SDL GUIDs."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "mednafen.cfg under the base directory: %MEDNAFEN_HOME% if set (used directly, no '.mednafen' suffix appended), else %HOME%\\.mednafen, else the directory containing mednafen.exe; module and per-game override cfg layers are the same <base>/<system>.cfg and pgconfig/<FileBase>.<system>.cfg scheme",
+          "evidence": [
+            "source:drivers/main.cpp GetBaseDirectory WIN32 branch (MEDNAFEN_HOME, HOME + .mednafen, GetModuleFileName fallback) @ f0ee9d5",
+            "docs:mednafen.github.io/documentation (settings loaded/saved from mednafen.cfg under the base directory)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<base>\\sav\\ (filesys.path_sav default 'sav'); same layout as Linux since paths resolve under the base directory with MDFN_PSS separators",
+          "naming": "identical saveram convention to Linux: ROM basename + per-system extension via filesys.fname_sav %f.%M%x (PSX <base>.<slot>.mcr, GB <base>.sav, SNES <base>.srm, Saturn <base>.bkr)",
+          "evidence": [
+            "source:general.cpp MDFN_MakeFName MDFNMKF_SAV + MDFN_PSS @ f0ee9d5",
+            "source:per-module save extensions (psx.cpp, gb.cpp, snes/interface.cpp, ss.cpp) @ f0ee9d5"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<base>\\mcs\\ (filesys.path_state default 'mcs')",
+          "naming": "same as Linux: gzip save states <base>.mc<slot>, slots 0-9, from filesys.fname_state %f.%M%X with the generic 'mcs' extension; no per-system state extension",
+          "evidence": [
+            "source:general.cpp MDFNMKF_STATE naming @ f0ee9d5",
+            "docs:mednafen.github.io/documentation (filesys.path_state, filesys.fname_state)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<base>\\firmware\\ (filesys.path_firmware) with the same per-system BIOS keys as Linux: psx.bios_jp/na/eu, ss.bios_jp/ss.bios_na_eu (+ stv), pce.cdbios, pce_fast.cdbios, optional gba.bios, NES FDS disksys.rom",
+          "evidence": [
+            "source:general.cpp MDFNMKF_FIRMWARE @ f0ee9d5",
+            "source:psx.cpp/ss.cpp/pce.cpp/GBA.cpp BIOS settings with default filenames @ f0ee9d5",
+            "gap:sources/firmware-rules.json has no standalone-mednafen firmware rules"
+          ]
+        }
+      ],
+      "notes": "Official releases provide prebuilt 32-bit and 64-bit Windows binaries plus source; Windows is the only platform with official binaries (docs:mednafen.github.io/releases)."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.mednafen/mednafen.cfg (Unix base-directory logic: $MEDNAFEN_HOME if set, else $HOME/.mednafen, else getpwuid home + /.mednafen); module/per-game override layers unchanged",
+          "evidence": [
+            "source:drivers/main.cpp GetBaseDirectory non-WIN32 branch @ f0ee9d5",
+            "docs:mednafen.github.io/documentation (HOME suffixed with '/.mednafen' as base directory)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<base>/sav/ (filesys.path_sav default 'sav')",
+          "naming": "same saveram convention as Linux: ROM basename + per-system extension via filesys.fname_sav %f.%M%x (PSX <base>.<slot>.mcr, GB <base>.sav, SNES <base>.srm, Saturn <base>.bkr, NGP <base>.flash)",
+          "evidence": [
+            "source:general.cpp MDFN_MakeFName MDFNMKF_SAV @ f0ee9d5",
+            "source:per-module save extensions @ f0ee9d5"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<base>/mcs/ (filesys.path_state default 'mcs')",
+          "naming": "same as Linux: gzip save states <base>.mc<slot> (slots 0-9) from the uniform 'mcs' extension scheme; no per-system state extension",
+          "evidence": [
+            "source:general.cpp MDFNMKF_STATE naming @ f0ee9d5",
+            "docs:mednafen.github.io/documentation (filesys.path_state, filesys.fname_state)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<base>/firmware/ (filesys.path_firmware) with the same per-system BIOS keys (psx.bios_*, ss.bios_*, pce.cdbios, gba.bios, disksys.rom)",
+          "evidence": [
+            "source:general.cpp MDFNMKF_FIRMWARE @ f0ee9d5",
+            "source:per-module BIOS settings @ f0ee9d5",
+            "gap:sources/firmware-rules.json has no standalone-mednafen firmware rules"
+          ]
+        }
+      ],
+      "notes": "Verified via docs:mednafen.github.io/releases: macOS has no official binaries; releases ship Windows builds and source tarballs, with FreeBSD/Linux/NetBSD/OpenBSD/Windows listed as compiled platforms, so macOS runs only source builds (Homebrew formulae 'mednafen', MacPorts). Lunchbox's native Mednafen adapter (joydev/evdev inventory, bubblewrap isolation) is Linux-only."
+    }
+  }
+}
