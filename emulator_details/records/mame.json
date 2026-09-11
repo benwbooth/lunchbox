@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "slug": "mame",
+  "emulator": "MAME",
+  "sources": [
+    { "kind": "docs", "url": "https://docs.mamedev.org/commandline/commandline-all.html", "role": "directory defaults, state/playback options, inipath per OS" },
+    { "kind": "docs", "url": "https://docs.mamedev.org/initialsetup/configuringmame.html", "role": "mame.ini creation" },
+    { "kind": "docs", "url": "https://docs.mamedev.org/advanced/ctrlr_config.html", "role": "controller configuration files" },
+    { "kind": "docs", "url": "https://docs.mamedev.org/advanced/devicemap.html", "role": "stable controller IDs / mapdevice" },
+    { "kind": "docs", "url": "https://docs.mamedev.org/advanced/multiconfig.html", "role": "ini load order" },
+    { "kind": "source", "repo": "mamedev/mame", "commit": "ec9abd86c6", "role": "pinned MAME 0.280 controller-contract source (docs/source/advanced/ctrlr_config.rst); cfg/machine facts re-verified on current master" },
+    { "kind": "source", "repo": "flathub/org.mamedev.MAME", "role": "flatpak manifest, bundled mame.ini, README" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "mame.ini in the MAME folder via `mame -createconfig` (distro builds run it from the terminal); inipath default is \"$HOME/.mame;.;ini\", and layering adds source/<sourcefile>.ini, BIOS/parent and per-system <shortname>.ini; ui.ini/plugin.ini are written by -createconfig. Per-game input/config: cfg/default.cfg (global input defaults) and cfg/<shortname>.cfg (per-machine) as <mameconfig version=\"10\"> XML holding mapper-written input sequences (KEYCODE_*/JOYCODE_* tokens, STARTn/COINn etc.). Controller presets: ctrlrpath default \"ctrlr\"; MAME ships sample files there and -ctrlr <name> loads <name>.cfg with <mapdevice> stable-ID elements and default/parent/BIOS/source-file <system> sections",
+          "evidence": [
+            "docs:configuringmame (-createconfig, mame.ini in installation folder)",
+            "docs:multiconfig (ini layering, saves to first inipath entry)",
+            "docs:commandline-all (inipath \"$HOME/.mame;.;ini\", cfg_directory default cfg, ctrlrpath default ctrlr)",
+            "docs:ctrlr_config (ctrlr folder samples, -ctrlr selection, version 10)",
+            "source:mamedev/mame src/emu/config.cpp (loads default.cfg as DEFAULT and basename()+\".cfg\" as SYSTEM from cfg_directory; controller file \"<ctrlr>.cfg\")",
+            "source:mamedev/mame src/frontend/mame/clifront.cpp (-createconfig writes mame.ini, ui.ini, plugin.ini)",
+            "contract: docs/MAME_STANDALONE_PROGRESS.md (owned default.cfg and machine-basename cfg copies matching pinned config.cpp load order)",
+            "contract: docs/MAME_CONTROLLER_CONTRACT.md (version-10 controller XML writer; inspection launch routes cfg, ctrlr, ROMs, NVRAM, diff, states, snapshots and input recordings into a private tree with INI load/write disabled)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "nvram/ (nvram_directory default \"nvram\"), inp/ recordings and snap/ snapshots (plus diff/ for disk images)",
+          "naming": "Per-game NVRAM .nv files named by machine short name in nvram/ (non-default BIOS adds _N; device NVRAM lands in <set>/<software>/<device_tag> subpaths with ':' replaced by '_'); input recordings via -record/-playback open files in inp/ (docs: keep .cfg/.nv and memory-card files identical or delete them to avoid desync); snapshots use snapname default %g/%i, i.e. snap/<shortname>/NNNN.png per system",
+          "evidence": [
+            "docs:commandline-all (nvram/inp/snap/diff defaults, snapname %g/%i, -record/-playback, .cfg/.nv desync advice)",
+            "source:mamedev/mame docs/man/mame.6 (input_directory default 'inp' beside the MAME executable, auto-created; .cfg/.nv advice)",
+            "source:mamedev/mame src/emu/machine.cpp (nvram_save opens nvram_filename in nvram_directory: basename, _biosN suffix, device subfolders)",
+            "source:mamedev/mame src/emu/ioport.cpp (record/playback files opened in input_directory)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "sta/ (state_directory default \"sta\")",
+          "naming": "Verified: statename default %g yields sta/<shortname>/<slot>.sta (compose_saveload_filename appends PATH_SEPARATOR and \".sta\" to the slot name); -autosave uses slot \"auto\" (sta/<shortname>/auto.sta), quick saves use numbered slots; -state <slot> loads immediately at start",
+          "evidence": [
+            "docs:commandline-all (state_directory default sta, statename default %g creating a per-system folder, -state/-autosave)",
+            "source:mamedev/mame src/emu/machine.cpp (get_statename default \"%g\", compose_saveload_filename \"%s%s%s.sta\", schedule_load/save(\"auto\"))"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "roms/ (rompath default \"roms\") keyed by MAME machine set names and hash metadata in hash/*.xml (hashpath default \"hash\"); device ROMs are ordinary MAME ROM sets, not per-game BIOS folders",
+          "evidence": [
+            "docs:commandline-all (rompath default roms, hashpath default hash)",
+            "db:firmware_rules mame entries (sources/firmware-rules.json: runtime_kind mame, target_strategy mame_rompath, e.g. neogeo/casloopy/coco romsets plus github:mame-hash-files XMLs with target_subdir @hash)",
+            "lunchbox:crates/lunchbox-app/src/firmware.rs (mame runtime root ~/.mame/roms; '@hash' installs to sibling hash/ of the rompath root)",
+            "lunchbox:crates/lunchbox-app/src/emulator.rs (native launch appends ~/.mame/roms to -rompath)"
+          ]
+        }
+      ],
+      "notes": "Lunchbox standalone-MAME launch uses explicit -cfg_directory/-ctrlrpath routing with private default.cfg, <shortname>.cfg and controller-profile copies; originals are never written and runtime cfg changes stay session-local (docs/MAME_STANDALONE_PROGRESS.md). The libretro-core contract (docs/MAME_CONTROLLER_CONTRACT.md) instead routes cfg, ctrlr, ROMs, NVRAM, diff, states, snapshots and input recordings into a private tree and disables INI loading/writing."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "org.mamedev.MAME: the manifest persists $HOME/.mame (--persist=.mame) and the bundled mame.ini pins cfg/nvram/inp/sta/snap/diff/comments/share under $HOME/.mame/ inside the sandbox; inipath is \"$HOME/.mame;/app/share/mame/ini\" so a user mame.ini (from -createconfig) lives in the persisted .mame/ while read-only defaults stay under /app/share/mame; ctrlr presets resolve from ctrlrpath /app/share/mame/ctrlr unless overridden in the user mame.ini",
+          "evidence": [
+            "flathub:org.mamedev.MAME org.mamedev.MAME.yaml (finish-args --persist=.mame, --filesystem=host:ro)",
+            "flathub:org.mamedev.MAME mame.ini (cfg_directory $HOME/.mame/cfg, ctrlrpath /app/share/mame/ctrlr, inipath $HOME/.mame;/app/share/mame/ini)",
+            "flathub:org.mamedev.MAME README.md (--persist=.mame is the writable location for cfg, diff, nvram, etc.)",
+            "docs:configuringmame (-createconfig)",
+            "docs:ctrlr_config (ctrlr file selection via -ctrlr)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "nvram/, inp/ and snap/ under the persisted $HOME/.mame/ (host-side under ~/.var/app/org.mamedev.MAME/); diff/ and comments/ share the same root",
+          "naming": "Identical to native: nvram/<shortname>.nv per game (plus _N BIOS suffix and device subpaths), -record/-playback files in inp/, snapshots snap/<shortname>/NNNN.png",
+          "evidence": [
+            "flathub:org.mamedev.MAME mame.ini (nvram_directory $HOME/.mame/nvram, input_directory $HOME/.mame/inp, snapshot_directory $HOME/.mame/snap)",
+            "docs:commandline-all (nvram/inp/snap defaults and naming)",
+            "source:mamedev/mame src/emu/machine.cpp (nvram filename construction)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "sta/ under the persisted $HOME/.mame/ (state_directory $HOME/.mame/sta)",
+          "naming": "Same as native: sta/<shortname>/<slot>.sta with statename default %g; autosave uses slot \"auto\"",
+          "evidence": [
+            "flathub:org.mamedev.MAME mame.ini (state_directory $HOME/.mame/sta)",
+            "docs:commandline-all (statename %g per-system folder)",
+            "source:mamedev/mame src/emu/machine.cpp (compose_saveload_filename appends \".sta\")"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "bundled rompath is /app/share/mame/roms (read-only /app); hashpath /app/share/mame/hash. Lunchbox installs MAME firmware into the per-app data root ~/.var/app/org.mamedev.MAME/data/mame/roms and appends that directory to -rompath at launch; the manifest also grants --filesystem=host:ro for external roms/samples",
+          "evidence": [
+            "flathub:org.mamedev.MAME mame.ini (rompath /app/share/mame/roms, hashpath /app/share/mame/hash)",
+            "flathub:org.mamedev.MAME README.md (--filesystem=host:ro for external data, roms, samples)",
+            "db:firmware_rules mame entries (mame_rompath rules)",
+            "lunchbox:crates/lunchbox-app/src/firmware.rs (flatpak mame roms root ~/.var/app/org.mamedev.MAME/data/mame/roms)",
+            "lunchbox:crates/lunchbox-app/src/emulator.rs (mame_runtime_roms_directory appends the flatpak roms dir to -rompath)"
+          ]
+        }
+      ],
+      "notes": "The Flatpak keeps every writable MAME folder inside the persisted $HOME/.mame sandbox tree; the lunchbox probes have launched this Flatpak with an exact collection/runtime -rompath list (docs/FRONTEND_ARCHITECTURE.md arcade-launch-probe)."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "mame.ini created by running `mame -createconfig` in the MAME installation folder (docs: 'MAME will then create the mame.ini file in the MAME installation folder'); inipath default \".;ini;ini/presets\"; per-game cfg/default.cfg and cfg/<shortname>.cfg plus ctrlr/ presets behave exactly as on Linux",
+          "evidence": [
+            "docs:configuringmame (cd to install dir, mame -createconfig, mame.ini in installation folder)",
+            "docs:commandline-all (inipath \".;ini;ini/presets\", cfg_directory/ctrlrpath defaults)",
+            "docs:multiconfig (ini layering order)",
+            "source:mamedev/mame src/emu/config.cpp (default.cfg / basename().cfg / <ctrlr>.cfg)",
+            "contract: docs/MAME_STANDALONE_PROGRESS.md (private default.cfg and machine-basename cfg copies)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "nvram/, inp/, snap/ and diff/ beneath the MAME folder (relative defaults resolve beside the executable)",
+          "naming": "nvram/<shortname>.nv per game (BIOS _N suffix and device subpaths as on Linux); -record/-playback files in inp/; snapshots snap/<shortname>/NNNN.png (snapname %g/%i)",
+          "evidence": [
+            "docs:commandline-all (nvram/inp/snap defaults and naming)",
+            "source:mamedev/mame docs/man/mame.6 (folders beside the MAME executable, auto-created)",
+            "source:mamedev/mame src/emu/machine.cpp (nvram filename construction)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "sta/ beneath the MAME folder (state_directory default \"sta\")",
+          "naming": "sta/<shortname>/<slot>.sta (statename default %g per-system folder); autosave slot \"auto\"; -state <slot> to load",
+          "evidence": [
+            "docs:commandline-all (state_directory/statename/-state/-autosave)",
+            "source:mamedev/mame src/emu/machine.cpp (compose_saveload_filename \".sta\" suffix, auto slot)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "roms/ beneath the MAME folder with hash/*.xml verification; Lunchbox's Windows firmware adapter stages MAME romsets and hash XMLs under %LOCALAPPDATA%/mame (roms at mame/roms) and passes that root as the runtime -rompath",
+          "evidence": [
+            "docs:commandline-all (rompath default roms, hashpath default hash)",
+            "db:firmware_rules mame entries (mame_rompath + @hash rules)",
+            "lunchbox:crates/lunchbox-app/src/firmware.rs (windows mame root data_local_dir()/mame/roms)",
+            "lunchbox:crates/lunchbox-app/src/emulator.rs (native windows roms dir appended to -rompath)"
+          ]
+        }
+      ],
+      "notes": "Windows MAME keeps its entire state in the folder the ZIP was extracted to; a fresh install needs `mame -createconfig` before mame.ini exists."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "mame.ini via `./mame -createconfig` from the MAME folder; inipath default \"$HOME/Library/Application Support/mame;$HOME/.mame;.;ini\", so user ini layering (mame.ini, source/<sourcefile>.ini, parent/BIOS and per-system ini) resolves there first; cfg/default.cfg, cfg/<shortname>.cfg and ctrlr/ presets as on Linux",
+          "evidence": [
+            "docs:configuringmame (macOS: cd to MAME directory, ./mame -createconfig)",
+            "docs:commandline-all (macOS inipath includes $HOME/Library/Application Support/mame and $HOME/.mame;.;ini; cfg/ctrlrpath defaults)",
+            "docs:multiconfig (ini layering, saves to first inipath entry)",
+            "source:mamedev/mame src/emu/config.cpp (default.cfg / basename().cfg / <ctrlr>.cfg)",
+            "contract: docs/MAME_STANDALONE_PROGRESS.md (private cfg copies and controller profile)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "nvram/, inp/, snap/, diff/ beneath the MAME folder by default (redirect via mame.ini when the app bundle is read-only)",
+          "naming": "nvram/<shortname>.nv per game (BIOS _N suffix, device subpaths); inp/ holds -record/-playback input files; snapshots snap/<shortname>/NNNN.png",
+          "evidence": [
+            "docs:commandline-all (nvram/inp/snap defaults and naming)",
+            "source:mamedev/mame docs/man/mame.6 (folders beside the executable, auto-created)",
+            "source:mamedev/mame src/emu/machine.cpp (nvram filename construction)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "sta/ beneath the MAME folder (state_directory default \"sta\")",
+          "naming": "sta/<shortname>/<slot>.sta (statename default %g per-system folder); autosave slot \"auto\"",
+          "evidence": [
+            "docs:commandline-all (state_directory/statename/-state/-autosave)",
+            "source:mamedev/mame src/emu/machine.cpp (get_statename %g, compose_saveload_filename \".sta\")"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "roms/ beneath the MAME folder with hash/*.xml verification; Lunchbox's macOS mame firmware adapter stages romsets/hash XMLs under ~/.mame/roms (same root as Linux)",
+          "evidence": [
+            "docs:commandline-all (rompath default roms, hashpath default hash)",
+            "db:firmware_rules mame entries (mame_rompath + @hash rules)",
+            "lunchbox:crates/lunchbox-app/src/firmware.rs (non-flatpak non-windows mame root ~/.mame/roms)"
+          ]
+        }
+      ],
+      "notes": "macOS adds $HOME/Library/Application Support/mame to inipath, the only host-specific default; all cfg/nvram/sta/inp/roms folders otherwise resolve relative to the MAME working folder."
+    }
+  }
+}
