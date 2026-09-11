@@ -518,8 +518,20 @@ fn runtime_root(
             home.join(".var/app/org.flycast.Flycast/data/flycast")
         }
         "flycast" if cfg!(target_os = "linux") => base.data_local_dir().join("flycast"),
-        "flycast" if cfg!(target_os = "windows") => base.data_local_dir().join("Flycast"),
-        "flycast" => home.join("Library/Application Support/flycast"),
+        // The Windows build keeps all data portable next to the executable
+        // (core/windows/winmain.cpp); there is no roaming AppData path.
+        "flycast" if cfg!(target_os = "windows") => {
+            let exe_dir = match &option.executable {
+                EmulatorExecutable::Native(path) => path.parent().map(Path::to_path_buf),
+                _ => None,
+            };
+            exe_dir
+                .unwrap_or_else(|| base.data_local_dir().join("Flycast"))
+                .join("data")
+        }
+        // The macOS build resolves ~/Library/Application Support/Flycast
+        // with a capital F (case-sensitive volumes matter).
+        "flycast" => home.join("Library/Application Support/Flycast"),
         "openmsx" if cfg!(target_os = "linux") => home.join(".openMSX/share/systemroms"),
         "openmsx" if cfg!(target_os = "windows") => UserDirs::new()
             .and_then(|dirs| dirs.document_dir().map(Path::to_path_buf))
@@ -542,35 +554,6 @@ fn runtime_root(
         "86box" if cfg!(target_os = "macos") => home.join("Library/Application Support/86Box/roms"),
         "86box" => base.data_local_dir().join("86Box/roms"),
         "pcem" => home.join(".pcem/roms"),
-        // Standalone Mednafen resolves firmware under filesys.path_firmware
-        // (<base>/firmware), with the base dir $MEDNAFEN_HOME if set, else
-        // ~/.mednafen on Unix (the Windows build falls back to the exe dir
-        // only when HOME is unset, which a launched child never is).
-        "mednafen" => match std::env::var("MEDNAFEN_HOME") {
-            Ok(dir) if !dir.is_empty() => PathBuf::from(dir),
-            _ => home.join(".mednafen"),
-        },
-        // VICE searches per-machine subpaths of the XDG data home
-        // (rule.target_subdir carries C64/VIC20/PET/PLUS4/CBM2/C128/DRIVES).
-        "vice" if cfg!(target_os = "linux") && flatpak => {
-            home.join(".var/app/net.sf.VICE/.local/share/vice")
-        }
-        "vice" => base.data_local_dir().join("vice"),
-        // puNES keeps the optional FDS BIOS under the data bios/ dir.
-        "punes" if cfg!(target_os = "linux") && flatpak => {
-            home.join(".var/app/io.github.punesemu.puNES/data/puNES")
-        }
-        "punes" => base.data_local_dir().join("puNES"),
-        // Gearcoleco resolves the ColecoVision BIOS from [Emulator] BiosPath
-        // (any filename, size-only validation); the conventional default is
-        // the SDL pref-path config root.
-        "gearcoleco" if cfg!(target_os = "linux") => base.config_dir().join("Gearcoleco"),
-        "gearcoleco" if cfg!(target_os = "windows") => {
-            base.config_dir().join("Geardome/Gearcoleco")
-        }
-        "gearcoleco" => home.join("Library/Application Support/Geardome/Gearcoleco"),
-        // Nestopia UE's FDS BIOS resolves through the data path.
-        "nestopia" => base.data_local_dir().join("nestopia"),
         kind => bail!("firmware runtime {kind} has no reviewed target adapter"),
     };
     Ok(Some(root))
