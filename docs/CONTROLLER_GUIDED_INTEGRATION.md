@@ -12,9 +12,9 @@ The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
 - RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **23/249 (9.2%)**, including ares, bsnes, Stella, VICE, Hatari, DeSmuME, openMSX, Mesen2 and BlastEm.
-- Combined source entry presence: **116/343 (33.8%)**.
-- Existing native adapters consuming guided choices: **23/23 (100.0%)**.
+- Standalone partial source dispatch: **24/249 (9.6%)**, including ares, bsnes, Stella, VICE, Hatari, DeSmuME, openMSX, Mesen2, BlastEm and xemu.
+- Combined source entry presence: **117/343 (34.1%)**.
+- Existing native adapters consuming guided choices: **24/24 (100.0%)**.
 - Overall finished/verified coverage: **not established**.
 
 The native integration count includes runtime-setup and host/backend restrictions,
@@ -233,6 +233,19 @@ Encoding and rendering are unit-tested; runtime behavior is unverified.
 HOME carries the tern-config pad bindings keyed by SDL device index with
 `gamepads.<port>.<button>` targets for the six-button Genesis pad. See
 [BLASTEM_NATIVE_CONTROLLER_CONTRACT.md](BLASTEM_NATIVE_CONTROLLER_CONTRACT.md).
+Rendering is unit-tested; runtime behavior is unverified.
+
+## Step 19 — xemu standalone Xbox pads
+
+`controller_xemu_native` adds a native adapter for xemu: a private
+`-config_path` file mounts the declared boot ROM, flash image and game while
+binding each SDL GUID to its port with standard-index controller mappings
+composed from the calibrated controls matched against SDL's own resolved
+gamepad bindings, all over the classic SDL joystick backend pinned by
+environment in both the probe and the child. The probe's classic capture
+gate is extended to the SDL 3.2+ line with the DuckStation player
+projection unchanged. See
+[XEMU_NATIVE_CONTROLLER_CONTRACT.md](XEMU_NATIVE_CONTROLLER_CONTRACT.md).
 Rendering is unit-tested; runtime behavior is unverified.
 
 ## Remaining work

@@ -43,6 +43,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "openmsx"
                 | "mesen2"
                 | "blastem"
+                | "xemu"
         )
 }
 
@@ -297,6 +298,23 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "xemu" => {
+            for setup in &mut mapping.xemu_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_xemu_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
                 setup.review(&mapping.calibrations)?;
             }
         }

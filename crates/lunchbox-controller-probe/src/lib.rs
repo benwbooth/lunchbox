@@ -403,8 +403,13 @@ pub fn inspect_target_runtime(
         }
         #[cfg(target_os = "linux")]
         let mut physical_before_open = BTreeMap::new();
+        // The classic-interface hint is a documented SDL3 semantic (the
+        // /dev/input/js* backend), so the joydev-numbering translation is
+        // accepted across the SDL 3.2+ line; the count validation below fails
+        // loudly when a runtime disagrees. The player projection keeps its
+        // exact 3.2.20 verification pin independently.
         #[cfg(target_os = "linux")]
-        if version == 3_002_020
+        if version >= 3_002_000
             && effective_hints
                 .get("SDL_JOYSTICK_LINUX_CLASSIC")
                 .and_then(Option::as_deref)

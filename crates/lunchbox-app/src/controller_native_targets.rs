@@ -120,6 +120,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
 
     for (core, layout, players, platforms, source) in [
         (
+            "xemu",
+            "xbox",
+            4,
+            vec!["Microsoft Xbox"],
+            "https://github.com/mborgerson/xemu/blob/fd0ae0c0a189d56e87f8e46073b15b287e4a1e1a/ui/xemu-input.c",
+        ),
+        (
             "blastem",
             "genesis-6",
             2,
@@ -261,6 +268,34 @@ pub(crate) fn add(
     Ok(())
 }
 
+/// Preview labels for the xemu controller_mapping fields.
+const XEMU_FIELD_ROUTES: [(&str, &str); 24] = [
+    ("a", "a"),
+    ("b", "b"),
+    ("x", "x"),
+    ("y", "y"),
+    ("select", "back"),
+    ("start", "start"),
+    ("l", "lshoulder"),
+    ("r", "rshoulder"),
+    ("l3", "lstick_btn"),
+    ("r3", "rstick_btn"),
+    ("up", "dpad_up"),
+    ("down", "dpad_down"),
+    ("left", "dpad_left"),
+    ("right", "dpad_right"),
+    ("l2", "axis_trigger_left"),
+    ("r2", "axis_trigger_right"),
+    ("stick_left", "axis_left_x (negative half)"),
+    ("stick_right", "axis_left_x (positive half)"),
+    ("stick_up", "axis_left_y (negative half)"),
+    ("stick_down", "axis_left_y (positive half)"),
+    ("right_stick_left", "axis_right_x (negative half)"),
+    ("right_stick_right", "axis_right_x (positive half)"),
+    ("right_stick_up", "axis_right_y (negative half)"),
+    ("right_stick_down", "axis_right_y (positive half)"),
+];
+
 /// Preview labels for the VICE joystick pins, kept as static strings so the
 /// route table stays one type across adapters.
 const VICE_PIN_ROUTES: [(&str, &str); 7] = [
@@ -331,6 +366,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             .collect::<BTreeMap<&str, &str>>(),
         ("stella", "atari2600-stella-panel") => crate::controller_stella_native::CONTROLS
             .into_iter()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("xemu", "xbox") => XEMU_FIELD_ROUTES
+            .iter()
+            .copied()
             .collect::<BTreeMap<&str, &str>>(),
         ("blastem", "genesis-6") => crate::controller_blastem_native::CONTROLS
             .iter()

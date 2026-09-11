@@ -55,6 +55,7 @@ mod controller_stella;
 mod controller_stella_native;
 mod controller_target;
 mod controller_vice_native;
+mod controller_xemu_native;
 mod controllers;
 mod couch_theme;
 mod download_plan;
