@@ -361,6 +361,78 @@ pub mod qobject {
             configuration: QString,
         ) -> QString;
         #[qinvokable]
+        fn vice_native_setups_json(self: &SettingsModel) -> QString;
+        #[qinvokable]
+        fn review_vice_native_setups(self: &SettingsModel, configuration: QString) -> QString;
+        #[qinvokable]
+        fn stage_vice_native_setups(
+            self: Pin<&mut SettingsModel>,
+            configuration: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn hatari_native_setups_json(self: &SettingsModel) -> QString;
+        #[qinvokable]
+        fn review_hatari_native_setups(self: &SettingsModel, configuration: QString) -> QString;
+        #[qinvokable]
+        fn stage_hatari_native_setups(
+            self: Pin<&mut SettingsModel>,
+            configuration: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn desmume_native_setups_json(self: &SettingsModel) -> QString;
+        #[qinvokable]
+        fn review_desmume_native_setups(self: &SettingsModel, configuration: QString) -> QString;
+        #[qinvokable]
+        fn stage_desmume_native_setups(
+            self: Pin<&mut SettingsModel>,
+            configuration: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn openmsx_native_setups_json(self: &SettingsModel) -> QString;
+        #[qinvokable]
+        fn review_openmsx_native_setups(self: &SettingsModel, configuration: QString) -> QString;
+        #[qinvokable]
+        fn stage_openmsx_native_setups(
+            self: Pin<&mut SettingsModel>,
+            configuration: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn mesen2_native_setups_json(self: &SettingsModel) -> QString;
+        #[qinvokable]
+        fn review_mesen2_native_setups(self: &SettingsModel, configuration: QString) -> QString;
+        #[qinvokable]
+        fn stage_mesen2_native_setups(
+            self: Pin<&mut SettingsModel>,
+            configuration: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn blastem_native_setups_json(self: &SettingsModel) -> QString;
+        #[qinvokable]
+        fn review_blastem_native_setups(self: &SettingsModel, configuration: QString) -> QString;
+        #[qinvokable]
+        fn stage_blastem_native_setups(
+            self: Pin<&mut SettingsModel>,
+            configuration: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn xemu_native_setups_json(self: &SettingsModel) -> QString;
+        #[qinvokable]
+        fn review_xemu_native_setups(self: &SettingsModel, configuration: QString) -> QString;
+        #[qinvokable]
+        fn stage_xemu_native_setups(
+            self: Pin<&mut SettingsModel>,
+            configuration: QString,
+        ) -> QString;
+        #[qinvokable]
+        fn scummvm_native_setups_json(self: &SettingsModel) -> QString;
+        #[qinvokable]
+        fn review_scummvm_native_setups(self: &SettingsModel, configuration: QString) -> QString;
+        #[qinvokable]
+        fn stage_scummvm_native_setups(
+            self: Pin<&mut SettingsModel>,
+            configuration: QString,
+        ) -> QString;
+        #[qinvokable]
         fn review_fceux_setups(self: &SettingsModel, configuration: QString) -> QString;
         #[qinvokable]
         fn stage_fceux_setups(self: Pin<&mut SettingsModel>, configuration: QString) -> QString;
@@ -2219,6 +2291,359 @@ impl qobject::SettingsModel {
         }
     }
 
+    pub fn desmume_native_setups_json(&self) -> QString {
+        qstring(
+            serde_json::to_string_pretty(&self.rust().controller_mapping.desmume_native_launches)
+                .expect("desmume_native setups serialize"),
+        )
+    }
+
+    pub fn review_desmume_native_setups(&self, configuration: QString) -> QString {
+        let result = (|| -> anyhow::Result<Vec<serde_json::Value>> {
+            let text = configuration.to_string();
+            anyhow::ensure!(
+                text.len() <= 2 * 1024 * 1024,
+                "desmume_native setup text exceeds size limit"
+            );
+            let setups: Vec<crate::controller_desmume_native::settings::SavedSetup> =
+                serde_json::from_str(&text)?;
+            crate::controller_desmume_native::settings::validate_setups(&setups)?;
+            setups
+                .iter()
+                .map(|setup| setup.review(&self.rust().controller_mapping.calibrations))
+                .collect()
+        })();
+        qstring(match result {
+            Ok(reviews) => serde_json::json!({"setups":reviews}).to_string(),
+            Err(error) => serde_json::json!({"error":format!("{error:#}")}).to_string(),
+        })
+    }
+
+    pub fn stage_desmume_native_setups(
+        mut self: Pin<&mut Self>,
+        configuration: QString,
+    ) -> QString {
+        let result =
+            (|| -> anyhow::Result<Vec<crate::controller_desmume_native::settings::SavedSetup>> {
+                let text = configuration.to_string();
+                anyhow::ensure!(
+                    text.len() <= 2 * 1024 * 1024,
+                    "desmume_native setup text exceeds size limit"
+                );
+                let setups: Vec<crate::controller_desmume_native::settings::SavedSetup> =
+                    serde_json::from_str(&text)?;
+                crate::controller_desmume_native::settings::validate_setups(&setups)?;
+                for setup in &setups {
+                    setup.review(&self.rust().controller_mapping.calibrations)?;
+                }
+                Ok(setups)
+            })();
+        match result {
+            Ok(setups) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .desmume_native_launches = setups;
+                self.as_mut().controller_settings_changed();
+                qstring("")
+            }
+            Err(error) => qstring(format!("{error:#}")),
+        }
+    }
+
+    pub fn openmsx_native_setups_json(&self) -> QString {
+        qstring(
+            serde_json::to_string_pretty(&self.rust().controller_mapping.openmsx_native_launches)
+                .expect("openmsx_native setups serialize"),
+        )
+    }
+
+    pub fn review_openmsx_native_setups(&self, configuration: QString) -> QString {
+        let result = (|| -> anyhow::Result<Vec<serde_json::Value>> {
+            let text = configuration.to_string();
+            anyhow::ensure!(
+                text.len() <= 2 * 1024 * 1024,
+                "openmsx_native setup text exceeds size limit"
+            );
+            let setups: Vec<crate::controller_openmsx_native::settings::SavedSetup> =
+                serde_json::from_str(&text)?;
+            crate::controller_openmsx_native::settings::validate_setups(&setups)?;
+            setups
+                .iter()
+                .map(|setup| setup.review(&self.rust().controller_mapping.calibrations))
+                .collect()
+        })();
+        qstring(match result {
+            Ok(reviews) => serde_json::json!({"setups":reviews}).to_string(),
+            Err(error) => serde_json::json!({"error":format!("{error:#}")}).to_string(),
+        })
+    }
+
+    pub fn stage_openmsx_native_setups(
+        mut self: Pin<&mut Self>,
+        configuration: QString,
+    ) -> QString {
+        let result =
+            (|| -> anyhow::Result<Vec<crate::controller_openmsx_native::settings::SavedSetup>> {
+                let text = configuration.to_string();
+                anyhow::ensure!(
+                    text.len() <= 2 * 1024 * 1024,
+                    "openmsx_native setup text exceeds size limit"
+                );
+                let setups: Vec<crate::controller_openmsx_native::settings::SavedSetup> =
+                    serde_json::from_str(&text)?;
+                crate::controller_openmsx_native::settings::validate_setups(&setups)?;
+                for setup in &setups {
+                    setup.review(&self.rust().controller_mapping.calibrations)?;
+                }
+                Ok(setups)
+            })();
+        match result {
+            Ok(setups) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .openmsx_native_launches = setups;
+                self.as_mut().controller_settings_changed();
+                qstring("")
+            }
+            Err(error) => qstring(format!("{error:#}")),
+        }
+    }
+
+    pub fn mesen2_native_setups_json(&self) -> QString {
+        qstring(
+            serde_json::to_string_pretty(&self.rust().controller_mapping.mesen2_native_launches)
+                .expect("mesen2_native setups serialize"),
+        )
+    }
+
+    pub fn review_mesen2_native_setups(&self, configuration: QString) -> QString {
+        let result = (|| -> anyhow::Result<Vec<serde_json::Value>> {
+            let text = configuration.to_string();
+            anyhow::ensure!(
+                text.len() <= 2 * 1024 * 1024,
+                "mesen2_native setup text exceeds size limit"
+            );
+            let setups: Vec<crate::controller_mesen2_native::settings::SavedSetup> =
+                serde_json::from_str(&text)?;
+            crate::controller_mesen2_native::settings::validate_setups(&setups)?;
+            setups
+                .iter()
+                .map(|setup| setup.review(&self.rust().controller_mapping.calibrations))
+                .collect()
+        })();
+        qstring(match result {
+            Ok(reviews) => serde_json::json!({"setups":reviews}).to_string(),
+            Err(error) => serde_json::json!({"error":format!("{error:#}")}).to_string(),
+        })
+    }
+
+    pub fn stage_mesen2_native_setups(mut self: Pin<&mut Self>, configuration: QString) -> QString {
+        let result =
+            (|| -> anyhow::Result<Vec<crate::controller_mesen2_native::settings::SavedSetup>> {
+                let text = configuration.to_string();
+                anyhow::ensure!(
+                    text.len() <= 2 * 1024 * 1024,
+                    "mesen2_native setup text exceeds size limit"
+                );
+                let setups: Vec<crate::controller_mesen2_native::settings::SavedSetup> =
+                    serde_json::from_str(&text)?;
+                crate::controller_mesen2_native::settings::validate_setups(&setups)?;
+                for setup in &setups {
+                    setup.review(&self.rust().controller_mapping.calibrations)?;
+                }
+                Ok(setups)
+            })();
+        match result {
+            Ok(setups) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .mesen2_native_launches = setups;
+                self.as_mut().controller_settings_changed();
+                qstring("")
+            }
+            Err(error) => qstring(format!("{error:#}")),
+        }
+    }
+
+    pub fn blastem_native_setups_json(&self) -> QString {
+        qstring(
+            serde_json::to_string_pretty(&self.rust().controller_mapping.blastem_native_launches)
+                .expect("blastem_native setups serialize"),
+        )
+    }
+
+    pub fn review_blastem_native_setups(&self, configuration: QString) -> QString {
+        let result = (|| -> anyhow::Result<Vec<serde_json::Value>> {
+            let text = configuration.to_string();
+            anyhow::ensure!(
+                text.len() <= 2 * 1024 * 1024,
+                "blastem_native setup text exceeds size limit"
+            );
+            let setups: Vec<crate::controller_blastem_native::settings::SavedSetup> =
+                serde_json::from_str(&text)?;
+            crate::controller_blastem_native::settings::validate_setups(&setups)?;
+            setups
+                .iter()
+                .map(|setup| setup.review(&self.rust().controller_mapping.calibrations))
+                .collect()
+        })();
+        qstring(match result {
+            Ok(reviews) => serde_json::json!({"setups":reviews}).to_string(),
+            Err(error) => serde_json::json!({"error":format!("{error:#}")}).to_string(),
+        })
+    }
+
+    pub fn stage_blastem_native_setups(
+        mut self: Pin<&mut Self>,
+        configuration: QString,
+    ) -> QString {
+        let result =
+            (|| -> anyhow::Result<Vec<crate::controller_blastem_native::settings::SavedSetup>> {
+                let text = configuration.to_string();
+                anyhow::ensure!(
+                    text.len() <= 2 * 1024 * 1024,
+                    "blastem_native setup text exceeds size limit"
+                );
+                let setups: Vec<crate::controller_blastem_native::settings::SavedSetup> =
+                    serde_json::from_str(&text)?;
+                crate::controller_blastem_native::settings::validate_setups(&setups)?;
+                for setup in &setups {
+                    setup.review(&self.rust().controller_mapping.calibrations)?;
+                }
+                Ok(setups)
+            })();
+        match result {
+            Ok(setups) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .blastem_native_launches = setups;
+                self.as_mut().controller_settings_changed();
+                qstring("")
+            }
+            Err(error) => qstring(format!("{error:#}")),
+        }
+    }
+
+    pub fn xemu_native_setups_json(&self) -> QString {
+        qstring(
+            serde_json::to_string_pretty(&self.rust().controller_mapping.xemu_native_launches)
+                .expect("xemu_native setups serialize"),
+        )
+    }
+
+    pub fn review_xemu_native_setups(&self, configuration: QString) -> QString {
+        let result = (|| -> anyhow::Result<Vec<serde_json::Value>> {
+            let text = configuration.to_string();
+            anyhow::ensure!(
+                text.len() <= 2 * 1024 * 1024,
+                "xemu_native setup text exceeds size limit"
+            );
+            let setups: Vec<crate::controller_xemu_native::settings::SavedSetup> =
+                serde_json::from_str(&text)?;
+            crate::controller_xemu_native::settings::validate_setups(&setups)?;
+            setups
+                .iter()
+                .map(|setup| setup.review(&self.rust().controller_mapping.calibrations))
+                .collect()
+        })();
+        qstring(match result {
+            Ok(reviews) => serde_json::json!({"setups":reviews}).to_string(),
+            Err(error) => serde_json::json!({"error":format!("{error:#}")}).to_string(),
+        })
+    }
+
+    pub fn stage_xemu_native_setups(mut self: Pin<&mut Self>, configuration: QString) -> QString {
+        let result =
+            (|| -> anyhow::Result<Vec<crate::controller_xemu_native::settings::SavedSetup>> {
+                let text = configuration.to_string();
+                anyhow::ensure!(
+                    text.len() <= 2 * 1024 * 1024,
+                    "xemu_native setup text exceeds size limit"
+                );
+                let setups: Vec<crate::controller_xemu_native::settings::SavedSetup> =
+                    serde_json::from_str(&text)?;
+                crate::controller_xemu_native::settings::validate_setups(&setups)?;
+                for setup in &setups {
+                    setup.review(&self.rust().controller_mapping.calibrations)?;
+                }
+                Ok(setups)
+            })();
+        match result {
+            Ok(setups) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .xemu_native_launches = setups;
+                self.as_mut().controller_settings_changed();
+                qstring("")
+            }
+            Err(error) => qstring(format!("{error:#}")),
+        }
+    }
+
+    pub fn scummvm_native_setups_json(&self) -> QString {
+        qstring(
+            serde_json::to_string_pretty(&self.rust().controller_mapping.scummvm_native_launches)
+                .expect("scummvm_native setups serialize"),
+        )
+    }
+
+    pub fn review_scummvm_native_setups(&self, configuration: QString) -> QString {
+        let result = (|| -> anyhow::Result<Vec<serde_json::Value>> {
+            let text = configuration.to_string();
+            anyhow::ensure!(
+                text.len() <= 2 * 1024 * 1024,
+                "scummvm_native setup text exceeds size limit"
+            );
+            let setups: Vec<crate::controller_scummvm_native::settings::SavedSetup> =
+                serde_json::from_str(&text)?;
+            crate::controller_scummvm_native::settings::validate_setups(&setups)?;
+            setups
+                .iter()
+                .map(|setup| setup.review(&self.rust().controller_mapping.calibrations))
+                .collect()
+        })();
+        qstring(match result {
+            Ok(reviews) => serde_json::json!({"setups":reviews}).to_string(),
+            Err(error) => serde_json::json!({"error":format!("{error:#}")}).to_string(),
+        })
+    }
+
+    pub fn stage_scummvm_native_setups(
+        mut self: Pin<&mut Self>,
+        configuration: QString,
+    ) -> QString {
+        let result =
+            (|| -> anyhow::Result<Vec<crate::controller_scummvm_native::settings::SavedSetup>> {
+                let text = configuration.to_string();
+                anyhow::ensure!(
+                    text.len() <= 2 * 1024 * 1024,
+                    "scummvm_native setup text exceeds size limit"
+                );
+                let setups: Vec<crate::controller_scummvm_native::settings::SavedSetup> =
+                    serde_json::from_str(&text)?;
+                crate::controller_scummvm_native::settings::validate_setups(&setups)?;
+                for setup in &setups {
+                    setup.review(&self.rust().controller_mapping.calibrations)?;
+                }
+                Ok(setups)
+            })();
+        match result {
+            Ok(setups) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .scummvm_native_launches = setups;
+                self.as_mut().controller_settings_changed();
+                qstring("")
+            }
+            Err(error) => qstring(format!("{error:#}")),
+        }
+    }
     pub fn hatari_native_setups_json(&self) -> QString {
         qstring(
             serde_json::to_string_pretty(&self.rust().controller_mapping.hatari_native_launches)

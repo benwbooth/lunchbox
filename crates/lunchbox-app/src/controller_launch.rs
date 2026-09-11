@@ -60,6 +60,8 @@ pub struct CalibratedLaunch {
     #[cfg(target_os = "linux")]
     xemu_native: Option<crate::controller_xemu_native::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
+    scummvm_native: Option<crate::controller_scummvm_native::native_command::NativeSession>,
+    #[cfg(target_os = "linux")]
     mednafen_native: Option<crate::controller_mednafen::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
     mame_native: Option<crate::controller_mame_native::native_command::NativeSession>,
@@ -339,6 +341,10 @@ impl CalibratedLaunch {
         }
         #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.xemu_native {
+            return native.spawn(plan, cancel);
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(native) = &mut self.scummvm_native {
             return native.spawn(plan, cancel);
         }
         #[cfg(target_os = "linux")]
@@ -764,6 +770,8 @@ impl CalibratedLaunch {
             #[cfg(target_os = "linux")]
             xemu_native: None,
             #[cfg(target_os = "linux")]
+            scummvm_native: None,
+            #[cfg(target_os = "linux")]
             mednafen_native: None,
             #[cfg(target_os = "linux")]
             mame_native: None,
@@ -843,6 +851,10 @@ impl CalibratedLaunch {
         }
         #[cfg(target_os = "linux")]
         if let Some(native) = &self.xemu_native {
+            native.verify(&std::sync::atomic::AtomicBool::new(false))?;
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(native) = &self.scummvm_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
         #[cfg(target_os = "linux")]
@@ -983,6 +995,10 @@ impl CalibratedLaunch {
         }
         #[cfg(target_os = "linux")]
         if let Some(native) = &self.xemu_native {
+            native.check_health()?;
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(native) = &self.scummvm_native {
             native.check_health()?;
         }
         #[cfg(target_os = "linux")]
@@ -1546,6 +1562,8 @@ pub(crate) fn attach_fbneo_session(
         blastem_native: None,
         #[cfg(target_os = "linux")]
         xemu_native: None,
+        #[cfg(target_os = "linux")]
+        scummvm_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]
@@ -3322,6 +3340,8 @@ pub(crate) fn prepare_mame_calibrated_session(
         blastem_native: None,
         #[cfg(target_os = "linux")]
         xemu_native: None,
+        #[cfg(target_os = "linux")]
+        scummvm_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]
@@ -5556,6 +5576,8 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             #[cfg(target_os = "linux")]
             xemu_native: None,
+            #[cfg(target_os = "linux")]
+            scummvm_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5651,6 +5673,8 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             #[cfg(target_os = "linux")]
             xemu_native: None,
+            #[cfg(target_os = "linux")]
+            scummvm_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5746,6 +5770,8 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             #[cfg(target_os = "linux")]
             xemu_native: None,
+            #[cfg(target_os = "linux")]
+            scummvm_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5841,6 +5867,8 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             #[cfg(target_os = "linux")]
             xemu_native: None,
+            #[cfg(target_os = "linux")]
+            scummvm_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -5921,6 +5949,8 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             #[cfg(target_os = "linux")]
             xemu_native: None,
+            #[cfg(target_os = "linux")]
+            scummvm_native: None,
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: Some(native),
@@ -6007,6 +6037,8 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             #[cfg(target_os = "linux")]
             xemu_native: None,
+            #[cfg(target_os = "linux")]
+            scummvm_native: None,
                 mednafen_native: Some(native),
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6093,6 +6125,8 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
+                #[cfg(target_os = "linux")]
+                scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6182,6 +6216,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
                 #[cfg(target_os = "linux")]
+                scummvm_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6269,6 +6305,8 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
+                #[cfg(target_os = "linux")]
+                scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6358,6 +6396,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
                 #[cfg(target_os = "linux")]
+                scummvm_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6445,6 +6485,8 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
+                #[cfg(target_os = "linux")]
+                scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6534,6 +6576,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
                 #[cfg(target_os = "linux")]
+                scummvm_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6621,6 +6665,8 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
+                #[cfg(target_os = "linux")]
+                scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6710,6 +6756,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
                 #[cfg(target_os = "linux")]
+                scummvm_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6798,6 +6846,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 xemu_native: Some(native),
                 #[cfg(target_os = "linux")]
+                scummvm_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -6829,6 +6879,96 @@ pub fn prepare_with_cancellation(
                 puae: None,
                 stella: None,
                 description: "xemu: calibrated Xbox pads through a private -config_path file mounting the declared boot ROM, flash image and game, with GUID port bindings and standard-index controller mappings over the SDL classic backend; partial Linux support; same-GUID devices and Steel Battalion not covered"
+                    .into(),
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("ScummVM")
+    {
+        let matches: Vec<_> = mapping
+            .scummvm_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous ScummVM saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_scummvm_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                mgba: None,
+                #[cfg(target_os = "linux")]
+                dolphin_native: None,
+                snes9x_native: None,
+                fceux_native: None,
+                sameboy_native: None,
+                #[cfg(target_os = "linux")]
+                bsnes_native: None,
+                #[cfg(target_os = "linux")]
+                stella_native: None,
+                #[cfg(target_os = "linux")]
+                vice_native: None,
+                #[cfg(target_os = "linux")]
+                hatari_native: None,
+                #[cfg(target_os = "linux")]
+                desmume_native: None,
+                #[cfg(target_os = "linux")]
+                openmsx_native: None,
+                #[cfg(target_os = "linux")]
+                mesen2_native: None,
+                #[cfg(target_os = "linux")]
+                blastem_native: None,
+                #[cfg(target_os = "linux")]
+                xemu_native: None,
+                #[cfg(target_os = "linux")]
+                scummvm_native: Some(native),
+                #[cfg(target_os = "linux")]
+                mednafen_native: None,
+                #[cfg(target_os = "linux")]
+                mame_native: None,
+                #[cfg(target_os = "linux")]
+                flycast_native: None,
+                #[cfg(target_os = "linux")]
+                pcsx2_native: None,
+                #[cfg(target_os = "linux")]
+                rpcs3_native: None,
+                #[cfg(target_os = "linux")]
+                melonds_native: None,
+                ppsspp: None,
+                duckstation: None,
+                _directory: None,
+                bizhawk: None,
+                #[cfg(target_os = "linux")]
+                bizhawk_topology: None,
+                transports: Vec::new(),
+                crocods: None,
+                ep128emu: None,
+                hatari: None,
+                simcp: None,
+                steemsse: None,
+                scummvm: None,
+                dolphin: None,
+                same_cdi: None,
+                fbneo: None,
+                mame: None,
+                puae: None,
+                stella: None,
+                description: "ScummVM: calibrated engine-default keymap actions through a private XDG_CONFIG_HOME ini target over SDL standard gamepad fields; single SDL device zero; partial Linux support; custom engine keymaps and the GUI/global keymaps are not remapped"
                     .into(),
             }));
         }
@@ -6886,6 +7026,8 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             #[cfg(target_os = "linux")]
             xemu_native: None,
+            #[cfg(target_os = "linux")]
+            scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -6976,6 +7118,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
                 #[cfg(target_os = "linux")]
+                scummvm_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -7065,6 +7209,8 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             #[cfg(target_os = "linux")]
             xemu_native: None,
+            #[cfg(target_os = "linux")]
+            scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -7154,6 +7300,8 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
+                #[cfg(target_os = "linux")]
+                scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -7245,6 +7393,8 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
                 #[cfg(target_os = "linux")]
+                scummvm_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
                 mame_native: None,
@@ -7332,6 +7482,8 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 #[cfg(target_os = "linux")]
                 xemu_native: None,
+                #[cfg(target_os = "linux")]
+                scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -8186,6 +8338,8 @@ pub fn prepare_with_cancellation(
         #[cfg(target_os = "linux")]
         xemu_native: None,
         #[cfg(target_os = "linux")]
+        scummvm_native: None,
+        #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]
         mame_native: None,
@@ -8606,6 +8760,8 @@ fn prepare_mode_aware(
         blastem_native: None,
         #[cfg(target_os = "linux")]
         xemu_native: None,
+        #[cfg(target_os = "linux")]
+        scummvm_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         #[cfg(target_os = "linux")]

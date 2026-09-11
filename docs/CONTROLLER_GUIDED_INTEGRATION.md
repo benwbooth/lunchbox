@@ -12,9 +12,9 @@ The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
 - RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **24/249 (9.6%)**, including ares, bsnes, Stella, VICE, Hatari, DeSmuME, openMSX, Mesen2, BlastEm and xemu.
-- Combined source entry presence: **117/343 (34.1%)**.
-- Existing native adapters consuming guided choices: **24/24 (100.0%)**.
+- Standalone partial source dispatch: **25/249 (10.0%)**, including ares, bsnes, Stella, VICE, Hatari, DeSmuME, openMSX, Mesen2, BlastEm, xemu and ScummVM.
+- Combined source entry presence: **118/343 (34.4%)**.
+- Existing native adapters consuming guided choices: **25/25 (100.0%)**.
 - Overall finished/verified coverage: **not established**.
 
 The native integration count includes runtime-setup and host/backend restrictions,
@@ -247,6 +247,16 @@ gate is extended to the SDL 3.2+ line with the DuckStation player
 projection unchanged. See
 [XEMU_NATIVE_CONTROLLER_CONTRACT.md](XEMU_NATIVE_CONTROLLER_CONTRACT.md).
 Rendering is unit-tested; runtime behavior is unverified.
+
+## Step 20 — ScummVM standalone default actions
+
+`controller_scummvm_native` adds a native adapter for ScummVM: a private
+XDG_CONFIG_HOME ini whose target carries the game path and the
+`engine-default` keymap actions, with each calibrated control matched to
+its SDL standard field through the device's own gamecontroller mapping
+string. Single device zero. See
+[SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md](SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md).
+Parsing and rendering are unit-tested; runtime behavior is unverified.
 
 ## Remaining work
 

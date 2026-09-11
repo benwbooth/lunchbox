@@ -44,6 +44,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "mesen2"
                 | "blastem"
                 | "xemu"
+                | "scummvm"
         )
 }
 
@@ -293,6 +294,16 @@ pub(crate) fn settings_for_launch<'a>(
         }
         "ppsspp" => {
             for setup in &mut mapping.ppsspp_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "scummvm" => {
+            for setup in &mut mapping.scummvm_native_launches {
                 if !matches(&setup.emulator_id, &setup.content) {
                     continue;
                 }

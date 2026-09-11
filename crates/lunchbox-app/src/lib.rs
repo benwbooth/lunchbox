@@ -47,6 +47,7 @@ mod controller_rpcs3;
 mod controller_same_cdi;
 mod controller_sameboy;
 mod controller_scummvm;
+mod controller_scummvm_native;
 mod controller_sdl3;
 mod controller_simcp;
 mod controller_snes9x;

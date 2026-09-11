@@ -93,6 +93,21 @@ pub(super) fn reuse(
                 mapping.fceux_launches.push(setup);
             }
         }
+        "scummvm"
+            if !mapping
+                .scummvm_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(
+                &mapping.scummvm_native_launches,
+                emulator,
+                &["controller_id"],
+            )? {
+                setup.content = content(plan, &[])?;
+                mapping.scummvm_native_launches.push(setup);
+            }
+        }
         "xemu"
             if !mapping
                 .xemu_native_launches

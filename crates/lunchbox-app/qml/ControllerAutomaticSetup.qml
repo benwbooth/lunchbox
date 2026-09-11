@@ -131,6 +131,36 @@ ColumnLayout {
         settingsModel: setup.settingsModel
     }
     Button {
+        text: "ScummVM setups…"
+        onClicked: {
+            duckstationSetups.adapter = "scummvm-native"
+            duckstationEditor.text = setup.settingsModel.scummvm_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch writes a private ini target under an isolated XDG_CONFIG_HOME; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "openMSX MSX setups…"
+        onClicked: {
+            duckstationSetups.adapter = "openmsx-native"
+            duckstationEditor.text = setup.settingsModel.openmsx_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch isolates OPENMSX_HOME and loads a private settings file; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "DeSmuME DS setups…"
+        onClicked: {
+            duckstationSetups.adapter = "desmume-native"
+            duckstationEditor.text = setup.settingsModel.desmume_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch isolates XDG_CONFIG_HOME and writes the private JOYKEYS keyfile; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
         text: "xemu Xbox setups…"
         onClicked: {
             duckstationSetups.adapter = "xemu-native"
@@ -225,6 +255,9 @@ ColumnLayout {
         readonly property bool mesen2Native: adapter === "mesen2-native"
         readonly property bool blastemNative: adapter === "blastem-native"
         readonly property bool xemuNative: adapter === "xemu-native"
+        readonly property bool desmumeNative: adapter === "desmume-native"
+        readonly property bool openmsxNative: adapter === "openmsx-native"
+        readonly property bool scummvmNative: adapter === "scummvm-native"
         readonly property bool hatariNative: adapter === "hatari-native"
         readonly property bool mednafen: adapter === "mednafen"
         readonly property bool flycastNative: adapter === "flycast-native"
@@ -232,7 +265,7 @@ ColumnLayout {
         readonly property bool rpcs3: adapter === "rpcs3"
         readonly property bool pcsx2: adapter === "pcsx2"
         readonly property var catalog: JSON.parse(setup.settingsModel.controller_catalog_json())
-        title: melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
+        title: melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
         width: Math.min(900, setup.width)
         height: 640
         modal: true
@@ -251,6 +284,12 @@ ColumnLayout {
                     ? "Standalone Flycast: edit a JSON list with emulator_id, content, game_id (native ID, not library title), executable_sha256, source_config, probe_program, sdl_library and players. Paths must be absolute. Each player has player (1–4), controller_id, panel (six by default or eight), and source_controls linking every target to a calibrated physical layout ID. Targets: up/down/left/right/start/coin/button1–6 or button1–8. Example source_controls entry: button1 maps to b. Review displays source/destination diagrams. Partial native Linux launch dispatch is connected. Startup checks can reject mismatched controllers. Internal routing and runtime compatibility remain unverified. Review opens no devices."
                     : duckstationSetups.mednafen
                     ? "Mednafen: edit a JSON list with emulator_id, content, base_directory, bubblewrap_program, executable_sha256, gamepad (game-boy, game-boy-advance, lynx, neo-geo-pocket, wonder-swan, virtual-boy, game-gear, master-system, pce-two, pce-six, pce-fast-two, pce-fast-six, nes-two, nes-four-score, nes-famicom-four, snes, snes-faust, md-three, md-six, saturn-digital play-station-digital or play-station-dual-analog), and players containing player and controller_id (handhelds: player 1; Master System: ports 1–2; PC Engine: ports 1–5; NES: 1–2 or 1–4 according to adapter; SNES/SNES Faust: 1–8, with 3–5 on the port-two tap and 6–8 on the port-one tap). Each player may optionally specify gamepad: pce-two or pce-six (or pce-fast-two/pce-fast-six for the fast module) to override the default within the same native module. Genesis: md_tap is none (default), port-one, port-two, dual or four-way; player ports are sequential native virtual ports, up to 2/5/5/8/4 respectively. Per-player md-three/md-six overrides allow mixed pads. Saturn: saturn_multitaps is [port1-enabled, port2-enabled], default [false, false], with 2/7/12 sequential virtual slots. PlayStation: psx_multitaps is [port1-enabled, port2-enabled], default [false, false], with 2/5/8 sequential virtual slots. Per-player play-station-digital/play-station-dual-analog overrides permit mixed pads. Dual Analog uses four centered proportional axes, no rumble or mode switch. PlayStation, Saturn and PC Engine accept .ccd and UTF-8 .cue discs with companion-file tracking. Native CD firmware is required. TOC/M3U and firmware identity remain incomplete. Paths must be absolute. Native GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine joydev launch dispatch is connected. Child internal IDs and other native input drivers remain unverified. NES currently accepts raw iNES .nes and conventional UNIF .unf/.unif content and rejects ROM-device conflicts. Review opens no devices."
+                    : duckstationSetups.scummvmNative
+                    ? "ScummVM: edit a JSON list with emulator_id, content (absolute game directory), controller_id, probe_program, sdl_library (the SDL library the ScummVM build links), and executable_sha256. Paths must be absolute. Launch isolates XDG_CONFIG_HOME and writes a private ini whose target carries the game path and the engine-default keymap actions; the selected controller must be SDL device zero. Engines with custom keymaps and the GUI/global keymaps are not remapped. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.openmsxNative
+                    ? "openMSX: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library (the SDL2 library the openMSX build links), executable_sha256, and players. Each player has player (1–2) and controller_id. Paths must be absolute. Launch isolates OPENMSX_HOME, loads a private settings file with the msxjoystickN_config dicts and plugs the second port when needed. MSX mice, JoyMega and paddle devices are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.desmumeNative
+                    ? "DeSmuME: edit a JSON list with emulator_id, content (absolute ROM path), controller_id, probe_program, sdl_library (the SDL2 library the DeSmuME build links), executable_sha256. Paths must be absolute. Launch isolates XDG_CONFIG_HOME and writes the private [JOYKEYS] section; touchscreen remains a mouse input; microphone, lid and Debug/Boost are disabled. Runtime testing remains deferred; review opens no devices."
                     : duckstationSetups.xemuNative
                     ? "xemu: edit a JSON list with emulator_id, content (absolute XISO path), mcpx_bootrom and flashrom (absolute declared images), probe_program, sdl_library (the SDL3 library the xemu build links), executable_sha256, and players (1–4). Paths must be absolute. Launch passes a private -config_path file that mounts the declared boot ROM, flash image and game, disables auto-bind and binds each SDL GUID to its port with standard-index controller mappings; the probe and child both run with SDL_JOYSTICK_LINUX_CLASSIC=1. Same-GUID devices cannot be distinguished; Steel Battalion and the S controller driver are not covered. Runtime testing remains deferred; review opens no devices."
                     : duckstationSetups.blastemNative
@@ -327,6 +366,12 @@ ColumnLayout {
                             ? setup.settingsModel.review_flycast_native_setups(duckstationEditor.text)
                             : duckstationSetups.mednafen
                             ? setup.settingsModel.review_mednafen_setups(duckstationEditor.text)
+                            : duckstationSetups.scummvmNative
+                            ? setup.settingsModel.review_scummvm_native_setups(duckstationEditor.text)
+                            : duckstationSetups.openmsxNative
+                            ? setup.settingsModel.review_openmsx_native_setups(duckstationEditor.text)
+                            : duckstationSetups.desmumeNative
+                            ? setup.settingsModel.review_desmume_native_setups(duckstationEditor.text)
                             : duckstationSetups.xemuNative
                             ? setup.settingsModel.review_xemu_native_setups(duckstationEditor.text)
                             : duckstationSetups.blastemNative
@@ -375,6 +420,12 @@ ColumnLayout {
                             ? setup.settingsModel.stage_flycast_native_setups(duckstationEditor.text)
                             : duckstationSetups.mednafen
                             ? setup.settingsModel.stage_mednafen_setups(duckstationEditor.text)
+                            : duckstationSetups.scummvmNative
+                            ? setup.settingsModel.stage_scummvm_native_setups(duckstationEditor.text)
+                            : duckstationSetups.openmsxNative
+                            ? setup.settingsModel.stage_openmsx_native_setups(duckstationEditor.text)
+                            : duckstationSetups.desmumeNative
+                            ? setup.settingsModel.stage_desmume_native_setups(duckstationEditor.text)
                             : duckstationSetups.xemuNative
                             ? setup.settingsModel.stage_xemu_native_setups(duckstationEditor.text)
                             : duckstationSetups.blastemNative
@@ -412,6 +463,12 @@ ColumnLayout {
                             ? "Staged. Save settings on the main page. Standalone Flycast uses partial native Linux launch mapping; no devices were opened during review."
                             : duckstationSetups.mednafen
                             ? "Staged. Save settings in the main page. Mednafen GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine native dispatch is partial and untested; no devices were opened."
+                            : duckstationSetups.scummvmNative
+                            ? "Staged. Save settings in the main page. ScummVM native dispatch writes a private ini target at launch; no devices were opened."
+                            : duckstationSetups.openmsxNative
+                            ? "Staged. Save settings in the main page. openMSX native dispatch stages a private OPENMSX_HOME and settings file at launch; no devices were opened."
+                            : duckstationSetups.desmumeNative
+                            ? "Staged. Save settings in the main page. DeSmuME native dispatch writes a private keyfile under an isolated XDG_CONFIG_HOME at launch; no devices were opened."
                             : duckstationSetups.xemuNative
                             ? "Staged. Save settings in the main page. xemu native dispatch writes a private -config_path configuration at launch; no devices were opened."
                             : duckstationSetups.blastemNative

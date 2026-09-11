@@ -16,6 +16,43 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     ds.controls
         .retain(|control| routes.contains_key(control.id.as_str()));
     db.layouts.push(ds);
+    let mut pointer = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    pointer.id = "scummvm-default-actions".into();
+    pointer.name = "ScummVM — default actions".into();
+    pointer.family = "two-button".into();
+    pointer.source = "https://scummvm.org/".into();
+    pointer.notes = "Native ScummVM engine-default game keymap actions driven through the SDL standard gamepad.".into();
+    pointer.controls = [
+        ("a", "Left click (LCLK)", 70.0, 50.0, "face", true),
+        ("b", "Right click (RCLK)", 60.0, 65.0, "face", true),
+        ("x", "Skip line (SKLI)", 80.0, 35.0, "face", true),
+        ("y", "Skip (SKIP)", 90.0, 50.0, "face", true),
+        ("l", "Game menu (MENU)", 5.0, 35.0, "shoulder", true),
+        ("start", "Confirm (RETURN)", 30.0, 90.0, "menu", true),
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(pointer);
     let mut msx = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -119,6 +156,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     db.layouts.push(joystick);
 
     for (core, layout, players, platforms, source) in [
+        (
+            "scummvm",
+            "scummvm-default-actions",
+            1,
+            vec!["ScummVM"],
+            "https://github.com/scummvm/scummvm/blob/3f6428df202e2c044ef53208acba0f665ea92096/engines/metaengine.cpp",
+        ),
         (
             "xemu",
             "xbox",
@@ -268,6 +312,20 @@ pub(crate) fn add(
     Ok(())
 }
 
+/// Preview labels for the ScummVM engine-default actions.
+const SCUMMVM_ACTION_ROUTES: [(&str, &str); 10] = [
+    ("a", "LCLK (Left click)"),
+    ("b", "RCLK (Right click)"),
+    ("x", "SKLI (Skip line)"),
+    ("y", "SKIP"),
+    ("l", "MENU (Game menu)"),
+    ("start", "RETURN (Confirm)"),
+    ("up", "UP"),
+    ("down", "DOWN"),
+    ("left", "LEFT"),
+    ("right", "RIGHT"),
+];
+
 /// Preview labels for the xemu controller_mapping fields.
 const XEMU_FIELD_ROUTES: [(&str, &str); 24] = [
     ("a", "a"),
@@ -366,6 +424,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             .collect::<BTreeMap<&str, &str>>(),
         ("stella", "atari2600-stella-panel") => crate::controller_stella_native::CONTROLS
             .into_iter()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("scummvm", "scummvm-default-actions") => SCUMMVM_ACTION_ROUTES
+            .iter()
+            .copied()
             .collect::<BTreeMap<&str, &str>>(),
         ("xemu", "xbox") => XEMU_FIELD_ROUTES
             .iter()
