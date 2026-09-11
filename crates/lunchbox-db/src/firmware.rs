@@ -344,8 +344,8 @@ mod tests {
     fn declared_catalog_has_unique_exact_rules_and_sources() {
         let catalog: FirmwareCatalog = serde_json::from_str(RULES_JSON).unwrap();
         validate_catalog(&catalog).unwrap();
-        assert_eq!(catalog.rules.len(), 124);
-        assert_eq!(catalog.acquisition_sources.len(), 19);
+        assert_eq!(catalog.rules.len(), 138);
+        assert_eq!(catalog.acquisition_sources.len(), 24);
         assert!(catalog.rules.iter().any(|rule| {
             rule.runtime_kind == "retroarch"
                 && rule.runtime_name == "swanstation"

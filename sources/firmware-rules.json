@@ -93,6 +93,26 @@
     {
       "id": "manual:nintendo-switch-firmware",
       "transport": "manual"
+    },
+    {
+      "id": "manual:mednafen-firmware",
+      "transport": "manual"
+    },
+    {
+      "id": "manual:vice-system-roms",
+      "transport": "manual"
+    },
+    {
+      "id": "manual:punes-fds-bios",
+      "transport": "manual"
+    },
+    {
+      "id": "manual:gearcoleco-bios",
+      "transport": "manual"
+    },
+    {
+      "id": "manual:nestopia-fds-bios",
+      "transport": "manual"
     }
   ],
   "rules": [
@@ -1831,6 +1851,202 @@
       "notes": "PCem machine ROM set for Windows 3.x-capable machines.",
       "supports_hle_fallback": false,
       "target_strategy": "runtime_dir"
+    },
+    {
+      "rule_key": "mednafen:mednafen:Sony - PlayStation",
+      "runtime_kind": "mednafen",
+      "runtime_name": "mednafen",
+      "platform_name": "Sony Playstation",
+      "source": "manual:mednafen-firmware",
+      "source_package_name": "PSX BIOS images (psx.bios_jp/na/eu)",
+      "target_subdir": "firmware",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "Standalone Mednafen PSX needs a user-dumped BIOS named in psx.bios_* under filesys.path_firmware (base dir / firmware).",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "mednafen:mednafen:Sega - Saturn",
+      "runtime_kind": "mednafen",
+      "runtime_name": "mednafen",
+      "platform_name": "Sega Saturn",
+      "source": "manual:mednafen-firmware",
+      "source_package_name": "Saturn BIOS images (ss.bios_jp/na_eu, stv)",
+      "target_subdir": "firmware",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "Standalone Mednafen Saturn needs user-dumped BIOS named in ss.bios_* under filesys.path_firmware.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "mednafen:mednafen:NEC - PC Engine CD",
+      "runtime_kind": "mednafen",
+      "runtime_name": "mednafen",
+      "platform_name": "NEC TurboGrafx-CD",
+      "source": "manual:mednafen-firmware",
+      "source_package_name": "PC Engine CD BIOS (pce.cdbios)",
+      "target_subdir": "firmware",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "Standalone Mednafen PCE CD needs the user-dumped CD BIOS named in pce.cdbios under filesys.path_firmware.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "mednafen:mednafen:Nintendo - Game Boy Advance",
+      "runtime_kind": "mednafen",
+      "runtime_name": "mednafen",
+      "platform_name": "Nintendo Game Boy Advance",
+      "source": "manual:mednafen-firmware",
+      "source_package_name": "GBA BIOS (gba.bios)",
+      "target_subdir": "firmware",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "Standalone Mednafen GBA needs the user-dumped BIOS named in gba.bios under filesys.path_firmware.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "mednafen:mednafen:Nintendo - Famicom Disk System",
+      "runtime_kind": "mednafen",
+      "runtime_name": "mednafen",
+      "platform_name": "Nintendo Famicom Disk System",
+      "source": "manual:mednafen-firmware",
+      "source_package_name": "FDS BIOS (disksys.rom)",
+      "target_subdir": "firmware",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "Standalone Mednafen Famicom Disk System needs disksys.rom under filesys.path_firmware.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "vice:vice:Commodore 64",
+      "runtime_kind": "vice",
+      "runtime_name": "vice",
+      "platform_name": "Commodore 64",
+      "source": "manual:vice-system-roms",
+      "source_package_name": "C64 system ROMs (kernal, basic, chargen, character sets)",
+      "target_subdir": "C64",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "VICE C64 requires kernal/basic/chargen ROMs in the C64 search path; user-supplied, not redistributable by Lunchbox.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "vice:vice:Commodore VIC-20",
+      "runtime_kind": "vice",
+      "runtime_name": "vice",
+      "platform_name": "Commodore VIC-20",
+      "source": "manual:vice-system-roms",
+      "source_package_name": "VIC-20 system ROMs",
+      "target_subdir": "VIC20",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "VICE VIC-20 requires per-model kernal/basic/chargen ROMs in the VIC20 search path.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "vice:vice:Commodore PET",
+      "runtime_kind": "vice",
+      "runtime_name": "vice",
+      "platform_name": "Commodore PET",
+      "source": "manual:vice-system-roms",
+      "source_package_name": "PET system ROMs",
+      "target_subdir": "PET",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "VICE PET requires per-model editor/character ROMs in the PET search path.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "vice:vice:Commodore Plus/4",
+      "runtime_kind": "vice",
+      "runtime_name": "vice",
+      "platform_name": "Commodore Plus 4",
+      "source": "manual:vice-system-roms",
+      "source_package_name": "Plus/4 system ROMs",
+      "target_subdir": "PLUS4",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "VICE Plus/4 requires kernal/basic/chargen/1541/1551 ROMs in the PLUS4 search path.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "vice:vice:Commodore 128",
+      "runtime_kind": "vice",
+      "runtime_name": "vice",
+      "platform_name": "Commodore 128",
+      "source": "manual:vice-system-roms",
+      "source_package_name": "C128 system ROMs (kernal, basic64, chargen, 1571, 1581)",
+      "target_subdir": "C128",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "VICE C128 requires kernal/basic64/chargen/1571/1581 ROMs in the C128 search path.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "vice:vice:Commodore 64 drives",
+      "runtime_kind": "vice",
+      "runtime_name": "vice",
+      "platform_name": "Commodore 64",
+      "source": "manual:vice-system-roms",
+      "source_package_name": "1541/1571/1581 drive ROMs (DOS*.bin)",
+      "target_subdir": "DRIVES",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "VICE disk drives require DOS ROMs in the DRIVES search path.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "punes:puNES:Nintendo - Famicom Disk System",
+      "runtime_kind": "punes",
+      "runtime_name": "punes",
+      "platform_name": "Nintendo Famicom Disk System",
+      "source": "manual:punes-fds-bios",
+      "source_package_name": "disksys.rom",
+      "target_subdir": "bios",
+      "install_mode": "merge_tree",
+      "required": false,
+      "notes": "puNES needs disksys.rom under the data bios/ dir for Famicom Disk System games only; cart games need no BIOS.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "gearcoleco:Gearcoleco:ColecoVision",
+      "runtime_kind": "gearcoleco",
+      "runtime_name": "Gearcoleco",
+      "platform_name": "ColecoVision",
+      "source": "manual:gearcoleco-bios",
+      "source_package_name": "ColecoVision BIOS (8192 bytes, any filename)",
+      "target_subdir": "",
+      "install_mode": "merge_tree",
+      "required": true,
+      "notes": "Gearcoleco requires the ColecoVision BIOS (8192 bytes, size-only validation) selected via [Emulator] BiosPath in config.ini.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
+    },
+    {
+      "rule_key": "nestopia:nestopia:Nintendo - Famicom Disk System",
+      "runtime_kind": "nestopia",
+      "runtime_name": "Nestopia UE",
+      "platform_name": "Nintendo Famicom Disk System",
+      "source": "manual:nestopia-fds-bios",
+      "source_package_name": "disksys.rom",
+      "target_subdir": "",
+      "install_mode": "merge_tree",
+      "required": false,
+      "notes": "Nestopia UE needs disksys.rom via [fds]/bios or the data path for Famicom Disk System games only.",
+      "supports_hle_fallback": false,
+      "target_strategy": "manual_import"
     }
   ]
 }
