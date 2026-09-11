@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "slug": "openmsx",
+  "emulator": "openMSX",
+  "sources": [
+    { "kind": "source", "repo": "openMSX/openMSX", "commit": "25179d6b8d5ec69ad68252f3854721c9a02594eb", "role": "pinned commit (matches docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md pin); every path and naming fact below was verified at this commit (all cited files are identical to master)" },
+    { "kind": "contract", "url": "docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract: settings.xml TCL <setting> persistence, msxjoystickN_config joystick dicts, -setting/-command launch, OPENMSX_HOME isolation" },
+    { "kind": "docs", "url": "https://openmsx.org/", "role": "project download page (v21.0 2025-09-26 via GitHub releases only — no Flatpak is mentioned anywhere on the site)" },
+    { "kind": "docs", "url": "https://openmsx.org/manual/user.html", "role": "user manual: savestate/quicksave commands, persistent per-extension SRAM/dsk layout, C-BIOS default machine (repo doc/manual/user.html and setup.html at the pinned commit)" },
+    { "kind": "docs", "url": "https://github.com/flathub/org.openmsx.openMSX", "role": "unofficial Flathub listing org.openmsx.openMSX (21.0, packaged in the flathub org, not referenced by openmsx.org)" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.openMSX/share/settings.xml — persisted as XML with the literal prolog <!DOCTYPE settings SYSTEM 'settings.dtd'> and nested <settings> elements holding <setting id=\"...\">value</setting> (loaded from the user data dir, auto-saved back on exit); joystick bindings are TCL settings msxjoystick1_config / msxjoystick2_config: lists of UP/DOWN/LEFT/RIGHT/A/B keys whose values are event-spec lists (joyN buttonK, joyN hatK up|right|down|left, joyN +axisK / joyN -axisK); OPENMSX_HOME relocates the whole user dir, OPENMSX_USER_DATA just the data dir, and -setting <file> swaps in a private settings file",
+          "evidence": [
+            "source:src/file/FileOperations.cc:415-432 getUserOpenMSXDir (OPENMSX_HOME, else ~/.openMSX), :439-448 getUserDataDir = <userdir>/share @25179d6b",
+            "source:src/CommandLineParser.cc:180-196 default settings.xml loaded via systemFileContext (USER_DATA first) @25179d6b",
+            "source:src/config/SettingsConfig.cc:109-112 settings.dtd systemID check, :172-182 saveSetting writes the DOCTYPE and <setting> elements @25179d6b",
+            "contract:docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md (settings.xml syntax, msxjoystick_config dicts, -setting/-command, OPENMSX_HOME)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.openMSX/persistent/<hwName>/<untitledN>/<file> — battery-backed device state (cart SRAM/flash, PAC SRAM, extension harddisk/SD images) persists per hardware-config name and per cartridge instance directly under the user dir (not share/sram): e.g. persistent/MegaFlashROM_SCC+_SD/untitled1/megaflashromsccplussd.sram or persistent/<IDE extension>/untitled1/hd.dsk",
+          "naming": "persistent/<hardware-config name>/<untitled1, untitled2, ...>/<device filename from the machine/extension XML> — the instance name is untitledN per running instance of that cartridge/extension, and files are named by the device (e.g. <cart>.sram, hd.dsk)",
+          "evidence": [
+            "source:src/file/FileContext.cc:152-155 configFileContext save path USER_OPENMSX/persistent/<hwDescr>/<userName>, :174-177 userFileContext save path persistent/<savePath> @25179d6b",
+            "source:src/config/HardwareConfig.cc:280 setFileContext(configFileContext(dirname, hwName, userName)); src/MSXMotherBoard.cc:797-807 getUserName generates untitled1, untitled2, ... @25179d6b",
+            "docs:manual user.html — persistent/NAME/untitled1/IMAGENAME.dsk (NAME = extension name) and persistent/MegaFlashROM_SCC+_SD/untitled1/megaflashromsccplussd.sram examples @25179d6b"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.openMSX/savestates/<name>.oms with a <name>.png screenshot alongside — the savestate/loadstate/quicksave TCL commands store plain .oms files (not .oms.gz in current releases) in the savestates directory derived as normalize($env(OPENMSX_USER_DATA)/../savestates)",
+          "naming": "<name>.oms (+ <name>.png); 'savestate' without an argument uses the fixed name quicksave, so the quicksave slot is savestates/quicksave.oms; list_savestates/delete_savestate manage the *.oms set and -savestate <file> loads a state at startup",
+          "evidence": [
+            "source:share/scripts/_savestate.tcl:8-10 directory = $::env(OPENMSX_USER_DATA)/../savestates, fullname = <dir>/<name>.oms, png = <dir>/<name>.png, :37-45 list globs *.oms @25179d6b",
+            "source:src/commands/Interpreter.cc:110 env(OPENMSX_USER_DATA) is exported to TCL (=> default <userdir>/share -> ../savestates = <userdir>/savestates) @25179d6b",
+            "docs:manual commands.html 'savestate [<name>]' default quicksave; user.html 9.1 quicksave/loadstate @25179d6b"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "system ROMs pool at ~/.openMSX/share/systemroms (user) plus the installation's share/systemroms — directory structure under systemroms is irrelevant because ROMs are content-hashed; machines are XML in share/machines and extensions in share/extensions; with no proprietary ROMs installed openMSX boots the bundled C-BIOS machines (default machine C-BIOS_MSX2+; C-BIOS_MSX1/MSX2/MSX2+ ship with their ROMs, so C-BIOS is the no-firmware fallback)",
+          "evidence": [
+            "source:src/file/FilePool.cc:20-33 initial file pool = systemFileContext paths (USER_DATA then SYSTEM_DATA) + /systemroms and /software @25179d6b",
+            "docs:manual setup.html 3. System ROMs (user-dir systemroms, structure irrelevant) and 3.1 C-BIOS (C-BIOS_MSX1/MSX2/MSX2+ configurations, legal to distribute); user.html 2.1 'not change the default machine, the C-BIOS MSX2+ machine will be started' @25179d6b",
+            "db:firmware_rules openmsx:* entries (sources/firmware-rules.json): optional MSX/MSX2/MSX2+ real-machine ROM pools (minerva:retroarch-system-files, runtime_dir, supports_hle_fallback=true — 'C-BIOS remains the default fallback') and a required Spectravideo SVI pool (supports_hle_fallback=false)",
+            "app:crates/lunchbox-app/src/firmware.rs:520 linux openmsx root ~/.openMSX/share/systemroms, :1897-1901 openmsx merge_tree skips ini/xml/txt from the blueMSX pack"
+          ]
+        }
+      ],
+      "notes": "Lunchbox's openmsx native launch isolates everything with OPENMSX_HOME plus a private -setting file and a -command TCL snippet (docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md), which relocates settings, persistent saves and savestates together."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "org.openmsx.openMSX: ~/.var/app/org.openmsx.openMSX/.openMSX/share/settings.xml — openmsx.org does not advertise any Flatpak, but a Flathub listing exists (org.openmsx.openMSX, version 21.0 2025-09-26, developer 'openMSX team', packaged in the flathub GitHub org from RELEASE_21_0 with command openmsx and --filesystem=home); the manifest does not set OPENMSX_HOME, so inside the sandbox HOME the stock ~/.openMSX layout is used unchanged",
+          "evidence": [
+            "flathub:org.openmsx.openMSX — appstream API shows id/name/developer 'openMSX team' GPL-2.0 with releases 21.0 (2025-09-26), 20.0, 19.x; manifest org.openmsx.openMSX.yaml builds tag RELEASE_21_0, finish-args --filesystem=home, no OPENMSX_HOME env",
+            "docs:openmsx.org (2026-09) — download section lists Windows/macOS/Linux-zip/source from GitHub releases only; no Flathub/Flatpak mention anywhere on the site",
+            "source:src/file/FileOperations.cc:415-432 user dir = OPENMSX_HOME or ~/.openMSX @25179d6b"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/org.openmsx.openMSX/.openMSX/persistent/<hwName>/<untitledN>/<file> — same persistent layout as native Linux under the sandbox HOME",
+          "naming": "persistent/<hardware-config name>/<untitledN>/<device filename> (e.g. <cart>.sram, hd.dsk)",
+          "evidence": [
+            "source:src/file/FileContext.cc:152-155, :174-177 persistent save paths @25179d6b",
+            "flathub:org.openmsx.openMSX --filesystem=home lets cartridge images be opened from the real home while persistent state stays sandboxed"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/org.openmsx.openMSX/.openMSX/savestates/<name>.oms (+ .png)",
+          "naming": "<name>.oms with quicksave.oms as the default quicksave slot, identical to native Linux",
+          "evidence": [
+            "source:share/scripts/_savestate.tcl:8-10 savestates dir and .oms/.png naming @25179d6b",
+            "flathub:org.openmsx.openMSX (stock layout under sandbox HOME)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.var/app/org.openmsx.openMSX/.openMSX/share/systemroms for user-installed system ROMs (bundled C-BIOS ships inside the app itself and remains the fallback)",
+          "evidence": [
+            "source:src/file/FilePool.cc:20-33 systemroms pool = USER_DATA + SYSTEM_DATA + /systemroms @25179d6b",
+            "flathub:org.openmsx.openMSX manifest (openMSX installed under /app/share/<FLATPAK_ID>, C-BIOS included)",
+            "db:firmware_rules openmsx:* entries (sources/firmware-rules.json) — C-BIOS fallback flagged supports_hle_fallback"
+          ]
+        }
+      ],
+      "notes": "Capture note: the task premise 'openMSX has no official flatpak' was re-verified in 2026-09 — openmsx.org still does not reference Flathub (only GitHub releases), but the Flathub listing org.openmsx.openMSX does exist and tracks releases; treat it as community packaging until openmsx.org links it."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%USERPROFILE%\\Documents\\openMSX\\share\\settings.xml — on Windows the user dir is ~/openMSX expanded against the per-user Documents folder (CSIDL_PERSONAL), i.e. Documents\\openMSX\\share\\settings.xml with the same settings.dtd XML and TCL settings as Linux; OPENMSX_HOME/OPENMSX_USER_DATA overrides and -setting <file> apply identically",
+          "evidence": [
+            "source:src/file/FileOperations.cc:386-395 getUserHomeDir _WIN32 = SHGetSpecialFolderPathW(CSIDL_PERSONAL), :421-422 getUserOpenMSXDir _WIN32 = expandTilde(\"~/openMSX\") @25179d6b",
+            "source:src/config/SettingsConfig.cc:172-182 settings.dtd serialization @25179d6b",
+            "contract:docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Documents\\openMSX\\persistent\\<hwName>\\<untitledN>\\<file> — battery-backed device state under the Windows user dir",
+          "naming": "persistent\\<hardware-config name>\\<untitledN>\\<device filename> (e.g. <cart>.sram, hd.dsk)",
+          "evidence": [
+            "source:src/file/FileContext.cc:152-155 persistent path construction @25179d6b",
+            "source:src/MSXMotherBoard.cc:797-807 untitledN instance names @25179d6b"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Documents\\openMSX\\savestates\\<name>.oms (+ <name>.png)",
+          "naming": "<name>.oms with quicksave.oms as the default quicksave slot",
+          "evidence": [
+            "source:share/scripts/_savestate.tcl:8-10 savestates dir + .oms/.png @25179d6b",
+            "source:src/commands/Interpreter.cc:110 env(OPENMSX_USER_DATA) export @25179d6b"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Documents\\openMSX\\share\\systemroms for user system ROMs; the installer's own share/systemroms and share/machines carry the bundled C-BIOS machines which are the default machine (C-BIOS_MSX2+) when no real-machine ROMs are present",
+          "evidence": [
+            "source:src/file/FilePool.cc:20-33 systemroms search paths @25179d6b",
+            "docs:manual setup.html 3./3.1 systemroms + C-BIOS @25179d6b",
+            "app:crates/lunchbox-app/src/firmware.rs:521-524 windows openmsx root = Documents/openMSX/share/systemroms (matches upstream)",
+            "db:firmware_rules openmsx:* entries (sources/firmware-rules.json)"
+          ]
+        }
+      ],
+      "notes": "The Windows installer/zips are the project's primary distribution (openmsx.org download page); the user dir roots at the Documents folder, not %APPDATA%."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.openMSX/share/settings.xml — upstream macOS builds use the same dot-directory layout as Linux (getUserOpenMSXDir's non-Windows branch covers __APPLE__), with the same settings.dtd XML, TCL settings and -setting/-command options",
+          "evidence": [
+            "source:src/file/FileOperations.cc:415-432 user dir = OPENMSX_HOME or ~/.openMSX for every non-Windows, non-Android build @25179d6b",
+            "source:src/CommandLineParser.cc:180-196 settings.xml load; src/config/SettingsConfig.cc:172-182 save format @25179d6b",
+            "contract:docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.openMSX/persistent/<hwName>/<untitledN>/<file> — battery-backed device state under the macOS user dir",
+          "naming": "persistent/<hardware-config name>/<untitledN>/<device filename> (e.g. <cart>.sram, hd.dsk)",
+          "evidence": [
+            "source:src/file/FileContext.cc:152-155 persistent path construction @25179d6b",
+            "docs:manual user.html persistent/NAME/untitled1/... examples @25179d6b"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.openMSX/savestates/<name>.oms (+ <name>.png)",
+          "naming": "<name>.oms with quicksave.oms as the default quicksave slot",
+          "evidence": [
+            "source:share/scripts/_savestate.tcl:8-10 savestates dir + .oms/.png @25179d6b",
+            "docs:manual user.html 9.1 quicksave (Cmd+S) / loadstate (Cmd+R) @25179d6b"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.openMSX/share/systemroms for user system ROMs; the .app bundle ships C-BIOS machines as the default fallback (C-BIOS_MSX2+) — note the Lunchbox firmware adapter roots macOS openMSX firmware at ~/Library/openMSX/share/systemroms, which differs from upstream's ~/.openMSX layout",
+          "evidence": [
+            "source:src/file/FileOperations.cc:415-432 + :439-448 macOS user data dir = ~/.openMSX/share @25179d6b",
+            "docs:manual setup.html 3.1 C-BIOS machines bundled; user.html 2.1 default machine @25179d6b",
+            "app:crates/lunchbox-app/src/firmware.rs:525 macos openmsx root = ~/Library/openMSX/share/systemroms (adapter divergence from upstream ~/.openMSX)",
+            "db:firmware_rules openmsx:* entries (sources/firmware-rules.json) — Spectravideo ROMs required, MSX/MSX2/MSX2+ optional with C-BIOS fallback"
+          ]
+        }
+      ],
+      "notes": "Official macOS dmg builds exist for Intel and Apple silicon (openmsx.org 21.0); the repo firmware adapter's ~/Library/openMSX macOS root needs reconciling with upstream's ~/.openMSX."
+    }
+  }
+}

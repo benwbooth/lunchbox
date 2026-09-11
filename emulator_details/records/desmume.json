@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "slug": "desmume",
+  "emulator": "DeSmuME",
+  "sources": [
+    { "kind": "source", "repo": "TASEmulators/desmume", "commit": "b3915949700be824253a35affa7f7b8248e84e46", "role": "pinned posix-frontends commit (matches docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md pin); all path and naming facts below were verified identical at this commit for the core, posix, windows and cocoa frontends" },
+    { "kind": "contract", "url": "docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract: GLib keyfile [JOYKEYS] at $XDG_CONFIG_HOME/desmume/config, joypad key encoding, private XDG_CONFIG_HOME launch" },
+    { "kind": "docs", "url": "https://desmume.org/download/", "role": "official download page: Windows 0.9.13 release + nightly builds; links the wiki FAQ" },
+    { "kind": "docs", "url": "http://wiki.desmume.org/index.php?title=Faq", "role": ".dsv save-file format and default save locations (0.9.5+ ~/.config/desmume on Linux/macOS, emulator directory on Windows)" },
+    { "kind": "docs", "url": "https://github.com/flathub/org.desmume.DeSmuME", "role": "flatpak application id org.desmume.DeSmuME (manifest builds the posix GTK frontend from a master commit, last updated 2024-09-26)" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/desmume/config — a GLib keyfile (not desmume.cfg/.ini) at g_get_user_config_dir()/desmume/config; $XDG_CONFIG_HOME overrides the root, and the posix keyfile is where the [JOYKEYS] joypad group lives: one integer per key_names[] entry (Up/Down/Left/Right/A/B/X/Y/L/R/Start/Select plus disabled 0xFFFF entries), with codes (device & 15) << 12 | type << 8 | index (type 0=Axis, 1=Hat, 2=Button; axis halves 2*axis / 2*axis+1 engage at |value| >> 14 = 16384)",
+          "evidence": [
+            "source:frontend/posix/shared/desmume_config.cpp:25-26 dir 'desmume' + file 'config', :36 g_build_filename(g_get_user_config_dir(), ...), :107 g_key_file_set_integer(keyfile, \"JOYKEYS\", key_names[i], joypad_cfg[i]), :135-139 JOYKEYS group read @b3915949",
+            "source:frontend/posix/shared/ctrlssdl.cpp joypad key-code encoding and 16384 axis threshold @b3915949",
+            "contract:docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md (JOYKEYS keyfile + private XDG_CONFIG_HOME isolation)",
+            "db:firmware_rules — no desmume entries (sources/firmware-rules.json has no runtime_kind desmume; no BIOS/firmware package is modeled)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/desmume/<rom>.dsv — the battery directory defaults to the same module directory g_build_filename(g_get_user_config_dir(), \"desmume\") (the posix frontends do NOT use Windows' Battery/ subfolders); a .dsv.bak rolling backup sits next to it and a raw <rom>.sav is imported when no .dsv exists",
+          "naming": "<ROM filename without extension>.dsv (DeSmuME's own .dsv container holding the cart backup memory), <rom>.dsv.bak backup, and legacy import from <rom>.sav",
+          "evidence": [
+            "source:mc.cpp:238-239 path.getpathnoext(path.BATTERY) + \".dsv\", :251 \".dsv.bak\", :280 .sav fallback @b3915949",
+            "source:path.cpp:217-221 posix LoadModulePath = g_get_user_config_dir()/desmume (mkdir'd), :230-231 non-Windows GetDefaultPath falls back to that module dir, :274 ReadKeyW(pathToBattery, BATTERYKEY) @b3915949",
+            "docs:wiki Faq — 'In 0.9.5, the default location for .dsv files changed ... in OSX/Linux it is ~/.config/desmume'"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.config/desmume/<rom>.ds0 through <rom>.ds9 — savestate slots live directly in the config module dir (STATE_SLOTS default is the same dir on posix); File > Save State To... instead asks for a file (filter *.ds*, proposed name save.ds); before each loadstate a rolling backup is written as .dst into '<statefile> (backups)/' with a backup.index counter — so slots are .ds#, and .dst is the backup/older 'save as' extension, not the slot format",
+          "naming": "<ROM filename without extension>.ds<slot 0-9> (NB_STATES=10) in the STATE_SLOTS directory; explicit saves are any user-named .ds file; pre-load rolling backups are '<rom>.ds<N> (backups)/<index>.dst' plus backup.index (BackupSavesMax, default on with 200 entries)",
+          "evidence": [
+            "source:saves.cpp:798-817 scan_savestates snprintf \".ds%d\" over NB_STATES slots, :832-853 savestate_slot writes path.STATE_SLOTS + \".ds%d\", :933-946 loadstate backup dir + backup.index + \".dst\" @b3915949",
+            "source:saves.h:26 #define NB_STATES 10 @b3915949",
+            "source:frontend/posix/gtk/main.cpp:975-1015 Save State To... dialog, *.ds* filter, current name \"save.ds\" @b3915949"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "none required — the ARM7/ARM9 BIOS is built in (no bios7/bios9 dumping exists in the codebase); the only optional firmware is an external dumped-DS firmware.bin (CommonSettings.ExtFirmwarePath defaults to \"firmware.bin\", used only when external firmware is enabled, with BootFromFirmware defaulting to false; the cli frontend accepts -fw-path)",
+          "evidence": [
+            "source:NDSSystem.cpp:3373-3375 strncpy(ExtFirmwarePath, \"firmware.bin\", ...) and BootFromFirmware = false, :2785-2793 external firmware only consulted when UseExtFirmware @b3915949",
+            "source:commandline.cpp:463 -fw-path sets UseExtFirmware/ExtFirmwarePath @b3915949",
+            "source: no bios7/bios9/nds BIOS-dump loading anywhere in src (grep over the pinned tree)"
+          ]
+        }
+      ],
+      "notes": "Lunchbox's desmume native launch pins the controller contract and isolates the whole config dir through a private XDG_CONFIG_HOME (docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md), which also relocates the default battery/state-slot directory."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "org.desmume.DeSmuME: ~/.var/app/org.desmume.DeSmuME/config/desmume/config — the manifest builds the same posix GTK frontend from a master commit (91196788eb6f8543ea395ac1f6ad9e056dc7c5c2, runtime 24.08, -Dfrontend-cli=false, command desmume), so the GLib keyfile and its [JOYKEYS] group land under the sandbox XDG_CONFIG_HOME; the Flathub appstream metadata still advertises release 0.9.11 (2015) even though the manifest was updated 2024-09-26",
+          "evidence": [
+            "flathub:org.desmume.DeSmuME — appstream API lists id/name/developer 'DeSmuME Team' GPL-2.0-or-later with release 0.9.11 timestamped 2015; manifest raw org.desmume.DeSmuME.json (last commits 2024-09-26) pins commit 91196788, finish-args have no --filesystem so all reads/writes stay inside the sandbox",
+            "source:frontend/posix/shared/desmume_config.cpp:36 config path derives from g_get_user_config_dir() @b3915949",
+            "contract:docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/org.desmume.DeSmuME/config/desmume/<rom>.dsv — identical GTK code path with the sandboxed config dir as module dir; no --filesystem=home, so ROMs/saves only enter/leave through the portal",
+          "naming": "<ROM filename without extension>.dsv (+ .dsv.bak, legacy .sav import) exactly as native Linux",
+          "evidence": [
+            "source:mc.cpp:238-239 .dsv naming, path.cpp:217-221 module dir from g_get_user_config_dir() @b3915949",
+            "flathub:org.desmume.DeSmuME manifest finish-args (sockets/device only)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/org.desmume.DeSmuME/config/desmume/<rom>.ds0-<rom>.ds9 slots (plus user-named .ds saves and the '(backups)' .dst rolling backups) in the same sandboxed directory",
+          "naming": "<ROM filename without extension>.ds<slot 0-9>; backups '<statefile> (backups)/<index>.dst' with backup.index",
+          "evidence": [
+            "source:saves.cpp:798-853 STATE_SLOTS .ds%d slots, :933-946 .dst backups @b3915949",
+            "flathub:org.desmume.DeSmuME (same GTK frontend as the native build)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "none required; optional external firmware.bin behaves as on native Linux (built-in BIOS, firmware only used when explicitly enabled)",
+          "evidence": [
+            "source:NDSSystem.cpp:3373-3375 optional firmware default, BootFromFirmware=false @b3915949",
+            "flathub:org.desmume.DeSmuME (no firmware shipped)"
+          ]
+        }
+      ],
+      "notes": "The flatpak id org.desmume.DeSmuME is verified present on Flathub, but the listing is stale in its advertised version (0.9.11 appstream vs 2024 master-commit manifest); desmume.org's own download page only offers Windows builds and does not reference the Flatpak."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "desmume.ini in the executable's directory (portable style, written with a UTF-16 BOM); when the exe runs from the temp directory (e.g. straight out of an archive) it switches to %LOCALAPPDATA%\\DeSmuME\\desmume.ini and chdirs there; [PathSettings] keys Roms/Battery/SramImportExport/States/StateSlots/Screenshots/AviFiles/Cheats/SoundSamples/Firmware/Lua/Slot1D configure every data dir; joypad mapping lives in the Windows frontend's own ini sections — the [JOYKEYS] keyfile contract is posix-only",
+          "evidence": [
+            "source:frontend/windows/winutil.cpp:36-90 GetINIPath — GetModuleFileName dir + \\desmume.ini, temp-dir fallback to CSIDL_LOCAL_APPDATA\\DeSmuME + SetCurrentDirectoryW, BOM creation @b3915949",
+            "source:path.h:76-95 SECTION PathSettings and its key names, :285-289 GetPrivateProfileString(SECTION,...,IniName) @b3915949",
+            "contract:docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md — 'hotkeys, the SDL1/cli frontend and the Windows/Cocoa frontends are not covered'"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".\\Battery\\<rom>.dsv by default (relative to the working directory, normally the exe dir; PathSettings 'Battery' overrides, and the temp-dir fallback root is %LOCALAPPDATA%\\DeSmuME)",
+          "naming": "Battery\\<ROM filename without extension>.dsv (+ .dsv.bak rolling backup, legacy .sav import)",
+          "evidence": [
+            "source:path.cpp:225-229 Windows GetDefaultPath prefixes \".\\\\\" to the key name, :235-247 ReadKeyW GetPrivateProfileStringW(PathSettings, key, key, IniNameW) defaulting to .\\Battery/.\\States/.\\StateSlots/.\\Firmware, :274 pathToBattery @b3915949",
+            "source:mc.cpp:238-239 <rom>.dsv naming @b3915949",
+            "docs:wiki Faq — 'in Windows it is the directory that the emulator runs from'"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": ".\\StateSlots\\<rom>.ds0-<rom>.ds9 for the 10 hotkey slots; .\\States\\ is the default directory offered for named Save/Load State As files (\"DeSmuME Savestate (*.dst or *.ds#)\" filter, so named saves conventionally take .dst); pre-load backups go to '<statefile> (backups)\\<index>.dst' with backup.index",
+          "naming": "StateSlots\\<ROM filename without extension>.ds<slot 0-9>; named saves <rom>.dst (or any .ds name); rolling backups '<rom>.ds<N> (backups)/<index>.dst' + backup.index",
+          "evidence": [
+            "source:saves.cpp:798-853 STATE_SLOTS .ds%d slots, :898 pre-loadstate backup save, :933-946 backups dir + .dst + backup.index (BackupSavesMax default 200) @b3915949",
+            "source:frontend/windows/main.cpp:4629/4660 ofn.lpstrFilter L\"DeSmuME Savestate (*.dst or *.ds#)...\" @b3915949"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "none required (built-in BIOS); optional external firmware via desmume.ini [Firmware] FirmwareFile (default \"firmware.bin\") resolved against the PathSettings 'Firmware' directory (default .\\Firmware) with [Firmware] BootFromFirmware (default 0) — the dumped-DS firmware.bin is the only firmware input; no ARM7/ARM9 BIOS dumps are used",
+          "evidence": [
+            "source:frontend/windows/main.cpp:2439-2440 GetPrivateProfileString(\"Firmware\", \"FirmwareFile\", \"firmware.bin\", ...) and GetPrivateProfileBool(\"Firmware\", \"BootFromFirmware\", false, IniName), :5965-5966 written back @b3915949",
+            "source:NDSSystem.cpp:3373-3375 ExtFirmwarePath/BootFromFirmware defaults @b3915949"
+          ]
+        }
+      ],
+      "notes": "Windows is the only frontend using the Battery/States/StateSlots/Firmware subfolder layout, and only because its defaults are cwd-relative; desmume.org/download distributes 0.9.13 and nightly x64 builds."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Preferences/org.desmume.DeSmuME.plist — the Cocoa frontend keeps settings in NSUserDefaults under CFBundleIdentifier org.desmume.DeSmuME; per-kind data directories are derived from FileTypeInfo.plist instead, and Cocoa input preferences are outside the pinned [JOYKEYS] contract (posix-only)",
+          "evidence": [
+            "source:frontend/cocoa/Info.plist:240-241 CFBundleIdentifier org.desmume.DeSmuME @b3915949",
+            "source:frontend/cocoa (NSUserDefaults standardUserDefaults usage throughout, e.g. cocoa_firmware.mm:177-191, cocoa_rom.mm:274) @b3915949",
+            "contract:docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md — Windows/Cocoa frontends not covered"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Library/Application Support/DeSmuME/<CFBundleVersion>/Battery/<rom>.dsv — ROM Save files go under the app-support root + bundle version + 'Battery' directory name (since 0.9.8; 0.9.7 wrote them next to the ROM)",
+          "naming": "<ROM filename without extension>.dsv inside the Battery directory under ~/Library/Application Support/DeSmuME/<version>/",
+          "evidence": [
+            "source:frontend/cocoa/FileTypeInfo.plist DefaultPaths 0.9.8-0.9.14 'ROM Save' = ${APPSUPPORT} and DirectoryNames 'ROM Save' = Battery @b3915949",
+            "source:frontend/cocoa/cocoa_file.mm:1034-1075 userAppSupportBaseURL = ~/Library/Application Support/<CFBundleName=DeSmuME> and userAppSupportURL appends <CFBundleVersion>/<dirName> @b3915949",
+            "source:xcodeproj PRODUCT_NAME = DeSmuME @master"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Library/Application Support/DeSmuME/<CFBundleVersion>/States/<rom>.ds0-<rom>.ds9 — slot files use the same .ds<slot> extension as the other frontends (slot 10 wraps to .ds0); explicit save-state files can be written anywhere",
+          "naming": "<ROM filename without extension>.ds<slot 0-9> in the States directory under ~/Library/Application Support/DeSmuME/<version>/; slot 10 maps to .ds0",
+          "evidence": [
+            "source:frontend/cocoa/cocoa_file.mm:1016-1031 saveSlotFileName = <rom>.ds<slot> with slotNumber==10 -> 0, :980-1013 isSaveStateSlotExtension accepts ds<digits> @b3915949",
+            "source:frontend/cocoa/FileTypeInfo.plist 0.9.13/0.9.14 'Save State' = ${APPSUPPORT} + DirectoryNames 'States' (isFileKindWithRom only matches ${WITHROM} kinds) @b3915949"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "none required; generated firmware configuration lives in ~/Library/Application Support/DeSmuME/<CFBundleVersion>/Battery ('Firmware Configuration' kind maps to the Battery directory), and the optional external firmware.bin behaves as on other platforms",
+          "evidence": [
+            "source:frontend/cocoa/FileTypeInfo.plist 0.9.8-0.9.14 'Firmware Configuration' = ${APPSUPPORT}, DirectoryNames = Battery @b3915949",
+            "source:NDSSystem.cpp:3373-3375 optional firmware defaults @b3915949"
+          ]
+        }
+      ],
+      "notes": "The Cocoa frontend versions its data tree per CFBundleVersion (e.g. 0.9.13), so upgrades create a fresh Battery/States set; desmume.org's download page no longer hosts macOS builds ('You will have to ask the Internet for it, since the developer's website has vanished')."
+    }
+  }
+}
