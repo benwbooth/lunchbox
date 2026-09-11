@@ -290,6 +290,9 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub(crate) scummvm_native_launches: Vec<crate::controller_scummvm_native::settings::SavedSetup>,
     #[serde(default)]
+    pub(crate) jgenesis_native_launches:
+        Vec<crate::controller_jgenesis_native::settings::SavedSetup>,
+    #[serde(default)]
     pub(crate) mednafen_launches: Vec<crate::controller_mednafen::settings::SavedSetup>,
     #[serde(default)]
     pub(crate) mame_native_launches: Vec<crate::controller_mame_native::settings::SavedSetup>,
@@ -415,6 +418,7 @@ impl Default for ControllerMappingSettings {
             blastem_native_launches: Vec::new(),
             xemu_native_launches: Vec::new(),
             scummvm_native_launches: Vec::new(),
+            jgenesis_native_launches: Vec::new(),
             mednafen_launches: Vec::new(),
             mame_native_launches: Vec::new(),
             flycast_native_launches: Vec::new(),
@@ -1381,6 +1385,12 @@ impl ControllerMappingSettings {
         crate::controller_blastem_native::settings::validate_setups(&self.blastem_native_launches)?;
         crate::controller_xemu_native::settings::validate_setups(&self.xemu_native_launches)?;
         crate::controller_scummvm_native::settings::validate_setups(&self.scummvm_native_launches)?;
+        crate::controller_jgenesis_native::settings::validate_setups(
+            &self.jgenesis_native_launches,
+        )?;
+        crate::controller_jgenesis_native::settings::validate_setups(
+            &self.jgenesis_native_launches,
+        )?;
         crate::controller_mednafen::settings::validate_setups(&self.mednafen_launches)?;
         crate::controller_mame_native::settings::validate_setups(&self.mame_native_launches)?;
         crate::controller_flycast_native::settings::validate_setups(&self.flycast_native_launches)?;

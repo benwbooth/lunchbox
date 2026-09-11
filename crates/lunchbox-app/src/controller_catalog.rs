@@ -1370,6 +1370,7 @@ impl Catalog {
                             | "blastem-native-settings"
                             | "xemu-native-settings"
                             | "scummvm-native-settings"
+                            | "jgenesis-native-settings"
                             | "bizhawk-native-settings"
                     ),
                 "unsupported profile contract"
@@ -1629,7 +1630,8 @@ impl Catalog {
                         | "mesen2-native-settings"
                         | "blastem-native-settings"
                         | "xemu-native-settings"
-                        | "scummvm-native-settings" => {
+                        | "scummvm-native-settings"
+                        | "jgenesis-native-settings" => {
                             crate::controller_native_targets::valid_output(profile, target, output)
                         }
                         "retropad" => {

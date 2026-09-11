@@ -336,6 +336,29 @@ pub(crate) mod settings {
             );
             Ok(())
         }
+
+        pub(crate) fn review(
+            &self,
+            calibrations: &std::collections::HashMap<
+                String,
+                crate::controller_catalog::Calibration,
+            >,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.validate()?;
+            let profile = crate::controller_catalog::catalog()
+                .emulator_profiles
+                .iter()
+                .find(|p| p.id == "jgenesis:standalone-genesis")
+                .ok_or_else(|| anyhow::anyhow!("Missing native jgenesis profile"))?;
+            let calibration = calibrations
+                .get(&self.controller_id)
+                .ok_or_else(|| anyhow::anyhow!("jgenesis calibration disappeared"))?;
+            let mapping = calibration.plan_profile(profile)?;
+            Ok(serde_json::json!({"launch_ready":false,
+                "launch_integration":"partial",
+                "target_layout":profile.target_layout,
+                "mapping":mapping}))
+        }
     }
 
     pub(crate) fn validate_setups(setups: &[SavedSetup]) -> anyhow::Result<()> {

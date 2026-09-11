@@ -164,6 +164,25 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/scummvm/scummvm/blob/3f6428df202e2c044ef53208acba0f665ea92096/engines/metaengine.cpp",
         ),
         (
+            "jgenesis",
+            "genesis-6",
+            2,
+            vec![
+                "Sega Genesis",
+                "Sega CD",
+                "Sega 32X",
+                "Sega Master System",
+                "Sega Game Gear",
+                "Nintendo Entertainment System",
+                "Super Nintendo Entertainment System",
+                "Nintendo Game Boy",
+                "Nintendo Game Boy Color",
+                "Nintendo Game Boy Advance",
+                "NEC TurboGrafx-16",
+            ],
+            "https://github.com/jsgroth/jgenesis/blob/cbe7f129e3f5c805a2a2e4318981834192116e90/frontend/jgenesis-native-config/src/input/mappings.rs",
+        ),
+        (
             "xemu",
             "xbox",
             4,
@@ -426,6 +445,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             .into_iter()
             .collect::<BTreeMap<&str, &str>>(),
         ("scummvm", "scummvm-default-actions") => SCUMMVM_ACTION_ROUTES
+            .iter()
+            .copied()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("jgenesis", "genesis-6") => crate::controller_jgenesis_native::CONTROLS
             .iter()
             .copied()
             .collect::<BTreeMap<&str, &str>>(),
