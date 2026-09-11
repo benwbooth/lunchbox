@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "slug": "mgba",
+  "emulator": "mGBA",
+  "sources": [
+    { "kind": "source", "repo": "mgba-emu/mgba", "commit": "26b7884bc25a5933960f3cdcd98bac1ae14d42e2", "role": "config discovery, save/state naming, SDL input sections (0.10.5; same pin as the Lunchbox controller contract)" },
+    { "kind": "docs", "url": "https://github.com/mgba-emu/mgba/blob/26b7884bc25a5933960f3cdcd98bac1ae14d42e2/README.md", "role": "built-in BIOS implementation statement" },
+    { "kind": "docs", "url": "https://flathub.org/apps/io.mgba.mGBA", "role": "Flatpak app id io.mgba.mGBA runs mgba-qt" },
+    { "kind": "contract", "url": "docs/MGBA_STANDALONE_PROGRESS.md", "role": "Lunchbox pinned SDL contract: config.ini SDLB keys, GUID profiles, portable resolution" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/mgba/config.ini (or $XDG_CONFIG_HOME/mgba/), shared by the SDL (mgba) and Qt (mgba-qt) frontends; the Qt frontend adds qt.ini (QSettings) in the same directory for UI/controller settings. A portable.ini file found in the current working directory switches the config directory to that directory. SDL controller bindings live in config.ini: section gba.input.SDLK (keyboard key<Btn>), section gba.input.SDLB (joystick key<Btn>, axis<Btn>Value/axis<Btn>Axis signed thresholds, hat<N>Up/Right/Down/Left), per-controller profiles in gba.input-profile.<SDL joystick GUID>, and the preferred device key under gba.input.SDLB",
+          "evidence": [
+            "source:mgba src/core/config.c mCoreConfigDirectory (XDG_CONFIG_HOME/binaryName else $HOME/.config/binaryName; portable.ini check) and mCoreConfigLoad appending \"config.ini\" @26b7884",
+            "source:mgba CMakeLists.txt BINARY_NAME=mgba, project(mGBA) @26b7884",
+            "source:mgba src/core/input.c _makeSectionName \"%s.input.%c%c%c%c\" + sdl-events.h SDL_BINDING_KEY=SDLK / SDL_BINDING_BUTTON=SDLB; src/gba/input.c platformName=\"gba\" @26b7884",
+            "source:mgba src/platform/sdl/sdl-events.c mSDLPlayerLoadConfig (mInputMapLoad SDL_BINDING_BUTTON, mInputProfileLoad by GUID string) @26b7884",
+            "contract:docs/MGBA_STANDALONE_PROGRESS.md (SDLB sections, signed-axis thresholds, GUID-profile sections, portable marker; Qt not inferred)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Alongside the ROM by default: <ROM basename>.sav in the ROM's directory; the savegamePath key in config.ini redirects saves to one directory (created if missing)",
+          "naming": "<ROM basename>.sav next to the ROM (or <savegamePath>/<ROM basename>.sav); multiplayer saves with savePlayerId > 1 use .sa<N> instead of .sav",
+          "evidence": [
+            "source:mgba src/core/core.c mCoreAutoloadSave (suffix \".sav\", mDirectorySetOpenSuffix on core->dirs.save) @26b7884",
+            "source:mgba src/core/directories.c mDirectorySetAttachBase (save dir defaults to the ROM dir) and mDirectorySetMapOptions (savegamePath override) @26b7884"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Alongside the ROM by default: <ROM basename>.ss<N> in the ROM's directory; the savestatePath key in config.ini redirects states to one directory; SDL hotkeys Shift+F1..F9 save and F1..F9 load slots 1-9",
+          "naming": "<ROM basename>.ss1 .. <ROM basename>.ss9 (mCoreGetState formats \"%s.ss%i\"; savestates embed a screenshot)",
+          "evidence": [
+            "source:mgba src/core/core.c mCoreGetState / mCoreDeleteState \"%s.ss%i\" @26b7884",
+            "source:mgba src/platform/sdl/sdl-events.c F1..F9 save/load slot mapping @26b7884",
+            "source:mgba src/core/directories.c mDirectorySetMapOptions (savestatePath override) @26b7884"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional. Lookup order: biosPath command-line option, then the gba.bios key in config.ini, then <config dir>/gba_bios.bin; if none is present or valid, mGBA falls back to its built-in HLE BIOS implementation (Qt default useBios=true)",
+          "evidence": [
+            "source:mgba src/gba/core.c _GBACoreInit BIOS lookup chain ending in mCoreConfigDirectory() + \"gba_bios.bin\" @26b7884",
+            "docs:mgba README.md \"A built-in BIOS implementation, and ability to load external BIOS files\" @26b7884"
+          ]
+        }
+      ],
+      "notes": "The CLI's -c selects a cheats file and -C sets scalar options; neither is a controller-config path (per the Lunchbox pinned contract)."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/io.mgba.mGBA/config/mgba/config.ini (Flatpak redirects XDG_CONFIG_HOME); the Flatpak command is mgba-qt, so qt.ini sits beside config.ini; sandbox config resolution is unchanged",
+          "evidence": [
+            "source:flathub/io.mgba.mGBA io.mgba.mGBA.json (app-id io.mgba.mGBA, command mgba-qt)",
+            "source:mgba src/core/config.c mCoreConfigDirectory XDG branch @26b7884"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Alongside the ROM by default; the Flatpak grants host filesystem access (--filesystem=host:rw) so ROM-relative saves/states stay where the ROMs are; savegamePath in config.ini overrides",
+          "naming": "<ROM basename>.sav next to the ROM (or <savegamePath>/<ROM basename>.sav)",
+          "evidence": [
+            "source:mgba src/core/core.c mCoreAutoloadSave + src/core/directories.c defaults @26b7884",
+            "source:flathub/io.mgba.mGBA finish-args --filesystem=host:rw"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Alongside the ROM by default; savestatePath in config.ini overrides",
+          "naming": "<ROM basename>.ss1 .. <ROM basename>.ss9",
+          "evidence": [
+            "source:mgba src/core/core.c mCoreGetState \"%s.ss%i\" @26b7884"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<config dir>/gba_bios.bin resolves to ~/.var/app/io.mgba.mGBA/config/mgba/gba_bios.bin, or the gba.bios key; built-in HLE BIOS otherwise",
+          "evidence": [
+            "source:mgba src/gba/core.c BIOS lookup chain @26b7884"
+          ]
+        }
+      ],
+      "notes": "The pinned SDL controller contract targets the mgba binary; the Flatpak ships the Qt frontend (mgba-qt)."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\mGBA\\config.ini (FOLDERID_RoamingAppData + project name \"mGBA\"); mgba-qt additionally writes qt.ini there. A portable.ini next to the executable (mgba.exe / mgba-qt.exe) switches the config directory to the executable's directory. SDL controller bindings use the same config.ini sections (gba.input.SDLB/SDLK, gba.input-profile.<GUID>)",
+          "evidence": [
+            "source:mgba src/core/config.c mCoreConfigDirectory _WIN32 branch (SHGetKnownFolderPath FOLDERID_RoamingAppData + projectName) and mCoreConfigPortablePath (module dir + portable.ini) @26b7884",
+            "source:mgba src/platform/qt/ConfigController.cpp (qt.ini next to configDir, mCoreConfigLoad shared config.ini, makePortable) @26b7884"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Alongside the ROM by default: <ROM basename>.sav; savegamePath in config.ini overrides",
+          "naming": "<ROM basename>.sav next to the ROM (or <savegamePath>/<ROM basename>.sav)",
+          "evidence": [
+            "source:mgba src/core/core.c mCoreAutoloadSave \".sav\" @26b7884"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Alongside the ROM by default; savestatePath in config.ini overrides",
+          "naming": "<ROM basename>.ss1 .. <ROM basename>.ss9",
+          "evidence": [
+            "source:mgba src/core/core.c mCoreGetState \"%s.ss%i\" @26b7884"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional: biosPath option, gba.bios key, or %APPDATA%\\mGBA\\gba_bios.bin (portable: beside the exe); built-in HLE BIOS fallback",
+          "evidence": [
+            "source:mgba src/gba/core.c BIOS lookup chain @26b7884",
+            "docs:mgba README.md built-in BIOS statement @26b7884"
+          ]
+        }
+      ],
+      "notes": "Unlike melonDS, mGBA Windows builds are not portable by default; the marker file is portable.ini (not portable.txt)."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/mgba/config.ini (mGBA uses the XDG path on macOS too, not ~/Library); mgba-qt adds qt.ini beside it. When launched from a bundle with working directory /, portable.ini is looked up next to the .app bundle and makes that directory the config dir",
+          "evidence": [
+            "source:mgba src/core/config.c mCoreConfigDirectory XDG fallthrough (no __APPLE__ case) and mCoreConfigPortablePath __APPLE__ CFBundle branch @26b7884"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Alongside the ROM by default: <ROM basename>.sav; savegamePath in config.ini overrides",
+          "naming": "<ROM basename>.sav next to the ROM (or <savegamePath>/<ROM basename>.sav)",
+          "evidence": [
+            "source:mgba src/core/core.c mCoreAutoloadSave \".sav\" @26b7884"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Alongside the ROM by default; savestatePath in config.ini overrides",
+          "naming": "<ROM basename>.ss1 .. <ROM basename>.ss9",
+          "evidence": [
+            "source:mgba src/core/core.c mCoreGetState \"%s.ss%i\" @26b7884"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional: biosPath option, gba.bios key, or ~/.config/mgba/gba_bios.bin; built-in HLE BIOS fallback",
+          "evidence": [
+            "source:mgba src/gba/core.c BIOS lookup chain @26b7884"
+          ]
+        }
+      ],
+      "notes": "Qt frontend on macOS reads its input mappings from qt.ini; the pinned SDL contract does not infer Qt behavior."
+    }
+  }
+}

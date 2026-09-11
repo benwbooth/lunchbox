@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "slug": "melonds",
+  "emulator": "melonDS",
+  "sources": [
+    { "kind": "source", "repo": "melonDS-emu/melonDS", "commit": "906e9ebb27da8c6a715cd7abab4abfe8a8d29427", "role": "config/save/state/bios paths and TOML keys; same pin as the Lunchbox controller contract" },
+    { "kind": "docs", "url": "https://melonds.kuribo64.net/faq.php", "role": "BIOS/firmware filenames and sizes, DSi-mode dumps, savestate slots alongside ROM" },
+    { "kind": "docs", "url": "https://flathub.org/apps/net.kuribo64.melonDS", "role": "Flatpak app id is net.kuribo64.melonDS" },
+    { "kind": "contract", "url": "docs/MELONDS_STANDALONE_PROGRESS.md", "role": "Lunchbox pinned contract: melonDS.toml Instance0.Joystick buttons and JoystickID" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/melonDS/melonDS.toml (or $XDG_CONFIG_HOME/melonDS/); a directory named 'portable' next to the executable overrides this. melonDS.ini (0.9.x and earlier) is auto-loaded and migrated to melonDS.toml at 1.0+. Controllers: TOML keys Instance0.Joystick.<Btn> for the twelve DS buttons (A, B, Select, Start, Right, Left, Up, Down, R, L, X, Y) plus Instance0.JoystickID (SDL device index) and Joystick.HK_* hotkey bindings",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/Config.cpp kConfigFile=\"melonDS.toml\" / kLegacyConfigFile=\"melonDS.ini\" @906e9eb",
+            "source:melonDS src/frontend/qt_sdl/main.cpp pathInit (QStandardPaths::ConfigLocation + mkdir \"melonDS\"; 'portable' dir check) @906e9eb",
+            "source:melonDS src/frontend/qt_sdl/Config.cpp Joy_A..Joy_Y, JoystickID, HKJoy_* keys @906e9eb",
+            "contract:docs/MELONDS_STANDALONE_PROGRESS.md (pin 906e9ebb27da8c6a715cd7abab4abfe8a8d29427, EmuInstanceInput.cpp + Config.cpp)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Alongside the ROM by default: <ROM basename>.sav (DS and GBA-slot saves); the SaveFilePath key in melonDS.toml redirects all saves to one directory; secondary instances append an instance suffix to the filename",
+          "naming": "<ROM basename>.sav next to the ROM (or <SaveFilePath>/<ROM basename>.sav); .dsv is the pre-0.9.3 legacy extension and only appears in the import dialog filter (*.sav *.bin *.dsv), not in current saves",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/EmuInstance.cpp getAssetPath(..., \".sav\") and getAssetPath(true, ..., \".sav\") @906e9eb",
+            "source:melonDS 0.9.3 src/frontend/qt_sdl/main.cpp already builds completeBaseName() + \".sav\" (.dsv predates 0.9.3)",
+            "source:melonDS src/frontend/qt_sdl/Window.cpp savefile dialog filter \"*.sav *.bin *.dsv\" @906e9eb",
+            "docs:melonDS FAQ (raw save files)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Alongside the ROM by default; the SavestatePath key in melonDS.toml redirects savestates to one directory; slots 1-8 via Shift+F1..F8 (save) / F1..F8 (load)",
+          "naming": "<ROM basename>.ml1 .. <ROM basename>.ml8 (extension is \".ml\" + slot digit; no-ROM/firmware states use firmware.mlN; the file dialog filter is *.mln)",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/EmuInstance.cpp getSavestateName builds \".ml\" + slot @906e9eb",
+            "source:melonDS src/frontend/qt_sdl/Window.cpp save/load state menus create slots 1..8 and \"File...\" with *.mln filter @906e9eb",
+            "docs:melonDS FAQ (savestates for slots 1..8 placed alongside the ROM)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional. Emu.ExternalBIOSEnable gates DS.BIOS9Path / DS.BIOS7Path / DS.FirmwarePath (bios9.bin 4KB, bios7.bin 16KB, firmware.bin 128-512KB); built-in FreeBIOS is the no-firmware fallback (also covers DSi TWL images at this pin). DSi mode additionally uses DSi.BIOS9Path / DSi.BIOS7Path / DSi.FirmwarePath / DSi.NANDPath. Wi-Fi settings live in wfcsettings.bin in the melonDS directory; the GBA slot needs no BIOS at this pin",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/Config.cpp ExternalBIOSEnable, DS.BIOS9Path/BIOS7Path/FirmwarePath, DSi.* keys @906e9eb",
+            "source:melonDS src/FreeBIOS.cpp + EmuInstance.cpp FreeBIOSGetNtrArm9/NtrArm7/TwlArm9/TwlArm7 @906e9eb",
+            "source:melonDS src/frontend/qt_sdl/EmuInstance.cpp kWifiSettingsPath=\"wfcsettings.bin\" @906e9eb",
+            "docs:melonDS FAQ (bios9.bin 4KB, bios7.bin 16KB, firmware.bin 128/256/512KB; DSi dumps)"
+          ]
+        }
+      ],
+      "notes": "Configuration, wfcsettings.bin and any redirected saves/states all share the single melonDS directory (Platform::GetLocalFilePath resolves relative paths against it)."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/net.kuribo64.melonDS/config/melonDS/melonDS.toml (Flatpak redirects XDG_CONFIG_HOME; the Flathub id is net.kuribo64.melonDS, not net.melonDS.melonDS)",
+          "evidence": [
+            "docs:Flathub appstream net.kuribo64.melonDS (verified via flathub.org API)",
+            "source:flathub/net.kuribo64.melonDS net.kuribo64.melonDS.yml app-id + command melonDS",
+            "source:melonDS main.cpp pathInit (config dir = ConfigLocation + \"melonDS\") @906e9eb"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Saves stay alongside the ROM files by default (Flatpak sandbox config only relocates the config directory): <ROM basename>.sav; SaveFilePath in melonDS.toml overrides",
+          "naming": "<ROM basename>.sav next to the ROM (or <SaveFilePath>/<ROM basename>.sav)",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/EmuInstance.cpp getAssetPath defaults to the ROM directory @906e9eb",
+            "source:flathub/net.kuribo64.melonDS finish-args grant host filesystem access"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Alongside the ROM by default; SavestatePath in melonDS.toml overrides",
+          "naming": "<ROM basename>.ml1 .. <ROM basename>.ml8",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/EmuInstance.cpp getSavestateName @906e9eb"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Configured via the same melonDS.toml keys (DS.BIOS9Path etc.); dumps are not bundled with the Flatpak; FreeBIOS is the no-firmware fallback",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/Config.cpp BIOS path keys @906e9eb",
+            "docs:melonDS FAQ (required dump names/sizes)"
+          ]
+        }
+      ],
+      "notes": "Flatpak ships the Qt frontend; controller contract keys (Instance0.Joystick*, JoystickID) apply unchanged inside the sandbox."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Next to melonDS.exe in official builds (CMake PORTABLE option defaults ON -> WIN32_PORTABLE, emuDirectory = executable directory); a 'portable' directory next to the exe is also honored; non-portable builds fall back to %LOCALAPPDATA%\\melonDS (Qt ConfigLocation maps to FOLDERID_LocalAppData). melonDS.toml since 1.0, melonDS.ini before",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/CMakeLists.txt option(PORTABLE ... ON) -> WIN32_PORTABLE define @906e9eb",
+            "source:melonDS src/frontend/qt_sdl/main.cpp pathInit WIN32_PORTABLE branch @906e9eb",
+            "source:Qt qstandardpaths_win.cpp maps ConfigLocation to FOLDERID_LocalAppData",
+            "docs:melonDS GitHub issue #950 and kuribo64 board reports (config written beside melonDS.exe)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Alongside the ROM by default: <ROM basename>.sav; SaveFilePath in melonDS.toml overrides",
+          "naming": "<ROM basename>.sav next to the ROM (or <SaveFilePath>/<ROM basename>.sav)",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/EmuInstance.cpp getAssetPath(..., \".sav\") @906e9eb"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Alongside the ROM by default; SavestatePath in melonDS.toml overrides",
+          "naming": "<ROM basename>.ml1 .. <ROM basename>.ml8",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/EmuInstance.cpp getSavestateName @906e9eb"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Paths chosen in Emu Settings (DS.BIOS9Path / DS.BIOS7Path / DS.FirmwarePath); bios9.bin (4KB), bios7.bin (16KB), firmware.bin (128/256/512KB); FreeBIOS fallback; DSi mode needs DSi BIOS/firmware/NAND dumps",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/Config.cpp BIOS keys @906e9eb",
+            "docs:melonDS FAQ (file names and sizes)"
+          ]
+        }
+      ],
+      "notes": "Lunchbox should not assume %APPDATA%: the portable-next-to-exe behavior is the shipped default on Windows."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Preferences/melonDS/melonDS.toml (Qt ConfigLocation on macOS is ~/Library/Preferences); a 'portable' directory next to melonDS.app overrides; melonDS.ini on 0.9.x and earlier",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/main.cpp pathInit (ConfigLocation + mkdir \"melonDS\"; .app-bundle portable check) @906e9eb",
+            "source:Qt documentation QStandardPaths::ConfigLocation = ~/Library/Preferences on macOS",
+            "docs:melonDS board reports ~/Library/Preferences/melonDS/melonDS.ini and .../melonDS.toml (kuribo64 threads 5282, 8167)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Alongside the ROM by default: <ROM basename>.sav; SaveFilePath in melonDS.toml overrides",
+          "naming": "<ROM basename>.sav next to the ROM (or <SaveFilePath>/<ROM basename>.sav)",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/EmuInstance.cpp getAssetPath(..., \".sav\") @906e9eb"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Alongside the ROM by default; SavestatePath in melonDS.toml overrides",
+          "naming": "<ROM basename>.ml1 .. <ROM basename>.ml8",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/EmuInstance.cpp getSavestateName @906e9eb"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Same melonDS.toml keys (DS.BIOS9Path / DS.BIOS7Path / DS.FirmwarePath, DSi.* variants); FreeBIOS fallback; macOS builds ship no dumps",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/Config.cpp BIOS keys + FreeBIOS.cpp @906e9eb",
+            "docs:melonDS FAQ (dump requirements)"
+          ]
+        }
+      ],
+      "notes": "The macOS release is an .app bundle (melonDS-1.1-macOS-universal.zip)."
+    }
+  }
+}
