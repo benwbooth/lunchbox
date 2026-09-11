@@ -134,6 +134,26 @@ gap; DOSBox Staging has no save states (upstream won't-do) and its
 Flatpak id is io.github.dosbox-staging; Emulicious is binary-only
 freeware with docs-based capture.
 
+jgenesis (v0.14.1, jsgroth/jgenesis cbe7f129) research COMPLETE and
+implementation-ready: single TOML config at
+~/.config/jgenesis/jgenesis-config.toml (AppImage/Windows portable.txt
+marker relocates); [input.genesis.p1]/[p2] and per-console equivalents
+hold button-name -> list-of-GenericInput tables serialized as
+{ type = "Gamepad", gamepad_idx = N, action = "Button N" | "Axis N
+positive|negative" | "Hat N up|down|left|right" } (serde.rs 119-160,
+GamepadAction FromStr 116-138). gamepad_idx is the SDL3 enumeration
+index (driver input.rs regenerate_id_maps: position among open
+joysticks in joysticks() order); button/axis/hat indices are RAW SDL
+joystick indices (Event::JoyButtonDown -> GamepadAction::Button
+(button_idx)), matching our SDL2 probe semantics for the common
+kernel-order case. Axis digital engagement uses the config axis
+deadzone (default 8000). ROM argument: bare path; per-console
+dispatch is by file extension. Remaining before implementing: pin
+SDL2-vs-SDL3 raw-index equivalence claim per device (same kernel
+order for js-evdev on modern SDLs) or probe with the SDL2 helper and
+document the residual risk; then write the partial-TOML writer
+([input.genesis.p1]/[p2] only; serde default fills the rest).
+
 Platform-record follow-ups captured by the research fan-out
 (emulator_details/records/): the Windows PCSX2 BIOS root mismatch in
 firmware.rs was fixed; the Lunchbox openMSX adapter's macOS config root
