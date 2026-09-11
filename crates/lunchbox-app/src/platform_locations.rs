@@ -376,6 +376,99 @@ pub fn resolved_emulator_count(records: &[Record], bases: &LocationBases) -> usi
     slugs.len()
 }
 
+/// How save/state sync must treat a captured emulator. Derived from the
+/// record captures: emulators whose saves live inside a single disk image
+/// or backup-RAM image are whole-image; everything else is file-based.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SaveSyncModel {
+    PerFile,
+    WholeImage,
+}
+
+/// Documented sync model per captured slug, with the record evidence that
+/// motivated it. Unknown slugs are PerFile by default.
+pub fn sync_model(slug: &str) -> (SaveSyncModel, &'static str) {
+    match slug {
+        "xemu" => (
+            SaveSyncModel::WholeImage,
+            "per-game saves and QEMU snapshots live inside the HDD qcow2 image (sys.files.hdd_path); eeprom.bin sits beside it",
+        ),
+        "hatari" => (
+            SaveSyncModel::WholeImage,
+            "writes land in place inside mounted writable floppy/hard-disk images; memory snapshot is <home>/hatari.sav",
+        ),
+        "kronos" | "yaba-sanshiro-2" => (
+            SaveSyncModel::WholeImage,
+            "per-game Saturn saves live inside the single internal backup-RAM image (bkram.bin)",
+        ),
+        "altirra" => (
+            SaveSyncModel::WholeImage,
+            "writes go in place into the mounted ATR/ATX/DCM/PRO/XFD/SAP/CAS media; states are user-chosen *.atstate2",
+        ),
+        "dosbox-staging" => (
+            SaveSyncModel::WholeImage,
+            "game saves are ordinary files written inside mounted drives/disk images; no emulator-managed save files exist",
+        ),
+        _ => (SaveSyncModel::PerFile, ""),
+    }
+}
+
+/// Enumerate concrete save/state files for one captured emulator on this
+/// host: a bounded recursive walk of every machine-resolvable save/state
+/// directory. Whole-image emulators return their image file when it is
+/// discoverable, otherwise an empty list (the caller surfaces the documented
+/// location instead). Bounded to 4096 files and depth 6.
+pub fn enumerate_save_files(
+    records: &[Record],
+    emulator_slug: &str,
+    bases: &LocationBases,
+) -> Result<Vec<PathBuf>> {
+    let (model, _) = sync_model(emulator_slug);
+    let locations = save_locations(records, emulator_slug, bases);
+    let mut files = Vec::new();
+    if model == SaveSyncModel::WholeImage {
+        for location in &locations {
+            if let Some(dir) = &location.resolved {
+                collect_files(dir, &mut files, 0)?;
+            }
+        }
+        // A whole-image emulator yields few, large files; cap tighter.
+        files.truncate(64);
+        return Ok(files);
+    }
+    for location in &locations {
+        if let Some(dir) = &location.resolved {
+            collect_files(dir, &mut files, 0)?;
+        }
+    }
+    ensure!(
+        files.len() <= 4096,
+        "save enumeration exceeded the bounded file count"
+    );
+    Ok(files)
+}
+
+fn collect_files(dir: &Path, files: &mut Vec<PathBuf>, depth: usize) -> Result<()> {
+    if depth > 6 || files.len() > 4096 {
+        return Ok(());
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Ok(());
+    };
+    for entry in entries.filter_map(|entry| entry.ok()) {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files(&path, files, depth + 1)?;
+        } else if path.is_file() {
+            files.push(path);
+            if files.len() > 4096 {
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Re-export for tests.
 pub(crate) fn ensure_non_empty(path: &Path) -> Result<()> {
     ensure!(path.is_absolute(), "location base must be absolute");
@@ -459,6 +552,45 @@ mod tests {
             sanitize_relative("savestates/ in the user directory"),
             Some("savestates/".to_owned())
         );
+    }
+
+    #[test]
+    fn sync_models_match_the_documented_constraints() {
+        for slug in [
+            "xemu",
+            "hatari",
+            "kronos",
+            "yaba-sanshiro-2",
+            "altirra",
+            "dosbox-staging",
+        ] {
+            let (model, reason) = sync_model(slug);
+            assert_eq!(model, SaveSyncModel::WholeImage, "{slug}");
+            assert!(!reason.is_empty());
+        }
+        for slug in ["duckstation", "pcsx2", "mgba", "scummvm", "nestopia-ue"] {
+            assert_eq!(sync_model(slug).0, SaveSyncModel::PerFile);
+        }
+        assert_eq!(sync_model("unknown-emulator").0, SaveSyncModel::PerFile);
+    }
+
+    #[test]
+    fn enumeration_walks_resolved_dirs_only() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("savestates")).unwrap();
+        std::fs::write(dir.path().join("savestates/game.sav"), b"x").unwrap();
+        let bases = LocationBases {
+            home: PathBuf::from("/"),
+            config_dir: PathBuf::from("/nonexistent-config"),
+            data_dir: dir.path().to_path_buf(),
+            flatpak_roots: Vec::new(),
+        };
+        let records = load_records().unwrap();
+        let files = enumerate_save_files(&records, "duckstation", &bases).unwrap();
+        assert!(files.contains(&dir.path().join("savestates/game.sav")));
+        // Files at the data root outside the resolved savestates/ dir are
+        // deliberately not enumerated: only captured directories are walked.
+        assert!(!files.contains(&dir.path().join("state.sav")));
     }
 
     #[test]
