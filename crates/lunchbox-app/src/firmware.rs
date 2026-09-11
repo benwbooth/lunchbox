@@ -487,7 +487,10 @@ fn runtime_root(
             home.join(".var/app/net.pcsx2.PCSX2/config/PCSX2/bios")
         }
         "pcsx2" if cfg!(target_os = "linux") => base.config_dir().join("PCSX2/bios"),
-        "pcsx2" if cfg!(target_os = "windows") => base.config_dir().join("PCSX2/bios"),
+        "pcsx2" if cfg!(target_os = "windows") => UserDirs::new()
+            .and_then(|dirs| dirs.document_dir().map(Path::to_path_buf))
+            .unwrap_or_else(|| base.config_dir().to_path_buf())
+            .join("PCSX2/bios"),
         "pcsx2" => home.join("Library/Application Support/PCSX2/bios"),
         "melonds" if cfg!(target_os = "linux") && flatpak => {
             home.join(".var/app/net.kuribo64.melonDS/config/melonDS")
