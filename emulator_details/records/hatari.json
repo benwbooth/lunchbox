@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "slug": "hatari",
+  "emulator": "Hatari",
+  "sources": [
+    { "kind": "source", "repo": "hatari/hatari", "commit": "11964da62914bf232ca84eacf0cedf1d25223e08", "role": "path and snapshot resolution" },
+    { "kind": "docs", "url": "https://hatari-emu.org/doc/manual.html", "role": "paths, TOS, snapshots, disk-image writes" },
+    { "kind": "contract", "path": "docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" },
+    { "kind": "flatpak", "id": "org.tuxfamily.hatari", "url": "https://flathub.org/apps/org.tuxfamily.hatari", "role": "flatpak existence" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/hatari/hatari.cfg (legacy ~/.hatari/ is used instead while it exists; /etc/hatari.cfg is read first; -c/--configfile adds overrides)",
+          "evidence": ["source:src/paths.c HATARI_HOME_DIR \".config/hatari\" with legacy ~/.hatari fallback", "source:src/configuration.c sConfigFileName=\"hatari.cfg\"", "docs:manual Configuration options precedence", "contract:docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md"]
+        },
+        {
+          "purpose": "saves",
+          "path": "In place inside the mounted writable floppy (.ST/.MSA/.DIM) or hard-disk/GEMDOS images; Hatari writes no per-game sidecar save files, and ZIP/gz-packed disk images are never written back (writes go through only when the image is not write-protected, see --wp-floppyA on/off/auto)",
+          "naming": "Saves keep the mounted disk image's own name (game.st/.msa/.dim); there are no separate .sav files per floppy/hd image",
+          "evidence": ["docs:manual \"Hatari does not save disk images back to *.ZIP files so your highscores and savegames are lost if you load the game from such a zipped disk image\"", "docs:manual write-protection options --wp-floppyA/--wp-harddrive"]
+        },
+        {
+          "purpose": "states",
+          "path": "Whole-machine memory snapshots; default file is <Hatari home>/hatari.sav with auto.sav for the auto-snapshot, renamed freely via the Memory dialog (AltGr+k save / AltGr+l load)",
+          "naming": "A single configured snapshot file (szMemoryCaptureFileName, default hatari.sav) plus auto.sav; any filename can be chosen in the save file selector; snapshots are not interchangeable between Hatari versions",
+          "evidence": ["source:src/configuration.c File_MakePathBuf(psHomeDir,\"hatari\",\"sav\") and (\"auto\",\"sav\")", "docs:manual The Memory Dialog save/restore snapshot", "docs:manual snapshot shortcuts AltGr+k/AltGr+l"]
+        },
+        {
+          "purpose": "bios",
+          "path": "TOS ROM image, by default <prefix>/share/hatari/tos.img, or any file passed via --tos / set in the [ROM] szTosImageFileName setting; EmuTOS is shipped with official releases as the free alternative",
+          "evidence": ["docs:manual Installation of a TOS ROM (rename to tos.img or use --tos)", "source:src/configuration.c [ROM] szTosImageFileName", "contract:docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md (TOS selection, existence-checked at launch)"]
+        }
+      ],
+      "notes": "The Hatari home resolves from $HOME (not XDG variables), so Lunchbox's private HOME plus -c isolates reads and writes while native saves stay in the session directory."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/org.tuxfamily.hatari/.config/hatari/hatari.cfg (flatpak gives the app its own $HOME, so the same HOME-relative .config/hatari layout lands under ~/.var/app)",
+          "evidence": ["flathub:org.tuxfamily.hatari (app exists, Hatari 2.5)", "source:src/paths.c HOME-based HATARI_HOME_DIR resolution"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Same as native Linux: writes land inside the mounted writable disk images inside the sandbox-visible filesystem",
+          "naming": "Saves keep the mounted disk image's own name; no sidecar save files",
+          "evidence": ["docs:manual disk-image write-back behaviour", "source:src/paths.c HOME-relative data paths"]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/org.tuxfamily.hatari/.config/hatari/hatari.sav (+ auto.sav)",
+          "naming": "Single configured memory-snapshot file, default hatari.sav plus auto.sav; filenames freely selectable via the GUI",
+          "evidence": ["source:src/configuration.c hatari.sav/auto.sav defaults under Paths_GetHatariHome()", "flathub:org.tuxfamily.hatari"]
+        },
+        {
+          "purpose": "bios",
+          "path": "TOS image inside the sandbox (user-selected via --tos/[ROM] szTosImageFileName, e.g. tos.img or the bundled EmuTOS)",
+          "evidence": ["docs:manual Installation of a TOS ROM", "source:src/configuration.c [ROM] szTosImageFileName"]
+        }
+      ],
+      "notes": "Flathub build exists (org.tuxfamily.hatari); Lunchbox's native Hatari integration requires native Linux, not Flatpak."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<home>\\AppData\\Local\\Hatari\\hatari.cfg (home from HOMEDRIVE+HOMEPATH; legacy ~/.hatari and the global hatari.cfg are read with the same precedence)",
+          "evidence": ["source:src/paths.c WIN32 HATARI_HOME_DIR \"AppData\\\\Local\\\\Hatari\" and HOMEDRIVE/HOMEPATH home resolution", "docs:manual Configuration options precedence"]
+        },
+        {
+          "purpose": "saves",
+          "path": "In place inside the mounted writable floppy/hard-disk images, as on Linux",
+          "naming": "Saves keep the mounted disk image's own name; no sidecar save files",
+          "evidence": ["docs:manual disk-image write-back behaviour and --wp-floppyA"]
+        },
+        {
+          "purpose": "states",
+          "path": "<home>\\AppData\\Local\\Hatari\\hatari.sav (+ auto.sav)",
+          "naming": "Single configured memory-snapshot file, default hatari.sav plus auto.sav; any filename via the GUI selector; not portable across Hatari versions",
+          "evidence": ["source:src/configuration.c hatari.sav/auto.sav defaults under Paths_GetHatariHome()", "docs:manual The Memory Dialog"]
+        },
+        {
+          "purpose": "bios",
+          "path": "TOS ROM image selected via --tos or [ROM] szTosImageFileName (tos.img convention; EmuTOS alternative)",
+          "evidence": ["docs:manual Installation of a TOS ROM", "source:src/configuration.c [ROM] szTosImageFileName"]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/Hatari/hatari.cfg (legacy ~/.hatari while it exists)",
+          "evidence": ["source:src/paths.c __APPLE__ HATARI_HOME_DIR \"Library/Application Support/Hatari\"", "docs:manual Configuration options precedence"]
+        },
+        {
+          "purpose": "saves",
+          "path": "In place inside the mounted writable floppy/hard-disk images, as on Linux",
+          "naming": "Saves keep the mounted disk image's own name; no sidecar save files",
+          "evidence": ["docs:manual disk-image write-back behaviour and --wp-floppyA"]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Library/Application Support/Hatari/hatari.sav (+ auto.sav)",
+          "naming": "Single configured memory-snapshot file, default hatari.sav plus auto.sav; any filename via the GUI selector; not portable across Hatari versions",
+          "evidence": ["source:src/configuration.c hatari.sav/auto.sav defaults under Paths_GetHatariHome()", "docs:manual The Memory Dialog"]
+        },
+        {
+          "purpose": "bios",
+          "path": "TOS ROM image selected via --tos or [ROM] szTosImageFileName (tos.img convention; EmuTOS alternative)",
+          "evidence": ["docs:manual Installation of a TOS ROM", "source:src/configuration.c [ROM] szTosImageFileName"]
+        }
+      ]
+    }
+  }
+}

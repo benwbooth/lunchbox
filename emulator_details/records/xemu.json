@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "slug": "xemu",
+  "emulator": "xemu",
+  "sources": [
+    { "kind": "source", "repo": "mborgerson/xemu", "commit": "fd0ae0c0a189d56e87f8e46073b15b287e4a1e1a", "role": "config path, EEPROM default, snapshot storage" },
+    { "kind": "docs", "url": "https://xemu.app/docs/faq/", "role": "saves/snapshots/BIOS/portable mode" },
+    { "kind": "docs", "url": "https://xemu.app/docs/required-files/", "role": "MCPX/BIOS/HDD image requirements" },
+    { "kind": "docs", "url": "https://xemu.app/docs/snapshots/", "role": "snapshot behaviour" },
+    { "kind": "contract", "path": "docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.local/share/xemu/xemu/xemu.toml (SDL_GetPrefPath(\"xemu\",\"xemu\")); portable mode uses xemu.toml next to the executable; -config_path <file> selects a private config and is auto-saved back at exit",
+          "evidence": ["source:ui/xemu-settings.cc filename=\"xemu.toml\" + SDL_GetPrefPath(\"xemu\", \"xemu\") + portable detection", "docs:faq portable-mode answer", "contract:docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md (-config_path)"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Per-game saves live on the E partition of the virtual hard-disk image (sys.files.hdd_path, qcow2; the pre-built xbox_hdd.qcow2 is offered) plus eeprom.bin for console identity in the same base dir — nothing is written as individual per-game files, so syncing means copying whole qemu disk images (and possibly eeprom.bin, since saves may be tied to the HDD key/EEPROM)",
+          "naming": "No per-game save files: saves are FATX content inside the qcow2 HDD image; identity/config sidecars are eeprom.bin (auto-generated when absent) and xemu.toml in the SDL pref-path base dir",
+          "evidence": ["docs:faq \"Just like on a real Xbox, they are stored on the E partition of the virtual hard drive\"", "docs:faq EEPROM auto-created and saves-tied-to-console answers", "source:ui/xemu-settings.cc xemu_settings_get_default_eeprom_path -> <base>/eeprom.bin"]
+        },
+        {
+          "purpose": "states",
+          "path": "QEMU VM snapshots stored inside the HDD disk image itself (Machine -> Snapshots UI, bindable F5-F8 shortcuts, monitor savevm/loadvm); they are not standalone files and capture discs/controllers/HDD state",
+          "naming": "Named QEMU snapshots embedded in the hdd qcow2 image (savevm names); the docs note the data \"is not easily extractable\" and reverting can hide newer in-game saves",
+          "evidence": ["docs:faq \"Snapshot data is stored on the hard drive image, and is not easily extractable\"", "docs:snapshots \"Snapshots are saved to the hard disk image that you started xemu with\"", "source:ui/xemu-snapshots.c bdrv snapshot on g_config.sys.files.hdd_path", "source:config_spec.yml general.snapshots.shortcuts f5..f8"]
+        },
+        {
+          "purpose": "bios",
+          "path": "User-dumped pair set via sys.files.bootrom_path (MCPX boot ROM, conventionally mcpx_1.0.bin, MD5 d49c52a4102f6df7bcf8d0617ac475ed) and sys.files.flashrom_path (BIOS flash from a 1.0 Xbox; debug or modded retail such as COMPLEX 4627 is required since unmodified retail BIOS cannot boot games); redistributable prebuilt xbox_hdd.qcow2 ships only a clean dashboard",
+          "evidence": ["docs:required-files MCPX/Flash/HDD sections", "docs:faq \"Your MCPX and BIOS dump should be from a 1.0 Xbox\"", "source:config_spec.yml sys.files bootrom_path/flashrom_path/eeprom_path/hdd_path", "contract:docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md (user-declared MCPX boot ROM and flash image)"]
+        }
+      ],
+      "notes": "No xemu flatpak exists: a Flathub search for xemu returns no app (official channel is the AppImage). Lunchbox launches xemu with -config_path plus a private SDL pref path."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\xemu\\xemu\\xemu.toml (SDL_GetPrefPath(\"xemu\",\"xemu\")); portable mode puts xemu.toml next to xemu.exe; -config_path overrides",
+          "evidence": ["source:ui/xemu-settings.cc SDL_GetPrefPath base + xemu.toml filename", "docs:faq portable mode (\"next to xemu.exe on Windows\")"]
+        },
+        {
+          "purpose": "saves",
+          "path": "E partition of the user-selected HDD qcow2 image (sys.files.hdd_path) with eeprom.bin beside xemu.toml in the pref-path base dir; same whole-image sync implication as Linux",
+          "naming": "No per-game save files: saves are FATX content inside the qcow2 HDD image; sidecars are eeprom.bin and xemu.toml",
+          "evidence": ["docs:faq saves on the E partition of the virtual hard drive", "source:ui/xemu-settings.cc default eeprom.bin path"]
+        },
+        {
+          "purpose": "states",
+          "path": "QEMU snapshots embedded in the HDD disk image (Machine -> Snapshots; bound F# keys; monitor savevm/loadvm)",
+          "naming": "Named QEMU snapshots inside the hdd qcow2 image; not extractable as files",
+          "evidence": ["docs:snapshots", "docs:faq snapshot answer"]
+        },
+        {
+          "purpose": "bios",
+          "path": "User-dumped MCPX boot ROM (mcpx_1.0.bin) and compatible BIOS flash image via sys.files.bootrom_path/flashrom_path",
+          "evidence": ["docs:required-files", "source:config_spec.yml sys.files"]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/xemu/xemu/xemu.toml (SDL_GetPrefPath(\"xemu\",\"xemu\")); portable mode reads xemu.toml from the xemu.app bundle's Contents/Resources; -config_path via open --args overrides",
+          "evidence": ["source:ui/xemu-settings.cc SDL_GetPrefPath base + xemu.toml filename", "docs:faq portable mode (macOS Contents/Resources or open --args -config_path)"]
+        },
+        {
+          "purpose": "saves",
+          "path": "E partition of the user-selected HDD qcow2 image (sys.files.hdd_path) with eeprom.bin beside xemu.toml in the pref-path base dir; same whole-image sync implication as Linux",
+          "naming": "No per-game save files: saves are FATX content inside the qcow2 HDD image; sidecars are eeprom.bin and xemu.toml",
+          "evidence": ["docs:faq saves on the E partition of the virtual hard drive", "source:ui/xemu-settings.cc default eeprom.bin path"]
+        },
+        {
+          "purpose": "states",
+          "path": "QEMU snapshots embedded in the HDD disk image (Machine -> Snapshots; bound F# keys; monitor savevm/loadvm)",
+          "naming": "Named QEMU snapshots inside the hdd qcow2 image; not extractable as files",
+          "evidence": ["docs:snapshots", "docs:faq snapshot answer"]
+        },
+        {
+          "purpose": "bios",
+          "path": "User-dumped MCPX boot ROM (mcpx_1.0.bin) and compatible BIOS flash image via sys.files.bootrom_path/flashrom_path",
+          "evidence": ["docs:required-files", "source:config_spec.yml sys.files"]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "slug": "blastem",
+  "emulator": "BlastEm",
+  "sources": [
+    { "kind": "source", "repo": "libretro/blastem", "commit": "b4d75247ebad8852fd9bc385b423df704c6c5af5", "role": "config/save/state path resolution (canonical upstream is Mercurial)" },
+    { "kind": "docs", "url": "https://retrodev.com/blastem/", "role": "config file location, no BIOS requirement" },
+    { "kind": "docs", "url": "https://raw.githubusercontent.com/libretro/blastem/b4d75247ebad8852fd9bc385b423df704c6c5af5/README", "role": "configuration and paths" },
+    { "kind": "contract", "path": "docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" },
+    { "kind": "flatpak", "id": "com.retrodev.blastem", "url": "https://flathub.org/apps/com.retrodev.blastem", "role": "flatpak existence (unverified publisher, v0.6.2)" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/blastem/blastem.cfg (falls back to bundled default.cfg next to the executable when absent; ui config_in_exe_dir on relocates it to the exe dir); the config is the tern tree serialized as nested name { key value } blocks",
+          "evidence": ["source:paths.c get_config_dir -> $HOME/.config/blastem (CONFIG_PREFIX \"/.config\")", "source:config.c load_overrideable_config(\"blastem.cfg\", \"default.cfg\")", "README:Configuration \"$HOME/.config/blastem/blastem.cfg ... Otherwise it is read from default.cfg from the same directory as the BlastEm executable\"", "docs:retrodev.com \"copy it to ~/.config/blastem/blastem.cfg\"", "contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.local/share/blastem/<ROMNAME>/ — the ui save_path template, default \"$USERDATA/blastem/$ROMNAME\" with $USERDATA = ~/.local/share; NOT written alongside the ROM (verified against the pinned source)",
+          "naming": "Per-ROM directory named for the ROM's base name containing save.sram (SRAM), save.eeprom (I2C), save.nor (NOR flash) or save.hbpt; Sega CD/32X CD backup RAM persists as internal.bram / cart.bram in the same tree",
+          "evidence": ["source:blastem.c get_save_dir + get_save_fname (save.sram/save.eeprom/save.nor/save.hbpt)", "source:default.cfg ui { save_path $USERDATA/blastem/$ROMNAME }", "source:paths.c get_userdata_dir -> $HOME/.local/share", "source:genesis.c persist_save internal.bram/cart.bram"]
+        },
+        {
+          "purpose": "states",
+          "path": "Same per-ROM save directory (~/.local/share/blastem/<ROMNAME>/): menu or ui.save_state (backtick by default) writes the quicksave slot",
+          "naming": "slot_0.state through slot_9.state plus quicksave.state with the default native format (state_format native); setting state_format gst writes Genecyst-compatible slot_N.gst / quicksave.gst, which the loader still accepts for Genesis",
+          "evidence": ["source:saves.c get_slot_name slot_%d.<ext> / quicksave.<ext> with \"state\" and legacy \"gst\" extensions", "source:default.cfg ui { state_format native }", "source:blastem.c setup_saves quicksave.state/quicksave.gst", "README:ui.save_state \"Saves a savestate to the quicksave slot\""]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required — BlastEm boots cartridge ROMs directly (the ROM is a bare argument) with no firmware step; the pinned contract and upstream docs list no BIOS",
+          "evidence": ["contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md (\"blastem.c main takes the ROM as a bare argument\")", "docs:retrodev.com (no BIOS/firmware requirement listed)"]
+        }
+      ],
+      "notes": "Lunchbox isolates BlastEm with a private HOME, which relocates both ~/.config/blastem and ~/.local/share/blastem into the session directory."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/com.retrodev.blastem/.config/blastem/blastem.cfg (paths.c keys everything off $HOME, which flatpak points at the per-app ~/.var/app dir)",
+          "evidence": ["flathub:com.retrodev.blastem (page exists; unverified publisher, BlastEm 0.6.2)", "source:paths.c HOME-based get_config_dir"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/com.retrodev.blastem/.local/share/blastem/<ROMNAME>/",
+          "naming": "save.sram / save.eeprom / save.nor / save.hbpt inside the per-ROM directory; internal.bram / cart.bram for Sega CD backup RAM",
+          "evidence": ["source:blastem.c save template $USERDATA/blastem/$ROMNAME", "source:paths.c get_userdata_dir"]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/com.retrodev.blastem/.local/share/blastem/<ROMNAME>/",
+          "naming": "slot_0.state ... slot_9.state and quicksave.state (or .gst when state_format gst)",
+          "evidence": ["source:saves.c get_slot_name", "flathub:com.retrodev.blastem"]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required",
+          "evidence": ["contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md", "docs:retrodev.com"]
+        }
+      ],
+      "notes": "A com.retrodev.blastem Flathub package verifiably exists but is unverified and stale (0.6.2, seven-plus years old); paths below follow the HOME-based layout the pinned source uses."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%LOCALAPPDATA%\\blastem\\blastem.cfg (get_config_dir -> get_userdata_dir -> FOLDERID_LocalAppData; bundled default.cfg next to blastem.exe otherwise; pre-0.4.1 builds used Unixy %USERPROFILE%\\.local paths)",
+          "evidence": ["source:paths.c WIN32 get_config_dir via get_userdata_dir (FOLDERID_LocalAppData)", "README:Configuration \"%localappdata%\\blastem\\blastem.cfg\"", "README:Installation pre-0.4.1 relocation note"]
+        },
+        {
+          "purpose": "saves",
+          "path": "%LOCALAPPDATA%\\blastem\\<ROMNAME>\\ ($USERDATA is FOLDERID_LocalAppData on Windows)",
+          "naming": "save.sram / save.eeprom / save.nor / save.hbpt inside the per-ROM directory; internal.bram / cart.bram for Sega CD backup RAM",
+          "evidence": ["source:paths.c WIN32 get_userdata_dir", "source:blastem.c get_save_dir/get_save_fname"]
+        },
+        {
+          "purpose": "states",
+          "path": "%LOCALAPPDATA%\\blastem\\<ROMNAME>\\",
+          "naming": "slot_0.state ... slot_9.state and quicksave.state (or .gst when state_format gst)",
+          "evidence": ["source:saves.c get_slot_name", "source:blastem.c setup_saves"]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required",
+          "evidence": ["contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md", "docs:retrodev.com"]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/blastem/blastem.cfg (the non-Windows POSIX branch of paths.c uses the same $HOME/.config layout on macOS; bundled default.cfg beside the executable otherwise)",
+          "evidence": ["source:paths.c POSIX get_config_dir ($HOME/.config/blastem)", "README:Usage mentions OSX alongside Linux"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.local/share/blastem/<ROMNAME>/ ($USERDATA = $HOME/.local/share in the POSIX branch)",
+          "naming": "save.sram / save.eeprom / save.nor / save.hbpt inside the per-ROM directory; internal.bram / cart.bram for Sega CD backup RAM",
+          "evidence": ["source:paths.c POSIX get_userdata_dir ($HOME/.local/share)", "source:blastem.c get_save_dir/get_save_fname"]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.local/share/blastem/<ROMNAME>/",
+          "naming": "slot_0.state ... slot_9.state and quicksave.state (or .gst when state_format gst)",
+          "evidence": ["source:saves.c get_slot_name", "source:blastem.c setup_saves"]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required",
+          "evidence": ["contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md", "docs:retrodev.com"]
+        }
+      ]
+    }
+  }
+}

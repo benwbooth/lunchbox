@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "slug": "scummvm",
+  "emulator": "ScummVM",
+  "sources": [
+    { "kind": "source", "repo": "scummvm/scummvm", "commit": "3f6428df202e2c044ef53208acba0f665ea92096", "role": "config/save path resolution and savegame naming" },
+    { "kind": "docs", "url": "https://docs.scummvm.org/en/latest/advanced_topics/configuration_file.html", "role": "scummvm.ini locations" },
+    { "kind": "docs", "url": "https://docs.scummvm.org/en/latest/use_scummvm/save_load_games.html", "role": "savegame locations and autosave" },
+    { "kind": "contract", "path": "docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" },
+    { "kind": "flatpak", "id": "org.scummvm.ScummVM", "url": "https://flathub.org/apps/org.scummvm.ScummVM", "role": "flatpak existence" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "$XDG_CONFIG_HOME/scummvm/scummvm.ini, default ~/.config/scummvm/scummvm.ini (legacy ~/.scummvmrc still honored; -c <file> selects a private config)",
+          "evidence": ["source:backends/platform/sdl/posix/posix.cpp OSystem_POSIX::getDefaultConfigFileName (XDG_CONFIG_HOME, ~/.scummvmrc legacy)", "docs:configuration_file Linux section", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md (-c launch with private XDG_CONFIG_HOME)"]
+        },
+        {
+          "purpose": "saves",
+          "path": "savepath key (Paths tab), default $XDG_DATA_HOME/scummvm/saves i.e. ~/.local/share/scummvm/saves (legacy ~/.scummvm while it exists; SCUMMVM_SAVEPATH env or --savepath override)",
+          "naming": "Per-target savegames named <target>.NNN (e.g. target.001) for engines with kSimpleSavesNames, <target>.sNN (e.g. target.s01) otherwise — one numbered file per slot in the target's id, plus an autosave slot (autosave every 5 minutes by default)",
+          "evidence": ["source:backends/saves/posix/posix-saves.cpp POSIXSaveFileManager default '$XDG_DATA_HOME/scummvm/saves' + SCUMMVM_SAVEPATH", "source:engines/metaengine.cpp MetaEngine::getSavegameFile patterns \"%s.%03d\" / \"%s.s%02d\"", "docs:save_load_games Linux paths and autosave interval"]
+        },
+        {
+          "purpose": "states",
+          "path": "None — ScummVM has no save-state facility; progress is kept only through the engine savegames above",
+          "naming": "Not applicable: no state files exist; the engine-default keymap exposes no state actions",
+          "evidence": ["docs:save_load_games (documents only in-game saves/autosave)", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md (engine-default keymap action list has no save-state action)"]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS required; a few engines want extra data files (extras) reachable via the extrapath setting / Paths tab in addition to the game data",
+          "evidence": ["docs:configuration_file paths table (extrapath: \"Extra path for additional game data\")", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
+        }
+      ],
+      "notes": "Lunchbox launches with -c <ini> and a private XDG_CONFIG_HOME so the ini and keymap domains stay in the session while savepath continues to point at the user's save directory."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/org.scummvm.ScummVM/config/scummvm/scummvm.ini (flatpak points XDG_CONFIG_HOME at the per-app ~/.var/app dir)",
+          "evidence": ["flathub:org.scummvm.ScummVM (app exists, current releases)", "source:posix.cpp XDG_CONFIG_HOME-based resolution"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/org.scummvm.ScummVM/data/scummvm/saves (XDG_DATA_HOME redirected per app)",
+          "naming": "<target>.NNN or <target>.sNN per save slot, named for the game target id, plus the autosave slot",
+          "evidence": ["source:posix-saves.cpp $XDG_DATA_HOME/scummvm/saves", "source:engines/metaengine.cpp getSavegameFile patterns", "flathub:org.scummvm.ScummVM"]
+        },
+        {
+          "purpose": "states",
+          "path": "None — no save states on any platform",
+          "naming": "Not applicable: no state files exist",
+          "evidence": ["docs:save_load_games", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS required; engine extras (extrapath) may be needed inside the sandbox",
+          "evidence": ["docs:configuration_file paths table", "flathub:org.scummvm.ScummVM"]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\ScummVM\\scummvm.ini (portable mode: scummvm.ini next to the executable; legacy C:\\WINDOWS\\scummvm.ini on 9x-era installs)",
+          "evidence": ["source:backends/platform/sdl/win32/win32.cpp getDefaultConfigFileName (CSIDL_APPDATA + \\ScummVM, portable detection, windows-dir fallback)", "docs:configuration_file Windows section"]
+        },
+        {
+          "purpose": "saves",
+          "path": "%APPDATA%\\ScummVM\\Saved games (portable mode: <exe dir>\\Saved games); savepath can be set globally or per target in scummvm.ini",
+          "naming": "<target>.NNN or <target>.sNN per save slot, named for the game target id, plus the autosave slot",
+          "evidence": ["source:backends/saves/windows/windows-saves.cpp WindowsSaveFileManager (Application Data + \"\\Saved games\", portable process dir)", "source:engines/metaengine.cpp getSavegameFile patterns", "docs:save_load_games Windows path"]
+        },
+        {
+          "purpose": "states",
+          "path": "None — no save states",
+          "naming": "Not applicable: no state files exist",
+          "evidence": ["docs:save_load_games", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS required; engine extras (extrapath) sometimes needed",
+          "evidence": ["docs:configuration_file paths table"]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Preferences/ScummVM Preferences (legacy ~/.scummvmrc from older installs)",
+          "evidence": ["source:backends/platform/sdl/macosx/macosx.cpp getDefaultConfigFileName (\"Library/Preferences/<bundle> Preferences\")", "docs:configuration_file macOS section"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Library/Application Support/ScummVM/Savegames (ScummVM before 2.9 used ~/Documents/ScummVM Savegames)",
+          "naming": "<target>.NNN or <target>.sNN per save slot, named for the game target id, plus the autosave slot",
+          "evidence": ["source:backends/saves/posix/posix-saves.cpp MACOSX branch getAppSupportPathMacOSX() + \"Savegames\"", "source:backends/platform/sdl/macosx/macosx_wrapper.mm getAppSupportPathMacOSX = Application Support/ScummVM", "docs:save_load_games macOS paths"]
+        },
+        {
+          "purpose": "states",
+          "path": "None — no save states",
+          "naming": "Not applicable: no state files exist",
+          "evidence": ["docs:save_load_games", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS required; engine extras (extrapath) sometimes needed",
+          "evidence": ["docs:configuration_file paths table"]
+        }
+      ]
+    }
+  }
+}
