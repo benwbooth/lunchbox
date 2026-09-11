@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "slug": "altirra",
+  "emulator": "Altirra",
+  "sources": [
+    { "kind": "docs", "url": "https://www.virtualdub.org/altirra.html", "role": "official page and changelog: image formats, AltirraOS built-in ROMs, save-state format (*.atstate2), command-line switches" },
+    { "kind": "docs", "url": "https://www.virtualdub.org/altirra-morechanges.html", "role": "extended changelog: external save-state files (2.20), Altirra.ini portable mode (2.20), portable/registry GUI toggle (3.20)" },
+    { "kind": "package", "url": "https://www.virtualdub.org/downloads/Altirra-4.40.zip", "role": "official package; Altirra.chm 4.40 help (portable mode, Firmware dialog, disk write modes, host device)" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Inside the Wine prefix: default mode keeps all settings (including input maps) in the Windows registry, which Wine materializes in the prefix (HKCU-backed values in <prefix>/user.reg); portable mode instead uses Altirra.ini next to Altirra64.exe in the install directory",
+          "evidence": [
+            "docs:Altirra.chm 4.40 Portable mode — \"Altirra stores settings in an .ini file instead of in the Windows Registry\"; enabled via /portable, by creating Altirra.ini directly, or the Options portable/registry toggle",
+            "docs:altirra-morechanges.html v2.20 \"Non-ASCII characters are now saved correctly into the Altirra.ini file in portable mode\"; v2.60 /portablealt:<file>; v3.20 GUI option for switching between portable and registry mode",
+            "docs:www.dosgamers.com Altirra guide — \"Create an empty file called Altirra.ini in the Altirra folder ... Otherwise settings will be stored in windows registry\"",
+            "install:sources/emulator-install-sources.json — Altirra/linux is a direct Wine install of the official zip (downloads/Altirra-*.zip, Altirra64.exe, runtime wine)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "In place inside the game's own emulated media: writes go into the mounted disk/tape images (ATR/ATX/DCM/PRO/XFD/SAP disks, CAS cassettes) under the drive's write mode; the optional H: host device (System > Devices) exposes a host folder for CIO file saves",
+          "naming": "No sidecar save files: Atari 8-bit titles save to disk/tape, so saves live inside the game image itself (e.g. game.atr); R/W mode writes back to the source image, VRW/VRWSafe (Altirra default) keeps changes in memory until per-drive Save",
+          "evidence": [
+            "docs:Altirra.chm 4.40 Using emulated disk images, Write modes — Read/write (R/W) \"changes written back to the source image\"; Virtual read/write (VRW) \"changes are kept in memory without automatically writing them back\"; \"Altirra defaults to\" VRWSafe",
+            "docs:Altirra.chm 4.40 Host device — the H: device lets CIO programs \"access files directly on the host file system\"",
+            "docs:altirra.html — supported image formats \"ATR, ATX, ATZ, DCM, XFD, PRO, ARC, BAS, ROM, BIN, A52, CAS, SAP\""
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-chosen via File > Save State; Altirra has no fixed per-user states directory (default dialog location follows the last used folder)",
+          "naming": "*.atstate2 since 3.90 (v2 format, JSON payload inside a zip); legacy *.atstate from 2.20-3.89; quick save/quick load are in-memory only and are lost on exit",
+          "evidence": [
+            "docs:altirra.html changelog 3.90 — \"Save state format rewritten to v2 (*.atstate2), now based on JSON within a .zip file\"",
+            "docs:altirra-morechanges.html v2.20 — \"Initial support for external save state files\"",
+            "docs:forums.atariage.com \"Altirra - How to save full state\" — \"Quick Load/Save State is the same as Load/Save State, just saving to an in-memory save instead of a file\""
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Atari 8-bit OS ROM images hooked up through the Firmware Images dialog (Options > Firmware, with a Scan... button for a ROM folder); external ROMs use the standard Atari 8-bit emulator filenames, with built-in AltirraOS/Altirra BASIC as the no-firmware fallback",
+          "evidence": [
+            "docs:Altirra.chm 4.40 Options: Firmware — OS submenu lists built-in firmware plus \"any additional firmware image files hooked up to the emulator through the Firmware Images dialog\"; Xformer OS-B is \"usually named ATARIOSB.ROM\"",
+            "docs:Altirra.chm 4.40 — recognized ROM filenames include ATARIXL.ROM, ATARIOSB.ROM, ATARIBAS.ROM, 5200.ROM",
+            "docs:altirra.html — Altirra \"uses the same format and filenames as most other popular Atari 8-bit system emulators\" and ships \"reimplemented versions of OS, BASIC, and handler ROMs ... without needing Atari ROMs\""
+          ]
+        }
+      ],
+      "notes": "Lunchbox installs the canonical Windows Altirra build under Wine (sources/emulator-install-sources.json); keep the portable Altirra.ini (or /portable) inside the install dir for deterministic per-install config, and keep game images writable for in-image saves. AltirraQt (benwbooth/altirraqt AppImage) is a separate Lunchbox emulator target and is deliberately not captured by this record. Verified macos: canonical Altirra has no official macOS or Linux build — the official page distributes Windows binaries only; the unofficial AltirraSDL fork (ilmenit/AltirraSDL, ini at ~/.config/altirra/settings.ini) targets Linux/macOS but is a distinct emulator."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Windows Registry (default mode; the exact HKCU key path is not publicly documented and has moved between releases) — or, in portable mode, Altirra.ini in the same directory as Altirra64.exe, selected by /portable, an existing Altirra.ini file, the /portablealt:<file> switch, or the Options portable/registry toggle",
+          "evidence": [
+            "docs:Altirra.chm 4.40 Portable mode — \"In portable mode, Altirra stores settings in an .ini file instead of in the Windows Registry\"; \"Altirra automatically switches to portable mode whenever the INI file is present\"",
+            "docs:www.dosgamers.com Altirra guide — settings go to the registry unless Altirra.ini exists in the Altirra folder",
+            "docs:altirra-morechanges.html v3.20 — \"Added a GUI option in settings for switching between portable and registry mode\""
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "In place inside the mounted disk/tape images (game's own ATR/ATX/DCM/PRO/XFD/SAP/CAS file); optional H: host device maps a host folder for direct CIO file saves",
+          "naming": "No sidecar save files; saves are sectors/files inside the game image, subject to the drive write mode (R/W writes back, VRWSafe default buffers until per-drive Save)",
+          "evidence": [
+            "docs:Altirra.chm 4.40 disk Write modes — R/W writes back to source image; VRW/VRWSafe keep changes in memory until Save",
+            "docs:Altirra.chm 4.40 Host device — H: device for host filesystem access from CIO programs"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "File > Save State writes to a user-chosen location; no fixed states directory",
+          "naming": "*.atstate2 (v2, JSON inside zip, since 3.90); legacy *.atstate; quick saves are in-memory only",
+          "evidence": [
+            "docs:altirra.html changelog 3.90 — \"*.atstate2\" v2 format",
+            "docs:altirra-morechanges.html v2.20 — initial support for external save state files"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Firmware Images dialog (Options > Firmware) with folder Scan for OS/BASIC/5200 ROM images using standard Atari 8-bit names (ATARIXL.ROM, ATARIOSB.ROM, ATARIBAS.ROM, 5200.ROM); built-in AltirraOS/Altirra BASIC run without any user ROM",
+          "evidence": [
+            "docs:Altirra.chm 4.40 Options: Firmware — Firmware Images dialog; Xformer OS-B \"usually named ATARIOSB.ROM\"; AltirraOS entries for 400/800, XL/XE/XEGS and 5200",
+            "docs:altirra.html — \"same format and filenames as most other popular Atari 8-bit system emulators\"; reimplemented OS/BASIC/handler ROMs included"
+          ]
+        }
+      ],
+      "notes": "Windows is Altirra's native platform; every Linux/Wine behavior in this record is the same Windows binary observed through the prefix."
+    }
+  }
+}

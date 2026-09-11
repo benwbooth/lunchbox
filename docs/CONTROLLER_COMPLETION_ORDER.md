@@ -120,6 +120,20 @@ worth adding as an optional manual rule); simple64 is archived
 upstream and missing from the DB emulators table entirely; melonDS's
 Flatpak id is net.kuribo64.melonDS.
 
+Batch 2b platform records landed: Kronos, Yaba Sanshiro 2,
+Emulicious, DOSBox Staging, Altirra, Citron Neo and Eden (34 records
+total). Notable verified findings: Kronos Linux data root is the
+executable dir (not XDG); Yaba Sanshiro 2 config is
+YabaSanshiro/qt/yabause.ini; Saturn per-game saves live inside a
+single backup-RAM image (bkram.bin) on both Saturn emulators (a
+whole-image sync constraint like xemu/Hatari); Altirra states are
+user-chosen *.atstate2 and settings default to the Windows registry
+(ini/portable mode available); Citron Neo and Eden have no save
+states at all and their Switch keys/firmware rules are a noted DB
+gap; DOSBox Staging has no save states (upstream won't-do) and its
+Flatpak id is io.github.dosbox-staging; Emulicious is binary-only
+freeware with docs-based capture.
+
 Platform-record follow-ups captured by the research fan-out
 (emulator_details/records/): the Windows PCSX2 BIOS root mismatch in
 firmware.rs was fixed; the Lunchbox openMSX adapter's macOS config root

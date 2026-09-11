@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "slug": "kronos",
+  "emulator": "Kronos",
+  "sources": [
+    { "kind": "source", "repo": "FCare/Kronos", "commit": "d451a55253e2e75bcef704ec8ade2085d298212c", "role": "head of default branch extui-align (2026-07-18): kronos.ini locations per OS, [1.0] settings group, Input/Port controller key grammar, bkram.bin default, <gameid>_<slot>.yss savestates, backup RAM 32KiB/8MiB formats, stvbios.zip ST-V BIOS scan" },
+    { "kind": "docs", "url": "https://github.com/FCare/Kronos/blob/extui-align/README.md", "role": "platform support: builds target Windows and Linux (Debian) only; libretro core optional; no macOS or flatpak packaging mentioned" },
+    { "kind": "docs", "url": "https://api.github.com/repos/FCare/Kronos/releases", "role": "official release assets are Ubuntu-only zips ('Kronos binaries for Ubuntu', 2.7.0_official_release at capture); .github/workflows/release_on_tag.yml builds kronos_ubuntu.zip on ubuntu-20.04 only" },
+    { "kind": "docs", "url": "https://flathub.org/api/v2/search", "role": "Flathub search for 'kronos'/'yabause' returns no Kronos Saturn emulator app (queried 2026-09-11) - no official flatpak exists" },
+    { "kind": "docs", "url": "repo:emulator_details/all_emulators.csv", "role": "lunchbox CSV claims save dir ~/.local/share/kronos - contradicted by source (data dir is the executable directory); divergence flagged in notes" },
+    { "kind": "docs", "url": "repo:crates/lunchbox-app/src/firmware.rs", "role": "lunchbox DB firmware_rules has no kronos entries (gap captured here, unchanged by this record)" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/kronos/qt/kronos.ini (INI written via QSettings IniFormat; a legacy ~/.kronos/kronos.ini is copied here on first run if the new file does not exist). All settings keys live under the [1.0] group because Settings::Settings() does beginGroup(\"1.0\")",
+          "naming": "INI. Controller configuration lives in the same kronos.ini: pad bindings are written by UIControllerSetting::setPadKey as keys Input/Port/<port>/Id/<pad id>/Controller/<peripheral type>/Key/<button index> = u32 core key code (UIPortManager::mSettingsKey = \"Input/Port/%1/Id/%2/Controller/%3/Key/%4\"), read back by loadPadSettings(); other keys are Section/Name style (General/Bios, Memory/Path, General/SaveStates, Cartridge/Type, Cartridge/Path, Cartridge/STVGame, STV/Region). In the INI file the QSettings group path renders as escaped sections under [1.0]",
+          "evidence": [
+            "source:yabause/src/port/qt/Settings.cpp getIniFile() (xdginifile = $HOME/.config/kronos/qt/kronos.ini, mkpath + copy from oldinifile ~/.kronos/kronos.ini) and Settings::Settings beginGroup(\"1.0\")",
+            "source:yabause/src/port/qt/main.cpp Settings::setIniInformations() with PROGRAM_NAME=PACKAGE; yabause/CMakeLists.txt set(YAB_PACKAGE kronos); yabause/src/port/qt/Settings.h #define PROGRAM_NAME PACKAGE",
+            "source:yabause/src/port/qt/ui/UIPortManager.cpp const UIPortManager::mSettingsKey",
+            "source:yabause/src/port/qt/ui/UIControllerSetting.cpp setPadKey() QtYabause::settings()->setValue(settingsKey, (quint32)key) and loadPadSettings()"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Single internal backup RAM image at Memory/Path, default <Kronos binary directory>/bkram.bin - on non-Windows platforms getDataDirPath() is QApplication::applicationDirPath(), so the default data root is the directory the kronos executable runs from (alongside it: default savestates and screenshots/). Saturn cartridge memory is a separate user-chosen file via Cartridge/Path (Kronos auto-selects the cart type per game through DBLookup with auto_cart=1)",
+          "naming": "bkram.bin is one formatted backup memory volume, not per-game files: Kronos formats it with the 'BackUpRam Format' header as either standard 32 KiB (0x8000, mapped at 0x00180000) or extended 8 MiB (EXTENDED_BACKUP_SIZE 0x00800000 at 0x08000000, enabled by Memory/ExtendMemory, default true); an existing file is size-snapped to the matching format, wrong-size files are reformatted. Per-game saves are directory entries INSIDE this image (created/managed by the emulated Saturn BIOS); Kronos flushes writes to bupfilename on BackupFlush/BackupDeinit. ST-V mode: per-game EEPROM files <romset>.nv (e.g. critcrsh.nv) are written into the Cartridge/Path directory (eepromdir = cartpath)",
+          "evidence": [
+            "source:yabause/src/port/qt/ui/UISettings.cpp leMemory default s->value(\"Memory/Path\", getDataDirPath().append(\"/bkram.bin\"))",
+            "source:yabause/src/port/qt/Settings.cpp getDataDirPath() (non-Windows returns QApplication::applicationDirPath())",
+            "source:yabause/src/sys/memory/src/memory.c BackupInit (0x8000 at 0x00180000 vs EXTENDED_BACKUP_SIZE 0x00800000 at 0x08000000, force-format on size mismatch), LoadBackupRam/FormatBackupRam ('BackUpRam Format' header), BackupFlush/BackupDeinit T123Save(BupRam, size, 1, bupfilename)",
+            "source:yabause/src/port/qt/YabauseThread.cpp mYabauseConf.buppath = Memory/Path, extend_backup from Memory/ExtendMemory (default true), mYabauseConf.eepromdir = strdup(mYabauseConf.cartpath)",
+            "source:yabause/src/ctrl/src/stv.c STVSingleInit eeprom_path snprintf \"%s/%s.nv\" (eepromdir, romset); EEPROM_BLOB entries critcrsh.nv/choroqhr.nv/... in the game tables"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Directory from General/SaveStates, default <Kronos binary directory> (getDataDirPath()); YabauseThread autorun can load a slot at boot",
+          "naming": "<disc product number>_<slot>.yss with the slot as 3 digits: YabSaveStateSlot/YabLoadStateSlot build \"%s/%s_%03d.yss\" from cdip->itemnum (the product number parsed at offset 0x20 of the disc header, e.g. GS-9122) and the slot number; the Save/Load State menus enumerate files matching <serial>_*.yss where the wildcard captures the numeric slot; the free-name dialogs use the filter 'Kronos Save State (*.yss)'",
+          "evidence": [
+            "source:yabause/src/sys/memory/src/memory.c YabSaveStateSlot/YabLoadStateSlot (sprintf \"%s/%s_%03d.yss\", dirpath, cdip->itemnum, slot)",
+            "source:yabause/src/sys/memory/src/cs2.c sscanf(tmp, \"%s\", cdip->itemnum) from header buf+0x20",
+            "source:yabause/src/port/qt/ui/UIYabause.cpp saveSlot/loadSlot use VolatileSettings \"General/SaveStates\" default getDataDirPath(); refreshStatesActions mask QString(\"%1_*.yss\").arg(serial) with regex (\\d+) slot capture; on_aFileSaveStateAs filter 'Kronos Save State (*.yss)'"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Saturn BIOS: file path from General/Bios (0x80000 bytes loaded into BiosRom; no hardcoded filename - any dumped BIOS image works, saturn.bin is just the conventional dump name). With General/EnableEmulatedBios (or an empty path) Kronos boots its built-in emulated BIOS instead (yabsys.emulatebios=1 + quickload). ST-V: no separate BIOS setting - the ST-V rom folder (Cartridge/Path when Cartridge/Type = 'STV Rom game', CART_ROMSTV) must contain stvbios.zip, which STVGetRomList loads first; per-game ROM sets are the other .zip files in the same folder and the scan result is cached as gamelistv2.save there. Lunchbox DB firmware_rules has no kronos entries - gap captured, not changed by this record",
+          "naming": "Saturn BIOS: user-selected file (conventionally saturn.bin). ST-V BIOS: exactly stvbios.zip in the rom folder (name hardcoded), containing the Bios table blobs epr-20091.ic8 / epr-17954a.ic8 (euro, preferred default region) / epr-17952a.ic8 / stv110.bin (debug) etc.; game zip romsets are matched by the per-game blob tables (ic13.bin/ic22.bin/... names inside the zips)",
+          "evidence": [
+            "source:yabause/src/port/qt/YabauseThread.cpp biospath = \"\" when General/EnableEmulatedBios else General/Bios",
+            "source:yabause/src/ctrl/src/yabause.c LoadBios(init->biospath) into BiosRom T2MemoryInit(0x80000); yabsys.emulatebios = 1 fallback",
+            "source:yabause/src/sys/memory/src/memory.c LoadBios (T123Load BiosRom 0x80000, logs 'ST-V Emulation mode'/'Saturn Emulation mode')",
+            "source:yabause/src/ctrl/src/stv.c STVGetRomList loads \"%s/stvbios.zip\" first then scans *.zip, writes gamelistv2.save; Bios table 'stvbios'/'STV Bios' with epr-*.ic8/stv110.bin/stv1061.bin blobs and stv_favorite_region (E=EU default)",
+            "repo:crates/lunchbox-app/src/firmware.rs (no kronos firmware_rules entries)"
+          ]
+        }
+      ],
+      "notes": "Kronos is distributed for Linux as a plain zip of binaries ('Kronos binaries for Ubuntu' release asset) meant to run in place, and the source makes the default data root the executable directory (getDataDirPath = applicationDirPath on non-Windows) - so bkram.bin and the default .yss states sit next to the kronos binary unless paths are set in kronos.ini; all_emulators.csv's ~/.local/share/kronos and the firmware_rules absence are divergences to reconcile. There is no official flatpak (Flathub search negative 2026-09-11) and no macOS packaging (README lists Windows + Linux only), so no linux-flatpak/macos entries are captured."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Legacy portable <directory of kronos.exe>\\kronos.ini is used if it exists; otherwise %APPDATA%\\kronos\\kronos.ini (getIniFile Q_OS_WIN branch; getDataDirPath temporarily sets the Qt application name to 'kronos' and reads QStandardPaths::DataLocation, i.e. Roaming\\kronos with an empty organization name)",
+          "naming": "Same INI as Linux: [1.0] group, controller bindings under Input/Port/<port>/Id/<pad id>/Controller/<type>/Key/<button> = u32 key code, path keys General/Bios, Memory/Path, General/SaveStates, Cartridge/Path",
+          "evidence": [
+            "source:yabause/src/port/qt/Settings.cpp getIniFile Q_OS_WIN (oldinifile <exe dir>/<name>.ini wins, else getDataDirPath()/<name>.ini) and getDataDirPath Q_OS_WIN (QStandardPaths::DataLocation with application name 'kronos')",
+            "source:yabause/src/port/qt/ui/UIPortManager.cpp mSettingsKey",
+            "source:yabause/src/port/qt/Settings.cpp beginGroup(\"1.0\")"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Internal backup RAM image default %APPDATA%\\kronos\\bkram.bin (Windows getDataDirPath), overridable via Memory/Path; Saturn cartridge RAM is a separate Cartridge/Path file; ST-V per-game EEPROM <romset>.nv files in the Cartridge/Path directory",
+          "naming": "Same single-image semantics as Linux: bkram.bin holds all per-game saves as entries inside the volume; standard 32 KiB format or extended 8 MiB format (Memory/ExtendMemory default true) with automatic reformat on size mismatch",
+          "evidence": [
+            "source:yabause/src/port/qt/Settings.cpp getDataDirPath Q_OS_WIN",
+            "source:yabause/src/port/qt/ui/UISettings.cpp Memory/Path default getDataDirPath()+\"/bkram.bin\"",
+            "source:yabause/src/sys/memory/src/memory.c BackupInit/BackupFlush"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Directory from General/SaveStates, default %APPDATA%\\kronos on Windows",
+          "naming": "Identical grammar, Windows separator: \"%s\\\\%s_%03d.yss\" in YabSaveStateSlot/YabLoadStateSlot, i.e. <disc product number>_<slot>.yss keyed by cdip->itemnum",
+          "evidence": [
+            "source:yabause/src/sys/memory/src/memory.c YabSaveStateSlot/YabLoadStateSlot (#ifdef WIN32 backslash variant)",
+            "source:yabause/src/port/qt/ui/UIYabause.cpp General/SaveStates usage and *.yss enumeration"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Same settings as Linux: General/Bios file path (emulated-BIOS fallback via General/EnableEmulatedBios), stvbios.zip required inside the ST-V rom folder (Cartridge/Path) for ST-V play. No lunchbox firmware_rules resolution exists for kronos on any platform",
+          "naming": "Saturn BIOS user-selected file (conventionally saturn.bin); ST-V BIOS exactly stvbios.zip",
+          "evidence": [
+            "source:yabause/src/port/qt/YabauseThread.cpp biospath wiring",
+            "source:yabause/src/ctrl/src/stv.c stvbios.zip scan",
+            "repo:crates/lunchbox-app/src/firmware.rs (no kronos entries)"
+          ]
+        }
+      ],
+      "notes": "Windows is a supported build target (README lists Windows; DirectInput/DirectSound cores compiled under Q_OS_WIN) but GitHub releases ship only the Ubuntu zip - README points Windows users to third-party archives (tradu-france.com) or self-building. Kronos is a Yaba Sanshiro fork requiring OpenGL 4.3; the libretro core (KRONOS_LIBRETRO_CORE) is a separate RetroArch concern and not captured here."
+    }
+  }
+}

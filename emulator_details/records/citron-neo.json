@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "slug": "citron-neo",
+  "emulator": "Citron Neo",
+  "sources": [
+    { "kind": "source", "repo": "citron-neo/emulator", "commit": "91bbce7231", "role": "path roots (path_util/fs_paths), qt-config and [Controls], input profiles, savedata layout, key files, NAND registered contents; no save-state module" },
+    { "kind": "manifest", "repo": "lunchbox", "path": "sources/emulator-install-sources.json", "role": "Citron Neo linux AppImage / windows zip / macOS dmg install entries" },
+    { "kind": "manifest", "repo": "lunchbox", "path": "sources/firmware-rules.json", "role": "manual:nintendo-switch-keys / manual:nintendo-switch-firmware sources; eden/ryubing/torzu rules exist, no citron entries" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/citron/qt-config.ini (ConfigDir = $XDG_CONFIG_HOME/citron, default ~/.config/citron; a portable user/ dir next to the binary takes priority) — controller mappings live in its [Controls] section; named input profiles are separate ini files at ~/.config/citron/input/<profile>.ini",
+          "evidence": [
+            "source:src/common/fs/fs_paths.h — #define CITRON_DIR \"citron\" (not citron-emu), PORTABLE_DIR \"user\", CONFIG_DIR \"config\"",
+            "source:src/common/fs/path_util.cpp POSIX branch — portable user/ dir wins, else GetDataDirectory(\"XDG_CONFIG_HOME\") / CITRON_DIR (fallback home/.config)",
+            "source:src/citron/uisettings.cpp — ConfigDir / \"qt-config.ini\"",
+            "source:src/citron/configuration/qt_config.cpp — BeginGroup(TranslateCategory(Category::Controls)) i.e. the [Controls] ini section",
+            "source:src/citron/configuration/input_profiles.cpp — profiles at ConfigDir / \"input\" / fmt::format(\"{}.ini\", profile_name)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.local/share/citron/nand/user/save/ ($XDG_DATA_HOME/citron/nand/user/save) — account saves at account/<128-bit user UUID hex>/<title id upper 16 hex>/0/, device saves at device/<title id 16 hex>/0/; SD card game data sits separately in ~/.local/share/citron/sdmc",
+          "naming": "Per-game directories keyed by Switch title id inside the NAND user save space, e.g. user/save/account/<uuid>/<000000000000B000>/0/; the GUI also recognises the legacy user/save/0000000000000000 layout",
+          "evidence": [
+            "source:src/core/file_sys/savedata_factory.cpp — fmt::format(\"/user/save/account/{}/{:016X}/0\", uuid.RawString(), title_id) and fmt::format(\"/user/save/device/{:016X}/0\", title_id)",
+            "source:src/citron/game_list.cpp — abs_path.contains(\"nand/user/save\") and legacy \"bis/user/save\" checks",
+            "source:src/citron/configuration/configure_filesystem.cpp — QDir(nand_root).filePath(\"user/save/0000000000000000\") legacy scan"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "~/.local/share/citron/keys/prod.keys plus optional title.keys (KeysDir = data root / \"keys\"); dev.keys and key_retail.bin accepted in the same directory",
+          "evidence": [
+            "source:src/common/fs/path_util.cpp — GenerateCitronPath(CitronPath::KeysDir, citron_path / KEYS_DIR)",
+            "source:src/core/crypto/key_manager.cpp — LoadFromFile(citron_keys_dir / \"title.keys\", true) (and prod.keys alongside)",
+            "source:src/citron/main.cpp — \"Verify that it contains prod.keys, title.keys and optionally, key_retail.bin\""
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Switch firmware is NCA content installed into the NAND system partition: ~/.local/share/citron/nand/system/Contents/registered/ (user-partition mirror at nand/user/Contents/registered)",
+          "evidence": [
+            "source:src/core/file_sys/bis_factory.cpp — GetOrCreateDirectoryRelative(nand_root, \"/system/Contents/registered\") and \"/user/Contents/registered\"",
+            "source:src/android/app/.../MainActivity.kt — DirectoryInitialization.userDirectory + \"/nand/system/Contents/registered/\""
+          ]
+        }
+      ],
+      "notes": "No save-state feature: fs_paths.h defines no states directory and src/core has no savestate module at commit 91bbce7231 (purpose 'states' therefore omitted). Citron is the yuzu-descendant codebase, so the yuzu conventions hold but with CITRON_DIR \"citron\" (not citron-emu). Lunchbox DB gap: firmware-rules.json binds manual:nintendo-switch-keys and manual:nintendo-switch-firmware to eden/ryubing/torzu rules but has no citron:* rules yet."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/citron/qt-config.ini with [Controls] mappings and ~/.config/citron/input/<profile>.ini profiles — macOS shares the POSIX branch, and unset XDG_* vars fall back to home/.config (no bundle-local data dir)",
+          "evidence": [
+            "source:src/common/fs/path_util.cpp — POSIX (#else) branch applies to __APPLE__; GetDataDirectory falls back to GetHomeDirectory() / \".config\" when XDG_CONFIG_HOME is unset",
+            "source:src/citron/uisettings.cpp — ConfigDir / \"qt-config.ini\"",
+            "source:src/citron/configuration/input_profiles.cpp — ConfigDir / \"input\" / \"<profile>.ini\""
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.local/share/citron/nand/user/save/ (account/<uuid>/<title id>/0/, device/<title id>/0/); SD card data in ~/.local/share/citron/sdmc",
+          "naming": "Per-game directories keyed by Switch title id inside the NAND user save space",
+          "evidence": [
+            "source:src/core/file_sys/savedata_factory.cpp — \"/user/save/account/{}/{:016X}/0\" and \"/user/save/device/{:016X}/0\"",
+            "source:src/common/fs/path_util.cpp — NANDDir = XDG_DATA_HOME (default home/.local/share) / CITRON_DIR / NAND_DIR"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "~/.local/share/citron/keys/prod.keys (+ title.keys)",
+          "evidence": [
+            "source:src/core/crypto/key_manager.cpp — prod.keys / title.keys loaded from the Citron keys dir",
+            "source:src/common/fs/path_util.cpp — KeysDir = citron_path / KEYS_DIR"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.local/share/citron/nand/system/Contents/registered/ for installed firmware NCA content",
+          "evidence": [
+            "source:src/core/file_sys/bis_factory.cpp — nand \"/system/Contents/registered\""
+          ]
+        }
+      ],
+      "notes": "macOS builds ship as dmg assets on the citron-neo/emulator GitHub releases (Lunchbox install source, x86_64 + aarch64); paths are the plain XDG defaults because the code has no macOS-specific data root."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\citron\\qt-config.ini ([Controls] section; FOLDERID_RoamingAppData\\citron) unless a user\\ portable dir exists next to citron.exe; input profiles at %APPDATA%\\citron\\input\\<profile>.ini",
+          "evidence": [
+            "source:src/common/fs/path_util.cpp _WIN32 branch — GetExeDirectory()/user else GetAppDataRoamingDirectory()/CITRON_DIR; config/cache follow the same root",
+            "source:src/citron/uisettings.cpp — ConfigDir / \"qt-config.ini\""
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "%APPDATA%\\citron\\nand\\user\\save\\ (account/<uuid>/<title id>/0/, device/<title id>/0/); SD card data in %APPDATA%\\citron\\sdmc",
+          "naming": "Per-game directories keyed by Switch title id inside the NAND user save space",
+          "evidence": [
+            "source:src/core/file_sys/savedata_factory.cpp — \"/user/save/account/{}/{:016X}/0\"",
+            "source:src/common/fs/path_util.cpp _WIN32 branch — NANDDir under the citron root"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "%APPDATA%\\citron\\keys\\prod.keys (+ title.keys)",
+          "evidence": [
+            "source:src/core/crypto/key_manager.cpp — prod.keys / title.keys from the Citron keys dir"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "%APPDATA%\\citron\\nand\\system\\Contents\\registered\\ for installed firmware NCA content",
+          "evidence": [
+            "source:src/core/file_sys/bis_factory.cpp — nand \"/system/Contents/registered\""
+          ]
+        }
+      ]
+    }
+  }
+}

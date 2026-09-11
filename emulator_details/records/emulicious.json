@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "slug": "emulicious",
+  "emulator": "Emulicious",
+  "sources": [
+    { "kind": "docs", "url": "https://emulicious.net/", "role": "systems (GB/GBC/SMS/GG/MSX), platforms, bundled JRE, freeware statement" },
+    { "kind": "docs", "url": "https://raw.githubusercontent.com/lronaldo/gbtelera/master/tools/emulators/emulicious/ReadMe.txt", "role": "bundled ReadMe.txt: command-line commands including -set key=value property override" },
+    { "kind": "docs", "url": "https://raw.githubusercontent.com/lronaldo/gbtelera/master/tools/emulators/emulicious/WhatsNew.txt", "role": "bundled WhatsNew.txt (rolling changelog, entries 2016-02..2024-08): savestates hotkeys, .sav location options, BIOS selection, gamepad support" },
+    { "kind": "docs", "url": "https://raw.githubusercontent.com/Karamu98/GBTemplate/master/GBTemplate/deps/Emulicious-with-Java/License.txt", "role": "bundled License.txt: binary-only freeware license (c) Michael Stegmaier (Calindro), personal use - closed source" },
+    { "kind": "source", "repo": "Calindro/emulicious", "commit": "(empty repository, default branch main, pushed 2021-04-30)", "role": "upstream GitHub repo exists but contains no source code - issue tracker only; Emulicious is closed-source, all facts below cite shipped documentation, committed ini files, and packaging recipes" },
+    { "kind": "docs", "url": "https://raw.githubusercontent.com/SegerEnd/homebrew-tap/master/Formula/emulicious.rb", "role": "Homebrew formula (2026-03-27 zip): 'Emulicious writes Emulicious.ini and savestates next to its jar'; license :cannot_represent" },
+    { "kind": "docs", "url": "https://raw.githubusercontent.com/gbdev/GBEmulatorShootout/master/emulators/emulicious.py", "role": "harness: writes Emulicious.ini beside Emulicious.jar, drops dmg_boot.bin/cgb_boot.bin into the emulator folder" },
+    { "kind": "docs", "url": "https://raw.githubusercontent.com/aoineko-fr/MSXgl/main/engine/script/js/setup_emulator.js", "role": "MSXgl launcher: 'See ReadMe.txt and Emulicious.ini', -set System=MSX and other -set overrides" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Emulicious.ini in the Emulicious installation directory, beside Emulicious.jar / Emulicious.exe - portable layout, NOT %APPDATA% and NOT XDG config dirs. All settings (window geometry, System, input, debugger) live in this one ini; any property can be overridden at launch with -set key=value (e.g. -set System=MSX). When the install directory is not writable, recent versions improve rather than redirect this (WhatsNew 2021-01-30: 'Improved support for installing Emulicious into a folder where it doesn't have write access'); the fallback location is not documented.",
+          "evidence": [
+            "docs:SegerEnd/homebrew-tap Formula/emulicious.rb caveats: 'Emulicious writes its settings (Emulicious.ini, savestates) next to its jar'",
+            "docs:gbdev/GBEmulatorShootout emulators/emulicious.py startProcess copies emulicious.dmg.ini to emu/emulicious/Emulicious.ini and launches java -jar Emulicious.jar with cwd=emu/emulicious",
+            "docs:bundled ReadMe.txt commandline: '-set [key=value] = Set a property. E.g. \"-set SMSFM=true\"'",
+            "docs:MSXgl engine/script/js/setup_emulator.js: 'See ReadMe.txt and Emulicious.ini', -set System=MSX / -set WindowDebuggerOpen=true",
+            "docs:lronaldo/gbtelera WhatsNew.txt 2021-01-30 write-access improvement and 2022-11-30 'settings to not be saved on restart' fixes"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "Controller/input configuration lives in Emulicious.ini beside the exe (Setup Keys / Configure Input dialogs write it; 'Restructured setup input dialog' WhatsNew 2019-02-16, 'Added Game Pad support' same release; key presets ship in the install dir under KeyPresets/bgb.ini and KeyPresets/VSCode.ini). Observed key syntax in committed ini files: emulator hotkeys Keys<Something>=<binding> with binding '<modifier> pressed <KEY>' or <unassigned> (e.g. KeysReset=ctrl pressed BACK_SPACE, KeysReloadRom=shift ctrl pressed BACK_SPACE, KeysIncreaseFrameskip=alt pressed PAGE_UP, DebuggerKeysResume=pressed F8); gamepad bindings per device as Gamepad0Key<buttonIndex>=<keycode> plus system-specific device selection GBGamepad=-1, SMSGamepadA=-1, SMSGamepadB=-1, SMSbuttonsGamepad=-1, keyboard-while-gamepad flag GBGamepadKeyboard=true, and signed axis thresholds GBGamepadThreshold=50 / SMSGamepadAThreshold=50 / SMSGamepadBThreshold=50. KeyPresets ini files use the same Keys* entries.",
+          "evidence": [
+            "docs:xfixium/SMS-Ms-Pac-Man Emulicious/Emulicious.ini (committed ini from an SMS project): KeysReset=ctrl pressed BACK_SPACE, Gamepad device/threshold keys, DebuggerKeys* bindings",
+            "docs:Karamu98/GBTemplate deps/Emulicious-with-Java/Emulicious.ini (default dist ini): GBGamepad=-1, GBGamepadKeyboard=true, GBGamepadThreshold=50, Gamepad0Key0..Gamepad0Key37=<keycode>",
+            "docs:Karamu98/GBTemplate deps/Emulicious-with-Java/KeyPresets/bgb.ini: '#Emulicious Key Bindings' preset with Keys*/DebuggerKeys* entries",
+            "docs:lronaldo/gbtelera WhatsNew.txt 2019-02-16 gamepad support + input dialog restructure; 2021-01-30 'Added a Key Setup to customize emulator/debug keys'"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Battery/SRAM saves are .sav files; by default next to the loaded ROM, with an ini/UI option to keep them in a 'sav' folder inside the Emulicious installation directory instead (option added 2023-01-31: 'Added an option to control whether .sav files should be saved next to the roms or not'; the sav folder is referenced by the 2022-12-16 fix 'when sav files were saved to Emulicious's sav folder, they did not always get loaded from there').",
+          "naming": "<ROM basename>.sav (cartridge RAM dump; Game Boy RTC persists inside the same .sav per the 2024-07-31 fix 'a future timestamp in a .sav file caused the RTC time to change')",
+          "evidence": [
+            "docs:lronaldo/gbtelera WhatsNew.txt 2023-01-31 .sav-next-to-roms option and 2022-12-16 sav-folder fix",
+            "docs:emulicious.net / committed all_emulators.csv row corroborates 'ROM directory or sav folder'"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Savestates are written into an 'sstates' folder inside the Emulicious installation directory. Hotkeys (WhatsNew 2016-12-04 'Savestates'): number keys 1-9 load the corresponding slot, Ctrl+1-9 save into slots, Ctrl+S quicksave, Ctrl+Q quickload; optional auto-load most recent state on ROM open and auto-save current state on exit; optional keep-SRAM-when-loading-state option (2022-12-30). Game Boy states are BESS-interoperable with SameBoy/BGB (2021-04-30).",
+          "naming": "sstates/<ROM basename>.s<slot> - observed artifacts in repos that bundled Emulicious: sstates/game.sn0, sstates/SpaceChase.sn0, sstates/SpaceChase_GBC.sn0 (quicksave/slot-0 files named .sn0) and sstates/mspacman.S00; exact per-slot extension letters are not documented (closed source), only the sstates/<ROM basename>.s* pattern is observable",
+          "evidence": [
+            "docs:SegerEnd/homebrew-tap Formula/emulicious.rb: 'Emulicious writes Emulicious.ini and savestates next to its jar'",
+            "docs:git trees of repos bundling Emulicious: xfixium/SMS-Ms-Pac-Man Emulicious/sstates/mspacman.S00; danaguensche/tamagochi Emulicious/sstates/game.sn0; SaraVieira/gameboy-starter Emulicious/sstates/game.sn0; LAMP-Lord/GameBoy OTHER SOFTWARE/Emulicious/sstates/SpaceChase.sn0 and SpaceChase_GBC.sn0",
+            "docs:lronaldo/gbtelera WhatsNew.txt 2016-12-04 savestate hotkeys section; 2021-04-30 BESS support; 2022-12-30 keep-SRAM option"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional. Emulicious has built-in BIOS emulation for all systems (e.g. WhatsNew 2019-02-16 'Added BIOS emulation for Game Gear', 2021-01-30 'Fixed initial state of VBK in Emulicious BIOS for GBC'), so no BIOS file is required. External/boot BIOS ROMs can be selected for every supported system (WhatsNew 2017-02-27 'BIOS files for all supported systems can be selected now'); they are placed in / pointed at from the Emulicious install directory via Emulicious.ini keys - observed GB keys in committed ini: GameBoyBootROM=dmg_boot.bin and GameBoyColorBootROM=cgb_boot.bin (GBEmulatorShootout downloads those files next to Emulicious.jar). MSX runs on C-BIOS 0.29 shipped inside the install dir (MSX/cbios_msx1.rom, MSX/cbios_msx2.rom, MSX/cbios_sub.rom, MSX/cbios.txt); SMS/Game Gear BIOS roms and Everdrive OS files are user-supplied.",
+          "evidence": [
+            "docs:lronaldo/gbtelera WhatsNew.txt 2017-02-27 BIOS selection paragraph; 2019-02-16 GG BIOS emulation; 2021-01-30 'Emulicious BIOS for GBC'",
+            "docs:gbdev/GBEmulatorShootout emulators/emulicious.dmg.ini (GameBoyBootROM=dmg_boot.bin, GameBoyColorBootROM=cgb_boot.bin) and emulicious.py downloading both boot ROMs into emu/emulicious/",
+            "docs:Karamu98/GBTemplate deps/Emulicious-with-Java/MSX/ tree: cbios_msx1.rom, cbios_msx2.rom, cbios_sub.rom, cbios.txt (C-BIOS 0.29)"
+          ]
+        }
+      ],
+      "notes": "Java application (bundled JRE on Windows; system Java elsewhere) with one fully portable install directory: ini, sstates/, sav/, KeyPresets/, MSX/ CBIOS all live beside Emulicious.jar. The flatpak packaging (flathub net.emulicious.Emulicious, community) exists but is out of scope for this record."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Emulicious.ini beside Emulicious.exe / Emulicious.jar in the installation directory - verified beside-exe, NOT %APPDATA%: the zip ships Emulicious.ini next to Emulicious.exe, and the launcher must run with the install dir as working directory (WhatsNew 2021-01-30: 'Fixed the working directory of Emulicious when it gets invoked via Emulicious.exe'). Launch overrides use -set key=value.",
+          "evidence": [
+            "docs:Karamu98/GBTemplate deps/Emulicious-with-Java/ tree: Emulicious.exe, Emulicious.bat, Emulicious.ini, Emulicious.jar side by side",
+            "docs:SegerEnd/homebrew-tap Formula/emulicious.rb: settings written next to the jar",
+            "docs:bundled ReadMe.txt -set command; lronaldo/gbtelera WhatsNew.txt 2021-01-30 working-directory fix"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "Same as Linux: Emulicious.ini Keys* hotkey entries ('<modifier> pressed <KEY>' / <unassigned>), Gamepad<N>Key<button>=<keycode> device mappings, per-system gamepad selection (GBGamepad, SMSGamepadA/B, SMSbuttonsGamepad) and thresholds (GBGamepadThreshold, SMSGamepadAThreshold/BThreshold); presets in KeyPresets\\ next to the exe.",
+          "evidence": [
+            "docs:xfixium/SMS-Ms-Pac-Man Emulicious/Emulicious.ini and Karamu98/GBTemplate deps/Emulicious-with-Java/Emulicious.ini (committed Windows-run inis with the same keys)",
+            "docs:lronaldo/gbtelera WhatsNew.txt 2019-02-16 gamepad support (Windows JInput, LICENSE-JInput.txt ships in the zip)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Next to the ROM by default, or in the 'sav' folder inside the Emulicious installation directory per the .sav-location option.",
+          "naming": "<ROM basename>.sav",
+          "evidence": [
+            "docs:lronaldo/gbtelera WhatsNew.txt 2023-01-31 option; 2022-12-16 sav-folder fix"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "'sstates' folder inside the Emulicious installation directory; slots 1-9 via number keys (Ctrl+number saves), Ctrl+S quicksave, Ctrl+Q quickload, optional save-on-exit/load-on-open.",
+          "naming": "sstates/<ROM basename>.s* (observed: game.sn0, mspacman.S00); per-slot letters not documented (closed source)",
+          "evidence": [
+            "docs:git trees xfixium/SMS-Ms-Pac-Man, danaguensche/tamagochi, LAMP-Lord/GameBoy (sstates/ artifacts)",
+            "docs:lronaldo/gbtelera WhatsNew.txt 2016-12-04 savestate hotkeys"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional: built-in BIOS emulation is the default; external BIOS/boot ROMs selectable per system via Emulicious.ini keys (GameBoyBootROM / GameBoyColorBootROM observed) with files placed in the install directory; C-BIOS ships in MSX\\ for MSX.",
+          "evidence": [
+            "docs:lronaldo/gbtelera WhatsNew.txt 2017-02-27 / 2019-02-16 BIOS entries",
+            "docs:gbdev/GBEmulatorShootout ini + boot ROM download into the emulator folder",
+            "docs:Karamu98/GBTemplate MSX\\ C-BIOS files"
+          ]
+        }
+      ],
+      "notes": "Windows builds ship a bundled JRE and Emulicious.exe/-icl launchers; WhatsNew notes W11 driver-related perf issues and the high-DPI compatibility workaround in ReadMe.txt troubleshooting."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Emulicious.ini beside Emulicious.jar in the installation directory (same portable layout as Linux/Windows - e.g. the Homebrew formula installs to $(brew --prefix)/ Cellar libexec and warns the ini sits there); settings are also saved when the app is closed via Cmd+Q (WhatsNew 2019-07-19: 'On Mac OS when Emulicious is closed via Cmd+Q it will now also save its settings'). Launch overrides use -set key=value.",
+          "evidence": [
+            "docs:SegerEnd/homebrew-tap Formula/emulicious.rb (macOS formula: ini and savestates land in the formula's libexec dir)",
+            "docs:lronaldo/gbtelera WhatsNew.txt 2019-07-19 Cmd+Q settings save"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "Same Emulicious.ini Keys* scheme as Linux/Windows; macOS-specific fixes confirm the dialog flow ('Fixed an issue with modal dialogs (e.g. Configure Input) on Mac OS' 2020; 'Fixed a bug that could cause input to stop working on Mac OS'; 'Added support for Gamepads on M1 Macs' 2022-12-30).",
+          "evidence": [
+            "docs:lronaldo/gbtelera WhatsNew.txt 2020 modal-dialog fix, input-stop-working fix, 2022-12-30 M1 gamepad support",
+            "docs:Karamu98/GBTemplate Emulicious.ini / KeyPresets (cross-platform key scheme)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Next to the ROM by default, or in the 'sav' folder inside the Emulicious installation directory per the .sav-location option.",
+          "naming": "<ROM basename>.sav",
+          "evidence": [
+            "docs:lronaldo/gbtelera WhatsNew.txt 2023-01-31 option; 2022-12-16 sav-folder fix"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "'sstates' folder inside the Emulicious installation directory; same slot hotkeys (1-9 load, Ctrl+1-9 save, Ctrl+S/Ctrl+Q quick save/load).",
+          "naming": "sstates/<ROM basename>.s* (observed: SpaceChase_GBC.sn0, game.sn0); per-slot letters not documented (closed source)",
+          "evidence": [
+            "docs:LAMP-Lord/GameBoy sstates/SpaceChase_GBC.sn0 and SaraVieira/gameboy-starter sstates/game.sn0 git trees",
+            "docs:lronaldo/gbtelera WhatsNew.txt 2016-12-04 savestate hotkeys"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional, same as Linux: built-in BIOS emulation default; external BIOS ROMs selectable per system via Emulicious.ini (GameBoyBootROM / GameBoyColorBootROM observed) placed in the install directory; bundled C-BIOS in MSX/ for MSX.",
+          "evidence": [
+            "docs:lronaldo/gbtelera WhatsNew.txt 2017-02-27 / 2019-02-16",
+            "docs:gbdev/GBEmulatorShootout ini keys; Karamu98/GBTemplate MSX/ C-BIOS"
+          ]
+        }
+      ],
+      "notes": "macOS runs the same jar via system or bundled Java; no ~/Library paths are used - everything stays inside the (portable) Emulicious folder."
+    }
+  }
+}
