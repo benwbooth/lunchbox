@@ -154,6 +154,17 @@ order for js-evdev on modern SDLs) or probe with the SDL2 helper and
 document the residual risk; then write the partial-TOML writer
 ([input.genesis.p1]/[p2] only; serde default fills the rest).
 
+Device verification (2026-09-11, machine with Steam Controller +
+Xbox 360 pad): SDL2 and SDL3 enumerate connected devices in the SAME
+order — [0] Steam Controller, [1] Xbox 360 — so gamepad_idx derives
+consistently across SDL generations for a single-device host. Note:
+SDL3 additionally surfaces intermediate js nodes (js3/js5) with the
+classic hint; the Xbox 360 pad holds stable relative position [1].
+The jgenesis adapter can therefore treat gamepad_idx as the probe
+device_index. Raw button/axis index equivalence is still claimed
+per the kernel-order argument and should be confirmed during the
+first real Mednafen/jgenesis launch verification.
+
 Platform-record follow-ups captured by the research fan-out
 (emulator_details/records/): the Windows PCSX2 BIOS root mismatch in
 firmware.rs was fixed; the Lunchbox openMSX adapter's macOS config root
