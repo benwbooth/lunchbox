@@ -258,6 +258,20 @@ string. Single device zero. See
 [SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md](SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md).
 Parsing and rendering are unit-tested; runtime behavior is unverified.
 
+## Platform capture records
+
+`emulator_details/records/<slug>.json` now captures, per host platform
+(linux, linux-flatpak, windows, macos), the save and save-state locations
+with naming conventions, the controller-configuration location and syntax
+pointer, and firmware pointers, each with evidence citations; a dedicated
+integration test validates the schema. Records exist for RetroArch, PCSX2,
+RPCS3, Dolphin, PPSSPP, MAME, Mednafen, melonDS, mGBA, BizHawk, DeSmuME,
+openMSX, Stella, VICE, Hatari, xemu, BlastEm, ScummVM, Flycast and
+DuckStation — the input matrix for the planned save-sync implementation.
+Findings so far include the fixed Windows PCSX2 BIOS-root mismatch and
+flagged divergences (openMSX macOS root, Flycast Windows/macOS firmware
+roots, missing Mednafen/VICE firmware rules).
+
 ## Remaining work
 
 Finish native guided runtime discovery and SDL3 translation, integrate additional

@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "slug": "stella",
+  "emulator": "Stella",
+  "sources": [
+    { "kind": "docs", "url": "https://stella-emu.github.io/docs/index.html", "role": "settings database, EEPROM/nvram, basedir, slots and Time Machine" },
+    { "kind": "source", "repo": "stella-emu/stella", "commit": "c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "role": "state file naming, state dir, per-OS base dirs (7.x line pinned by the contract)" },
+    { "kind": "contract", "path": "docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" },
+    { "kind": "flatpak", "id": "io.github.stella_emu.Stella", "url": "https://flathub.org/apps/io.github.stella_emu.Stella", "role": "flatpak existence" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/stella/stella.sqlite3 (plus stella.sqlite3-wal); SQLite settings store in the XDG config dir honored via XDG_CONFIG_HOME; -basedir <dir> relocates every configuration file",
+          "evidence": ["docs:index 'The database file is named stella.sqlite3 ... Linux/Unix $HOME/.config/stella/'", "source:src/os/unix/OSystemUNIX.cxx getBaseDirectories -> XDGPaths::instance().configDir(\"stella\")", "source:src/emucore/OSystemStandalone.cxx SQLite settings repository", "contract:docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md (-basedir, settings(setting,value) table)"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/stella/nvram/ - Atari 2600 game saves only exist for cart hardware with EEPROM: SaveKey and AtariVox EEPROM images live here; carts without EEPROM hardware keep progress only inside save states",
+          "naming": "Per-device, not per-ROM: atarivox_eeprom.dat and savekey_eeprom.dat, created on demand and initialized to all $FF like real EEPROM",
+          "evidence": ["docs:index EEPROM section 'Linux/Unix $HOME/.config/stella/nvram/atarivox_eeprom.dat / savekey_eeprom.dat'", "source:src/emucore/OSystem.cxx buildDirIfRequired(myNVRamDir, myBaseDir, \"nvram\")"]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.config/stella/state/ (defaultStateDir = 'state' under the base dir; the 'statedir' setting overrides; 'statewithrom' saves beside the ROM instead)",
+          "naming": "<Cart_Name>.st<slot> with slots 0..9 (.st0-.st9); Cart_Name is the ROM properties name; -autoslot advances (slot+1)%10 after saving; Time Machine adds interval auto-states; -saveonexit none|current|all",
+          "evidence": ["source:src/common/StateManager.cxx std::format(\"{}{}.st{}\", stateDir, Cart_Name, slot) with slot clamped 0..9", "source:src/emucore/OSystem.cxx defaultStateDir() = base dir + 'state'", "docs:index -autoslot, -saveonexit and Time Machine description"]
+        },
+        {
+          "purpose": "bios",
+          "path": "None - the Atari 2600 has no BIOS/firmware ROMs; Stella ships everything it needs (bankswitch and cart helper ROMs like Supercharger loading screens are emulated in code; -fastscbios only toggles the progress-bar display)",
+          "evidence": ["docs:index Features list (no firmware/system ROM requirement anywhere)", "db:no firmware_rules rows exist for stella (none are needed)"]
+        }
+      ],
+      "notes": "Lunchbox launches with -basedir <session dir> (contract native_command) so the settings DB, nvram and state/ tree all land inside the private base directory; native saves stay there across launches."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/io.github.stella_emu.Stella/.config/stella/stella.sqlite3 (the sandbox gives the app its own HOME under ~/.var/app/<id>, so the same HOME-relative .config/stella layout lands there)",
+          "evidence": ["flathub:io.github.stella_emu.Stella (app exists)", "source:src/os/unix/OSystemUNIX.cxx XDG config dir resolution relative to $HOME/XDG_CONFIG_HOME"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/io.github.stella_emu.Stella/.config/stella/nvram/ - SaveKey/AtariVox EEPROM images inside the sandbox HOME",
+          "naming": "atarivox_eeprom.dat and savekey_eeprom.dat, as on native Linux",
+          "evidence": ["docs:index EEPROM location list", "flathub:io.github.stella_emu.Stella"]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/io.github.stella_emu.Stella/.config/stella/state/",
+          "naming": "<Cart_Name>.st<slot>, slots 0..9 (.st0-.st9), as on native Linux",
+          "evidence": ["source:src/common/StateManager.cxx state file naming", "flathub:io.github.stella_emu.Stella"]
+        },
+        {
+          "purpose": "bios",
+          "path": "None - no BIOS/firmware, as on native Linux",
+          "evidence": ["docs:index Features list", "db:no firmware_rules rows exist for stella"]
+        }
+      ],
+      "notes": "Flathub build exists (io.github.stella_emu.Stella); Lunchbox's native Stella integration drives the binary with -basedir, which the Flatpak build also honors inside its sandbox."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\Stella\\stella.sqlite3 (Roaming profile; -baseinappdir switches the base dir to the application directory, Windows-only)",
+          "evidence": ["docs:index settings database location 'Windows %APPDATA%\\Stella\\'", "source:src/os/windows/HomeFinder.hxx FOLDERID_RoamingAppData + OSystemWINDOWS.cxx appends \"Stella\\\\\"", "docs:index -basedir/-baseinappdir option notes"]
+        },
+        {
+          "purpose": "saves",
+          "path": "%APPDATA%\\Stella\\nvram\\ - SaveKey/AtariVox EEPROM images",
+          "naming": "atarivox_eeprom.dat and savekey_eeprom.dat, initialized to all $FF",
+          "evidence": ["docs:index EEPROM location list 'Windows %APPDATA%\\Stella\\nvram\\...'", "source:src/emucore/OSystem.cxx nvram dir under base dir"]
+        },
+        {
+          "purpose": "states",
+          "path": "%APPDATA%\\Stella\\state\\ (default under the base dir; 'statedir' setting overrides)",
+          "naming": "<Cart_Name>.st<slot>, slots 0..9 (.st0-.st9); Time Machine auto-states included",
+          "evidence": ["source:src/common/StateManager.cxx state file naming", "source:src/emucore/OSystem.cxx defaultStateDir()"]
+        },
+        {
+          "purpose": "bios",
+          "path": "None - no BIOS/firmware",
+          "evidence": ["docs:index Features list", "db:no firmware_rules rows exist for stella"]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/Stella/stella.sqlite3 (-basedir is documented as not available for macOS)",
+          "evidence": ["docs:index settings database location 'Macintosh $HOME/Library/Application Support/Stella/'", "source:src/os/macos/OSystemMACOS.cxx applicationSupportPath() + \"/Stella/\"", "docs:index '-basedir ... Note: Not available for macOS'"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Library/Application Support/Stella/nvram/ - SaveKey/AtariVox EEPROM images",
+          "naming": "atarivox_eeprom.dat and savekey_eeprom.dat, initialized to all $FF",
+          "evidence": ["docs:index EEPROM location list 'Macintosh .../nvram/atarivox_eeprom.dat / savekey_eeprom.dat'", "source:src/emucore/OSystem.cxx nvram dir under base dir"]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Library/Application Support/Stella/state/ (default under the base dir; 'statedir' setting overrides)",
+          "naming": "<Cart_Name>.st<slot>, slots 0..9 (.st0-.st9); Time Machine auto-states included",
+          "evidence": ["source:src/common/StateManager.cxx state file naming", "source:src/emucore/OSystem.cxx defaultStateDir()"]
+        },
+        {
+          "purpose": "bios",
+          "path": "None - no BIOS/firmware",
+          "evidence": ["docs:index Features list", "db:no firmware_rules rows exist for stella"]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "slug": "ppsspp",
+  "emulator": "PPSSPP",
+  "sources": [
+    { "kind": "source", "repo": "hrydgard/ppsspp", "commit": "e49c0bd8836a8a8f678565357773386f1174d3f5", "role": "controller contract + memstick roots, folder and file naming (tag v1.19.3, same pin as docs/PPSSPP_STANDALONE_PROGRESS.md)" },
+    { "kind": "docs", "url": "https://www.ppsspp.org/docs/faq/", "role": "memstick layout: PSP/SAVEDATA and PSP/PPSSPP_STATE; platform roots" },
+    { "kind": "docs", "url": "https://www.ppsspp.org/docs/reference/mac/", "role": "macOS data in ~/.config/ppsspp with PSP/SYSTEM/ppsspp.ini and PSP/PPSSPP_STATE/" },
+    { "kind": "docs", "url": "https://www.ppsspp.org/docs/getting-started/save-data-and-storage-windows/", "role": "Windows memstick selection (memstick next to exe, installed.txt, Documents fallback)" },
+    { "kind": "docs", "url": "https://www.ppsspp.org/docs/getting-started/how-to-run-the-vsh/", "role": "firmware updater flow: open the Sony 6.61 update EBOOT in PPSSPP and accept the install" },
+    { "kind": "docs", "url": "https://github.com/flathub/org.ppsspp.PPSSPP", "role": "flatpak app id org.ppsspp.PPSSPP, command PPSSPPSDL, finish-args" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/ppsspp/PSP/SYSTEM/ppsspp.ini and ~/.config/ppsspp/PSP/SYSTEM/controls.ini (memstick root = $XDG_CONFIG_HOME/ppsspp when XDG_CONFIG_HOME is set, else $HOME/.config/ppsspp; both files are resolved by FindConfigFile against the search path Config::SetSearchPath(GetSysDirectory(DIRECTORY_SYSTEM)) = <memstick>/PSP/SYSTEM)",
+          "naming": "ppsspp.ini holds [General], [Graphics], [ControlMapping] defaults and per-game recent entries; controls.ini holds input bindings in a single [ControlMapping] section keyed by PSP button names (Up, Down, Left, Right, Circle, Cross, Square, Triangle, Start, Select, L, R, An.Up, An.Down, An.Left, An.Right, RapidFire, Fast-forward, Pause, ...); each value is a comma-separated list of mapped inputs written as \"<deviceId>-<keyCode>\" (InputMapping::ToConfigString \"%d-%d\"), with colon-joined multi-mappings; device ids: keyboard = 1, joypads = DEVICE_ID_PAD_0..9 = 10..19 (e.g. \"10-1004\"); no \"InputLst\" or \"BIND\" keys exist anywhere in the pinned tree. Per-game overrides are <GAMEID>_ppsspp.ini next to them in PSP/SYSTEM. Loading a [ControlMapping] section erases absent gameplay defaults (KeyMap::LoadFromIni).",
+          "evidence": [
+            "source:ppsspp/UI/NativeApp.cpp NativeInit: memStickDirectory = Path(getenv(\"XDG_CONFIG_HOME\") or $HOME/.config) / \"ppsspp\" (commit e49c0bd8836a8a8f678565357773386f1174d3f5)",
+            "source:ppsspp/Core/Config.cpp UpdateIniLocation: iniFilename_ = FindConfigFile(\"ppsspp.ini\"), controllerIniFilename_ = FindConfigFile(\"controls.ini\"); FindConfigFile joins searchPath_; Config::getGameConfigFile: <pGameId>_ppsspp.ini",
+            "source:ppsspp/Core/Config.cpp SetSearchPath callers: g_Config.SetSearchPath(GetSysDirectory(DIRECTORY_SYSTEM)) in UI/NativeApp.cpp, Windows/main.cpp and Core/Util/MemStick.cpp",
+            "source:ppsspp/Core/System.cpp GetSysDirectory: DIRECTORY_SYSTEM = <memstick>/PSP/SYSTEM",
+            "source:ppsspp/Core/KeyMap.cpp LoadFromIni/SaveToIni ([ControlMapping], psp_button_names) and MultiInputMapping::FromConfigString/ToConfigString",
+            "source:ppsspp/Common/Input/InputState.cpp InputMapping::ToConfigString \"%d-%d\"; Common/Input/InputState.h DEVICE_ID_KEYBOARD = 1, DEVICE_ID_PAD_0 = 10",
+            "repo:docs/PPSSPP_STANDALONE_PROGRESS.md (pinned source contracts SDL/SDLJoystick.cpp, Common/Input/InputState.h/.cpp, Common/Input/KeyCodes.h, Core/KeyMap.cpp; SDL backend uses device index plus ten; requires all sixteen PSP gameplay inputs)",
+            "repo:crates/lunchbox-app/src/controller_ppsspp/configuration.rs (prepares ppsspp.ini, controls.ini and <game_id>_ppsspp.ini under PSP/SYSTEM; never invents platform defaults)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/ppsspp/PSP/SAVEDATA/ (one folder per saved game, PSP ms0:/PSP/SAVEDATA mounted directly at the memstick root)",
+          "naming": "Directory name = SFO gameName + saveName concatenated, e.g. ULUS10041DATA00, ULUS10041DATA01: SavedataParam::GetSaveDir = GetGameName(param) + saveDirName where gameName is the disc-region id (ULUS/ULES/UCUS... without dash) and saveDirName is the game's per-slot save name (usually DATA00) or a name the player picked from the saveNameList; the .nomedia marker file is created at ms0:/PSP/SAVEDATA/.nomedia; each folder contains PARAM.SFO plus ICON0.PNG/PIC1.PNG and the game's save files; homebrew without DISC_ID gets a generated fake id",
+          "evidence": [
+            "source:ppsspp/Core/Dialog/SavedataParam.cpp GetSaveDirName/GetSaveDir (GetGameName + saveDirName), GetGameName = param->gameName, GetSaveDirName = param->saveName or saveNameList selection; static savePath = \"ms0:/PSP/SAVEDATA/\"; MkDir(savePath) + \".nomedia\" marker",
+            "source:ppsspp/Core/HLE/sceIo.cpp __IoInit: pspFileSystem.Mount(\"ms0:\", DirectoryFileSystem(g_Config.memStickDirectory)) so ms0:/PSP/SAVEDATA = <memstick>/PSP/SAVEDATA",
+            "source:ppsspp/Core/System.cpp GetSysDirectory: DIRECTORY_SAVEDATA = <memstick>/PSP/SAVEDATA",
+            "docs:https://www.ppsspp.org/docs/faq/ (\"a PSP directory, and within there's SAVEDATA (for real PSP saves) and PPSSPP_STATE (save states)\")"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.config/ppsspp/PSP/PPSSPP_STATE/ (flat directory, no per-game subdirectories in the pinned version; per-game identity lives in the filename prefix)",
+          "naming": "<DISC_ID>_<DISC_VERSION>_<slot>.ppst, e.g. ULUS10041_1.00_0.ppst: GenerateSaveSlotFilename = \"%s_%d.%s\" over GenerateFullDiscId (DISC_ID + \"_\" + DISC_VERSION from the game SFO, fake id generated when absent) and slot 0..4 (SaveState::NUM_SLOTS = 5, current slot kept in [General] CurrentStateSlot of ppsspp.ini); slot screenshots sit alongside as .jpg; a save/load undo layer adds <DISC_ID>_<VER>_<slot>.undo.ppst plus a global load_undo.ppst in the same directory",
+          "evidence": [
+            "source:ppsspp/Core/SaveState.cpp GenerateFullDiscId (\"%s_%s\", DISC_ID, DISC_VERSION) and GenerateSaveSlotFilename (\"%s_%d.%s\", GetSysDirectory(DIRECTORY_SAVESTATE))",
+            "source:ppsspp/Core/SaveState.h STATE_EXTENSION = \"ppst\", NUM_SLOTS = 5, UNDO_STATE_EXTENSION = \"undo.ppst\", LOAD_UNDO_NAME = \"load_undo.ppst\"",
+            "source:ppsspp/Core/System.cpp GetSysDirectory: DIRECTORY_SAVESTATE = <memstick>/PSP/PPSSPP_STATE",
+            "docs:https://www.ppsspp.org/docs/reference/mac/ (confirms PSP/PPSSPP_STATE alongside PSP/SYSTEM/ppsspp.ini under the ppsspp data root)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional and not user-installed by default: flash0: is served from the bundled assets (VFS \"flash0\" on the SDL/Linux build; g_Config.flash0Directory = <exe dir>/assets/flash0). No PSP firmware is required to run games; the emulated firmware version is [SystemPSP] PSPFirmwareVersion in ppsspp.ini (default 660)",
+          "naming": "assets/flash0 in the pinned tree ships only the replacement font set (assets/flash0/font, loaded via flash0:/font/); a per-user font override can be placed at <memstick>/PSP/flash0/font/. The in-app firmware installer seen in current docs (open the official Sony 6.61 updater EBOOT.PBP in PPSSPP and accept the install, which populates flash0 for the 1.21 VSH support) does not exist in the v1.19.3 pin - no firmware downloader or flash0 writer is present in that tree",
+          "evidence": [
+            "source:ppsspp/Core/HLE/sceIo.cpp __IoInit: flash0System = VFSFileSystem(&pspFileSystem, \"flash0\") on non-Windows/non-Apple; DirectoryFileSystem(g_Config.flash0Directory) on Windows/Apple",
+            "source:ppsspp/UI/NativeApp.cpp NativeInit (Linux branch): g_Config.flash0Directory = File::GetExeDirectory() / \"assets/flash0\"",
+            "source:ppsspp/Core/ConfigValues.h PSP_DEFAULT_FIRMWARE = 660; Core/Config.cpp ConfigSetting(\"PSPFirmwareVersion\", ...)",
+            "source:ppsspp/Core/HLE/sceFont.cpp fontPath \"flash0:/font/\" and fontOverridePath \"ms0:/PSP/flash0/font/\"",
+            "docs:https://www.ppsspp.org/docs/getting-started/how-to-run-the-vsh/ (\"you need a PSP update. You can download 6.61 directly from Sony. Next, just open the update in PPSSPP, which will offer to install it for you\" - marked for version 1.21, after the pin)",
+            "repo:crates/lunchbox-app/src/firmware.rs and crates/lunchbox-db (no ppsspp firmware_rules entries; PPSSPP needs no user firmware)"
+          ]
+        }
+      ],
+      "notes": "Lunchbox launches the SDL build with HOME/XDG_CONFIG_HOME deliberately unchanged and Bubblewrap-overlays only PSP/SYSTEM inside the child namespace (crates/lunchbox-app/src/controller_ppsspp/native_command.rs, configuration.rs), so native SAVEDATA/PPSSPP_STATE stay in ~/.config/ppsspp; the launcher re-verifies the resolved search directory XDG_CONFIG_HOME|~/.config + /ppsspp/PSP/SYSTEM before applying a saved setup."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/org.ppsspp.PPSSPP/config/ppsspp/PSP/SYSTEM/ppsspp.ini and .../PSP/SYSTEM/controls.ini (Flatpak sets the sandbox XDG_CONFIG_HOME to ~/.var/app/org.ppsspp.PPSSPP/config, and the same PPSSPP code joins it with ppsspp/PSP/SYSTEM)",
+          "naming": "Identical INI set and [ControlMapping] \"<deviceId>-<keyCode>\" syntax as native Linux (ppsspp.ini, controls.ini, <GAMEID>_ppsspp.ini); the Flathub build is the SDL frontend (command PPSSPPSDL), so it takes exactly the desktop SDL code path",
+          "evidence": [
+            "docs:https://github.com/flathub/org.ppsspp.PPSSPP (app-id org.ppsspp.PPSSPP, command PPSSPPSDL, finish-args --filesystem=host:ro etc.)",
+            "source:ppsspp/UI/NativeApp.cpp NativeInit: memStickDirectory from $XDG_CONFIG_HOME (or $HOME/.config) / \"ppsspp\" - inside the Flatpak sandbox XDG_CONFIG_HOME is ~/.var/app/<app-id>/config",
+            "source:ppsspp/Core/Config.cpp UpdateIniLocation/FindConfigFile + SetSearchPath(GetSysDirectory(DIRECTORY_SYSTEM))",
+            "source:ppsspp/Core/KeyMap.cpp LoadFromIni/SaveToIni [ControlMapping]"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/org.ppsspp.PPSSPP/config/ppsspp/PSP/SAVEDATA/",
+          "naming": "Identical to native Linux: <gameName><saveName> folders, e.g. ULUS10041DATA00 (SFO gameName + saveName, or the player-selected saveNameList entry), .nomedia marker, PARAM.SFO/ICON0.PNG inside",
+          "evidence": [
+            "source:ppsspp/Core/Dialog/SavedataParam.cpp GetSaveDir = GetGameName + saveDirName; savePath \"ms0:/PSP/SAVEDATA/\"",
+            "source:ppsspp/Core/HLE/sceIo.cpp ms0: mounted at g_Config.memStickDirectory",
+            "repo:crates/lunchbox-app/src/firmware.rs (flatpak roots are resolved as ~/.var/app/<app-id>/config elsewhere in Lunchbox)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/org.ppsspp.PPSSPP/config/ppsspp/PSP/PPSSPP_STATE/",
+          "naming": "Identical to native Linux: <DISC_ID>_<DISC_VERSION>_<slot>.ppst (slots 0..4), .jpg slot screenshots, .undo.ppst backups and load_undo.ppst in the same flat directory",
+          "evidence": [
+            "source:ppsspp/Core/SaveState.cpp GenerateFullDiscId/GenerateSaveSlotFilename",
+            "source:ppsspp/Core/SaveState.h NUM_SLOTS = 5, STATE_EXTENSION = \"ppst\"",
+            "source:ppsspp/Core/System.cpp GetSysDirectory DIRECTORY_SAVESTATE = <memstick>/PSP/PPSSPP_STATE"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No user firmware required: flash0: is served from the bundled app assets of the Flatpak build; emulated firmware version default 660 via [SystemPSP] PSPFirmwareVersion in ppsspp.ini",
+          "naming": "Same bundled-flash0 model as native Linux (assets/flash0/font only); the in-app updater installer is a post-1.19 feature (see the VSH docs) and absent from the pinned tree",
+          "evidence": [
+            "source:ppsspp/Core/HLE/sceIo.cpp flash0 mount from VFS/flash0Directory",
+            "source:ppsspp/Core/ConfigValues.h PSP_DEFAULT_FIRMWARE = 660",
+            "docs:https://www.ppsspp.org/docs/getting-started/how-to-run-the-vsh/ (updater install flow, 1.21+)"
+          ]
+        }
+      ],
+      "notes": "The Flathub sandbox grants --filesystem=host:ro (read-only visibility), so the writable memstick root necessarily lands in the app-scoped XDG_CONFIG_HOME; Lunchbox has no containerized launch adapter for PPSSPP yet (controller_ppsspp/native_command.rs requires a native Linux executable)."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%USERPROFILE%\\Documents\\PPSSPP\\PSP\\SYSTEM\\ppsspp.ini and PSP\\SYSTEM\\controls.ini for an installed build; a portable build (no installed.txt next to the exe) uses <exe dir>\\memstick\\PSP\\SYSTEM\\ instead; installed.txt containing a path relocates the whole memstick root to that path; if the chosen root is not writable the build falls back to Documents\\PPSSPP",
+          "naming": "Same files and [ControlMapping] syntax as Linux: ppsspp.ini (general settings), controls.ini (bindings as \"<deviceId>-<keyCode>\" lists, keyboard = 1, pads = 10..19, XInput auto-configured for Xbox pads), <GAMEID>_ppsspp.ini per-game overrides in the same PSP\\SYSTEM folder",
+          "evidence": [
+            "source:ppsspp/Windows/main.cpp InitSysDirectories: flash0Directory = exePath/assets/flash0; memstick = exePath/\"memstick\" unless installed.txt exists (empty file or path inside it -> myDocsPath = internalDataDirectory/\"PPSSPP\"); writable-test fallback to myDocsPath; g_Config.internalDataDirectory = W32Util::UserDocumentsPath() (main.cpp:1011); g_Config.SetSearchPath(GetSysDirectory(DIRECTORY_SYSTEM)) (main.cpp:1017)",
+            "docs:https://www.ppsspp.org/docs/getting-started/save-data-and-storage-windows/ (\"No installed.txt: Memory Stick is in a subfolder called memstick right next to the EXE file. installed.txt is empty: %userprofile%\\Documents\\PPSSPP. installed.txt contains a path: Memory Stick is in that path\")",
+            "docs:https://www.ppsspp.org/docs/faq/ (\"Windows: Either in the directory memstick in PPSSPP, or in your documents directory\")",
+            "source:ppsspp/Core/KeyMap.cpp XInput default mapping selection (SetDefaultKeyMap(DEFAULT_MAPPING_XINPUT) for Xbox-named pads on Windows)",
+            "repo:docs/PPSSPP_STANDALONE_PROGRESS.md (pinned controls.ini writer preserves existing hotkeys and unrelated INI sections)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<memstick root>\\PSP\\SAVEDATA\\ - %USERPROFILE%\\Documents\\PPSSPP\\PSP\\SAVEDATA when installed, <exe dir>\\memstick\\PSP\\SAVEDATA when portable",
+          "naming": "Same as Linux: one folder per save named gameName + saveName (e.g. ULUS10041DATA00), PARAM.SFO and icon/picture files inside, .nomedia marker in SAVEDATA",
+          "evidence": [
+            "source:ppsspp/Core/Dialog/SavedataParam.cpp GetSaveDir = GetGameName + saveDirName",
+            "source:ppsspp/Core/System.cpp GetSysDirectory DIRECTORY_SAVEDATA = <memstick>/PSP/SAVEDATA",
+            "source:ppsspp/Windows/main.cpp memstick root selection"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<memstick root>\\PSP\\PPSSPP_STATE\\",
+          "naming": "Same as Linux: <DISC_ID>_<DISC_VERSION>_<slot>.ppst with slots 0..4, .jpg screenshots alongside, .undo.ppst and load_undo.ppst undo states; flat directory keyed by the disc-id prefix",
+          "evidence": [
+            "source:ppsspp/Core/SaveState.cpp GenerateFullDiscId/GenerateSaveSlotFilename",
+            "source:ppsspp/Core/SaveState.h STATE_EXTENSION \"ppst\", NUM_SLOTS = 5",
+            "source:ppsspp/Core/System.cpp DIRECTORY_SAVESTATE = <memstick>/PSP/PPSSPP_STATE"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No user firmware required: flash0: is served from <exe dir>\\assets\\flash0 (a real directory next to the executable on Windows); emulated firmware version default 660 in ppsspp.ini [SystemPSP] PSPFirmwareVersion",
+          "naming": "Bundled assets/flash0 contains the replacement fonts; games run without any PSP firmware files. Installing the real 6.61 updater via the app is a 1.21+ feature documented for the VSH and is not present in the pinned tree",
+          "evidence": [
+            "source:ppsspp/Windows/main.cpp g_Config.flash0Directory = exePath / \"assets/flash0\"",
+            "source:ppsspp/Core/HLE/sceIo.cpp Windows branch mounts flash0 via DirectoryFileSystem(g_Config.flash0Directory)",
+            "source:ppsspp/Core/ConfigValues.h PSP_DEFAULT_FIRMWARE = 660",
+            "docs:https://www.ppsspp.org/docs/getting-started/how-to-run-the-vsh/"
+          ]
+        }
+      ],
+      "notes": "The portable/portable-path rules (memstick dir, installed.txt, read-only fallback to Documents) live entirely in Windows/main.cpp InitSysDirectories; Lunchbox currently has no Windows launch adapter for PPSSPP (controller_ppsspp/native_command.rs rejects non-native routing), so these are capture-only facts."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/ppsspp/PSP/SYSTEM/ppsspp.ini and ~/.config/ppsspp/PSP/SYSTEM/controls.ini (the macOS build derives its memstick root from DarwinFileSystemServices::defaultMemoryStickPath = g_Config.defaultCurrentDirectory/\".config/ppsspp\" and the SDL frontend reports the home directory as the documents dir; a user-chosen root persists in NSUserDefaults PreferredMemoryStickUserDefaultsKey)",
+          "naming": "Same layout as Linux: ppsspp.ini and controls.ini ([ControlMapping] with \"<deviceId>-<keyCode>\" entries) plus <GAMEID>_ppsspp.ini per-game overrides, all resolved against the search path <memstick>/PSP/SYSTEM; ppsspp.org confirms \".config/ppsspp under your home directory ... like PSP/SYSTEM/ppsspp.ini and PSP/PPSSPP_STATE/\"",
+          "evidence": [
+            "docs:https://www.ppsspp.org/docs/reference/mac/ (\"the Mac build's user data is stored in .config/ppsspp under your home directory ... the usual PPSSPP additions, like PSP/SYSTEM/ppsspp.ini and PSP/PPSSPP_STATE/\")",
+            "source:ppsspp/UI/DarwinFileSystemServices.mm appropriateMemoryStickDirectoryToUse/defaultMemoryStickPath: MAC branch returns g_Config.defaultCurrentDirectory / \".config/ppsspp\"; userPreferred override from NSUserDefaults",
+            "source:ppsspp/SDL/SDLMain.cpp SYSPROP_USER_DOCUMENTS_DIR returns $HOME; UI/NativeApp.cpp sets defaultCurrentDirectory from it",
+            "source:ppsspp/Core/Config.cpp UpdateIniLocation/FindConfigFile with SetSearchPath(GetSysDirectory(DIRECTORY_SYSTEM))"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/ppsspp/PSP/SAVEDATA/",
+          "naming": "Same as Linux: gameName + saveName folders, e.g. ULUS10041DATA00, with PARAM.SFO and icon files inside and the .nomedia marker at PSP/SAVEDATA level",
+          "evidence": [
+            "source:ppsspp/Core/Dialog/SavedataParam.cpp GetSaveDir = GetGameName + saveDirName; savePath \"ms0:/PSP/SAVEDATA/\"",
+            "source:ppsspp/Core/System.cpp DIRECTORY_SAVEDATA = <memstick>/PSP/SAVEDATA",
+            "docs:https://www.ppsspp.org/docs/reference/mac/ (\"In there, you'll find a PSP folder, after which it's organized the normal way\")"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.config/ppsspp/PSP/PPSSPP_STATE/",
+          "naming": "Same as Linux: <DISC_ID>_<DISC_VERSION>_<slot>.ppst (slots 0..4), .jpg screenshots, .undo.ppst and load_undo.ppst; flat directory keyed by the disc-id prefix",
+          "evidence": [
+            "source:ppsspp/Core/SaveState.cpp GenerateFullDiscId/GenerateSaveSlotFilename",
+            "source:ppsspp/Core/SaveState.h STATE_EXTENSION \"ppst\", NUM_SLOTS = 5",
+            "docs:https://www.ppsspp.org/docs/reference/mac/ (confirms PSP/PPSSPP_STATE under the data root)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No user firmware required: flash0: is served from the assets inside the app bundle (external_dir = SDL base path + \"/assets\"; g_Config.flash0Directory = external_dir/\"flash0\"); emulated firmware version default 660",
+          "naming": "Bundled replacement fonts only (assets/flash0/font); the 6.61 updater install flow documented on ppsspp.org applies to current builds (1.21+) and is absent from the pinned tree",
+          "evidence": [
+            "source:ppsspp/UI/NativeApp.cpp MAC branch: g_Config.flash0Directory = Path(std::string(external_dir)) / \"flash0\"",
+            "source:ppsspp/SDL/SDLMain.cpp macOS external_dir = SDL_GetBasePath() + \"/assets\"",
+            "source:ppsspp/Core/HLE/sceIo.cpp Apple branch mounts flash0 via DirectoryFileSystem(g_Config.flash0Directory)",
+            "docs:https://www.ppsspp.org/docs/getting-started/how-to-run-the-vsh/"
+          ]
+        }
+      ],
+      "notes": "macOS uses the same SDL desktop code path as Linux, so the data root is ~/.config/ppsspp (not ~/Library/Application Support) unless the user picks another memstick folder, which PPSSPP persists in NSUserDefaults; capture reflects the pinned v1.19.3 SDL build described by ppsspp.org's macOS page."
+    }
+  }
+}

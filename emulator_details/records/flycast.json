@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "slug": "flycast",
+  "emulator": "Flycast",
+  "sources": [
+    { "kind": "source", "repo": "flyinghead/flycast", "commit": "eddf2635867f0f16f64bebd3185db151c99c551c", "role": "config/data roots, emu.cfg sections, VMU/savestate/nvmem naming, maple port and mapping-file persistence (v2.7 flatpak pin 5aa091fde632fb332c8d8c34e280d62dc951954c uses the same dc_boot/dc_nvmem patterns)" },
+    { "kind": "docs", "url": "https://github.com/TheArcadeStriker/flycast-wiki/wiki/Getting-started-with-Flycast", "role": "dc_boot.bin in the data folder, dc_nvmem.bin and VMU_save_XY.bin file table, arcade BIOS zip names" },
+    { "kind": "docs", "url": "https://github.com/TheArcadeStriker/flycast-wiki/wiki/Configuration-files-and-command-line-parameters", "role": "emu.cfg sections and -config section:key=value parameters" },
+    { "kind": "docs", "url": "https://flathub.org/apps/details/org.flycast.Flycast", "role": "flatpak app id org.flycast.Flycast" },
+    { "kind": "source", "repo": "flathub/org.flycast.Flycast", "role": "flatpak manifest org.flycast.Flycast.yml (app-id org.flycast.Flycast, --filesystem=host:ro, pins flycast v2.7)" },
+    { "kind": "docs", "url": "repo:docs/FLYCAST_STANDALONE_PROGRESS.md", "role": "Lunchbox pinned Flycast contracts: XDG_CONFIG_HOME/flycast/emu.cfg private config, [input] maple_sdl_joystick_ID player ports, [config] Dreamcast.MappingsPath grammar, version-3 mapping writer (pin fb286f777ce690ef8acf3359a75ab84b61566ad9)" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/flycast/emu.cfg ($XDG_CONFIG_HOME/flycast/emu.cfg when that variable is set; ./emu.cfg only if neither XDG_CONFIG_HOME nor HOME is usable). emu.cfg is read from the user dir first, then system dirs $XDG_CONFIG_DIRS/flycast, /etc/flycast and /etc/xdg/flycast, but only the user dir is ever written",
+          "naming": "INI. Controller mapping lives in two places: (1) [input] section maple device/port assignments - GamepadDevice::SaveMaplePorts writes [input] maple_<unique_id> = <maple port 0-3>; SDL gamepads get unique ids sdl_joystick_<SDL instance number>, so the keys are maple_sdl_joystick_0..3, exactly the `[input] maple_sdl_joystick_ID` contract Lunchbox writes for private configs (players 1-4 -> native ports 0-3, unselected joysticks -1); (2) button/axis bindings in mapping files mappings/<api>_<device name>[-<unique_id>][_<gameId>][_arcade].cfg under the config dir, or the first directory of [config] Dreamcast.MappingsPath (semicolon/quoted dir list); mapping files are INIs with [emulator] mapping_name/dead_zone/saturation/rumble_power/version and [combo] bindN = codes:option:sequential plus a trigger list (file version 4 on master; Lunchbox's pinned writer emits version 3). Per-game options are stored as a section named by the game ID inside the same emu.cfg, not a separate file",
+          "evidence": [
+            "source:core/linux-dist/main.cpp find_user_config_dir ($XDG_CONFIG_HOME or $HOME/.config + /flycast/, created if missing, fallback \".\") and find_system_config_dirs",
+            "source:core/cfg/cfg.cpp open() loads/saves \"emu.cfg\" via get_readonly_config_path/get_writable_config_path",
+            "source:core/stdclass.cpp get_writable_config_path = user_config_dir + filename",
+            "source:core/input/gamepad_device.cpp SaveMaplePorts (config::saveInt(\"input\", MAPLE_PORT_CFG_PREFIX \"maple_\" + unique_id, maple_port)) and make_mapping_filename",
+            "source:core/sdl/sdl_gamepad.cpp _unique_id = \"sdl_joystick_\" + std::to_string(sdl_joystick_instance)",
+            "source:core/input/mapping.cpp InputMapping::save (MappingsPath[0] or get_writable_config_path(\"mappings/\"), [emulator]/[combo] sections), mapping.h CURRENT_FILE_VERSION = 4",
+            "source:core/cfg/option.h Settings::load(gameSpecific) keys per-game options off hasSection(gameId) in emu.cfg",
+            "repo:docs/FLYCAST_STANDALONE_PROGRESS.md (pinned core/linux-dist/main.cpp + find_user_config_dir, [input] maple_sdl_joystick_ID, [config] Dreamcast.MappingsPath grammar, pinned core/cfg/ini.cpp INI quote handling)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.local/share/flycast/ ($XDG_DATA_HOME/flycast when set) - the data dir root, no extra data/ subfolder. Per-game VMUs and shared VMUs sit side by side; Dreamcast console flash dc_nvmem.bin and NAOMI/Atomiswave nvmem/eeprom/card files land here too. User overrides: [config] Dreamcast.VMUPath for VMUs, [config] Dreamcast.SavePath for arcade saves",
+          "naming": "Shared VMUs: vmu_save_<port>.bin (port letter+slot, e.g. vmu_save_A1.bin, vmu_save_C1.bin). Per-game VMU is ON by default ([config] Dreamcast.PerGameVmu = true): <gameId>_vmu_save_A1.bin where gameId is the disc product number with the characters space / \\ : * ? | < > \" replaced by '_' (e.g. MK-51164_vmu_save_A1.bin); content without a game ID falls back to the legacy <content fileName>_vmu_save_A1.bin prefix. Resolution order: Dreamcast.VMUPath, then writable data dir, then read-only data dir, then legacy config dir (old .reicast layout). NAOMI/Atomiswave: <content fileName>.nvmem flash, <content fileName>.nvmem2 second Atomiswave flash, JVS <content fileName>.eeprom (+-main.eeprom for Derby multiboard main board), <content fileName>-p<N>.card / .card memory cards - all derived from the content file name in the data dir",
+          "evidence": [
+            "source:core/oslib/oslib.cpp hostfs::getVmuPath (vmu_save_<port>.bin, <gameId>_vmu_save_A1.bin with INVALID_CHARS \" /\\:*?|<>\\\"\", PerGameVmu, VMUPath override, legacy get_game_save_prefix and .reicast config-dir fallbacks)",
+            "source:core/cfg/option.cpp Option<bool> PerGameVmu(\"PerGameVmu\", true, \"config\")",
+            "source:core/stdclass.cpp get_game_save_prefix = get_writable_data_path(settings.content.fileName)",
+            "source:core/hw/flashrom/nvmem.cpp getArcadeFlashPath (hostfs::getArcadeFlashPath() + \".nvmem\", -main.nvmem multiboard, .nvmem2 for Atomiswave)",
+            "source:core/oslib/oslib.cpp hostfs::getArcadeFlashPath (Dreamcast.SavePath override or get_game_save_prefix)",
+            "source:core/hw/maple/maple_jvs.cpp eeprom (-main.eeprom, .eeprom) and -p<N>.card paths; source:core/hw/naomi/card_reader.cpp .card",
+            "docs:https://github.com/TheArcadeStriker/flycast-wiki/wiki/Getting-started-with-Flycast (VMU_save_XY.bin table entry)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.local/share/flycast/ (data dir root, next to the VMU files); override directory list [config] Dreamcast.SavestatePath",
+          "naming": "<content fileName without extension>[_<slot>].state - the slot suffix _1.._99 is omitted for slot 0; rollback/netplay states append .state.net, quicksave temp buffers .state.tmp. The PNG screenshot is embedded in the rzip-compressed file behind a SavestateHeader, not written alongside. Slots cycle through [config] Dreamcast.SavestateSlot and [config] Dreamcast.AutoSaveState triggers a final state on exit",
+          "evidence": [
+            "source:core/oslib/oslib.cpp hostfs::getSavestatePath (get_file_basename(content.fileName) + index_str + \".state\", \"_%d\" for index>0 capped at 99, \".net\" for index -1, \".tmp\" for index -2, Dreamcast.SavestatePath list then get_writable_data_path)",
+            "source:core/nullDC.cpp dc_savestate (SavestateHeader + pngData + RZipFile payload, lastStateFile)",
+            "source:core/cfg/option.cpp AutoSaveState(\"Dreamcast.AutoSaveState\"), SavestateSlot(\"Dreamcast.SavestateSlot\"), SavestatePath(\"Dreamcast.SavestatePath\")",
+            "source:core/emulator.cpp dc_loadstate(config::SavestateSlot) and AutoSaveState on unload"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.local/share/flycast/ (data dir root): dc_boot.bin for the Dreamcast; arcade BIOS zips naomi.zip, naomigd.zip, naomi2.zip(?), awbios.zip, hod2bios.zip, f355bios.zip for NAOMI/Atomiswave. Search order: [config] Dreamcast.BiosPath directories, then the data dir, then [config] Dreamcast.ContentPath directories",
+          "naming": "Dreamcast boot ROM must be named dc_boot.bin (findFlash prefix dc_ over patterns %boot.bin;%bios.bin, i.e. dc_boot.bin then a plain bios.bin); if absent Flycast uses its HLE BIOS. The console flash/VMU area file dc_nvmem.bin is generated on first run (load %nvmem.bin, save nvmem.bin with the dc_ prefix). Arcade BIOS archive names come from the BIOS[] table (naomi, naomigd, naomi2, awbios, hod2bios) resolved as <name>.zip or <name>.7z; the wiki lists naomi.zip (almost all NAOMI games), hod2bios.zip, awbios.zip, f355bios.zip and says NAOMI/Atomiswave BIOS files are required while the Dreamcast BIOS is optional. Lunchbox DB firmware_rules already carries flycast roots for this (crates/lunchbox-app/src/firmware.rs: linux ~/.local/share/flycast, flatpak ~/.var/app/org.flycast.Flycast/data/flycast)",
+          "evidence": [
+            "source:core/hw/flashrom/nvmem.cpp getRomPrefix (dc_/naomi_/naomi2_/awbios_ prefixes), loadFiles (sys_rom->Load(getRomPrefix(), \"%boot.bin;%bios.bin\", \"bootrom\") with loadHle fallback), loadFlash (%nvmem.bin), saveFiles (dc_nvmem.bin)",
+            "source:core/oslib/oslib.cpp findFlash (Dreamcast.BiosPath dirs, get_readonly_data_path, Dreamcast.ContentPath dirs) and findNaomiBios",
+            "source:core/hw/naomi/naomi_cart.cpp loadBios (findNaomiBios(arch_name + \".zip\" / \".7z\"), default \"naomi.zip\" error text)",
+            "source:core/hw/naomi/naomi_roms.cpp BIOS[] table names awbios/hod2bios/naomi/naomigd/naomi2",
+            "docs:https://github.com/TheArcadeStriker/flycast-wiki/wiki/Getting-started-with-Flycast (dc_boot.bin naming and BIOS zip table, Dreamcast BIOS optional / NAOMI+Atomiswave required)",
+            "repo:crates/lunchbox-app/src/firmware.rs (flycast firmware_rules entries for linux and linux-flatpak)"
+          ]
+        }
+      ],
+      "notes": "Lunchbox launches Flycast with a private XDG_CONFIG_HOME pointing at a session-owned flycast/emu.cfg (docs/FLYCAST_STANDALONE_PROGRESS.md 'Native Linux config selection' + 'Private config preparation'); user config is never overwritten and private writes stay session-local. Native VMU/nvmem/savestate files keep their data-dir locations."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/org.flycast.Flycast/config/flycast/emu.cfg (Flatpak sandboxes XDG_CONFIG_HOME to ~/.var/app/org.flycast.Flycast/config, so the same find_user_config_dir logic lands in config/flycast/)",
+          "naming": "Identical INI layout to native Linux: [input] maple_sdl_joystick_<n> port assignments, mappings/<...>.cfg binding files (or [config] Dreamcast.MappingsPath), [config] Dreamcast.* options, per-game sections named by game ID",
+          "evidence": [
+            "docs:https://flathub.org/apps/details/org.flycast.Flycast (flatpak id org.flycast.Flycast)",
+            "source:flathub/org.flycast.Flycast org.flycast.Flycast.yml (app-id org.flycast.Flycast, finish-args --filesystem=host:ro so content paths stay readable)",
+            "source:core/linux-dist/main.cpp find_user_config_dir honors $XDG_CONFIG_HOME inside the sandbox"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/org.flycast.Flycast/data/flycast/ (sandboxed XDG_DATA_HOME + flycast/)",
+          "naming": "Identical to native Linux: vmu_save_<port>.bin, per-game <gameId>_vmu_save_A1.bin ([config] Dreamcast.PerGameVmu default true), dc_nvmem.bin, <content fileName>.nvmem/.nvmem2/.eeprom/.card for NAOMI/Atomiswave",
+          "evidence": [
+            "source:core/oslib/oslib.cpp getVmuPath/getArcadeFlashPath resolve against get_writable_data_path (user data dir)",
+            "source:core/linux-dist/main.cpp find_user_data_dir honors $XDG_DATA_HOME",
+            "repo:crates/lunchbox-app/src/firmware.rs (flatpak flycast firmware root ~/.var/app/org.flycast.Flycast/data/flycast)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/org.flycast.Flycast/data/flycast/ (data dir root) or the [config] Dreamcast.SavestatePath override",
+          "naming": "<content basename>[_<slot 1-99>].state with .state.net/.state.tmp variants, embedded screenshot - identical to native Linux",
+          "evidence": [
+            "source:core/oslib/oslib.cpp getSavestatePath",
+            "source:core/nullDC.cpp dc_savestate"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.var/app/org.flycast.Flycast/data/flycast/ (dc_boot.bin, arcade BIOS zips); [config] Dreamcast.BiosPath dirs and content dirs are also searched and the flatpak grants --filesystem=host:ro for that",
+          "naming": "Same naming as native Linux: dc_boot.bin (HLE BIOS fallback), dc_nvmem.bin generated, naomi.zip/awbios.zip/hod2bios.zip/f355bios.zip etc.",
+          "evidence": [
+            "source:core/hw/flashrom/nvmem.cpp loadFiles/loadFlash (same patterns at the v2.7 flatpak pin 5aa091fde632fb332c8d8c34e280d62dc951954c)",
+            "source:flathub/org.flycast.Flycast org.flycast.Flycast.yml (--filesystem=host:ro)",
+            "repo:crates/lunchbox-app/src/firmware.rs (flatpak flycast bios root)"
+          ]
+        }
+      ],
+      "notes": "Flathub ships Flycast v2.7 as org.flycast.Flycast; inside the sandbox both XDG vars point under ~/.var/app/org.flycast.Flycast/, reproducing the native layout one level deeper."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<directory of flycast.exe>\\emu.cfg - the Windows build is effectively portable: setupPath takes the module directory, uses it as the config dir, and creates <exe dir>\\data\\ as the data dir (no %APPDATA% usage in the desktop build)",
+          "naming": "Same INI as Linux: [input] maple_<unique_id> port keys (SDL/SDL3/DirectInput backends give backend-specific unique ids, e.g. maple_sdl_joystick_<n> for the SDL backend), mappings\\<...>.cfg binding files under the config dir or [config] Dreamcast.MappingsPath, [config] Dreamcast.* options, per-game sections by game ID",
+          "evidence": [
+            "source:core/windows/winmain.cpp setupPath (GetModuleFileNameW -> exe dir; set_user_config_dir(fn); data_path = fn + \"data\\\\\"; set_user_data_dir(data_path))",
+            "source:core/input/gamepad_device.cpp SaveMaplePorts / make_mapping_filename",
+            "source:core/input/mapping.cpp InputMapping::save"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<exe dir>\\data\\ (the data dir): shared and per-game VMUs, Dreamcast dc_nvmem.bin, NAOMI/Atomiswave .nvmem/.nvmem2/.eeprom/.card files; [config] Dreamcast.VMUPath / Dreamcast.SavePath overrides apply",
+          "naming": "vmu_save_<port>.bin, per-game <gameId>_vmu_save_A1.bin (Dreamcast.PerGameVmu default true, invalid chars mapped to '_'), <content fileName>.nvmem/.nvmem2, <content fileName>.eeprom, <content fileName>-p<N>.card",
+          "evidence": [
+            "source:core/oslib/oslib.cpp getVmuPath/getArcadeFlashPath",
+            "source:core/hw/flashrom/nvmem.cpp getArcadeFlashPath + .nvmem/.nvmem2",
+            "source:core/windows/winmain.cpp data dir = <exe dir>\\data\\"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<exe dir>\\data\\ or the [config] Dreamcast.SavestatePath override list",
+          "naming": "<content basename>[_<slot 1-99>].state (slot 0 has no suffix), .state.net for netplay rollback, .state.tmp; PNG screenshot embedded in the rzip container",
+          "evidence": [
+            "source:core/oslib/oslib.cpp getSavestatePath",
+            "source:core/nullDC.cpp dc_savestate"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<exe dir>\\data\\ (dc_boot.bin, naomi.zip, awbios.zip, hod2bios.zip, f355bios.zip, ...); [config] Dreamcast.BiosPath and content dirs are also searched",
+          "naming": "dc_boot.bin required for real Dreamcast BIOS (HLE fallback otherwise), dc_nvmem.bin generated; arcade BIOS zips resolved by the BIOS[] table names. Lunchbox DB firmware_rules currently resolves the Windows flycast BIOS root from %LOCALAPPDATA%\\Flycast (crates/lunchbox-app/src/firmware.rs), which does not match this source layout - captured here for follow-up, not changed by this record",
+          "evidence": [
+            "source:core/hw/flashrom/nvmem.cpp loadFiles/loadFiles BIOS patterns",
+            "source:core/oslib/oslib.cpp findFlash/findNaomiBios search order",
+            "docs:https://github.com/TheArcadeStriker/flycast-wiki/wiki/Getting-started-with-Flycast (data folder layout)",
+            "repo:crates/lunchbox-app/src/firmware.rs (windows flycast root %LOCALAPPDATA%\\Flycast)"
+          ]
+        }
+      ],
+      "notes": "The pinned source keeps all Windows data portable next to the executable (exe dir + data\\); there is no roaming/local AppData path in core/windows/winmain.cpp. Lunchbox's firmware.rs Windows root is the known divergence."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/Flycast/emu.cfg, unless the legacy folder ~/.flycast/ already exists (existing ~/.flycast wins); multi-instance runs append 2/, 3/... to the config dir. App bundle Resources are added as a read-only system data dir",
+          "naming": "Same INI as other platforms: [input] maple_<unique_id> ports, mappings/<...>.cfg or [config] Dreamcast.MappingsPath, [config] Dreamcast.* options, per-game sections by game ID",
+          "evidence": [
+            "source:shell/apple/emulator-osx/emulator-osx/osx-main.mm (config_dir = $HOME/.flycast/ if it exists else $HOME/Library/Application Support/Flycast/, instance-number suffix for multiple instances, set_user_config_dir)",
+            "source:core/input/gamepad_device.cpp SaveMaplePorts",
+            "source:core/cfg/option.h per-game section handling"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<config dir>\\data/ on macOS - i.e. ~/Library/Application Support/Flycast/data/ (or ~/.flycast/data/ for legacy imports): VMUs, dc_nvmem.bin, NAOMI/Atomiswave nvmem/eeprom/card files; Dreamcast.VMUPath / Dreamcast.SavePath overrides apply",
+          "naming": "vmu_save_<port>.bin, per-game <gameId>_vmu_save_A1.bin, <content fileName>.nvmem/.nvmem2/.eeprom/-p<N>.card",
+          "evidence": [
+            "source:shell/apple/emulator-osx/emulator-osx/osx-main.mm (config_dir += \"data/\"; set_user_data_dir)",
+            "source:core/oslib/oslib.cpp getVmuPath/getArcadeFlashPath resolve against the data dir",
+            "repo:crates/lunchbox-app/src/firmware.rs (macOS flycast firmware root ~/Library/Application Support/flycast)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<config dir>data/ (~/Library/Application Support/Flycast/data/) or the [config] Dreamcast.SavestatePath override",
+          "naming": "<content basename>[_<slot 1-99>].state plus .state.net/.state.tmp variants, embedded screenshot",
+          "evidence": [
+            "source:core/oslib/oslib.cpp getSavestatePath",
+            "source:core/nullDC.cpp dc_savestate"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<config dir>data/ (dc_boot.bin, arcade BIOS zips); Dreamcast.BiosPath dirs, the app bundle Resources dir and content dirs are also searched (bundle Resources are a system data dir)",
+          "naming": "dc_boot.bin (HLE fallback), dc_nvmem.bin generated, naomi.zip/awbios.zip/hod2bios.zip/f355bios.zip etc. by BIOS[] table name",
+          "evidence": [
+            "source:shell/apple/emulator-osx/emulator-osx/osx-main.mm (bundle resources added via add_system_data_dir)",
+            "source:core/oslib/oslib.cpp findFlash/findNaomiBios",
+            "docs:https://github.com/TheArcadeStriker/flycast-wiki/wiki/Getting-started-with-Flycast",
+            "repo:crates/lunchbox-app/src/firmware.rs (macOS flycast bios root)"
+          ]
+        }
+      ],
+      "notes": "Note the source spelling is 'Flycast' (~/Library/Application Support/Flycast); Lunchbox firmware.rs uses lowercase 'flycast', which resolves on the default case-insensitive APFS/HFS+ volumes but not on case-sensitive ones - flagged for follow-up."
+    }
+  }
+}

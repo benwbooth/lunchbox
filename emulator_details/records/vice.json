@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "slug": "vice",
+  "emulator": "VICE",
+  "sources": [
+    { "kind": "docs", "url": "https://vice-emu.sourceforge.io/vice_6.html", "role": "resource file (vicerc/vice.ini) format and per-OS locations, FS-device saves" },
+    { "kind": "docs", "url": "https://vice-emu.sourceforge.io/vice_9.html", "role": "snapshot usage and .vsf format" },
+    { "kind": "docs", "url": "https://vice-emu.sourceforge.io/vice_3.html", "role": "system ROM file names and Directory search path" },
+    { "kind": "source", "repo": "VICE-Team/svn-mirror", "commit": "d322f7a8d6c269b97162c74e73214c58eaad9a71", "role": "config-path resolution, vicerc naming and quicksnap filenames (trunk r46226 per contract; cross-checked against the vice-3.10 release tarball)" },
+    { "kind": "contract", "path": "docs/VICE_NATIVE_CONTROLLER_CONTRACT.md", "role": "controller contract" },
+    { "kind": "flatpak", "id": "net.sf.VICE", "url": "https://flathub.org/apps/net.sf.VICE", "role": "flatpak existence" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/vice/vicerc (GTK builds; SDL2 builds use sdl-vicerc in the same dir), INI-style sections per emulator ([C64], [VIC20], ...) with ResourceName=ResourceValue lines; a legacy ~/.vicerc in $HOME is used when present; -config <file> selects a private config",
+          "evidence": ["docs:vice_6 section 6 intro 'on unix systems the resource file is called vicerc and is stored in the users config directory according to the XDG specification (usually ~/.config/vice/)'", "source:src/arch/shared/archdep_user_config_path.c (XDG_CONFIG_HOME + '/vice')", "source:src/arch/shared/archdep_defs.h ARCHDEP_VICERC_NAME vicerc/sdl-vicerc", "contract:docs/VICE_NATIVE_CONTROLLER_CONTRACT.md (-config <file>, ResourceName=ResourceValue)"]
+        },
+        {
+          "purpose": "saves",
+          "path": "In place inside the mounted disk (.d64/.g64/...) and tape (.t64/...) images, or with file-system devices (FSDevice8) directly in a host directory; VICE writes no per-game sidecar save files",
+          "naming": "Disk/tape saves keep the attached image's own name; FS-device saves are <program>.p00/.prg under FSDevice8Dir (FSDevice8SaveP00=1)",
+          "evidence": ["docs:vice_6.1 example vicerc showing FSDevice8Dir and FSDevice8SaveP00", "docs:vice_6 section 6.12.1 'Settings for file system devices'", "docs:vice_4 section 4.5 'Using disk and tape images'"]
+        },
+        {
+          "purpose": "states",
+          "path": "Snapshots are single complete-machine-state files chosen in the save dialog (no fixed directory); GTK3 quick snapshots default to <machine>.vsf (e.g. C64.vsf) in the config dir ~/.config/vice/, the save dialog proposes vice-snapshot-<yyyymmddHHMMSS>.vsf; -snapshot <file> saves from the command line",
+          "naming": "Extension forced to .vsf; quicksave/quickload hotkeys M-F11/M-F10 use the <machine>.vsf quicksnap; snapshots are version-bound and must not be used for long-term storage (older modules are rejected on load)",
+          "evidence": ["docs:vice_9 sections 9.1/9.2 (snapshot usage, M-F11/M-F10, module format, version rejection)", "source:src/arch/gtk3/uisnapshot.c quicksnap_filename() = <machine_get_name()>.vsf under archdep_user_config_path(), util_add_extension_const(..., \"vsf\")", "source:src/c64/c64.c machine_name[] = \"C64\""]
+        },
+        {
+          "purpose": "bios",
+          "path": "System ROMs are searched on the Directory path list $XDG_DATA_HOME/vice/<EMU>:$prefix/share/vice/<EMU>:<BOOTPATH>/<EMU> with EMU one of C64, C64DTV, C128, PET, PLUS4, CBM-II, SCPU64, VIC20 (drive ROMs under EMU=DRIVES); gap: the lunchbox DB has no VICE firmware_rules rows",
+          "naming": "C64/C128/VIC20: kernal, basic, chargen (C128 basic is 32 KiB Basic+Editor); PET uses versioned names (kernal-1/2/4..., basic-1/2/4..., edit-*, characters-1/2...); Plus4 adds c1lo/c1hi/c2lo/c2hi function ROMs; drive DOS ROMs like dos1541-325302-01+901229-05.bin",
+          "evidence": ["docs:vice_3 section 3 (Directory default) and 3.1 ROM files list", "source:src/sysfile.c sysfile_open() appends the EMU subpath to each Directory entry", "source:src/plus4/plus4rom.c c1loName/c1hiName/c2loName/c2hiName resources", "db:no firmware_rules rows exist for vice"]
+        }
+      ],
+      "notes": "Lunchbox stages a private -config/-joymap pair (contract session), so the user's own vicerc is never written; native game saves stay in the attached disk/tape images."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/net.sf.VICE/.config/vice/vicerc (the sandbox gives the app its own HOME under ~/.var/app/<id>, so the XDG .config/vice layout lands there; SDL build: sdl-vicerc)",
+          "evidence": ["flathub:net.sf.VICE (app exists)", "source:src/arch/shared/archdep_user_config_path.c XDG resolution relative to $HOME"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Same as native Linux: writes land inside the mounted disk/tape images or FS-device directories visible to the sandbox",
+          "naming": "Image saves keep the image's own name; FS-device saves are <program>.p00/.prg",
+          "evidence": ["docs:vice_6.1 FSDevice8 resources", "flathub:net.sf.VICE"]
+        },
+        {
+          "purpose": "states",
+          "path": "Snapshots via the save dialog as on native Linux; quicksnap default is ~/.var/app/net.sf.VICE/.config/vice/<machine>.vsf",
+          "naming": "<machine>.vsf quicksnap (e.g. C64.vsf); dialog-proposed vice-snapshot-<datetime>.vsf; .vsf extension forced",
+          "evidence": ["source:src/arch/gtk3/uisnapshot.c quicksnap_filename()", "docs:vice_9 snapshot usage"]
+        },
+        {
+          "purpose": "bios",
+          "path": "System ROMs inside the sandbox: ~/.var/app/net.sf.VICE/.local/share/vice/<EMU> first (XDG data home under the sandbox HOME), then the installed prefix; gap: the lunchbox DB has no VICE firmware_rules rows",
+          "naming": "Same per-machine ROM names as native Linux (kernal/basic/chargen etc.)",
+          "evidence": ["docs:vice_3 section 3 Directory search path", "source:src/arch/shared/archdep_default_sysfile_pathlist.c XDG data home first entry", "db:no firmware_rules rows exist for vice"]
+        }
+      ],
+      "notes": "Flathub build exists (net.sf.VICE); Lunchbox's native VICE integration requires native Linux, not Flatpak."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\vice\\vice.ini (GTK builds; SDL2 builds: sdl-vice.ini), same section format as vicerc; a vice.ini sitting in the program directory is also picked up at startup",
+          "evidence": ["docs:vice_6 section 6 intro 'called vice.ini and is usually stored in the users roaming profile directory (C:\\Users\\<user>\\AppData\\Roaming\\vice)'", "source:src/arch/shared/archdep_user_config_path.c CSIDL_APPDATA + '/vice'", "source:src/arch/shared/archdep_defs.h ARCHDEP_VICERC_NAME vice.ini/sdl-vice.ini"]
+        },
+        {
+          "purpose": "saves",
+          "path": "In place inside the mounted disk/tape images, or FS-device directories, as on Linux",
+          "naming": "Image saves keep the image's own name; FS-device saves are <program>.p00/.prg",
+          "evidence": ["docs:vice_6.1 FSDevice8 resources", "docs:vice_4 section 4.5"]
+        },
+        {
+          "purpose": "states",
+          "path": "Snapshots via the save dialog; quicksnap default is %APPDATA%\\vice\\<machine>.vsf",
+          "naming": "<machine>.vsf quicksnap; vice-snapshot-<datetime>.vsf proposed in the dialog; .vsf extension forced; version-bound",
+          "evidence": ["source:src/arch/gtk3/uisnapshot.c quicksnap_filename() under the user config path", "docs:vice_9 snapshot usage"]
+        },
+        {
+          "purpose": "bios",
+          "path": "System ROMs are searched on the Directory list with the user config dir first (%APPDATA%\\vice\\) and the executable's directory, each tried with the EMU subpath (C64, C128, ..., DRIVES for drive ROMs); gap: the lunchbox DB has no VICE firmware_rules rows",
+          "naming": "Same per-machine ROM names as Linux (kernal/basic/chargen; PET versioned names; dos*.bin drive ROMs)",
+          "evidence": ["docs:vice_3 section 3/3.1", "source:src/arch/shared/archdep_default_sysfile_pathlist.c non-UNIX branch uses archdep_user_config_path() then boot path", "db:no firmware_rules rows exist for vice"]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/vice/vicerc (GTK builds; SDL2 builds: sdl-vicerc) - macOS builds compile as UNIX, so the same XDG paths apply; legacy ~/.vicerc also honored",
+          "evidence": ["docs:vice_6 section 6 intro unix vicerc location", "source:src/arch/shared/archdep_user_config_path.c UNIX_COMPILE branch", "source:configure.ac defines UNIX_COMPILE for the macOS build (MACOS_COMPILE alongside it)"]
+        },
+        {
+          "purpose": "saves",
+          "path": "In place inside the mounted disk/tape images, or FS-device directories, as on Linux",
+          "naming": "Image saves keep the image's own name; FS-device saves are <program>.p00/.prg",
+          "evidence": ["docs:vice_6.1 FSDevice8 resources", "docs:vice_4 section 4.5"]
+        },
+        {
+          "purpose": "states",
+          "path": "Snapshots via the save dialog; quicksnap default is ~/.config/vice/<machine>.vsf",
+          "naming": "<machine>.vsf quicksnap; vice-snapshot-<datetime>.vsf proposed in the dialog; .vsf extension forced; version-bound",
+          "evidence": ["source:src/arch/gtk3/uisnapshot.c quicksnap_filename() under the user config path", "docs:vice_9 snapshot usage"]
+        },
+        {
+          "purpose": "bios",
+          "path": "System ROMs on the Directory list starting at $XDG_DATA_HOME/vice/<EMU> (~/.local/share/vice/<EMU>), then the prefix, per-EMU subpaths plus DRIVES for drive ROMs; gap: the lunchbox DB has no VICE firmware_rules rows",
+          "naming": "Same per-machine ROM names as Linux (kernal/basic/chargen; PET versioned names; dos*.bin drive ROMs)",
+          "evidence": ["docs:vice_3 section 3/3.1", "source:src/arch/shared/archdep_default_sysfile_pathlist.c UNIX_COMPILE XDG data home entry", "db:no firmware_rules rows exist for vice"]
+        }
+      ]
+    }
+  }
+}
