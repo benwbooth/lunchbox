@@ -5,6 +5,7 @@ import QtQuick.Layouts
 Dialog {
     id: coverage
     required property var settingsModel
+    property var recordSlugs: ["blastem","bizhawk","duckstation","desmume","dolphin","flycast","gearcoleco","gopher64","hatari","jgenesis","mame","mednafen","melonds","mgba","nestopia-ue","openmsx","pcsx2","ppsspp","punes","retroarch","rmg","rpcs3","scummvm","simple64","stella","vice","xemu"]
     property var report: ({})
     property string selectionStatus: ""
     signal nativeRuntimeRequested()
@@ -127,7 +128,10 @@ Dialog {
             model: coverage.filteredRows
             ScrollBar.vertical: ScrollBar { }
             delegate: Column {
+                id: delegateRoot
                 required property var modelData
+                property bool expandedLocations: false
+                property string locationText: ""
                 width: ListView.view.width - 20
                 spacing: 4
                 Label {
@@ -154,6 +158,37 @@ Dialog {
                     visible: !!modelData.remaining
                     text: modelData.remaining ? "Remaining:\n• " + modelData.remaining.join("\n• ") : ""
                     wrapMode: Text.WordWrap
+                }
+                Button {
+                    visible: coverage.recordSlugs.indexOf(modelData.name.toLowerCase()) >= 0
+                              || coverage.recordSlugs.indexOf(modelData.name.toLowerCase().replace(/\s+/g, "-")) >= 0
+                    text: expandedLocations ? "Hide save / state locations" : "Show save / state locations"
+                    onClicked: {
+                        expandedLocations = !expandedLocations
+                        if (expandedLocations && locationText.length === 0) {
+                            const slug = coverage.recordSlugs.find(s => s === modelData.name.toLowerCase())
+                                         || modelData.name.toLowerCase().replace(/\s+/g, "-")
+                            locationText = settingsModel.emulator_platform_locations_json(slug)
+                        }
+                    }
+                }
+                Label {
+                    width: parent.width
+                    visible: expandedLocations
+                    text: {
+                        if (!expandedLocations || locationText.length === 0) return ""
+                        try {
+                            const parsed = JSON.parse(locationText)
+                            if (parsed.error) return parsed.error
+                            return parsed.locations.map(function(loc) {
+                                const resolved = loc.resolved ? "→ " + loc.resolved : "(documented only)"
+                                return loc.platform + " / " + loc.purpose + ": " + loc.documented + " " + resolved +
+                                       (loc.naming ? "\n    naming: " + loc.naming : "")
+                            }).join("\n")
+                        } catch (e) { return locationText }
+                    }
+                    wrapMode: Text.WordWrap
+                    font.family: "monospace"
                 }
                 Button {
                     visible: modelData.native_setup === true && Qt.platform.os === "linux"

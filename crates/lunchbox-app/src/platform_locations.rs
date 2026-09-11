@@ -47,7 +47,7 @@ const RECORDS: &[&str] = &[
 ];
 
 #[derive(Debug, Deserialize)]
-struct Record {
+pub struct Record {
     slug: String,
     emulator: String,
     platforms: BTreeMap<String, PlatformEntry>,
@@ -304,6 +304,53 @@ fn sanitize_relative(rest: &str) -> Option<String> {
         })
         .to_owned();
     (!cleaned.is_empty()).then_some(cleaned)
+}
+
+/// Resolve locations for an emulator addressed by its display name
+/// (case-insensitive, normalized the same way as slugs); returns the
+/// resolved entries serialized for the settings layer, or an error when no
+/// record matches.
+pub fn locations_for_emulator_name(
+    records: &[Record],
+    emulator_name: &str,
+    bases: &LocationBases,
+) -> Result<String> {
+    let wanted = normalize_slug(emulator_name);
+    let record = records
+        .iter()
+        .find(|record| {
+            normalize_slug(&record.slug) == wanted || normalize_slug(&record.emulator) == wanted
+        })
+        .context("no captured platform record for this emulator")?;
+    let mut out = serde_json::Map::new();
+    out.insert("slug".into(), record.slug.clone().into());
+    out.insert("emulator".into(), record.emulator.clone().into());
+    let mut locations = Vec::new();
+    for (platform, entry) in &record.platforms {
+        for captured in &entry.paths {
+            let Some(purpose) = Purpose::parse(&captured.purpose) else {
+                continue;
+            };
+            if purpose != Purpose::Saves && purpose != Purpose::States {
+                continue;
+            }
+            let is_flatpak = platform == "linux-flatpak";
+            locations.push(serde_json::json!({
+                "platform": platform,
+                "purpose": purpose.as_str(),
+                "documented": captured.path,
+                "resolved": resolve_path(&captured.path, bases, is_flatpak)
+                    .map(|path| path.to_string_lossy().into_owned()),
+                "naming": captured.naming,
+            }));
+        }
+    }
+    out.insert("locations".into(), locations.into());
+    Ok(serde_json::Value::Object(out).to_string())
+}
+
+fn normalize_slug(value: &str) -> String {
+    value.trim().to_lowercase()
 }
 
 /// Count emulators with at least one resolved save or state directory on

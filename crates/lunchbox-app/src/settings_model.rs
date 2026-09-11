@@ -249,6 +249,8 @@ pub mod qobject {
         #[qinvokable]
         fn controller_coverage_json(self: &SettingsModel) -> QString;
         #[qinvokable]
+        fn emulator_platform_locations_json(self: &SettingsModel, emulator: QString) -> QString;
+        #[qinvokable]
         fn fbneo_controller_setups_json(self: &SettingsModel) -> QString;
         #[qinvokable]
         fn mame_controller_setups_json(self: &SettingsModel) -> QString;
@@ -2037,6 +2039,21 @@ impl qobject::SettingsModel {
         )
         .unwrap_or_else(|error| serde_json::json!({"error":format!("{error:#}")}));
         qstring(report.to_string())
+    }
+
+    pub fn emulator_platform_locations_json(&self, emulator: QString) -> QString {
+        let bases = crate::platform_locations::LocationBases::detect();
+        let result = crate::platform_locations::load_records().and_then(|records| {
+            crate::platform_locations::locations_for_emulator_name(
+                &records,
+                &emulator.to_string(),
+                &bases,
+            )
+        });
+        match result {
+            Ok(text) => qstring(text),
+            Err(error) => qstring(serde_json::json!({"error": format!("{error:#}")}).to_string()),
+        }
     }
 
     pub fn fbneo_controller_setups_json(&self) -> QString {
