@@ -47,6 +47,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "scummvm"
                 | "jgenesis"
                 | "kronos"
+                | "yaba-sanshiro"
         )
 }
 

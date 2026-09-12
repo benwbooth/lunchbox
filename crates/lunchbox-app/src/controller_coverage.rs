@@ -38,6 +38,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "ScummVM",
     "jgenesis",
     "kronos",
+    "Yaba Sanshiro 2",
 ];
 
 pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
