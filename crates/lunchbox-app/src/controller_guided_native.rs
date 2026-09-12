@@ -325,6 +325,16 @@ pub(crate) fn settings_for_launch<'a>(
                 setup.review(&mapping.calibrations)?;
             }
         }
+        "yaba-sanshiro" => {
+            for setup in &mut mapping.yaba_sanshiro_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
         "xemu" => {
             for setup in &mut mapping.xemu_native_launches {
                 if !matches(&setup.emulator_id, &setup.content) {

@@ -49,4 +49,24 @@ impl SavedSetup {
         );
         Ok(())
     }
+
+    pub(crate) fn review(
+        &self,
+        calibrations: &std::collections::HashMap<String, crate::controller_catalog::Calibration>,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.validate()?;
+        let profile = crate::controller_catalog::catalog()
+            .emulator_profiles
+            .iter()
+            .find(|p| p.id == "yaba-sanshiro:standalone-saturn-digital")
+            .ok_or_else(|| anyhow::anyhow!("Missing native Yaba Sanshiro 2 profile"))?;
+        let calibration = calibrations
+            .get(&self.controller_id)
+            .ok_or_else(|| anyhow::anyhow!("Yaba Sanshiro 2 calibration disappeared"))?;
+        let mapping = calibration.plan_profile(profile)?;
+        Ok(serde_json::json!({"launch_ready":false,
+            "launch_integration":"partial",
+            "target_layout":profile.target_layout,
+            "mapping":mapping}))
+    }
 }
