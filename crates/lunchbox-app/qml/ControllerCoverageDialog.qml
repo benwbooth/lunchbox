@@ -162,7 +162,7 @@ Dialog {
                 Button {
                     visible: coverage.recordSlugs.indexOf(modelData.name.toLowerCase()) >= 0
                               || coverage.recordSlugs.indexOf(modelData.name.toLowerCase().replace(/\s+/g, "-")) >= 0
-                    text: expandedLocations ? "Hide save / state locations" : "Show save / state locations"
+                    text: expandedLocations ? "Hide captured locations" : "Show captured locations"
                     onClicked: {
                         expandedLocations = !expandedLocations
                         if (expandedLocations && locationText.length === 0) {

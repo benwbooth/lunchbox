@@ -206,6 +206,25 @@ pub fn save_locations(
     emulator_slug: &str,
     bases: &LocationBases,
 ) -> Vec<SaveLocation> {
+    adapter_locations(
+        records,
+        emulator_slug,
+        &[Purpose::Saves, Purpose::States],
+        bases,
+    )
+}
+
+/// Resolve captured locations for one emulator filtered to the requested
+/// purposes (controller `config`, `bios`/`keys` firmware, `saves`/`states`).
+/// Powers per-emulator adapters: every entry keeps its documented capture,
+/// machine-resolvable directory (or `None` when documentation-only),
+/// naming convention, and evidence.
+pub fn adapter_locations(
+    records: &[Record],
+    emulator_slug: &str,
+    purposes: &[Purpose],
+    bases: &LocationBases,
+) -> Vec<SaveLocation> {
     let mut result = Vec::new();
     for record in records {
         if record.slug != emulator_slug {
@@ -219,7 +238,7 @@ pub fn save_locations(
                 let Some(purpose) = Purpose::parse(&captured.purpose) else {
                     continue;
                 };
-                if purpose != Purpose::Saves && purpose != Purpose::States {
+                if !purposes.contains(&purpose) {
                     continue;
                 }
                 let resolved = resolve_path(&captured.path, bases, is_flatpak);
@@ -316,7 +335,9 @@ fn sanitize_relative(rest: &str) -> Option<String> {
 /// Resolve locations for an emulator addressed by its display name
 /// (case-insensitive, normalized the same way as slugs); returns the
 /// resolved entries serialized for the settings layer, or an error when no
-/// record matches.
+/// record matches. Covers all adapter purposes: controller `config`
+/// syntax/location, `bios`/`keys` firmware, and `saves`/`states` for
+/// save sync.
 pub fn locations_for_emulator_name(
     records: &[Record],
     emulator_name: &str,
@@ -338,9 +359,6 @@ pub fn locations_for_emulator_name(
             let Some(purpose) = Purpose::parse(&captured.purpose) else {
                 continue;
             };
-            if purpose != Purpose::Saves && purpose != Purpose::States {
-                continue;
-            }
             let is_flatpak = platform == "linux-flatpak";
             locations.push(serde_json::json!({
                 "platform": platform,
@@ -349,6 +367,7 @@ pub fn locations_for_emulator_name(
                 "resolved": resolve_path(&captured.path, bases, is_flatpak)
                     .map(|path| path.to_string_lossy().into_owned()),
                 "naming": captured.naming,
+                "evidence": captured.evidence,
             }));
         }
     }
@@ -605,5 +624,54 @@ mod tests {
         let records = load_records().unwrap();
         let count = resolved_emulator_count(&records, &bases());
         assert!(count > 0 && count <= records.len());
+    }
+
+    #[test]
+    fn adapter_locations_cover_config_bios_and_keys() {
+        let records = load_records().unwrap();
+        // Every captured emulator documents its controller-config syntax and
+        // firmware location for future adapters.
+        for record in &records {
+            let config = adapter_locations(&records, &record.slug, &[Purpose::Config], &bases());
+            assert!(
+                !config.is_empty(),
+                "{} documents no controller config",
+                record.slug
+            );
+            assert!(config.iter().all(|l| !l.documented.is_empty()));
+            assert!(config.iter().all(|l| !l.evidence.is_empty()));
+            let bios = adapter_locations(&records, &record.slug, &[Purpose::Bios], &bases());
+            assert!(
+                !bios.is_empty(),
+                "{} documents no bios location",
+                record.slug
+            );
+        }
+        // Switch-derived runtimes resolve their keys under the data dir.
+        let keys = adapter_locations(&records, "citron-neo", &[Purpose::Keys], &bases());
+        assert!(!keys.is_empty());
+        assert!(keys.iter().any(|l| {
+            l.resolved
+                .as_ref()
+                .is_some_and(|path| path.starts_with("/home/test/.local/share"))
+        }));
+        // RetroArch exposes its shared frontend config for every core.
+        let retro = adapter_locations(&records, "retroarch", &[Purpose::Config], &bases());
+        assert!(retro.iter().any(|l| l.documented.contains("retroarch.cfg")));
+    }
+
+    #[test]
+    fn settings_payload_includes_all_adapter_purposes() {
+        let records = load_records().unwrap();
+        let text = locations_for_emulator_name(&records, "Eden", &bases()).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let locations = value["locations"].as_array().unwrap();
+        for purpose in ["config", "bios", "keys", "saves"] {
+            assert!(
+                locations.iter().any(|l| l["purpose"] == purpose),
+                "eden payload lacks {purpose}"
+            );
+        }
+        assert!(locations.iter().all(|l| l["evidence"].as_array().is_some()));
     }
 }
