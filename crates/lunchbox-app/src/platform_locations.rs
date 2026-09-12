@@ -17,16 +17,22 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 const RECORDS: &[&str] = &[
-    include_str!("../../../emulator_details/records/blastem.json"),
+    include_str!("../../../emulator_details/records/altirra.json"),
     include_str!("../../../emulator_details/records/bizhawk.json"),
-    include_str!("../../../emulator_details/records/duckstation.json"),
+    include_str!("../../../emulator_details/records/blastem.json"),
+    include_str!("../../../emulator_details/records/citron-neo.json"),
     include_str!("../../../emulator_details/records/desmume.json"),
     include_str!("../../../emulator_details/records/dolphin.json"),
+    include_str!("../../../emulator_details/records/dosbox-staging.json"),
+    include_str!("../../../emulator_details/records/duckstation.json"),
+    include_str!("../../../emulator_details/records/eden.json"),
+    include_str!("../../../emulator_details/records/emulicious.json"),
     include_str!("../../../emulator_details/records/flycast.json"),
     include_str!("../../../emulator_details/records/gearcoleco.json"),
     include_str!("../../../emulator_details/records/gopher64.json"),
     include_str!("../../../emulator_details/records/hatari.json"),
     include_str!("../../../emulator_details/records/jgenesis.json"),
+    include_str!("../../../emulator_details/records/kronos.json"),
     include_str!("../../../emulator_details/records/mame.json"),
     include_str!("../../../emulator_details/records/mednafen.json"),
     include_str!("../../../emulator_details/records/melonds.json"),
@@ -44,6 +50,7 @@ const RECORDS: &[&str] = &[
     include_str!("../../../emulator_details/records/stella.json"),
     include_str!("../../../emulator_details/records/vice.json"),
     include_str!("../../../emulator_details/records/xemu.json"),
+    include_str!("../../../emulator_details/records/yaba-sanshiro-2.json"),
 ];
 
 #[derive(Debug, Deserialize)]
@@ -494,7 +501,7 @@ mod tests {
     #[test]
     fn all_embedded_records_parse() {
         let records = load_records().unwrap();
-        assert!(records.len() >= 27);
+        assert!(records.len() >= 34);
         let slugs: BTreeSet<_> = records.iter().map(|r| r.slug.clone()).collect();
         assert_eq!(slugs.len(), records.len(), "duplicate record slug");
     }
