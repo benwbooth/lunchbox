@@ -1,5 +1,8 @@
 //! Source-accurate Cemu standalone controller-profile writer.
 //!
+//! Pinned source: cemu-project/Cemu commit
+//! `3310f3b8b184d64a62b89fd59088c799432badf5`.
+//!
 //! Cemu's native profile format is XML, and its SDL controller UUID is the
 //! occurrence number followed by SDL's lower-case GUID (`0_<guid>` for the
 //! first device).  This module deliberately writes only the VPAD mappings;
@@ -40,23 +43,26 @@ pub(crate) enum Binding {
 }
 
 impl Binding {
-    fn cemu_value(self) -> u64 {
+    fn cemu_value(self) -> Result<u64> {
         match self {
-            Self::Button(index) => index,
+            Self::Button(index) => {
+                ensure!(index < 32, "Cemu SDL gamepad button is out of range");
+                Ok(index)
+            }
             Self::Axis { index, positive } => match (index, positive) {
-                (0, true) => 38,
-                (1, true) => 39,
-                (2, true) => 40,
-                (3, true) => 41,
-                (4, true) => 42,
-                (5, true) => 43,
-                (0, false) => 44,
-                (1, false) => 45,
-                (2, false) => 46,
-                (3, false) => 47,
-                (4, false) => 48,
-                (5, false) => 49,
-                _ => u64::MAX,
+                (0, true) => Ok(38),
+                (1, true) => Ok(39),
+                (2, true) => Ok(40),
+                (3, true) => Ok(41),
+                (4, true) => Ok(42),
+                (5, true) => Ok(43),
+                (0, false) => Ok(44),
+                (1, false) => Ok(45),
+                (2, false) => Ok(46),
+                (3, false) => Ok(47),
+                (4, false) => Ok(48),
+                (5, false) => Ok(49),
+                _ => anyhow::bail!("Cemu SDL gamepad axis is out of range"),
             },
         }
     }
@@ -98,17 +104,17 @@ pub(crate) fn profile_xml(
     out.push_str(&guid.to_ascii_lowercase());
     out.push_str("</uuid>\n    <display_name>");
     out.push_str(&xml_escape(display_name));
-    out.push_str("</display_name>\n    <rumble>1</rumble>\n    <axis><deadzone>0.25</deadzone><range>1</range></axis>\n    <rotation><deadzone>0.25</deadzone><range>1</range></rotation>\n    <trigger><deadzone>0.25</deadzone><range>1</range></trigger>\n    <mappings>\n");
+    // ControllerBase's default settings in the pinned source use zero rumble
+    // and a 0.25 deadzone for each axis family.  Keep the generated profile
+    // source-shaped without silently enabling haptics.
+    out.push_str("</display_name>\n    <rumble>0</rumble>\n    <axis><deadzone>0.25</deadzone><range>1</range></axis>\n    <rotation><deadzone>0.25</deadzone><range>1</range></rotation>\n    <trigger><deadzone>0.25</deadzone><range>1</range></trigger>\n    <mappings>\n");
     let mut used = std::collections::BTreeSet::new();
     for (name, target) in CONTROLS {
         let binding = mappings
             .get(name)
             .ok_or_else(|| anyhow::anyhow!("Cemu mapping {name} is absent"))?;
-        let value = binding.cemu_value();
-        ensure!(
-            value != u64::MAX && used.insert(value),
-            "Cemu mapping is invalid or reused"
-        );
+        let value = binding.cemu_value()?;
+        ensure!(used.insert(value), "Cemu mapping is reused");
         out.push_str(&format!(
             "      <entry><mapping>{target}</mapping><button>{value}</button></entry>\n"
         ));
@@ -134,6 +140,7 @@ mod tests {
         .unwrap();
         assert!(xml.contains("<uuid>2_0123456789abcdef0123456789abcdef</uuid>"));
         assert!(xml.contains("Pad &amp; one"));
+        assert!(xml.contains("<rumble>0</rumble>"));
         assert_eq!(xml.matches("<entry>").count(), 18);
     }
 }
