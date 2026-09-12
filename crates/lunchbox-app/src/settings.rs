@@ -293,6 +293,9 @@ pub struct ControllerMappingSettings {
     pub(crate) jgenesis_native_launches:
         Vec<crate::controller_jgenesis_native::settings::SavedSetup>,
     #[serde(default)]
+    pub(crate) yaba_sanshiro_native_launches:
+        Vec<crate::controller_yaba_sanshiro_native::settings::SavedSetup>,
+    #[serde(default)]
     pub(crate) mednafen_launches: Vec<crate::controller_mednafen::settings::SavedSetup>,
     #[serde(default)]
     pub(crate) mame_native_launches: Vec<crate::controller_mame_native::settings::SavedSetup>,
@@ -419,6 +422,7 @@ impl Default for ControllerMappingSettings {
             xemu_native_launches: Vec::new(),
             scummvm_native_launches: Vec::new(),
             jgenesis_native_launches: Vec::new(),
+            yaba_sanshiro_native_launches: Vec::new(),
             mednafen_launches: Vec::new(),
             mame_native_launches: Vec::new(),
             flycast_native_launches: Vec::new(),
@@ -1388,8 +1392,8 @@ impl ControllerMappingSettings {
         crate::controller_jgenesis_native::settings::validate_setups(
             &self.jgenesis_native_launches,
         )?;
-        crate::controller_jgenesis_native::settings::validate_setups(
-            &self.jgenesis_native_launches,
+        crate::controller_yaba_sanshiro_native::settings::validate_setups(
+            &self.yaba_sanshiro_native_launches,
         )?;
         crate::controller_mednafen::settings::validate_setups(&self.mednafen_launches)?;
         crate::controller_mame_native::settings::validate_setups(&self.mame_native_launches)?;
