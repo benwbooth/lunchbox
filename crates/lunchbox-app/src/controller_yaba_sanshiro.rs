@@ -93,6 +93,96 @@ pub(crate) fn binding_key(port: u32, id: u32, per_type: u32, pad_key: u8) -> Str
     format!("Input/Port/{port}/Id/{id}/Controller/{per_type}/Key/{pad_key}")
 }
 
+/// Host key-code layout from `yabause/src/persdlcodes.h`: bits 0-15 payload,
+/// 16-17 sub-type, 18-19 device, 20 raw axis, 21 raw hat, 22 game controller.
+pub(crate) const PERSDL_DEVICE_SHIFT: u32 = 18;
+pub(crate) const PERSDL_DEVICE_MASK: u32 = 0x3 << PERSDL_DEVICE_SHIFT;
+pub(crate) const PERSDL_MAX_DEVICES: u32 = 4;
+const PERSDL_CODE_LIMIT: u32 = 0x44_0000;
+
+/// Game-controller codes (SDL-recognised pads).
+pub(crate) const SDL_GC_BUTTON_VALUE: u32 = 0x40_0000;
+pub(crate) const SDL_GC_AXIS_POS_VALUE: u32 = 0x41_0000;
+pub(crate) const SDL_GC_AXIS_NEG_VALUE: u32 = 0x42_0000;
+pub(crate) const SDL_GC_AXIS_ANALOG_VALUE: u32 = 0x43_0000;
+
+/// Raw-joystick codes (devices SDL has no mapping for).
+pub(crate) const SDL_MAX_AXIS_VALUE: u32 = 0x11_0000;
+pub(crate) const SDL_MIN_AXIS_VALUE: u32 = 0x10_0000;
+pub(crate) const SDL_HAT_VALUE: u32 = 0x20_0000;
+
+/// Cardinal hat states accepted by the input scan.
+pub(crate) const SDL_HAT_UP: u8 = 0x01;
+pub(crate) const SDL_HAT_RIGHT: u8 = 0x02;
+pub(crate) const SDL_HAT_DOWN: u8 = 0x04;
+pub(crate) const SDL_HAT_LEFT: u8 = 0x08;
+
+fn check_device(device: u32) -> Result<u32, ()> {
+    if device >= PERSDL_MAX_DEVICES {
+        return Err(());
+    }
+    Ok(device << PERSDL_DEVICE_SHIFT)
+}
+
+/// `SDL_GC_BUTTON_VALUE | (device << 18) | button`.
+pub(crate) fn gc_button_code(device: u32, button: u16) -> Result<u32, ()> {
+    Ok(SDL_GC_BUTTON_VALUE | check_device(device)? | u32::from(button))
+}
+
+/// `SDL_GC_AXIS_{POS,NEG}_VALUE | (device << 18) | axis`.
+pub(crate) fn gc_axis_code(device: u32, axis: u16, positive: bool) -> Result<u32, ()> {
+    let base = if positive {
+        SDL_GC_AXIS_POS_VALUE
+    } else {
+        SDL_GC_AXIS_NEG_VALUE
+    };
+    Ok(base | check_device(device)? | u32::from(axis))
+}
+
+/// `SDL_GC_AXIS_ANALOG_VALUE | (device << 18) | axis`.
+pub(crate) fn gc_axis_analog_code(device: u32, axis: u16) -> Result<u32, ()> {
+    Ok(SDL_GC_AXIS_ANALOG_VALUE | check_device(device)? | u32::from(axis))
+}
+
+/// `(device << 18) | (button + 1)` for unmapped devices.
+pub(crate) fn raw_button_code(device: u32, button: u16) -> Result<u32, ()> {
+    Ok(check_device(device)? | (u32::from(button) + 1))
+}
+
+/// `(device << 18) | SDL_HAT_VALUE | (hat << 4) | index`; cardinal hats only.
+pub(crate) fn raw_hat_code(device: u32, hat_index: u16, hat: u8) -> Result<u32, ()> {
+    match hat {
+        SDL_HAT_UP | SDL_HAT_RIGHT | SDL_HAT_DOWN | SDL_HAT_LEFT => Ok(check_device(device)?
+            | SDL_HAT_VALUE
+            | (u32::from(hat) << 4)
+            | u32::from(hat_index)),
+        _ => Err(()),
+    }
+}
+
+/// `(device << 18) | SDL_{MAX,MIN}_AXIS_VALUE | axis` for unmapped devices.
+pub(crate) fn raw_axis_code(device: u32, axis: u16, positive: bool) -> Result<u32, ()> {
+    let base = if positive {
+        SDL_MAX_AXIS_VALUE
+    } else {
+        SDL_MIN_AXIS_VALUE
+    };
+    Ok(base | check_device(device)? | u32::from(axis))
+}
+
+/// Re-point a stored binding at a different device, mirroring
+/// `PERSDLRetargetCode`: unbound codes, out-of-core codes, and
+/// unencodable devices come back unchanged.
+pub(crate) fn retarget_code(key: u32, device: u32) -> u32 {
+    if key == PERKEY_UNBOUND || device >= PERSDL_MAX_DEVICES {
+        return key;
+    }
+    if (key & !PERSDL_DEVICE_MASK) >= PERSDL_CODE_LIMIT {
+        return key;
+    }
+    (key & !PERSDL_DEVICE_MASK) | (device << PERSDL_DEVICE_SHIFT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,5 +247,37 @@ mod tests {
         assert_eq!(CONFIG_RELATIVE, "YabaSanshiro/qt/yabause.ini");
         assert_eq!(LEGACY_CONFIG_RELATIVE, ".yabause/yabause.ini");
         assert_eq!(WINDOWS_APPDATA_RELATIVE, "YabaSanshiro/yabause.ini");
+    }
+
+    #[test]
+    fn host_codes_match_the_sdl_layout() {
+        assert_eq!(gc_button_code(0, 5).unwrap(), 0x40_0000 | 5);
+        assert_eq!(gc_button_code(2, 0).unwrap(), 0x40_0000 | (2 << 18));
+        assert_eq!(gc_axis_code(1, 3, true).unwrap(), 0x41_0000 | (1 << 18) | 3);
+        assert_eq!(
+            gc_axis_code(1, 3, false).unwrap(),
+            0x42_0000 | (1 << 18) | 3
+        );
+        assert_eq!(gc_axis_analog_code(0, 2).unwrap(), 0x43_0000 | 2);
+        assert_eq!(raw_button_code(0, 0).unwrap(), 1);
+        assert_eq!(raw_button_code(3, 7).unwrap(), (3 << 18) | 8);
+        assert_eq!(
+            raw_hat_code(0, 1, SDL_HAT_UP).unwrap(),
+            0x20_0000 | (1 << 4) | 1
+        );
+        assert_eq!(raw_axis_code(0, 0, true).unwrap(), 0x11_0000);
+        assert_eq!(raw_axis_code(0, 0, false).unwrap(), 0x10_0000);
+        assert!(gc_button_code(4, 0).is_err());
+        assert!(raw_hat_code(0, 0, 0x03).is_err());
+        assert!(raw_hat_code(0, 0, 0x00).is_err());
+    }
+
+    #[test]
+    fn retarget_follows_devices_like_the_core() {
+        let code = gc_button_code(0, 5).unwrap();
+        assert_eq!(retarget_code(code, 2), gc_button_code(2, 5).unwrap());
+        assert_eq!(retarget_code(PERKEY_UNBOUND, 1), PERKEY_UNBOUND);
+        assert_eq!(retarget_code(code, 4), code);
+        assert_eq!(retarget_code(0x0100_0000, 1), 0x0100_0000);
     }
 }
