@@ -28,6 +28,7 @@ fn observe(
 
 pub(crate) struct PreparedSession {
     pub(crate) directory: tempfile::TempDir,
+    pub(crate) home_path: std::path::PathBuf,
     pub(crate) config_path: std::path::PathBuf,
     pub(crate) runtime_path: String,
     pub(crate) device_index: u32,
@@ -150,7 +151,12 @@ impl PreparedSession {
         let directory = tempfile::Builder::new()
             .prefix("lunchbox-yaba-sanshiro-")
             .tempdir()?;
-        let config_path = directory.path().join("yabause.ini");
+        // A private HOME keeps the user's own yabause.ini untouched: Qt
+        // resolves the config to <home>/.config/YabaSanshiro/qt/yabause.ini.
+        let home_path = directory.path().join("home");
+        let config_dir = home_path.join(".config").join("YabaSanshiro").join("qt");
+        std::fs::create_dir_all(&config_dir)?;
+        let config_path = config_dir.join("yabause.ini");
         std::fs::write(&config_path, body)?;
         let mut hashes = std::collections::BTreeMap::new();
         for path in [&setup.probe_program, &setup.sdl_library, &setup.content] {
@@ -159,6 +165,7 @@ impl PreparedSession {
         hashes.insert(config_path.clone(), file_hash(&config_path)?);
         let session = Self {
             directory,
+            home_path,
             config_path,
             runtime_path,
             device_index,
