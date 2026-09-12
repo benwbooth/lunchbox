@@ -62,6 +62,8 @@ mod controller_target;
 mod controller_vice_native;
 mod controller_xemu_native;
 mod controller_yaba_sanshiro;
+#[cfg(target_os = "linux")]
+mod controller_yaba_sanshiro_native;
 mod controllers;
 mod couch_theme;
 mod download_plan;
