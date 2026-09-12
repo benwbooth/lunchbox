@@ -56,7 +56,7 @@ is documented in [EMULATOR_FEATURE_MATRIX.md](EMULATOR_FEATURE_MATRIX.md).
 | Structured core firmware files | 399 | 399 dispositions | 100.0% | 181 have published digests; 218 explicitly have no published digest |
 | Structured core save dispositions | 94 | 94 cores | 100.0% | 52 supported, 19 content-dependent, 15 unsupported, 8 unknown |
 | Structured core state dispositions | 94 | 94 cores | 100.0% | 74 supported, 9 unsupported, 11 unknown |
-| End-to-end save synchronization | 0 | 343 catalog runtimes | 0.0% | Identity, transport, versioning, conflicts, atomic restore, and UI remain |
+| Live end-to-end save synchronization | 0 | 343 catalog runtimes | 0.0% | The provider-neutral engine, transport, versioning, conflict UI, and atomic local restore are implemented; real-provider plus emulator save/load evidence remains per runtime and host |
 
 ## Integration findings that remain distinct from completion
 
@@ -77,10 +77,15 @@ is documented in [EMULATOR_FEATURE_MATRIX.md](EMULATOR_FEATURE_MATRIX.md).
    `simple64` runtime absent from the database, on all four hosts: 1,376 rows.
    It preserves manual test statuses across regeneration by exact runtime ID
    and host.
-5. The save consumer performs a bounded local walk only. It does not establish
-   game identity, hash/version files, synchronize remotely, resolve conflicts,
-   or restore atomically. Altirra, DOSBox Staging, Hatari, Kronos, xemu, and
-   Yaba Sanshiro 2 require whole-image coordination.
+5. The save consumer now hashes and versions the exact captured emulator/runtime
+   roots, synchronizes them through OpenDAL, performs three-way merge from an
+   immutable common ancestor, requires explicit Local/Remote choices for
+   conflicts, and stages atomic local restoration with recovery copies. Whole
+   images remain indivisible artifacts and are only synchronized while the
+   observed emulator process is stopped. Deterministic in-memory transport and
+   coordinator tests plus a Linux offscreen Qt settings probe are green; no
+   matrix `save_test_status` is promoted until a real provider and the exact
+   emulator save/load behavior are exercised on that host.
 6. Standalone firmware identities remain prose unless a runtime rule exists.
    RetroArch core firmware is structured separately, including published
    digests where the pinned core-info source provides them. Neither proves that

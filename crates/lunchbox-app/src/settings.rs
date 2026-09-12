@@ -21,6 +21,7 @@ const STEAMGRIDDB_KEYRING_ACCOUNT: &str = "steamgriddb-api-key";
 const IGDB_KEYRING_ACCOUNT: &str = "igdb-twitch-credentials";
 const EMUMOVIES_KEYRING_ACCOUNT: &str = "emumovies-credentials";
 const SCREENSCRAPER_KEYRING_ACCOUNT: &str = "screenscraper-credentials";
+const SAVE_CLOUD_KEYRING_ACCOUNT: &str = "save-cloud-profile";
 const MAX_RETAINED_TORRENT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_EMULATOR_LIFECYCLE_HISTORY: usize = 200;
 const MAX_GAME_TAGS: usize = 32;
@@ -5664,6 +5665,27 @@ pub fn save_password(password: &str) -> Result<()> {
         password,
         "qBittorrent password",
     )
+}
+
+pub fn load_save_cloud_profile() -> Result<Option<crate::save_cloud::CloudProfile>> {
+    let Some(encoded) = load_secret(SAVE_CLOUD_KEYRING_ACCOUNT, "cloud-save profile")? else {
+        return Ok(None);
+    };
+    let profile: crate::save_cloud::CloudProfile =
+        serde_json::from_str(&encoded).context("decoding cloud-save profile")?;
+    profile.validate()?;
+    Ok(Some(profile))
+}
+
+pub fn save_save_cloud_profile(profile: Option<&crate::save_cloud::CloudProfile>) -> Result<()> {
+    let encoded = profile
+        .map(|profile| {
+            profile.validate()?;
+            serde_json::to_string(profile).context("encoding cloud-save profile")
+        })
+        .transpose()?
+        .unwrap_or_default();
+    save_secret(SAVE_CLOUD_KEYRING_ACCOUNT, &encoded, "cloud-save profile")
 }
 
 pub fn load_steamgriddb_api_key() -> Result<Option<String>> {

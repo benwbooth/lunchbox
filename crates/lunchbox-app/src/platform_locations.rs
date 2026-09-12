@@ -16,6 +16,8 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use crate::save_sync::{RouteRoot, SavePurpose, SaveRoute};
+
 include!(concat!(env!("OUT_DIR"), "/platform_records.rs"));
 
 const CAPTURE_STATUSES: [&str; 4] = ["captured", "not_supported", "not_required", "unresolved"];
@@ -65,6 +67,10 @@ struct CapturedPath {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SaveLocation {
     pub emulator_slug: String,
+    /// Source-record host/runtime variant (`linux`, `linux-flatpak`, `macos`,
+    /// or `windows`). Callers that mutate save data must select one exact
+    /// variant instead of combining every locally resolvable installation.
+    pub platform: String,
     pub purpose: Purpose,
     /// Whether this dimension is captured, unsupported, unnecessary, or
     /// unresolved. Older records default to `captured`.
@@ -218,6 +224,20 @@ pub fn record_slugs() -> Result<Vec<String>> {
     Ok(slugs)
 }
 
+/// Resolve a catalog/runtime display name to the stable embedded-record slug.
+/// Save synchronization uses the slug as its remote namespace, never a
+/// localized UI label or executable filename.
+pub fn slug_for_emulator_name(records: &[Record], emulator_name: &str) -> Result<String> {
+    let wanted = normalize_slug(emulator_name);
+    records
+        .iter()
+        .find(|record| {
+            normalize_slug(&record.slug) == wanted || normalize_slug(&record.emulator) == wanted
+        })
+        .map(|record| record.slug.clone())
+        .context("no captured platform record for this emulator")
+}
+
 /// Resolve save/state locations for one captured emulator on the caller's
 /// host. Only machine-interpretable captured paths produce resolved
 /// directories; documentation-only entries come back with `resolved: None`.
@@ -232,6 +252,80 @@ pub fn save_locations(
         &[Purpose::Saves, Purpose::States],
         bases,
     )
+}
+
+/// Resolve save/state locations for one exact runtime variant. This is the
+/// mutation-safe entry point for save synchronization: a Linux host can have
+/// native and Flatpak installations at the same time, and their data roots
+/// must never be silently merged.
+pub fn save_locations_for_platform(
+    records: &[Record],
+    emulator_slug: &str,
+    platform: &str,
+    bases: &LocationBases,
+) -> Result<Vec<SaveLocation>> {
+    ensure!(
+        matches!(platform, "linux" | "linux-flatpak" | "macos" | "windows"),
+        "unknown save runtime platform {platform}"
+    );
+    let locations = save_locations(records, emulator_slug, bases)
+        .into_iter()
+        .filter(|location| location.platform == platform)
+        .collect::<Vec<_>>();
+    ensure!(
+        !locations.is_empty(),
+        "{emulator_slug} has no captured save/state locations for {platform}"
+    );
+    Ok(locations)
+}
+
+/// Convert one exact runtime's captured, machine-resolvable save locations
+/// into stable synchronization routes. Unresolved, unsupported, and
+/// documentation-only locations are excluded instead of being mistaken for
+/// empty directories.
+pub fn save_route_roots_for_platform(
+    records: &[Record],
+    emulator_slug: &str,
+    platform: &str,
+    bases: &LocationBases,
+) -> Result<Vec<RouteRoot>> {
+    let locations = save_locations_for_platform(records, emulator_slug, platform, bases)?;
+    let mut indices = BTreeMap::<&'static str, u16>::new();
+    let mut roots = Vec::new();
+    for location in locations {
+        let purpose = match location.purpose {
+            Purpose::Saves => SavePurpose::Saves,
+            Purpose::States => SavePurpose::States,
+            _ => continue,
+        };
+        let counter = indices.entry(purpose.as_str()).or_default();
+        let root_index = *counter;
+        *counter = counter
+            .checked_add(1)
+            .context("too many captured save roots")?;
+        if location.status != "captured" {
+            continue;
+        }
+        let Some(path) = location.resolved else {
+            continue;
+        };
+        roots.push(RouteRoot {
+            route: SaveRoute {
+                purpose,
+                root_index,
+            },
+            path,
+            // Prose, user-chosen media paths, and unresolved dimensions were
+            // excluded above. A missing fixed path means the emulator has not
+            // created its save directory yet and is safe to create on pull.
+            create_if_missing: true,
+        });
+    }
+    ensure!(
+        !roots.is_empty(),
+        "{emulator_slug} has no machine-resolvable save/state roots for {platform}"
+    );
+    Ok(roots)
 }
 
 /// Resolve captured locations for one emulator filtered to the requested
@@ -266,6 +360,7 @@ pub fn adapter_locations(
                     .flatten();
                 result.push(SaveLocation {
                     emulator_slug: record.slug.clone(),
+                    platform: platform.clone(),
                     purpose,
                     status: captured.status.clone(),
                     documented: captured.path.clone(),
@@ -281,8 +376,9 @@ pub fn adapter_locations(
 
 /// Resolve one captured path against the bases. Returns None when the path
 /// is pure prose, targets an unmatched flatpak sandbox, or roots outside the
-/// caller's bases. Bare relative fragments (e.g. "savestates/") anchor at
-/// the data dir by convention.
+/// caller's bases. Bare relative fragments are documentation-only: their base
+/// is emulator-specific and guessing an XDG directory would make mutating
+/// callers synchronize the wrong files.
 fn resolve_path(captured: &str, bases: &LocationBases, platform: &str) -> Option<PathBuf> {
     let trimmed = captured.trim();
     if trimmed.is_empty() {
@@ -325,19 +421,7 @@ fn resolve_path(captured: &str, bases: &LocationBases, platform: &str) -> Option
         // PPSSPP-style memstick roots resolve under the data dir convention.
         ("data", rest)
     } else {
-        // Bare relative fragments ("savestates/ in the user directory")
-        // anchor at the data dir; the prose tail is stripped by
-        // sanitize_relative. Anything else is documentation-only.
-        let first_word = trimmed.split_whitespace().next().unwrap_or("");
-        let looks_like_dir = first_word.ends_with('/')
-            && !first_word.contains(':')
-            && first_word
-                .chars()
-                .all(|c| c.is_alphanumeric() || "/-_.~".contains(c));
-        if !looks_like_dir {
-            return None;
-        }
-        ("data", first_word)
+        return None;
     };
     let base = match prefix {
         "home" => bases.home.clone(),
@@ -362,14 +446,41 @@ fn sanitize_relative(rest: &str) -> Option<String> {
     {
         return None;
     }
-    let cleaned = rest
-        .split_whitespace()
-        .next()?
+    let (candidate, suffix) = rest
+        .find(char::is_whitespace)
+        .map(|index| (&rest[..index], rest[index..].trim_start()))
+        .unwrap_or((rest, ""));
+    if !suffix.is_empty()
+        && ![
+            "(", "[", "and ", "by ", "default", "or ", "plus ", "under ", "when ", "with ",
+        ]
+        .iter()
+        .any(|prefix| suffix.starts_with(prefix))
+    {
+        // A space can be part of the native path (for example macOS
+        // `Application Support`) or prose. The catalog needs a structured
+        // machine path before we can distinguish those cases safely.
+        return None;
+    }
+    let cleaned = candidate
+        .replace('\\', "/")
         .trim_end_matches(|c: char| {
             !c.is_alphanumeric() && c != '/' && c != '.' && c != '-' && c != '_'
         })
         .to_owned();
-    (!cleaned.is_empty()).then_some(cleaned)
+    if cleaned.is_empty()
+        || cleaned.starts_with('/')
+        || cleaned.contains("//")
+        || cleaned
+            .chars()
+            .any(|c| !(c.is_ascii_alphanumeric() || "/-_.".contains(c)))
+        || cleaned
+            .split('/')
+            .any(|component| component == "." || component == "..")
+    {
+        return None;
+    }
+    Some(cleaned)
 }
 
 /// Resolve locations for an emulator addressed by its display name
@@ -383,13 +494,11 @@ pub fn locations_for_emulator_name(
     emulator_name: &str,
     bases: &LocationBases,
 ) -> Result<String> {
-    let wanted = normalize_slug(emulator_name);
+    let slug = slug_for_emulator_name(records, emulator_name)?;
     let record = records
         .iter()
-        .find(|record| {
-            normalize_slug(&record.slug) == wanted || normalize_slug(&record.emulator) == wanted
-        })
-        .context("no captured platform record for this emulator")?;
+        .find(|record| record.slug == slug)
+        .context("resolved emulator record disappeared")?;
     let mut out = serde_json::Map::new();
     out.insert("slug".into(), record.slug.clone().into());
     out.insert("emulator".into(), record.emulator.clone().into());
@@ -585,7 +694,7 @@ mod tests {
     }
 
     #[test]
-    fn duckstation_states_resolve_under_the_data_dir() {
+    fn duckstation_relative_states_remain_documentation_only() {
         let records = load_records().unwrap();
         let locations = save_locations(&records, "duckstation", &bases());
         let states: Vec<_> = locations
@@ -593,11 +702,7 @@ mod tests {
             .filter(|l| l.purpose == Purpose::States)
             .collect();
         assert!(!states.is_empty());
-        assert!(states.iter().any(|l| {
-            l.resolved
-                .as_ref()
-                .is_some_and(|path| path.starts_with("/home/test/.local/share"))
-        }));
+        assert!(states.iter().all(|location| location.resolved.is_none()));
         assert!(states.iter().all(|l| !l.naming.is_empty()));
     }
 
@@ -623,6 +728,20 @@ mod tests {
         assert!(locations.iter().all(|location| {
             !location.documented.contains(".var/app/net.pcsx2.PCSX2") || location.resolved.is_none()
         }));
+    }
+
+    #[test]
+    fn sync_roots_are_scoped_to_one_exact_runtime_variant() {
+        let records = load_records().unwrap();
+        let roots =
+            save_route_roots_for_platform(&records, "pcsx2", "linux-flatpak", &bases()).unwrap();
+        assert!(!roots.is_empty());
+        assert!(
+            roots
+                .iter()
+                .all(|root| { root.path.starts_with("/home/test/.var/app/net.pcsx2.PCSX2") })
+        );
+        assert!(save_route_roots_for_platform(&records, "pcsx2", "windows", &bases()).is_err());
     }
 
     #[test]
@@ -662,9 +781,12 @@ mod tests {
         assert!(sanitize_relative("../../etc/passwd").is_none());
         assert!(sanitize_relative("/absolute").is_none());
         assert!(sanitize_relative("").is_none());
+        assert!(sanitize_relative("Library/Application Support/Game").is_none());
+        assert!(sanitize_relative("Dolphin/MemoryCardA.<region>.raw").is_none());
+        assert_eq!(sanitize_relative("savestates/ in the user directory"), None);
         assert_eq!(
-            sanitize_relative("savestates/ in the user directory"),
-            Some("savestates/".to_owned())
+            sanitize_relative("RetroArch\\saves\\ (default)"),
+            Some("RetroArch/saves/".to_owned())
         );
     }
 
@@ -691,21 +813,34 @@ mod tests {
     #[test]
     fn enumeration_walks_resolved_dirs_only() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join("savestates")).unwrap();
-        std::fs::write(dir.path().join("savestates/game.sav"), b"x").unwrap();
+        std::fs::create_dir_all(dir.path().join(".config/retroarch/saves")).unwrap();
+        std::fs::write(dir.path().join(".config/retroarch/saves/game.sav"), b"x").unwrap();
         let bases = LocationBases {
-            home: PathBuf::from("/"),
+            home: dir.path().to_path_buf(),
             config_dir: PathBuf::from("/nonexistent-config"),
-            data_dir: dir.path().to_path_buf(),
-            data_local_dir: dir.path().to_path_buf(),
+            data_dir: PathBuf::from("/nonexistent-data"),
+            data_local_dir: PathBuf::from("/nonexistent-data-local"),
             flatpak_roots: Vec::new(),
         };
         let records = load_records().unwrap();
-        let files = enumerate_save_files(&records, "duckstation", &bases).unwrap();
-        assert!(files.contains(&dir.path().join("savestates/game.sav")));
-        // Files at the data root outside the resolved savestates/ dir are
+        let files = enumerate_save_files(&records, "retroarch", &bases).unwrap();
+        assert!(files.contains(&dir.path().join(".config/retroarch/saves/game.sav")));
+        // Files at the home root outside the resolved RetroArch save dirs are
         // deliberately not enumerated: only captured directories are walked.
         assert!(!files.contains(&dir.path().join("state.sav")));
+    }
+
+    #[test]
+    fn relative_prose_never_becomes_a_mutation_root() {
+        let records = load_records().unwrap();
+        let locations = save_locations(&records, "duckstation", &bases());
+        assert!(locations.iter().any(|location| {
+            location.documented.starts_with("memcards/") && location.resolved.is_none()
+        }));
+        assert!(locations.iter().any(|location| {
+            location.documented.starts_with("savestates/") && location.resolved.is_none()
+        }));
+        assert!(save_route_roots_for_platform(&records, "duckstation", "linux", &bases()).is_err());
     }
 
     #[test]

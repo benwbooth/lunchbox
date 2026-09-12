@@ -76,7 +76,9 @@ explicit values are `captured`, `not_supported`, `not_required`, and
 The controller, firmware, save, and state status columns describe research
 capture only. The per-core columns are structured source metadata, not runtime
 results. Neither form implies that a feature works, a firmware asset is
-accepted, or a save can yet be synchronized safely.
+accepted, or that the new provider-neutral save-sync engine has been exercised
+with this exact runtime, host, and real cloud account. Only that live evidence
+may promote `save_test_status` from `not_tested`.
 
 ## Status vocabulary
 

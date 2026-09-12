@@ -224,6 +224,10 @@ ApplicationWindow {
     property bool launchProbeObservedRunning: false
     property bool launchProbeAwaitingActivity: false
     property bool launchProfileProbeTriggered: false
+    property bool cloudLaunchPending: false
+    property bool cloudObservedGameRunning: false
+    property var cloudActiveTarget: null
+    property string cloudSyncError: ""
     property int mediaBundleProbeStage: 0
     property string mediaPlaybackMessage: ""
     property string catalogLinkMessage: ""
@@ -719,6 +723,7 @@ ApplicationWindow {
              : requestedSettingsSection === "emumovies" ? emuMoviesSettingsSection
              : requestedSettingsSection === "screenscraper" ? screenScraperSettingsSection
              : requestedSettingsSection === "qbittorrent" ? qbittorrentSettingsSection
+             : requestedSettingsSection === "savecloud" ? saveCloudSettingsSection
              : requestedSettingsSection === "emulators" ? emulatorSettingsSection
              : requestedSettingsSection === "controllers" ? controllerSection
              : null
@@ -737,6 +742,8 @@ ApplicationWindow {
             emuMoviesUsername.forceActiveFocus()
         else if (requestedSettingsSection === "screenscraper")
             screenScraperSettingsSection.focusPrimary()
+        else if (requestedSettingsSection === "savecloud")
+            saveCloudSettingsSection.focusPrimary()
     }
 
     function positionSettingsItem(item) {
@@ -1458,7 +1465,7 @@ ApplicationWindow {
             return
         if (gameDetails.can_launch) {
             root.pendingCardLaunchGameId = ""
-            gameDetails.launch_game()
+            root.requestGameLaunch()
             return
         }
         root.pendingCardLaunchGameId = ""
@@ -1468,6 +1475,81 @@ ApplicationWindow {
         }
         if (detailScroll.contentItem)
             detailScroll.contentItem.contentY = 0
+    }
+
+    function currentSaveSyncTarget() {
+        try {
+            return JSON.parse(gameDetails.save_sync_target_json())
+        } catch (error) {
+            return { available: false,
+                     error: "Could not read the selected emulator sync target: " + error }
+        }
+    }
+
+    function requestGameLaunch() {
+        if (gameDetails.launch_busy || gameDetails.game_running)
+            return
+        root.cloudActiveTarget = null
+        if (root.isProbeRun()) {
+            gameDetails.launch_game()
+            return
+        }
+        if (saveSync.busy) {
+            root.cloudSyncError = saveSync.message.length > 0
+                                  ? saveSync.message
+                                  : "Another cloud-save operation is still in progress."
+            // Never launch while synchronization may be mutating local save
+            // files. The user can retry after the operation reaches a
+            // terminal or review state.
+            root.cloudLaunchPending = false
+            cloudSyncErrorDialog.open()
+            return
+        }
+        if (!saveSync.initialized
+                || (saveSync.status === "error" && !saveSync.credentials_saved)) {
+            root.cloudSyncError = saveSync.message.length > 0
+                                  ? saveSync.message
+                                  : "Cloud-save credential status is not available."
+            root.cloudLaunchPending = true
+            cloudSyncErrorDialog.open()
+            return
+        }
+        if (!saveSync.credentials_saved || !saveSync.automatic_enabled) {
+            gameDetails.launch_game()
+            return
+        }
+        const target = root.currentSaveSyncTarget()
+        if (!target.available) {
+            root.cloudSyncError = target.error || "This emulator has no safe captured save path."
+            root.cloudLaunchPending = true
+            cloudSyncErrorDialog.open()
+            return
+        }
+        root.cloudActiveTarget = target
+        root.cloudLaunchPending = true
+        saveSync.begin_sync(target.emulator_slug, target.runtime_platform,
+                            "pre_launch")
+    }
+
+    function syncSelectedEmulatorNow() {
+        if (saveSync.busy)
+            return
+        if (gameDetails.game_running || gameDetails.launch_busy) {
+            root.cloudSyncError = "Stop the selected emulator before synchronizing its save files."
+            root.cloudLaunchPending = false
+            cloudSyncErrorDialog.open()
+            return
+        }
+        const target = root.currentSaveSyncTarget()
+        if (!target.available) {
+            root.cloudSyncError = target.error || "This emulator has no safe captured save path."
+            root.cloudLaunchPending = false
+            cloudSyncErrorDialog.open()
+            return
+        }
+        root.cloudActiveTarget = null
+        root.cloudLaunchPending = false
+        saveSync.begin_sync(target.emulator_slug, target.runtime_platform, "manual")
     }
 
     function startDownloadPlanProbe() {
@@ -3167,7 +3249,7 @@ ApplicationWindow {
             }
             onPlayRequested: {
                 firmwareSetupPage.close()
-                gameDetails.launch_game()
+                root.requestGameLaunch()
             }
         }
     }
@@ -3186,6 +3268,299 @@ ApplicationWindow {
 
     ScreenScraperModel {
         id: screenScraper
+    }
+
+    SaveSyncModel {
+        id: saveSync
+    }
+
+    Connections {
+        target: saveSync
+        function onRevisionChanged() {
+            if (saveSync.status === "conflicts") {
+                saveSyncConflictDialog.open()
+                return
+            }
+            if (saveSync.status === "remote_devices") {
+                saveSyncRemoteDeviceDialog.open()
+                return
+            }
+            if (saveSync.status === "error") {
+                root.cloudSyncError = saveSync.message
+                cloudSyncErrorDialog.open()
+                return
+            }
+            if (saveSync.operation === "pre_launch"
+                    && root.cloudLaunchPending
+                    && (saveSync.status === "complete"
+                        || saveSync.status === "skipped")) {
+                root.cloudLaunchPending = false
+                root.cloudObservedGameRunning = false
+                gameDetails.launch_game()
+            } else if (saveSync.status === "cancelled") {
+                root.cloudLaunchPending = false
+                root.cloudActiveTarget = null
+            }
+        }
+    }
+
+    Dialog {
+        id: saveSyncRemoteDeviceDialog
+        parent: Overlay.overlay
+        modal: true
+        dim: true
+        width: Math.min(680, root.width - 64)
+        height: Math.min(560, root.height - 64)
+        anchors.centerIn: parent
+        closePolicy: Popup.NoAutoClose
+        title: "Choose a remote save history"
+
+        background: Rectangle {
+            color: root.panelRaised
+            radius: 12
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                text: "More than one other device has a save history for this emulator. Choose one history to merge now. Lunchbox will preserve both histories and can merge another device on the next sync."
+                color: root.muted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            ListView {
+                id: remoteDeviceList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 8
+                model: saveSync.remote_device_count
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                delegate: Button {
+                    required property int index
+                    property int syncRevision: saveSync.revision
+                    property var detail: {
+                        syncRevision
+                        try { return JSON.parse(saveSync.remote_device_json(index)) }
+                        catch (error) { return {} }
+                    }
+                    width: remoteDeviceList.width
+                    height: 72
+                    text: {
+                        const stamp = new Date(detail.updated_unix_ms).toLocaleString()
+                        return (detail.device_id || "Unknown device") + "\nLast synchronized " + stamp
+                    }
+                    onClicked: {
+                        saveSyncRemoteDeviceDialog.close()
+                        saveSync.choose_remote_device(index)
+                    }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Cancel"
+                    enabled: !saveSync.busy
+                    onClicked: {
+                        saveSyncRemoteDeviceDialog.close()
+                        saveSync.cancel_remote_device_selection()
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: saveSyncConflictDialog
+        parent: Overlay.overlay
+        modal: true
+        dim: true
+        width: Math.min(900, root.width - 64)
+        height: Math.min(720, root.height - 64)
+        anchors.centerIn: parent
+        closePolicy: Popup.NoAutoClose
+        title: "Choose which save to keep"
+
+        background: Rectangle {
+            color: root.panelRaised
+            radius: 12
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                text: "Both this computer and the cloud changed after their shared version. Choose Local or Remote for every file. Timestamps are informational; Lunchbox never selects the newest file automatically."
+                color: root.muted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            ListView {
+                id: saveConflictList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 8
+                model: saveSync.conflict_count
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                delegate: Rectangle {
+                    id: conflictRow
+                    required property int index
+                    property int syncRevision: saveSync.revision
+                    property var detail: {
+                        syncRevision
+                        try { return JSON.parse(saveSync.conflict_json(index)) }
+                        catch (error) { return {} }
+                    }
+                    width: saveConflictList.width
+                    height: 142
+                    radius: 9
+                    color: "#111923"
+                    border.color: root.line
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 11
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: conflictRow.detail.key || "Unknown save artifact"
+                            color: root.ink
+                            font.pixelSize: 11
+                            font.family: "monospace"
+                            elide: Text.ElideMiddle
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            spacing: 9
+                            Button {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                checkable: true
+                                checked: conflictRow.detail.choice === "local"
+                                text: {
+                                    const side = conflictRow.detail.local || {}
+                                    if (!side.exists)
+                                        return "LOCAL\nDeleted or missing"
+                                    const stamp = new Date(side.modified_unix_ms).toLocaleString()
+                                    return "LOCAL\n" + stamp + "\n"
+                                           + root.formatCount(side.size) + " bytes"
+                                }
+                                onClicked: saveSync.choose_conflict(conflictRow.index, "local")
+                            }
+                            Button {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                checkable: true
+                                checked: conflictRow.detail.choice === "remote"
+                                text: {
+                                    const side = conflictRow.detail.remote || {}
+                                    if (!side.exists)
+                                        return "REMOTE\nDeleted or missing"
+                                    const stamp = new Date(side.modified_unix_ms).toLocaleString()
+                                    return "REMOTE\n" + stamp + "\n"
+                                           + root.formatCount(side.size) + " bytes"
+                                }
+                                onClicked: saveSync.choose_conflict(conflictRow.index, "remote")
+                            }
+                        }
+                    }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    Layout.fillWidth: true
+                    text: saveSync.choice_count + " of " + saveSync.conflict_count
+                          + " conflicts reviewed"
+                    color: root.muted
+                    font.pixelSize: 10
+                }
+                Button {
+                    text: "Cancel"
+                    enabled: !saveSync.busy
+                    onClicked: {
+                        saveSyncConflictDialog.close()
+                        saveSync.cancel_conflicts()
+                    }
+                }
+                HeaderButton {
+                    text: "APPLY REVIEWED CHOICES"
+                    active: true
+                    enabled: !saveSync.busy
+                             && saveSync.choice_count === saveSync.conflict_count
+                             && saveSync.conflict_count > 0
+                    onClicked: {
+                        saveSyncConflictDialog.close()
+                        saveSync.apply_choices()
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: cloudSyncErrorDialog
+        parent: Overlay.overlay
+        modal: true
+        dim: true
+        width: Math.min(620, root.width - 64)
+        anchors.centerIn: parent
+        closePolicy: Popup.NoAutoClose
+        title: "Cloud save synchronization needs attention"
+
+        background: Rectangle {
+            color: root.panelRaised
+            radius: 12
+            border.color: root.line
+        }
+        contentItem: ColumnLayout {
+            spacing: 14
+            Text {
+                Layout.fillWidth: true
+                text: root.cloudSyncError
+                color: root.ink
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: root.cloudLaunchPending
+                text: "Playing without synchronization can create another conflict. Continue only if the cloud copy is not needed for this session."
+                color: root.muted
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: root.cloudLaunchPending ? "Cancel launch" : "Close"
+                    onClicked: {
+                        root.cloudLaunchPending = false
+                        root.cloudActiveTarget = null
+                        cloudSyncErrorDialog.close()
+                    }
+                }
+                HeaderButton {
+                    visible: root.cloudLaunchPending
+                    text: "PLAY WITHOUT SYNC"
+                    active: true
+                    onClicked: {
+                        root.cloudLaunchPending = false
+                        root.cloudObservedGameRunning = false
+                        root.cloudActiveTarget = null
+                        cloudSyncErrorDialog.close()
+                        gameDetails.launch_game()
+                    }
+                }
+            }
+        }
     }
 
     WebArtworkModel {
@@ -4261,7 +4636,7 @@ ApplicationWindow {
                 return
             if (gameDetails.can_launch && couchModeView.detailsCurrent) {
                 root.launchProbeTriggered = true
-                gameDetails.launch_game()
+                root.requestGameLaunch()
                 return
             }
             if (root.couchLaunchProbeWaits < 40) {
@@ -5797,7 +6172,7 @@ ApplicationWindow {
                         || (root.couchModeActive && couchModeView.detailsCurrent))
                     && !root.launchProbeTriggered) {
                 root.launchProbeTriggered = true
-                gameDetails.launch_game()
+                root.requestGameLaunch()
             }
         }
         function onLaunch_discovery_busyChanged() {
@@ -5811,6 +6186,20 @@ ApplicationWindow {
                     gameDetails.save_video_progress(gameVideoPlayer.position,
                                                     gameVideoPlayer.duration)
                 gameVideoPlayer.pause()
+            }
+            if (gameDetails.game_running) {
+                root.cloudObservedGameRunning = true
+            } else if (root.cloudObservedGameRunning) {
+                root.cloudObservedGameRunning = false
+                if (!root.isProbeRun() && saveSync.initialized
+                        && saveSync.credentials_saved
+                        && saveSync.automatic_enabled
+                        && root.cloudActiveTarget) {
+                    saveSync.begin_sync(root.cloudActiveTarget.emulator_slug,
+                                        root.cloudActiveTarget.runtime_platform,
+                                        "post_exit")
+                }
+                root.cloudActiveTarget = null
             }
             if (root.couchLaunchUiProbe && gameDetails.game_running
                     && !root.couchLaunchProbeCaptured) {
@@ -7126,6 +7515,8 @@ ApplicationWindow {
         onTriggered: {
             library.initialize()
             appSettings.initialize()
+            if (!root.isProbeRun())
+                saveSync.initialize()
             root.startupInitializationRequested = true
             // Credential discovery is independent of AppSettings. Starting it
             // here keeps the automatic-video queue independent of a later
@@ -10396,7 +10787,7 @@ ApplicationWindow {
             root.exitCouchMode()
             root.openSettingsFor(section)
         }
-        onLaunchRequested: gameDetails.launch_game()
+        onLaunchRequested: root.requestGameLaunch()
         onDownloadsRequested: {
             root.exitCouchMode()
             downloadsDrawer.open()
@@ -11780,7 +12171,7 @@ ApplicationWindow {
                         muted: root.muted
                         line: root.line
                         accentCool: root.accentCool
-                        onPlayRequested: gameDetails.launch_game()
+                        onPlayRequested: root.requestGameLaunch()
                         onControllerMappingRequested: gameControllerMapping.openForGame(gameDetails.title, gameDetails.platform, gameDetails.emulator_name)
                         onCancelLaunchRequested: gameDetails.cancel_launch()
                         onSetupRequested: {
@@ -13649,7 +14040,7 @@ ApplicationWindow {
                                          && !gameDetails.prepare_busy
                                 font.pixelSize: 11
                                 font.weight: Font.Bold
-                                onClicked: gameDetails.launch_game()
+                                onClicked: root.requestGameLaunch()
                                 background: Rectangle {
                                     radius: 8
                                     color: parent.enabled
@@ -18772,6 +19163,8 @@ ApplicationWindow {
             igdb.initialize()
             emuMovies.initialize()
             screenScraper.initialize()
+            if (!root.isProbeRun())
+                saveSync.initialize()
             Qt.callLater(function() {
                 Qt.callLater(root.positionRequestedSettingsSection)
             })
@@ -18889,6 +19282,14 @@ ApplicationWindow {
                     SettingsNavButton {
                         text: "RetroArch shaders"
                         onClicked: root.positionSettingsItem(retroarchShaderSection)
+                    }
+                    SettingsNavButton {
+                        text: "Cloud saves & states"
+                        active: root.requestedSettingsSection === "savecloud"
+                        onClicked: {
+                            root.requestedSettingsSection = "savecloud"
+                            root.positionSettingsItem(saveCloudSettingsSection)
+                        }
                     }
                     SettingsNavButton {
                         text: "Profile backup"
@@ -21312,6 +21713,18 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }
+                SaveCloudSettings {
+                    id: saveCloudSettingsSection
+                    Layout.fillWidth: true
+                    providerModel: saveSync
+                    ink: root.ink
+                    muted: root.muted
+                    line: root.line
+                    accent: root.accent
+                    onManualSyncRequested: root.syncSelectedEmulatorNow()
                 }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.line }

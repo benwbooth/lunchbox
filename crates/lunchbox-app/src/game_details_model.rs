@@ -338,6 +338,9 @@ pub mod qobject {
         fn launch_game(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
+        fn save_sync_target_json(self: &GameDetailsModel) -> QString;
+
+        #[qinvokable]
         fn cancel_launch(self: Pin<&mut GameDetailsModel>);
 
         #[qinvokable]
@@ -5354,6 +5357,77 @@ impl qobject::GameDetailsModel {
         usize::try_from(*self.selected_emulator_option())
             .ok()
             .and_then(|index| self.rust().rom_emulator_options.get(index).cloned())
+    }
+
+    pub fn save_sync_target_json(&self) -> QString {
+        let target = (|| -> anyhow::Result<serde_json::Value> {
+            let records = crate::platform_locations::load_records()?;
+            let (emulator_name, runtime_kind, executable) =
+                if let Some(emulator) = self.rust().prepared_emulator.as_ref() {
+                    (
+                        emulator.name.as_str(),
+                        crate::emulator::EmulatorRuntimeKind::Standalone,
+                        &emulator.executable,
+                    )
+                } else {
+                    let index = usize::try_from(*self.selected_emulator_option())
+                        .context("no emulator is selected")?;
+                    let option = self
+                        .rust()
+                        .rom_emulator_options
+                        .get(index)
+                        .context("the selected emulator is unavailable")?;
+                    (
+                        option.emulator_name.as_str(),
+                        option.runtime_kind,
+                        &option.executable,
+                    )
+                };
+            let emulator_slug = if runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch {
+                "retroarch".to_owned()
+            } else {
+                crate::platform_locations::slug_for_emulator_name(&records, emulator_name)?
+            };
+            let runtime_platform = match executable {
+                crate::emulator::EmulatorExecutable::Flatpak { .. } => "linux-flatpak",
+                crate::emulator::EmulatorExecutable::Wine { .. } => "windows",
+                crate::emulator::EmulatorExecutable::Native(_) => {
+                    #[cfg(target_os = "linux")]
+                    {
+                        "linux"
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        "macos"
+                    }
+                    #[cfg(target_os = "windows")]
+                    {
+                        "windows"
+                    }
+                    #[cfg(not(any(
+                        target_os = "linux",
+                        target_os = "macos",
+                        target_os = "windows"
+                    )))]
+                    {
+                        anyhow::bail!("cloud save synchronization is unsupported on this host")
+                    }
+                }
+            };
+            Ok(serde_json::json!({
+                "available": true,
+                "emulator_slug": emulator_slug,
+                "runtime_platform": runtime_platform,
+            }))
+        })();
+        qstring(match target {
+            Ok(value) => value.to_string(),
+            Err(error) => serde_json::json!({
+                "available": false,
+                "error": error.to_string(),
+            })
+            .to_string(),
+        })
     }
 
     pub fn launch_game(mut self: Pin<&mut Self>) {

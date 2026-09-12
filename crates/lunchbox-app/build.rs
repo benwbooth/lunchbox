@@ -137,6 +137,7 @@ fn main() {
                 "qml/RetryingMediaPlayer.qml",
                 "qml/ReleaseFilterPanel.qml",
                 "qml/ScreenScraperSettings.qml",
+                "qml/SaveCloudSettings.qml",
                 "qml/SecretField.qml",
                 "qml/SidebarNavButton.qml",
                 "qml/SettingsNavButton.qml",
@@ -173,6 +174,7 @@ fn main() {
     .file("src/local_provider_manifest_model.rs")
     .file("src/native_file_dialog.rs")
     .file("src/screenscraper_model.rs")
+    .file("src/save_sync_model.rs")
     .file("src/settings_model.rs")
     .file("src/steamgriddb_model.rs")
     .file("src/web_artwork_model.rs")
