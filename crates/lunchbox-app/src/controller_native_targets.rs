@@ -281,6 +281,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["Nintendo DS"],
             "https://github.com/melonDS-emu/melonDS/tree/906e9ebb27da8c6a715cd7abab4abfe8a8d29427/src/frontend/qt_sdl",
         ),
+        (
+            "yaba-sanshiro",
+            "saturn-digital",
+            2,
+            vec!["Sega Saturn"],
+            "https://d1t36rsydvwkyk.cloudfront.net/yabasanshiro-src-1.20.37.tar.gz",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -483,6 +490,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
         ("pcsx2", "dualshock") => crate::controller_pcsx2::visual_routes(),
         ("rpcs3", "dualshock") => crate::controller_rpcs3::visual_routes(),
         ("melonds", "nds-native-buttons") => crate::controller_melonds::visual_routes(),
+        ("yaba-sanshiro", "saturn-digital") => crate::controller_yaba_sanshiro::SATURN_ROUTES
+            .iter()
+            .copied()
+            .collect::<BTreeMap<&str, &str>>(),
         _ => return None,
     };
     Some(

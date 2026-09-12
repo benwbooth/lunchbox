@@ -63,6 +63,24 @@ pub(crate) fn pad_button_name(pad_key: u8) -> Option<&'static str> {
         .map(|(_, name)| *name)
 }
 
+/// Native-target routes for the `saturn-digital` layout: layout target id to
+/// the writer output (`PerPadNames` entry with its `Key` index), in pad order.
+pub(crate) const SATURN_ROUTES: [(&str, &str); 13] = [
+    ("up", "Up (Key 0)"),
+    ("right", "Right (Key 1)"),
+    ("down", "Down (Key 2)"),
+    ("left", "Left (Key 3)"),
+    ("r", "R (Key 4)"),
+    ("l", "L (Key 5)"),
+    ("start", "Start (Key 6)"),
+    ("a", "A (Key 7)"),
+    ("b", "B (Key 8)"),
+    ("c", "C (Key 9)"),
+    ("x", "X (Key 10)"),
+    ("y", "Y (Key 11)"),
+    ("z", "Z (Key 12)"),
+];
+
 /// Per-device identity fields under `Input/Port/<port>/Id/<id>`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum IdentityField {
@@ -304,6 +322,19 @@ mod tests {
         assert_eq!(retarget_code(PERKEY_UNBOUND, 1), PERKEY_UNBOUND);
         assert_eq!(retarget_code(code, 4), code);
         assert_eq!(retarget_code(0x0100_0000, 1), 0x0100_0000);
+    }
+
+    #[test]
+    fn saturn_routes_cover_the_pad_table() {
+        assert_eq!(SATURN_ROUTES.len(), PAD_BUTTONS.len());
+        for ((pad_key, name), (target, output)) in PAD_BUTTONS.iter().zip(SATURN_ROUTES.iter()) {
+            assert_eq!(*output, format!("{name} (Key {pad_key})"));
+            assert!(!target.is_empty());
+        }
+        let mut targets: Vec<&str> = SATURN_ROUTES.iter().map(|(t, _)| *t).collect();
+        targets.sort_unstable();
+        targets.dedup();
+        assert_eq!(targets.len(), SATURN_ROUTES.len());
     }
 
     #[test]
