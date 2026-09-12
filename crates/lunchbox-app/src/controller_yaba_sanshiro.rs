@@ -93,6 +93,31 @@ pub(crate) fn binding_key(port: u32, id: u32, per_type: u32, pad_key: u8) -> Str
     format!("Input/Port/{port}/Id/{id}/Controller/{per_type}/Key/{pad_key}")
 }
 
+/// One standard-pad binding line: the key from [`binding_key`] with
+/// `PER_TYPE_PAD`, holding the u32 host code as decimal (QSettings stores
+/// the `quint32` from `UIControllerSetting::setPadKey` in decimal).
+pub(crate) fn binding_line(port: u32, id: u32, pad_key: u8, code: u32) -> Result<String, ()> {
+    if pad_button_name(pad_key).is_none() {
+        return Err(());
+    }
+    Ok(format!(
+        "{}={code}",
+        binding_key(port, id, PER_TYPE_PAD, pad_key)
+    ))
+}
+
+/// Minimal `[0.9.11]` settings body carrying one port/id's pad bindings,
+/// in caller order. The session stage writes this into a private-HOME
+/// `yabause.ini` so the user's own config is never touched.
+pub(crate) fn ini_body(port: u32, id: u32, bindings: &[(u8, u32)]) -> Result<String, ()> {
+    let mut body = String::from("[0.9.11]\n");
+    for (pad_key, code) in bindings {
+        body.push_str(&binding_line(port, id, *pad_key, *code)?);
+        body.push('\n');
+    }
+    Ok(body)
+}
+
 /// Host key-code layout from `yabause/src/persdlcodes.h`: bits 0-15 payload,
 /// 16-17 sub-type, 18-19 device, 20 raw axis, 21 raw hat, 22 game controller.
 pub(crate) const PERSDL_DEVICE_SHIFT: u32 = 18;
@@ -279,5 +304,20 @@ mod tests {
         assert_eq!(retarget_code(PERKEY_UNBOUND, 1), PERKEY_UNBOUND);
         assert_eq!(retarget_code(code, 4), code);
         assert_eq!(retarget_code(0x0100_0000, 1), 0x0100_0000);
+    }
+
+    #[test]
+    fn ini_body_carries_decimal_pad_bindings() {
+        let body = ini_body(0, 0, &[(7, 0x40_0005), (0, 0x40_0000)]).unwrap();
+        assert_eq!(
+            body,
+            "[0.9.11]\nInput/Port/0/Id/0/Controller/2/Key/7=4194309\n\
+             Input/Port/0/Id/0/Controller/2/Key/0=4194304\n"
+        );
+        assert!(ini_body(0, 0, &[(13, 0)]).is_err());
+        assert_eq!(
+            binding_line(1, 2, 6, 99).unwrap(),
+            "Input/Port/1/Id/2/Controller/2/Key/6=99"
+        );
     }
 }
