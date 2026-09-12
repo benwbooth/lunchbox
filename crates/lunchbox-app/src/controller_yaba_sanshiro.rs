@@ -63,6 +63,27 @@ pub(crate) fn pad_button_name(pad_key: u8) -> Option<&'static str> {
         .map(|(_, name)| *name)
 }
 
+/// `saturn-digital` layout target id to its `PERPAD_*` button index.
+/// Explicit table: layout identity is never fuzzy-matched.
+pub(crate) fn pad_key_for_target(target: &str) -> Option<u8> {
+    Some(match target {
+        "up" => 0,
+        "right" => 1,
+        "down" => 2,
+        "left" => 3,
+        "r" => 4,
+        "l" => 5,
+        "start" => 6,
+        "a" => 7,
+        "b" => 8,
+        "c" => 9,
+        "x" => 10,
+        "y" => 11,
+        "z" => 12,
+        _ => return None,
+    })
+}
+
 /// Native-target routes for the `saturn-digital` layout: layout target id to
 /// the writer output (`PerPadNames` entry with its `Key` index), in pad order.
 pub(crate) const SATURN_ROUTES: [(&str, &str); 13] = [
@@ -335,6 +356,18 @@ mod tests {
         targets.sort_unstable();
         targets.dedup();
         assert_eq!(targets.len(), SATURN_ROUTES.len());
+    }
+
+    #[test]
+    fn target_ids_resolve_to_pad_keys() {
+        assert_eq!(pad_key_for_target("a"), Some(7));
+        assert_eq!(pad_key_for_target("up"), Some(0));
+        assert_eq!(pad_key_for_target("z"), Some(12));
+        assert_eq!(pad_key_for_target("mode"), None);
+        assert_eq!(pad_key_for_target(""), None);
+        for (target, _) in SATURN_ROUTES {
+            assert_eq!(pad_key_for_target(target).is_some(), true);
+        }
     }
 
     #[test]
