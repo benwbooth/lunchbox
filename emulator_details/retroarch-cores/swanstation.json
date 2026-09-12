@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "core": "swanstation",
+  "display_name": "Sony - PlayStation (SwanStation)",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": "swanstation_libretro.info",
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:swanstation:digital",
+      "retroarch:swanstation:dualshock"
+    ],
+    "mapping_summary": "Digital and DualShock profiles map PlayStation d-pads, face buttons, shoulders, start/select and analog controls.",
+    "evidence": [
+      "catalog.json controller profile"
+    ]
+  },
+  "firmware": {
+    "status": "optional",
+    "files": [
+      {
+        "path": "psxonpsp660.bin",
+        "description": "PSP PS1 BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "c53ca5908936d412331790f4426c6c33",
+            "source": "swanstation_libretro.info firmware path/optional/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "swanstation_libretro.info firmware path/optional/notes"
+        ]
+      },
+      {
+        "path": "scph5500.bin",
+        "description": "PS1 Japan BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "8dd7d5296a650fac7319bce665a6a53c",
+            "source": "swanstation_libretro.info firmware path/optional/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "swanstation_libretro.info firmware path/optional/notes"
+        ]
+      },
+      {
+        "path": "scph5501.bin",
+        "description": "PS1 US BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "490f666e1afb15b7362b406ed1cea246",
+            "source": "swanstation_libretro.info firmware path/optional/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "swanstation_libretro.info firmware path/optional/notes"
+        ]
+      },
+      {
+        "path": "scph5502.bin",
+        "description": "PS1 Europe BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "32736f17079d0b2b7024407c39bd3050",
+            "source": "swanstation_libretro.info firmware path/optional/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "swanstation_libretro.info firmware path/optional/notes"
+        ]
+      },
+      {
+        "path": "ps1_rom.bin",
+        "description": "PS3 PS1 BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "81bbe60ba7a3d1cea1d48c14cbcc647b",
+            "source": "swanstation_libretro.info firmware path/optional/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "swanstation_libretro.info firmware path/optional/notes"
+        ]
+      }
+    ],
+    "notes": "SwanStation lists five optional PS1 BIOS alternatives and publishes their MD5 digests.",
+    "evidence": [
+      "swanstation_libretro.info firmware_count/firmware*_path/firmware*_opt/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+    ]
+  },
+  "saves": {
+    "status": "supported",
+    "extensions": [
+      ".srm"
+    ],
+    "naming": "RetroArch uses <content-basename>.srm for the core's persistent memory-card/save data.",
+    "notes": "PlayStation memory-card persistence is content-dependent and may use configured card images.",
+    "evidence": [
+      "SwanStation libretro memory-card implementation"
+    ]
+  },
+  "states": {
+    "status": "supported",
+    "serialization": "basic",
+    "naming": "Frontend state names are <content-basename>.state and <content-basename>.stateN.",
+    "notes": "swanstation_libretro.info declares basic savestates.",
+    "evidence": [
+      "swanstation_libretro.info savestate=true/savestate_features=basic"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "windows": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    }
+  }
+}

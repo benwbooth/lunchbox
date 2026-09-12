@@ -29,6 +29,12 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/ppsspp/PSP/SYSTEM/controls.ini (same PSP/SYSTEM root as ppsspp.ini)",
+          "naming": "Single [ControlMapping] section keyed by PSP button names; values are comma-separated <deviceId>-<keyCode> mappings with colon-joined multi-mappings. Keyboard device id is 1; SDL joypads are 10..19. Per-game overrides are <GAMEID>_ppsspp.ini",
+          "evidence": ["source:ppsspp/Core/KeyMap.cpp LoadFromIni/SaveToIni and Common/Input/InputState.cpp ToConfigString @e49c0bd8836a8a8f678565357773386f1174d3f5", "repo:docs/PPSSPP_STANDALONE_PROGRESS.md"]
+        },
+        {
           "purpose": "saves",
           "path": "~/.config/ppsspp/PSP/SAVEDATA/ (one folder per saved game, PSP ms0:/PSP/SAVEDATA mounted directly at the memstick root)",
           "naming": "Directory name = SFO gameName + saveName concatenated, e.g. ULUS10041DATA00, ULUS10041DATA01: SavedataParam::GetSaveDir = GetGameName(param) + saveDirName where gameName is the disc-region id (ULUS/ULES/UCUS... without dash) and saveDirName is the game's per-slot save name (usually DATA00) or a name the player picked from the saveNameList; the .nomedia marker file is created at ms0:/PSP/SAVEDATA/.nomedia; each folder contains PARAM.SFO plus ICON0.PNG/PIC1.PNG and the game's save files; homebrew without DISC_ID gets a generated fake id",
@@ -80,6 +86,12 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "~/.var/app/org.ppsspp.PPSSPP/config/ppsspp/PSP/SYSTEM/controls.ini",
+          "naming": "Same [ControlMapping] PSP button keys and <deviceId>-<keyCode> grammar as native SDL; keyboard id 1 and joypad ids 10..19; per-game <GAMEID>_ppsspp.ini sits beside it",
+          "evidence": ["source:ppsspp/Core/KeyMap.cpp and Common/Input/InputState.cpp @e49c0bd8836a8a8f678565357773386f1174d3f5", "manifest:flathub/org.ppsspp.PPSSPP command PPSSPPSDL"]
+        },
+        {
           "purpose": "saves",
           "path": "~/.var/app/org.ppsspp.PPSSPP/config/ppsspp/PSP/SAVEDATA/",
           "naming": "Identical to native Linux: <gameName><saveName> folders, e.g. ULUS10041DATA00 (SFO gameName + saveName, or the player-selected saveNameList entry), .nomedia marker, PARAM.SFO/ICON0.PNG inside",
@@ -127,6 +139,12 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "%USERPROFILE%\\Documents\\PPSSPP\\PSP\\SYSTEM\\controls.ini (portable/installed memstick root follows the config path)",
+          "naming": "Same [ControlMapping] PSP button keys and <deviceId>-<keyCode> grammar; keyboard id 1 and joypad ids 10..19; per-game <GAMEID>_ppsspp.ini",
+          "evidence": ["source:ppsspp/Core/KeyMap.cpp and Common/Input/InputState.cpp @e49c0bd8836a8a8f678565357773386f1174d3f5", "source:ppsspp/Windows/main.cpp memstick search path"]
+        },
+        {
           "purpose": "saves",
           "path": "<memstick root>\\PSP\\SAVEDATA\\ - %USERPROFILE%\\Documents\\PPSSPP\\PSP\\SAVEDATA when installed, <exe dir>\\memstick\\PSP\\SAVEDATA when portable",
           "naming": "Same as Linux: one folder per save named gameName + saveName (e.g. ULUS10041DATA00), PARAM.SFO and icon/picture files inside, .nomedia marker in SAVEDATA",
@@ -172,6 +190,12 @@
             "source:ppsspp/SDL/SDLMain.cpp SYSPROP_USER_DOCUMENTS_DIR returns $HOME; UI/NativeApp.cpp sets defaultCurrentDirectory from it",
             "source:ppsspp/Core/Config.cpp UpdateIniLocation/FindConfigFile with SetSearchPath(GetSysDirectory(DIRECTORY_SYSTEM))"
           ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/ppsspp/PSP/SYSTEM/controls.ini (macOS config root from the pinned platform code)",
+          "naming": "Same [ControlMapping] PSP button keys and <deviceId>-<keyCode> grammar; keyboard id 1 and joypad ids 10..19; per-game <GAMEID>_ppsspp.ini",
+          "evidence": ["source:ppsspp/Core/KeyMap.cpp and Common/Input/InputState.cpp @e49c0bd8836a8a8f678565357773386f1174d3f5", "docs:ppsspp macOS reference"]
         },
         {
           "purpose": "saves",

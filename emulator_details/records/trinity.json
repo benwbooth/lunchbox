@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "slug": "trinity",
+  "emulator": "Trinity",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://trinityemulator.github.io/",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "./trinity.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://trinityemulator.github.io/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "./trinity.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://trinityemulator.github.io/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "./hda.img",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://trinityemulator.github.io/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Virtual hard-disk image ./hda.img",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://trinityemulator.github.io/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Android system image bundled/selected by Trinity",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://trinityemulator.github.io/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://trinityemulator.github.io/"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://trinityemulator.github.io/"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://trinityemulator.github.io/"
+      ]
+    },
+    "macos": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://trinityemulator.github.io/"
+      ]
+    }
+  }
+}

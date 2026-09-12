@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "slug": "bgb",
+  "emulator": "BGB",
+  "sources": [
+    { "kind": "docs", "url": "https://bgb.bircd.org/manual.html", "role": "official manual for paths, input, saves, states and command line" },
+    { "kind": "docs", "url": "https://bgb.bircd.org/", "role": "official Windows download and supported-platform statement" }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "bgb.ini beside bgb.exe by default; -ini <filename> selects a different INI.", "evidence": ["docs:bgb.bircd.org manual commandline (-ini and bgb.ini)"] },
+        { "purpose": "input", "path": "bgb.ini settings written by Options > Joypad > configure keyboard/configure game controller; controller IDs 1-16 are legacy JoyGetPosEx and 17-20 are XInput, while extra-button hotkeys are mappable.", "naming": "The official manual documents the GUI and numeric controller-ID semantics, not a stable portable controller-profile grammar; preserve bgb.ini rather than inventing keys.", "evidence": ["docs:bgb.bircd.org manual lines 142-147 (joypad wizard and IDs)"] },
+        { "purpose": "saves", "path": "<ROM directory>\\<ROM basename>.sav by default; the Misc Save files setting can redirect all battery files to a directory; -loadbatt selects an explicit file.", "naming": "<ROM basename>.sav raw battery RAM; MBC3 RTC data may append 48 bytes in VBA-compatible mode.", "evidence": ["docs:bgb.bircd.org manual SAV format and Misc options", "docs:bgb.bircd.org manual -loadbatt/-nobatt"] },
+        { "purpose": "states", "path": "User-selected save-state path from the state dialog; -stateonexit <filename> and -state <filename> provide explicit paths.", "naming": "State filename is user-selected (official example game.sna); current format is versioned and old 0.x states are not interchangeable with BGB 1.0+.", "evidence": ["docs:bgb.bircd.org manual save/load state and command line", "docs:bgb.bircd.org manual version warning"] },
+        { "purpose": "bios", "path": "No BIOS is required for ordinary GB/GBC emulation. Optional DMG/CGB/SGB boot ROMs are selected from BGB's settings and may be supplied as user files.", "naming": "Boot ROM filenames are user-selected; BGB's official manual does not publish canonical checksums for these optional ROMs.", "evidence": ["docs:bgb.bircd.org manual bootrom settings and speedrun bootrom notes"] },
+        { "purpose": "keys", "path": "No external decryption/key file is used by BGB.", "naming": "No external key filename or canonical key checksum.", "evidence": ["docs:bgb.bircd.org manual (ROM, battery and optional boot ROM only)"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "no_verified_package", "reason": "BGB officially distributes a Windows executable; Wine operation is documented, but there is no native Linux package whose paths can be captured as a separate runtime.", "evidence": ["docs:bgb.bircd.org manual supported platforms (Windows and Wine)", "docs:bgb.bircd.org official downloads"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No official BGB Flatpak package is documented.", "evidence": ["docs:bgb.bircd.org official downloads"] },
+    "macos": { "status": "no_verified_package", "reason": "The official BGB distribution is a Windows executable; the manual mentions Wine on OS X but no native macOS package.", "evidence": ["docs:bgb.bircd.org manual supported platforms", "docs:bgb.bircd.org official downloads"] }
+  }
+}

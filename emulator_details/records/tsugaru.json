@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "slug": "tsugaru",
+  "emulator": "Tsugaru",
+  "sources": [
+    { "kind": "source", "repo": "captainys/TOWNSEMU", "role": "FM TOWNS ROM/CMOS paths, command-line input, save-state and media behaviour" },
+    { "kind": "docs", "url": "https://github.com/captainys/TOWNSEMU/blob/master/command.md", "role": "official command-line and file-layout documentation" }
+  ],
+  "platforms": {
+    "linux": { "paths": [
+      { "purpose": "config", "path": "Tsugaru executable directory and command-line options; GUI settings are stored by the desktop frontend", "naming": "Command-line option syntax is -OPTION value (for example -CMOS <file> and -CD <image>); no portable cross-platform settings filename is specified by command.md", "evidence": ["source:TOWNSEMU command.md", "source:TOWNSEMU GUI/CUI option parser"] },
+      { "purpose": "input", "path": "Command-line/UI controller configuration", "naming": "Input is selected by Tsugaru's keyboard/gamepad options and GUI bindings; the command documentation names device/key tokens such as ANA0..ANA3 for analog directions but publishes no standalone binding file", "evidence": ["source:TOWNSEMU command.md gamepad/ANA input", "source:TOWNSEMU input option parser"] },
+      { "purpose": "bios", "path": "FM TOWNS ROM directory supplied to Tsugaru (the ROM directory contains the machine ROM assets); CMOS settings image is supplied separately with -CMOS", "naming": "Required ROM assets retain the filenames expected by the selected FM TOWNS model; CMOS.BIN is the conventional settings-image filename. The cited source publishes no canonical ROM checksum", "evidence": ["source:TOWNSEMU command.md ROM directory and -CMOS", "source:TOWNSEMU ROM loader"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["source:TOWNSEMU machine/ROM model"] },
+      { "purpose": "saves", "path": "Writes occur in the emulated FM TOWNS disks/media; CMOS.BIN stores BIOS settings", "naming": "Game data uses the filesystem inside mounted disk images; CMOS settings use CMOS.BIN, with no universal per-game sidecar save name", "evidence": ["source:TOWNSEMU CMOS/media code", "docs:TOWNSEMU command.md CMOSSAVE"] },
+      { "purpose": "states", "path": "State path selected by Tsugaru save-state command/UI", "naming": "Quick state files use the Tsugaru state-file format with .TState naming when supplied via -LOADSTATE/-SAVESTATE; exact default directory is user-selected", "evidence": ["source:TOWNSEMU state command options", "docs:TOWNSEMU command.md state options"] }
+    ] },
+    "windows": { "paths": [
+      { "purpose": "config", "path": "Tsugaru.exe directory and GUI/CUI options", "naming": "-OPTION value command-line grammar; no separate stable settings filename is specified", "evidence": ["source:TOWNSEMU command.md", "docs:https://github.com/captainys/TOWNSEMU/releases"] },
+      { "purpose": "input", "path": "Tsugaru GUI/CUI controller options", "naming": "Keyboard/gamepad options with ANA0..ANA3 analog tokens; no standalone binding file is published", "evidence": ["source:TOWNSEMU command.md input options"] },
+      { "purpose": "bios", "path": "FM TOWNS ROM directory plus -CMOS CMOS.BIN", "naming": "Model-specific ROM filenames as expected by the loader; conventional CMOS.BIN; no canonical checksum is published", "evidence": ["source:TOWNSEMU command.md ROM/-CMOS", "source:TOWNSEMU ROM loader"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["source:TOWNSEMU machine model"] },
+      { "purpose": "saves", "path": "Mounted FM TOWNS disk images and CMOS.BIN", "naming": "Filesystem/media-defined saves; CMOS.BIN for settings, no universal per-game sidecar", "evidence": ["source:TOWNSEMU media/CMOS code"] },
+      { "purpose": "states", "path": "User-selected Tsugaru state path", "naming": "-SAVESTATE/-LOADSTATE state files use the documented .TState format", "evidence": ["source:TOWNSEMU command.md state options"] }
+    ] },
+    "macos": { "paths": [
+      { "purpose": "config", "path": "Tsugaru executable/app directory and command-line/UI options", "naming": "-OPTION value command-line grammar; no separate stable settings filename is specified", "evidence": ["source:TOWNSEMU command.md", "docs:TOWNSEMU releases/platform source"] },
+      { "purpose": "input", "path": "Tsugaru GUI/CUI controller options", "naming": "Keyboard/gamepad options with ANA0..ANA3 analog tokens; no standalone binding file is published", "evidence": ["source:TOWNSEMU command.md input options"] },
+      { "purpose": "bios", "path": "FM TOWNS ROM directory plus -CMOS CMOS.BIN", "naming": "Model-specific ROM filenames; conventional CMOS.BIN; no canonical checksum is published", "evidence": ["source:TOWNSEMU command.md ROM/-CMOS", "source:TOWNSEMU ROM loader"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["source:TOWNSEMU machine model"] },
+      { "purpose": "saves", "path": "Mounted FM TOWNS disk images and CMOS.BIN", "naming": "Filesystem/media-defined saves; CMOS.BIN for settings", "evidence": ["source:TOWNSEMU media/CMOS code"] },
+      { "purpose": "states", "path": "User-selected Tsugaru state path", "naming": "-SAVESTATE/-LOADSTATE state files use documented .TState format", "evidence": ["source:TOWNSEMU command.md state options"] }
+    ] }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No upstream Tsugaru Flatpak package or manifest is identified.", "evidence": ["source:captainys/TOWNSEMU releases", "docs:https://github.com/captainys/TOWNSEMU/releases"] }
+  }
+}

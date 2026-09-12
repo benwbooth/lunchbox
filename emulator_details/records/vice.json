@@ -19,6 +19,12 @@
           "evidence": ["docs:vice_6 section 6 intro 'on unix systems the resource file is called vicerc and is stored in the users config directory according to the XDG specification (usually ~/.config/vice/)'", "source:src/arch/shared/archdep_user_config_path.c (XDG_CONFIG_HOME + '/vice')", "source:src/arch/shared/archdep_defs.h ARCHDEP_VICERC_NAME vicerc/sdl-vicerc", "contract:docs/VICE_NATIVE_CONTROLLER_CONTRACT.md (-config <file>, ResourceName=ResourceValue)"]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/vice/vicerc (SDL2 sdl-vicerc; private -joymap <file> may be supplied)",
+          "naming": "Joystick maps are .vjm text with # comments, !CLEAR and <device> <inputtype> <inputindex> <action> <params>; inputtype 0 axis/1 button/2 hat, action 1 joystick pin mask. Resource bindings are JoyDevice1/JoyDevice2=4+host-device-index",
+          "evidence": ["source:joyport/joystick.c and arch/sdl/joy.c @d322f7a8d6c269b97162c74e73214c58eaad9a71", "contract:docs/VICE_NATIVE_CONTROLLER_CONTRACT.md"]
+        },
+        {
           "purpose": "saves",
           "path": "In place inside the mounted disk (.d64/.g64/...) and tape (.t64/...) images, or with file-system devices (FSDevice8) directly in a host directory; VICE writes no per-game sidecar save files",
           "naming": "Disk/tape saves keep the attached image's own name; FS-device saves are <program>.p00/.prg under FSDevice8Dir (FSDevice8SaveP00=1)",
@@ -33,7 +39,7 @@
         {
           "purpose": "bios",
           "path": "System ROMs are searched on the Directory path list $XDG_DATA_HOME/vice/<EMU>:$prefix/share/vice/<EMU>:<BOOTPATH>/<EMU> with EMU one of C64, C64DTV, C128, PET, PLUS4, CBM-II, SCPU64, VIC20 (drive ROMs under EMU=DRIVES); gap: the lunchbox DB has no VICE firmware_rules rows",
-          "naming": "C64/C128/VIC20: kernal, basic, chargen (C128 basic is 32 KiB Basic+Editor); PET uses versioned names (kernal-1/2/4..., basic-1/2/4..., edit-*, characters-1/2...); Plus4 adds c1lo/c1hi/c2lo/c2hi function ROMs; drive DOS ROMs like dos1541-325302-01+901229-05.bin",
+          "naming": "C64/C128/VIC20: kernal, basic, chargen (C128 basic is 32 KiB Basic+Editor); PET uses versioned names (kernal-1/2/4..., basic-1/2/4..., edit-*, characters-1/2...); Plus4 adds c1lo/c1hi/c2lo/c2hi function ROMs; drive DOS ROMs like dos1541-325302-01+901229-05.bin. No canonical checksum is declared for this ROM set by the cited VICE documentation/source",
           "evidence": ["docs:vice_3 section 3 (Directory default) and 3.1 ROM files list", "source:src/sysfile.c sysfile_open() appends the EMU subpath to each Directory entry", "source:src/plus4/plus4rom.c c1loName/c1hiName/c2loName/c2hiName resources", "db:no firmware_rules rows exist for vice"]
         }
       ],
@@ -45,6 +51,12 @@
           "purpose": "config",
           "path": "~/.var/app/net.sf.VICE/.config/vice/vicerc (the sandbox gives the app its own HOME under ~/.var/app/<id>, so the XDG .config/vice layout lands there; SDL build: sdl-vicerc)",
           "evidence": ["flathub:net.sf.VICE (app exists)", "source:src/arch/shared/archdep_user_config_path.c XDG resolution relative to $HOME"]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.var/app/net.sf.VICE/.config/vice/vicerc (SDL2 sdl-vicerc; native -joymap support is separate)",
+          "naming": "Same .vjm grammar (#, !CLEAR, device/inputtype/inputindex/action/params) and JoyDevice1/JoyDevice2 resource bindings as native VICE",
+          "evidence": ["source:joyport/joystick.c and arch/sdl/joy.c @d322f7a8d6c269b97162c74e73214c58eaad9a71", "contract:docs/VICE_NATIVE_CONTROLLER_CONTRACT.md", "flatpak:net.sf.VICE"]
         },
         {
           "purpose": "saves",
@@ -61,7 +73,7 @@
         {
           "purpose": "bios",
           "path": "System ROMs inside the sandbox: ~/.var/app/net.sf.VICE/.local/share/vice/<EMU> first (XDG data home under the sandbox HOME), then the installed prefix; gap: the lunchbox DB has no VICE firmware_rules rows",
-          "naming": "Same per-machine ROM names as native Linux (kernal/basic/chargen etc.)",
+          "naming": "Same per-machine ROM names as native Linux (kernal/basic/chargen etc.); no canonical checksum is declared for this ROM set by the cited VICE documentation/source",
           "evidence": ["docs:vice_3 section 3 Directory search path", "source:src/arch/shared/archdep_default_sysfile_pathlist.c XDG data home first entry", "db:no firmware_rules rows exist for vice"]
         }
       ],
@@ -73,6 +85,12 @@
           "purpose": "config",
           "path": "%APPDATA%\\vice\\vice.ini (GTK builds; SDL2 builds: sdl-vice.ini), same section format as vicerc; a vice.ini sitting in the program directory is also picked up at startup",
           "evidence": ["docs:vice_6 section 6 intro 'called vice.ini and is usually stored in the users roaming profile directory (C:\\Users\\<user>\\AppData\\Roaming\\vice)'", "source:src/arch/shared/archdep_user_config_path.c CSIDL_APPDATA + '/vice'", "source:src/arch/shared/archdep_defs.h ARCHDEP_VICERC_NAME vice.ini/sdl-vice.ini"]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\vice\\vice.ini (SDL2 sdl-vice.ini; private -joymap <file> may be supplied)",
+          "naming": "Same .vjm grammar (#, !CLEAR, device/inputtype/inputindex/action/params) and JoyDevice1/JoyDevice2 resource bindings as native VICE",
+          "evidence": ["source:joyport/joystick.c and arch/sdl/joy.c @d322f7a8d6c269b97162c74e73214c58eaad9a71", "source:arch/shared/archdep_defs.h VICE config names"]
         },
         {
           "purpose": "saves",
@@ -89,7 +107,7 @@
         {
           "purpose": "bios",
           "path": "System ROMs are searched on the Directory list with the user config dir first (%APPDATA%\\vice\\) and the executable's directory, each tried with the EMU subpath (C64, C128, ..., DRIVES for drive ROMs); gap: the lunchbox DB has no VICE firmware_rules rows",
-          "naming": "Same per-machine ROM names as Linux (kernal/basic/chargen; PET versioned names; dos*.bin drive ROMs)",
+          "naming": "Same per-machine ROM names as Linux (kernal/basic/chargen; PET versioned names; dos*.bin drive ROMs); no canonical checksum is declared for this ROM set by the cited VICE documentation/source",
           "evidence": ["docs:vice_3 section 3/3.1", "source:src/arch/shared/archdep_default_sysfile_pathlist.c non-UNIX branch uses archdep_user_config_path() then boot path", "db:no firmware_rules rows exist for vice"]
         }
       ]
@@ -100,6 +118,12 @@
           "purpose": "config",
           "path": "~/.config/vice/vicerc (GTK builds; SDL2 builds: sdl-vicerc) - macOS builds compile as UNIX, so the same XDG paths apply; legacy ~/.vicerc also honored",
           "evidence": ["docs:vice_6 section 6 intro unix vicerc location", "source:src/arch/shared/archdep_user_config_path.c UNIX_COMPILE branch", "source:configure.ac defines UNIX_COMPILE for the macOS build (MACOS_COMPILE alongside it)"]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/vice/vicerc (SDL2 sdl-vicerc; private -joymap <file> may be supplied)",
+          "naming": "Same .vjm grammar (#, !CLEAR, device/inputtype/inputindex/action/params) and JoyDevice1/JoyDevice2 resource bindings as native VICE",
+          "evidence": ["source:joyport/joystick.c and arch/sdl/joy.c @d322f7a8d6c269b97162c74e73214c58eaad9a71", "contract:docs/VICE_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -116,7 +140,7 @@
         {
           "purpose": "bios",
           "path": "System ROMs on the Directory list starting at $XDG_DATA_HOME/vice/<EMU> (~/.local/share/vice/<EMU>), then the prefix, per-EMU subpaths plus DRIVES for drive ROMs; gap: the lunchbox DB has no VICE firmware_rules rows",
-          "naming": "Same per-machine ROM names as Linux (kernal/basic/chargen; PET versioned names; dos*.bin drive ROMs)",
+          "naming": "Same per-machine ROM names as Linux (kernal/basic/chargen; PET versioned names; dos*.bin drive ROMs); no canonical checksum is declared for this ROM set by the cited VICE documentation/source",
           "evidence": ["docs:vice_3 section 3/3.1", "source:src/arch/shared/archdep_default_sysfile_pathlist.c UNIX_COMPILE XDG data home entry", "db:no firmware_rules rows exist for vice"]
         }
       ]

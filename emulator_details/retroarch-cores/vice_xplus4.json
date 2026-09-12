@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "core": "vice_xplus4",
+  "display_name": "Commodore - PLUS/4 (VICE xplus4)",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": "vice_xplus4_libretro.info",
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:vice_xplus4:joystick-port1-keyboard",
+      "retroarch:vice_xplus4:joystick-port2-keyboard"
+    ],
+    "mapping_summary": "VICE joystick/keyboard profile maps PLUS/4 joystick ports and the emulated keyboard.",
+    "evidence": [
+      "catalog.json controller profile"
+    ]
+  },
+  "firmware": {
+    "status": "not_required",
+    "files": [],
+    "notes": "VICE xplus4 core-info lists no external firmware file.",
+    "evidence": [
+      "vice_xplus4_libretro.info firmware_count absent/zero"
+    ]
+  },
+  "saves": {
+    "status": "content_dependent",
+    "extensions": [
+      ".d64",
+      ".d81",
+      ".t64"
+    ],
+    "naming": "Program saves are written into writable attached media; no generic sidecar save file is claimed.",
+    "notes": "Persistence depends on media and filesystem-device configuration.",
+    "evidence": [
+      "VICE libretro media-save behavior"
+    ]
+  },
+  "states": {
+    "status": "supported",
+    "serialization": "serialized",
+    "naming": "Frontend state names are <content-basename>.state and <content-basename>.stateN.",
+    "notes": "vice_xplus4_libretro.info declares serialized savestates.",
+    "evidence": [
+      "vice_xplus4_libretro.info savestate=true/savestate_features=serialized"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "windows": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    }
+  }
+}

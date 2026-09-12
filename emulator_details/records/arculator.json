@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "slug": "arculator",
+  "emulator": "Arculator",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://b-em.bbcmicro.com/arculator/",
+      "url": "https://b-em.bbcmicro.com/arculator/",
+      "role": "official upstream identity and implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://b-em.bbcmicro.com/arculator/",
+      "role": "official distribution/documentation evidence"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "./configs/ and ./cmos/ beside the portable executable",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick settings in Arculator configuration; exact release-defined keys",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest files inside attached .hdf disk images",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No verified save-state facility or fixed state naming",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "Archimedes ROM files selected from ROM directory; no universal checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "./configs/ and ./cmos/ beside the portable executable",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick settings in Arculator configuration; exact release-defined keys",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest files inside attached .hdf disk images",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No verified save-state facility or fixed state naming",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "Archimedes ROM files selected from ROM directory; no universal checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "./configs/ and ./cmos/ beside the portable executable",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick settings in Arculator configuration; exact release-defined keys",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest files inside attached .hdf disk images",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No verified save-state facility or fixed state naming",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "Archimedes ROM files selected from ROM directory; no universal checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "./configs/ and ./cmos/ beside the portable executable",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick settings in Arculator configuration; exact release-defined keys",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest files inside attached .hdf disk images",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No verified save-state facility or fixed state naming",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "Archimedes ROM files selected from ROM directory; no universal checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://b-em.bbcmicro.com/arculator/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {}
+}

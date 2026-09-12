@@ -16,7 +16,7 @@
 //!   `gamepads.<1-8>.<button>` with buttons up/down/left/right, a, b, c,
 //!   x, y, z, start and mode.
 //! - `paths.c get_config_dir` — the configuration directory is
-//!   `$HOME/blastem`, so a private HOME isolates every read and write;
+//!   `$HOME/.config/blastem`, so a private HOME isolates every read and write;
 //!   `blastem.c main` takes the ROM as a bare argument.
 use anyhow::{Result, ensure};
 

@@ -22,6 +22,12 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/RMG/mupen64plus.cfg (or $XDG_CONFIG_HOME/RMG/mupen64plus.cfg)",
+          "naming": "RMG-Input stores controller profiles in sections 'Rosalie's Mupen GUI - Input Plugin Profile 1'..'4'; each section contains SDL3 keyboard/gamepad binding fields, with shared '... User Profile \"<name>\"' sections and per-game UseGameProfile overrides. The GUI's keyboard shortcuts are in 'Rosalie's Mupen GUI KeyBindings'",
+          "evidence": ["source:RMG-Input/main.cpp profile section names, binding fields and UseGameProfile @3e8b366be", "source:RMG-Core/Settings.cpp SETTING_SECTION_KEYBIND and config API @3e8b366be"]
+        },
+        {
           "purpose": "saves",
           "path": "~/.local/share/RMG/Save/Game (or $XDG_DATA_HOME/RMG/Save/Game): RMG force-writes the core [Core] SaveSRAMPath key (ForceUseSetAlways) to CoreGetDefaultSaveDirectory() = user data dir + 'Save/Game'",
           "naming": "mupen64plus core naming: <save filename>.eep | .sra | .fla | .mpk for EEPROM/SRAM/FlashRAM/Controller-Pak. Default SaveFilenameFormat=1 yields '<goodname (max 32 chars)>-<first 8 hex of ROM MD5>'; a legacy <goodname>.<ext> file is still used when present; format 0 uses the raw ROM header name. Game Boy (Transfer Pak) RAM is <gbrom>.<player#>.sav",
@@ -46,6 +52,7 @@
         {
           "purpose": "bios",
           "path": "None required. PIF/CIC are emulated by default: the optional user PIF ROMs are configured in section 'Rosalie's Mupen GUI Core PIF' (PIF_Use=false by default, PIF_NTSC / PIF_PAL file paths; skipped when the dynarec CPU emulator is selected, and MD5-validated by the core before use). 64DD discs additionally need IPL ROM paths in 'Rosalie's Mupen GUI Core 64DD' (64DD_JapaneseIPL / 64DD_AmericanIPL / 64DD_DevelopmentIPL, blank by default)",
+          "naming": "Ordinary N64 cartridges have no external BIOS asset because PIF/CIC is emulated by default. Optional PIF_NTSC/PIF_PAL are user-selected filenames validated against mupen64plus-core's built-in MD5 whitelist (the cited source does not provide digest values here); optional 64DD IPL files use user-selected 64DD_JapaneseIPL/AmericanIPL/DevelopmentIPL paths, with no canonical filename or checksum cited",
           "evidence": [
             "source:RMG-Core/Settings.cpp Core_PIF_Use (default false), Core_PIF_NTSC/PIF_PAL (default ''), Core_64DD_JapaneseIPL/AmericanIPL/DevelopmentIPL @3e8b366be",
             "source:RMG-Core/Emulation.cpp open_pif_rom: only when PIF_Use is set and the file exists; M64CMD_PIF_OPEN; skipped when cpuEmulator >= 2 (dynarec) @3e8b366be",
@@ -55,6 +62,41 @@
         }
       ],
       "notes": "Flatpak com.github.Rosalie241.RMG relocates the same tree under ~/.var/app/com.github.Rosalie241.RMG/{config,data,cache}/RMG. Lunchbox launches with a private data root; native saves/states stay in Save/Game and Save/State unless a portable install is used."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/com.github.Rosalie241.RMG/config/RMG/mupen64plus.cfg (Flatpak XDG config root; RMG-Input sections are in this INI)",
+          "naming": "Same RMG GUI/core/plugin sections as native Linux, including Rosalie's Mupen GUI, Core, KeyBindings, and Input Plugin Profile sections",
+          "evidence": ["docs:https://flathub.org/apps/details/com.github.Rosalie241.RMG Flatpak app id", "source:RMG-Core/Directories.cpp XDG_CONFIG_HOME/RMG and config API @3e8b366be"]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.var/app/com.github.Rosalie241.RMG/config/RMG/mupen64plus.cfg",
+          "naming": "RMG-Input per-port profile sections 'Rosalie's Mupen GUI - Input Plugin Profile 1'..'4' contain SDL3 keyboard/gamepad bindings; named user profiles and per-game UseGameProfile are stored as sections in the same INI",
+          "evidence": ["source:RMG-Input/main.cpp input profile section grammar @3e8b366be", "docs:https://flathub.org/apps/details/com.github.Rosalie241.RMG app id and Linux Flatpak package"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/com.github.Rosalie241.RMG/data/RMG/Save/Game",
+          "naming": "<goodname>-<MD5[0:8]>.eep/.sra/.fla/.mpk; legacy <goodname>.<ext> fallback and Transfer-Pak <gbrom>.<player#>.sav",
+          "evidence": ["source:RMG-Core/Directories.cpp XDG_DATA_HOME/RMG and Save/Game @3e8b366be", "source:3rdParty/mupen64plus-core/src/main/main.c save filename grammar @3e8b366be"]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/com.github.Rosalie241.RMG/data/RMG/Save/State",
+          "naming": "<goodname>-<MD5[0:8]>.st<slot>, slots 0..9; legacy <goodname>.st<slot> fallback and same filename sanitization as native RMG",
+          "evidence": ["source:RMG-Core/Directories.cpp XDG_DATA_HOME/RMG and Save/State @3e8b366be", "source:RMG-Core/SaveState.cpp .st<slot> grammar @3e8b366be"]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required for ordinary N64 cartridges: PIF/CIC is emulated by default. Optional PIF_NTSC/PIF_PAL and 64DD IPL paths remain config keys in the Flatpak INI",
+          "naming": "Optional PIF_NTSC/PIF_PAL files are MD5-whitelisted by mupen64plus-core; optional 64DD_JapaneseIPL/AmericanIPL/DevelopmentIPL paths. No mandatory BIOS or Lunchbox firmware checksum rule exists",
+          "evidence": ["source:RMG-Core/Settings.cpp optional PIF/64DD settings and defaults @3e8b366be", "source:3rdParty/mupen64plus-core/src/main/main.c PIF MD5 validation @3e8b366be", "docs:https://flathub.org/apps/details/com.github.Rosalie241.RMG Flatpak app id"]
+        }
+      ],
+      "notes": "The Flathub package is the supported Linux Flatpak cell; it relocates native RMG config/data/cache roots below ~/.var/app/com.github.Rosalie241.RMG."
     },
     "windows": {
       "paths": [
@@ -66,6 +108,12 @@
             "source:RMG-Core/Core.cpp CoreStartup config dir = CoreGetUserConfigDirectory() @3e8b366be",
             "source:RMG-Core/Settings.cpp + RMG-Input/main.cpp section definitions as on Linux @3e8b366be"
           ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\RMG\\Config\\mupen64plus.cfg; portable installs: <install dir>\\Config\\mupen64plus.cfg",
+          "naming": "Same RMG-Input grammar as Linux: per-port sections 'Rosalie's Mupen GUI - Input Plugin Profile 1'..'4', shared named user-profile sections, per-game UseGameProfile and GUI 'Rosalie's Mupen GUI KeyBindings' section",
+          "evidence": ["source:RMG-Core/Directories.cpp Windows config root and portable mode @3e8b366be", "source:RMG-Input/main.cpp profile and binding section names @3e8b366be"]
         },
         {
           "purpose": "saves",
@@ -89,6 +137,7 @@
         {
           "purpose": "bios",
           "path": "None required; optional PIF ROM paths (PIF_NTSC/PIF_PAL) and 64DD IPL paths (64DD_JapaneseIPL/64DD_AmericanIPL/64DD_DevelopmentIPL) live in the same mupen64plus.cfg sections as on Linux",
+          "naming": "Ordinary N64 cartridges have no external BIOS asset because PIF/CIC is emulated by default. Optional PIF_NTSC/PIF_PAL are user-selected filenames validated against mupen64plus-core's built-in MD5 whitelist (the cited source does not provide digest values here); optional 64DD IPL files use user-selected 64DD_JapaneseIPL/AmericanIPL/DevelopmentIPL paths, with no canonical filename or checksum cited",
           "evidence": [
             "source:RMG-Core/Settings.cpp PIF and 64DD setting defaults @3e8b366be",
             "source:RMG-Core/Emulation.cpp open_pif_rom @3e8b366be"
@@ -96,6 +145,13 @@
         }
       ],
       "notes": "Upstream ships an installer and portable zip for Windows; RMG has no macOS build (README lists Windows and Linux only), so no macos platform is captured. The Lunchbox DB Gopher64/RMG rows also miss macOS for Gopher64 (RMG correctly Windows;Linux)."
+    }
+  },
+  "platform_gaps": {
+    "macos": {
+      "status": "unsupported",
+      "reason": "The upstream release/build documentation provides Windows and Linux targets only and does not provide a macOS target or release.",
+      "evidence": ["docs:https://github.com/Rosalie241/RMG/blob/3e8b366be/README.md (Download and Building sections enumerate Windows/Linux targets only)", "source:Rosalie241/RMG @3e8b366be (pinned source has no macOS target/package)" ]
     }
   }
 }

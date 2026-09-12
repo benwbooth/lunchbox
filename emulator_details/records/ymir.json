@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "slug": "ymir",
+  "emulator": "Ymir",
+  "sources": [
+    { "kind": "source", "repo": "StrikerX3/Ymir", "role": "profile/Ymir.toml paths, SDL controller database/input, IPL/CD-block ROMs, backup memory and save states" },
+    { "kind": "docs", "url": "https://github.com/ymir-emu/Ymir", "role": "official platform, profile, firmware and feature documentation" },
+    { "kind": "docs", "url": "https://github.com/ymir-emu/Ymir/blob/main/TROUBLESHOOTING.md", "role": "official IPL ROM and controller guidance" }
+  ],
+  "platforms": {
+    "linux": { "paths": [
+      { "purpose": "config", "path": "~/.local/share/Ymir/Ymir.toml; -p <profile> selects a separate profile directory", "naming": "TOML Ymir.toml; paths may be relative to the active profile", "evidence": ["source:Ymir profile/config code", "docs:Ymir README command-line/profile options"] },
+      { "purpose": "input", "path": "Input/keybinding settings in Ymir.toml and SDL game controller database gamecontrollerdb.txt", "naming": "GUI-customized keybindings plus SDL GameControllerDB mappings; no separate per-controller binding grammar is required", "evidence": ["source:Ymir input/config code", "docs:Ymir troubleshooting SDL controller database"] },
+      { "purpose": "bios", "path": "<profile>/roms/ipl/ for Saturn IPL BIOS; optional low-level CD block ROMs in <profile>/roms/cdb/", "naming": "IPL and CDB ROM filenames are automatically detected by ROM contents/region; no canonical filename or checksum is published by the cited source", "evidence": ["docs:Ymir README IPL/cdb paths", "docs:Ymir troubleshooting IPL ROM"] },
+      { "purpose": "keys", "path": "No cryptographic firmware-key files", "naming": "No key asset exists", "evidence": ["source:Ymir Saturn emulation"] },
+      { "purpose": "saves", "path": "Backup memory images under the active profile, managed by the integrated Backup Manager", "naming": "Internal/cartridge backup RAM images use Ymir's source-defined image format; imported/exported game files are selected by the manager, with no universal sidecar name published", "evidence": ["source:Ymir backup memory manager", "docs:Ymir README backup memory feature"] },
+      { "purpose": "states", "path": "Save-state files under the active profile's state directory (or -p profile path)", "naming": "Forward-compatible Ymir save-state files are source-defined and versioned; the cited README does not specify a universal filename suffix", "evidence": ["source:Ymir save-state serialization", "docs:Ymir README save-state feature"] }
+    ] },
+    "windows": { "paths": [
+      { "purpose": "config", "path": "%APPDATA%\\StrikerX3\\Ymir\\Ymir.toml by default; -p selects a profile directory", "naming": "TOML Ymir.toml with relative paths supported", "evidence": ["docs:Ymir README user-profile path and -p", "source:Ymir config code"] },
+      { "purpose": "input", "path": "Ymir.toml keybindings and bundled/external gamecontrollerdb.txt", "naming": "GUI keybindings plus SDL GameControllerDB mappings; no separate binding file required", "evidence": ["source:Ymir input code", "docs:Ymir troubleshooting"] },
+      { "purpose": "bios", "path": "<profile>\\roms\\ipl\\; optional <profile>\\roms\\cdb\\ for CD block LLE", "naming": "IPL/CDB ROMs auto-detected; no canonical filename/checksum published", "evidence": ["docs:Ymir README", "docs:Ymir troubleshooting"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["source:Ymir Saturn emulation"] },
+      { "purpose": "saves", "path": "Backup memory images under the active profile, managed by Backup Manager", "naming": "Ymir backup-memory image format and manager-selected exports; no universal sidecar naming", "evidence": ["source:Ymir backup manager", "docs:Ymir README"] },
+      { "purpose": "states", "path": "Active profile save-state directory", "naming": "Versioned forward-compatible Ymir states; exact suffix is source-defined rather than a published cross-platform convention", "evidence": ["source:Ymir save-state serialization", "docs:Ymir README"] }
+    ] },
+    "macos": { "paths": [
+      { "purpose": "config", "path": "~/Library/Application Support/StrikerX3/Ymir/Ymir.toml (or -p profile)", "naming": "TOML Ymir.toml with relative paths", "evidence": ["source:Ymir macOS user-profile path code", "docs:Ymir README -p/user profile"] },
+      { "purpose": "input", "path": "Ymir.toml keybindings and SDL gamecontrollerdb.txt", "naming": "GUI keybindings plus SDL GameControllerDB mappings", "evidence": ["source:Ymir input code", "docs:Ymir troubleshooting"] },
+      { "purpose": "bios", "path": "<profile>/roms/ipl/; optional <profile>/roms/cdb/", "naming": "IPL/CDB ROMs auto-detected; no canonical filename/checksum published", "evidence": ["docs:Ymir README", "docs:Ymir troubleshooting"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["source:Ymir Saturn emulation"] },
+      { "purpose": "saves", "path": "Backup memory images under active profile", "naming": "Ymir backup-memory image format; manager-selected exports have no universal sidecar naming", "evidence": ["source:Ymir backup manager", "docs:Ymir README"] },
+      { "purpose": "states", "path": "Active profile save-state directory", "naming": "Versioned forward-compatible Ymir states; exact suffix source-defined", "evidence": ["source:Ymir save-state serialization", "docs:Ymir README"] }
+    ] },
+    "linux-flatpak": { "paths": [
+      { "purpose": "config", "path": "Flatpak XDG data root ~/.var/app/io.github.strikerx3.ymir/data/Ymir/Ymir.toml; -p may override", "naming": "TOML Ymir.toml", "evidence": ["package:io.github.strikerx3.ymir Flatpak app id", "source:Ymir profile/config code"] },
+      { "purpose": "input", "path": "Ymir.toml and bundled/external SDL gamecontrollerdb.txt in the sandbox profile", "naming": "GUI keybindings plus SDL GameControllerDB mappings", "evidence": ["source:Ymir input code", "docs:Ymir troubleshooting"] },
+      { "purpose": "bios", "path": "~/.var/app/io.github.strikerx3.ymir/data/Ymir/roms/ipl/; optional roms/cdb/", "naming": "IPL/CDB ROMs auto-detected; no canonical filename/checksum published", "evidence": ["docs:Ymir README", "package:io.github.strikerx3.ymir Flatpak layout"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["source:Ymir Saturn emulation"] },
+      { "purpose": "saves", "path": "Backup memory images under the Flatpak profile", "naming": "Ymir backup-memory image format and manager-selected exports", "evidence": ["source:Ymir backup manager", "docs:Ymir README"] },
+      { "purpose": "states", "path": "Save-state directory under the Flatpak profile", "naming": "Versioned forward-compatible Ymir states; exact suffix source-defined", "evidence": ["source:Ymir save-state serialization", "docs:Ymir README"] }
+    ] }
+  }
+}

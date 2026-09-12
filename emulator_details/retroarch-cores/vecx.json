@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "core": "vecx",
+  "display_name": "GCE - Vectrex (vecx)",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": "vecx_libretro.info",
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:vecx:vectrex"
+    ],
+    "mapping_summary": "Vectrex profile maps the digital controls and analog stick to the Vectrex libretro port.",
+    "evidence": [
+      "catalog.json controller profile"
+    ]
+  },
+  "firmware": {
+    "status": "not_required",
+    "files": [],
+    "notes": "vecx has no external firmware file in core-info.",
+    "evidence": [
+      "vecx_libretro.info firmware_count absent/zero"
+    ]
+  },
+  "saves": {
+    "status": "content_dependent",
+    "extensions": [
+      ".srm"
+    ],
+    "naming": "Persistent cartridge data, if provided by a title, follows the RetroArch content basename.",
+    "notes": "Vectrex cartridge persistence is title-dependent.",
+    "evidence": [
+      "vecx libretro save implementation"
+    ]
+  },
+  "states": {
+    "status": "supported",
+    "serialization": "serialized",
+    "naming": "Frontend state names are <content-basename>.state and <content-basename>.stateN.",
+    "notes": "vecx_libretro.info declares serialized savestates.",
+    "evidence": [
+      "vecx_libretro.info savestate=true/savestate_features=serialized"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "windows": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "slug": "ryubing-ryujinx-fork",
+  "emulator": "Ryubing (Ryujinx fork)",
+  "sources": [
+    { "kind": "source", "repo": "Ryubing/Ryujinx", "role": "Ryujinx-derived data roots, Config.json/input profiles, Switch keys/firmware, saves and state feature boundary" },
+    { "kind": "docs", "url": "https://docs.ryujinx.app/guides/setup-guide/", "role": "official Ryubing setup, portable mode, keys and firmware guidance" },
+    { "kind": "manifest", "repo": "lunchbox", "path": "sources/firmware-rules.json", "role": "Ryubing keys and firmware import filenames" }
+  ],
+  "platforms": {
+    "linux": { "paths": [
+      { "purpose": "config", "path": "~/.config/Ryujinx/Config.json (or a portable data root selected with -r)", "naming": "JSON Config.json; controller profiles are JSON files under the Ryujinx input profile directory and store backend/id/controller_type plus button_a/button_b/... and stick/trigger fields", "evidence": ["source:Ryujinx configuration/input profile code", "docs:Ryubing setup guide Config.json and portable mode"] },
+      { "purpose": "input", "path": "Ryujinx data root input profiles plus Config.json", "naming": "Input profile JSON uses fields such as backend=GamepadSDL2, id=<SDL device id>, controller_type=ProController, button_a=A and button_b=B; GUI Input > Configure Controllers writes the profile", "evidence": ["source:Ryujinx input configuration/profile serializer", "docs:Ryubing controller configuration"] },
+      { "purpose": "keys", "path": "~/.config/Ryujinx/system/prod.keys and optional title.keys (portable system/ when -r is used)", "naming": "Exact cryptographic key filenames prod.keys and title.keys; no canonical checksum is published for user-dumped keys", "evidence": ["docs:Ryubing keys guide", "source:Ryujinx key manager", "manifest:sources/firmware-rules.json ryubing keys rule"] },
+      { "purpose": "bios", "path": "~/.config/Ryujinx/bis/system/Contents/registered/ (portable bis/system/Contents/registered/)", "naming": "Switch firmware is installed NCA content selected by the BIS registered-content layout, not one BIOS filename; no canonical firmware checksum is published by this runtime record", "evidence": ["docs:Ryubing firmware setup guide", "source:Ryujinx filesystem/BIS registered-content code", "manifest:sources/firmware-rules.json ryubing firmware rule"] },
+      { "purpose": "saves", "path": "~/.config/Ryujinx/bis/user/save/ (portable bis/user/save/)", "naming": "Per-title account/system save directories use Nintendo Switch title-ID-derived numeric directory names and contain title-created files", "evidence": ["docs:Ryubing FAQ save location", "source:Ryujinx BIS save filesystem"] },
+      { "purpose": "states", "path": "No save-state subsystem is documented in the pinned Ryubing/Ryujinx desktop runtime", "naming": "Unsupported; Switch title saves are not emulator save states", "evidence": ["source:Ryujinx runtime feature set", "docs:Ryubing setup/FAQ"] }
+    ] },
+    "windows": { "paths": [
+      { "purpose": "config", "path": "%APPDATA%\\Ryujinx\\Config.json (or <Ryubing directory>\\portable\\Config.json / -r root)", "naming": "JSON Config.json; input profiles are JSON records with backend/id/controller_type and button/axis fields", "evidence": ["docs:Ryubing setup guide default and portable paths", "source:Ryujinx configuration code"] },
+      { "purpose": "input", "path": "Ryubing input profiles under the selected data root", "naming": "Input profile JSON fields include backend, id, controller_type, button_a/button_b/... and analog/trigger fields; GUI controller configuration writes the file", "evidence": ["source:Ryujinx input profile serializer", "docs:Ryubing controller configuration"] },
+      { "purpose": "keys", "path": "%APPDATA%\\Ryujinx\\system\\prod.keys and title.keys", "naming": "Exact filenames prod.keys and title.keys; no canonical checksum is published for user-dumped keysets", "evidence": ["docs:Ryubing keys guide", "source:Ryujinx key manager", "manifest:sources/firmware-rules.json"] },
+      { "purpose": "bios", "path": "%APPDATA%\\Ryujinx\\bis\\system\\Contents\\registered\\", "naming": "Installed firmware NCA content in BIS registered-content layout; no single BIOS filename or canonical firmware checksum", "evidence": ["docs:Ryubing firmware guide", "source:Ryujinx BIS filesystem", "manifest:sources/firmware-rules.json"] },
+      { "purpose": "saves", "path": "%APPDATA%\\Ryujinx\\bis\\user\\save\\", "naming": "Per-title numeric Switch save directories keyed by title IDs", "evidence": ["docs:Ryubing FAQ save location", "source:Ryujinx save filesystem"] },
+      { "purpose": "states", "path": "No documented emulator save-state subsystem", "naming": "Unsupported; title save data is not a save state", "evidence": ["source:Ryujinx runtime", "docs:Ryubing setup guide"] }
+    ] },
+    "macos": { "paths": [
+      { "purpose": "config", "path": "~/Library/Application Support/Ryujinx/Config.json (or custom -r data root)", "naming": "JSON Config.json and JSON input profiles with backend/id/controller_type and button/axis fields", "evidence": ["docs:Ryubing setup guide macOS custom-root example", "source:Ryujinx platform data-path code"] },
+      { "purpose": "input", "path": "Ryubing input profiles under the selected application-data root", "naming": "Input profile JSON uses backend/id/controller_type plus button_a/button_b/... and analog/trigger fields", "evidence": ["source:Ryujinx input profile serializer", "docs:Ryubing controller configuration"] },
+      { "purpose": "keys", "path": "~/Library/Application Support/Ryujinx/system/prod.keys and title.keys", "naming": "Exact filenames prod.keys/title.keys; no canonical checksum for user-dumped keysets", "evidence": ["docs:Ryubing keys guide", "source:Ryujinx key manager"] },
+      { "purpose": "bios", "path": "~/Library/Application Support/Ryujinx/bis/system/Contents/registered/", "naming": "Installed firmware NCA content selected by BIS layout; no single BIOS filename/canonical checksum", "evidence": ["docs:Ryubing firmware guide", "source:Ryujinx BIS filesystem"] },
+      { "purpose": "saves", "path": "~/Library/Application Support/Ryujinx/bis/user/save/", "naming": "Per-title numeric Switch save directories keyed by title IDs", "evidence": ["docs:Ryubing FAQ save location", "source:Ryujinx save filesystem"] },
+      { "purpose": "states", "path": "No documented emulator save-state subsystem", "naming": "Unsupported; title save data is not an emulator state", "evidence": ["source:Ryujinx runtime", "docs:Ryubing setup guide"] }
+    ] }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "Ryubing documentation and release channels identify native/Linux distribution but no authoritative Ryubing Flatpak manifest/package capture.", "evidence": ["docs:https://ryubing.dev/ downloads", "docs:https://docs.ryujinx.app/ setup guide"] }
+  }
+}

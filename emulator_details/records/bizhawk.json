@@ -46,7 +46,7 @@
         {
           "purpose": "bios",
           "path": "Global Firmware directory from PathEntries: default <programdir>/Firmware; FirmwareManager.DoScanAndResolve scans that directory and EmuHawk opens its firmware manager (Config > Firmware) when a core needs a missing file",
-          "naming": "Per-system firmware files: FDS disksys.rom, PCE CD PCECDBIOS.pce, Colecovision ColecoBios.bin, GBA gbabios.rom, Atari Lynx BIOS, TI-83 ti83_107.rom, SNES coprocessor ROMs (cx4.rom, dsp1b.rom, st010.rom, sgb.sfc etc.), PlayStation ps-30a.bin/ps-30e.bin/ps-30j.bin, Sega CD/Saturn and SMS regional BIOSes, 7800/Intellivision/C64/Apple IIe files; none are distributed with BizHawk",
+          "naming": "Per-system firmware files: FDS disksys.rom, PCE CD PCECDBIOS.pce, Colecovision ColecoBios.bin, GBA gbabios.rom, Atari Lynx BIOS, TI-83 ti83_107.rom, SNES coprocessor ROMs (cx4.rom, dsp1b.rom, st010.rom, sgb.sfc etc.), PlayStation ps-30a.bin/ps-30e.bin/ps-30j.bin, Sega CD/Saturn and SMS regional BIOSes, 7800/Intellivision/C64/Apple IIe files; none are distributed with BizHawk. BizHawk does not publish canonical checksums for this firmware set.",
           "evidence": [
             "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults (Firmware = ./Firmware)",
             "source:src/BizHawk.Client.Common/fwmanager/FirmwareManager.cs DoScanAndResolve(FirmwareAbsolutePath)",
@@ -61,7 +61,7 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "config.ini in the effective EmuHawk installation directory (portable); Program.cs falls back to PathUtils.ExeDirectoryPath/config.ini, and at the pinned revision the Unix PathExtensions derives that directory from BIZHAWK_HOME (and the data directory from BIZHAWK_DATA_HOME) when set. Same JSON layout as Windows: AllTrollers deck maps, CoreSyncSettings, PreferredCores, PathEntries",
+          "path": "config.ini in the effective EmuHawk installation directory (portable); Program.cs falls back to PathUtils.ExeDirectoryPath/config.ini, and at the pinned revision the Unix PathExtensions derives that directory from BIZHAWK_HOME (and the data directory from BIZHAWK_DATA_HOME) when set. Same JSON layout as Windows: AllTrollers deck maps use per-system deck names and P<n> <button> keys, with AllTrollersAnalog/AllTrollersFeedbacks/AllTrollersAutoFire alongside CoreSyncSettings, PreferredCores, and PathEntries.",
           "evidence": [
             "source:src/BizHawk.Client.EmuHawk/Program.cs configPath default",
             "contract:docs/BIZHAWK_DEFINITION_CAPTURE.md (steps 389, 445: BIZHAWK_HOME/BIZHAWK_DATA_HOME on Unix)",
@@ -92,7 +92,7 @@
         {
           "purpose": "bios",
           "path": "Global Firmware directory from PathEntries: default <programdir>/Firmware; FirmwareManager.DoScanAndResolve scans that directory and the firmware manager prompts for missing files",
-          "naming": "Same firmware set as Windows: FDS disksys.rom, PCE CD PCECDBIOS.pce, GBA gbabios.rom, PlayStation ps-30a/e/j.bin, SNES coprocessor ROMs, Sega CD/Saturn/SMS BIOSes, TI-83, 7800, Intellivision, C64, Apple IIe; not distributed with BizHawk",
+          "naming": "Same firmware set as Windows: FDS disksys.rom, PCE CD PCECDBIOS.pce, GBA gbabios.rom, PlayStation ps-30a/e/j.bin, SNES coprocessor ROMs, Sega CD/Saturn/SMS BIOSes, TI-83, 7800, Intellivision, C64, Apple IIe; not distributed with BizHawk. BizHawk does not publish canonical checksums for this firmware set.",
           "evidence": [
             "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults (Firmware = ./Firmware)",
             "source:src/BizHawk.Client.Common/fwmanager/FirmwareManager.cs DoScanAndResolve",
@@ -106,7 +106,7 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "Legacy only: config.ini in the EmuHawk program directory, same portable layout as Windows (Program.cs ExeDirectoryPath/config.ini fallback; JSON-formatted file with AllTrollers/CoreSyncSettings/PreferredCores/PathEntries); current BizHawk does not run on macOS, so only the legacy 1.x port or the old 2.x source fork use this layout there",
+          "path": "Legacy only: config.ini in the EmuHawk program directory, same portable layout as Windows (Program.cs ExeDirectoryPath/config.ini fallback; JSON-formatted file with AllTrollers deck maps using per-system deck names and P<n> <button> keys, plus CoreSyncSettings/PreferredCores/PathEntries); current BizHawk does not run on macOS, so only the legacy 1.x port or the old 2.x source fork use this layout there",
           "evidence": [
             "source:src/BizHawk.Client.EmuHawk/Program.cs configPath default (platform-independent exe-relative layout)",
             "readme:macOS (legacy BizHawk) section at the pinned commit"
@@ -134,7 +134,7 @@
         {
           "purpose": "bios",
           "path": "Legacy only: global Firmware directory, default <programdir>/Firmware, scanned by the firmware manager",
-          "naming": "Same firmware set as Windows (disksys.rom, gbabios.rom, ps-30a/e/j.bin etc.); not distributed with BizHawk",
+          "naming": "Same firmware set as Windows (disksys.rom, gbabios.rom, ps-30a/e/j.bin etc.); not distributed with BizHawk. BizHawk does not publish canonical checksums for this firmware set.",
           "evidence": [
             "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults (Firmware = ./Firmware)",
             "docs:tasvideos.org/Bizhawk/Firmwares"
@@ -142,6 +142,15 @@
         }
       ],
       "notes": "macOS support level: none for current releases. The README section macOS (legacy BizHawk) lists the options: use Windows/Linux or an x86_64 VM, run Sappharad's older 1.x port via Rosetta, or build his old 2.x source fork; Apple silicon would need x86_64 plus Rosetta. Paths above follow the pinned source's platform-independent exe-relative layout and apply to those legacy builds."
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "BizHawk's upstream desktop distribution targets Windows and Linux/Unix builds; no trustworthy upstream Flatpak package is identified.",
+      "evidence": [
+        "source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 README/release metadata — Windows and Unix desktop targets are documented, with no upstream Flatpak package"
+      ]
     }
   }
 }

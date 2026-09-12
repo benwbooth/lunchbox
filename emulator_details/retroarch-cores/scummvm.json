@@ -1,0 +1,472 @@
+{
+  "schema_version": 1,
+  "core": "scummvm",
+  "display_name": "ScummVM",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": "scummvm_libretro.info",
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:scummvm:retropad-cursor"
+    ],
+    "mapping_summary": "ScummVM retropad cursor contract maps directional movement, pointer buttons, keyboard shortcuts and the virtual keyboard.",
+    "evidence": [
+      "catalog.json controller profile"
+    ]
+  },
+  "firmware": {
+    "status": "optional",
+    "files": [
+      {
+        "path": "scummvm/theme/scummclassic.zip",
+        "description": "scummclassic.zip",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/theme/scummmodern.zip",
+        "description": "scummmodern.zip",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/theme/scummremastered.zip",
+        "description": "scummremastered.zip",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/theme/residualvm.zip",
+        "description": "residualvm.zip",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/theme/gui-icons.dat",
+        "description": "gui-icons.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/theme/shaders.dat",
+        "description": "shaders.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/theme/translations.dat",
+        "description": "translations.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/achievements.dat",
+        "description": "achievements.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/encoding.dat",
+        "description": "encoding.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/freescape.dat",
+        "description": "freescape.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/grim-patch.lab",
+        "description": "grim-patch.lab",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/monkey4-patch.m4b",
+        "description": "monkey4-patch.m4b",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/myst3.dat",
+        "description": "myst3.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/fonts.dat",
+        "description": "fonts.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/macgui.dat",
+        "description": "macgui.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/access.dat",
+        "description": "access.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/cryo.dat",
+        "description": "cryo.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/cryomni3d.dat",
+        "description": "cryomni3d.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/drascula.dat",
+        "description": "drascula.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/hadesch_translations.dat",
+        "description": "hadesch_translations.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/hugo.dat",
+        "description": "hugo.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/kyra.dat",
+        "description": "kyra.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/lure.dat",
+        "description": "lure.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/macventure.dat",
+        "description": "macventure.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/mort.dat",
+        "description": "mort.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/nancy.dat",
+        "description": "nancy.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/neverhood.dat",
+        "description": "neverhood.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/queen.tbl",
+        "description": "queen.tbl",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/sky.cpt",
+        "description": "sky.cpt",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/supernova.dat",
+        "description": "supernova.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/teenagent.dat",
+        "description": "teenagent.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/titanic.dat",
+        "description": "titanic.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/tony.dat",
+        "description": "tony.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/toon.dat",
+        "description": "toon.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/ultima.dat",
+        "description": "ultima.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/wintermute.zip",
+        "description": "wintermute.zip",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/mm.dat",
+        "description": "mm.dat",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/vkeybd_default.zip",
+        "description": "vkeybd_default.zip",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      },
+      {
+        "path": "scummvm/extra/Roland_SC-55.sf2",
+        "description": "Roland_SC-55.sf2",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "scummvm_libretro.info firmware path/optional"
+        ]
+      }
+    ],
+    "notes": "Core-info lists 39 optional theme and extra data assets; no canonical checksums are published.",
+    "evidence": [
+      "scummvm_libretro.info firmware_count/firmware*_path/firmware*_opt at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+    ]
+  },
+  "saves": {
+    "status": "supported",
+    "extensions": [
+      ".s00",
+      ".s01",
+      ".s02"
+    ],
+    "naming": "ScummVM target savegames use numbered target files such as <target>.s01 or <target>.001.",
+    "notes": "ScummVM has engine-specific numbered saves and autosaves; the core does not implement RetroArch save states.",
+    "evidence": [
+      "ScummVM libretro save path and engine save naming"
+    ]
+  },
+  "states": {
+    "status": "not_supported",
+    "serialization": "none",
+    "naming": "No state files are created.",
+    "notes": "scummvm_libretro.info declares savestate=false.",
+    "evidence": [
+      "scummvm_libretro.info savestate=false"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "windows": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    }
+  }
+}

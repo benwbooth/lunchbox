@@ -15,6 +15,7 @@
         {
           "purpose": "config",
           "path": "~/.config/desmume/config — a GLib keyfile (not desmume.cfg/.ini) at g_get_user_config_dir()/desmume/config; $XDG_CONFIG_HOME overrides the root, and the posix keyfile is where the [JOYKEYS] joypad group lives: one integer per key_names[] entry (Up/Down/Left/Right/A/B/X/Y/L/R/Start/Select plus disabled 0xFFFF entries), with codes (device & 15) << 12 | type << 8 | index (type 0=Axis, 1=Hat, 2=Button; axis halves 2*axis / 2*axis+1 engage at |value| >> 14 = 16384)",
+          "naming": "POSIX controller syntax is GLib keyfile [JOYKEYS] with one encoded integer per DS button: (device & 15) << 12 | type << 8 | index; type 0=axis, 1=hat, and 2=button",
           "evidence": [
             "source:frontend/posix/shared/desmume_config.cpp:25-26 dir 'desmume' + file 'config', :36 g_build_filename(g_get_user_config_dir(), ...), :107 g_key_file_set_integer(keyfile, \"JOYKEYS\", key_names[i], joypad_cfg[i]), :135-139 JOYKEYS group read @b3915949",
             "source:frontend/posix/shared/ctrlssdl.cpp joypad key-code encoding and 16384 axis threshold @b3915949",
@@ -45,6 +46,7 @@
         {
           "purpose": "bios",
           "path": "none required — the ARM7/ARM9 BIOS is built in (no bios7/bios9 dumping exists in the codebase); the only optional firmware is an external dumped-DS firmware.bin (CommonSettings.ExtFirmwarePath defaults to \"firmware.bin\", used only when external firmware is enabled, with BootFromFirmware defaulting to false; the cli frontend accepts -fw-path)",
+          "naming": "Built-in ARM7/ARM9 BIOS; optional dumped DS firmware is firmware.bin by default (or the configured -fw-path), with no bios7/bios9 files or canonical checksum",
           "evidence": [
             "source:NDSSystem.cpp:3373-3375 strncpy(ExtFirmwarePath, \"firmware.bin\", ...) and BootFromFirmware = false, :2785-2793 external firmware only consulted when UseExtFirmware @b3915949",
             "source:commandline.cpp:463 -fw-path sets UseExtFirmware/ExtFirmwarePath @b3915949",
@@ -58,7 +60,8 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "org.desmume.DeSmuME: ~/.var/app/org.desmume.DeSmuME/config/desmume/config — the manifest builds the same posix GTK frontend from a master commit (91196788eb6f8543ea395ac1f6ad9e056dc7c5c2, runtime 24.08, -Dfrontend-cli=false, command desmume), so the GLib keyfile and its [JOYKEYS] group land under the sandbox XDG_CONFIG_HOME; the Flathub appstream metadata still advertises release 0.9.11 (2015) even though the manifest was updated 2024-09-26",
+          "path": "org.desmume.DeSmuME: ~/.var/app/org.desmume.DeSmuME/config/desmume/config — the manifest builds the same posix GTK frontend from a master commit (91196788eb6f8543ea395ac1f6ad9e056dc7c5c2, runtime 24.08, -Dfrontend-cli=false, command desmume), so the GLib keyfile and its [JOYKEYS] group land under the sandbox XDG_CONFIG_HOME; the Flathub appstream metadata still advertises release 0.9.11 (2015) even though the manifest was updated 2024-09-26)",
+          "naming": "Same POSIX GLib keyfile syntax as native: [JOYKEYS] one encoded integer per DS button, with type 0=axis, 1=hat, and 2=button",
           "evidence": [
             "flathub:org.desmume.DeSmuME — appstream API lists id/name/developer 'DeSmuME Team' GPL-2.0-or-later with release 0.9.11 timestamped 2015; manifest raw org.desmume.DeSmuME.json (last commits 2024-09-26) pins commit 91196788, finish-args have no --filesystem so all reads/writes stay inside the sandbox",
             "source:frontend/posix/shared/desmume_config.cpp:36 config path derives from g_get_user_config_dir() @b3915949",
@@ -86,6 +89,7 @@
         {
           "purpose": "bios",
           "path": "none required; optional external firmware.bin behaves as on native Linux (built-in BIOS, firmware only used when explicitly enabled)",
+          "naming": "Built-in ARM7/ARM9 BIOS; optional dumped DS firmware is firmware.bin, or the configured external path; no bios7/bios9 files or canonical checksum",
           "evidence": [
             "source:NDSSystem.cpp:3373-3375 optional firmware default, BootFromFirmware=false @b3915949",
             "flathub:org.desmume.DeSmuME (no firmware shipped)"
@@ -99,6 +103,7 @@
         {
           "purpose": "config",
           "path": "desmume.ini in the executable's directory (portable style, written with a UTF-16 BOM); when the exe runs from the temp directory (e.g. straight out of an archive) it switches to %LOCALAPPDATA%\\DeSmuME\\desmume.ini and chdirs there; [PathSettings] keys Roms/Battery/SramImportExport/States/StateSlots/Screenshots/AviFiles/Cheats/SoundSamples/Firmware/Lua/Slot1D configure every data dir; joypad mapping lives in the Windows frontend's own ini sections — the [JOYKEYS] keyfile contract is posix-only",
+          "naming": "Windows controller mappings are stored in frontend-specific INI sections in desmume.ini; the pinned source does not establish a portable key/value grammar equivalent to POSIX [JOYKEYS]",
           "evidence": [
             "source:frontend/windows/winutil.cpp:36-90 GetINIPath — GetModuleFileName dir + \\desmume.ini, temp-dir fallback to CSIDL_LOCAL_APPDATA\\DeSmuME + SetCurrentDirectoryW, BOM creation @b3915949",
             "source:path.h:76-95 SECTION PathSettings and its key names, :285-289 GetPrivateProfileString(SECTION,...,IniName) @b3915949",
@@ -127,6 +132,7 @@
         {
           "purpose": "bios",
           "path": "none required (built-in BIOS); optional external firmware via desmume.ini [Firmware] FirmwareFile (default \"firmware.bin\") resolved against the PathSettings 'Firmware' directory (default .\\Firmware) with [Firmware] BootFromFirmware (default 0) — the dumped-DS firmware.bin is the only firmware input; no ARM7/ARM9 BIOS dumps are used",
+          "naming": "Built-in ARM7/ARM9 BIOS; optional dumped DS firmware defaults to firmware.bin under the configured Firmware directory (or [Firmware] FirmwareFile); no bios7/bios9 files or canonical checksum",
           "evidence": [
             "source:frontend/windows/main.cpp:2439-2440 GetPrivateProfileString(\"Firmware\", \"FirmwareFile\", \"firmware.bin\", ...) and GetPrivateProfileBool(\"Firmware\", \"BootFromFirmware\", false, IniName), :5965-5966 written back @b3915949",
             "source:NDSSystem.cpp:3373-3375 ExtFirmwarePath/BootFromFirmware defaults @b3915949"
@@ -140,6 +146,7 @@
         {
           "purpose": "config",
           "path": "~/Library/Preferences/org.desmume.DeSmuME.plist — the Cocoa frontend keeps settings in NSUserDefaults under CFBundleIdentifier org.desmume.DeSmuME; per-kind data directories are derived from FileTypeInfo.plist instead, and Cocoa input preferences are outside the pinned [JOYKEYS] contract (posix-only)",
+          "naming": "Cocoa controller preferences are stored in NSUserDefaults; the pinned source does not expose a portable button-binding key/value grammar (POSIX [JOYKEYS] does not apply)",
           "evidence": [
             "source:frontend/cocoa/Info.plist:240-241 CFBundleIdentifier org.desmume.DeSmuME @b3915949",
             "source:frontend/cocoa (NSUserDefaults standardUserDefaults usage throughout, e.g. cocoa_firmware.mm:177-191, cocoa_rom.mm:274) @b3915949",
@@ -168,6 +175,7 @@
         {
           "purpose": "bios",
           "path": "none required; generated firmware configuration lives in ~/Library/Application Support/DeSmuME/<CFBundleVersion>/Battery ('Firmware Configuration' kind maps to the Battery directory), and the optional external firmware.bin behaves as on other platforms",
+          "naming": "Built-in ARM7/ARM9 BIOS; optional dumped DS firmware is firmware.bin by default (or the configured external path); no bios7/bios9 files or canonical checksum",
           "evidence": [
             "source:frontend/cocoa/FileTypeInfo.plist 0.9.8-0.9.14 'Firmware Configuration' = ${APPSUPPORT}, DirectoryNames = Battery @b3915949",
             "source:NDSSystem.cpp:3373-3375 optional firmware defaults @b3915949"

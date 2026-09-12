@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "slug": "bsnes",
+  "emulator": "bsnes",
+  "sources": [
+    { "kind": "source", "repo": "bsnes-emu/bsnes", "commit": "7d5aa1e656b9171524d01b1b22917197d8121cb4", "role": "desktop path roots, settings.bml, controller binding serialization, saves and state archive format, firmware filename resolution" },
+    { "kind": "docs", "url": "https://bsnes.org/docs/default-controls", "role": "official controller setup and hotkey documentation" },
+    { "kind": "docs", "url": "https://bsnes.org/docs/glossary/", "role": "official Paths and State Manager documentation" },
+    { "kind": "package", "url": "https://github.com/flathub/dev.bsnes.bsnes", "role": "community Flatpak package; not upstream desktop distribution" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/bsnes/settings.bml ($XDG_CONFIG_HOME/bsnes/settings.bml; an existing settings.bml beside the executable or in user data is preferred). Controller mappings are BML keys under each port/device mapping path; values are semicolon-separated assignments in device-id/group/input[/qualifier] form, where qualifiers include Lo, Hi, and Rumble.",
+          "evidence": ["source:nall/path.hpp userSettings() XDG_CONFIG_HOME fallback", "source:bsnes/target-bsnes/bsnes.cpp locate(\"settings.bml\")", "source:bsnes/target-bsnes/input/input.cpp InputMapping::bind parser/serializer"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM by default; the Settings > Paths > Saves directory overrides this. Save path keys are derived from the ROM path and extension.",
+          "naming": "SNES cartridge RAM: <ROM basename>.srm; RTC: <ROM basename>.rtc; download RAM: <ROM basename>.psr. Game Boy support in this desktop target uses <ROM basename>.sav. Co-processor RAM uses the .srm path.",
+          "evidence": ["source:bsnes/target-bsnes/program/paths.cpp Program::path", "source:bsnes/target-bsnes/program/game-rom.cpp save.ram/time.rtc/download.ram handlers"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the loaded ROM by default as a ZIP archive; the Settings > Paths > States directory overrides this. Directory-style higan games use a bsnes/states/ directory inside the game folder.",
+          "naming": "ROM-file games: <ROM basename>.bsz ZIP containing <state name>.bst members, including Quick/Slot 1..9.bst, Quick/Undo.bst and Quick/Redo.bst. Directory-style games: bsnes/states/<state name>.bst.",
+          "evidence": ["source:bsnes/target-bsnes/program/paths.cpp statePath()", "source:bsnes/target-bsnes/program/states.cpp availableStates/saveState/loadState"]
+        },
+        {
+          "purpose": "bios",
+          "path": "Firmware files are looked up under the application Firmware/ resource directory (or its user-data override) by manifest identifier. bsnes has no one universal BIOS file; ordinary SNES games need none, while optional co-processor/boot ROMs are manifest-declared.",
+          "naming": "Exact source-derived names are <lowercase manifest identifier>.program.rom, <lowercase manifest identifier>.data.rom, or <lowercase manifest identifier>.boot.rom (architectures ARM6, HG51BS169, uPD7725, uPD96050, LR35902). No canonical checksum is published by this target source for these external files; built-in firmware blobs are accepted for recognized sizes. Do not infer a BIOS filename when a manifest identifier is absent.",
+          "evidence": ["source:bsnes/target-bsnes/program/game-rom.cpp locate({\"Firmware/\", identifier, extension})", "source:bsnes/target-bsnes/program/game-rom.cpp built-in firmware size handling", "source:bsnes/target-bsnes/program/game.cpp manifest loading"]
+        }
+      ],
+      "notes": "Native Linux desktop target. bsnes stores settings under userSettings (~/.config) but game saves/states default beside ROM files unless Paths overrides are set."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/dev.bsnes.bsnes/config/bsnes/settings.bml under standard Flatpak XDG_CONFIG_HOME; BML controller mapping keys and values use the same device-id/group/input[/qualifier] semicolon syntax as native bsnes.",
+          "evidence": ["package:github.com/flathub/dev.bsnes.bsnes community manifest/app id", "source:bsnes-emu/bsnes 7d5aa1e656b9171524d01b1b22917197d8121cb4 nall/path.hpp and target-bsnes/bsnes.cpp", "docs:Flatpak XDG config directory convention"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM when the sandbox grants access, or in configured Paths/Saves; save names remain <ROM basename>.srm/.rtc/.psr (and .sav for Game Boy).",
+          "naming": "Same native bsnes extensions: .srm, .rtc, .psr, and .sav as applicable.",
+          "evidence": ["source:target-bsnes/program/paths.cpp", "source:target-bsnes/program/game-rom.cpp", "package:github.com/flathub/dev.bsnes.bsnes"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the ROM as <ROM basename>.bsz, or under configured Paths/States; external ROM access requires Flatpak filesystem permission.",
+          "naming": "ZIP archive with .bst members (Quick/Slot 1..9, Quick/Undo, Quick/Redo); directory-style games use bsnes/states/*.bst.",
+          "evidence": ["source:target-bsnes/program/paths.cpp and states.cpp", "package:github.com/flathub/dev.bsnes.bsnes"]
+        },
+        {
+          "purpose": "bios",
+          "path": "Firmware/ resource directory or user override in the sandbox; manifest identifiers determine names and external firmware is not assigned a universal checksum by bsnes.",
+          "naming": "<lowercase manifest identifier>.program.rom/.data.rom/.boot.rom for optional co-processor/boot firmware; ordinary SNES software needs no BIOS.",
+          "evidence": ["source:target-bsnes/program/game-rom.cpp", "package:github.com/flathub/dev.bsnes.bsnes"]
+        }
+      ],
+      "notes": "Community Flatpak provenance; package identity and sandbox roots are recorded, but the package is not an upstream bsnes distribution."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/bsnes/settings.bml (Path::userSettings on macOS). Controller mappings are BML mapping keys with semicolon-separated device-id/group/input[/Lo|Hi|Rumble] values.",
+          "evidence": ["source:nall/path.hpp userSettings() macOS branch", "source:target-bsnes/bsnes.cpp locate(\"settings.bml\")", "source:target-bsnes/input/input.cpp"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM by default, or under Settings > Paths > Saves.",
+          "naming": "<ROM basename>.srm for cartridge RAM, .rtc for time, .psr for download RAM, and .sav for Game Boy RAM; no external firmware is implied by save files.",
+          "evidence": ["source:target-bsnes/program/paths.cpp", "source:target-bsnes/program/game-rom.cpp"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the loaded ROM as <ROM basename>.bsz by default, or under Paths > States; directory-style games use game-folder bsnes/states/.",
+          "naming": "ZIP archive .bsz containing .bst state members, including Quick/Slot 1..9, Quick/Undo and Quick/Redo; directory-style state files are .bst.",
+          "evidence": ["source:target-bsnes/program/paths.cpp", "source:target-bsnes/program/states.cpp"]
+        },
+        {
+          "purpose": "bios",
+          "path": "Firmware/ resource directory or user override. Ordinary SNES games require no BIOS; optional manifest-declared co-processor and boot ROMs use generated names.",
+          "naming": "<lowercase manifest identifier>.program.rom/.data.rom/.boot.rom; no canonical external checksum is declared by this source target.",
+          "evidence": ["source:target-bsnes/program/game-rom.cpp", "source:nall/path.hpp macOS path roots"]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\bsnes\\settings.bml (Path::userSettings on Windows; an existing settings.bml beside the executable or in user data is preferred). Controller mappings are BML mapping keys with semicolon-separated device-id/group/input[/Lo|Hi|Rumble] values.",
+          "evidence": ["source:nall/path.hpp userSettings() Windows CSIDL_APPDATA branch", "source:target-bsnes/bsnes.cpp locate(\"settings.bml\")", "source:target-bsnes/input/input.cpp"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM by default, or under configured Paths/Saves.",
+          "naming": "<ROM basename>.srm, .rtc, .psr, or .sav depending on the loaded system and memory type.",
+          "evidence": ["source:target-bsnes/program/paths.cpp", "source:target-bsnes/program/game-rom.cpp"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the loaded ROM as <ROM basename>.bsz by default, or under configured Paths/States; directory-style games use bsnes/states/.",
+          "naming": "ZIP .bsz containing .bst state members (Quick/Slot 1..9, Quick/Undo, Quick/Redo); directory-style games use individual .bst files.",
+          "evidence": ["source:target-bsnes/program/paths.cpp", "source:target-bsnes/program/states.cpp"]
+        },
+        {
+          "purpose": "bios",
+          "path": "Firmware/ resource directory or user override; ordinary SNES games need no BIOS, and optional firmware is resolved from manifest identifiers.",
+          "naming": "<lowercase manifest identifier>.program.rom/.data.rom/.boot.rom; no canonical checksum for external firmware is declared by this source.",
+          "evidence": ["source:target-bsnes/program/game-rom.cpp", "source:nall/path.hpp Windows path roots"]
+        }
+      ]
+    }
+  }
+}

@@ -15,6 +15,7 @@
         {
           "purpose": "config",
           "path": "~/.config/blastem/blastem.cfg (falls back to bundled default.cfg next to the executable when absent; ui config_in_exe_dir on relocates it to the exe dir); the config is the tern tree serialized as nested name { key value } blocks",
+          "naming": "Controller bindings use the tern-tree `bindings pads <SDL device index>` blocks: `dpads <n> <direction>`, `buttons <n>`, and `axes <n>.positive|negative` target `gamepads.<1-8>.<button>`; the config serialization is nested `name { key value }`",
           "evidence": ["source:paths.c get_config_dir -> $HOME/.config/blastem (CONFIG_PREFIX \"/.config\")", "source:config.c load_overrideable_config(\"blastem.cfg\", \"default.cfg\")", "README:Configuration \"$HOME/.config/blastem/blastem.cfg ... Otherwise it is read from default.cfg from the same directory as the BlastEm executable\"", "docs:retrodev.com \"copy it to ~/.config/blastem/blastem.cfg\"", "contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
@@ -32,6 +33,7 @@
         {
           "purpose": "bios",
           "path": "None required — BlastEm boots cartridge ROMs directly (the ROM is a bare argument) with no firmware step; the pinned contract and upstream docs list no BIOS",
+          "naming": "No external BIOS or firmware filename; BlastEm boots the cartridge ROM directly, so no canonical checksum applies",
           "evidence": ["contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md (\"blastem.c main takes the ROM as a bare argument\")", "docs:retrodev.com (no BIOS/firmware requirement listed)"]
         }
       ],
@@ -42,6 +44,7 @@
         {
           "purpose": "config",
           "path": "~/.var/app/com.retrodev.blastem/.config/blastem/blastem.cfg (paths.c keys everything off $HOME, which flatpak points at the per-app ~/.var/app dir)",
+          "naming": "Same tern-tree controller grammar as native: `bindings pads <SDL device index>` with `dpads`, `buttons`, and `axes` entries targeting `gamepads.<1-8>.<button>`",
           "evidence": ["flathub:com.retrodev.blastem (page exists; unverified publisher, BlastEm 0.6.2)", "source:paths.c HOME-based get_config_dir"]
         },
         {
@@ -59,6 +62,7 @@
         {
           "purpose": "bios",
           "path": "None required",
+          "naming": "No external BIOS or firmware filename; BlastEm boots the cartridge ROM directly, so no canonical checksum applies",
           "evidence": ["contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md", "docs:retrodev.com"]
         }
       ],
@@ -69,6 +73,7 @@
         {
           "purpose": "config",
           "path": "%LOCALAPPDATA%\\blastem\\blastem.cfg (get_config_dir -> get_userdata_dir -> FOLDERID_LocalAppData; bundled default.cfg next to blastem.exe otherwise; pre-0.4.1 builds used Unixy %USERPROFILE%\\.local paths)",
+          "naming": "Same tern-tree controller grammar as native: `bindings pads <SDL device index>` with `dpads`, `buttons`, and `axes` entries targeting `gamepads.<1-8>.<button>`",
           "evidence": ["source:paths.c WIN32 get_config_dir via get_userdata_dir (FOLDERID_LocalAppData)", "README:Configuration \"%localappdata%\\blastem\\blastem.cfg\"", "README:Installation pre-0.4.1 relocation note"]
         },
         {
@@ -86,6 +91,7 @@
         {
           "purpose": "bios",
           "path": "None required",
+          "naming": "No external BIOS or firmware filename; BlastEm boots the cartridge ROM directly, so no canonical checksum applies",
           "evidence": ["contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md", "docs:retrodev.com"]
         }
       ]
@@ -95,6 +101,7 @@
         {
           "purpose": "config",
           "path": "~/.config/blastem/blastem.cfg (the non-Windows POSIX branch of paths.c uses the same $HOME/.config layout on macOS; bundled default.cfg beside the executable otherwise)",
+          "naming": "Same tern-tree controller grammar as native: `bindings pads <SDL device index>` with `dpads`, `buttons`, and `axes` entries targeting `gamepads.<1-8>.<button>`",
           "evidence": ["source:paths.c POSIX get_config_dir ($HOME/.config/blastem)", "README:Usage mentions OSX alongside Linux"]
         },
         {
@@ -112,6 +119,7 @@
         {
           "purpose": "bios",
           "path": "None required",
+          "naming": "No external BIOS or firmware filename; BlastEm boots the cartridge ROM directly, so no canonical checksum applies",
           "evidence": ["contract:docs/BLASTEM_NATIVE_CONTROLLER_CONTRACT.md", "docs:retrodev.com"]
         }
       ]

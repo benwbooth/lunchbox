@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "slug": "vamiga",
+  "emulator": "vAmiga",
+  "sources": [
+    { "kind": "source", "repo": "dirkwhoffmann/vAmiga", "role": "macOS application configuration, input mapping, Amiga media, snapshots and ROM loading" },
+    { "kind": "docs", "url": "https://dirkwhoffmann.github.io/vAmiga/", "role": "official macOS product and user documentation" }
+  ],
+  "platforms": {
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "~/Library/Containers/de.dirkwhoffmann.vAmiga/Data/Library/Preferences/ (sandboxed vAmiga application container; settings managed by the Cocoa app)", "naming": "vAmiga settings are Cocoa preferences/document metadata; the upstream product does not publish a portable INI/TOML configuration filename", "evidence": ["source:vAmiga preferences/document code", "docs:https://dirkwhoffmann.github.io/vAmiga/ macOS documentation"] },
+        { "purpose": "input", "path": "Cocoa preferences and the vAmiga Input/Controls pane; no separate input file is required by the macOS product", "naming": "Bindings are GUI-selected keyboard, joystick and mouse mappings stored as application preferences; no stable user-editable binding-file grammar is published", "evidence": ["source:vAmiga input/preferences code", "docs:vAmiga input configuration documentation"] },
+        { "purpose": "bios", "path": "Kickstart ROM is selected/imported through the ROM manager and retained in the application container/document configuration", "naming": "Kickstart ROMs are identified by ROM metadata/version and user selection rather than one universal filename; the cited upstream source publishes no canonical checksum for every supported ROM", "evidence": ["source:vAmiga ROM manager and Kickstart loading code", "docs:vAmiga Kickstart ROM documentation"] },
+        { "purpose": "keys", "path": "No cryptographic firmware-key files are used by vAmiga", "naming": "No cryptographic key asset exists for this runtime", "evidence": ["source:vAmiga Amiga machine/ROM model"] },
+        { "purpose": "saves", "path": "Amiga saves are written into mounted ADF/HDF/HD media or virtual hard-disk files selected by the user", "naming": "Save files retain the filesystem/media naming defined by the mounted Amiga image; vAmiga does not impose a universal per-game sidecar extension", "evidence": ["source:vAmiga disk-image and filesystem code", "docs:vAmiga media documentation"] },
+        { "purpose": "states", "path": "Document/workspace snapshots selected by vAmiga's save-state/workspace UI", "naming": "State is stored in vAmiga document/workspace data; no cross-platform slot filename convention is published by the upstream documentation", "evidence": ["source:vAmiga snapshot/document code", "docs:vAmiga workspace and snapshot documentation"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "unsupported", "reason": "vAmiga is documented as a native macOS application; no upstream Linux runtime is captured.", "evidence": ["docs:https://dirkwhoffmann.github.io/vAmiga/ official platform/download documentation"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No upstream vAmiga Flatpak package or manifest is identified.", "evidence": ["docs:https://dirkwhoffmann.github.io/vAmiga/ official distribution page"] },
+    "windows": { "status": "unsupported", "reason": "vAmiga is a macOS-native product and no upstream Windows runtime is documented.", "evidence": ["docs:https://dirkwhoffmann.github.io/vAmiga/ official platform/download documentation"] }
+  }
+}

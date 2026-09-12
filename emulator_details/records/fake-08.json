@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "slug": "fake-08",
+  "emulator": "fake-08",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://github.com/jtothebell/fake-08",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {},
+  "platform_gaps": {
+    "linux": {
+      "status": "unsupported",
+      "reason": "The upstream fake-08 project targets homebrew platforms (3DS, Switch, Vita, Wii U and Android) and does not support desktop Linux, macOS or Windows.",
+      "evidence": [
+        "https://github.com/jtothebell/fake-08"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unsupported",
+      "reason": "The upstream fake-08 project targets homebrew platforms (3DS, Switch, Vita, Wii U and Android) and does not support desktop Linux, macOS or Windows.",
+      "evidence": [
+        "https://github.com/jtothebell/fake-08"
+      ]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "The upstream fake-08 project targets homebrew platforms (3DS, Switch, Vita, Wii U and Android) and does not support desktop Linux, macOS or Windows.",
+      "evidence": [
+        "https://github.com/jtothebell/fake-08"
+      ]
+    },
+    "windows": {
+      "status": "unsupported",
+      "reason": "The upstream fake-08 project targets homebrew platforms (3DS, Switch, Vita, Wii U and Android) and does not support desktop Linux, macOS or Windows.",
+      "evidence": [
+        "https://github.com/jtothebell/fake-08"
+      ]
+    }
+  }
+}

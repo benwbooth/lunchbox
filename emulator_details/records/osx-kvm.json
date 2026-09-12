@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "slug": "osx-kvm",
+  "emulator": "OSX-KVM",
+  "sources": [{ "kind": "source", "repo": "https://github.com/kholia/OSX-KVM", "url": "https://github.com/kholia/OSX-KVM", "role": "official upstream project identity" }],
+  "platform_gaps": {
+    "linux": { "status": "unresolved", "reason": "The official OSX-KVM source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/kholia/OSX-KVM", "host capture withheld until all six purposes are source-backed"] },
+    "linux-flatpak": { "status": "unresolved", "reason": "The official OSX-KVM source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/kholia/OSX-KVM", "host capture withheld until all six purposes are source-backed"] },
+    "macos": { "status": "unresolved", "reason": "The official OSX-KVM source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/kholia/OSX-KVM", "host capture withheld until all six purposes are source-backed"] },
+    "windows": { "status": "unresolved", "reason": "The official OSX-KVM source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/kholia/OSX-KVM", "host capture withheld until all six purposes are source-backed"] }
+  }
+}

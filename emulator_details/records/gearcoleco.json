@@ -22,7 +22,8 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
+          "naming": "Controller INI grammar: [InputA]/[InputB] SDL_Scancode integers for ColecoVision keys, SDL gamepad button/axis integer fields, and [Hotkeys] <Name>Scancode/<Name>Mod pairs",
           "path": "Controller bindings live inside config.ini itself, no separate key file: [InputA]/[InputB] hold one SDL_Scancode integer per ColecoVision key (KeyLeft/KeyRight/KeyUp/KeyDown, KeyLeftButton/KeyRightButton, KeyBlue/KeyPurple, Key0..Key9, KeyAsterisk, KeyHash; InputA defaults = arrows + A/S/D/F + numpad 0-9,*,/; InputB = J/L/I/K cluster) plus SDL gamepad fields as integer button/axis indices (Gamepad, GamepadDirectional 0=dpad/1=stick, GamepadInvertX/Y, GamepadX/GamepadY, GamepadLeftButton/GamepadRightButton, GamepadBlue/GamepadPurple, Gamepad0..Gamepad9, GamepadAsterisk, GamepadHash); [Hotkeys] stores <Name>Scancode/<Name>Mod int pairs (SaveState Ctrl+S, LoadState Ctrl+L, SelectSlot1..5 Ctrl+1..5); [InputGamepadShortcuts1]/[InputGamepadShortcuts2] map hotkeys to gamepad buttons. ColecoVision key set (GC_Keys) = 12-key keypad 0-9 + * + # , 4 joystick directions, Left/Right buttons, Super Action Controller Blue/Purple buttons. The bundled platforms/shared/gamecontrollerdb.txt (SDL GUID mappings) is loaded from beside the executable at startup. Super Action Controller spinner via [Emulator] Spinner + SpinnerSensitivity (mouse wheel/roller modes)",
             "evidence": [
             "source:platforms/shared/desktop/config_definitions.inc.h [InputA]/[InputB] CONFIG_SCANCODE/CONFIG_INT keys with keyboard_defaults, [Hotkeys] CONFIG_HOTKEY, [InputGamepadShortcuts1/2] @ 8ad5f92",
@@ -55,6 +56,7 @@
         },
         {
           "purpose": "bios",
+          "naming": "BIOS accepts any filename but exactly 8192 bytes; validation is size-only, with no canonical checksum. Libretro lookup names are colecovision.rom then coleco.rom",
           "path": "ColecoVision BIOS ROM selected by [Emulator] BiosPath in config.ini (string, default empty; chosen via GUI file dialog and loaded once at GUI init) - any filename is accepted, but the file must be exactly 0x2000 = 8192 bytes (8KB) or it is rejected ('Incorrect BIOS size'); Gearcoleco performs NO checksum validation and patches byte 0x69 for region (0x3C NTSC / 0x32 PAL) after load. The BIOS is effectively required: without it RunToVBlank refuses to run and the screen shows the embedded blank kNoBiosImage. The libretro build of the same core looks up <system>/colecovision.rom with fallback <system>/coleco.rom; community-standard NTSC image is commonly cited as MD5 2c66f5911e5b42b8ebe1131fd33062ca (8192 bytes), unverified by the emulator itself. Super Game Module needs no extra BIOS file",
           "evidence": [
             "source:platforms/shared/desktop/config_definitions.inc.h CONFIG_STRING(\"Emulator\", \"BiosPath\", ...) @ 8ad5f92",
@@ -80,7 +82,8 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
+          "naming": "Same controller INI grammar as Linux: [InputA]/[InputB] SDL_Scancode integers, gamepad button/axis integer fields, and [Hotkeys] scancode/mod pairs",
           "path": "Same config.ini sections as Linux: [InputA]/[InputB] SDL_Scancode ints for keypad 0-9/*/ # + directions + Left/Right/Blue/Purple buttons, SDL gamepad button/axis ints, [Hotkeys] <Name>Scancode/<Name>Mod pairs, [InputGamepadShortcuts1/2]; gamecontrollerdb.txt ships beside the executable",
           "evidence": [
             "source:platforms/shared/desktop/config_definitions.inc.h + events.cpp button_map @ 8ad5f92",
@@ -107,6 +110,7 @@
         },
         {
           "purpose": "bios",
+          "naming": "BIOS accepts any filename but exactly 8192 bytes; validation is size-only, with no canonical checksum. Libretro lookup names are colecovision.rom then coleco.rom",
           "path": "ColecoVision BIOS (8192 bytes) anywhere on disk, path stored in [Emulator] BiosPath; any filename, size-only validation; libretro build expects colecovision.rom then coleco.rom in the RetroArch system directory",
           "evidence": [
             "source:src/Memory.cpp LoadBios 0x2000 check @ 8ad5f92",
@@ -129,7 +133,8 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
+          "naming": "Same controller INI grammar as Linux: [InputA]/[InputB] SDL_Scancode integers, gamepad button/axis integer fields, and [Hotkeys] scancode/mod pairs",
           "path": "Same config.ini [InputA]/[InputB] scancode and SDL gamepad-button integer keys as Linux/Windows, [Hotkeys] scancode/mod pairs ([InputGamepadShortcuts1/2] for pad shortcuts); Cmd uses SDL_KMOD_GUI in hotkey strings; gamecontrollerdb.txt ships inside the app bundle",
           "evidence": [
             "source:platforms/shared/desktop/config_definitions.inc.h + config.cpp config_update_hotkey_string (SDL_KMOD_GUI -> Cmd+) @ 8ad5f92",
@@ -156,6 +161,7 @@
         },
         {
           "purpose": "bios",
+          "naming": "BIOS accepts any filename but exactly 8192 bytes; validation is size-only, with no canonical checksum. Libretro lookup names are colecovision.rom then coleco.rom",
           "path": "ColecoVision BIOS (8192 bytes) path stored in [Emulator] BiosPath; any filename, size-only validation; libretro build expects colecovision.rom then coleco.rom",
           "evidence": [
             "source:src/Memory.cpp LoadBios 0x2000 check @ 8ad5f92",
@@ -166,6 +172,13 @@
         }
       ],
       "notes": "macOS availability verified from the README downloads table: Homebrew cask drhelius/geardome/gearcoleco plus official Apple Silicon and Intel desktop archives; SDL3-based and identical to other desktop builds apart from the .app portable path and Cmd modifiers."
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The official Gearcoleco README lists Linux, Windows, and macOS desktop distributions but no first-party Flatpak package.",
+      "evidence": ["source:drhelius/Gearcoleco@8ad5f92c45e7ca616535a057495557c2352a9115", "docs:https://github.com/drhelius/Gearcoleco#readme (official downloads/platform table)"]
     }
   }
 }

@@ -509,10 +509,10 @@ fn runtime_root(
                 home.join(".dolphin-emu")
             }
         }
-        "dolphin" if cfg!(target_os = "windows") => UserDirs::new()
-            .and_then(|dirs| dirs.document_dir().map(Path::to_path_buf))
-            .unwrap_or_else(|| base.data_local_dir().to_path_buf())
-            .join("Dolphin Emulator"),
+        // Current Dolphin defaults to roaming AppData; an existing legacy
+        // Documents/Dolphin Emulator tree is a runtime compatibility choice,
+        // not a safe destination for a new firmware install.
+        "dolphin" if cfg!(target_os = "windows") => base.config_dir().join("Dolphin Emulator"),
         "dolphin" => home.join("Library/Application Support/Dolphin"),
         "flycast" if cfg!(target_os = "linux") && flatpak => {
             home.join(".var/app/org.flycast.Flycast/data/flycast")
@@ -537,7 +537,8 @@ fn runtime_root(
             .and_then(|dirs| dirs.document_dir().map(Path::to_path_buf))
             .unwrap_or_else(|| home.to_path_buf())
             .join("openMSX/share/systemroms"),
-        "openmsx" => home.join("Library/openMSX/share/systemroms"),
+        // openMSX uses its POSIX user-data root on macOS as well.
+        "openmsx" => home.join(".openMSX/share/systemroms"),
         "snes9x" if cfg!(target_os = "linux") && flatpak => {
             home.join(".var/app/com.snes9x.Snes9x/config/snes9x/Bios")
         }

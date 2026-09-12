@@ -19,7 +19,7 @@ b4d75247ebad8852fd9bc385b423df704c6c5af5 (canonical upstream is Mercurial):
 - `bindings.c parse_binding_target`/`get_pad_buttons` — targets are
   `gamepads.<1-8>.<button>` with buttons up/down/left/right, a, b, c, x, y,
   z, start and mode.
-- `paths.c get_config_dir` — the configuration directory is `$HOME/blastem`,
+- `paths.c get_config_dir` — the configuration directory is `$HOME/.config/blastem`,
   so a private HOME isolates every read and write; `blastem.c main` takes
   the ROM as a bare argument.
 

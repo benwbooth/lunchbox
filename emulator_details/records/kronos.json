@@ -105,5 +105,17 @@
       ],
       "notes": "Windows is a supported build target (README lists Windows; DirectInput/DirectSound cores compiled under Q_OS_WIN) but GitHub releases ship only the Ubuntu zip - README points Windows users to third-party archives (tradu-france.com) or self-building. Kronos is a Yaba Sanshiro fork requiring OpenGL 4.3; the libretro core (KRONOS_LIBRETRO_CORE) is a separate RetroArch concern and not captured here."
     }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "Official Kronos release assets are Ubuntu ZIPs and the upstream README does not provide a Flatpak package.",
+      "evidence": ["docs:https://api.github.com/repos/FCare/Kronos/releases (official release assets are Ubuntu-only)", "docs:https://github.com/FCare/Kronos/blob/extui-align/README.md (official platform/build documentation)"]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "The pinned upstream README lists Windows and Linux targets only, with no macOS build or release asset.",
+      "evidence": ["docs:https://github.com/FCare/Kronos/blob/extui-align/README.md (official platform list)", "docs:https://api.github.com/repos/FCare/Kronos/releases (official release assets) "]
+    }
   }
 }

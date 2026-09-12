@@ -6,7 +6,9 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 const PLATFORMS: [&str; 4] = ["linux", "linux-flatpak", "windows", "macos"];
-const PURPOSES: [&str; 5] = ["saves", "states", "config", "bios", "keys"];
+const PURPOSES: [&str; 6] = ["saves", "states", "config", "input", "bios", "keys"];
+const GAP_STATUSES: [&str; 3] = ["unsupported", "no_verified_package", "unresolved"];
+const CAPTURE_STATUSES: [&str; 4] = ["captured", "not_supported", "not_required", "unresolved"];
 
 #[test]
 fn platform_records_are_complete_and_evidenced() {
@@ -48,15 +50,16 @@ fn platform_records_are_complete_and_evidenced() {
             "{}: cite at least one source",
             path.display()
         );
-        let platforms = record["platforms"]
-            .as_object()
-            .unwrap_or_else(|| panic!("{}: platforms must be an object", path.display()));
-        assert!(
-            !platforms.is_empty(),
-            "{}: capture at least one platform",
-            path.display()
-        );
-        for (platform, entry) in platforms {
+        let platforms = record
+            .get("platforms")
+            .map(|value| {
+                value
+                    .as_object()
+                    .unwrap_or_else(|| panic!("{}: platforms must be an object", path.display()))
+            })
+            .cloned()
+            .unwrap_or_default();
+        for (platform, entry) in &platforms {
             assert!(
                 PLATFORMS.contains(&platform.as_str()),
                 "{}: unknown platform {platform}",
@@ -83,6 +86,15 @@ fn platform_records_are_complete_and_evidenced() {
                 assert!(
                     purposes.insert(purpose),
                     "{}: {platform} duplicates {purpose}",
+                    path.display()
+                );
+                let status = captured
+                    .get("status")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("captured");
+                assert!(
+                    CAPTURE_STATUSES.contains(&status),
+                    "{}: {platform} {purpose} has unknown status {status}",
                     path.display()
                 );
                 captured["path"].as_str().unwrap_or_else(|| {
@@ -113,6 +125,54 @@ fn platform_records_are_complete_and_evidenced() {
                     || purposes.contains("states")
                     || purposes.contains("config"),
                 "{}: {platform} captures neither saves, states nor config",
+                path.display()
+            );
+        }
+        let gaps = record
+            .get("platform_gaps")
+            .map(|value| {
+                value.as_object().unwrap_or_else(|| {
+                    panic!("{}: platform_gaps must be an object", path.display())
+                })
+            })
+            .cloned()
+            .unwrap_or_default();
+        for (platform, gap) in &gaps {
+            assert!(
+                PLATFORMS.contains(&platform.as_str()),
+                "{}: unknown platform gap {platform}",
+                path.display()
+            );
+            assert!(
+                !platforms.contains_key(platform),
+                "{}: {platform} is both captured and a gap",
+                path.display()
+            );
+            let status = gap["status"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{}: {platform} gap lacks status", path.display()));
+            assert!(
+                GAP_STATUSES.contains(&status),
+                "{}: {platform} has unknown gap status {status}",
+                path.display()
+            );
+            assert!(
+                !gap["reason"].as_str().unwrap_or_default().trim().is_empty(),
+                "{}: {platform} gap lacks a reason",
+                path.display()
+            );
+            assert!(
+                gap["evidence"]
+                    .as_array()
+                    .is_some_and(|entries| !entries.is_empty()),
+                "{}: {platform} gap cites no evidence",
+                path.display()
+            );
+        }
+        for platform in PLATFORMS {
+            assert!(
+                platforms.contains_key(platform) || gaps.contains_key(platform),
+                "{}: {platform} has neither a capture nor a gap disposition",
                 path.display()
             );
         }

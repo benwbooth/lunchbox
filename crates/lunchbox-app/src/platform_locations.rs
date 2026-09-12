@@ -6,7 +6,7 @@
 //!
 //! Paths in the records are captured prose. This module resolves the
 //! machine-interpretable subset: tokens `~` (user home), `$XDG_CONFIG_HOME`,
-//! `$XDG_DATA_HOME`, `$APPDATA`, and `$LOCALAPPDATA` are expanded against
+//! `$XDG_DATA_HOME`, `%APPDATA%`, `%LOCALAPPDATA%`, and `%USERPROFILE%` are expanded against
 //! the caller-supplied directory bases, and leading directory components
 //! are preserved verbatim so a resolved location is always rooted under one
 //! of the caller's bases or rejected.
@@ -16,48 +16,22 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-const RECORDS: &[&str] = &[
-    include_str!("../../../emulator_details/records/altirra.json"),
-    include_str!("../../../emulator_details/records/bizhawk.json"),
-    include_str!("../../../emulator_details/records/blastem.json"),
-    include_str!("../../../emulator_details/records/citron-neo.json"),
-    include_str!("../../../emulator_details/records/desmume.json"),
-    include_str!("../../../emulator_details/records/dolphin.json"),
-    include_str!("../../../emulator_details/records/dosbox-staging.json"),
-    include_str!("../../../emulator_details/records/duckstation.json"),
-    include_str!("../../../emulator_details/records/eden.json"),
-    include_str!("../../../emulator_details/records/emulicious.json"),
-    include_str!("../../../emulator_details/records/flycast.json"),
-    include_str!("../../../emulator_details/records/gearcoleco.json"),
-    include_str!("../../../emulator_details/records/gopher64.json"),
-    include_str!("../../../emulator_details/records/hatari.json"),
-    include_str!("../../../emulator_details/records/jgenesis.json"),
-    include_str!("../../../emulator_details/records/kronos.json"),
-    include_str!("../../../emulator_details/records/mame.json"),
-    include_str!("../../../emulator_details/records/mednafen.json"),
-    include_str!("../../../emulator_details/records/melonds.json"),
-    include_str!("../../../emulator_details/records/mgba.json"),
-    include_str!("../../../emulator_details/records/nestopia-ue.json"),
-    include_str!("../../../emulator_details/records/openmsx.json"),
-    include_str!("../../../emulator_details/records/pcsx2.json"),
-    include_str!("../../../emulator_details/records/ppsspp.json"),
-    include_str!("../../../emulator_details/records/punes.json"),
-    include_str!("../../../emulator_details/records/retroarch.json"),
-    include_str!("../../../emulator_details/records/rmg.json"),
-    include_str!("../../../emulator_details/records/rpcs3.json"),
-    include_str!("../../../emulator_details/records/scummvm.json"),
-    include_str!("../../../emulator_details/records/simple64.json"),
-    include_str!("../../../emulator_details/records/stella.json"),
-    include_str!("../../../emulator_details/records/vice.json"),
-    include_str!("../../../emulator_details/records/xemu.json"),
-    include_str!("../../../emulator_details/records/yaba-sanshiro-2.json"),
-];
+include!(concat!(env!("OUT_DIR"), "/platform_records.rs"));
+
+const CAPTURE_STATUSES: [&str; 4] = ["captured", "not_supported", "not_required", "unresolved"];
+
+fn default_capture_status() -> String {
+    "captured".to_owned()
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Record {
     slug: String,
     emulator: String,
+    #[serde(default)]
     platforms: BTreeMap<String, PlatformEntry>,
+    #[serde(default)]
+    platform_gaps: BTreeMap<String, PlatformGap>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,8 +42,17 @@ struct PlatformEntry {
 }
 
 #[derive(Debug, Deserialize)]
+struct PlatformGap {
+    status: String,
+    reason: String,
+    evidence: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct CapturedPath {
     purpose: String,
+    #[serde(default = "default_capture_status")]
+    status: String,
     #[serde(default)]
     path: String,
     #[serde(default)]
@@ -83,6 +66,9 @@ struct CapturedPath {
 pub struct SaveLocation {
     pub emulator_slug: String,
     pub purpose: Purpose,
+    /// Whether this dimension is captured, unsupported, unnecessary, or
+    /// unresolved. Older records default to `captured`.
+    pub status: String,
     /// The captured location as documented (may contain prose annotations).
     pub documented: String,
     /// The concrete directory when the captured path was machine-resolvable
@@ -97,6 +83,9 @@ pub enum Purpose {
     Saves,
     States,
     Config,
+    /// Controller/input bindings when their syntax is documented separately
+    /// from the runtime's general configuration location.
+    Input,
     Bios,
     Keys,
 }
@@ -107,6 +96,7 @@ impl Purpose {
             "saves" => Self::Saves,
             "states" => Self::States,
             "config" => Self::Config,
+            "input" => Self::Input,
             "bios" => Self::Bios,
             "keys" => Self::Keys,
             _ => return None,
@@ -118,6 +108,7 @@ impl Purpose {
             Self::Saves => "saves",
             Self::States => "states",
             Self::Config => "config",
+            Self::Input => "input",
             Self::Bios => "bios",
             Self::Keys => "keys",
         }
@@ -131,6 +122,7 @@ pub struct LocationBases {
     pub home: PathBuf,
     pub config_dir: PathBuf,
     pub data_dir: PathBuf,
+    pub data_local_dir: PathBuf,
     /// Flatpak per-app root (e.g. ~/.var/app/net.pcsx2.PCSX2); None on
     /// non-flatpak hosts.
     pub flatpak_roots: Vec<(String, PathBuf)>,
@@ -138,12 +130,13 @@ pub struct LocationBases {
 
 impl LocationBases {
     pub fn detect() -> Self {
-        let (home, config_dir, data_dir) = directories::BaseDirs::new()
+        let (home, config_dir, data_dir, data_local_dir) = directories::BaseDirs::new()
             .map(|dirs| {
                 (
                     dirs.home_dir().to_path_buf(),
                     dirs.config_dir().to_path_buf(),
                     dirs.data_dir().to_path_buf(),
+                    dirs.data_local_dir().to_path_buf(),
                 )
             })
             .unwrap_or_else(|| {
@@ -152,12 +145,14 @@ impl LocationBases {
                     home.clone(),
                     home.join(".config"),
                     home.join(".local/share"),
+                    home.join(".local/share"),
                 )
             });
         let flatpak_roots = discover_flatpak_roots(&home);
         Self {
             config_dir,
             data_dir,
+            data_local_dir,
             flatpak_roots,
             home,
         }
@@ -192,10 +187,35 @@ fn discover_flatpak_roots(home: &Path) -> Vec<(String, PathBuf)> {
 /// Parse and validate every embedded record. Call once at startup; the
 /// validator test covers the same rules at build time.
 pub fn load_records() -> Result<Vec<Record>> {
-    RECORDS
+    let records = RECORDS
         .iter()
         .map(|text| serde_json::from_str::<Record>(text).context("parsing platform record"))
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+    for record in &records {
+        for (platform, entry) in &record.platforms {
+            for captured in &entry.paths {
+                ensure!(
+                    CAPTURE_STATUSES.contains(&captured.status.as_str()),
+                    "{} has unknown {} status {} for {platform}",
+                    record.slug,
+                    captured.purpose,
+                    captured.status
+                );
+            }
+        }
+    }
+    Ok(records)
+}
+
+/// Return the embedded record slugs for coverage and location UIs. Keeping the
+/// list here prevents UI availability from drifting behind newly added records.
+pub fn record_slugs() -> Result<Vec<String>> {
+    let mut slugs = load_records()?
+        .into_iter()
+        .map(|record| record.slug)
+        .collect::<Vec<_>>();
+    slugs.sort();
+    Ok(slugs)
 }
 
 /// Resolve save/state locations for one captured emulator on the caller's
@@ -215,7 +235,8 @@ pub fn save_locations(
 }
 
 /// Resolve captured locations for one emulator filtered to the requested
-/// purposes (controller `config`, `bios`/`keys` firmware, `saves`/`states`).
+/// purposes (controller `config`/`input`, `bios`/`keys` firmware,
+/// `saves`/`states`).
 /// Powers per-emulator adapters: every entry keeps its documented capture,
 /// machine-resolvable directory (or `None` when documentation-only),
 /// naming convention, and evidence.
@@ -231,9 +252,8 @@ pub fn adapter_locations(
             continue;
         }
         for (platform, entry) in &record.platforms {
-            // Flatpak locations resolve only against a discovered matching
-            // sandbox root; native locations resolve on any host.
-            let is_flatpak = platform == "linux-flatpak";
+            // Only the current host resolves. Flatpak locations additionally
+            // require a discovered matching sandbox root.
             for captured in &entry.paths {
                 let Some(purpose) = Purpose::parse(&captured.purpose) else {
                     continue;
@@ -241,10 +261,13 @@ pub fn adapter_locations(
                 if !purposes.contains(&purpose) {
                     continue;
                 }
-                let resolved = resolve_path(&captured.path, bases, is_flatpak);
+                let resolved = (captured.status == "captured")
+                    .then(|| resolve_path(&captured.path, bases, platform))
+                    .flatten();
                 result.push(SaveLocation {
                     emulator_slug: record.slug.clone(),
                     purpose,
+                    status: captured.status.clone(),
                     documented: captured.path.clone(),
                     resolved,
                     naming: captured.naming.clone(),
@@ -260,27 +283,44 @@ pub fn adapter_locations(
 /// is pure prose, targets an unmatched flatpak sandbox, or roots outside the
 /// caller's bases. Bare relative fragments (e.g. "savestates/") anchor at
 /// the data dir by convention.
-fn resolve_path(captured: &str, bases: &LocationBases, is_flatpak: bool) -> Option<PathBuf> {
+fn resolve_path(captured: &str, bases: &LocationBases, platform: &str) -> Option<PathBuf> {
     let trimmed = captured.trim();
     if trimmed.is_empty() {
         return None;
     }
+    match platform {
+        "linux" if cfg!(target_os = "linux") => {}
+        "linux-flatpak" if cfg!(target_os = "linux") => {
+            let rest = trimmed.strip_prefix("~/.var/app/")?;
+            let (app_id, relative) = rest.split_once('/')?;
+            let root = bases.flatpak_root(app_id)?;
+            return Some(root.join(sanitize_relative(relative)?));
+        }
+        "macos" if cfg!(target_os = "macos") => {}
+        "windows" if cfg!(target_os = "windows") => {}
+        _ => return None,
+    }
     let (prefix, rest) = if let Some(rest) = trimmed.strip_prefix("~/") {
         ("home", rest)
     } else if let Some(rest) = trimmed.strip_prefix("$XDG_CONFIG_HOME/") {
-        if is_flatpak {
-            return None;
-        }
         ("config", rest)
     } else if let Some(rest) = trimmed.strip_prefix("$XDG_DATA_HOME/") {
-        if is_flatpak {
-            return None;
-        }
         ("data", rest)
-    } else if trimmed.starts_with("%APPDATA%") {
-        return None; // Windows-only capture on a non-Windows host base set.
-    } else if trimmed.starts_with("%LOCALAPPDATA%") {
-        return None;
+    } else if let Some(rest) = trimmed
+        .strip_prefix("%APPDATA%\\")
+        .or_else(|| trimmed.strip_prefix("%APPDATA%/"))
+    {
+        ("config", rest)
+    } else if let Some(rest) = trimmed
+        .strip_prefix("%LOCALAPPDATA%\\")
+        .or_else(|| trimmed.strip_prefix("%LOCALAPPDATA%/"))
+    {
+        ("data_local", rest)
+    } else if let Some(rest) = trimmed
+        .strip_prefix("%USERPROFILE%\\")
+        .or_else(|| trimmed.strip_prefix("%USERPROFILE%/"))
+    {
+        ("home", rest)
     } else if let Some(rest) = trimmed.strip_prefix("<memstick>/") {
         // PPSSPP-style memstick roots resolve under the data dir convention.
         ("data", rest)
@@ -303,9 +343,9 @@ fn resolve_path(captured: &str, bases: &LocationBases, is_flatpak: bool) -> Opti
         "home" => bases.home.clone(),
         "config" => bases.config_dir.clone(),
         "data" => bases.data_dir.clone(),
+        "data_local" => bases.data_local_dir.clone(),
         _ => return None,
     };
-    let _ = is_flatpak;
     let relative = sanitize_relative(rest)?;
     Some(base.join(relative))
 }
@@ -335,9 +375,9 @@ fn sanitize_relative(rest: &str) -> Option<String> {
 /// Resolve locations for an emulator addressed by its display name
 /// (case-insensitive, normalized the same way as slugs); returns the
 /// resolved entries serialized for the settings layer, or an error when no
-/// record matches. Covers all adapter purposes: controller `config`
-/// syntax/location, `bios`/`keys` firmware, and `saves`/`states` for
-/// save sync.
+/// record matches. Covers all adapter purposes: controller `config`/`input`
+/// syntax/location, `bios`/`keys` firmware, and `saves`/`states` for save
+/// sync.
 pub fn locations_for_emulator_name(
     records: &[Record],
     emulator_name: &str,
@@ -359,12 +399,14 @@ pub fn locations_for_emulator_name(
             let Some(purpose) = Purpose::parse(&captured.purpose) else {
                 continue;
             };
-            let is_flatpak = platform == "linux-flatpak";
             locations.push(serde_json::json!({
                 "platform": platform,
                 "purpose": purpose.as_str(),
+                "status": captured.status,
                 "documented": captured.path,
-                "resolved": resolve_path(&captured.path, bases, is_flatpak)
+                "resolved": (captured.status == "captured")
+                    .then(|| resolve_path(&captured.path, bases, platform))
+                    .flatten()
                     .map(|path| path.to_string_lossy().into_owned()),
                 "naming": captured.naming,
                 "evidence": captured.evidence,
@@ -372,6 +414,22 @@ pub fn locations_for_emulator_name(
         }
     }
     out.insert("locations".into(), locations.into());
+    out.insert(
+        "platform_gaps".into(),
+        record
+            .platform_gaps
+            .iter()
+            .map(|(platform, gap)| {
+                serde_json::json!({
+                    "platform": platform,
+                    "status": gap.status,
+                    "reason": gap.reason,
+                    "evidence": gap.evidence,
+                })
+            })
+            .collect::<Vec<_>>()
+            .into(),
+    );
     Ok(serde_json::Value::Object(out).to_string())
 }
 
@@ -385,13 +443,13 @@ pub fn resolved_emulator_count(records: &[Record], bases: &LocationBases) -> usi
     let mut slugs = BTreeSet::new();
     for record in records {
         for (platform, entry) in &record.platforms {
-            let is_flatpak = platform == "linux-flatpak";
             for captured in &entry.paths {
                 let Some(Purpose::Saves | Purpose::States) = Purpose::parse(&captured.purpose)
                 else {
                     continue;
                 };
-                if resolve_path(&captured.path, bases, is_flatpak).is_some()
+                if captured.status == "captured"
+                    && resolve_path(&captured.path, bases, platform).is_some()
                     && slugs.insert(record.slug.clone())
                 {
                     break;
@@ -510,6 +568,7 @@ mod tests {
             home: PathBuf::from("/home/test"),
             config_dir: PathBuf::from("/home/test/.config"),
             data_dir: PathBuf::from("/home/test/.local/share"),
+            data_local_dir: PathBuf::from("/home/test/.local/share"),
             flatpak_roots: vec![(
                 "net.pcsx2.PCSX2".into(),
                 PathBuf::from("/home/test/.var/app/net.pcsx2.PCSX2"),
@@ -545,7 +604,6 @@ mod tests {
     #[test]
     fn flatpak_only_locations_do_not_resolve_on_native_hosts() {
         let records = load_records().unwrap();
-        // PCSX2's flatpak entry must not resolve against the native bases.
         let flatpak_bases = LocationBases {
             flatpak_roots: Vec::new(),
             ..bases()
@@ -553,10 +611,18 @@ mod tests {
         let native = save_locations(&records, "pcsx2", &bases());
         let locations = save_locations(&records, "pcsx2", &flatpak_bases);
         assert!(
-            native.iter().any(|l| l.resolved.is_some()),
-            "native pcsx2 locations should resolve"
+            native.iter().any(|location| {
+                location.documented.contains(".var/app/net.pcsx2.PCSX2")
+                    && location
+                        .resolved
+                        .as_ref()
+                        .is_some_and(|path| path.starts_with("/home/test/.var/app/net.pcsx2.PCSX2"))
+            }),
+            "a discovered PCSX2 sandbox should resolve"
         );
-        let _ = locations;
+        assert!(locations.iter().all(|location| {
+            !location.documented.contains(".var/app/net.pcsx2.PCSX2") || location.resolved.is_none()
+        }));
     }
 
     #[test]
@@ -567,6 +633,28 @@ mod tests {
                 assert!(location.resolved.is_none());
             }
         }
+    }
+
+    #[test]
+    fn unresolved_dimensions_never_resolve_to_local_paths() {
+        let locations = adapter_locations(
+            &load_records().unwrap(),
+            "denise",
+            &[
+                Purpose::Config,
+                Purpose::Input,
+                Purpose::Saves,
+                Purpose::States,
+            ],
+            &bases(),
+        );
+        assert!(!locations.is_empty());
+        assert!(
+            locations
+                .iter()
+                .all(|location| location.status == "unresolved")
+        );
+        assert!(locations.iter().all(|location| location.resolved.is_none()));
     }
 
     #[test]
@@ -609,6 +697,7 @@ mod tests {
             home: PathBuf::from("/"),
             config_dir: PathBuf::from("/nonexistent-config"),
             data_dir: dir.path().to_path_buf(),
+            data_local_dir: dir.path().to_path_buf(),
             flatpak_roots: Vec::new(),
         };
         let records = load_records().unwrap();
@@ -627,12 +716,21 @@ mod tests {
     }
 
     #[test]
-    fn adapter_locations_cover_config_bios_and_keys() {
+    fn adapter_locations_cover_controller_firmware_and_keys() {
         let records = load_records().unwrap();
-        // Every captured emulator documents its controller-config syntax and
-        // firmware location for future adapters.
+        // Every record with a captured host documents controller and firmware
+        // dispositions for future adapters. All-gap records intentionally
+        // produce no locations.
         for record in &records {
-            let config = adapter_locations(&records, &record.slug, &[Purpose::Config], &bases());
+            if record.platforms.is_empty() {
+                continue;
+            }
+            let config = adapter_locations(
+                &records,
+                &record.slug,
+                &[Purpose::Config, Purpose::Input],
+                &bases(),
+            );
             assert!(
                 !config.is_empty(),
                 "{} documents no controller config",
@@ -640,10 +738,15 @@ mod tests {
             );
             assert!(config.iter().all(|l| !l.documented.is_empty()));
             assert!(config.iter().all(|l| !l.evidence.is_empty()));
-            let bios = adapter_locations(&records, &record.slug, &[Purpose::Bios], &bases());
+            let firmware = adapter_locations(
+                &records,
+                &record.slug,
+                &[Purpose::Bios, Purpose::Keys],
+                &bases(),
+            );
             assert!(
-                !bios.is_empty(),
-                "{} documents no bios location",
+                !firmware.is_empty(),
+                "{} documents no firmware/key disposition",
                 record.slug
             );
         }
@@ -658,6 +761,11 @@ mod tests {
         // RetroArch exposes its shared frontend config for every core.
         let retro = adapter_locations(&records, "retroarch", &[Purpose::Config], &bases());
         assert!(retro.iter().any(|l| l.documented.contains("retroarch.cfg")));
+        // Controller binding syntax is not cryptographic key material.
+        let input = adapter_locations(&records, "mesen", &[Purpose::Input], &bases());
+        assert!(!input.is_empty());
+        let mesen_keys = adapter_locations(&records, "mesen", &[Purpose::Keys], &bases());
+        assert!(mesen_keys.is_empty());
     }
 
     #[test]

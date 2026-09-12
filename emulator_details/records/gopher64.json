@@ -4,6 +4,7 @@
   "emulator": "Gopher64",
   "sources": [
     { "kind": "source", "repo": "gopher64/gopher64", "commit": "0bb9fbba6", "role": "config format, save/state naming, input profiles, built-in PIF ROM" },
+    { "kind": "source", "repo": "flathub/io.github.gopher64.gopher64", "commit": "d42af47b6481672b629bf9c8aabb83a9ce934114", "role": "official Flatpak app-id and sandbox packaging" },
     { "kind": "docs", "url": "https://github.com/gopher64/gopher64#download", "role": "platform support: Windows exe, macOS aarch64 bundle + Homebrew cask, Linux binary + Flatpak io.github.gopher64.gopher64, Android" },
     { "kind": "docs", "url": "https://github.com/gopher64/gopher64#portable-mode", "role": "portable.txt beside the executable switches to portable_data/" },
     { "kind": "docs", "url": "https://docs.rs/dirs/7.0.0/dirs/fn.config_dir.html", "role": "dirs crate 7.0 per-platform config/data directory resolution (Cargo.toml pins dirs = \"7.0\")" }
@@ -13,6 +14,7 @@
       "paths": [
         {
           "purpose": "config",
+          "naming": "Controller bindings are JSON under `input`: `input_profiles` contains 19-element binding arrays using Key, ControllerButton, ControllerAxis, or raw JoystickButton/JoystickHat/JoystickAxis objects; `input_profile_binding` selects players",
           "path": "~/.config/gopher64/config.json (or $XDG_CONFIG_HOME/gopher64/); portable.txt next to the executable switches config to <exe dir>/portable_data/config. Config is a single JSON document written by serde_json (pretty). Controller configuration lives inside it under the \"input\" key: \"input_profiles\" is a map of profile name -> {\"inputs\": [[binding, binding] x 19 logical N64 inputs (dpad, start, Z, A/B/C-buttons/triggers, analog axis, hotkey)], \"dinput\": bool, \"deadzone\": int} where each binding is null or {\"Key\":{\"id\":N}} (keyboard), {\"ControllerButton\":{\"id\":N}}, {\"ControllerAxis\":{\"id\",\"axis\",\"initial_state\"}} (SDL3 gamepad), or {\"JoystickButton\"}/{\"JoystickHat\"}/{\"JoystickAxis\"} (raw joystick); \"input_profile_binding\" [4] names the profile per player port (a \"default\" profile with SDL3 keyboard + Xbox-style gamepad defaults is created on first run and cannot be deleted); \"controller_assignment\" [4], \"controller_enabled\" [4], \"transfer_pak\" [4], \"gb_rom_path\"/\"gb_ram_path\" [4]. cheats.json and retroachievements.json sit beside config.json",
           "evidence": [
             "source:src/ui/config.rs write_config/Config::new (config_dir/config.json, serde_json::to_writer_pretty) and Input/InputProfile/InputItem structs @0bb9fbba6",
@@ -46,6 +48,7 @@
         {
           "purpose": "bios",
           "path": "None required. The PIF ROM is compiled in: src/device/pif/rom.rs holds NTSC_PIF_ROM and PAL_PIF_ROM (1984-byte constants) and device/pif::init selects NTSC vs PAL from the ROM region, so no user firmware is consumed",
+          "naming": "No external firmware filename or checksum: NTSC/PAL 1984-byte PIF ROMs are compiled into the emulator",
           "evidence": [
             "source:src/device/pif.rs pif::init assigns rom::PAL_PIF_ROM / rom::NTSC_PIF_ROM @0bb9fbba6",
             "source:src/device/pif/rom.rs pub const NTSC_PIF_ROM / PAL_PIF_ROM [u8; 1984] @0bb9fbba6",
@@ -55,16 +58,72 @@
       ],
       "notes": "Flatpak io.github.gopher64.gopher64 redirects these directories into ~/.var/app/io.github.gopher64.gopher64/ and needs --filesystem=host:ro to open ROMs outside the sandbox (README). Lunchbox launches with a private data root; native saves/states stay in the directories above unless portable mode is used."
     },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/io.github.gopher64.gopher64/config/gopher64/config.json (Flatpak sandbox XDG_CONFIG_HOME; portable.txt beside the executable instead selects portable_data/config)",
+          "evidence": [
+            "repo:flathub/io.github.gopher64.gopher64/io.github.gopher64.gopher64.yaml @d42af47b6481672b629bf9c8aabb83a9ce934114 (app-id and sandbox home)",
+            "source:src/ui.rs get_dirs dirs::config_dir().join(\"gopher64\") + portable.txt @0bb9fbba6",
+            "source:src/ui/config.rs write_config/Config::new config.json and input schema @0bb9fbba6"
+          ]
+        },
+        {
+          "purpose": "input",
+          "naming": "JSON `input_profiles` contain 19-element binding arrays using Key, ControllerButton, ControllerAxis, or raw JoystickButton/JoystickHat/JoystickAxis objects; input_profile_binding selects each player",
+          "path": "The same config.json input object under the sandbox config path: input_profiles map profile names to 19-element inputs arrays; input_profile_binding[4] selects each player profile; bindings are null, {Key:{id}}, {ControllerButton:{id}}, {ControllerAxis:{id,axis,initial_state}}, or raw {JoystickButton|JoystickHat|JoystickAxis}; controller_assignment/controller_enabled are per-player arrays",
+          "evidence": [
+            "source:src/ui/input_profile.rs InputProfile/PROFILE_SIZE=19 and binding serialization @0bb9fbba6",
+            "source:src/ui/config.rs Config::new/default input profile and serde_json writer @0bb9fbba6"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/io.github.gopher64.gopher64/data/gopher64/saves (Flatpak XDG_DATA_HOME; portable: portable_data/data/saves)",
+          "naming": "<sanitized internal header name>-<uppercase full-ROM SHA-256>.eep | .sra | .fla | .mpk, plus .img and .romsave where applicable",
+          "evidence": [
+            "repo:flathub/io.github.gopher64.gopher64/io.github.gopher64.gopher64.yaml @d42af47b6481672b629bf9c8aabb83a9ce934114 (sandbox data home)",
+            "source:src/ui.rs data_dir = dirs::data_dir()/gopher64; src/ui/storage.rs save paths @0bb9fbba6"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/io.github.gopher64.gopher64/data/gopher64/states (portable: portable_data/data/states)",
+          "naming": "<sanitized internal header name>-<uppercase full-ROM SHA-256>.state<slot>, slots 0..9",
+          "evidence": [
+            "source:src/ui/storage.rs savestate_file_path format and src/lib.rs slot range @0bb9fbba6",
+            "repo:flathub/io.github.gopher64.gopher64/io.github.gopher64.gopher64.yaml @d42af47b6481672b629bf9c8aabb83a9ce934114 (sandbox data home)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "None required: NTSC/PAL PIF ROMs are compiled-in constants; no external firmware filename or checksum applies",
+          "naming": "No external firmware filename or checksum: NTSC/PAL 1984-byte PIF ROMs are compiled into the emulator",
+          "evidence": [
+            "source:src/device/pif.rs selects PAL_PIF_ROM/NTSC_PIF_ROM; src/device/pif/rom.rs constants @0bb9fbba6"
+          ]
+        }
+      ],
+      "notes": "Official Flathub app io.github.gopher64.gopher64 is the supported Flatpak distribution; its sandbox redirects XDG config/data roots under ~/.var/app/io.github.gopher64.gopher64/ and host ROM access requires the manifest's filesystem permission."
+    },
     "windows": {
       "paths": [
         {
           "purpose": "config",
+          "naming": "Same JSON `input` controller schema as Linux: input_profiles, input_profile_binding, controller_assignment, and controller_enabled",
           "path": "%APPDATA%\\gopher64\\config.json (dirs crate resolves config_dir to FOLDERID_RoamingAppData); portable.txt next to gopher64-windows-x86_64.exe switches to <exe dir>\\portable_data\\config. Same JSON layout as Linux for the \"input\" controller sections (input_profiles / input_profile_binding / controller_assignment)",
           "evidence": [
             "source:src/ui.rs get_dirs (dirs::config_dir().join(\"gopher64\") on non-Android; portable branch) @0bb9fbba6",
             "source:src/ui/config.rs write_config/Config::new @0bb9fbba6",
             "docs:dirs crate 7.0 config_dir/data_dir on Windows = {FOLDERID_RoamingAppData}"
           ]
+        },
+        {
+          "purpose": "input",
+          "path": "The `input` object in %APPDATA%\\gopher64\\config.json uses the same 19-element input_profiles and input_profile_binding schema as Linux; portable.txt relocates the same JSON",
+          "naming": "JSON bindings are null, Key, ControllerButton, ControllerAxis, or raw JoystickButton/JoystickHat/JoystickAxis objects in input_profiles; input_profile_binding selects each player",
+          "evidence": ["source:src/ui/config.rs Config/InputProfile/InputItem serde schema @0bb9fbba6", "source:src/ui/input_profile.rs PROFILE_SIZE=19 @0bb9fbba6"]
         },
         {
           "purpose": "saves",
@@ -85,6 +144,7 @@
         },
         {
           "purpose": "bios",
+          "naming": "No external firmware filename or checksum: NTSC/PAL 1984-byte PIF ROMs are compiled into the emulator",
           "path": "None required; built-in NTSC/PAL PIF ROM constants cover both regions",
           "evidence": [
             "source:src/device/pif.rs + src/device/pif/rom.rs @0bb9fbba6"
@@ -97,12 +157,19 @@
       "paths": [
         {
           "purpose": "config",
+          "naming": "Same JSON `input` controller schema as Linux: input_profiles, input_profile_binding, controller_assignment, and controller_enabled",
           "path": "~/Library/Application Support/gopher64/config.json (dirs crate resolves config_dir to $HOME/Library/Application Support on macOS); portable.txt next to the app binary switches to portable_data/config",
           "evidence": [
             "source:src/ui.rs get_dirs (no __APPLE__ special case; dirs::config_dir()/gopher64) @0bb9fbba6",
             "docs:dirs crate 7.0 config_dir on macOS = $HOME/Library/Application Support",
             "docs:README#download macOS App Bundle gopher64-macos-aarch64.zip and Homebrew cask gopher64"
           ]
+        },
+        {
+          "purpose": "input",
+          "path": "The `input` object in ~/Library/Application Support/gopher64/config.json uses the same 19-element input_profiles and input_profile_binding schema as Linux; portable.txt relocates the same JSON",
+          "naming": "JSON bindings are null, Key, ControllerButton, ControllerAxis, or raw JoystickButton/JoystickHat/JoystickAxis objects in input_profiles; input_profile_binding selects each player",
+          "evidence": ["source:src/ui/config.rs Config/InputProfile/InputItem serde schema @0bb9fbba6", "source:src/ui/input_profile.rs PROFILE_SIZE=19 @0bb9fbba6", "docs:README#download macOS App Bundle"]
         },
         {
           "purpose": "saves",
@@ -122,6 +189,7 @@
         },
         {
           "purpose": "bios",
+          "naming": "No external firmware filename or checksum: NTSC/PAL 1984-byte PIF ROMs are compiled into the emulator",
           "path": "None required; built-in NTSC/PAL PIF ROM constants cover both regions",
           "evidence": [
             "source:src/device/pif.rs + src/device/pif/rom.rs @0bb9fbba6"

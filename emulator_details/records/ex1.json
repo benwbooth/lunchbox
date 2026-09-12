@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "slug": "ex1",
+  "emulator": "eX1",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/index.html",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\\\eX1\\\\eX1.ini",
+          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "evidence": [
+            "http://takeda-toshiya.my.coocan.jp/common/index.html"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\\\eX1\\\\eX1.ini",
+          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "evidence": [
+            "http://takeda-toshiya.my.coocan.jp/common/index.html"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "User-selected disk/tape image",
+          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "evidence": [
+            "http://takeda-toshiya.my.coocan.jp/common/index.html"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<content-basename>.sta",
+          "naming": "The upstream frontend selects the state filename/path.",
+          "evidence": [
+            "http://takeda-toshiya.my.coocan.jp/common/index.html"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "X1 ROM images selected through the Common Source Code Project frontend",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "http://takeda-toshiya.my.coocan.jp/common/index.html"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "http://takeda-toshiya.my.coocan.jp/common/index.html"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "http://takeda-toshiya.my.coocan.jp/common/index.html"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "http://takeda-toshiya.my.coocan.jp/common/index.html"
+      ]
+    },
+    "macos": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "http://takeda-toshiya.my.coocan.jp/common/index.html"
+      ]
+    }
+  }
+}

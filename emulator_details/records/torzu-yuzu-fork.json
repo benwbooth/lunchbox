@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "slug": "torzu-yuzu-fork",
+  "emulator": "Torzu (yuzu fork)",
+  "sources": [
+    { "kind": "source", "repo": "litucks/torzu", "role": "yuzu-derived path roots, ParamPackage controller mappings, Switch keys/firmware, saves and save-state boundary" },
+    { "kind": "docs", "url": "https://github.com/litucks/torzu", "role": "official fork source/release information" },
+    { "kind": "manifest", "repo": "lunchbox", "path": "sources/firmware-rules.json", "role": "Torzu keys and firmware import rules" }
+  ],
+  "platforms": {
+    "linux": { "paths": [
+      { "purpose": "config", "path": "~/.local/share/yuzu/config/qt-config.ini (portable user/ root may override the data root)", "naming": "Qt INI qt-config.ini; controller mappings use the yuzu [Controls] ParamPackage serialization", "evidence": ["source:yuzu/Torzu common/fs path and qt-config code", "source:yuzu input configuration code"] },
+      { "purpose": "input", "path": "[Controls] in qt-config.ini; optional named profiles under ~/.local/share/yuzu/input/", "naming": "ParamPackage strings are comma-separated key:value pairs, e.g. engine:keyboard,code:<integer>,toggle:0 or engine:sdl,joystick:<id>,button:<n>; axes add axis:<n>,direction:<positive|negative>", "evidence": ["source:yuzu/Torzu input_profiles and qt_config code", "source:yuzu ParamPackage serializer"] },
+      { "purpose": "keys", "path": "~/.local/share/yuzu/keys/prod.keys plus optional title.keys", "naming": "Exact key filenames prod.keys and title.keys; no canonical checksum is published for user-dumped cryptographic keys", "evidence": ["source:yuzu key_manager", "manifest:sources/firmware-rules.json torzu keys rule"] },
+      { "purpose": "bios", "path": "~/.local/share/yuzu/nand/system/Contents/registered/ (and nand/user/Contents/registered)", "naming": "Switch firmware is installed NCA content selected by the NAND registered-content layout; no single BIOS filename or canonical checksum", "evidence": ["source:yuzu/Torzu bis_factory and firmware installer", "manifest:sources/firmware-rules.json torzu firmware rule"] },
+      { "purpose": "saves", "path": "~/.local/share/yuzu/nand/user/save/", "naming": "Per-title account/device save directories keyed by Switch title ID and user UUID", "evidence": ["source:yuzu savedata_factory", "source:yuzu filesystem path code"] },
+      { "purpose": "states", "path": "No save-state subsystem is documented in the Torzu/yuzu desktop source", "naming": "Unsupported; NAND title saves are not emulator save states", "evidence": ["source:yuzu/Torzu runtime feature set", "docs:Torzu repository"] }
+    ] },
+    "windows": { "paths": [
+      { "purpose": "config", "path": "%APPDATA%\\yuzu\\config\\qt-config.ini (or portable user\\ root)", "naming": "Qt INI qt-config.ini with [Controls] ParamPackage mappings", "evidence": ["source:yuzu/Torzu Windows path code", "source:yuzu qt_config/input_profiles"] },
+      { "purpose": "input", "path": "[Controls] in qt-config.ini and optional input profile INIs", "naming": "Comma-separated ParamPackage key:value strings: engine:keyboard,code:<integer>,toggle:0 or engine:sdl,joystick:<id>,button:<n>; axis/direction fields for analog input", "evidence": ["source:yuzu ParamPackage/input profile serializer"] },
+      { "purpose": "keys", "path": "%APPDATA%\\yuzu\\keys\\prod.keys and title.keys", "naming": "Exact prod.keys/title.keys filenames; no canonical checksum for user-dumped keys", "evidence": ["source:yuzu key manager", "manifest:sources/firmware-rules.json"] },
+      { "purpose": "bios", "path": "%APPDATA%\\yuzu\\nand\\system\\Contents\\registered\\", "naming": "Installed Switch firmware NCA content selected by NAND layout; no BIOS filename/canonical checksum", "evidence": ["source:yuzu bis_factory/firmware installer", "manifest:sources/firmware-rules.json"] },
+      { "purpose": "saves", "path": "%APPDATA%\\yuzu\\nand\\user\\save\\", "naming": "Per-title account/device directories keyed by title ID", "evidence": ["source:yuzu savedata_factory"] },
+      { "purpose": "states", "path": "No documented Torzu/yuzu desktop save-state subsystem", "naming": "Unsupported; title saves are not emulator states", "evidence": ["source:yuzu/Torzu runtime", "docs:Torzu repository"] }
+    ] }
+  },
+  "platform_gaps": {
+    "macos": { "status": "unsupported", "reason": "Torzu's published target/release information lists Windows and Linux/Android routes but no supported macOS desktop package.", "evidence": ["docs:https://github.com/litucks/torzu release/platform information"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The Torzu project is distributed from its source/release channels and explicitly has no verified Flathub package in the captured sources.", "evidence": ["docs:https://github.com/litucks/torzu", "manifest:sources/firmware-rules.json Torzu rules do not identify a Flatpak package"] }
+  }
+}

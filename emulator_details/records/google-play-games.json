@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "slug": "google-play-games",
+  "emulator": "Google Play Games",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://play.google.com/googleplaygames/",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%LOCALAPPDATA%\\\\Google\\\\Play Games",
+          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "evidence": [
+            "https://play.google.com/googleplaygames/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%LOCALAPPDATA%\\\\Google\\\\Play Games",
+          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "evidence": [
+            "https://play.google.com/googleplaygames/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "%LOCALAPPDATA%\\\\Google\\\\Play Games\\\\userdata_*\\\\avd\\\\userdata.img",
+          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "evidence": [
+            "https://play.google.com/googleplaygames/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Cloud save state managed by Google Play Games",
+          "naming": "The upstream frontend selects the state filename/path.",
+          "evidence": [
+            "https://play.google.com/googleplaygames/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No user-supplied console BIOS; Google distributes the emulator runtime",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://play.google.com/googleplaygames/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No user-supplied key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://play.google.com/googleplaygames/"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://play.google.com/googleplaygames/"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://play.google.com/googleplaygames/"
+      ]
+    },
+    "macos": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://play.google.com/googleplaygames/"
+      ]
+    }
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "core": "snes9x",
+  "display_name": "Nintendo - SNES / SFC (Snes9x)",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": "snes9x_libretro.info",
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:snes9x:snes"
+    ],
+    "mapping_summary": "SNES retropad profile maps the two SNES controller ports, face buttons, shoulders and D-pad.",
+    "evidence": [
+      "catalog.json controller profile"
+    ]
+  },
+  "firmware": {
+    "status": "optional",
+    "files": [
+      {
+        "path": "BS-X.bin",
+        "description": "BS-X Satellaview BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "fed4d8242cfbed61343d53d48432aced",
+            "source": "snes9x_libretro.info firmware path/optional/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "snes9x_libretro.info firmware path/optional/notes"
+        ]
+      },
+      {
+        "path": "STBIOS.bin",
+        "description": "Sufami Turbo BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "d3a44ba7d42a74d3ac58cb9c14c6a5ca",
+            "source": "snes9x_libretro.info firmware path/optional/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "snes9x_libretro.info firmware path/optional/notes"
+        ]
+      }
+    ],
+    "notes": "BS-X.bin and STBIOS.bin are optional special-media BIOS files; ordinary SNES cartridges need neither.",
+    "evidence": [
+      "snes9x_libretro.info firmware_count/firmware*_path/firmware*_opt/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+    ]
+  },
+  "saves": {
+    "status": "supported",
+    "extensions": [
+      ".srm",
+      ".rtc"
+    ],
+    "naming": "RetroArch uses <content-basename>.srm for SRAM and <content-basename>.rtc for RTC data.",
+    "notes": "Persistent memory is cartridge-dependent.",
+    "evidence": [
+      "Snes9x libretro save implementation"
+    ]
+  },
+  "states": {
+    "status": "supported",
+    "serialization": "deterministic",
+    "naming": "Frontend state names are <content-basename>.state and <content-basename>.stateN.",
+    "notes": "snes9x_libretro.info declares deterministic savestates.",
+    "evidence": [
+      "snes9x_libretro.info savestate=true/savestate_features=deterministic"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "windows": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    }
+  }
+}

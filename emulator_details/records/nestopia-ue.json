@@ -7,7 +7,8 @@
     { "kind": "source", "repo": "0ldsk00l/nestopia", "tag": "1.53.2", "role": "win32 UI configuration, paths, input and FDS sources for windows" },
     { "kind": "source", "repo": "0ldsk00l/nestopia", "tag": "1.48", "role": "legacy SDL unix port paths (README.unix, ~/.nestopia)" },
     { "kind": "docs", "url": "https://github.com/0ldsk00l/nestopia#readme", "role": "linux/macos build status and transition to Nestopia JG + QTea" },
-    { "kind": "docs", "url": "https://github.com/0ldsk00l/nestopia/releases", "role": "release assets: 1.53.2 ships win32 only; linux/macos build from source" }
+    { "kind": "docs", "url": "https://github.com/0ldsk00l/nestopia/releases", "role": "release assets: 1.53.2 ships win32 only; linux/macos build from source" },
+    { "kind": "source", "repo": "flathub/ca._0ldsk00l.Nestopia", "commit": "4338c4a12aa44cdd424c99f9df02a155a86ae1c8", "role": "official Flatpak app-id and sandbox packaging" }
   ],
   "platforms": {
     "linux": {
@@ -23,8 +24,9 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "input.conf in the config directory (same dir as nestopia.conf): one INI section per emulated device (nespad1, nespad2, ..., plus \"ui\") whose values are raw SDL keysym integers, and a sibling <device>j section per device for joysticks using codes j<button>b<N>, j<button>h<N>, j<button>a<N>; pad buttons are Up/Down/Left/Right/Select/Start/A/B/TurboA/TurboB",
+          "naming": "Controller INI syntax: per-device sections (nespad1, nespad2, ui) use SDL keysym integers; sibling `<device>j` sections use `j<button>b<N>`, `j<button>h<N>`, and `j<button>a<N>` joystick codes",
           "evidence": [
             "source:fltkui/inputmanager.cpp remap_kb() L161-217 (keysym ints per device+button name) and remap_js() L220-298 (jN.b/jN.h/jN.a pattern)",
             "source:fltkui/inputmanager.cpp set_inputdef() L301-389 writes the same jN.* codes back",
@@ -66,6 +68,57 @@
       ],
       "notes": "Captured from the 1.53.2 FLTK/SDL2 UI (the current 0ldsk00l GUI); the 1.4x SDL port it replaced kept everything in ~/.nestopia/ instead. Lunchbox launches with a private data root; native saves/states stay in the XDG locations."
     },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/ca._0ldsk00l.Nestopia/config/nestopia/ (Flatpak sandbox XDG_CONFIG_HOME) containing nestopia.conf and input.conf; nestopia.conf has [frontend] and [nestopia] sections, including port1/port2/port3/port4/portexp device selection",
+          "evidence": [
+            "repo:flathub/ca._0ldsk00l.Nestopia/ca._0ldsk00l.Nestopia.json @4338c4a12aa44cdd424c99f9df02a155a86ae1c8 (app-id and sandbox home)",
+            "source:fltkui/setmanager.cpp XDG_CONFIG_HOME + /nestopia and config filenames (tag 1.53.2)",
+            "source:fltkui/jg.cpp settings_nst[] port device keys (tag 1.53.2)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.var/app/ca._0ldsk00l.Nestopia/config/nestopia/input.conf: same INI syntax as native Linux, with one section per emulated device (nespad1, nespad2, etc. and ui) containing SDL keysym integer values and sibling <device>j sections containing j<button>b<N>, j<button>h<N>, and j<button>a<N> joystick codes",
+          "naming": "Same controller INI syntax as native: per-device SDL keysym integer sections plus `<device>j` joystick codes `j<button>b<N>`, `j<button>h<N>`, and `j<button>a<N>`",
+          "evidence": [
+            "source:fltkui/inputmanager.cpp remap_kb/remap_js and set_inputdef writes @1.53.2",
+            "repo:flathub/ca._0ldsk00l.Nestopia/ca._0ldsk00l.Nestopia.json @4338c4a12aa44cdd424c99f9df02a155a86ae1c8 (sandbox config home)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/ca._0ldsk00l.Nestopia/data/nestopia/save/ (Flatpak sandbox XDG_DATA_HOME)",
+          "naming": "<ROM filename stem>.sav for battery/EEPROM/tape/turbofile; <ROM filename stem>.ups for FDS disk data",
+          "evidence": [
+            "source:fltkui/jgmanager.cpp set_paths() XDG_DATA_HOME + /nestopia/save @1.53.2",
+            "source:fltkui/jg.cpp nst_cb_files SAVE_BATTERY..SAVE_TURBOFILE and SAVE_FDS @1.53.2"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/ca._0ldsk00l.Nestopia/data/nestopia/state/ (Flatpak sandbox XDG_DATA_HOME)",
+          "naming": "Quick slots <ROM filename stem>_<slot>.nst, slots 0..4; File > Save State can write a user-selected *.nst",
+          "evidence": [
+            "source:fltkui/jgmanager.cpp state_qload/state_qsave and set_paths() @1.53.2",
+            "source:fltkui/fltkui.cpp quick save menu Slot 0..Slot 4 @1.53.2"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.var/app/ca._0ldsk00l.Nestopia/data/nestopia/ is the sandbox bios/user-asset path; no BIOS is used for NES cartridges or NSF, while FDS requires disksys.rom there (or an auxiliary BIOS supplied by the frontend); no canonical checksum is published by this source",
+          "naming": "No external BIOS for NES cartridge/NSF; FDS firmware is named disksys.rom; this source publishes no canonical checksum",
+          "evidence": [
+            "source:fltkui/jgmanager.cpp set_paths() pathinfo.bios = XDG data base @1.53.2",
+            "source:fltkui/jg.cpp jg_game_load() FDS fallback pathinfo.bios/disksys.rom @1.53.2",
+            "repo:flathub/ca._0ldsk00l.Nestopia/ca._0ldsk00l.Nestopia.json @4338c4a12aa44cdd424c99f9df02a155a86ae1c8 (sandbox data home)"
+          ]
+        }
+      ],
+      "notes": "Official Flathub package ca._0ldsk00l.Nestopia is the supported Flatpak distribution; its sandbox XDG config/data roots map under ~/.var/app/ca._0ldsk00l.Nestopia/."
+    },
     "windows": {
       "paths": [
         {
@@ -77,8 +130,9 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "inside nestopia.xml: [input]/keys/<device> with DirectInput DIK_* codes per button (pad-1/pad-2/pad-3/pad-4, powerpad, powerglove, horitrack, pachinko, ... plus emulation/file/machine/nsf/view/help command sections); [input]/joysticks holds per-device GUID and axis/button mappings; port device selection is [machine]/adapter (auto|nes|famicom) and [machine]/port-1..port-5 with values pad1..pad4, zapper, paddle, powerpad, powerglove, mouse, rob, familytrainer, familykeyboard, suborkeyboard, doremikkokeyboard, horitrack, pachinko, ...",
+          "naming": "Controller XML syntax: `[input]/keys/<device>` stores DirectInput `DIK_*` button codes; `[input]/joysticks` stores per-device GUID/axis/button mappings and `[machine]/port-*` selects the device",
           "evidence": [
             "source:win32/NstDialogInput.cpp Settings::map L151-171 (\"pad-1\",\"left\"->DIK_LEFT, \"pad-1\",\"start\"->DIK_RETURN, \"pad-1\",\"a\"->DIK_PERIOD, ...) and Load/Save L543-560, L640-708 (input/keys, input/joysticks)",
             "source:win32/NstManagerInput.cpp Input::Load L221-260 (machine/adapter, machine/port-# strings) and Input::Save L340-375 (machine/port-x = pad1|zapper|paddle|...)"
@@ -128,8 +182,9 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "input.conf in the config directory, identical linux format: per-device INI sections (nespad1, ..., ui) with SDL keysym integers and <device>j sections with jN.b/jN.h/jN.a joystick codes",
+          "naming": "Same controller INI syntax as Linux: per-device SDL keysym integer sections plus `<device>j` joystick codes `jN.b`, `jN.h`, and `jN.a`",
           "evidence": [
             "source:fltkui/inputmanager.cpp remap_kb/remap_js (SDL2 keyboard codes, platform-independent, tag 1.53.2)",
             "docs:README.md Linux/macOS Build section (single fltkui frontend shared by linux and macOS)"

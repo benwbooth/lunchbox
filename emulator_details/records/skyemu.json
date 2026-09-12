@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "slug": "skyemu",
+  "emulator": "SkyEmu",
+  "sources": [
+    { "kind": "source", "repo": "skylersaleh/SkyEmu", "role": "native platform builds, controls, BIOS/save filenames and persistent save-state slots" },
+    { "kind": "docs", "url": "https://github.com/skylersaleh/SkyEmu#readme", "role": "official feature and file-loading documentation" }
+  ],
+  "platforms": {
+    "linux": { "paths": [
+      { "purpose": "config", "path": "Native SkyEmu application preferences; the upstream README does not specify a stable Linux config filename/path", "naming": "Runtime/UI options are configured through the native UI or command line; no documented portable text config grammar is available in the cited source", "evidence": ["source:SkyEmu native build/UI code", "docs:SkyEmu README Native Build Instructions"] },
+      { "purpose": "input", "path": "Native UI keybind/controller configuration", "naming": "Default keyboard syntax is WASD=d-pad, J=A, K=B, apostrophe=Select, Enter=Start, U=L, I=R; custom bindings are configured in the UI and no text binding-file grammar is published", "evidence": ["docs:SkyEmu README Default Controls and controller support", "source:SkyEmu input/UI code"] },
+      { "purpose": "bios", "path": "BIOS files beside the ROM on native builds", "naming": "GBA BIOS filename is gba_bios.bin; GB boot aliases include dmg0_rom.bin, dmg_rom.bin and gb_bios.bin. SkyEmu also bundles open replacement BIOS/stubs; no canonical checksum is published by the cited upstream docs", "evidence": ["docs:SkyEmu README Loading save files and BIOSs", "source:SkyEmu BIOS filename lookup"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["docs:SkyEmu README BIOS architecture"] },
+      { "purpose": "saves", "path": "Same directory as the ROM on native builds", "naming": "ROM basename with extension replaced by .sav (for example MyRomFile.gba -> MyRomFile.sav)", "evidence": ["docs:SkyEmu README Loading save files and BIOSs"] },
+      { "purpose": "states", "path": "Native persistent save-state storage managed by SkyEmu's four save-state slots", "naming": "Four persistent slots with screenshot previews; the cited upstream README does not publish a native filename/path convention", "evidence": ["docs:SkyEmu README persistent save-state slots", "source:SkyEmu save-state storage code"] }
+    ] },
+    "windows": { "paths": [
+      { "purpose": "config", "path": "Native SkyEmu application preferences; exact Windows config filename/path is not specified by the cited README", "naming": "UI/command-line options; no published portable text config grammar", "evidence": ["source:SkyEmu native UI code", "docs:SkyEmu README releases/native builds"] },
+      { "purpose": "input", "path": "Native UI keybind/controller configuration", "naming": "Default WASD/J/K/'/Enter/U/I keyboard mapping; custom bindings are configured in UI, with no published text binding grammar", "evidence": ["docs:SkyEmu README Default Controls", "source:SkyEmu input/UI code"] },
+      { "purpose": "bios", "path": "BIOS files beside the ROM", "naming": "gba_bios.bin; GB boot aliases dmg0_rom.bin, dmg_rom.bin, gb_bios.bin; bundled replacement BIOS is available and no canonical checksum is published", "evidence": ["docs:SkyEmu README BIOS loading"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["docs:SkyEmu README BIOS architecture"] },
+      { "purpose": "saves", "path": "Same directory as the ROM", "naming": "<ROM basename>.sav", "evidence": ["docs:SkyEmu README save naming"] },
+      { "purpose": "states", "path": "SkyEmu persistent four-slot save-state store", "naming": "Four slots with screenshot previews; native filename/path not published by the cited source", "evidence": ["docs:SkyEmu README save-state feature", "source:SkyEmu save-state code"] }
+    ] },
+    "macos": { "paths": [
+      { "purpose": "config", "path": "Native SkyEmu application preferences; exact macOS config filename/path is not specified by the cited README", "naming": "UI/command-line options; no published portable text config grammar", "evidence": ["source:SkyEmu native UI code", "docs:SkyEmu README cross-platform builds"] },
+      { "purpose": "input", "path": "Native UI keybind/controller configuration", "naming": "Default WASD/J/K/'/Enter/U/I keyboard mapping; custom bindings are configured in UI, with no published text binding grammar", "evidence": ["docs:SkyEmu README Default Controls", "source:SkyEmu input/UI code"] },
+      { "purpose": "bios", "path": "BIOS files beside the ROM", "naming": "gba_bios.bin; GB boot aliases dmg0_rom.bin, dmg_rom.bin, gb_bios.bin; bundled replacement BIOS is available and no canonical checksum is published", "evidence": ["docs:SkyEmu README BIOS loading"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["docs:SkyEmu README BIOS architecture"] },
+      { "purpose": "saves", "path": "Same directory as the ROM", "naming": "<ROM basename>.sav", "evidence": ["docs:SkyEmu README save naming"] },
+      { "purpose": "states", "path": "SkyEmu persistent four-slot save-state store", "naming": "Four slots with screenshot previews; native filename/path not published by the cited source", "evidence": ["docs:SkyEmu README save-state feature", "source:SkyEmu save-state code"] }
+    ] }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "SkyEmu's upstream release/README lists native Linux, Windows and macOS builds but no authoritative Flatpak package or manifest.", "evidence": ["docs:https://github.com/skylersaleh/SkyEmu/releases", "docs:https://github.com/skylersaleh/SkyEmu#readme platform list"] }
+  }
+}

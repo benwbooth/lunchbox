@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "slug": "c64-emu",
+  "emulator": "C64.emu",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://www.explusalpha.com/contents/c64-emu",
+      "role": "upstream project and platform scope"
+    }
+  ],
+  "platforms": {},
+  "platform_gaps": {
+    "linux": {
+      "status": "no_verified_package",
+      "reason": "Official source does not document c64-emu as a native linux runtime.",
+      "evidence": [
+        "docs:https://www.explusalpha.com/contents/c64-emu (official platform scope; host gap recorded)"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "Official source does not document c64-emu as a native linux-flatpak runtime.",
+      "evidence": [
+        "docs:https://www.explusalpha.com/contents/c64-emu (official platform scope; host gap recorded)"
+      ]
+    },
+    "macos": {
+      "status": "no_verified_package",
+      "reason": "Official source does not document c64-emu as a native macos runtime.",
+      "evidence": [
+        "docs:https://www.explusalpha.com/contents/c64-emu (official platform scope; host gap recorded)"
+      ]
+    },
+    "windows": {
+      "status": "no_verified_package",
+      "reason": "Official source does not document c64-emu as a native windows runtime.",
+      "evidence": [
+        "docs:https://www.explusalpha.com/contents/c64-emu (official platform scope; host gap recorded)"
+      ]
+    }
+  }
+}

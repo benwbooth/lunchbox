@@ -12,7 +12,7 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "Inside the Wine prefix: default mode keeps all settings (including input maps) in the Windows registry, which Wine materializes in the prefix (HKCU-backed values in <prefix>/user.reg); portable mode instead uses Altirra.ini next to Altirra64.exe in the install directory",
+          "path": "Inside the Wine prefix: default mode keeps all settings (including input maps) in the Windows registry, which Wine materializes in the prefix (HKCU-backed values in <prefix>/user.reg); portable mode instead uses Altirra.ini next to Altirra64.exe in the install directory. Altirra's public help/changelog documents mapping through Options > Input but does not document a stable serialized controller-binding key/value syntax; edit through the GUI or preserve the release-specific registry/INI data rather than guessing keys.",
           "evidence": [
             "docs:Altirra.chm 4.40 Portable mode — \"Altirra stores settings in an .ini file instead of in the Windows Registry\"; enabled via /portable, by creating Altirra.ini directly, or the Options portable/registry toggle",
             "docs:altirra-morechanges.html v2.20 \"Non-ASCII characters are now saved correctly into the Altirra.ini file in portable mode\"; v2.60 /portablealt:<file>; v3.20 GUI option for switching between portable and registry mode",
@@ -43,6 +43,7 @@
         {
           "purpose": "bios",
           "path": "Atari 8-bit OS ROM images hooked up through the Firmware Images dialog (Options > Firmware, with a Scan... button for a ROM folder); external ROMs use the standard Atari 8-bit emulator filenames, with built-in AltirraOS/Altirra BASIC as the no-firmware fallback",
+          "naming": "Standard external names include ATARIXL.ROM, ATARIOSB.ROM, ATARIBAS.ROM, and 5200.ROM; built-in AltirraOS/Altirra BASIC are fallback firmware. Upstream does not publish canonical checksums for these user firmware files.",
           "evidence": [
             "docs:Altirra.chm 4.40 Options: Firmware — OS submenu lists built-in firmware plus \"any additional firmware image files hooked up to the emulator through the Firmware Images dialog\"; Xformer OS-B is \"usually named ATARIOSB.ROM\"",
             "docs:Altirra.chm 4.40 — recognized ROM filenames include ATARIXL.ROM, ATARIOSB.ROM, ATARIBAS.ROM, 5200.ROM",
@@ -56,7 +57,7 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "Windows Registry (default mode; the exact HKCU key path is not publicly documented and has moved between releases) — or, in portable mode, Altirra.ini in the same directory as Altirra64.exe, selected by /portable, an existing Altirra.ini file, the /portablealt:<file> switch, or the Options portable/registry toggle",
+          "path": "Windows Registry (default mode; the exact HKCU key path is not publicly documented and has moved between releases) — or, in portable mode, Altirra.ini in the same directory as Altirra64.exe, selected by /portable, an existing Altirra.ini file, the /portablealt:<file> switch, or the Options portable/registry toggle. Altirra's public help/changelog documents mapping through Options > Input but provides no stable serialized controller-binding key/value syntax; use the GUI or preserve release-specific registry/INI data.",
           "evidence": [
             "docs:Altirra.chm 4.40 Portable mode — \"In portable mode, Altirra stores settings in an .ini file instead of in the Windows Registry\"; \"Altirra automatically switches to portable mode whenever the INI file is present\"",
             "docs:www.dosgamers.com Altirra guide — settings go to the registry unless Altirra.ini exists in the Altirra folder",
@@ -84,6 +85,7 @@
         {
           "purpose": "bios",
           "path": "Firmware Images dialog (Options > Firmware) with folder Scan for OS/BASIC/5200 ROM images using standard Atari 8-bit names (ATARIXL.ROM, ATARIOSB.ROM, ATARIBAS.ROM, 5200.ROM); built-in AltirraOS/Altirra BASIC run without any user ROM",
+          "naming": "Standard external names are ATARIXL.ROM, ATARIOSB.ROM, ATARIBAS.ROM, and 5200.ROM; built-in AltirraOS/Altirra BASIC are fallback firmware. Upstream does not publish canonical checksums for these user firmware files.",
           "evidence": [
             "docs:Altirra.chm 4.40 Options: Firmware — Firmware Images dialog; Xformer OS-B \"usually named ATARIOSB.ROM\"; AltirraOS entries for 400/800, XL/XE/XEGS and 5200",
             "docs:altirra.html — \"same format and filenames as most other popular Atari 8-bit system emulators\"; reimplemented OS/BASIC/handler ROMs included"
@@ -91,6 +93,22 @@
         }
       ],
       "notes": "Windows is Altirra's native platform; every Linux/Wine behavior in this record is the same Windows binary observed through the prefix."
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The official Altirra distribution documents Windows binaries only; no trustworthy upstream Flatpak package is identified.",
+      "evidence": [
+        "docs:https://www.virtualdub.org/altirra.html — official downloads and supported distribution are Windows binaries; no upstream Flatpak is documented"
+      ]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "The canonical Altirra project distributes a Windows binary and does not support macOS; unofficial ports are distinct projects.",
+      "evidence": [
+        "docs:https://www.virtualdub.org/altirra.html — official Altirra downloads are Windows executables and no macOS build is listed"
+      ]
     }
   }
 }

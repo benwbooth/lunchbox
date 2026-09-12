@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "slug": "fceux",
+  "emulator": "FCEUX",
+  "sources": [
+    { "kind": "source", "repo": "TASEmulators/fceux", "commit": "a62b868e9247c4aafd66f597cdfa8d2609704087", "role": "Qt/SDL configuration discovery, input profile format, save/state filename construction and BIOS names" },
+    { "kind": "docs", "url": "https://fceux.com/web/fceux-sdl-docs.html", "role": "official SDL documentation for base directory, fceux.cfg, input and savestate behavior" },
+    { "kind": "docs", "url": "https://fceux.com/web/help/CommandLineOptions.html", "role": "official command-line documentation for config-file selection and state loading" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.fceux/fceux.cfg by default (FCEUX_CONFIG_DIR overrides the base directory; FCEUX_HOME is consulted as the home override before the default HOME/.fceux). cfg.d/*.cfg files are read alphabetically as optional overlays; only fceux.cfg is written by the emulator",
+          "evidence": [
+            "source:src/drivers/Qt/config.cpp GetBaseDirectory (FCEUX_CONFIG_DIR, FCEUX_HOME, HOME/.fceux) and InitConfig @a62b868",
+            "source:src/drivers/Qt/config.cpp Config(dir) + CreateDirs and src/drivers/common/configSys.cpp cfgFile=\"fceux.cfg\" @a62b868",
+            "docs:fceux.com/web/fceux-sdl-docs.html (base directory and primary fceux.cfg; cfg.d overlays)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "naming": "SDL controller grammar: fceux.cfg SDL.Input.0..3 selects GamePad profiles; mappings are SDL strings in input/<SDL GUID>/<profile>.txt using A/B/Select/Start/Up/Down/Left/Right/TurboA/TurboB",
+          "path": "Controller selection and keyboard defaults are in fceux.cfg under SDL.Input.0..3 = GamePad.0..3 and SDL.Input.GamePad.<n>.DeviceType/DeviceGUID/Profile. Gamepad mappings are SDL mapping strings stored in <base>/input/<SDL GUID>/<profile>.txt (default.txt is created from SDL_GameControllerMapping); standard pad logical names are A, B, Select, Start, Up, Down, Left, Right, TurboA and TurboB. Other devices (PowerPad, QuizKing, HyperShot, Mahjong, TopRider, FTrainer, FamilyKeyBoard) use SDL.Input.<device>.<n> keys in fceux.cfg",
+          "evidence": [
+            "source:src/drivers/sdl/config.cpp SDL.Input and SDL.Input.GamePad/PowerPad option names @a62b868",
+            "source:src/drivers/sdl/input.cpp GamePadNames and default keyboard map @a62b868",
+            "source:src/drivers/sdl/sdl-joystick.cpp default mapping path <base>/input/<GUID>/default.txt @a62b868",
+            "source:src/drivers/sdl/GamePadConf.cpp Profile/DeviceGUID persistence @a62b868"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<base>/sav/ by default, where <base> is the FCEUX base directory; the Qt Directory Overrides UI can replace the nonvolatile-memory directory",
+          "naming": "Battery-backed cartridge RAM is <ROM FileBase>.sav; FDS disk-side writable data is <ROM FileBase>.fds. Files are raw emulator save data; no canonical checksum is defined by FCEUX",
+          "evidence": [
+            "source:src/file.cpp FCEU_MakeFName FCEUMKF_SAV/FCEUMKF_FDS (base/sav/<FileBase>.sav and .fds, with NV directory override) @a62b868",
+            "source:src/cart.cpp FCEU_SaveGameSave/FCEU_LoadGameSave requests extension sav @a62b868",
+            "source:src/fds.cpp FDS save/load uses FCEUMKF_FDS @a62b868"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<base>/fcs/ by default; the Qt Directory Overrides UI can replace the state directory",
+          "naming": "Quick slots are <ROM FileBase>.fc0 through <ROM FileBase>.fc9 (ten slots); movie-bound names insert .<movie-name> before .fcN. Resume/autosave files use <ROM FileBase>-resume.fcs and <ROM FileBase>-autosave<N>.fcs. File > Save State As can choose a specific file",
+          "evidence": [
+            "source:src/file.cpp FCEU_GetPath/FCEU_MakeFName FCEUMKF_STATE and FCEUMKF_RESUMESTATE @a62b868",
+            "source:src/file.h FCEUMKF_STATE constants @a62b868",
+            "docs:fceux.com/web/help/Gettingstarted.html (save slots 0-9 and Save state as)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "naming": "No external BIOS for ordinary NES/NSF; FDS firmware is disksys.rom (8192 bytes) and optional Game Genie is gg.rom; source publishes no canonical checksum",
+          "path": "No external firmware is required for ordinary NES/Famicom cartridge or NSF playback. Famicom Disk System requires <base>/disksys.rom (or the FDS BIOS directory override), exactly 8192 bytes; optional Game Genie uses <base>/gg.rom. FCEUX performs size validation for disksys.rom but publishes no canonical checksum for either file",
+          "evidence": [
+            "source:src/file.cpp FCEUMKF_FDSROM/FCEUMKF_GGROM names disksys.rom and gg.rom @a62b868",
+            "source:src/fds.cpp FDS BIOS open and exact ftell == 8192 validation @a62b868",
+            "source:src/cart.cpp FCEU_OpenGenie requires gg.rom @a62b868"
+          ]
+        }
+      ],
+      "notes": "The official source builds Qt/SDL on Unix; this record captures the current FCEUX base-directory contract. No first-party Flatpak manifest was found, so no linux-flatpak cell is asserted."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.fceux/fceux.cfg by default; FCEUX_CONFIG_DIR overrides it and FCEUX_HOME is consulted as the home override. The same cfg.d/*.cfg overlay convention applies",
+          "evidence": [
+            "source:src/drivers/Qt/config.cpp non-WIN32 GetBaseDirectory (FCEUX_CONFIG_DIR/FCEUX_HOME/HOME/.fceux) @a62b868",
+            "source:src/CMakeLists.txt and src/drivers/Qt/config.cpp APPLE/Unix build branches @a62b868"
+          ]
+        },
+        {
+          "purpose": "input",
+          "naming": "Same SDL controller grammar as Linux: SDL.Input.0..3 and SDL.Input.GamePad.<n> select input/<SDL GUID>/<profile>.txt mappings",
+          "path": "Same Qt/SDL fceux.cfg controller keys as Linux: SDL.Input.0..3 selects GamePad.<n>; SDL.Input.GamePad.<n>.DeviceType/DeviceGUID/Profile selects a device/profile; SDL GameController mappings are <base>/input/<SDL GUID>/<profile>.txt with A/B/Select/Start/Up/Down/Left/Right/TurboA/TurboB logical names",
+          "evidence": [
+            "source:src/drivers/sdl/config.cpp and input.cpp SDL input option names/defaults @a62b868",
+            "source:src/drivers/sdl/sdl-joystick.cpp and GamePadConf.cpp GUID profile path and persistence @a62b868"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<base>/sav/ by default, with FCEUX Qt Directory Overrides able to replace the NV directory",
+          "naming": "<ROM FileBase>.sav for battery-backed cartridge RAM; <ROM FileBase>.fds for FDS writable disk data; no canonical checksum is defined",
+          "evidence": [
+            "source:src/file.cpp FCEU_MakeFName FCEUMKF_SAV/FCEUMKF_FDS @a62b868",
+            "source:src/cart.cpp and fds.cpp save callbacks @a62b868"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<base>/fcs/ by default, with the Qt state-directory override available",
+          "naming": "<ROM FileBase>.fc0..fc9 quick slots (ten slots), plus -resume.fcs and -autosave<N>.fcs; explicit Save State As paths are supported",
+          "evidence": [
+            "source:src/file.cpp FCEU_MakeFName state/resume/autostate naming @a62b868",
+            "docs:fceux.com/web/help/Gettingstarted.html (slots 0-9 and file save/load)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "naming": "No external BIOS for ordinary NES/NSF; FDS firmware is disksys.rom (8192 bytes) and optional Game Genie is gg.rom; source publishes no canonical checksum",
+          "path": "No external firmware for NES cartridge/NSF. FDS requires disksys.rom in the base/FDS BIOS path and the file must be exactly 8192 bytes; optional Game Genie is gg.rom. No canonical checksum is published by FCEUX",
+          "evidence": [
+            "source:src/file.cpp FCEUMKF_FDSROM/FCEUMKF_GGROM @a62b868",
+            "source:src/fds.cpp exact 8192-byte FDS BIOS validation @a62b868"
+          ]
+        }
+      ],
+      "notes": "CMake explicitly has APPLE and Unix branches for the Qt/SDL build, so macOS is a supported source-build host; no first-party macOS binary or Flatpak artifact is asserted here."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<directory containing fceux.exe>/fceux.cfg by default. FCEUX_HOME can override the base directory and FCEUX_CONFIG_DIR takes precedence; cfg.d/*.cfg overlays are read on Qt/SDL builds. The Windows native UI also stores its configuration in this fceux.cfg",
+          "evidence": [
+            "source:src/drivers/win/main.cpp GetBaseDirectory uses GetModuleFileName and cfgFile=\"fceux.cfg\" @a62b868",
+            "source:src/drivers/Qt/config.cpp WIN32 GetBaseDirectory FCEUX_HOME/FCEUX_CONFIG_DIR handling @a62b868",
+            "source:src/drivers/win/main.cpp load/save fceux.cfg beside executable @a62b868"
+          ]
+        },
+        {
+          "purpose": "input",
+          "naming": "Windows input uses fceux.cfg SDL.Input mappings plus native DIK_* keyboard and joystick fields; SDL profile files are input/<GUID>/<profile>.txt",
+          "path": "fceux.cfg stores the Windows UI input mappings in its input configuration; Qt/SDL builds use SDL.Input.0..3 and SDL.Input.GamePad.<n>.DeviceType/DeviceGUID/Profile, with SDL GUID profile files under <base>\\input\\<GUID>\\<profile>.txt. The Windows UI additionally maps pad-1/pad-2/etc. keyboard DIK_* codes and joystick mappings in the same XML-like FCEUX configuration sections",
+          "evidence": [
+            "source:src/drivers/win/input.cpp and src/drivers/win/config.cpp Windows keyboard/input config serialization @a62b868",
+            "source:src/drivers/sdl/config.cpp SDL input option names and sdl-joystick.cpp GUID profile path @a62b868"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<directory containing fceux.exe>\\sav\\ by default; the Windows Directory Overrides UI can replace the nonvolatile-memory directory",
+          "naming": "<ROM FileBase>.sav for battery-backed cartridge RAM and <ROM FileBase>.fds for FDS writable disk data; no canonical checksum is defined",
+          "evidence": [
+            "source:src/file.cpp FCEU_MakeFName FCEUMKF_SAV/FCEUMKF_FDS and Windows path separator @a62b868",
+            "source:src/cart.cpp and fds.cpp save callbacks @a62b868"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<directory containing fceux.exe>\\fcs\\ by default; the Windows state-directory override can replace it",
+          "naming": "<ROM FileBase>.fc0..fc9 quick slots (ten slots), with -resume.fcs and -autosave<N>.fcs; Save State As writes a user-selected state file",
+          "evidence": [
+            "source:src/file.cpp FCEU_GetPath/FCEU_MakeFName state naming @a62b868",
+            "source:src/drivers/win/state.cpp state dialogs use FCEU_GetPath(FCEUMKF_STATE) @a62b868"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "naming": "No external BIOS for ordinary NES/NSF; FDS firmware is disksys.rom (8192 bytes) and optional Game Genie is gg.rom; source publishes no canonical checksum",
+          "path": "No external firmware for ordinary NES/Famicom cartridge or NSF play. FDS requires <base>\\disksys.rom (or the configured FDS BIOS directory), exactly 8192 bytes; optional Game Genie file is <base>\\gg.rom. FCEUX publishes no canonical checksum",
+          "evidence": [
+            "source:src/file.cpp FCEUMKF_FDSROM/FCEUMKF_GGROM @a62b868",
+            "source:src/fds.cpp exact 8192-byte validation @a62b868",
+            "source:src/cart.cpp Game Genie filename requirement @a62b868"
+          ]
+        }
+      ],
+      "notes": "Official source includes the Windows native UI and Qt/SDL paths; the Windows release/build uses the executable directory as the default base directory."
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project documents Unix/Qt/SDL builds but no first-party Flatpak package is provided or captured.",
+      "evidence": ["source:TASEmulators/fceux@a62b868e9247c4aafd66f597cdfa8d2609704087 (official source build targets)", "docs:https://fceux.com/web/fceux-sdl-docs.html (official SDL distribution documentation; no Flatpak artifact)"]
+    }
+  }
+}

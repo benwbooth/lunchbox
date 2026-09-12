@@ -1,132 +1,89 @@
 # Emulator platform integration checklist
 
-Source-only review: 2026-09-12. No build, test, emulator probe, or launch was
-performed for this update.
+Source-capture and integration review: 2026-09-12. No emulator launch,
+controller-device probe, firmware import, save restore, or cross-host runtime
+verification was performed for this review. Source checks and matrix generation
+are not runtime evidence.
 
-This is the current checklist for the platform facts that controller setup,
-firmware management, and save synchronization need. The detailed path, filename,
-syntax, naming, and source evidence live in the linked
-`emulator_details/records/<slug>.json` files; this page tracks whether those facts
-exist and whether application code consumes them.
+This is the current checklist for the platform facts needed by controller
+setup, firmware management, and save synchronization. Detailed paths, syntax,
+names, checksum dispositions, and citations live in
+`emulator_details/records/<slug>.json`. The generated all-catalog testing ledger
+is documented in [EMULATOR_FEATURE_MATRIX.md](EMULATOR_FEATURE_MATRIX.md).
 
 ## Status definitions
 
-- **Capture** means a source-cited record contains a controller configuration
-  location/syntax pointer, BIOS/firmware location, and save location/naming for
-  that platform. It is research evidence, not a runtime result.
-- **Native** means a standalone controller writer/session/launch route is listed
-  by `controller_coverage.rs`. Every native adapter is still partial and subject
-  to the restrictions in its contract; none is promoted to runtime-verified here.
-- **RetroArch** means the shared frontend has core mappings (93/94 core names),
-  not a standalone adapter and not all-game/all-peripheral support.
+- **Capture** means a cited platform record has controller configuration,
+  firmware/keys, saves, and state dispositions for that host. A **partial**
+  capture has at least one explicitly unresolved dimension. Both are research
+  evidence, not runtime results.
+- **Gap** means the record explicitly says `unsupported`,
+  `no_verified_package`, or `unresolved` and cites why. A gap is dispositioned,
+  but it is not a concrete path capture.
+- Controller binding syntax uses purpose `input`; purpose `keys` is reserved
+  for cryptographic firmware keys. General configuration remains `config`.
+- **Native** means a partial standalone controller writer/session/launch route
+  is registered by `controller_coverage.rs`. It does not mean all devices,
+  modes, hosts, games, or peripherals work.
+- **RetroArch** is the shared frontend platform record for 94/94 core names; it
+  is not a standalone adapter. Each core has its own controller, firmware,
+  save, state, and host-availability record.
 - **Rule** means `sources/firmware-rules.json` has at least one runtime rule for
   that emulator. A captured firmware path without a rule is documentation-only.
-- **Per-file** and **whole-image** are the classifications consumed by
-  `platform_locations.rs`. Enumeration exists; upload/download, versioning,
-  conflict handling, and restore do not.
-- The current record and rule formats have no structured expected-checksum field.
-  Consequently **0/34 records have machine-enforced BIOS/firmware checksum
-  coverage**, even where prose evidence names a dump or firmware pack.
-
-Platform columns: **L** native Linux, **F** Linux Flatpak, **M** macOS, **W**
-Windows. `yes` means a record exists for that host; `--` is a capture gap.
+- **Per-file** and **whole-image** are the save classifications consumed by
+  `platform_locations.rs`. Enumeration is not synchronization.
+- Standalone firmware names and checksum dispositions remain prose. RetroArch
+  core records have structured per-file digest dispositions, but the app does
+  not yet enforce those hashes at runtime.
 
 ## Current coverage
 
-| Track | Current | Overall denominator | Percent | What remains |
+| Track | Current | Denominator | Percent | Meaning / remaining work |
 |---|---:|---:|---:|---|
-| Native controller source adapters | 28 | 249 catalog candidates | 11.2% | 221 standalone candidates lack a registered partial adapter |
-| RetroArch core source contracts | 93 | 94 core names | 98.9% | One core contract plus runtime verification |
-| Combined controller source entries | 121 | 343 | 35.3% | This combines two different partial-source denominators only |
-| Platform records in active 40-emulator integration set | 34 | 40 | 85.0% | Six registered native adapters still lack records |
-| Standalone catalog platform-record coverage | 33 | 249 catalog candidates | 13.3% | RetroArch's shared frontend record is tracked separately |
-| Requested host cells captured | 111 | 136 (34 records x 4 hosts) | 81.6% | 25 host/emulator cells below are still absent |
-| Records complete on all four hosts | 17 | 34 records | 50.0% | Fill every `--` platform cell |
-| Linux capture | 34 | 34 records | 100.0% | Runtime verification remains |
-| Flatpak capture | 18 | 34 records | 52.9% | 16 records lack a Flatpak entry |
-| macOS capture | 26 | 34 records | 76.5% | 8 records lack a macOS entry |
-| Windows capture | 33 | 34 records | 97.1% | DuckStation is Linux-only in the record |
-| Captured records with controller source routing | 23 | 34 records | 67.6% | 22 native adapters plus the RetroArch frontend |
-| Captured records with firmware runtime rules | 15 | 34 records | 44.1% | 14 named standalone runtimes plus shared RetroArch rules |
-| Structured firmware checksum coverage | 0 | 34 records | 0.0% | Add expected identity fields and validation semantics |
-| Save capture plus enumeration consumer | 34 | 34 records | 100.0% | States are also captured where supported; metadata/enumeration is not sync |
-| End-to-end save synchronization | 0 | 34 records | 0.0% | Transport, identity, versioning, conflicts, atomic restore, UI |
+| Native controller source adapters | 28 | 249 standalone candidates | 11.2% | 221 catalog candidates still lack a registered partial adapter |
+| RetroArch core source contracts | 94 | 94 core names | 100.0% | Source contracts are complete; runtime verification remains |
+| Combined controller source entries | 122 | 343 runtimes | 35.6% | 28 native adapters plus 94 core contracts |
+| Standalone platform records | 250 | 250 tracked runtimes | 100.0% | 249 catalog identities plus `simple64` as `record_only` |
+| Record/host cells dispositioned | 1,000 | 1,000 | 100.0% | 459 host records plus 541 explicit gaps |
+| Fully captured host cells | 432 | 1,000 | 43.2% | Every required dimension has a non-unresolved disposition |
+| Partially captured host cells | 27 | 1,000 | 2.7% | At least one feature dimension remains explicitly unresolved |
+| Host gaps | 541 | 1,000 | 54.1% | 177 no-package, 20 unsupported, and 344 unresolved |
+| Records captured on all four hosts | 52 | 250 | 20.8% | Other records carry partial or gap dispositions |
+| Linux host records | 132 | 250 records | 52.8% | Includes full and partial source capture; runtime verification remains |
+| Flatpak host records | 55 | 250 records | 22.0% | Flatpak requires package-specific evidence |
+| macOS host records | 121 | 250 records | 48.4% | Includes full and partial source capture |
+| Windows host records | 151 | 250 records | 60.4% | Includes full and partial source capture |
+| Structured core firmware files | 399 | 399 dispositions | 100.0% | 181 have published digests; 218 explicitly have no published digest |
+| Structured core save dispositions | 94 | 94 cores | 100.0% | 52 supported, 19 content-dependent, 15 unsupported, 8 unknown |
+| Structured core state dispositions | 94 | 94 cores | 100.0% | 74 supported, 9 unsupported, 11 unknown |
+| End-to-end save synchronization | 0 | 343 catalog runtimes | 0.0% | Identity, transport, versioning, conflicts, atomic restore, and UI remain |
 
-## Captured emulator matrix
+## Integration findings that remain distinct from completion
 
-| Emulator record | L | F | M | W | Controller source | Firmware | Save model | Next concrete gap |
-|---|:---:|:---:|:---:|:---:|---|---|---|---|
-| [Altirra](../emulator_details/records/altirra.json) | yes | -- | -- | yes | capture only | capture only | whole-image | Flatpak/macOS decision; native controller adapter |
-| [BizHawk](../emulator_details/records/bizhawk.json) | yes | -- | yes | yes | native | capture only | per-file | Flatpak capture; firmware rules as applicable |
-| [BlastEm](../emulator_details/records/blastem.json) | yes | yes | yes | yes | native | capture only | per-file | Firmware rule/checksum policy; runtime verification |
-| [Citron Neo](../emulator_details/records/citron-neo.json) | yes | -- | yes | yes | capture only | capture only | per-file | Flatpak capture, native adapter, Switch rules |
-| [DeSmuME](../emulator_details/records/desmume.json) | yes | yes | yes | yes | native | capture only | per-file | Firmware rule/checksum policy; runtime verification |
-| [Dolphin](../emulator_details/records/dolphin.json) | yes | yes | yes | yes | native | rule | per-file | Reconcile modern Windows root in the runtime adapter |
-| [DOSBox Staging](../emulator_details/records/dosbox-staging.json) | yes | yes | yes | yes | capture only | capture only | whole-image | Native adapter; mounted-drive/image sync policy |
-| [DuckStation](../emulator_details/records/duckstation.json) | yes | -- | -- | -- | native | rule | per-file | Capture Flatpak/macOS/Windows |
-| [Eden](../emulator_details/records/eden.json) | yes | -- | yes | yes | capture only | rule | per-file | Flatpak capture; native controller adapter |
-| [Emulicious](../emulator_details/records/emulicious.json) | yes | -- | yes | yes | capture only | capture only | per-file | Flatpak decision; native adapter and firmware rule |
-| [Flycast](../emulator_details/records/flycast.json) | yes | yes | yes | yes | native | rule | per-file | Runtime verification and checksum policy |
-| [Gearcoleco](../emulator_details/records/gearcoleco.json) | yes | -- | yes | yes | capture only | rule | per-file | Flatpak capture; native controller adapter |
-| [Gopher64](../emulator_details/records/gopher64.json) | yes | -- | yes | yes | capture only | capture only | per-file | Flatpak capture; native adapter and firmware rule |
-| [Hatari](../emulator_details/records/hatari.json) | yes | yes | yes | yes | native | capture only | whole-image | Disk-image conflict policy; firmware rule |
-| [jgenesis](../emulator_details/records/jgenesis.json) | yes | -- | -- | yes | native | capture only | per-file | Flatpak/macOS capture; firmware rule |
-| [Kronos](../emulator_details/records/kronos.json) | yes | -- | -- | yes | native | capture only | whole-image | Flatpak/macOS capture; backup-RAM atomicity |
-| [MAME](../emulator_details/records/mame.json) | yes | yes | yes | yes | native | rule | per-file | Per-machine scope and checksum identity remain dynamic |
-| [Mednafen](../emulator_details/records/mednafen.json) | yes | -- | yes | yes | native | rule | per-file | Flatpak capture; broader native module coverage |
-| [melonDS](../emulator_details/records/melonds.json) | yes | yes | yes | yes | native | rule | per-file | DSi asset validation and runtime verification |
-| [mGBA](../emulator_details/records/mgba.json) | yes | yes | yes | yes | native | rule | per-file | Runtime verification and checksum policy |
-| [Nestopia UE](../emulator_details/records/nestopia-ue.json) | yes | -- | yes | yes | capture only | rule | per-file | Flatpak capture; native controller adapter |
-| [openMSX](../emulator_details/records/openmsx.json) | yes | yes | yes | yes | native | rule | per-file | Runtime verification and checksum policy |
-| [PCSX2](../emulator_details/records/pcsx2.json) | yes | yes | yes | yes | native | rule | per-file | Runtime verification and BIOS identity policy |
-| [PPSSPP](../emulator_details/records/ppsspp.json) | yes | yes | yes | yes | native | capture only | per-file | Firmware rule policy if needed; runtime verification |
-| [puNES](../emulator_details/records/punes.json) | yes | yes | -- | yes | capture only | rule | per-file | macOS capture; native controller adapter |
-| [RetroArch](../emulator_details/records/retroarch.json) | yes | yes | yes | yes | RetroArch | rule | per-file | One core contract; per-core save/firmware identity |
-| [RMG](../emulator_details/records/rmg.json) | yes | -- | -- | yes | capture only | capture only | per-file | Flatpak/macOS capture; native adapter |
-| [RPCS3](../emulator_details/records/rpcs3.json) | yes | yes | yes | yes | native | capture only | per-file | Firmware installer/identity rule; runtime verification |
-| [ScummVM](../emulator_details/records/scummvm.json) | yes | yes | yes | yes | native | capture only | per-file | Target/save identity and runtime verification |
-| [simple64](../emulator_details/records/simple64.json) | yes | -- | -- | yes | capture only | capture only | per-file | Flatpak/macOS capture; archived-upstream decision |
-| [Stella](../emulator_details/records/stella.json) | yes | yes | yes | yes | native | capture only | per-file | Runtime verification; firmware policy if applicable |
-| [VICE](../emulator_details/records/vice.json) | yes | yes | yes | yes | native | rule | per-file | ROM-set identity and runtime verification |
-| [xemu](../emulator_details/records/xemu.json) | yes | -- | yes | yes | native | capture only | whole-image | Flatpak capture; HDD/EEPROM atomic sync policy |
-| [Yaba Sanshiro 2](../emulator_details/records/yaba-sanshiro-2.json) | yes | -- | -- | yes | native | capture only | whole-image | Flatpak/macOS capture; firmware rule/checksum policy |
-
-## Registered controller adapters that still lack platform records
-
-These six adapters are included in the 28/249 controller count but excluded from
-the 34-record platform percentages. Their controller work is not a substitute
-for the four-host configuration/firmware/save capture.
-
-| Emulator | Controller source | Platform record | Next concrete gap |
-|---|---|---|---|
-| ares | native | missing | Capture L/F/M/W config, firmware, saves, and states |
-| bsnes | native | missing | Capture L/F/M/W config, firmware, saves, and states |
-| FCEUX | native | missing | Capture L/F/M/W config, firmware, saves, and states |
-| Mesen / Mesen2 | native | missing | Capture L/F/M/W config, firmware, saves, and states |
-| SameBoy | native | missing | Capture L/F/M/W config, firmware, saves, and states |
-| Snes9x | native | missing | Capture L/F/M/W config, firmware, saves, and states |
-
-## Review findings that must not be counted as completion
-
-1. `platform_locations.rs` embeds all 34 records, but
-   `ControllerCoverageDialog.qml` still hard-codes only 27 record slugs. Altirra,
-   Citron Neo, DOSBox Staging, Eden, Emulicious, Kronos, and Yaba Sanshiro 2 are
-   therefore not exposed through that dialog even though their records load.
-2. The resolver retains documentation-only paths as prose and does not select a
-   single host platform before resolving entries. `%APPDATA%` and
-   `%LOCALAPPDATA%` always return unresolved, including in a Windows build;
-   macOS-style `~/Library/...` entries can resolve under a Linux home; and
-   Flatpak `~/.var/app/...` entries resolve without consulting the discovered
-   sandbox roots. The comments promise stricter platform behavior than the code
-   currently enforces.
-3. The save consumer performs a bounded local file walk over every resolved
-   save/state entry. It does not yet establish game identity, hash/version files,
-   synchronize remotely, resolve conflicts, or restore atomically.
-4. Six whole-image models require coordination semantics that per-file copying
-   cannot provide: Altirra, DOSBox Staging, Hatari, Kronos, xemu, and Yaba
-   Sanshiro 2.
-5. Citron Neo has captured Switch key/firmware paths but no matching firmware
-   rules. Eden has rules; that does not make the Citron record operational.
-6. Controller coverage counts source routing only. The 28 adapters are partial,
-   and the requested no-testing phase means none of this review establishes
-   runtime behavior on Windows, macOS, Linux, or Flatpak.
+1. All 250 records are embedded by `platform_locations.rs`, and the controller
+   coverage UI now obtains the record slug list from that loader instead of a
+   stale QML literal.
+2. The resolver now returns concrete paths only for the current host and only
+   resolves Flatpak paths for discovered app roots. Windows `%APPDATA%`,
+   `%LOCALAPPDATA%`, and `%USERPROFILE%` tokens resolve against caller-supplied
+   bases on Windows; prose remains documentation-only.
+3. Source review corrected the BlastEm isolated config root to
+   `$HOME/.config/blastem`, Dolphin's new-install Windows firmware root to
+   `%APPDATA%/Dolphin Emulator`, and macOS openMSX firmware to
+   `~/.openMSX/share/systemroms`. These are source-derived changes and still
+   need runtime verification.
+4. The generated CSV has one row per 249 catalog standalone candidates, 94
+   canonical non-BizHawk-only RetroArch core names, and the source-captured
+   `simple64` runtime absent from the database, on all four hosts: 1,376 rows.
+   It preserves manual test statuses across regeneration by exact runtime ID
+   and host.
+5. The save consumer performs a bounded local walk only. It does not establish
+   game identity, hash/version files, synchronize remotely, resolve conflicts,
+   or restore atomically. Altirra, DOSBox Staging, Hatari, Kronos, xemu, and
+   Yaba Sanshiro 2 require whole-image coordination.
+6. Standalone firmware identities remain prose unless a runtime rule exists.
+   RetroArch core firmware is structured separately, including published
+   digests where the pinned core-info source provides them. Neither proves that
+   an emulator accepted an asset.
+7. Controller coverage counts source routing only. All 28 native adapters and
+   all 94 core contracts remain host-runtime unverified.

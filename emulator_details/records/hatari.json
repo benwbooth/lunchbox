@@ -14,6 +14,7 @@
         {
           "purpose": "config",
           "path": "~/.config/hatari/hatari.cfg (legacy ~/.hatari/ is used instead while it exists; /etc/hatari.cfg is read first; -c/--configfile adds overrides)",
+          "naming": "Controller syntax is INI `[Joystick0]`/`[Joystick1]`: `nJoystickMode`, SDL device `nJoyId`, fire-button indices `nJoyBut1/2/3Index`; directions use SDL axes 0/1 or hat 0",
           "evidence": ["source:src/paths.c HATARI_HOME_DIR \".config/hatari\" with legacy ~/.hatari fallback", "source:src/configuration.c sConfigFileName=\"hatari.cfg\"", "docs:manual Configuration options precedence", "contract:docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
@@ -31,6 +32,7 @@
         {
           "purpose": "bios",
           "path": "TOS ROM image, by default <prefix>/share/hatari/tos.img, or any file passed via --tos / set in the [ROM] szTosImageFileName setting; EmuTOS is shipped with official releases as the free alternative",
+          "naming": "TOS ROM convention is tos.img; --tos or [ROM] szTosImageFileName may select another filename, including an EmuTOS image; no canonical checksum is declared",
           "evidence": ["docs:manual Installation of a TOS ROM (rename to tos.img or use --tos)", "source:src/configuration.c [ROM] szTosImageFileName", "contract:docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md (TOS selection, existence-checked at launch)"]
         }
       ],
@@ -41,6 +43,7 @@
         {
           "purpose": "config",
           "path": "~/.var/app/org.tuxfamily.hatari/.config/hatari/hatari.cfg (flatpak gives the app its own $HOME, so the same HOME-relative .config/hatari layout lands under ~/.var/app)",
+          "naming": "Same INI `[Joystick0]`/`[Joystick1]` syntax as native: `nJoyId`, `nJoyBut1/2/3Index`, and SDL axis 0/1 or hat 0 directions",
           "evidence": ["flathub:org.tuxfamily.hatari (app exists, Hatari 2.5)", "source:src/paths.c HOME-based HATARI_HOME_DIR resolution"]
         },
         {
@@ -58,6 +61,7 @@
         {
           "purpose": "bios",
           "path": "TOS image inside the sandbox (user-selected via --tos/[ROM] szTosImageFileName, e.g. tos.img or the bundled EmuTOS)",
+          "naming": "TOS ROM convention is tos.img; --tos or [ROM] szTosImageFileName may select another filename, including EmuTOS; no canonical checksum is declared",
           "evidence": ["docs:manual Installation of a TOS ROM", "source:src/configuration.c [ROM] szTosImageFileName"]
         }
       ],
@@ -68,6 +72,7 @@
         {
           "purpose": "config",
           "path": "<home>\\AppData\\Local\\Hatari\\hatari.cfg (home from HOMEDRIVE+HOMEPATH; legacy ~/.hatari and the global hatari.cfg are read with the same precedence)",
+          "naming": "Same INI `[Joystick0]`/`[Joystick1]` syntax as native: `nJoyId`, `nJoyBut1/2/3Index`, and SDL axis 0/1 or hat 0 directions",
           "evidence": ["source:src/paths.c WIN32 HATARI_HOME_DIR \"AppData\\\\Local\\\\Hatari\" and HOMEDRIVE/HOMEPATH home resolution", "docs:manual Configuration options precedence"]
         },
         {
@@ -85,6 +90,7 @@
         {
           "purpose": "bios",
           "path": "TOS ROM image selected via --tos or [ROM] szTosImageFileName (tos.img convention; EmuTOS alternative)",
+          "naming": "TOS ROM convention is tos.img; --tos or [ROM] szTosImageFileName may select another filename, including EmuTOS; no canonical checksum is declared",
           "evidence": ["docs:manual Installation of a TOS ROM", "source:src/configuration.c [ROM] szTosImageFileName"]
         }
       ]
@@ -94,6 +100,7 @@
         {
           "purpose": "config",
           "path": "~/Library/Application Support/Hatari/hatari.cfg (legacy ~/.hatari while it exists)",
+          "naming": "Same INI `[Joystick0]`/`[Joystick1]` syntax as native: `nJoyId`, `nJoyBut1/2/3Index`, and SDL axis 0/1 or hat 0 directions",
           "evidence": ["source:src/paths.c __APPLE__ HATARI_HOME_DIR \"Library/Application Support/Hatari\"", "docs:manual Configuration options precedence"]
         },
         {
@@ -111,6 +118,7 @@
         {
           "purpose": "bios",
           "path": "TOS ROM image selected via --tos or [ROM] szTosImageFileName (tos.img convention; EmuTOS alternative)",
+          "naming": "TOS ROM convention is tos.img; --tos or [ROM] szTosImageFileName may select another filename, including EmuTOS; no canonical checksum is declared",
           "evidence": ["docs:manual Installation of a TOS ROM", "source:src/configuration.c [ROM] szTosImageFileName"]
         }
       ]

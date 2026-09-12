@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "slug": "freej2me-plus",
+  "emulator": "FreeJ2ME-Plus",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://github.com/TASEmulators/freej2me-plus",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "./freej2me.ini",
+          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "./freej2me.ini",
+          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "./rms/",
+          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No standalone save-state file",
+          "naming": "The upstream frontend selects the state filename/path.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS required; Java runtime supplies the execution environment",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external key files are used.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "./freej2me.ini",
+          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "./freej2me.ini",
+          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "./rms/",
+          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No standalone save-state file",
+          "naming": "The upstream frontend selects the state filename/path.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS required; Java runtime supplies the execution environment",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external key files are used.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "./freej2me.ini",
+          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "./freej2me.ini",
+          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "./rms/",
+          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No standalone save-state file",
+          "naming": "The upstream frontend selects the state filename/path.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS required; Java runtime supplies the execution environment",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external key files are used.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/TASEmulators/freej2me-plus"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "No official Flatpak package is documented by the upstream project.",
+      "evidence": [
+        "https://github.com/TASEmulators/freej2me-plus"
+      ]
+    }
+  }
+}

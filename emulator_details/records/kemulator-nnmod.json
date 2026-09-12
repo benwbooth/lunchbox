@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "slug": "kemulator-nnmod",
+  "emulator": "KEmulator nnmod",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/shinovon/KEmulator",
+      "url": "https://github.com/shinovon/KEmulator",
+      "role": "official upstream project identity and implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/shinovon/KEmulator",
+      "role": "official distribution or project documentation"
+    }
+  ],
+  "platform_gaps": {
+    "linux": {
+      "status": "unresolved",
+      "reason": "The official KEmulator nnmod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:https://github.com/shinovon/KEmulator",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unresolved",
+      "reason": "The official KEmulator nnmod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:https://github.com/shinovon/KEmulator",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "macos": {
+      "status": "unresolved",
+      "reason": "The official KEmulator nnmod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:https://github.com/shinovon/KEmulator",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "windows": {
+      "status": "unresolved",
+      "reason": "The official KEmulator nnmod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:https://github.com/shinovon/KEmulator",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    }
+  }
+}

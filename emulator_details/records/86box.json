@@ -1,0 +1,264 @@
+{
+  "schema_version": 1,
+  "slug": "86box",
+  "emulator": "86Box",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "86Box/86Box",
+      "role": "machine configuration, input mapping and path resolution"
+    },
+    {
+      "kind": "docs",
+      "url": "https://86box.readthedocs.io/en/latest/settings/",
+      "role": "86box.cfg settings and input pages"
+    },
+    {
+      "kind": "docs",
+      "url": "https://86box.readthedocs.io/en/latest/roms/",
+      "role": "ROM directory and machine ROM requirements"
+    },
+    {
+      "kind": "flatpak",
+      "id": "net._86box._86Box",
+      "url": "https://flathub.org/en/apps/net._86box._86Box",
+      "role": "community Flatpak identity and sandbox status"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/86box/86box.cfg (global config; a machine's 86box.cfg is next to its virtual-machine directory; -C/--config can select a config file)",
+          "evidence": [
+            "source:86Box/86Box src/config.c (global and per-machine 86box.cfg resolution)",
+            "docs:86box.readthedocs.io settings (machine configuration is 86box.cfg)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "The machine 86box.cfg INI sections [Input] and [Joystick *] store keyboard scan-code mappings plus joystick_*_axis_*, joystick_*_button_* and joystick_*_pov_* integer mappings; configure through Settings > Input devices.",
+          "naming": "INI keys include scancode_* and joystick_<n>_axis_<n>, joystick_<n>_button_<n>, joystick_<n>_pov_<n>; POV values are 'x, y'.",
+          "evidence": [
+            "source:86Box/86Box src/config.c (load_input: scancode_config_map and joystick mapping keys)",
+            "docs:86box.readthedocs.io settings (Input devices page)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Inside the emulated machine's attached disk image(s), normally the machine directory's *.img/*.vhd/*.vhdx files; 86Box has no game-save sidecar format.",
+          "naming": "Guest OS/game-defined files inside the attached disk image; the image filename is user-selected.",
+          "evidence": [
+            "docs:86box.readthedocs.io (storage/hard-disk image configuration)",
+            "source:86Box/86Box machine storage handlers"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No verified save-state facility in the official 86Box desktop documentation/source; machine configuration snapshots are not emulation save states.",
+          "naming": "Not applicable: no documented 86Box state extension or slot naming.",
+          "evidence": [
+            "docs:86box.readthedocs.io settings (settings and machine reset only)",
+            "source:86Box/86Box (no documented save-state path/format)"
+          ],
+          "status": "not_supported"
+        },
+        {
+          "purpose": "bios",
+          "path": "ROMs are searched in the configured ROM directory, normally ~/.local/share/86Box/roms (86Box ROM set); each emulated machine selects its own motherboard, video, SCSI and other ROM files.",
+          "naming": "Machine-specific ROM-set filenames are defined by 86Box's machine ROM tables; no single BIOS filename applies and the official ROM repository does not provide a universal canonical checksum for every optional ROM.",
+          "evidence": [
+            "docs:86box.readthedocs.io/en/latest/roms/ (ROM directory and required ROMs)",
+            "source:86Box/86Box machine ROM definitions",
+            "source:86Box/roms (official ROM set)"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No separate user key file; 86Box uses the ROM set and machine configuration described above.",
+          "naming": "No external key filename and no canonical key checksum published by 86Box.",
+          "evidence": [
+            "docs:86box.readthedocs.io/en/latest/roms/",
+            "source:86Box/86Box"
+          ],
+          "status": "not_required"
+        }
+      ],
+      "notes": "Disk images contain guest saves. 86Box does not provide a cross-version portable state format; ROM identity is machine/ROM-set specific."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/net._86box._86Box/config/86box/86box.cfg and machine 86box.cfg files in the selected VM directory (Flatpak XDG config redirection).",
+          "evidence": [
+            "flatpak:net._86box._86Box manifest",
+            "docs:flatpak.org conventions (XDG_CONFIG_HOME)",
+            "source:86Box/86Box src/config.c"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Machine 86box.cfg [Input]/[Joystick *] INI keys: scancode_* and joystick_<n>_axis_<n>/button_<n>/pov_<n>; Flatpak receives the same device mapping from the desktop input stack.",
+          "naming": "Same 86Box INI mapping grammar; POV values are 'x, y'.",
+          "evidence": [
+            "source:86Box/86Box src/config.c",
+            "flatpak:net._86box._86Box manifest"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Inside attached guest disk images, provided the Flatpak filesystem permission can reach the selected VM directory.",
+          "naming": "Guest-defined files inside *.img/*.vhd/*.vhdx images.",
+          "evidence": [
+            "docs:86box.readthedocs.io/en/latest/roms/",
+            "flatpak:net._86box._86Box manifest filesystem permissions"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No documented 86Box save-state facility.",
+          "naming": "Not applicable.",
+          "evidence": [
+            "docs:86box.readthedocs.io settings",
+            "source:86Box/86Box"
+          ],
+          "status": "not_supported"
+        },
+        {
+          "purpose": "bios",
+          "path": "The community Flatpak's ROM add-on supplies the 86Box ROM set; user ROMs are selected through the same ROM directory/machine tables.",
+          "naming": "Machine-specific ROM names; no universal checksum declared by 86Box.",
+          "evidence": [
+            "flatpak:net._86box._86Box and net._86box._86Box.ROMs listings",
+            "docs:86box.readthedocs.io/en/latest/roms/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No separate key file.",
+          "naming": "No external key filename/checksum.",
+          "evidence": [
+            "docs:86box.readthedocs.io/en/latest/roms/"
+          ],
+          "status": "not_required"
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "86box.cfg in the 86Box install/VM directory; the global configuration is created in the documented Windows user-data location and a machine's 86box.cfg is beside that VM.",
+          "evidence": [
+            "source:86Box/86Box src/config.c",
+            "docs:86box.readthedocs.io settings"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "86box.cfg [Input]/[Joystick *] sections; scancode_* and joystick_<n>_axis_<n>/button_<n>/pov_<n> integer mappings are written by Settings > Input devices.",
+          "naming": "INI mapping keys as documented/source-defined; POV 'x, y'.",
+          "evidence": [
+            "source:86Box/86Box src/config.c",
+            "docs:86box.readthedocs.io settings"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Inside attached guest disk images in the VM directory; no 86Box sidecar save manager.",
+          "naming": "Guest-defined files in user-named *.img/*.vhd/*.vhdx images.",
+          "evidence": [
+            "docs:86box.readthedocs.io storage/ROM documentation"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No documented 86Box save states.",
+          "naming": "Not applicable.",
+          "evidence": [
+            "docs:86box.readthedocs.io settings",
+            "source:86Box/86Box"
+          ],
+          "status": "not_supported"
+        },
+        {
+          "purpose": "bios",
+          "path": "The configured ROM directory (normally roms beside the install or the user data ROM directory) contains the official 86Box ROM set used by each machine.",
+          "naming": "Machine-specific ROM names from the source ROM tables; no universal checksum.",
+          "evidence": [
+            "docs:86box.readthedocs.io/en/latest/roms/",
+            "source:86Box/86Box and 86Box/roms"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No separate key file.",
+          "naming": "No external key filename/checksum.",
+          "evidence": [
+            "docs:86box.readthedocs.io/en/latest/roms/"
+          ],
+          "status": "not_required"
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "86box.cfg in the selected VM directory, with the global config in 86Box's macOS application-support/user-data location; the exact machine config remains 86box.cfg.",
+          "evidence": [
+            "source:86Box/86Box src/config.c",
+            "docs:86box.readthedocs.io settings"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Machine 86box.cfg [Input]/[Joystick *] sections use scancode_* and joystick axis/button/POV integer keys.",
+          "naming": "Same source-defined INI mapping grammar; POV 'x, y'.",
+          "evidence": [
+            "source:86Box/86Box src/config.c",
+            "docs:86box.readthedocs.io settings"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Inside attached guest disk images in the VM directory.",
+          "naming": "Guest-defined files inside user-named disk-image files; no emulator sidecar save format.",
+          "evidence": [
+            "docs:86box.readthedocs.io storage/ROM documentation"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No documented 86Box save states.",
+          "naming": "Not applicable.",
+          "evidence": [
+            "docs:86box.readthedocs.io settings",
+            "source:86Box/86Box"
+          ],
+          "status": "not_supported"
+        },
+        {
+          "purpose": "bios",
+          "path": "The configured 86Box ROM directory contains machine-specific ROMs from the official ROM set.",
+          "naming": "Source machine-table filenames; no universal BIOS name/checksum.",
+          "evidence": [
+            "docs:86box.readthedocs.io/en/latest/roms/",
+            "source:86Box/roms"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No separate key file.",
+          "naming": "No external key filename/checksum.",
+          "evidence": [
+            "docs:86box.readthedocs.io/en/latest/roms/"
+          ],
+          "status": "not_required"
+        }
+      ]
+    }
+  }
+}

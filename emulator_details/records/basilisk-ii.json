@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "slug": "basilisk-ii",
+  "emulator": "Basilisk II",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://basilisk.cebix.net/",
+      "url": "https://basilisk.cebix.net/",
+      "role": "official upstream identity and implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://basilisk.cebix.net/",
+      "role": "official distribution/documentation evidence"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.basilisk_ii_prefs (or explicit preferences file)",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Input is configured in the Basilisk II GUI/preferences; no stable binding-file grammar published",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mac disk image files (.dsk/.img) contain guest saves",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No verified save-state facility",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "Mac ROM image selected in preferences; no canonical checksum published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.basilisk_ii_prefs (or explicit preferences file)",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Input is configured in the Basilisk II GUI/preferences; no stable binding-file grammar published",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mac disk image files (.dsk/.img) contain guest saves",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No verified save-state facility",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "Mac ROM image selected in preferences; no canonical checksum published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.basilisk_ii_prefs (or explicit preferences file)",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Input is configured in the Basilisk II GUI/preferences; no stable binding-file grammar published",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mac disk image files (.dsk/.img) contain guest saves",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No verified save-state facility",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "Mac ROM image selected in preferences; no canonical checksum published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.basilisk_ii_prefs (or explicit preferences file)",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Input is configured in the Basilisk II GUI/preferences; no stable binding-file grammar published",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mac disk image files (.dsk/.img) contain guest saves",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No verified save-state facility",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "Mac ROM image selected in preferences; no canonical checksum published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://basilisk.cebix.net/",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {}
+}

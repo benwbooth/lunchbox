@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "slug": "touchhle",
+  "emulator": "touchHLE",
+  "sources": [
+    { "kind": "source", "repo": "touchHLE/touchHLE", "role": "desktop platform support, options file, simulated touch input, sandbox persistence and HLE firmware boundary" },
+    { "kind": "docs", "url": "https://touchhle.org/", "role": "official downloads and user documentation" }
+  ],
+  "platforms": {
+    "linux": { "paths": [
+      { "purpose": "config", "path": "touchHLE_options.txt in the executable/working directory (or options path selected by the launcher)", "naming": "Line-oriented command-line option syntax: one option/value per line as documented by OPTIONS_HELP.txt; no registry or BIOS config file", "evidence": ["source:touchHLE OPTIONS_HELP.txt and CLI option parser", "docs:touchHLE README Usage"] },
+      { "purpose": "input", "path": "Same options file or command line", "naming": "Exact simulated-touch option keys are --button-to-touch=, --dpad-to-touch= and --stick-to-touch= with mapping values defined by OPTIONS_HELP.txt; mouse left-button tap/drag and right-button tilt are built in", "evidence": ["source:touchHLE OPTIONS_HELP.txt input options", "docs:touchHLE input methods"] },
+      { "purpose": "bios", "path": "No Apple firmware/BIOS is required: touchHLE supplies HLE implementations of iPhone OS frameworks", "naming": "No external BIOS filename, hash, or firmware key asset", "evidence": ["source:touchHLE HLE framework implementation", "docs:touchHLE HLE architecture and usage"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys are used", "naming": "No key asset exists", "evidence": ["source:touchHLE HLE architecture"] },
+      { "purpose": "saves", "path": "touchHLE_sandbox in the working/app data directory", "naming": "The emulated app chooses its own saved-game filenames and directories inside touchHLE_sandbox", "evidence": ["source:touchHLE sandbox filesystem", "docs:touchHLE README: saved data is stored in touchHLE_sandbox"] },
+      { "purpose": "states", "path": "No save-state subsystem is documented by the upstream touchHLE desktop product", "naming": "Unsupported; app saves in touchHLE_sandbox are not emulator save states", "evidence": ["source:touchHLE runtime/CLI options", "docs:touchHLE README feature list"] }
+    ] },
+    "windows": { "paths": [
+      { "purpose": "config", "path": "touchHLE_options.txt beside touchHLE.exe or command-line options", "naming": "Line-oriented OPTIONS_HELP.txt option/value syntax", "evidence": ["source:touchHLE OPTIONS_HELP.txt and CLI parser", "docs:https://touchhle.org/ downloads"] },
+      { "purpose": "input", "path": "Same options file/command line", "naming": "--button-to-touch=, --dpad-to-touch= and --stick-to-touch= mappings with values defined by OPTIONS_HELP.txt; mouse left/right button simulated touch/tilt", "evidence": ["source:touchHLE OPTIONS_HELP.txt", "docs:touchHLE input methods"] },
+      { "purpose": "bios", "path": "No external iPhone OS BIOS/firmware", "naming": "No external BIOS filename or checksum", "evidence": ["docs:touchHLE HLE architecture"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["source:touchHLE HLE architecture"] },
+      { "purpose": "saves", "path": "touchHLE_sandbox beside/under the app working directory", "naming": "App-defined saved-game files inside touchHLE_sandbox", "evidence": ["docs:touchHLE README saved data"] },
+      { "purpose": "states", "path": "No documented emulator save-state directory", "naming": "Unsupported; only app persistence is captured", "evidence": ["source:touchHLE runtime options", "docs:touchHLE feature list"] }
+    ] },
+    "macos": { "paths": [
+      { "purpose": "config", "path": "touchHLE_options.txt beside the app/working directory or command-line options", "naming": "Line-oriented OPTIONS_HELP.txt option/value syntax", "evidence": ["source:touchHLE OPTIONS_HELP.txt and CLI parser", "docs:https://touchhle.org/ downloads"] },
+      { "purpose": "input", "path": "Same options file/command line", "naming": "--button-to-touch=, --dpad-to-touch= and --stick-to-touch= mappings with values defined by OPTIONS_HELP.txt; mouse/trackpad and right-button tilt simulation", "evidence": ["source:touchHLE OPTIONS_HELP.txt", "docs:touchHLE input methods"] },
+      { "purpose": "bios", "path": "No external iPhone OS BIOS/firmware", "naming": "No external BIOS filename or checksum", "evidence": ["docs:touchHLE HLE architecture"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["source:touchHLE HLE architecture"] },
+      { "purpose": "saves", "path": "touchHLE_sandbox in the app working/data directory", "naming": "App-defined saved-game files inside touchHLE_sandbox", "evidence": ["docs:touchHLE README saved data"] },
+      { "purpose": "states", "path": "No documented emulator save-state directory", "naming": "Unsupported; only app persistence is captured", "evidence": ["source:touchHLE runtime options", "docs:touchHLE feature list"] }
+    ] }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The upstream project publishes desktop binaries/source but no trustworthy Flatpak package or manifest.", "evidence": ["docs:https://touchhle.org/download/", "source:touchHLE/touchHLE release metadata"] }
+  }
+}

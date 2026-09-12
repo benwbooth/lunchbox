@@ -12,7 +12,7 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "~/.config/citron/qt-config.ini (ConfigDir = $XDG_CONFIG_HOME/citron, default ~/.config/citron; a portable user/ dir next to the binary takes priority) — controller mappings live in its [Controls] section; named input profiles are separate ini files at ~/.config/citron/input/<profile>.ini",
+          "path": "~/.config/citron/qt-config.ini (ConfigDir = $XDG_CONFIG_HOME/citron, default ~/.config/citron; a portable user/ dir next to the binary takes priority) — controller mappings live in its [Controls] section. Each button/axis value is a serialized ParamPackage such as engine:keyboard,code:<integer>,toggle:0 or engine:sdl,joystick:<id>,button:<n>; axis mappings use engine:sdl,joystick:<id>,axis:<n>,direction:<positive|negative>. ParamPackage uses comma-separated key:value pairs with $0/$1/$2 escaping; named profiles are separate ini files at ~/.config/citron/input/<profile>.ini",
           "evidence": [
             "source:src/common/fs/fs_paths.h — #define CITRON_DIR \"citron\" (not citron-emu), PORTABLE_DIR \"user\", CONFIG_DIR \"config\"",
             "source:src/common/fs/path_util.cpp POSIX branch — portable user/ dir wins, else GetDataDirectory(\"XDG_CONFIG_HOME\") / CITRON_DIR (fallback home/.config)",
@@ -32,8 +32,18 @@
           ]
         },
         {
+          "purpose": "states",
+          "path": "None: the pinned Citron source defines no states directory or save-state module.",
+          "naming": "Unsupported; no save-state files are produced by this source target.",
+          "evidence": [
+            "source:src/common/fs/fs_paths.h — no states path is defined",
+            "source:src/core — no savestate module at commit 91bbce7231"
+          ]
+        },
+        {
           "purpose": "keys",
           "path": "~/.local/share/citron/keys/prod.keys plus optional title.keys (KeysDir = data root / \"keys\"); dev.keys and key_retail.bin accepted in the same directory",
+          "naming": "Exact key filenames are prod.keys and title.keys, with optional dev.keys and key_retail.bin; the source does not publish a canonical checksum for key files.",
           "evidence": [
             "source:src/common/fs/path_util.cpp — GenerateCitronPath(CitronPath::KeysDir, citron_path / KEYS_DIR)",
             "source:src/core/crypto/key_manager.cpp — LoadFromFile(citron_keys_dir / \"title.keys\", true) (and prod.keys alongside)",
@@ -43,6 +53,7 @@
         {
           "purpose": "bios",
           "path": "Switch firmware is NCA content installed into the NAND system partition: ~/.local/share/citron/nand/system/Contents/registered/ (user-partition mirror at nand/user/Contents/registered)",
+          "naming": "Installed NCA content is selected by the NAND firmware layout rather than a single BIOS filename; the source does not publish a canonical checksum for the installed firmware set.",
           "evidence": [
             "source:src/core/file_sys/bis_factory.cpp — GetOrCreateDirectoryRelative(nand_root, \"/system/Contents/registered\") and \"/user/Contents/registered\"",
             "source:src/android/app/.../MainActivity.kt — DirectoryInitialization.userDirectory + \"/nand/system/Contents/registered/\""
@@ -55,7 +66,7 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "~/.config/citron/qt-config.ini with [Controls] mappings and ~/.config/citron/input/<profile>.ini profiles — macOS shares the POSIX branch, and unset XDG_* vars fall back to home/.config (no bundle-local data dir)",
+          "path": "~/.config/citron/qt-config.ini with [Controls] mappings and ~/.config/citron/input/<profile>.ini profiles — macOS shares the POSIX branch, and unset XDG_* vars fall back to home/.config (no bundle-local data dir). Values are serialized ParamPackages (engine:keyboard,code:<integer>,toggle:0 or engine:sdl,joystick:<id>,button:<n>; axis:<n>,direction:<positive|negative>, with $0/$1/$2 escaping).",
           "evidence": [
             "source:src/common/fs/path_util.cpp — POSIX (#else) branch applies to __APPLE__; GetDataDirectory falls back to GetHomeDirectory() / \".config\" when XDG_CONFIG_HOME is unset",
             "source:src/citron/uisettings.cpp — ConfigDir / \"qt-config.ini\"",
@@ -72,8 +83,18 @@
           ]
         },
         {
+          "purpose": "states",
+          "path": "None: the pinned Citron source defines no states directory or save-state module.",
+          "naming": "Unsupported; no save-state files are produced by this source target.",
+          "evidence": [
+            "source:src/common/fs/fs_paths.h — no states path is defined",
+            "source:src/core — no savestate module at commit 91bbce7231"
+          ]
+        },
+        {
           "purpose": "keys",
           "path": "~/.local/share/citron/keys/prod.keys (+ title.keys)",
+          "naming": "Exact key filenames are prod.keys and title.keys; the source does not publish a canonical checksum for key files.",
           "evidence": [
             "source:src/core/crypto/key_manager.cpp — prod.keys / title.keys loaded from the Citron keys dir",
             "source:src/common/fs/path_util.cpp — KeysDir = citron_path / KEYS_DIR"
@@ -82,6 +103,7 @@
         {
           "purpose": "bios",
           "path": "~/.local/share/citron/nand/system/Contents/registered/ for installed firmware NCA content",
+          "naming": "Installed NCA content is selected by the NAND firmware layout rather than a single BIOS filename; the source does not publish a canonical checksum for the installed firmware set.",
           "evidence": [
             "source:src/core/file_sys/bis_factory.cpp — nand \"/system/Contents/registered\""
           ]
@@ -93,7 +115,7 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "%APPDATA%\\citron\\qt-config.ini ([Controls] section; FOLDERID_RoamingAppData\\citron) unless a user\\ portable dir exists next to citron.exe; input profiles at %APPDATA%\\citron\\input\\<profile>.ini",
+          "path": "%APPDATA%\\citron\\qt-config.ini ([Controls] section; FOLDERID_RoamingAppData\\citron) unless a user\\ portable dir exists next to citron.exe; input profiles at %APPDATA%\\citron\\input\\<profile>.ini. Controller values are serialized ParamPackages (engine:keyboard,code:<integer>,toggle:0 or engine:sdl,joystick:<id>,button:<n>,axis:<n>,direction:<positive|negative>, escaped per ParamPackage).",
           "evidence": [
             "source:src/common/fs/path_util.cpp _WIN32 branch — GetExeDirectory()/user else GetAppDataRoamingDirectory()/CITRON_DIR; config/cache follow the same root",
             "source:src/citron/uisettings.cpp — ConfigDir / \"qt-config.ini\""
@@ -109,8 +131,18 @@
           ]
         },
         {
+          "purpose": "states",
+          "path": "None: the pinned Citron source defines no states directory or save-state module.",
+          "naming": "Unsupported; no save-state files are produced by this source target.",
+          "evidence": [
+            "source:src/common/fs/fs_paths.h — no states path is defined",
+            "source:src/core — no savestate module at commit 91bbce7231"
+          ]
+        },
+        {
           "purpose": "keys",
           "path": "%APPDATA%\\citron\\keys\\prod.keys (+ title.keys)",
+          "naming": "Exact key filenames are prod.keys and title.keys; the source does not publish a canonical checksum for key files.",
           "evidence": [
             "source:src/core/crypto/key_manager.cpp — prod.keys / title.keys from the Citron keys dir"
           ]
@@ -118,10 +150,20 @@
         {
           "purpose": "bios",
           "path": "%APPDATA%\\citron\\nand\\system\\Contents\\registered\\ for installed firmware NCA content",
+          "naming": "Installed NCA content is selected by the NAND firmware layout rather than a single BIOS filename; the source does not publish a canonical checksum for the installed firmware set.",
           "evidence": [
             "source:src/core/file_sys/bis_factory.cpp — nand \"/system/Contents/registered\""
           ]
         }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream Citron project does not provide a trustworthy Flatpak package capture for the pinned desktop source.",
+      "evidence": [
+        "source:citron-neo/emulator@91bbce7231 release/package metadata — no upstream Flatpak package is identified"
       ]
     }
   }

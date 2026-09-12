@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "slug": "retroarch-bk",
+  "emulator": "RetroArch (bk core)",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://github.com/libretro/bk-libretro",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/retroarch/retroarch.cfg",
+          "naming": "RetroArch key = value syntax; this core is selected by core-specific content and options.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/retroarch/retroarch.cfg",
+          "naming": "Per-port controller bindings use input_playerN_<button>_btn/_axis; autoconfig profiles use input_<button>_btn and input_<axis>_axis.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/retroarch/saves/",
+          "naming": "Core persistent data uses the content basename and documented core extension.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.config/retroarch/states/",
+          "naming": "<content-basename>.state and <content-basename>.stateN.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.config/retroarch/system/",
+          "naming": "Core-specific BIOS files, if any, are named by the linked core documentation.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "~/.config/retroarch/system/",
+          "naming": "No separate key file is established by the linked core documentation.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Documents/RetroArch/retroarch.cfg",
+          "naming": "RetroArch key = value syntax; this core is selected by core-specific content and options.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Documents/RetroArch/retroarch.cfg",
+          "naming": "Per-port controller bindings use input_playerN_<button>_btn/_axis; autoconfig profiles use input_<button>_btn and input_<axis>_axis.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Documents/RetroArch/saves/",
+          "naming": "Core persistent data uses the content basename and documented core extension.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Documents/RetroArch/states/",
+          "naming": "<content-basename>.state and <content-basename>.stateN.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/Documents/RetroArch/system/",
+          "naming": "Core-specific BIOS files, if any, are named by the linked core documentation.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "~/Documents/RetroArch/system/",
+          "naming": "No separate key file is established by the linked core documentation.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<RetroArch application directory>/retroarch.cfg",
+          "naming": "RetroArch key = value syntax; this core is selected by core-specific content and options.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "<RetroArch application directory>/retroarch.cfg",
+          "naming": "Per-port controller bindings use input_playerN_<button>_btn/_axis; autoconfig profiles use input_<button>_btn and input_<axis>_axis.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<RetroArch application directory>/saves/",
+          "naming": "Core persistent data uses the content basename and documented core extension.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<RetroArch application directory>/states/",
+          "naming": "<content-basename>.state and <content-basename>.stateN.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<RetroArch application directory>/system/",
+          "naming": "Core-specific BIOS files, if any, are named by the linked core documentation.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "<RetroArch application directory>/system/",
+          "naming": "No separate key file is established by the linked core documentation.",
+          "evidence": [
+            "https://github.com/libretro/bk-libretro"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://github.com/libretro/bk-libretro"
+      ]
+    }
+  }
+}

@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "slug": "atari800",
+  "emulator": "Atari800",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/atari800/atari800",
+      "url": "https://github.com/atari800/atari800",
+      "role": "official upstream identity and implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/atari800/atari800",
+      "role": "official distribution/documentation evidence"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.atari800.cfg (or explicit -config file; exact path is build-dependent)",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick mappings are stored in Atari800 configuration; exact keys are version-defined",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest saves in writable ATR/XFD/ disk images; no universal sidecar",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected emulator snapshots; exact extension/slot grammar not asserted",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional 5200/OS/BASIC ROM files; canonical hashes depend on ROM set",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.atari800.cfg (or explicit -config file; exact path is build-dependent)",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick mappings are stored in Atari800 configuration; exact keys are version-defined",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest saves in writable ATR/XFD/ disk images; no universal sidecar",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected emulator snapshots; exact extension/slot grammar not asserted",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional 5200/OS/BASIC ROM files; canonical hashes depend on ROM set",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.atari800.cfg (or explicit -config file; exact path is build-dependent)",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick mappings are stored in Atari800 configuration; exact keys are version-defined",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest saves in writable ATR/XFD/ disk images; no universal sidecar",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected emulator snapshots; exact extension/slot grammar not asserted",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional 5200/OS/BASIC ROM files; canonical hashes depend on ROM set",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.atari800.cfg (or explicit -config file; exact path is build-dependent)",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick mappings are stored in Atari800 configuration; exact keys are version-defined",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest saves in writable ATR/XFD/ disk images; no universal sidecar",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected emulator snapshots; exact extension/slot grammar not asserted",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional 5200/OS/BASIC ROM files; canonical hashes depend on ROM set",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/atari800/atari800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {}
+}

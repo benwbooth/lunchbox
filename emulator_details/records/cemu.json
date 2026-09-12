@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "slug": "cemu",
+  "emulator": "Cemu",
+  "sources": [
+    { "kind": "source", "repo": "cemu-project/Cemu", "role": "user-data paths, controller profile XML and Wii U storage" },
+    { "kind": "docs", "url": "https://wiki.cemu.info/wiki/Cemu", "role": "official wiki and setup reference" },
+    { "kind": "flatpak", "id": "info.cemu.Cemu", "url": "https://flathub.org/en/apps/info.cemu.Cemu", "role": "Flatpak package identity" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "~/.config/Cemu/settings.xml (portable mode uses settings.xml beside cemu); controllerProfiles/ is beside the settings file or in the portable root.", "evidence": ["source:cemu-project/Cemu account settings/path code", "docs:wiki.cemu.info Cemu configuration"] },
+        { "purpose": "input", "path": "controllerProfiles/controller0.xml through controller3.xml under the Cemu user-data root; the XML is written by Input settings and uses Cemu's controller API/device/button/axis elements.", "naming": "Profile filenames are controller0.xml, controller1.xml, controller2.xml, controller3.xml or user-chosen XML; preserve source-generated XML because no stable text shorthand is documented.", "evidence": ["source:cemu-project/Cemu controllerProfiles loader", "docs:wiki.cemu.info controller configuration"] },
+        { "purpose": "saves", "path": "mlc01/usr/save/<title-id>/<persistent-id>/ (the Wii U virtual MLC); Cemu keeps title saves in the emulated filesystem, not beside the ROM.", "naming": "Wii U title IDs are 16-hex directories; game-defined files live below the title/persistent-id directory.", "evidence": ["source:cemu-project/Cemu virtual MLC/save path code", "docs:wiki.cemu.info Cemu MLC and save location"] },
+        { "purpose": "states", "path": "Cemu desktop has no documented general-purpose save-state file/slot facility; suspend/resume or in-game saves are not emulator states.", "naming": "Not applicable: no official Cemu state extension or slot directory.", "evidence": ["source:cemu-project/Cemu frontend/menu source", "docs:wiki.cemu.info Cemu feature documentation"] },
+        { "purpose": "bios", "path": "No BIOS image is required; Wii U system software is represented by the user-provided MLC (mlc01/sys and mlc01/usr), with system titles installed into the emulated filesystem.", "naming": "No standalone BIOS filename/checksum. Cemu does not publish a canonical checksum for a complete MLC dump.", "evidence": ["source:cemu-project/Cemu virtual MLC code", "docs:wiki.cemu.info Cemu MLC setup"] },
+        { "purpose": "keys", "path": "keys.txt in the Cemu installation/portable root (or the configured Cemu data root) contains Wii U title keys; Cemu also uses common/system keys when required.", "naming": "Exact file name is keys.txt; entries are title ID followed by a hexadecimal key (one mapping per line). The source does not publish canonical hashes for user key files.", "evidence": ["source:cemu-project/Cemu keys.txt parser", "docs:wiki.cemu.info Cemu keys setup"] }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        { "purpose": "config", "path": "~/.var/app/info.cemu.Cemu/config/Cemu/settings.xml with controllerProfiles/ in the same writable app root; portable configuration can remain beside the executable if explicitly selected.", "evidence": ["flatpak:info.cemu.Cemu manifest", "docs:flatpak.org conventions", "source:cemu-project/Cemu path code"] },
+        { "purpose": "input", "path": "The writable Cemu app data controllerProfiles/controller0.xml..controller3.xml files use the same source-defined XML schema.", "naming": "controller<n>.xml or user-named XML profile; GUI-generated Cemu controller XML.", "evidence": ["source:cemu-project/Cemu controller profile loader", "flatpak:info.cemu.Cemu"] },
+        { "purpose": "saves", "path": "Configured MLC writable data, typically ~/.var/app/info.cemu.Cemu/data/Cemu/mlc01/usr/save/<title-id>/<persistent-id>/.", "naming": "16-hex Wii U title-ID and persistent-ID directory layout.", "evidence": ["source:cemu-project/Cemu MLC/save code", "flatpak:info.cemu.Cemu manifest"] },
+        { "purpose": "states", "path": "No documented Cemu save-state facility.", "naming": "Not applicable.", "evidence": ["source:cemu-project/Cemu frontend/menu source", "docs:wiki.cemu.info"] },
+        { "purpose": "bios", "path": "No standalone BIOS; the Flatpak uses the user-provided MLC system titles under mlc01/sys and mlc01/usr.", "naming": "No universal BIOS filename/checksum.", "evidence": ["source:cemu-project/Cemu MLC code", "flatpak:info.cemu.Cemu"] },
+        { "purpose": "keys", "path": "keys.txt in the configured/portable Cemu root or writable Flatpak data root.", "naming": "keys.txt with title-ID=hex-key mappings; no canonical checksum for user keys.", "evidence": ["source:cemu-project/Cemu key parser", "docs:wiki.cemu.info"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "settings.xml and controllerProfiles/ beside Cemu.exe in the normal portable distribution; installed builds may use the Cemu user-data directory. Cemu's Windows portable layout is the deterministic documented baseline.", "evidence": ["source:cemu-project/Cemu Windows path code", "docs:wiki.cemu.info Cemu configuration"] },
+        { "purpose": "input", "path": "controllerProfiles\\controller0.xml through controller3.xml beside Cemu.exe, written by Input settings; XML contains Cemu device/button/axis mappings.", "naming": "controller<n>.xml or user-named XML profile; no alternate shorthand.", "evidence": ["source:cemu-project/Cemu controller profile loader", "docs:wiki.cemu.info controller configuration"] },
+        { "purpose": "saves", "path": "mlc01\\usr\\save\\<title-id>\\<persistent-id>\\ in the Cemu portable root.", "naming": "16-hex Wii U title-ID/persistent-ID directories with game-defined files below.", "evidence": ["source:cemu-project/Cemu MLC/save code", "docs:wiki.cemu.info save location"] },
+        { "purpose": "states", "path": "No documented general Cemu save-state feature.", "naming": "Not applicable.", "evidence": ["source:cemu-project/Cemu frontend/menu source", "docs:wiki.cemu.info"] },
+        { "purpose": "bios", "path": "No standalone BIOS image; the portable MLC contains the Wii U system titles needed by the emulated environment.", "naming": "No universal BIOS filename/checksum.", "evidence": ["source:cemu-project/Cemu MLC code", "docs:wiki.cemu.info MLC setup"] },
+        { "purpose": "keys", "path": "keys.txt beside Cemu.exe in portable mode (or configured Cemu data root).", "naming": "keys.txt title-ID/hex-key mappings; no canonical checksum published.", "evidence": ["source:cemu-project/Cemu key parser", "docs:wiki.cemu.info"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "Cemu settings.xml and controllerProfiles/ in the macOS Cemu application-support/user-data directory; portable builds use files beside Cemu.", "evidence": ["source:cemu-project/Cemu platform path code", "docs:wiki.cemu.info Cemu configuration"] },
+        { "purpose": "input", "path": "controllerProfiles/controller0.xml..controller3.xml in the Cemu user-data root, using Cemu's generated XML controller schema.", "naming": "controller<n>.xml or user-named profile XML.", "evidence": ["source:cemu-project/Cemu controller profile loader"] },
+        { "purpose": "saves", "path": "mlc01/usr/save/<title-id>/<persistent-id>/ below the configured Cemu MLC root.", "naming": "16-hex Wii U title-ID/persistent-ID directories.", "evidence": ["source:cemu-project/Cemu MLC/save code"] },
+        { "purpose": "states", "path": "No documented Cemu save-state facility.", "naming": "Not applicable.", "evidence": ["source:cemu-project/Cemu frontend/menu source", "docs:wiki.cemu.info"] },
+        { "purpose": "bios", "path": "No standalone BIOS; Cemu expects Wii U system software in the configured MLC.", "naming": "No universal BIOS filename/checksum.", "evidence": ["source:cemu-project/Cemu MLC code"] },
+        { "purpose": "keys", "path": "keys.txt in the configured Cemu data/portable root.", "naming": "keys.txt title-ID/hex-key lines; no canonical checksum published.", "evidence": ["source:cemu-project/Cemu key parser"] }
+      ]
+    }
+  }
+}

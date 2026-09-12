@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "slug": "fmsx",
+  "emulator": "fMSX",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://fms.komkon.org/fMSX/",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/fMSX/fmsx.ini",
+          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/fMSX/fmsx.ini",
+          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/fMSX/saves",
+          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.config/fMSX/states",
+          "naming": "The upstream frontend selects the state filename/path.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS required by the standalone fMSX documentation",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external key files are used.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/fMSX/fmsx.ini",
+          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/fMSX/fmsx.ini",
+          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Library/Application Support/fMSX/saves",
+          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Library/Application Support/fMSX/states",
+          "naming": "The upstream frontend selects the state filename/path.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS required by the standalone fMSX documentation",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external key files are used.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%/fMSX/fmsx.ini",
+          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%/fMSX/fmsx.ini",
+          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "%APPDATA%/fMSX/saves",
+          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "%APPDATA%/fMSX/states",
+          "naming": "The upstream frontend selects the state filename/path.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS required by the standalone fMSX documentation",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external key files are used.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://fms.komkon.org/fMSX/"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "No official Flatpak package is documented by the upstream project.",
+      "evidence": [
+        "https://fms.komkon.org/fMSX/"
+      ]
+    }
+  }
+}

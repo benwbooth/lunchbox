@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "slug": "supermodel",
+  "emulator": "Supermodel",
+  "sources": [
+    { "kind": "source", "repo": "trzy/Supermodel", "role": "Supermodel.ini parser, controller mapping, Model 3 ROM loading, NVRAM and save-state naming" },
+    { "kind": "docs", "url": "https://github.com/trzy/Supermodel/blob/master/README.md", "role": "official command-line/configuration and platform documentation" }
+  ],
+  "platforms": {
+    "linux": { "paths": [
+      { "purpose": "config", "path": "~/.config/supermodel/Supermodel.ini (the packaged Config/Supermodel.ini is the fallback/default template)", "naming": "INI sections use [ Global ] and optional [ <MAME ROM set> ]; settings are Name = value with quoted string values", "evidence": ["source:Config/Supermodel.ini and config parser", "docs:Supermodel README configuration"] },
+      { "purpose": "input", "path": "Supermodel.ini [ Global ] section", "naming": "Bindings are comma-separated tokens in keys such as InputStart1 = \"KEY_1,JOY1_BUTTON9\", InputJoyUp = \"KEY_UP,JOY1_UP\" and InputPunch = \"KEY_A,JOY1_BUTTON1\"; -config-inputs rewrites the file", "evidence": ["source:Config/Supermodel.ini input examples", "docs:Supermodel README Learning and Configuring Game Controls"] },
+      { "purpose": "bios", "path": "No separate console BIOS file; Supermodel loads each Model 3 game's ROM set from the configured ROM directory", "naming": "ROM sets use game-specific MAME names and component files (epr/mpr/crom/vrom/srom as declared by the game set); this source does not publish one canonical BIOS filename or checksum", "evidence": ["source:Games/* ROM loader and ROM-set metadata", "docs:Supermodel ROM requirements"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys are used", "naming": "No key asset exists", "evidence": ["source:Supermodel Model 3 loader"] },
+      { "purpose": "saves", "path": "Saves/NVRAM/ under the Supermodel installation/data root", "naming": "NVRAM files are <game>.nv; they hold per-game settings/high scores and are written on exit", "evidence": ["source:Config/Supermodel.ini NVRAM path and NVRAM writer", "docs:Supermodel README Save States and NVRAM"] },
+      { "purpose": "states", "path": "Saves/ under the Supermodel installation/data root", "naming": "Save states are <game>.state<slot> for the selected slot (up to ten slots); F5/F7 save/load and F6 selects the slot", "evidence": ["source:state path/slot code", "docs:Supermodel README Save States and NVRAM"] }
+    ] },
+    "windows": { "paths": [
+      { "purpose": "config", "path": "Config\\Supermodel.ini beside the Windows executable (with the release ZIP's Config directory)", "naming": "INI [ Global ]/per-game sections, Name = value entries", "evidence": ["source:Config/Supermodel.ini", "docs:Supermodel Windows release/configuration"] },
+      { "purpose": "input", "path": "Config\\Supermodel.ini [ Global ]", "naming": "Comma-separated KEY_* and JOY* tokens, e.g. InputStart1 = \"KEY_1,JOY1_BUTTON9\"; -config-inputs writes mappings", "evidence": ["source:Config/Supermodel.ini", "docs:Supermodel controller configuration"] },
+      { "purpose": "bios", "path": "No separate BIOS; game-specific Model 3 ROM sets are loaded from the configured ROM path", "naming": "epr/mpr/crom/vrom/srom component names are game-set-specific; no canonical BIOS checksum is published by this source", "evidence": ["source:Supermodel ROM loader", "docs:Supermodel ROM requirements"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["source:Supermodel Model 3 loader"] },
+      { "purpose": "saves", "path": "Saves\\NVRAM\\ under the release directory", "naming": "<game>.nv NVRAM files", "evidence": ["source:Supermodel NVRAM writer", "docs:Supermodel save/NVRAM documentation"] },
+      { "purpose": "states", "path": "Saves\\ under the release directory", "naming": "<game>.state<slot>, up to ten slots", "evidence": ["source:Supermodel save-state path/slot code", "docs:Supermodel save-state documentation"] }
+    ] },
+    "macos": { "paths": [
+      { "purpose": "config", "path": "Config/Supermodel.ini in the macOS release bundle/data directory", "naming": "INI [ Global ] and per-game sections with Name = value entries", "evidence": ["source:Config/Supermodel.ini", "docs:Supermodel macOS release/configuration"] },
+      { "purpose": "input", "path": "Config/Supermodel.ini [ Global ]", "naming": "Comma-separated KEY_* and JOY* tokens, e.g. InputStart1 = \"KEY_1,JOY1_BUTTON9\"; -config-inputs writes mappings", "evidence": ["source:Config/Supermodel.ini", "docs:Supermodel controller configuration"] },
+      { "purpose": "bios", "path": "No separate BIOS; game-specific Model 3 ROM sets are loaded from the configured ROM path", "naming": "epr/mpr/crom/vrom/srom component names are game-set-specific; no canonical BIOS checksum is published by this source", "evidence": ["source:Supermodel ROM loader", "docs:Supermodel ROM requirements"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["source:Supermodel Model 3 loader"] },
+      { "purpose": "saves", "path": "Saves/NVRAM/ in the release bundle/data directory", "naming": "<game>.nv NVRAM files", "evidence": ["source:Supermodel NVRAM writer", "docs:Supermodel save/NVRAM documentation"] },
+      { "purpose": "states", "path": "Saves/ in the release bundle/data directory", "naming": "<game>.state<slot>, up to ten slots", "evidence": ["source:Supermodel save-state path/slot code", "docs:Supermodel save-state documentation"] }
+    ] }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No official Supermodel Flatpak manifest or package is captured; the upstream project distributes native release/build artifacts.", "evidence": ["source:trzy/Supermodel release/build metadata", "docs:https://github.com/trzy/Supermodel/releases"] }
+  }
+}

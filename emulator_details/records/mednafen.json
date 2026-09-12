@@ -14,6 +14,7 @@
       "paths": [
         {
           "purpose": "config",
+          "naming": "Controller settings use flat `key value` lines: <system>.input.port<n>.<device>.<button>, device selectors gamepad|dualanalog|none, and native `joystick 0x<128-bit id> button_<n>` / `abs_<n>[-+][ scale]` expressions",
           "path": "~/.mednafen/mednafen.cfg (base directory is $MEDNAFEN_HOME if set, else $HOME/.mednafen); module overrides <base>/<system>.cfg and per-game <base>/<filesys.path_pgconfig, default pgconfig>/<FileBase>.<system>.cfg; settings are flat 'key value' lines with ';'#' comments and a legacy ';VERSION 0.' header format rejected by lunchbox. Controller bindings live in the same cfg layers as <system>.input.port<n>.<device>.<button> keys, e.g. gb.input.port1.gamepad.a or psx.input.port2.dualanalog.circle; device selection via <system>.input.port<n> (gamepad|dualanalog|none), multitaps via psx.input.pport<n>.multitap and ss.input.sport<n>.multitap, global input.joystick.axis_threshold (default 75); values are native expressions 'joystick 0x<128-bit id> button_<n>' / 'abs_<n>[-+][ scale]'; any setting can also be overridden on the command line as -<setting> <value> (main.cpp usage example: -pce.stretch aspect)",
           "evidence": [
             "docs:mednafen.github.io/documentation (mednafen.cfg under base directory; written at shutdown)",
@@ -46,6 +47,7 @@
         },
         {
           "purpose": "bios",
+          "naming": "Firmware filenames are per-module settings: PSX scph5500.bin/scph5501.bin/scph5502.bin have documented SHA-256 values; other listed Saturn/PCE/GBA/FDS names have no checksum disposition in the pinned record",
           "path": "<base>/firmware/ (filesys.path_firmware; BIOS setting values are resolved there unless absolute); per-system keys: psx.bios_jp/psx.bios_na/psx.bios_eu (defaults scph5500.bin/scph5501.bin/scph5502.bin with documented SHA-256), ss.bios_jp (sega_101.bin), ss.bios_na_eu (mpr-17933.bin) plus ss.bios_stv_* variants, pce.cdbios (syscard3.pce) and pce.gecdbios, pce_fast.cdbios, optional gba.bios (default empty), NES FDS disksys.rom",
           "evidence": [
             "source:general.cpp MDFNMKF_FIRMWARE resolution via filesys.path_firmware @ f0ee9d5",
@@ -61,6 +63,7 @@
       "paths": [
         {
           "purpose": "config",
+          "naming": "Same flat `key value` controller grammar as native: <system>.input.port<n>.<device>.<button> with native 128-bit joystick button/axis expressions",
           "path": "mednafen.cfg under the base directory: %MEDNAFEN_HOME% if set (used directly, no '.mednafen' suffix appended), else %HOME%\\.mednafen, else the directory containing mednafen.exe; module and per-game override cfg layers are the same <base>/<system>.cfg and pgconfig/<FileBase>.<system>.cfg scheme",
           "evidence": [
             "source:drivers/main.cpp GetBaseDirectory WIN32 branch (MEDNAFEN_HOME, HOME + .mednafen, GetModuleFileName fallback) @ f0ee9d5",
@@ -87,6 +90,7 @@
         },
         {
           "purpose": "bios",
+          "naming": "Same per-module filenames and checksum disposition as Linux: PSX scph5500.bin/scph5501.bin/scph5502.bin have documented SHA-256; other listed names have no checksum disposition in the pinned record",
           "path": "<base>\\firmware\\ (filesys.path_firmware) with the same per-system BIOS keys as Linux: psx.bios_jp/na/eu, ss.bios_jp/ss.bios_na_eu (+ stv), pce.cdbios, pce_fast.cdbios, optional gba.bios, NES FDS disksys.rom",
           "evidence": [
             "source:general.cpp MDFNMKF_FIRMWARE @ f0ee9d5",
@@ -101,6 +105,7 @@
       "paths": [
         {
           "purpose": "config",
+          "naming": "Same flat `key value` controller grammar as native: <system>.input.port<n>.<device>.<button> with native 128-bit joystick button/axis expressions",
           "path": "~/.mednafen/mednafen.cfg (Unix base-directory logic: $MEDNAFEN_HOME if set, else $HOME/.mednafen, else getpwuid home + /.mednafen); module/per-game override layers unchanged",
           "evidence": [
             "source:drivers/main.cpp GetBaseDirectory non-WIN32 branch @ f0ee9d5",
@@ -127,6 +132,7 @@
         },
         {
           "purpose": "bios",
+          "naming": "Same per-module filenames and checksum disposition as Linux: PSX scph5500.bin/scph5501.bin/scph5502.bin have documented SHA-256; other listed names have no checksum disposition in the pinned record",
           "path": "<base>/firmware/ (filesys.path_firmware) with the same per-system BIOS keys (psx.bios_*, ss.bios_*, pce.cdbios, gba.bios, disksys.rom)",
           "evidence": [
             "source:general.cpp MDFNMKF_FIRMWARE @ f0ee9d5",
@@ -136,6 +142,13 @@
         }
       ],
       "notes": "Verified via docs:mednafen.github.io/releases: macOS has no official binaries; releases ship Windows builds and source tarballs, with FreeBSD/Linux/NetBSD/OpenBSD/Windows listed as compiled platforms, so macOS runs only source builds (Homebrew formulae 'mednafen', MacPorts). Lunchbox's native Mednafen adapter (joydev/evdev inventory, bubblewrap isolation) is Linux-only."
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "Mednafen's official release page provides Windows binaries and source/Unix build guidance but no trustworthy Flatpak package.",
+      "evidence": ["docs:https://mednafen.github.io/releases/ (official release artifacts/platform list)", "docs:https://mednafen.github.io/documentation/ (official configuration documentation; no Flatpak distribution)"]
     }
   }
 }

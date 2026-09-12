@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "slug": "a7800",
+  "emulator": "A7800",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/7800-devtools/a7800",
+      "url": "https://github.com/7800-devtools/a7800",
+      "role": "official upstream identity and implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/7800-devtools/a7800",
+      "role": "official distribution/documentation evidence"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.a7800/",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "A7800 keyboard/joystick bindings configured by its UI; no stable text grammar published.",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".sta emulator saves / Atari 7800 cartridge media",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected .sta snapshots; slot grammar unverified",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS requirement established; no canonical checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.a7800/",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "A7800 keyboard/joystick bindings configured by its UI; no stable text grammar published.",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".sta emulator saves / Atari 7800 cartridge media",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected .sta snapshots; slot grammar unverified",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS requirement established; no canonical checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.a7800/",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "A7800 keyboard/joystick bindings configured by its UI; no stable text grammar published.",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".sta emulator saves / Atari 7800 cartridge media",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected .sta snapshots; slot grammar unverified",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS requirement established; no canonical checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.a7800/",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "A7800 keyboard/joystick bindings configured by its UI; no stable text grammar published.",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".sta emulator saves / Atari 7800 cartridge media",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected .sta snapshots; slot grammar unverified",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS requirement established; no canonical checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/7800-devtools/a7800",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {}
+}

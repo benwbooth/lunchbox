@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "slug": "eightyone",
+  "emulator": "EightyOne",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/charlierobson/EightyOne",
+      "url": "https://github.com/charlierobson/EightyOne",
+      "role": "official upstream identity/distribution evidence"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/charlierobson/EightyOne",
+      "role": "official documentation/platform evidence"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "No exact configuration path published in the reviewed official source.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/charlierobson/EightyOne",
+            "Windows native; Wine is not native support"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/charlierobson/EightyOne",
+            "Windows native; Wine is not native support"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "saves",
+          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/charlierobson/EightyOne",
+            "Windows native; Wine is not native support"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "states",
+          "path": "No verified state filename or slot grammar is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/charlierobson/EightyOne",
+            "Windows native; Wine is not native support"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "No canonical BIOS/firmware filename or checksum is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/charlierobson/EightyOne",
+            "Windows native; Wine is not native support"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file is documented.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/charlierobson/EightyOne",
+            "Windows native; Wine is not native support"
+          ],
+          "status": "unresolved"
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": {
+      "status": "no_verified_package",
+      "reason": "The official project publishes a Windows build; Wine is not a native Linux package.",
+      "evidence": [
+        "official:https://github.com/charlierobson/EightyOne/releases"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "No verified Flatpak package or manifest was found for the Windows-native project.",
+      "evidence": [
+        "official:https://github.com/charlierobson/EightyOne/releases"
+      ]
+    },
+    "macos": {
+      "status": "no_verified_package",
+      "reason": "The official project publishes a Windows build; no verified native macOS package was found.",
+      "evidence": [
+        "official:https://github.com/charlierobson/EightyOne/releases"
+      ]
+    }
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "core": "sameboy",
+  "display_name": "Nintendo - Game Boy / Color (SameBoy)",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": "sameboy_libretro.info",
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:sameboy:gameboy",
+      "retroarch:sameboy:gameboy-subclass"
+    ],
+    "mapping_summary": "Game Boy and Game Boy Color retropad profiles map the d-pad and handheld buttons to SameBoy.",
+    "evidence": [
+      "catalog.json controller profile"
+    ]
+  },
+  "firmware": {
+    "status": "optional",
+    "files": [
+      {
+        "path": "dmg_boot.bin",
+        "description": "Game Boy boot ROM",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "32fbbd84168d3482956eb3c5051637f5",
+            "source": "sameboy_libretro.info firmware0_path/firmware0_opt/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "sameboy_libretro.info firmware0_path/firmware0_opt/notes"
+        ]
+      },
+      {
+        "path": "cgb_boot.bin",
+        "description": "Game Boy Color boot ROM",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "dbfce9db9deaa2567f6a84fde55f9680",
+            "source": "sameboy_libretro.info firmware1_path/firmware1_opt/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "sameboy_libretro.info firmware1_path/firmware1_opt/notes"
+        ]
+      }
+    ],
+    "notes": "Both boot ROMs are optional; the pinned core-info notes publish their MD5 digests.",
+    "evidence": [
+      "sameboy_libretro.info firmware_count/firmware*_path/firmware*_opt/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+    ]
+  },
+  "saves": {
+    "status": "supported",
+    "extensions": [
+      ".sav"
+    ],
+    "naming": "RetroArch uses <content-basename>.sav for SameBoy battery-backed cartridge RAM.",
+    "notes": "Battery RAM is exposed through the libretro save API; RTC data may accompany the battery save.",
+    "evidence": [
+      "SameBoy libretro save implementation"
+    ]
+  },
+  "states": {
+    "status": "supported",
+    "serialization": "deterministic",
+    "naming": "Frontend state names are <content-basename>.state and <content-basename>.stateN.",
+    "notes": "sameboy_libretro.info declares deterministic savestates.",
+    "evidence": [
+      "sameboy_libretro.info savestate=true/savestate_features=deterministic"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "windows": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    }
+  }
+}

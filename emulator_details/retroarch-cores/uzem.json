@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "core": "uzem",
+  "display_name": "Uzebox (Uzem)",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": "uzem_libretro.info",
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:uzem:uzebox"
+    ],
+    "mapping_summary": "Uzebox profile maps the console d-pad and SNES-like action buttons to the Uzem libretro port.",
+    "evidence": [
+      "catalog.json controller profile"
+    ]
+  },
+  "firmware": {
+    "status": "not_required",
+    "files": [],
+    "notes": "Uzem has no external firmware file in core-info.",
+    "evidence": [
+      "uzem_libretro.info firmware_count absent/zero"
+    ]
+  },
+  "saves": {
+    "status": "content_dependent",
+    "extensions": [
+      ".sav"
+    ],
+    "naming": "Persistent data, when a title exposes it, follows the RetroArch content basename.",
+    "notes": "Uzebox titles vary in whether they implement writable persistent storage.",
+    "evidence": [
+      "Uzem libretro save implementation"
+    ]
+  },
+  "states": {
+    "status": "supported",
+    "serialization": "basic",
+    "naming": "Frontend state names are <content-basename>.state and <content-basename>.stateN.",
+    "notes": "uzem_libretro.info declares basic savestates.",
+    "evidence": [
+      "uzem_libretro.info savestate=true/savestate_features=basic"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "windows": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    }
+  }
+}

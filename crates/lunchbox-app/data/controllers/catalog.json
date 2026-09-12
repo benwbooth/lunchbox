@@ -37529,6 +37529,60 @@
         "stick_left": "LeftStickLeft",
         "stick_right": "LeftStickRight"
       }
+    },
+    {
+      "id": "retroarch:steemsse:embedded-ste-two-joysticks",
+      "name": "RetroArch · Steem SSE · embedded EmuTOS / two joysticks",
+      "core": "steemsse",
+      "target_layout": "steemsse-st-joystick",
+      "transport": "retropad",
+      "status": "documented",
+      "source": "https://sourceforge.net/p/steemsse/code/1501/tree/trunk/steemsse/steem/libretro/libretro-core.cpp",
+      "retroarch_library": "SteemSSE",
+      "explicit_selection": true,
+      "requires_fresh_start": true,
+      "frontend_ports": 2,
+      "content_extensions": [
+        "m3u",
+        "st",
+        "msa",
+        "dim",
+        "stx",
+        "scp",
+        "ipf",
+        "ctr",
+        "stw",
+        "hfe"
+      ],
+      "content_guard": "steemsse_embedded_ste",
+      "core_options": {
+        "sse_st_type": "STE",
+        "sse_st_os": "Emu"
+      },
+      "retroarch_launch": {
+        "platforms": [
+          "Atari ST",
+          "Atari - ST"
+        ],
+        "device": 1,
+        "max_players": 2
+      },
+      "conditions": [
+        "Source-grounded mapping; runtime gameplay verification remains deferred to the feature-matrix test phase.",
+        "The inspected Steem SSE libretro source maps frontend port one to ST joystick port zero and frontend port zero to ST joystick port one. D-pad supplies directions; A and B are alternate host buttons for the same one-bit fire line.",
+        "Requires a native Windows RetroArch launch. Current Lunchbox preparation rejects this profile on Linux and macOS because the inspected upstream libretro artifact is a Windows DLL and no Windows-runtime transport is implemented there.",
+        "Requires the explicit STE model and embedded EmuTOS options. The system/SteemSSE directory must already exist and contain no tosEmu.img override; Lunchbox snapshots and rechecks that condition without changing firmware.",
+        "Direct Atari ST media only. Keyboard, relative mouse, alternate TOS images, STF selection, parallel joystick modes, macro playback and dongle modes are outside this fixed joystick contract.",
+        "Fresh boot required; automatic state loading and configuration changes after preparation are rejected."
+      ],
+      "bindings": {
+        "up": "DPadUp",
+        "down": "DPadDown",
+        "left": "DPadLeft",
+        "right": "DPadRight",
+        "a": "East",
+        "b": "South"
+      }
     }
   ]
 }

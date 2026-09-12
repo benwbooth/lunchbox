@@ -240,7 +240,7 @@ impl PreparedSession {
             .prefix("lunchbox-blastem-")
             .tempdir()?;
         let home_path = directory.path().join("home");
-        let config_dir = home_path.join("blastem");
+        let config_dir = home_path.join(".config/blastem");
         std::fs::create_dir_all(&config_dir)?;
         let config_path = config_dir.join("blastem.cfg");
         std::fs::write(&config_path, blocks)?;

@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "slug": "vba-m",
+  "emulator": "VBA-M",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://visualboyadvance-m.org/",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/vba-m/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/vba-m/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Same directory as ROM: <content-basename>.sav or .sgm",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "gba_bios.bin, gb_bios.bin, and gbc_bios.bin are optional frontend firmware",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/VBA-M/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/VBA-M/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Same directory as ROM: <content-basename>.sav or .sgm",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "gba_bios.bin, gb_bios.bin, and gbc_bios.bin are optional frontend firmware",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\\\VBA-M/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\\\VBA-M/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Same directory as ROM: <content-basename>.sav or .sgm",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "gba_bios.bin, gb_bios.bin, and gbc_bios.bin are optional frontend firmware",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://visualboyadvance-m.org/"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://visualboyadvance-m.org/"
+      ]
+    }
+  }
+}

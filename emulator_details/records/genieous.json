@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "slug": "genieous",
+  "emulator": "Genieous",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "http://gaia.atilia.eu/",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\\\Genieous\\\\genieous.ini",
+          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "evidence": [
+            "http://gaia.atilia.eu/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\\\Genieous\\\\genieous.ini",
+          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "evidence": [
+            "http://gaia.atilia.eu/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "CAS tape image selected by the user",
+          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "evidence": [
+            "http://gaia.atilia.eu/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "The upstream frontend selects the state filename/path.",
+          "evidence": [
+            "http://gaia.atilia.eu/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS file documented",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "http://gaia.atilia.eu/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "http://gaia.atilia.eu/"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "http://gaia.atilia.eu/"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "http://gaia.atilia.eu/"
+      ]
+    },
+    "macos": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "http://gaia.atilia.eu/"
+      ]
+    }
+  }
+}

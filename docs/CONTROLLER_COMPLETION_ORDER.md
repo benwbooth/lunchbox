@@ -110,7 +110,7 @@ SDL device index (fallbacks: GUID type_id, controller-type key, `default`);
 children are `dpads 0 up|down|left|right <target>`, `buttons <n> <target>`
 and axis bindings; targets are `gamepads.<1-8|n>.<button>` with buttons
 up/down/left/right/a/b/c/x/y/z/start/mode (bindings.c get_pad_buttons,
-parse_binding_target; `n` = device+1). Config dir is `$HOME/blastem`
+parse_binding_target; `n` = device+1). Config dir is `$HOME/.config/blastem`
 (paths.c), so a private HOME isolates reads/writes. Ready to implement as a
 single/dual digital-pad contract over the SameBoy SDL2 probe.
 

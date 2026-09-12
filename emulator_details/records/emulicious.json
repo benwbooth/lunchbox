@@ -27,7 +27,7 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "Controller/input configuration lives in Emulicious.ini beside the exe (Setup Keys / Configure Input dialogs write it; 'Restructured setup input dialog' WhatsNew 2019-02-16, 'Added Game Pad support' same release; key presets ship in the install dir under KeyPresets/bgb.ini and KeyPresets/VSCode.ini). Observed key syntax in committed ini files: emulator hotkeys Keys<Something>=<binding> with binding '<modifier> pressed <KEY>' or <unassigned> (e.g. KeysReset=ctrl pressed BACK_SPACE, KeysReloadRom=shift ctrl pressed BACK_SPACE, KeysIncreaseFrameskip=alt pressed PAGE_UP, DebuggerKeysResume=pressed F8); gamepad bindings per device as Gamepad0Key<buttonIndex>=<keycode> plus system-specific device selection GBGamepad=-1, SMSGamepadA=-1, SMSGamepadB=-1, SMSbuttonsGamepad=-1, keyboard-while-gamepad flag GBGamepadKeyboard=true, and signed axis thresholds GBGamepadThreshold=50 / SMSGamepadAThreshold=50 / SMSGamepadBThreshold=50. KeyPresets ini files use the same Keys* entries.",
           "evidence": [
             "docs:xfixium/SMS-Ms-Pac-Man Emulicious/Emulicious.ini (committed ini from an SMS project): KeysReset=ctrl pressed BACK_SPACE, Gamepad device/threshold keys, DebuggerKeys* bindings",
@@ -58,6 +58,7 @@
         {
           "purpose": "bios",
           "path": "Optional. Emulicious has built-in BIOS emulation for all systems (e.g. WhatsNew 2019-02-16 'Added BIOS emulation for Game Gear', 2021-01-30 'Fixed initial state of VBK in Emulicious BIOS for GBC'), so no BIOS file is required. External/boot BIOS ROMs can be selected for every supported system (WhatsNew 2017-02-27 'BIOS files for all supported systems can be selected now'); they are placed in / pointed at from the Emulicious install directory via Emulicious.ini keys - observed GB keys in committed ini: GameBoyBootROM=dmg_boot.bin and GameBoyColorBootROM=cgb_boot.bin (GBEmulatorShootout downloads those files next to Emulicious.jar). MSX runs on C-BIOS 0.29 shipped inside the install dir (MSX/cbios_msx1.rom, MSX/cbios_msx2.rom, MSX/cbios_sub.rom, MSX/cbios.txt); SMS/Game Gear BIOS roms and Everdrive OS files are user-supplied.",
+          "naming": "Built-in BIOS emulation is the default; observed external names are dmg_boot.bin, cgb_boot.bin, MSX/cbios_msx1.rom, MSX/cbios_msx2.rom, MSX/cbios_sub.rom, and MSX/cbios.txt. The closed-source emulator documentation does not publish canonical checksums for these assets.",
           "evidence": [
             "docs:lronaldo/gbtelera WhatsNew.txt 2017-02-27 BIOS selection paragraph; 2019-02-16 GG BIOS emulation; 2021-01-30 'Emulicious BIOS for GBC'",
             "docs:gbdev/GBEmulatorShootout emulators/emulicious.dmg.ini (GameBoyBootROM=dmg_boot.bin, GameBoyColorBootROM=cgb_boot.bin) and emulicious.py downloading both boot ROMs into emu/emulicious/",
@@ -79,7 +80,7 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "Same as Linux: Emulicious.ini Keys* hotkey entries ('<modifier> pressed <KEY>' / <unassigned>), Gamepad<N>Key<button>=<keycode> device mappings, per-system gamepad selection (GBGamepad, SMSGamepadA/B, SMSbuttonsGamepad) and thresholds (GBGamepadThreshold, SMSGamepadAThreshold/BThreshold); presets in KeyPresets\\ next to the exe.",
           "evidence": [
             "docs:xfixium/SMS-Ms-Pac-Man Emulicious/Emulicious.ini and Karamu98/GBTemplate deps/Emulicious-with-Java/Emulicious.ini (committed Windows-run inis with the same keys)",
@@ -106,6 +107,7 @@
         {
           "purpose": "bios",
           "path": "Optional: built-in BIOS emulation is the default; external BIOS/boot ROMs selectable per system via Emulicious.ini keys (GameBoyBootROM / GameBoyColorBootROM observed) with files placed in the install directory; C-BIOS ships in MSX\\ for MSX.",
+          "naming": "Built-in BIOS emulation is the default; observed external names are dmg_boot.bin, cgb_boot.bin, and MSX\\cbios_msx1.rom/cbios_msx2.rom/cbios_sub.rom/cbios.txt. The closed-source emulator documentation does not publish canonical checksums for these assets.",
           "evidence": [
             "docs:lronaldo/gbtelera WhatsNew.txt 2017-02-27 / 2019-02-16 BIOS entries",
             "docs:gbdev/GBEmulatorShootout ini + boot ROM download into the emulator folder",
@@ -126,7 +128,7 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "Same Emulicious.ini Keys* scheme as Linux/Windows; macOS-specific fixes confirm the dialog flow ('Fixed an issue with modal dialogs (e.g. Configure Input) on Mac OS' 2020; 'Fixed a bug that could cause input to stop working on Mac OS'; 'Added support for Gamepads on M1 Macs' 2022-12-30).",
           "evidence": [
             "docs:lronaldo/gbtelera WhatsNew.txt 2020 modal-dialog fix, input-stop-working fix, 2022-12-30 M1 gamepad support",
@@ -153,6 +155,7 @@
         {
           "purpose": "bios",
           "path": "Optional, same as Linux: built-in BIOS emulation default; external BIOS ROMs selectable per system via Emulicious.ini (GameBoyBootROM / GameBoyColorBootROM observed) placed in the install directory; bundled C-BIOS in MSX/ for MSX.",
+          "naming": "Built-in BIOS emulation is the default; observed external names are dmg_boot.bin, cgb_boot.bin, and MSX/cbios_msx1.rom/cbios_msx2.rom/cbios_sub.rom/cbios.txt. The closed-source emulator documentation does not publish canonical checksums for these assets.",
           "evidence": [
             "docs:lronaldo/gbtelera WhatsNew.txt 2017-02-27 / 2019-02-16",
             "docs:gbdev/GBEmulatorShootout ini keys; Karamu98/GBTemplate MSX/ C-BIOS"
@@ -160,6 +163,15 @@
         }
       ],
       "notes": "macOS runs the same jar via system or bundled Java; no ~/Library paths are used - everything stays inside the (portable) Emulicious folder."
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream Emulicious distribution documents portable JAR/desktop bundles but no trustworthy upstream Flatpak package.",
+      "evidence": [
+        "docs:https://emulicious.net/ — upstream distribution and platform documentation provide desktop/JAR bundles; no official Flatpak package is identified"
+      ]
     }
   }
 }

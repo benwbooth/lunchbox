@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "slug": "spectral",
+  "emulator": "Spectral",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://github.com/r-lyeh/Spectral",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/spectral/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/spectral/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "User-selected tape/disk image",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<content-basename>.z80, .sna, or .szx",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Built-in Spectrum ROM/model data",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/Spectral/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/Spectral/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "User-selected tape/disk image",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<content-basename>.z80, .sna, or .szx",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Built-in Spectrum ROM/model data",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\\\Spectral/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\\\Spectral/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "User-selected tape/disk image",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<content-basename>.z80, .sna, or .szx",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Built-in Spectrum ROM/model data",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/r-lyeh/Spectral"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://github.com/r-lyeh/Spectral"
+      ]
+    }
+  }
+}

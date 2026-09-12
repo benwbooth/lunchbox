@@ -14,6 +14,7 @@
         {
           "purpose": "config",
           "path": "Dolphin.ini, GCPadNew.ini, WiimoteNew.ini, GCKeyNew.ini and Profiles/GCPad/*.ini + Profiles/Wiimote/*.ini under ~/.config/dolphin-emu/Config/ (XDG_CONFIG_HOME); the remaining user trees (GameSettings/<game id>[r<rev>].ini overlays, GC, Wii, StateSaves) root at ~/.local/share/dolphin-emu; a legacy monolithic ~/.dolphin-emu is used when it exists and /.flatpak-info is absent; portable.txt next to the binary or $DOLPHIN_EMU_USERPATH redirect the whole root (portable dir is named user)",
+          "naming": "Controller INI syntax: [GCPad1..4]/[Wiimote1..4] or Profiles/GCPad|Wiimote [Profile] sections with Device/Buttons/A/Triggers/L-Analog group-control keys; profile references are comma-separated PadProfileN values",
           "evidence": [
             "source:UICommon.cpp SetUserDirectory (portable.txt, DOLPHIN_EMU_USERPATH, legacy ~/.dolphin-emu, XDG data/config/cache split) @6094cfcf",
             "source:CommonPaths.h CONFIG_DIR, DOLPHIN_CONFIG, GCPAD_CONFIG=GCPadNew.ini, WIIPAD_CONFIG=WiimoteNew.ini @6094cfcf",
@@ -44,6 +45,7 @@
         {
           "purpose": "bios",
           "path": "optional GC IPL dumps at ~/.local/share/dolphin-emu/GC/<USA|EUR|JAP>/IPL.bin (region-specific file, not a single GC/IPL.bin; falls back to the shipped Sys/GC/<region>/IPL.bin); Wii requires no firmware dump",
+          "naming": "Optional GameCube IPL dump is exactly IPL.bin under the region directory USA, EUR, or JAP; Wii has no external firmware filename and no canonical checksum is declared",
           "evidence": [
             "source:Core/Config/MainSettings.cpp GetBootROMPath = GC/<region>/IPL.bin with Sys fallback @6094cfcf",
             "source:CommonPaths.h GC_IPL=IPL.bin, GC_SYS_DIR, EUR/USA/JAP region dirs @6094cfcf"
@@ -52,6 +54,7 @@
         {
           "purpose": "keys",
           "path": "none user-supplied: Wii root keys and the default ECC private key are compiled into the emulator, and the emulated NAND under Wii/ is generated, not dumped",
+          "naming": "No external key filename: Wii root/default ECC key material is compiled into Dolphin and the emulated NAND is generated",
           "evidence": [
             "source:Core/IOS/IOSC.cpp constexpr ROOT_PUBLIC_KEY/DEFAULT_PRIVATE_KEY key material @6094cfcf"
           ]
@@ -64,6 +67,7 @@
         {
           "purpose": "config",
           "path": "org.DolphinEmu.dolphin-emu: Config tree (Dolphin.ini, GCPadNew.ini, WiimoteNew.ini, Profiles/GCPad/*.ini, Profiles/Wiimote/*.ini) at ~/.var/app/org.DolphinEmu.dolphin-emu/config/dolphin-emu/Config/; the rest of the user dir (GC, Wii, StateSaves, GameSettings) roots at ~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/ — the sandbox /.flatpak-info check forces the XDG layout, so the legacy ~/.dolphin-emu branch never applies",
+          "naming": "Same Dolphin controller INI syntax as native: [GCPad1..4]/[Wiimote1..4] and Profiles/GCPad|Wiimote sections with Device/Buttons/A/Triggers/L-Analog group-control keys",
           "evidence": [
             "source:UICommon.cpp File::Exists(\"/.flatpak-info\") forces XDG_DATA_HOME/XDG_CONFIG_HOME roots @6094cfcf",
             "flathub:org.DolphinEmu.dolphin-emu",
@@ -91,6 +95,7 @@
         {
           "purpose": "bios",
           "path": "optional GC IPL dumps at ~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/GC/<USA|EUR|JAP>/IPL.bin; Wii needs no firmware",
+          "naming": "Optional GameCube IPL dump is IPL.bin under USA, EUR, or JAP; Wii has no external firmware filename and no canonical checksum is declared",
           "evidence": [
             "source:Core/Config/MainSettings.cpp GetBootROMPath @6094cfcf",
             "app:crates/lunchbox-app/src/firmware.rs flatpak dolphin root"
@@ -99,6 +104,7 @@
         {
           "purpose": "keys",
           "path": "none user-supplied: Wii key material is compiled in and the NAND is generated",
+          "naming": "No external key filename: Wii key material is compiled into Dolphin and the emulated NAND is generated",
           "evidence": [
             "source:Core/IOS/IOSC.cpp constexpr key material @6094cfcf"
           ]
@@ -110,13 +116,14 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "%APPDATA%/Dolphin Emulator/ is the default user dir (Config/Dolphin.ini, Config/GCPadNew.ini, Config/WiimoteNew.ini, Config/Profiles/GCPad/*.ini, Config/Profiles/Wiimote/*.ini; GameSettings, GC, Wii, StateSaves all under the same root); a pre-PR-10708 Documents/Dolphin Emulator dir keeps being used when present; portable.txt or HKCU LocalUserConfig selects <exe dir>/User, HKCU UserConfigPath overrides arbitrarily",
+          "path": "%USERPROFILE%/Documents/Dolphin Emulator/ is the source-defined Windows user dir (Config/Dolphin.ini, Config/GCPadNew.ini, Config/WiimoteNew.ini, Config/Profiles/GCPad/*.ini, Config/Profiles/Wiimote/*.ini; GameSettings, GC, Wii, StateSaves all under the same root); portable.txt or HKCU LocalUserConfig selects <exe dir>/User, HKCU UserConfigPath overrides arbitrarily",
+          "naming": "Same Dolphin controller INI syntax as native: [GCPad1..4]/[Wiimote1..4] and Profiles/GCPad|Wiimote sections with Device/Buttons/A/Triggers/L-Analog group-control keys",
           "evidence": [
-            "source:UICommon.cpp SetUserDirectory Windows cases 1-6 (portable.txt, LocalUserConfig, UserConfigPath, Documents fallback, RoamingAppData default) @6094cfcf",
+            "source:UICommon.cpp SetUserDirectory Windows cases 1-6 (portable.txt, LocalUserConfig, UserConfigPath, Documents user directory and compatibility cases) @6094cfcf",
             "source:CommonPaths.h NORMAL_USER_DIR='Dolphin Emulator', PORTABLE_USER_DIR='User', GCPAD_CONFIG/WIIPAD_CONFIG @6094cfcf",
             "controller syntax: same Device/Buttons/A/Triggers/L-Analog group-control keys as Linux, in [GCPad1..4]/[Wiimote1..4] or Config/Profiles/GCPad|Wiimote [Profile] files — ControllerEmu.cpp, ControlGroup/ControlGroup.cpp, HW/GCPadEmu.h @6094cfcf",
             "contract: docs/DOLPHIN_CONTROLLER_CONTRACT.md",
-            "app:crates/lunchbox-app/src/firmware.rs windows adapter roots at Documents/Dolphin Emulator"
+            "app:crates/lunchbox-app/src/firmware.rs Windows adapter roots new installs at Documents/Dolphin Emulator"
           ]
         },
         {
@@ -141,6 +148,7 @@
         {
           "purpose": "bios",
           "path": "optional GC IPL dumps at <user dir>/GC/<USA|EUR|JAP>/IPL.bin (region-specific, with the Sys/GC/<region>/IPL.bin fallback); Wii requires no firmware dump",
+          "naming": "Optional GameCube IPL dump is exactly IPL.bin under the region directory USA, EUR, or JAP; Wii has no external firmware filename and no canonical checksum is declared",
           "evidence": [
             "source:Core/Config/MainSettings.cpp GetBootROMPath @6094cfcf",
             "source:CommonPaths.h GC_IPL=IPL.bin @6094cfcf"
@@ -149,18 +157,20 @@
         {
           "purpose": "keys",
           "path": "none user-supplied: Wii root/default keys are compiled into IOSC and the emulated NAND is generated",
+          "naming": "No external key filename: Wii root/default ECC key material is compiled into Dolphin and the emulated NAND is generated",
           "evidence": [
             "source:Core/IOS/IOSC.cpp constexpr ROOT_PUBLIC_KEY/DEFAULT_PRIVATE_KEY @6094cfcf"
           ]
         }
       ],
-      "notes": "Modern Windows default moved the user dir from Documents to %APPDATA% (PR 10708 compatibility logic in SetUserDirectory); the repo firmware adapter still resolves the Documents root."
+      "notes": "The pinned Windows source resolves the normal user directory under Documents/Dolphin Emulator; portable.txt, LocalUserConfig and UserConfigPath remain higher-priority overrides."
     },
     "macos": {
       "paths": [
         {
           "purpose": "config",
           "path": "~/Library/Application Support/Dolphin/ (NORMAL_USER_DIR) holds Config/Dolphin.ini, GCPadNew.ini, WiimoteNew.ini, Profiles/GCPad/*.ini, Profiles/Wiimote/*.ini plus GC, Wii, StateSaves and GameSettings in one root; a bundle-embedded Contents/Resources/User dir takes precedence when present, and portable.txt next to the binary selects <exe dir>/User",
+          "naming": "Same Dolphin controller INI syntax as native: [GCPad1..4]/[Wiimote1..4] and Profiles/GCPad|Wiimote sections with Device/Buttons/A/Triggers/L-Analog group-control keys",
           "evidence": [
             "source:UICommon.cpp SetUserDirectory POSIX branch (EMBEDDED_USER_DIR, portable.txt, DOLPHIN_EMU_USERPATH, __APPLE__ default home+NORMAL_USER_DIR) @6094cfcf",
             "source:CommonPaths.h __APPLE__ NORMAL_USER_DIR='Library/Application Support/Dolphin', EMBEDDED_USER_DIR='Contents/Resources/User' @6094cfcf",
@@ -190,6 +200,7 @@
         {
           "purpose": "bios",
           "path": "optional GC IPL dumps at ~/Library/Application Support/Dolphin/GC/<USA|EUR|JAP>/IPL.bin; Wii requires no firmware dump",
+          "naming": "Optional GameCube IPL dump is exactly IPL.bin under the region directory USA, EUR, or JAP; Wii has no external firmware filename and no canonical checksum is declared",
           "evidence": [
             "source:Core/Config/MainSettings.cpp GetBootROMPath @6094cfcf",
             "source:CommonPaths.h GC_IPL=IPL.bin @6094cfcf"
@@ -198,6 +209,7 @@
         {
           "purpose": "keys",
           "path": "none user-supplied: Wii key material is compiled in and the NAND is generated",
+          "naming": "No external key filename: Wii key material is compiled into Dolphin and the emulated NAND is generated",
           "evidence": [
             "source:Core/IOS/IOSC.cpp constexpr key material @6094cfcf"
           ]

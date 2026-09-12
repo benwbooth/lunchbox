@@ -30,6 +30,12 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/retroarch/retroarch.cfg plus autoconfig/<input-driver>/ profiles",
+          "naming": "Main config uses input_playerN_<button>_btn/_axis keys; autoconfig files are <Device Name>.cfg under each driver, keyed by input_driver/input_device/input_vendor_id/input_product_id and containing RetroPad input_<button>_btn/input_<axis>_axis fields",
+          "evidence": ["source:libretro/RetroArch@0dc3b26c retroarch.cfg defaults and input configuration parser", "docs:https://docs.libretro.com/guides/controller-autoconfiguration/"]
+        },
+        {
           "purpose": "saves",
           "path": "~/.config/retroarch/saves/ (savefile_directory default from DEFAULT_DIR_SRAM; when savefile_directory is unset the files are written next to the content file instead)",
           "naming": "<content-basename>.srm where the basename is the content path minus directory and extension (archive content uses the inner file name); related save sidecars (.bsv, .rtc, .psrm) share the same directory and basename; subsystem content saves under each ROM's basename with the subsystem's declared extension; sort_savefiles_enable appends saves/<core library_name>/ and sort_savefiles_by_content_enable appends the content directory name; netplay clients add a .netplay/ segment",
@@ -79,6 +85,12 @@
             "manifest:flathub/org.libretro.RetroArch app-id org.libretro.RetroArch, post-install skeleton retroarch.cfg with joypad_autoconfig_dir = @prefix@/share/libretro/autoconfig (FLATPAK_DEST=/app), retroarch-joypad-autoconfig module",
             "docs:https://docs.libretro.com/guides/controller-autoconfiguration/ (flatpak: bundled profiles at /app/share/libretro/autoconfig, recommended writable profile location ~/.var/app/org.libretro.RetroArch/config/retroarch/autoconfig)"
           ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg plus autoconfig/<input-driver>/",
+          "naming": "Same main-config input_playerN_<button>_btn/_axis and per-driver <Device Name>.cfg autoconfig grammar; bundled profiles are under /app/share/libretro/autoconfig while writable user profiles use the per-app autoconfig directory",
+          "evidence": ["source:libretro/RetroArch@0dc3b26c config parser", "docs:https://docs.libretro.com/guides/controller-autoconfiguration/", "manifest:flathub/org.libretro.RetroArch joypad_autoconfig_dir"]
         },
         {
           "purpose": "saves",
@@ -131,6 +143,12 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "<RetroArch application directory>\\retroarch.cfg plus autoconfig\\<input-driver>\\ (fallback config %APPDATA%\\retroarch.cfg)",
+          "naming": "Main config uses input_playerN_<button>_btn/_axis; autoconfig files are <Device Name>.cfg under dinput/x/sdl driver directories with input_driver/input_device/input_vendor_id/input_product_id and input_<button>_btn/input_<axis>_axis fields",
+          "evidence": ["source:libretro/RetroArch@0dc3b26c configuration.c and platform_win32.c", "source:libretro/retroarch-joypad-autoconfig dinput/ and x/ profiles"]
+        },
+        {
           "purpose": "saves",
           "path": "<application directory>\\saves\\ (DEFAULT_DIR_SRAM = \":\\\\saves\", i.e. next to retroarch.exe; unset savefile_directory => files land next to the content file)",
           "naming": "identical to linux: <content-basename>.srm (plus .bsv/.rtc/.psrm sidecars, subsystem extensions, sort_savefiles_enable per-core subdirs named after library_name, sort_savefiles_by_content_enable content-dir subdirs, .netplay/ segment for netplay clients)",
@@ -174,6 +192,12 @@
             "source:libretro/RetroArch@0dc3b26c frontend/drivers/platform_darwin.m (DEFAULT_DIR_AUTOCONFIG = application_data/autoconfig)",
             "source:libretro/retroarch-joypad-autoconfig mfi/ and hid/ profile directories"
           ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/RetroArch/config/retroarch.cfg plus autoconfig/<input-driver>/ (portable installs use the app directory)",
+          "naming": "Main config uses input_playerN_<button>_btn/_axis; autoconfig files are <Device Name>.cfg under mfi/hid/sdl driver directories with input_driver/input_device/input_vendor_id/input_product_id and input_<button>_btn/input_<axis>_axis fields",
+          "evidence": ["source:libretro/RetroArch@0dc3b26c configuration.c and frontend/drivers/platform_darwin.m", "source:libretro/retroarch-joypad-autoconfig mfi/ and hid/ profiles"]
         },
         {
           "purpose": "saves",

@@ -13,6 +13,7 @@
       "paths": [
         {
           "purpose": "config",
+          "naming": "Controller TOML syntax: `Instance0.Joystick.<Btn>` for A/B/Select/Start/Right/Left/Up/Down/R/L/X/Y, `Instance0.JoystickID` for the SDL device index, and `Joystick.HK_*` for hotkeys",
           "path": "~/.config/melonDS/melonDS.toml (or $XDG_CONFIG_HOME/melonDS/); a directory named 'portable' next to the executable overrides this. melonDS.ini (0.9.x and earlier) is auto-loaded and migrated to melonDS.toml at 1.0+. Controllers: TOML keys Instance0.Joystick.<Btn> for the twelve DS buttons (A, B, Select, Start, Right, Left, Up, Down, R, L, X, Y) plus Instance0.JoystickID (SDL device index) and Joystick.HK_* hotkey bindings",
           "evidence": [
             "source:melonDS src/frontend/qt_sdl/Config.cpp kConfigFile=\"melonDS.toml\" / kLegacyConfigFile=\"melonDS.ini\" @906e9eb",
@@ -45,6 +46,7 @@
         {
           "purpose": "bios",
           "path": "Optional. Emu.ExternalBIOSEnable gates DS.BIOS9Path / DS.BIOS7Path / DS.FirmwarePath (bios9.bin 4KB, bios7.bin 16KB, firmware.bin 128-512KB); built-in FreeBIOS is the no-firmware fallback (also covers DSi TWL images at this pin). DSi mode additionally uses DSi.BIOS9Path / DSi.BIOS7Path / DSi.FirmwarePath / DSi.NANDPath. Wi-Fi settings live in wfcsettings.bin in the melonDS directory; the GBA slot needs no BIOS at this pin",
+          "naming": "DS dumps use bios9.bin (4 KiB), bios7.bin (16 KiB), and firmware.bin (128/256/512 KiB); DSi adds BIOS/firmware/NAND paths; FreeBIOS is the fallback and no canonical checksum is supplied",
           "evidence": [
             "source:melonDS src/frontend/qt_sdl/Config.cpp ExternalBIOSEnable, DS.BIOS9Path/BIOS7Path/FirmwarePath, DSi.* keys @906e9eb",
             "source:melonDS src/FreeBIOS.cpp + EmuInstance.cpp FreeBIOSGetNtrArm9/NtrArm7/TwlArm9/TwlArm7 @906e9eb",
@@ -59,6 +61,7 @@
       "paths": [
         {
           "purpose": "config",
+          "naming": "Same controller TOML syntax as native: `Instance0.Joystick.<Btn>`, `Instance0.JoystickID`, and `Joystick.HK_*` keys; Flatpak only relocates XDG_CONFIG_HOME",
           "path": "~/.var/app/net.kuribo64.melonDS/config/melonDS/melonDS.toml (Flatpak redirects XDG_CONFIG_HOME; the Flathub id is net.kuribo64.melonDS, not net.melonDS.melonDS)",
           "evidence": [
             "docs:Flathub appstream net.kuribo64.melonDS (verified via flathub.org API)",
@@ -86,6 +89,7 @@
         {
           "purpose": "bios",
           "path": "Configured via the same melonDS.toml keys (DS.BIOS9Path etc.); dumps are not bundled with the Flatpak; FreeBIOS is the no-firmware fallback",
+          "naming": "DS dumps use bios9.bin (4 KiB), bios7.bin (16 KiB), and firmware.bin (128/256/512 KiB); DSi adds BIOS/firmware/NAND paths; FreeBIOS is the fallback and no canonical checksum is supplied",
           "evidence": [
             "source:melonDS src/frontend/qt_sdl/Config.cpp BIOS path keys @906e9eb",
             "docs:melonDS FAQ (required dump names/sizes)"
@@ -98,6 +102,7 @@
       "paths": [
         {
           "purpose": "config",
+          "naming": "Same controller TOML syntax as native: `Instance0.Joystick.<Btn>`, `Instance0.JoystickID`, and `Joystick.HK_*` keys; portable/non-portable path selection does not change the format",
           "path": "Next to melonDS.exe in official builds (CMake PORTABLE option defaults ON -> WIN32_PORTABLE, emuDirectory = executable directory); a 'portable' directory next to the exe is also honored; non-portable builds fall back to %LOCALAPPDATA%\\melonDS (Qt ConfigLocation maps to FOLDERID_LocalAppData). melonDS.toml since 1.0, melonDS.ini before",
           "evidence": [
             "source:melonDS src/frontend/qt_sdl/CMakeLists.txt option(PORTABLE ... ON) -> WIN32_PORTABLE define @906e9eb",
@@ -125,6 +130,7 @@
         {
           "purpose": "bios",
           "path": "Paths chosen in Emu Settings (DS.BIOS9Path / DS.BIOS7Path / DS.FirmwarePath); bios9.bin (4KB), bios7.bin (16KB), firmware.bin (128/256/512KB); FreeBIOS fallback; DSi mode needs DSi BIOS/firmware/NAND dumps",
+          "naming": "DS dumps use bios9.bin (4 KiB), bios7.bin (16 KiB), and firmware.bin (128/256/512 KiB); DSi adds BIOS/firmware/NAND paths; FreeBIOS is the fallback and no canonical checksum is supplied",
           "evidence": [
             "source:melonDS src/frontend/qt_sdl/Config.cpp BIOS keys @906e9eb",
             "docs:melonDS FAQ (file names and sizes)"
@@ -137,6 +143,7 @@
       "paths": [
         {
           "purpose": "config",
+          "naming": "Same controller TOML syntax as native: `Instance0.Joystick.<Btn>`, `Instance0.JoystickID`, and `Joystick.HK_*` keys; portable app path selection does not change the format",
           "path": "~/Library/Preferences/melonDS/melonDS.toml (Qt ConfigLocation on macOS is ~/Library/Preferences); a 'portable' directory next to melonDS.app overrides; melonDS.ini on 0.9.x and earlier",
           "evidence": [
             "source:melonDS src/frontend/qt_sdl/main.cpp pathInit (ConfigLocation + mkdir \"melonDS\"; .app-bundle portable check) @906e9eb",
@@ -163,6 +170,7 @@
         {
           "purpose": "bios",
           "path": "Same melonDS.toml keys (DS.BIOS9Path / DS.BIOS7Path / DS.FirmwarePath, DSi.* variants); FreeBIOS fallback; macOS builds ship no dumps",
+          "naming": "DS dumps use bios9.bin (4 KiB), bios7.bin (16 KiB), and firmware.bin (128/256/512 KiB); DSi adds BIOS/firmware/NAND paths; FreeBIOS is the fallback and no canonical checksum is supplied",
           "evidence": [
             "source:melonDS src/frontend/qt_sdl/Config.cpp BIOS keys + FreeBIOS.cpp @906e9eb",
             "docs:melonDS FAQ (dump requirements)"

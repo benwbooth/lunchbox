@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "slug": "geepee32",
+  "emulator": "GeePee32",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://www.schuerewegen.tk/gp32",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\\\GeePee32\\\\geepee32.ini",
+          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "evidence": [
+            "https://www.schuerewegen.tk/gp32"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\\\GeePee32\\\\geepee32.ini",
+          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "evidence": [
+            "https://www.schuerewegen.tk/gp32"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Virtual SMC image selected by the emulator",
+          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "evidence": [
+            "https://www.schuerewegen.tk/gp32"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "The upstream frontend selects the state filename/path.",
+          "evidence": [
+            "https://www.schuerewegen.tk/gp32"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "fw100k.bin or fw157e.bin",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://www.schuerewegen.tk/gp32"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No separate encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://www.schuerewegen.tk/gp32"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://www.schuerewegen.tk/gp32"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://www.schuerewegen.tk/gp32"
+      ]
+    },
+    "macos": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://www.schuerewegen.tk/gp32"
+      ]
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "slug": "finalburn-neo",
+  "emulator": "FinalBurn Neo",
+  "sources": [
+    { "kind": "source", "repo": "finalburnneo/FBNeo", "role": "SDL/native config and platform implementation" },
+    { "kind": "docs", "url": "https://github.com/finalburnneo/FBNeo/wiki/menu_game", "role": "native save-state, memory-card and recording behavior" },
+    { "kind": "docs", "url": "https://github.com/finalburnneo/FBNeo/wiki/keys", "role": "native keyboard shortcuts" },
+    { "kind": "docs", "url": "https://github.com/finalburnneo/FBNeo/wiki/Command-Line", "role": "native command line and ROM naming" },
+    { "kind": "source", "repo": "fbn-mac/FBNeo", "role": "official macOS native build limitations" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "fbneo.ini beside the native SDL executable; the first run creates it and the user edits ROM directories and other options there.", "evidence": ["source:finalburnneo/FBNeo README-SDL.md (first-run fbneo.ini)", "source:finalburnneo/FBNeo SDL frontend"] },
+        { "purpose": "input", "path": "Native FBNeo input and DIP settings are edited from the in-game Inputs/DIP switches dialogs and saved to the game's config file; SDL builds enable joystick input with -joy.", "naming": "Game-specific configuration is FBNeo's generated config/INI format; keyboard shortcuts include F5 Inputs and the source's standard arcade bindings. No stable portable controller-profile grammar is promised.", "evidence": ["docs:FinalBurn Neo wiki menu_misc (save input mapping to game config)", "source:finalburnneo/FBNeo README-SDL.md (-joy and in-game controls)"] },
+        { "purpose": "saves", "path": "Native FBNeo support folders beside the executable: per-game config, NVRAM/high scores and Neo Geo memory-card files are managed by the frontend; game-specific battery/high-score data is not one universal extension.", "naming": "Neo Geo memory cards are user-selected files; game/NVRAM and high-score names are generated per driver/game.", "evidence": ["docs:FinalBurn Neo wiki menu_game (memory cards)", "docs:FinalBurn Neo wiki menu_misc (support file paths)", "source:finalburnneo/FBNeo SDL frontend"] },
+        { "purpose": "states", "path": "Native FBNeo save states are stored in the support-file/savestates directory and can also be opened by filename; active slots are selected in the menu.", "naming": ".fs save-state files; .fr input recordings. Keys include Ctrl+F10/F10 save and Ctrl+F9/F9 load as documented.", "evidence": ["docs:FinalBurn Neo wiki menu_game (.FS and active slots)", "docs:FinalBurn Neo wiki keys (.FS/.FR shortcuts)"] },
+        { "purpose": "bios", "path": "ROM sets and required BIOS sets are loaded from directories configured in fbneo.ini; common arcade BIOS sets include neogeo.zip and other driver-defined sets.", "naming": "Exact filenames/CRC requirements are driver XML/DAT-defined; no single BIOS applies and the upstream wiki does not publish a universal checksum table.", "evidence": ["docs:FinalBurn Neo wiki Command-Line (-listinfo ROM requirements)", "source:finalburnneo/FBNeo driver ROM definitions"] },
+        { "purpose": "keys", "path": "No external decryption key file; arcade BIOS ROM sets are the only external platform firmware inputs.", "naming": "No external key filename/checksum.", "evidence": ["docs:FinalBurn Neo wiki Command-Line and menu_game", "source:finalburnneo/FBNeo"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "fbneo.ini beside the FBNeo executable; application settings are written to this INI on exit.", "evidence": ["source:finalburnneo/FBNeo Windows frontend", "docs:FinalBurn Neo wiki menu_misc"] },
+        { "purpose": "input", "path": "F5 opens Inputs, and Save input mapping writes input/DIP settings to the game's config file; controller bindings are source-generated FBNeo config data.", "naming": "No stable external controller-profile grammar documented; preserve generated per-game config.", "evidence": ["docs:FinalBurn Neo wiki menu_misc", "docs:FinalBurn Neo wiki keys"] },
+        { "purpose": "saves", "path": "FBNeo support directories beside the executable contain per-game config, NVRAM/high scores and selected Neo Geo memory-card files.", "naming": "Memory-card file is user-selected; other save/NVRAM names are driver/game-defined.", "evidence": ["docs:FinalBurn Neo wiki menu_game/menu_misc"] },
+        { "purpose": "states", "path": "Native FBNeo save-state support directory with active slots; direct filenames may be supplied on the command line.", "naming": ".fs states and .fr input recordings; F10/Ctrl+F10 save, F9/Ctrl+F9 load.", "evidence": ["docs:FinalBurn Neo wiki menu_game", "docs:FinalBurn Neo wiki keys", "docs:FinalBurn Neo Command-Line"] },
+        { "purpose": "bios", "path": "ROM paths in fbneo.ini contain driver-required BIOS archives/ROM sets such as the Neo Geo set.", "naming": "Driver DAT/XML supplies exact names and checksums; no universal BIOS name.", "evidence": ["docs:FinalBurn Neo Command-Line", "source:finalburnneo/FBNeo driver definitions"] },
+        { "purpose": "keys", "path": "No external key file documented.", "naming": "No external key filename/checksum.", "evidence": ["source:finalburnneo/FBNeo"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "The official fbn-mac build stores its launcher/configuration in the app's native macOS data; games can be opened from anywhere, with required parent/BIOS archives in the same directory.", "evidence": ["source:finalburnneo/FBNeo README-macOS.md (official macOS v1.03 build and file loading)"] },
+        { "purpose": "input", "path": "Official macOS FBNeo currently supports keyboard and mouse using the standard FinalBurn layout; joysticks are explicitly unsupported.", "naming": "Keyboard uses standard FinalBurn layout; there is no joystick profile file in the official macOS build.", "evidence": ["source:finalburnneo/FBNeo README-macOS.md (Input and Known issues)"] },
+        { "purpose": "saves", "path": "Game/NVRAM and memory-card data are managed by the macOS FBNeo build's support data; preserve the app data plus any user-selected card files.", "naming": "Driver/game-defined save data; memory cards are user-selected files.", "evidence": ["docs:FinalBurn Neo wiki menu_game", "source:fbn-mac/FBNeo"] },
+        { "purpose": "states", "path": "FBNeo native save states use the same .fs state concept and slots as the upstream frontend, subject to the macOS build's support directory.", "naming": ".fs states and .fr input recordings; keyboard shortcuts follow FinalBurn where implemented.", "evidence": ["docs:FinalBurn Neo wiki menu_game/keys", "source:fbn-mac/FBNeo"] },
+        { "purpose": "bios", "path": "Required parent/BIOS archives (for example Neo Geo sets) must be in the same directory as the selected game archive in the official macOS launcher.", "naming": "Driver-defined ROM set names/checksums; no universal BIOS checksum.", "evidence": ["source:finalburnneo/FBNeo README-macOS.md", "source:finalburnneo/FBNeo driver definitions"] },
+        { "purpose": "keys", "path": "No external decryption key file documented.", "naming": "No external key filename/checksum.", "evidence": ["source:fbn-mac/FBNeo README-macOS.md"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The FBNeo project documents native SDL builds and the libretro core, but no official standalone FBNeo Flatpak package.", "evidence": ["source:finalburnneo/FBNeo README-SDL.md", "source:finalburnneo/FBNeo README.md"] }
+  }
+}

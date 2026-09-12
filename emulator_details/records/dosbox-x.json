@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "slug": "dosbox-x",
+  "emulator": "DOSBox-X",
+  "sources": [
+    { "kind": "source", "repo": "joncampbell123/dosbox-x", "role": "configuration reference, mapper and state implementation" },
+    { "kind": "docs", "url": "https://github.com/joncampbell123/dosbox-x/wiki", "role": "per-platform config paths, mapper and save-state behavior" },
+    { "kind": "source", "repo": "flathub/com.dosbox_x.DOSBox-X", "role": "Flatpak app id and sandbox config path" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "dosbox-x.conf in the current/program directory first; fallback ~/.config/dosbox-x/dosbox-x-<version>.conf. -conf and -defaultdir select explicit locations.", "evidence": ["docs:DOSBox-X wiki DOSBox-X Configuration File", "source:joncampbell123/dosbox-x reference config"] },
+        { "purpose": "input", "path": "[sdl] mapperfile=mapper-dosbox-x.map (default, beside the config/default path); the mapper editor binds DOSBox-X EVENT names to SDL keyboard/joystick axis/button/hat BINDs with optional Mod1/2/3.", "naming": "Plain mapper event/binding file selected by mapperfile; use -startmapper/-erasemapper and preserve the generated map.", "evidence": ["docs:DOSBox-X wiki Mapper Editor", "source:dosbox-x.reference.full.conf mapperfile and joystick options"] },
+        { "purpose": "saves", "path": "Guest game saves are ordinary files in mounted DOS directories/disk images; DOSBox-X does not impose a per-game save extension.", "naming": "Game-defined files inside MOUNTed directories or disk images.", "evidence": ["docs:DOSBox-X wiki storage/mount and autoexec documentation"] },
+        { "purpose": "states", "path": "Save path selected by -savedir or the DOSBox-X default path; [dosbox] saveslot selects slots 1-100 and savefile can override the slot file; autosave supports a configured interval.", "naming": "Slot-based state files (implementation-generated names) or the exact user-provided [dosbox] savefile; 100 slots total. No BIOS/game compatibility should be inferred across DOSBox-X versions.", "evidence": ["docs:DOSBox-X wiki save/load state", "docs:DOSBox-X command-line options (-savedir)", "source:dosbox-x.reference.conf saveslot/savefile/autosave"] },
+        { "purpose": "bios", "path": "No external PC BIOS ROM is required for ordinary DOSBox-X PC emulation; machine/BIOS behavior is implemented by the emulator. Optional machine-specific ROM/font/device files are configuration-dependent.", "naming": "No universal external BIOS filename or canonical checksum in DOSBox-X's official config reference.", "evidence": ["source:dosbox-x.reference.full.conf machine/config options", "docs:DOSBox-X wiki configuration"] },
+        { "purpose": "keys", "path": "No external decryption/key file is documented.", "naming": "No external key filename/checksum.", "evidence": ["source:dosbox-x.reference.full.conf", "docs:DOSBox-X wiki"] }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        { "purpose": "config", "path": "~/.var/app/com.dosbox_x.DOSBox-X/config/dosbox-x/dosbox-x-<version>.conf (the Flatpak documentation explicitly identifies this config root).", "evidence": ["source:flathub/com.dosbox_x.DOSBox-X README", "docs:flatpak.org conventions"] },
+        { "purpose": "input", "path": "mapper-dosbox-x.map selected by [sdl] mapperfile beside the Flatpak config; mapper EVENT/BIND grammar is identical to native DOSBox-X.", "naming": "Generated plain mapper file; -startmapper edits it.", "evidence": ["docs:DOSBox-X wiki Mapper Editor", "source:dosbox-x reference config"] },
+        { "purpose": "saves", "path": "Inside mounted game directories/disk images reachable through the Flatpak filesystem permissions.", "naming": "Game-defined DOS files.", "evidence": ["docs:DOSBox-X wiki storage", "source:flathub/com.dosbox_x.DOSBox-X manifest"] },
+        { "purpose": "states", "path": "Flatpak writable default path or explicit -savedir; slots 1-100, with [dosbox] savefile override.", "naming": "DOSBox-X slot state files or explicit savefile name.", "evidence": ["docs:DOSBox-X wiki save/load state and -savedir", "source:flathub/com.dosbox_x.DOSBox-X"] },
+        { "purpose": "bios", "path": "No external PC BIOS required by DOSBox-X; optional machine-specific resources follow the config.", "naming": "No universal BIOS filename/checksum.", "evidence": ["source:dosbox-x.reference.full.conf", "docs:DOSBox-X wiki"] },
+        { "purpose": "keys", "path": "No external key file documented.", "naming": "No external key filename/checksum.", "evidence": ["docs:DOSBox-X wiki"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "dosbox-x.conf/dosbox.conf in current or program directory first; fallback C:\\Users\\<username>\\AppData\\Local\\DOSBox-X\\dosbox-x-<version>.conf; -conf/-defaultdir override.", "evidence": ["docs:DOSBox-X wiki DOSBox-X Configuration File"] },
+        { "purpose": "input", "path": "[sdl] mapperfile=mapper-dosbox-x.map; mapper editor stores EVENT/BIND keyboard, joystick axis/button/hat and Mod1/2/3 mappings.", "naming": "Generated mapper-dosbox-x.map plain text.", "evidence": ["docs:DOSBox-X wiki Mapper Editor", "source:dosbox-x reference config"] },
+        { "purpose": "saves", "path": "Inside MOUNTed directories/disk images.", "naming": "Game-defined files; no DOSBox-X save extension.", "evidence": ["docs:DOSBox-X wiki storage"] },
+        { "purpose": "states", "path": "-savedir selects the state directory; [dosbox] saveslot 1-100 or explicit savefile controls state storage, autosave may be enabled.", "naming": "Slot-generated state files or explicit savefile.", "evidence": ["docs:DOSBox-X wiki save/load state and command line", "source:dosbox-x.reference.conf"] },
+        { "purpose": "bios", "path": "No external PC BIOS image required; machine emulation is code-based.", "naming": "No universal filename/checksum.", "evidence": ["source:dosbox-x.reference.full.conf"] },
+        { "purpose": "keys", "path": "No external key file.", "naming": "No external key filename/checksum.", "evidence": ["docs:DOSBox-X wiki"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "dosbox-x.conf in current/program directory first; fallback ~/Library/Preferences/DOSBox-X <version> Preferences; -conf/-defaultdir override.", "evidence": ["docs:DOSBox-X wiki DOSBox-X Configuration File"] },
+        { "purpose": "input", "path": "mapper-dosbox-x.map selected by [sdl] mapperfile and edited through -startmapper; EVENT/BIND supports keyboard and SDL joystick axes/buttons/hats.", "naming": "Generated plain mapper file.", "evidence": ["docs:DOSBox-X wiki Mapper Editor", "source:dosbox-x reference config"] },
+        { "purpose": "saves", "path": "Inside mounted DOS directories/disk images.", "naming": "Game-defined files.", "evidence": ["docs:DOSBox-X wiki storage"] },
+        { "purpose": "states", "path": "-savedir or default path; [dosbox] slots 1-100, optional explicit savefile/autosave.", "naming": "Slot-generated state files or explicit savefile.", "evidence": ["docs:DOSBox-X wiki save/load state", "source:dosbox-x.reference.conf"] },
+        { "purpose": "bios", "path": "No external PC BIOS required by ordinary DOSBox-X machine emulation.", "naming": "No universal filename/checksum.", "evidence": ["source:dosbox-x.reference.full.conf"] },
+        { "purpose": "keys", "path": "No external key file documented.", "naming": "No external key filename/checksum.", "evidence": ["docs:DOSBox-X wiki"] }
+      ]
+    }
+  }
+}

@@ -23,6 +23,12 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/mgba/config.ini (or $XDG_CONFIG_HOME/mgba/); Qt controller settings additionally use qt.ini",
+          "naming": "SDL keyboard section gba.input.SDLK uses key<Btn>; joystick section gba.input.SDLB uses key<Btn>, axis<Btn>Value/axis<Btn>Axis and hat<N>Up/Right/Down/Left; per-controller sections are gba.input-profile.<SDL joystick GUID>",
+          "evidence": ["source:mgba src/core/input.c and src/platform/sdl/sdl-events.c SDLK/SDLB/GUID grammar @26b7884", "contract:docs/MGBA_STANDALONE_PROGRESS.md"]
+        },
+        {
           "purpose": "saves",
           "path": "Alongside the ROM by default: <ROM basename>.sav in the ROM's directory; the savegamePath key in config.ini redirects saves to one directory (created if missing)",
           "naming": "<ROM basename>.sav next to the ROM (or <savegamePath>/<ROM basename>.sav); multiplayer saves with savePlayerId > 1 use .sa<N> instead of .sav",
@@ -44,6 +50,7 @@
         {
           "purpose": "bios",
           "path": "Optional. Lookup order: biosPath command-line option, then the gba.bios key in config.ini, then <config dir>/gba_bios.bin; if none is present or valid, mGBA falls back to its built-in HLE BIOS implementation (Qt default useBios=true)",
+          "naming": "Default GBA filename gba_bios.bin; GB-family libretro names are gb_bios.bin, gbc_bios.bin and sgb_bios.bin. Source CRC32 values include GBA BAAE187F, DS BAAE1880, DMG 59C8598E/C2F5CC97, MGB E6920754, SGB EC8A83B9/53D0DD63, CGB 41884E46/E8EF5318/E95DC95 and AGB FFD6B0F1/570337EA; official GBA SHA-256 fd2547724b505f487e6dcb29ec2ecff3af35a841a77ab2e85fd87350abd36570",
           "evidence": [
             "source:mgba src/gba/core.c _GBACoreInit BIOS lookup chain ending in mCoreConfigDirectory() + \"gba_bios.bin\" @26b7884",
             "docs:mgba README.md \"A built-in BIOS implementation, and ability to load external BIOS files\" @26b7884"
@@ -61,6 +68,12 @@
             "source:flathub/io.mgba.mGBA io.mgba.mGBA.json (app-id io.mgba.mGBA, command mgba-qt)",
             "source:mgba src/core/config.c mCoreConfigDirectory XDG branch @26b7884"
           ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.var/app/io.mgba.mGBA/config/mgba/config.ini (Qt controller settings also use qt.ini)",
+          "naming": "Same SDL grammar: gba.input.SDLK keyboard key<Btn>, gba.input.SDLB joystick key/axis/hat fields and gba.input-profile.<SDL joystick GUID>; Flatpak ships Qt, so Qt settings are in qt.ini",
+          "evidence": ["source:mgba src/core/input.c and src/platform/sdl/sdl-events.c @26b7884", "source:flathub/io.mgba.mGBA app-id and command"]
         },
         {
           "purpose": "saves",
@@ -82,6 +95,7 @@
         {
           "purpose": "bios",
           "path": "<config dir>/gba_bios.bin resolves to ~/.var/app/io.mgba.mGBA/config/mgba/gba_bios.bin, or the gba.bios key; built-in HLE BIOS otherwise",
+          "naming": "gba_bios.bin (GBA) or gb_bios.bin/gbc_bios.bin/sgb_bios.bin for GB-family cores; source CRC32 and official GBA SHA-256 are listed on the native entry; HLE means no mandatory external BIOS",
           "evidence": [
             "source:mgba src/gba/core.c BIOS lookup chain @26b7884"
           ]
@@ -98,6 +112,12 @@
             "source:mgba src/core/config.c mCoreConfigDirectory _WIN32 branch (SHGetKnownFolderPath FOLDERID_RoamingAppData + projectName) and mCoreConfigPortablePath (module dir + portable.ini) @26b7884",
             "source:mgba src/platform/qt/ConfigController.cpp (qt.ini next to configDir, mCoreConfigLoad shared config.ini, makePortable) @26b7884"
           ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\mGBA\\config.ini (Qt controller settings additionally use qt.ini)",
+          "naming": "Same SDL grammar: gba.input.SDLK keyboard key<Btn>, gba.input.SDLB joystick key/axis/hat fields and gba.input-profile.<SDL joystick GUID>",
+          "evidence": ["source:mgba src/core/input.c and src/platform/sdl/sdl-events.c @26b7884", "source:mgba src/platform/qt/ConfigController.cpp @26b7884"]
         },
         {
           "purpose": "saves",
@@ -118,6 +138,7 @@
         {
           "purpose": "bios",
           "path": "Optional: biosPath option, gba.bios key, or %APPDATA%\\mGBA\\gba_bios.bin (portable: beside the exe); built-in HLE BIOS fallback",
+          "naming": "gba_bios.bin (GBA) or gb_bios.bin/gbc_bios.bin/sgb_bios.bin (GB-family); source CRC32 and official GBA SHA-256 are listed on the native entry; no external BIOS is mandatory",
           "evidence": [
             "source:mgba src/gba/core.c BIOS lookup chain @26b7884",
             "docs:mgba README.md built-in BIOS statement @26b7884"
@@ -134,6 +155,12 @@
           "evidence": [
             "source:mgba src/core/config.c mCoreConfigDirectory XDG fallthrough (no __APPLE__ case) and mCoreConfigPortablePath __APPLE__ CFBundle branch @26b7884"
           ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/mgba/config.ini (Qt controller settings additionally use qt.ini)",
+          "naming": "Same SDL grammar: gba.input.SDLK keyboard key<Btn>, gba.input.SDLB joystick key/axis/hat fields and gba.input-profile.<SDL joystick GUID>; Qt macOS mappings are in qt.ini",
+          "evidence": ["source:mgba src/core/input.c and src/platform/sdl/sdl-events.c @26b7884", "source:mgba src/platform/qt/ConfigController.cpp @26b7884"]
         },
         {
           "purpose": "saves",
@@ -154,6 +181,7 @@
         {
           "purpose": "bios",
           "path": "Optional: biosPath option, gba.bios key, or ~/.config/mgba/gba_bios.bin; built-in HLE BIOS fallback",
+          "naming": "gba_bios.bin (GBA) or gb_bios.bin/gbc_bios.bin/sgb_bios.bin (GB-family); source CRC32 and official GBA SHA-256 are listed on the native entry; no external BIOS is mandatory",
           "evidence": [
             "source:mgba src/gba/core.c BIOS lookup chain @26b7884"
           ]

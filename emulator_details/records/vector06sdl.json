@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "slug": "vector06sdl",
+  "emulator": "vector06sdl",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://github.com/svofski/vector06sdl",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/vector06sdl/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/vector06sdl/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "User-selected disk/tape image",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS file required",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/vector06sdl/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/vector06sdl/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "User-selected disk/tape image",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS file required",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/vector06sdl/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/vector06sdl/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "User-selected disk/tape image",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS file required",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/svofski/vector06sdl"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://github.com/svofski/vector06sdl"
+      ]
+    }
+  }
+}

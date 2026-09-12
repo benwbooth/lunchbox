@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "slug": "sameboy",
+  "emulator": "SameBoy",
+  "sources": [
+    { "kind": "source", "repo": "LIJI32/SameBoy", "commit": "208ba4afabffab9edde416f2dbb8ae459e34adb8", "role": "SDL/Cocoa preference, controller, save/state and boot-ROM contracts (v1.0.3)" },
+    { "kind": "docs", "url": "https://github.com/LIJI32/SameBoy#readme", "role": "frontend/platform support and built-in boot ROM statement" },
+    { "kind": "packaging", "repo": "flathub/io.github.sameboy.SameBoy", "commit": "f8fce276aabe6d70f0314d63022331b02af3f86e", "role": "Flatpak app id io.github.sameboy.SameBoy, home access and pinned SameBoy v1.0.3 source" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "${XDG_DATA_HOME:-~/.local/share}/SameBoy/prefs.bin (SDL_GetPrefPath(\"\", \"SameBoy\")); portable/resource prefs.bin beside the executable takes priority when writable",
+          "naming": "Binary serialized configuration_t, not a text INI: prefs.bin stores keyboard SDL scancodes, joystick button/axis indices, model/video/audio settings and the optional bootrom_path",
+          "evidence": ["source:SDL/main.c prefs_path = resource_path(\"prefs.bin\"), fallback SDL_GetPrefPath(\"\", \"SameBoy\") @208ba4af", "source:SDL/utils.c resource_path uses SDL_GetBasePath and DATA_DIR @208ba4af"]
+        },
+        {
+          "purpose": "input",
+          "path": "Same binary ${XDG_DATA_HOME:-~/.local/share}/SameBoy/prefs.bin (or writable prefs.bin beside executable)",
+          "naming": "configuration.keys[GB_CONF_KEYS_RIGHT..TURBO] = SDL_Scancode values; configuration.keys_2[REWIND,UNDERCLOCK,RAPID_A,RAPID_B] = SDL_Scancode values; configuration.joypad_configuration[JOYPAD_BUTTON_RIGHT..RAPID_B] = SDL joystick button numbers (-1 unmapped), joypad_axises[0..1] = SDL axis numbers",
+          "evidence": ["source:SDL/configuration.h GB_CONF_KEYS_*, JOYPAD_BUTTON_* and configuration_t fields @208ba4af", "source:SDL/main.c keyboard compares event.key.keysym.scancode and joystick events against those fields @208ba4af", "source:SDL/gui.c controller configuration writes event.jbutton.button and axis values @208ba4af"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM (same directory; writable path required)",
+          "naming": "<ROM stem>.sav for cartridge battery/RTC RAM; ISX files use <ROM stem>.ram. A .gbcart container instead contains battery.sav inside the container directory",
+          "evidence": ["source:SDL/main.c replace_extension(filename, .sav/.ram) then GB_load_battery @208ba4af", "source:Cocoa/Document.m savPath returns ROM URL with .sav or gbcart/battery.sav @208ba4af"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the loaded ROM (same directory)",
+          "naming": "<ROM stem>.s0 through <ROM stem>.s9 for ten quick slots; loader also probes legacy <ROM stem>.sn0..sn9 when .sN is absent. A .gbcart container uses state.s0..state.s9 inside the container",
+          "evidence": ["source:SDL/main.c save extension .s0..s9 and legacy .sn0..sn9 load fallback @208ba4af", "source:Cocoa/Document.m saveStatePath builds .sN or gbcart/state.sN @208ba4af", "source:README.md lists save-state support @208ba4af"]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external firmware required: SameBoy ships open-source boot ROM resources. Optional custom folder is selected by the prefs.bin bootrom_path field",
+          "naming": "Optional folder filenames are dmg0_boot.bin, dmg_boot.bin, mgb_boot.bin, sgb_boot.bin, sgb2_boot.bin, cgb0_boot.bin, cgb_boot.bin, cgbE_boot.bin, agb0_boot.bin, agb_boot.bin; there is no canonical external checksum for these user-selected files, and built-in SameBoy boot ROMs are source-built",
+          "evidence": ["source:SDL/main.c load_boot_rom names[] and bootrom_path lookup @208ba4af", "source:README.md features list says SameBoy includes open-source DMG/CGB boot ROMs @208ba4af", "source:Makefile bootroms target and BootROMs/*.asm build the bundled images @208ba4af"]
+        }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/io.github.sameboy.SameBoy/data/SameBoy/prefs.bin (Flatpak XDG data root; SDL_GetPrefPath(\"\", \"SameBoy\"))",
+          "naming": "Same binary prefs.bin configuration as native SDL; Flatpak manifest grants --filesystem=home for ROM and beside-ROM saves",
+          "evidence": ["packaging:io.github.sameboy.SameBoy.yml finish-args --filesystem=home and app-id @f8fce276", "source:SDL/main.c SDL_GetPrefPath fallback and prefs.bin @208ba4af"]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.var/app/io.github.sameboy.SameBoy/data/SameBoy/prefs.bin",
+          "naming": "Same SDL binary grammar: configuration.keys/keys_2 contain SDL_Scancode values and joypad_configuration/joypad_axises contain SDL joystick button/axis indices",
+          "evidence": ["source:SDL/configuration.h configuration_t fields @208ba4af", "source:SDL/main.c SDL event dispatch and controller configuration @208ba4af"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM in the host-visible game directory (Flatpak has home access)",
+          "naming": "<ROM stem>.sav (or .ram for ISX); .gbcart containers use battery.sav as native SDL/Cocoa",
+          "evidence": ["packaging:io.github.sameboy.SameBoy.yml --filesystem=home @f8fce276", "source:SDL/main.c battery path is ROM path with .sav/.ram @208ba4af"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the loaded ROM in the host-visible game directory",
+          "naming": "<ROM stem>.s0..s9; loader probes <ROM stem>.sn0..sn9 as legacy fallback; .gbcart uses state.s0..state.s9",
+          "evidence": ["source:SDL/main.c state path construction @208ba4af", "source:Cocoa/Document.m container naming contract also used by shared core @208ba4af"]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external firmware required; optional custom boot-ROM folder in prefs.bin. Flatpak manifest ships SameBoy resources under /app/share/sameboy",
+          "naming": "Optional names: dmg0_boot.bin, dmg_boot.bin, mgb_boot.bin, sgb_boot.bin, sgb2_boot.bin, cgb0_boot.bin, cgb_boot.bin, cgbE_boot.bin, agb0_boot.bin, agb_boot.bin; no canonical external checksum",
+          "evidence": ["packaging:io.github.sameboy.SameBoy.yml DATA_DIR=/app/share/sameboy and SameBoy source @f8fce276", "source:SDL/main.c names[] and built-in resource_path fallback @208ba4af"]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Preferences/com.github.liji32.sameboy.plist (Cocoa NSUserDefaults standard domain; bundle identifier from Cocoa/Info.plist)",
+          "naming": "NSUserDefaults keys include GB* display/emulation preferences, KeyboardConfig-equivalent per-button settings, JoyKitInstanceMapping/JoyKitNameMapping and JoyKitDefaultControllers",
+          "evidence": ["source:Cocoa/Info.plist CFBundleIdentifier com.github.liji32.sameboy @208ba4af", "source:Cocoa/GBApp.m and GBPreferencesWindow.m use NSUserDefaults.standardUserDefaults for settings and mappings @208ba4af"]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Preferences/com.github.liji32.sameboy.plist",
+          "naming": "Keyboard mappings are NSUserDefaults keys GB<GBButtonName> and GBPlayer<N><GBButtonName> storing macOS virtual key codes; controller mappings are JoyKitInstanceMapping/JoyKitNameMapping dictionaries keyed by controller unique ID/name, with button unique-ID -> JOYButtonUsage values; JoyKitDefaultControllers assigns players",
+          "evidence": ["source:Cocoa/GBButtons.h button_to_preference_name and GB button enumeration @208ba4af", "source:Cocoa/GBPreferencesWindow.m stores keyCode and JoyKit mapping dictionaries @208ba4af", "source:Cocoa/GBApp.m controller buttonChangedState reads JoyKit mappings @208ba4af"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM; .gbcart containers store inside the container directory",
+          "naming": "<ROM stem>.sav; .gbcart/battery.sav",
+          "evidence": ["source:Cocoa/Document.m savPath implementation @208ba4af", "source:Cocoa/Document.m GB_load_battery/GB_save_battery calls @208ba4af"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the loaded ROM; .gbcart containers store inside the container directory",
+          "naming": "<ROM stem>.s0..s9; .gbcart/state.s0..state.s9",
+          "evidence": ["source:Cocoa/Document.m saveStatePath implementation @208ba4af", "source:README.md lists save-state support @208ba4af"]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external firmware required: Cocoa bundles SameBoy boot ROMs in SameBoy.app/Contents/Resources. Preferences may select a custom folder with GBBootROMsFolder",
+          "naming": "Optional custom folder uses the same exact names: dmg0_boot.bin, dmg_boot.bin, mgb_boot.bin, sgb_boot.bin, sgb2_boot.bin, cgb0_boot.bin, cgb_boot.bin, cgbE_boot.bin, agb0_boot.bin, agb_boot.bin; no canonical external checksum",
+          "evidence": ["source:Makefile Cocoa app resource copy of *.bin @208ba4af", "source:Cocoa/GBPreferencesWindow.m GBBootROMsFolder preference @208ba4af", "source:Cocoa/Document.m boot-ROM selection is user folder or bundled resources @208ba4af"]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\SameBoy\\prefs.bin (SDL_GetPrefPath(\"\", \"SameBoy\")); writable prefs.bin beside sameboy.exe takes priority",
+          "naming": "Binary prefs.bin containing configuration_t; it is not an editable text configuration file",
+          "evidence": ["source:SDL/main.c prefs_path resource fallback and SDL_GetPrefPath @208ba4af", "source:SDL/configuration.h configuration_t serialization fields @208ba4af", "source:SDL2/filesystem/windows/SDL_sysfilesystem.c SDL_GetPrefPath uses CSIDL_APPDATA @SDL current"]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\SameBoy\\prefs.bin (or writable prefs.bin beside sameboy.exe)",
+          "naming": "Same SDL binary grammar: keys/keys_2 are SDL_Scancode values; joypad_configuration is SDL joystick button numbers and joypad_axises are axis numbers",
+          "evidence": ["source:SDL/configuration.h @208ba4af", "source:SDL/main.c SDL keyboard/joystick event handling @208ba4af"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM",
+          "naming": "<ROM stem>.sav; ISX uses <ROM stem>.ram; .gbcart uses battery.sav",
+          "evidence": ["source:SDL/main.c replace_extension and GB_load_battery @208ba4af", "source:Cocoa/Document.m container naming @208ba4af"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the loaded ROM",
+          "naming": "<ROM stem>.s0..s9, with legacy .sn0..sn9 load fallback; .gbcart uses state.s0..state.s9",
+          "evidence": ["source:SDL/main.c state save/load extension grammar @208ba4af", "source:Cocoa/Document.m container naming @208ba4af"]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external firmware required: SDL Windows builds ship SameBoy boot-ROM resources beside the executable. Optional custom bootrom_path selects a folder",
+          "naming": "Optional exact names: dmg0_boot.bin, dmg_boot.bin, mgb_boot.bin, sgb_boot.bin, sgb2_boot.bin, cgb0_boot.bin, cgb_boot.bin, cgbE_boot.bin, agb0_boot.bin, agb_boot.bin; no canonical external checksum",
+          "evidence": ["source:Makefile Windows resource/install rules and BootROMs target @208ba4af", "source:SDL/main.c load_boot_rom names[] and resource_path fallback @208ba4af"]
+        }
+      ]
+    }
+  },
+  "notes": "SameBoy's SDL frontend is used on Linux, Windows and other non-macOS systems; macOS uses the native Cocoa frontend. The Flatpak is community-provided and unverified by the upstream developer; all external boot-ROM hashes are intentionally omitted because SameBoy can use bundled open-source images and user custom files have no single canonical checksum. Save/state paths are ROM-relative by source, so a sandbox only changes access permissions, not their naming."
+}

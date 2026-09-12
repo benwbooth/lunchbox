@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "slug": "b-em",
+  "emulator": "B-em",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/stardot/b-em",
+      "url": "https://github.com/stardot/b-em",
+      "role": "official upstream identity and implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/stardot/b-em",
+      "role": "official distribution/documentation evidence"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/b-em/b-em.cfg",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings are configuration keys in b-em.cfg; exact names follow the upstream config template",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest saves inside attached DFS/ADFS disk images",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<snapshot>.snp snapshots (catalogued extension); slots are not separately documented",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "BBC ROM images selected by model; no universal canonical checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/b-em/b-em.cfg",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings are configuration keys in b-em.cfg; exact names follow the upstream config template",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest saves inside attached DFS/ADFS disk images",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<snapshot>.snp snapshots (catalogued extension); slots are not separately documented",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "BBC ROM images selected by model; no universal canonical checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/b-em/b-em.cfg",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings are configuration keys in b-em.cfg; exact names follow the upstream config template",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest saves inside attached DFS/ADFS disk images",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<snapshot>.snp snapshots (catalogued extension); slots are not separately documented",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "BBC ROM images selected by model; no universal canonical checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/b-em/b-em.cfg",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings are configuration keys in b-em.cfg; exact names follow the upstream config template",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest saves inside attached DFS/ADFS disk images",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<snapshot>.snp snapshots (catalogued extension); slots are not separately documented",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "BBC ROM images selected by model; no universal canonical checksum",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/stardot/b-em",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {}
+}

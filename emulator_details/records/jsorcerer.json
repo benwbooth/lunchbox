@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "slug": "jsorcerer",
+  "emulator": "JSorcerer",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "http://www.liaquay.co.uk/sorcerer/",
+      "url": "http://www.liaquay.co.uk/sorcerer/",
+      "role": "official upstream project identity and implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "http://www.liaquay.co.uk/sorcerer/",
+      "role": "official distribution or project documentation"
+    }
+  ],
+  "platform_gaps": {
+    "linux": {
+      "status": "unresolved",
+      "reason": "The official JSorcerer source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:http://www.liaquay.co.uk/sorcerer/",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unresolved",
+      "reason": "The official JSorcerer source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:http://www.liaquay.co.uk/sorcerer/",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "macos": {
+      "status": "unresolved",
+      "reason": "The official JSorcerer source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:http://www.liaquay.co.uk/sorcerer/",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "windows": {
+      "status": "unresolved",
+      "reason": "The official JSorcerer source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:http://www.liaquay.co.uk/sorcerer/",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    }
+  }
+}

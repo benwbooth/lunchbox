@@ -147,16 +147,16 @@
         {
           "purpose": "bios",
           "path": "<exe dir>\\data\\ (dc_boot.bin, naomi.zip, awbios.zip, hod2bios.zip, f355bios.zip, ...); [config] Dreamcast.BiosPath and content dirs are also searched",
-          "naming": "dc_boot.bin required for real Dreamcast BIOS (HLE fallback otherwise), dc_nvmem.bin generated; arcade BIOS zips resolved by the BIOS[] table names. Lunchbox DB firmware_rules currently resolves the Windows flycast BIOS root from %LOCALAPPDATA%\\Flycast (crates/lunchbox-app/src/firmware.rs), which does not match this source layout - captured here for follow-up, not changed by this record",
+          "naming": "dc_boot.bin required for real Dreamcast BIOS (HLE fallback otherwise), dc_nvmem.bin generated; arcade BIOS zips resolved by the BIOS[] table names",
           "evidence": [
             "source:core/hw/flashrom/nvmem.cpp loadFiles/loadFiles BIOS patterns",
             "source:core/oslib/oslib.cpp findFlash/findNaomiBios search order",
             "docs:https://github.com/TheArcadeStriker/flycast-wiki/wiki/Getting-started-with-Flycast (data folder layout)",
-            "repo:crates/lunchbox-app/src/firmware.rs (windows flycast root %LOCALAPPDATA%\\Flycast)"
+            "source:core/windows/winmain.cpp (Windows data root is <exe dir>\\data\\)"
           ]
         }
       ],
-      "notes": "The pinned source keeps all Windows data portable next to the executable (exe dir + data\\); there is no roaming/local AppData path in core/windows/winmain.cpp. Lunchbox's firmware.rs Windows root is the known divergence."
+      "notes": "The pinned source keeps all Windows data portable next to the executable (exe dir + data\\); there is no roaming/local AppData path in core/windows/winmain.cpp."
     },
     "macos": {
       "paths": [
@@ -201,7 +201,7 @@
           ]
         }
       ],
-      "notes": "Note the source spelling is 'Flycast' (~/Library/Application Support/Flycast); Lunchbox firmware.rs uses lowercase 'flycast', which resolves on the default case-insensitive APFS/HFS+ volumes but not on case-sensitive ones - flagged for follow-up."
+      "notes": "The source and Lunchbox firmware adapter use the capitalized macOS data root ~/Library/Application Support/Flycast; legacy ~/.flycast remains an upstream compatibility path."
     }
   }
 }

@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "slug": "ares",
+  "emulator": "ares",
+  "sources": [
+    { "kind": "source", "repo": "ares-emulator/ares", "commit": "af4cbb04f067682a8a3cf42695ff78bed634b38d", "role": "desktop path roots, settings.bml, input mapping serialization, save/state naming, firmware lookup and SHA-256 table" },
+    { "kind": "docs", "url": "https://ares-emu.net/", "role": "official project and supported desktop platforms" },
+    { "kind": "docs", "url": "https://ares-developers.github.io/Ares-docs/ui-features/savegames.html", "role": "save-game behavior" },
+    { "kind": "package", "url": "https://github.com/flathub/dev.ares.ares", "role": "community Flatpak manifest and sandbox app id dev.ares.ares" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.local/share/ares/settings.bml ($XDG_DATA_HOME/ares/settings.bml; an existing settings.bml beside the executable or in shared data takes precedence). Input mappings are stored in BML keys VirtualPad<n>/<input-name> and VirtualMouse<n>/<input-name>; each value is semicolon-separated device-id/group/input[/Lo|Hi|Rumble] assignments.",
+          "evidence": ["source:nall/nall/path.hpp userData() XDG_DATA_HOME fallback", "source:desktop-ui/desktop-ui.cpp locate(\"settings.bml\")", "source:desktop-ui/settings/settings.cpp VirtualPad/VirtualMouse serialization"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM by default (the configured Paths/Saves override is used when set); for a ROM game this is the ROM basename with the per-system save extension. For directory-style games, the save is inside the game's directory.",
+          "naming": "Per-system extensions are defined by each ares core (for example .eeprom, .bram, .card, .pak, .ram); no one universal save filename exists. The official save-game documentation states game saves use the game folder and a random .sav filename for supported game mods.",
+          "evidence": ["source:mia/pak/pak.cpp Pak::saveLocation (Paths/Saves override, ROM sidecar fallback, directory fallback)", "docs:ares-developers.github.io/Ares-docs/ui-features/savegames.html"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the loaded ROM by default (or under the configured Paths/Saves directory, in a per-system subdirectory); Ares writes individual state files rather than an archive.",
+          "naming": "<rom basename>.bs<slot> (slots 1-9), with .bsu/.blu undo files; no separate screenshot sidecar is required. The source does not define a fixed per-user states directory.",
+          "evidence": ["source:desktop-ui/program/states.cpp stateSave/stateLoad uses .bs<slot>, .bsu and .blu", "source:desktop-ui/emulator/emulator.cpp locate() and configured Paths/Saves"]
+        },
+        {
+          "purpose": "bios",
+          "path": "Optional external firmware is selected in Settings > Firmware and scanned from the configured Firmware path, otherwise the packaged Firmware/ resource directory. Files have no canonical user-visible filename: ares matches firmware by SHA-256 and stores the selected path in settings.bml.",
+          "naming": "Authoritative source hashes (SHA-256; source provides type/region but no required filename): Famicom Disk System BIOS Japan fdc1a76e654feea993fcb38366e05ee5f4eb641f86fe6bebaeefd412e112dd72; MSX BIOS Japan 413a2b601a94b3792e054be2439cc77a1819cceadbfa9542f88d51c7480f2ef0; MSX2 MAIN Japan 0c672d86ead61a97f49a583b88b7c1905da120645cd44f0c9f2baf4f4631e0b1 and SUB Japan 6c6f421a10c428d960b7ecc990f99af1c638147f747bddca7b0bf0e2ab738300; GBA BIOS World fd2547724b505f487e6dcb29ec2ecff3af35a841a77ab2e85fd87350abd36570; PlayStation US 11052b6499e466bbf0a709b1f9cb6834a9418e66680387912451e971cf8a1fef, Japan 9c0421858e217805f4abe18698afea8d5aa36ff0727eb8484944e00eb5e7eadb, Europe 1faaa18fa820a0225e488d9f086296b8e6c46df739666093987ff7d8fd352c09; Mega CD US fb477cdbf94c84424c2feca4fe40656d85393fe7b7b401911b45ad2eb991258c, Japan 7133fc2dd2fe5b7d0acd53a5f10f3d00b5d31270239ad20d74ef32393e24af88, Europe fe608a2a07676a23ab5fd5eee2f53c9e2526d69a28aa16ccd85c0ec42e6933cb. Other source entries without a hash have no canonical checksum in ares.",
+          "evidence": ["source:desktop-ui/settings/firmware.cpp findFirmware hashes candidate files with SHA-256", "source:desktop-ui/emulator/*.cpp Firmware type/region/hash declarations", "source:desktop-ui/desktop-ui.cpp locate(\"Firmware/\")"]
+        }
+      ],
+      "notes": "Native desktop Linux build. The source's platform path code uses XDG_DATA_HOME for settings and the default ares user-data root; Flatpak is recorded separately because its sandbox changes those XDG roots."
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/dev.ares.ares/data/ares/settings.bml (Flatpak XDG_DATA_HOME/ares; if the community manifest sets the standard XDG sandbox roots). Input mappings use BML VirtualPad<n>/<input-name> and VirtualMouse<n>/<input-name> values: semicolon-separated device-id/group/input[/Lo|Hi|Rumble].",
+          "evidence": ["package:github.com/flathub/dev.ares.ares manifest, app id dev.ares.ares", "source:ares-emulator/ares af4cbb04f067682a8a3cf42695ff78bed634b38d desktop-ui/desktop-ui.cpp and nall/nall/path.hpp", "docs:Flatpak XDG data directory convention"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM when the sandbox grants access, or under the configured Paths/Saves directory; Flatpak does not alter ares's save naming, but filesystem access to external ROM folders must be granted by the package permissions.",
+          "naming": "Same as native ares: per-system sidecar extensions such as .eeprom/.bram/.card/.pak, or the game-defined .sav behavior documented by ares; no canonical single filename.",
+          "evidence": ["source:mia/pak/pak.cpp Pak::saveLocation", "docs:ares-developers.github.io/Ares-docs/ui-features/savegames.html", "package:github.com/flathub/dev.ares.ares manifest filesystem permissions"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the loaded ROM when writable, or under configured Paths/Saves; Flatpak does not change Ares's individual state-file format.",
+          "naming": "<rom basename>.bs<slot> for slots 1-9, with .bsu/.blu undo files; no fixed per-user states directory or archive format is defined by the source.",
+          "evidence": ["source:desktop-ui/program/states.cpp", "source:desktop-ui/program/paths.cpp", "package:github.com/flathub/dev.ares.ares"]
+        },
+        {
+          "purpose": "bios",
+          "path": "Configured Firmware directory or the packaged Firmware/ directory inside the Flatpak; ares identifies external firmware by SHA-256, not a required filename. The sandbox must grant access to user BIOS files.",
+          "naming": "Same authoritative hashes and no-canonical-filename limitation as native Linux (see source firmware declarations; no firmware is distributed in the record).",
+          "evidence": ["source:desktop-ui/settings/firmware.cpp", "source:desktop-ui/emulator/*.cpp", "package:github.com/flathub/dev.ares.ares"]
+        }
+      ],
+      "notes": "Community-provided Flathub package, not maintained by the ares team; the package page currently lists x86_64 and aarch64. Paths are conditional on standard Flatpak XDG sandbox roots and manifest permissions."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/ares/settings.bml (Path::userData on macOS; an existing settings.bml beside the app bundle resources can take precedence). Input mappings are BML VirtualPad<n>/<input-name> and VirtualMouse<n>/<input-name>, with semicolon-separated device-id/group/input[/Lo|Hi|Rumble] assignments.",
+          "evidence": ["source:nall/nall/path.hpp userData() macOS branch", "source:desktop-ui/desktop-ui.cpp locate(\"settings.bml\")", "source:desktop-ui/settings/settings.cpp input serialization"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM by default, or under the configured Paths/Saves directory; directory-style games store their save in the game directory.",
+          "naming": "Per-system sidecar extensions (for example .eeprom, .bram, .card, .pak, .ram); no universal filename. The game-defined .sav behavior is documented separately by ares.",
+          "evidence": ["source:mia/pak/pak.cpp Pak::saveLocation", "docs:ares-developers.github.io/Ares-docs/ui-features/savegames.html"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the loaded ROM by default, or under configured Paths/Saves; Ares stores individual state files.",
+          "naming": "<rom basename>.bs<slot> for slots 1-9, with .bsu/.blu undo files; directory-style games also use individual files.",
+          "evidence": ["source:desktop-ui/program/states.cpp", "source:desktop-ui/program/paths.cpp"]
+        },
+        {
+          "purpose": "bios",
+          "path": "Settings > Firmware's configured directory or the app's Firmware/ resource directory; external firmware has no required filename and is matched by SHA-256.",
+          "naming": "Source-declared type/region SHA-256 values are authoritative where present; source firmware entries without hashes have no canonical checksum. No external firmware is bundled by this record.",
+          "evidence": ["source:desktop-ui/settings/firmware.cpp", "source:desktop-ui/emulator/*.cpp firmware declarations", "source:nall/nall/path.hpp macOS data paths"]
+        }
+      ],
+      "notes": "Native macOS desktop target. Path::userData uses ~/Library/Application Support rather than XDG paths."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%LOCALAPPDATA%\\ares\\settings.bml (Path::userData on Windows; if the executable directory already contains settings.bml it is preferred). Input mappings are BML VirtualPad<n>/<input-name> and VirtualMouse<n>/<input-name>; values are semicolon-separated device-id/group/input[/Lo|Hi|Rumble] assignments.",
+          "evidence": ["source:nall/nall/path.hpp userData() Windows CSIDL_LOCAL_APPDATA branch", "source:desktop-ui/desktop-ui.cpp locate(\"settings.bml\")", "source:desktop-ui/settings/settings.cpp input serialization"]
+        },
+        {
+          "purpose": "saves",
+          "path": "Beside the loaded ROM by default, or under configured Paths/Saves; directory-style games store save data in the game directory.",
+          "naming": "Per-system sidecar extensions such as .eeprom, .bram, .card, .pak, and .ram; no universal save filename. The game-defined .sav behavior is documented by ares.",
+          "evidence": ["source:mia/pak/pak.cpp Pak::saveLocation", "docs:ares-developers.github.io/Ares-docs/ui-features/savegames.html"]
+        },
+        {
+          "purpose": "states",
+          "path": "Beside the loaded ROM by default, or under configured Paths/Saves; Ares stores individual state files.",
+          "naming": "<rom basename>.bs<slot> for slots 1-9, with .bsu/.blu undo files; directory-style games also use individual files.",
+          "evidence": ["source:desktop-ui/program/states.cpp", "source:desktop-ui/program/paths.cpp"]
+        },
+        {
+          "purpose": "bios",
+          "path": "Settings > Firmware's configured directory or the executable/package Firmware/ directory; ares matches external firmware by SHA-256 and does not require a canonical filename.",
+          "naming": "Use source-declared type/region SHA-256 values where present; entries without hashes explicitly have no canonical checksum. No external firmware is distributed by this record.",
+          "evidence": ["source:desktop-ui/settings/firmware.cpp", "source:desktop-ui/emulator/*.cpp firmware declarations", "source:nall/nall/path.hpp Windows data paths"]
+        }
+      ],
+      "notes": "Native Windows target; source uses %LOCALAPPDATA% for user data and settings."
+    }
+  }
+}

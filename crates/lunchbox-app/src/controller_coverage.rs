@@ -62,6 +62,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let catalog = catalog();
+    let record_slugs = crate::platform_locations::record_slugs()?;
     let mut cores = BTreeMap::<String, BTreeSet<String>>::new();
     let mut core_owners = BTreeMap::<(String, String), BTreeSet<String>>::new();
     let mut standalone = BTreeMap::<String, (String, BTreeSet<String>)>::new();
@@ -370,7 +371,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
         "source_entry_percent":if retroarch_cores.is_empty() && standalone.is_empty() { 0.0 } else { (covered+standalone_covered) as f64 * 100.0 / (retroarch_cores.len()+standalone.len()) as f64 },
         "standalone_inventory_status":"source_dispatch_audited_runtime_unverified",
         "emulator_count":emulators.len(),"platform_count":platforms.len(),
-        "relationship_count":relationships.len(),"rows":rows,
+        "relationship_count":relationships.len(),"record_slugs":record_slugs,"rows":rows,
         "profiles":profile_coverage(catalog)}),
     )
 }

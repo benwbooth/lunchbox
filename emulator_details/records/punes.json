@@ -17,7 +17,7 @@
           "evidence": ["source:src/gui/qt.cpp gui_config_folder = QStandardPaths::GenericConfigLocation + NAME", "source:src/core/version.h NAME=\"puNES\"", "source:src/core/common.h CFGFILENAME/INPFILENAME/RECENTROMSFILENAME", "source:src/gui/mainApplication.cpp control_base_folders creates cheat/pgs/shp/jsc under config folder"]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "~/.config/puNES/input.cfg",
           "naming": "INI groups [port 1]..[port 4]; per port: controller N=standard|zapper|snes mouse|arkanoid paddle|disable, pad N type=auto|original|3rdparty, PNJ GUID=<SDL joystick GUID or NULL>, PNK A/B/Select/Start/Up/Down/Left/Right/TurboA/TurboB=<Qt key name>, P1 TA Delay/P1 TB Delay=[shortcuts] group holds hotkeys; joystick bindings are stored per-device GUID, never fuzzy-matched",
           "evidence": ["source:src/gui/settings.h default table (\"port 1\",\"P1K A\",\"S\") etc.", "source:src/gui/objSettings.cpp group parse [port 1] SET_INP_P1J_GUID/SET_INP_P1K_A", "local:~/.var/app/io.github.punesemu.puNES/config/puNES/input.cfg [port 1] P1K A=S, P1J GUID=NULL"]
@@ -52,7 +52,7 @@
           "evidence": ["local:~/.var/app/io.github.punesemu.puNES/config/puNES/ contains puNES.cfg, input.cfg, recent.cfg, cheat/, jsc/, pgs/, shp/", "docs:flathub manifest finish-args mount home read-only (--filesystem=home:ro), so Qt GenericConfigLocation resolves inside the sandbox HOME", "source:src/gui/qt.cpp gui_config_folder", "source:src/core/common.h file name defines"]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "~/.var/app/io.github.punesemu.puNES/config/puNES/input.cfg",
           "naming": "same [port 1]..[port 4] INI format as native linux (verified on this machine: P1K A=S, P1K B=A, P1J GUID=NULL)",
           "evidence": ["local:~/.var/app/io.github.punesemu.puNES/config/puNES/input.cfg [port 1] bindings read and confirmed", "source:src/gui/settings.h default table"]
@@ -87,7 +87,7 @@
           "evidence": ["source:src/gui/qt.cpp gui_config_folder = QStandardPaths::GenericConfigLocation + NAME (Roaming AppData on Windows)", "source:src/core/common.h file name defines", "source:src/gui/mainApplication.cpp control_base_folders"]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "%APPDATA%\\puNES\\input.cfg",
           "naming": "same [port 1]..[port 4] format with PNJ GUID / PNK <button> entries as linux",
           "evidence": ["source:src/gui/objSettings.cpp group parse [port 1]..[port 4]", "source:src/gui/settings.h default table"]
@@ -114,5 +114,12 @@
       "notes": "Windows builds (32/64 bit, OpenGL or Direct3D9) are official per README and CI (mingw windows-latest job)."
     }
   },
-  "notes": "macOS: not captured — puNES has no macOS port. README lists only Linux, FreeBSD, OpenBSD and Windows, nightly builds are AppImage/Windows only, and .github/workflows/build.yml builds only ubuntu-22.04 and windows-latest (checked at master b1758ec26). lunchbox DB: emulators row 6320fd6a-3589-5ff5-a5a0-9ae7d3cdfd2f (normalized_name 'punes') records save_directory '~/.local/share/puNES/save' with extension '.sav', which is imprecise per source: save/ holds save states (.pXX) and battery NVRAM is <basename>.prb under prb/; firmware_rules contains no punes rows (verified in build/lunchbox.db)."
+  "notes": "README lists only Linux, FreeBSD, OpenBSD and Windows; nightly builds are AppImage/Windows only, and .github/workflows/build.yml builds only ubuntu-22.04 and windows-latest (checked at master b1758ec26). lunchbox DB: emulators row 6320fd6a-3589-5ff5-a5a0-9ae7d3cdfd2f (normalized_name 'punes') records save_directory '~/.local/share/puNES/save' with extension '.sav', which is imprecise per source: save/ holds save states (.pXX) and battery NVRAM is <basename>.prb under prb/; firmware_rules contains no punes rows (verified in build/lunchbox.db).",
+  "platform_gaps": {
+    "macos": {
+      "status": "unsupported",
+      "reason": "The pinned upstream project documents compilation/support for Linux, FreeBSD, OpenBSD and Windows only; it provides no macOS target or release.",
+      "evidence": ["source:punesemu/puNES README.md supported build platforms and .github/workflows/build.yml @b1758ec26"]
+    }
+  }
 }

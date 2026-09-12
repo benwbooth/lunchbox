@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "slug": "eka2l1",
+  "emulator": "EKA2L1",
+  "sources": [
+    { "kind": "source", "repo": "EKA2L1/EKA2L1", "role": "official desktop builds and data/config implementation" },
+    { "kind": "docs", "url": "https://github.com/EKA2L1/EKA2L1/wiki/Using-the-emulator", "role": "data-storage config and virtual drives" },
+    { "kind": "docs", "url": "https://eka2l1.github.io/download/", "role": "official Windows/macOS/Linux downloads" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "config.yml beside the EKA2L1 executable by default; the data-storage key changes the single data-root folder.", "evidence": ["docs:EKA2L1 Wiki Using the emulator (default data beside executable and config.yml data-storage)", "source:EKA2L1/EKA2L1 config/path code"] },
+        { "purpose": "input", "path": "Input/key mappings are configured through the GUI Preferences and persisted in the EKA2L1 configuration/data root; the official desktop docs do not publish a stable serialized controller-key grammar.", "naming": "Preserve the generated config rather than guessing key names; device/input values are release-specific.", "evidence": ["docs:EKA2L1 Wiki Using the emulator (GUI Preferences)", "source:EKA2L1/EKA2L1 input configuration code"] },
+        { "purpose": "saves", "path": "Inside the emulated Symbian filesystem under data/drives/c/private and data/drives/e/private (and other virtual drives as selected by the game); EKA2L1 has no separate universal save directory.", "naming": "Symbian application/game-defined files, commonly under private/<UID> directories; preserve the complete data/drives tree.", "evidence": ["docs:EKA2L1 Wiki Using the emulator (single data folder and drives)", "source:EKA2L1/EKA2L1 virtual-drive implementation"] },
+        { "purpose": "states", "path": "No save-state feature or state-file path is documented by the official desktop EKA2L1 documentation/source.", "naming": "Not applicable: use game-native saves in data/drives.", "evidence": ["docs:EKA2L1 Wiki Using the emulator", "source:EKA2L1/EKA2L1 desktop frontend"] },
+        { "purpose": "bios", "path": "Firmware/device packages are installed from File > Install device into the data root; device ROM resources are under data/roms and the installed virtual Z drive is required for matching Symbian firmware.", "naming": "Firmware package/ROM names are device-specific (the official docs require a repackage of the Z drive); no universal BIOS filename/checksum is published.", "evidence": ["docs:EKA2L1 Wiki Using the emulator (Z-drive repackage and Install device)", "source:EKA2L1/EKA2L1 device/firmware loader"] },
+        { "purpose": "keys", "path": "No external decryption key file is documented; firmware/device packages provide the required Symbian system material.", "naming": "No external key filename or canonical checksum.", "evidence": ["docs:EKA2L1 Wiki Using the emulator", "source:EKA2L1/EKA2L1"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "%APPDATA%\\EKA2L1\\Data\\config.yml in packaged builds; upstream's portable default is a data folder beside the executable and config.yml data-storage selects it.", "evidence": ["docs:EKA2L1 Wiki Using the emulator", "source:EKA2L1/EKA2L1 Windows path code"] },
+        { "purpose": "input", "path": "GUI Preferences input mappings persisted in the EKA2L1 config/data root.", "naming": "No stable official serialized controller grammar; preserve generated config.", "evidence": ["docs:EKA2L1 Wiki Using the emulator", "source:EKA2L1/EKA2L1 input code"] },
+        { "purpose": "saves", "path": "%APPDATA%\\EKA2L1\\Data\\drives\\c\\private\\ and drives\\e\\private\\ (or the configured data root), using the emulated Symbian filesystem.", "naming": "Game-defined files, typically private/<UID> directories; back up the full Data/drives tree.", "evidence": ["docs:EKA2L1 Wiki Using the emulator", "source:EKA2L1/EKA2L1 virtual-drive code"] },
+        { "purpose": "states", "path": "No official desktop save-state path/feature is documented.", "naming": "Not applicable.", "evidence": ["docs:EKA2L1 Wiki Using the emulator"] },
+        { "purpose": "bios", "path": "%APPDATA%\\EKA2L1\\Data\\roms plus installed device/Z-drive data; install through File > Install device.", "naming": "Device-specific firmware/ROM package names; no universal checksum.", "evidence": ["docs:EKA2L1 Wiki Using the emulator", "source:EKA2L1/EKA2L1 device loader"] },
+        { "purpose": "keys", "path": "No external key file documented.", "naming": "No external key filename/checksum.", "evidence": ["docs:EKA2L1 Wiki Using the emulator"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "The official macOS build uses the portable-style config.yml/data root (normally beside the app/executable unless data-storage is changed); upstream notes macOS builds but no separate stable user path.", "evidence": ["docs:EKA2L1 Wiki Using the emulator", "docs:EKA2L1 README (macOS build availability and maintainer caveat)"] },
+        { "purpose": "input", "path": "GUI Preferences writes input mappings into the generated config/data root; exact serialized names are not documented.", "naming": "Generated EKA2L1 config; do not infer a cross-platform controller grammar.", "evidence": ["docs:EKA2L1 Wiki Using the emulator", "source:EKA2L1/EKA2L1 input code"] },
+        { "purpose": "saves", "path": "data/drives/c/private and data/drives/e/private under the configured data root.", "naming": "Symbian game-defined files, commonly private/<UID> directories.", "evidence": ["docs:EKA2L1 Wiki Using the emulator", "source:EKA2L1/EKA2L1 virtual-drive code"] },
+        { "purpose": "states", "path": "No documented desktop save-state facility.", "naming": "Not applicable.", "evidence": ["docs:EKA2L1 Wiki Using the emulator"] },
+        { "purpose": "bios", "path": "data/roms and installed device/Z-drive packages supplied through File > Install device.", "naming": "Device-specific firmware names; no universal checksum.", "evidence": ["docs:EKA2L1 Wiki Using the emulator", "docs:EKA2L1 download"] },
+        { "purpose": "keys", "path": "No external key file documented.", "naming": "No external key filename/checksum.", "evidence": ["docs:EKA2L1 Wiki Using the emulator"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The upstream project publishes desktop builds/artifacts but no official Flatpak package; community wrappers are not treated as the runtime.", "evidence": ["source:EKA2L1/EKA2L1 README (release artifacts and no official maintainer caveat)", "docs:EKA2L1 download"] }
+  }
+}

@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "core": "vice_x64",
+  "display_name": "Commodore - C64 (VICE x64, fast)",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": "vice_x64_libretro.info",
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:vice_x64:joystick-port1-keyboard",
+      "retroarch:vice_x64:joystick-port2-keyboard"
+    ],
+    "mapping_summary": "VICE joystick/keyboard profile maps joystick ports plus the emulated keyboard.",
+    "evidence": [
+      "catalog.json controller profile"
+    ]
+  },
+  "firmware": {
+    "status": "optional",
+    "files": [
+      {
+        "path": "vice/JiffyDOS_C64.bin",
+        "description": "JiffyDOS C64 Kernal",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "be09394f0576cf81fa8bacf634daf9a2",
+            "source": "vice_x64_libretro.info firmware0_path/firmware0_opt/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "vice_x64_libretro.info firmware0_path/firmware0_opt/notes"
+        ]
+      },
+      {
+        "path": "vice/JiffyDOS_1541-II.bin",
+        "description": "JiffyDOS 1541 drive BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "1b1e985ea5325a1f46eb7fd9681707bf",
+            "source": "vice_x64_libretro.info firmware1_path/firmware1_opt/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "vice_x64_libretro.info firmware1_path/firmware1_opt/notes"
+        ]
+      },
+      {
+        "path": "vice/JiffyDOS_1571_repl310654.bin",
+        "description": "JiffyDOS 1571 drive BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "41c6cc528e9515ffd0ed9b180f8467c0",
+            "source": "vice_x64_libretro.info firmware2_path/firmware2_opt/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "vice_x64_libretro.info firmware2_path/firmware2_opt/notes"
+        ]
+      },
+      {
+        "path": "vice/JiffyDOS_1581.bin",
+        "description": "JiffyDOS 1581 drive BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "20b6885c6dc2d42c38754a365b043d71",
+            "source": "vice_x64_libretro.info firmware3_path/firmware3_opt/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "vice_x64_libretro.info firmware3_path/firmware3_opt/notes"
+        ]
+      }
+    ],
+    "notes": "VICE lists optional JiffyDOS alternatives with published MD5 digests.",
+    "evidence": [
+      "vice_x64_libretro.info firmware_count/firmware*_path/firmware*_opt/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+    ]
+  },
+  "saves": {
+    "status": "content_dependent",
+    "extensions": [
+      ".d64",
+      ".d71",
+      ".d81",
+      ".g64",
+      ".t64"
+    ],
+    "naming": "Program saves are written into writable attached disk/tape images; no generic sidecar save file is claimed.",
+    "notes": "Persistence depends on media and filesystem-device configuration.",
+    "evidence": [
+      "VICE libretro media-save behavior"
+    ]
+  },
+  "states": {
+    "status": "supported",
+    "serialization": "serialized",
+    "naming": "Frontend state names are <content-basename>.state and <content-basename>.stateN.",
+    "notes": "VICE core-info declares serialized savestates.",
+    "evidence": [
+      "VICE core-info savestate=true/savestate_features=serialized"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "windows": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    }
+  }
+}

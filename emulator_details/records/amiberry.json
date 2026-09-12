@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "slug": "amiberry",
+  "emulator": "Amiberry",
+  "sources": [
+    { "kind": "source", "repo": "BlitterStudio/amiberry", "role": "runtime path and controller implementation" },
+    { "kind": "docs", "url": "https://github.com/BlitterStudio/amiberry/wiki/Paths-and-Files", "role": "per-platform paths, overrides and portable mode" },
+    { "kind": "docs", "url": "https://github.com/BlitterStudio/amiberry/wiki/GUI-Savestates", "role": "savestate slots and files" },
+    { "kind": "docs", "url": "https://github.com/BlitterStudio/amiberry/wiki/Command-line-reference", "role": "statefile, ROM and config options" },
+    { "kind": "flatpak", "id": "com.blitterstudio.amiberry", "url": "https://flathub.org/en/apps/com.blitterstudio.amiberry", "role": "Flatpak package identity" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "~/.config/amiberry/amiberry.conf; per-machine .uae configurations default to ~/Amiberry/conf. AMIBERRY_CONFIG_DIR and AMIBERRY_HOME_DIR override these roots.", "evidence": ["docs:BlitterStudio/amiberry wiki Paths-and-Files (Linux config and home roots)", "source:BlitterStudio/amiberry startup/path code"] },
+        { "purpose": "input", "path": "~/Amiberry/controllers (or configured controllers_path), containing SDL gamecontrollerdb.txt and user controller mappings; .uae config files also carry per-machine input settings.", "naming": "SDL gamecontroller database grammar (GUID, name, platform and button/axis bindings) plus Amiga key names in the .uae configuration; GUI-generated mappings are authoritative.", "evidence": ["docs:BlitterStudio/amiberry wiki GUI: Paths (controllers default and gamecontrollerdb.txt)", "source:BlitterStudio/amiberry controller/joystick code"] },
+        { "purpose": "saves", "path": "Configured saveimage_dir (default is the mounted Amiga volume/disk image for game data); CDTV/CD32 NVRAM is in ~/.local/share/amiberry/nvram by default.", "naming": "Game-defined files inside ADF/HDF/CD images; CDTV/CD32 NVRAM files are emulator-generated and use the title/device naming selected by Amiberry.", "evidence": ["docs:BlitterStudio/amiberry wiki Paths-and-Files (saveimage_dir and nvram)", "docs:Amiberry storage/path documentation"] },
+        { "purpose": "states", "path": "~/Amiberry/savestates by default (savestate_dir can override); --statefile loads a specified state or searches the configured directory.", "naming": "*.uss save states, based on the loaded .uae configuration or floppy; GUI offers slots 0-14 and stores a screenshot preview alongside the state.", "evidence": ["docs:BlitterStudio/amiberry wiki Command-line-reference (--statefile and .uss)", "docs:BlitterStudio/amiberry wiki GUI-Savestates (15 slots and preview)"] },
+        { "purpose": "bios", "path": "~/Amiberry/roms (rom_path; the Linux path table calls this roms) holds Amiga Kickstart ROMs. Kickstart selection is per emulated model/configuration.", "naming": "Kickstart ROM filenames are user-supplied/ROM-set-specific; Amiberry documentation does not publish canonical checksums for every supported Kickstart. Cloanto-encrypted sets additionally use rom.key.", "evidence": ["docs:BlitterStudio/amiberry wiki Paths-and-Files (Linux roms)", "docs:BlitterStudio/amiberry wiki Quick-start (copy Kickstart ROM files to roms)", "docs:BlitterStudio/amiberry wiki Libretro-Core (rom.key name)"] },
+        { "purpose": "keys", "path": "~/Amiberry/roms/rom.key only when using Cloanto-encrypted Kickstart ROMs; ordinary licensed/plain ROMs need no separate key.", "naming": "Exact key filename is rom.key; Amiberry does not publish a canonical checksum for user key files.", "evidence": ["docs:BlitterStudio/amiberry wiki Libretro-Core (rom.key)", "source:BlitterStudio/amiberry Kickstart ROM scan"] }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        { "purpose": "config", "path": "~/.var/app/com.blitterstudio.amiberry/config/amiberry/amiberry.conf; managed content is under the Flatpak XDG data/home roots and can be changed with Amiberry's Paths panel.", "evidence": ["flatpak:com.blitterstudio.amiberry manifest", "docs:flatpak.org conventions", "docs:Amiberry Paths-and-Files"] },
+        { "purpose": "input", "path": "Flatpak Amiberry controllers directory (configured controllers_path, normally under the per-app data root) with SDL gamecontrollerdb.txt and GUI-generated controller mappings.", "naming": "SDL gamecontroller database plus .uae input settings; exact names follow the upstream controller grammar.", "evidence": ["docs:Amiberry GUI: Paths", "flatpak:com.blitterstudio.amiberry manifest"] },
+        { "purpose": "saves", "path": "Game saves remain inside mounted Amiga disk images; CDTV/CD32 NVRAM and configured saveimage_dir are in the Flatpak writable data root.", "naming": "Game-defined files in disk images; emulator-generated NVRAM names are title/device-specific.", "evidence": ["docs:Amiberry Paths-and-Files", "flatpak:com.blitterstudio.amiberry manifest"] },
+        { "purpose": "states", "path": "Flatpak data-root Savestates directory (the configured savestate_dir; default folder is Savestates in managed layouts).", "naming": "*.uss, with 15 numbered GUI slots and screenshot previews.", "evidence": ["docs:Amiberry GUI-Savestates", "flatpak:com.blitterstudio.amiberry manifest"] },
+        { "purpose": "bios", "path": "Flatpak writable ROMs/Roms directory as shown by the Paths panel; Kickstart ROMs are selected there.", "naming": "Kickstart names are ROM-set-specific; no universal canonical checksum. Encrypted Cloanto sets use rom.key.", "evidence": ["docs:Amiberry Paths-and-Files", "docs:Amiberry Libretro-Core", "flatpak:com.blitterstudio.amiberry"] },
+        { "purpose": "keys", "path": "The optional Cloanto key is rom.key alongside the Kickstart ROMs in the frontend/system or Amiberry ROM path.", "naming": "rom.key; no canonical checksum published.", "evidence": ["docs:Amiberry Libretro-Core"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "%LOCALAPPDATA%\\Amiberry\\amiberry.conf; .uae configurations default to %USERPROFILE%\\Amiberry\\Configurations. Official portable ZIP mode uses <portable-root>\\Settings and <portable-root>\\conf when amiberry.portable is beside Amiberry.exe.", "evidence": ["docs:Amiberry Paths-and-Files (Windows and portable ZIP table)"] },
+        { "purpose": "input", "path": "%USERPROFILE%\\Amiberry\\Controllers (portable: <portable-root>\\Controllers), with SDL gamecontrollerdb.txt and custom mappings; .uae files store machine input settings.", "naming": "SDL gamecontroller database grammar and upstream .uae key/input properties; use GUI-generated files rather than inventing numeric bindings.", "evidence": ["docs:Amiberry Paths-and-Files", "source:BlitterStudio/amiberry controller code"] },
+        { "purpose": "saves", "path": "Game saves are inside attached Amiga disk images; CDTV/CD32 NVRAM defaults to %USERPROFILE%\\Amiberry\\Nvram (portable: <portable-root>\\Nvram).", "naming": "Game-defined files inside disk images; NVRAM naming is title/device-specific.", "evidence": ["docs:Amiberry Paths-and-Files"] },
+        { "purpose": "states", "path": "%USERPROFILE%\\Amiberry\\Savestates (portable: <portable-root>\\Savestates).", "naming": "*.uss, 15 GUI slots (0-14) plus screenshot preview; --statefile accepts an explicit file.", "evidence": ["docs:Amiberry Paths-and-Files", "docs:Amiberry GUI-Savestates", "docs:Amiberry Command-line-reference"] },
+        { "purpose": "bios", "path": "%USERPROFILE%\\Amiberry\\Roms (portable: <portable-root>\\Roms), selected as Kickstart ROMs for each Amiga model.", "naming": "Kickstart filenames are ROM-set-specific; no universal canonical checksum. Cloanto sets may require rom.key.", "evidence": ["docs:Amiberry Paths-and-Files", "docs:Amiberry Quick-start", "docs:Amiberry Libretro-Core"] },
+        { "purpose": "keys", "path": "rom.key beside encrypted Cloanto Kickstart ROMs.", "naming": "Exact filename rom.key; checksum not published by upstream.", "evidence": ["docs:Amiberry Libretro-Core"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "~/Library/Application Support/Amiberry/amiberry.conf; .uae configurations default to ~/Documents/Amiberry/Configurations. AMIBERRY_HOME_DIR overrides the content root.", "evidence": ["docs:Amiberry Paths-and-Files (macOS config/home table and legacy import)"] },
+        { "purpose": "input", "path": "~/Documents/Amiberry/Controllers with SDL gamecontrollerdb.txt and custom mappings; .uae configuration stores per-machine input values.", "naming": "SDL gamecontroller database grammar plus upstream .uae input settings.", "evidence": ["docs:Amiberry Paths-and-Files", "source:BlitterStudio/amiberry controller code"] },
+        { "purpose": "saves", "path": "Game saves remain within mounted Amiga disk images; CDTV/CD32 NVRAM defaults to ~/Documents/Amiberry/Nvram.", "naming": "Game-defined files in disk images; NVRAM names are title/device-specific.", "evidence": ["docs:Amiberry Paths-and-Files"] },
+        { "purpose": "states", "path": "~/Documents/Amiberry/Savestates.", "naming": "*.uss; GUI slots 0-14 and screenshot previews.", "evidence": ["docs:Amiberry Paths-and-Files", "docs:Amiberry GUI-Savestates"] },
+        { "purpose": "bios", "path": "~/Documents/Amiberry/Roms for Kickstart ROMs; per-model selection is stored in the configuration.", "naming": "Kickstart names are ROM-set-specific and have no universal upstream checksum; encrypted Cloanto sets use rom.key.", "evidence": ["docs:Amiberry Paths-and-Files", "docs:Amiberry Quick-start", "docs:Amiberry Libretro-Core"] },
+        { "purpose": "keys", "path": "rom.key alongside encrypted Kickstart ROMs.", "naming": "rom.key; no canonical checksum published.", "evidence": ["docs:Amiberry Libretro-Core"] }
+      ]
+    }
+  }
+}

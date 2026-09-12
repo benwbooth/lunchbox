@@ -24,8 +24,9 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "Controller config is the [sdl] mapperfile setting pointing at a mapper file - by default mapper-sdl2-<version>.map stored alongside the primary config (i.e. ~/.config/dosbox/). Mapper files are plain text; each line maps an event name to one or more bindings: event_name \"binding_1\" \"binding_2\", e.g. key_esc \"key 41\" \"stick_0 button 6\"; keyboard bindings are key <scancode> with optional mod1/mod2/mod3 modifiers. Pre-configured per-game profiles ship in resources/mapperfiles and are loaded by name (mapperfile = xbox/doom.map). --erasemapper deletes only the default mapper file.",
+          "naming": "mapper-sdl2-<version>.map by default; plain-text event_name \"binding\" lines, or a bundled resources/mapperfiles profile name",
           "evidence": [
             "docs:website/docs/0.83/manual/input/keymapper.md @d9135010ea (mapper files section, format, mapperfile setting, --erasemapper)",
             "source:src/gui/mapper.cpp + src/gui/mapper.h contain the mapperfile handling (code-search hit for 'mapperfile' @main)"
@@ -51,6 +52,7 @@
         {
           "purpose": "bios",
           "path": "None required - Staging emulates an Intel x86 PC running MS-DOS entirely in code; no BIOS/firmware ROM image is loaded or configured (no bios paths exist in the manual or [dosbox]/[autoexec] configuration; only machine/video/audio device selection).",
+          "naming": "No external BIOS or firmware filename; DOSBox Staging's PC/MS-DOS emulation is code-based and no canonical checksum applies",
           "evidence": [
             "docs:flathub.org/apps/io.github.dosbox-staging description 'emulates an Intel x86 PC running MS-DOS'",
             "docs:website/docs/0.83/manual/using-dosbox-staging/configuration.md @d9135010ea (full config schema contains no firmware/BIOS file settings)"
@@ -70,7 +72,7 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "Same [sdl] mapperfile mechanism: default mapper-sdl2-<version>.map beside the primary config, i.e. ~/.var/app/io.github.dosbox-staging/config/dosbox/; bundled profiles loaded by name.",
           "naming": "mapper-sdl2-<version>.map",
           "evidence": [
@@ -99,6 +101,7 @@
         {
           "purpose": "bios",
           "path": "None required - no BIOS ROM images in the Flatpak build either.",
+          "naming": "No external BIOS or firmware filename in the Flatpak; no canonical checksum applies",
           "evidence": [
             "docs:flathub.org/apps/io.github.dosbox-staging description; configuration.md schema has no firmware settings"
           ]
@@ -117,7 +120,7 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "[sdl] mapperfile -> mapper-sdl2-<version>.map beside the primary config (i.e. %LOCALAPPDATA%\\DOSBox\\); plain-text event-to-binding lines (event_name \"key <scancode>\" \"stick_0 button N\" ...); bundled profiles in resources/mapperfiles loadable by name; --erasemapper removes the default mapper file.",
           "naming": "mapper-sdl2-<version>.map",
           "evidence": [
@@ -144,6 +147,7 @@
         {
           "purpose": "bios",
           "path": "None required - no BIOS/firmware ROM images are used or configurable.",
+          "naming": "No external BIOS or firmware filename; no canonical checksum applies",
           "evidence": [
             "docs:website/docs/0.83/manual/using-dosbox-staging/configuration.md @d9135010ea (no firmware settings in the config schema)"
           ]
@@ -162,7 +166,7 @@
           ]
         },
         {
-          "purpose": "keys",
+          "purpose": "input",
           "path": "[sdl] mapperfile -> mapper-sdl2-<version>.map beside the primary config (~/Library/Preferences/DOSBox/); same plain-text event/binding format; capture hotkeys are documented as cmd+f5-style equivalents alongside ctrl on macOS in the capture manual.",
           "naming": "mapper-sdl2-<version>.map",
           "evidence": [
@@ -190,6 +194,7 @@
         {
           "purpose": "bios",
           "path": "None required - no BIOS/firmware ROM images are used or configurable.",
+          "naming": "No external BIOS or firmware filename; no canonical checksum applies",
           "evidence": [
             "docs:website/docs/0.83/manual/using-dosbox-staging/configuration.md @d9135010ea (no firmware settings)"
           ]

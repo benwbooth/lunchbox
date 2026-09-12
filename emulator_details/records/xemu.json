@@ -18,6 +18,12 @@
           "evidence": ["source:ui/xemu-settings.cc filename=\"xemu.toml\" + SDL_GetPrefPath(\"xemu\", \"xemu\") + portable detection", "docs:faq portable-mode answer", "contract:docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md (-config_path)"]
         },
         {
+          "purpose": "input",
+          "path": "Same xemu.toml (or the file passed with -config_path)",
+          "naming": "input.bindings.port1..port4 store SDL GUID strings; input.auto_bind=false prevents an empty port stealing a device; input.gamepad_mappings[] keyed by gamepad_id has controller_mapping fields for SDL standard buttons a=0..dpad_right=14 and axes leftx=0..righttrigger=5, with invert_axis_* flags",
+          "evidence": ["source:ui/xemu-input.c input.bindings/auto_bind/gamepad_mappings @fd0ae0c0", "source:config_spec.yml standard SDL index defaults @fd0ae0c0", "contract:docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md"]
+        },
+        {
           "purpose": "saves",
           "path": "Per-game saves live on the E partition of the virtual hard-disk image (sys.files.hdd_path, qcow2; the pre-built xbox_hdd.qcow2 is offered) plus eeprom.bin for console identity in the same base dir — nothing is written as individual per-game files, so syncing means copying whole qemu disk images (and possibly eeprom.bin, since saves may be tied to the HDD key/EEPROM)",
           "naming": "No per-game save files: saves are FATX content inside the qcow2 HDD image; identity/config sidecars are eeprom.bin (auto-generated when absent) and xemu.toml in the SDL pref-path base dir",
@@ -32,6 +38,7 @@
         {
           "purpose": "bios",
           "path": "User-dumped pair set via sys.files.bootrom_path (MCPX boot ROM, conventionally mcpx_1.0.bin, MD5 d49c52a4102f6df7bcf8d0617ac475ed) and sys.files.flashrom_path (BIOS flash from a 1.0 Xbox; debug or modded retail such as COMPLEX 4627 is required since unmodified retail BIOS cannot boot games); redistributable prebuilt xbox_hdd.qcow2 ships only a clean dashboard",
+          "naming": "MCPX boot ROM is conventionally mcpx_1.0.bin; the cited xemu required-files documentation publishes MD5 d49c52a4102f6df7bcf8d0617ac475ed for that file. The BIOS flash is a user dump from a 1.0 Xbox (debug or modded retail, with COMPLEX 4627 cited as broadly compatible) and the cited upstream sources declare no single canonical filename or checksum for it",
           "evidence": ["docs:required-files MCPX/Flash/HDD sections", "docs:faq \"Your MCPX and BIOS dump should be from a 1.0 Xbox\"", "source:config_spec.yml sys.files bootrom_path/flashrom_path/eeprom_path/hdd_path", "contract:docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md (user-declared MCPX boot ROM and flash image)"]
         }
       ],
@@ -45,6 +52,12 @@
           "evidence": ["source:ui/xemu-settings.cc SDL_GetPrefPath base + xemu.toml filename", "docs:faq portable mode (\"next to xemu.exe on Windows\")"]
         },
         {
+          "purpose": "input",
+          "path": "Same %APPDATA%\\xemu\\xemu\\xemu.toml (or -config_path override)",
+          "naming": "input.bindings.port1..4 SDL GUID strings, input.auto_bind, and input.gamepad_mappings[]/controller_mapping standard SDL button/axis indices as on Linux",
+          "evidence": ["source:ui/xemu-input.c and config_spec.yml input grammar @fd0ae0c0", "contract:docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md"]
+        },
+        {
           "purpose": "saves",
           "path": "E partition of the user-selected HDD qcow2 image (sys.files.hdd_path) with eeprom.bin beside xemu.toml in the pref-path base dir; same whole-image sync implication as Linux",
           "naming": "No per-game save files: saves are FATX content inside the qcow2 HDD image; sidecars are eeprom.bin and xemu.toml",
@@ -59,7 +72,8 @@
         {
           "purpose": "bios",
           "path": "User-dumped MCPX boot ROM (mcpx_1.0.bin) and compatible BIOS flash image via sys.files.bootrom_path/flashrom_path",
-          "evidence": ["docs:required-files", "source:config_spec.yml sys.files"]
+          "naming": "MCPX boot ROM is conventionally mcpx_1.0.bin; the cited xemu required-files documentation publishes MD5 d49c52a4102f6df7bcf8d0617ac475ed for that file. The BIOS flash is a user dump from a 1.0 Xbox (debug or modded retail, with COMPLEX 4627 cited as broadly compatible) and the cited upstream sources declare no single canonical filename or checksum for it",
+          "evidence": ["docs:required-files MCPX/Flash sections", "docs:faq \"Your MCPX and BIOS dump should be from a 1.0 Xbox\"", "source:config_spec.yml sys.files bootrom_path/flashrom_path"]
         }
       ]
     },
@@ -71,6 +85,12 @@
           "evidence": ["source:ui/xemu-settings.cc SDL_GetPrefPath base + xemu.toml filename", "docs:faq portable mode (macOS Contents/Resources or open --args -config_path)"]
         },
         {
+          "purpose": "input",
+          "path": "Same ~/Library/Application Support/xemu/xemu/xemu.toml (or -config_path override)",
+          "naming": "input.bindings.port1..4 SDL GUID strings, input.auto_bind, and input.gamepad_mappings[]/controller_mapping standard SDL button/axis indices as on Linux and Windows",
+          "evidence": ["source:ui/xemu-input.c and config_spec.yml input grammar @fd0ae0c0", "contract:docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md"]
+        },
+        {
           "purpose": "saves",
           "path": "E partition of the user-selected HDD qcow2 image (sys.files.hdd_path) with eeprom.bin beside xemu.toml in the pref-path base dir; same whole-image sync implication as Linux",
           "naming": "No per-game save files: saves are FATX content inside the qcow2 HDD image; sidecars are eeprom.bin and xemu.toml",
@@ -85,9 +105,17 @@
         {
           "purpose": "bios",
           "path": "User-dumped MCPX boot ROM (mcpx_1.0.bin) and compatible BIOS flash image via sys.files.bootrom_path/flashrom_path",
-          "evidence": ["docs:required-files", "source:config_spec.yml sys.files"]
+          "naming": "MCPX boot ROM is conventionally mcpx_1.0.bin; the cited xemu required-files documentation publishes MD5 d49c52a4102f6df7bcf8d0617ac475ed for that file. The BIOS flash is a user dump from a 1.0 Xbox (debug or modded retail, with COMPLEX 4627 cited as broadly compatible) and the cited upstream sources declare no single canonical filename or checksum for it",
+          "evidence": ["docs:required-files MCPX/Flash sections", "docs:faq \"Your MCPX and BIOS dump should be from a 1.0 Xbox\"", "source:config_spec.yml sys.files bootrom_path/flashrom_path"]
         }
       ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream distribution/documentation identifies the Linux AppImage/native route but provides no upstream Flatpak manifest or package capture; native Linux xemu remains captured above.",
+      "evidence": ["docs:https://xemu.app/docs/faq/ (official distribution and portable-mode documentation; no Flatpak artifact)", "source:mborgerson/xemu @fd0ae0c0a189d56e87f8e46073b15b287e4a1e1a (no upstream Flatpak manifest)" ]
     }
   }
 }

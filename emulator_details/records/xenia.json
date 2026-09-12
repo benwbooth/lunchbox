@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "slug": "xenia",
+  "emulator": "Xenia",
+  "sources": [
+    { "kind": "source", "repo": "xenia-project/xenia", "role": "Windows/Linux config TOML, input options, Xbox 360 content saves and firmware/state feature boundary" },
+    { "kind": "docs", "url": "https://xenia.jp/quickstart/", "role": "official supported platform, configuration and save guidance" },
+    { "kind": "docs", "url": "https://xenia.jp/download/", "role": "official release/platform status" }
+  ],
+  "platforms": {
+    "windows": { "paths": [
+      { "purpose": "config", "path": "xenia.config.toml in the Xenia executable directory; portable.txt enables portable data/config layout", "naming": "TOML settings use key = value syntax; per-game overrides are config/<title>.config.toml when explicitly selected", "evidence": ["source:xenia config loader and portable.txt handling", "docs:xenia options/quickstart"] },
+      { "purpose": "input", "path": "xenia.config.toml input section and controller setup UI", "naming": "Bindings are TOML input keys such as input.keyboard_keybind and HID/XInput controller mappings; exact key names are source-defined and no separate profile file is required", "evidence": ["source:xenia input/config code", "docs:xenia controller configuration"] },
+      { "purpose": "bios", "path": "No user BIOS/cryptographic firmware image is required by Xenia; Xbox 360 system software is emulated/loaded from the title/content environment", "naming": "No external BIOS filename or canonical checksum is published by the cited Xenia sources", "evidence": ["source:xenia kernel/system emulation", "docs:xenia quickstart"] },
+      { "purpose": "keys", "path": "No cryptographic firmware-key file is used by the documented Xenia desktop runtime", "naming": "No key filename or canonical checksum is published", "evidence": ["source:xenia security/system emulation"] },
+      { "purpose": "saves", "path": "Documents\\xenia\\content\\<ProfileXUID>\\<TitleID>\\<ContentType>\\", "naming": "Xbox 360 STFS/CON content containers and title-specific directories; files do not use a universal emulator save extension", "evidence": ["source:xenia content filesystem/profile path code", "docs:xenia save/content layout"] },
+      { "purpose": "states", "path": "No supported user-facing emulator save-state file feature is documented for Xenia", "naming": "Unsupported; Xbox 360 content saves are not emulator states", "evidence": ["source:xenia runtime feature set", "docs:xenia quickstart"] }
+    ] }
+  },
+  "platform_gaps": {
+    "linux": { "status": "unresolved", "reason": "Xenia source/edge builds have experimental Linux routes, but this record has no verified native Linux package/runtime capture with stable paths.", "evidence": ["docs:https://xenia.jp/download/ Linux/edge development status", "source:xenia build targets"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No official Xenia Flatpak package or manifest is identified.", "evidence": ["docs:https://xenia.jp/download/", "source:xenia release metadata"] },
+    "macos": { "status": "unresolved", "reason": "The official download page says macOS and ARM64 support are under development; no supported macOS package is captured.", "evidence": ["docs:https://xenia.jp/download/ macOS support status"] }
+  }
+}

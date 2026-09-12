@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "slug": "arnold",
+  "emulator": "Arnold",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "http://cpctech.cpcwiki.de/download.html",
+      "url": "http://cpctech.cpcwiki.de/download.html",
+      "role": "official upstream identity and implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "http://cpctech.cpcwiki.de/download.html",
+      "role": "official distribution/documentation evidence"
+    }
+  ],
+  "platform_gaps": {
+    "linux": {
+      "status": "unresolved",
+      "reason": "The official source identifies Arnold but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
+      "evidence": [
+        "official:http://cpctech.cpcwiki.de/download.html",
+        "platform capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unresolved",
+      "reason": "The official source identifies Arnold but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
+      "evidence": [
+        "official:http://cpctech.cpcwiki.de/download.html",
+        "platform capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "macos": {
+      "status": "unresolved",
+      "reason": "The official source identifies Arnold but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
+      "evidence": [
+        "official:http://cpctech.cpcwiki.de/download.html",
+        "platform capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "windows": {
+      "status": "unresolved",
+      "reason": "The official source identifies Arnold but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
+      "evidence": [
+        "official:http://cpctech.cpcwiki.de/download.html",
+        "platform capture intentionally withheld until all six purposes are source-backed"
+      ]
+    }
+  }
+}

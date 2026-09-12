@@ -51,6 +51,7 @@ fn main() {
         println!("cargo:rustc-env=LUNCHBOX_SDL3_LIBRARY={path}");
     }
     generate_arcade_lookup();
+    generate_platform_record_index();
     let platform_resources = generate_platform_resources();
 
     CxxQtBuilder::new_qml_module(
@@ -178,6 +179,41 @@ fn main() {
     .file("src/watched_torrent_model.rs")
     .file("src/window_icon.rs")
     .build();
+}
+
+fn generate_platform_record_index() {
+    let manifest_directory =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    let records_directory = manifest_directory.join("../../emulator_details/records");
+    println!("cargo:rerun-if-changed={}", records_directory.display());
+
+    let mut records = fs::read_dir(&records_directory)
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to read emulator platform records at {}: {error}",
+                records_directory.display()
+            )
+        })
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .collect::<Vec<_>>();
+    records.sort();
+
+    let mut generated = String::from("const RECORDS: &[&str] = &[\n");
+    for path in records {
+        println!("cargo:rerun-if-changed={}", path.display());
+        writeln!(generated, "    include_str!({:?}),", path)
+            .expect("writing platform-record index");
+    }
+    generated.push_str("];\n");
+
+    let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"))
+        .join("platform_records.rs");
+    fs::write(output, generated).expect("failed to write platform-record index");
 }
 
 fn generate_platform_resources() -> PathBuf {

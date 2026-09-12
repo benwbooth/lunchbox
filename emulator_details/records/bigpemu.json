@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "slug": "bigpemu",
+  "emulator": "BigPEmu",
+  "sources": [
+    { "kind": "docs", "url": "https://richwhitehouse.com/jaguar/index.php?content=download", "role": "official Windows/Linux releases and hashes" },
+    { "kind": "docs", "url": "https://richwhitehouse.com/jaguar/index.php?content=userman", "role": "official configuration, input, UserData and state naming" },
+    { "kind": "docs", "url": "https://richwhitehouse.com/jaguar/index.php?content=bugreport", "role": "official state paths and per-game naming" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "BigPEmuConfig.bigpcfg in the OS-dependent application data folder; use the documented -localdata switch for a deterministic <install>/UserData/BigPEmuConfig.bigpcfg layout, or -cfgpath/-cfgpathabs for an explicit config.", "evidence": ["docs:BigPEmu User Manual installation/data accessibility and command-line options"] },
+        { "purpose": "input", "path": "Input settings are properties in BigPEmuConfig.bigpcfg or a per-game <image basename>.bigpcfg; configure through the Input menu, or preserve the text config and use -setcfgprop.", "naming": "BigPEmu's .bigpcfg property syntax is category/property based; official manual documents GUI and -setcfgprop but no stable universal controller key list.", "evidence": ["docs:BigPEmu User Manual Configuring Input, Per-Game Profiles and -setcfgprop"] },
+        { "purpose": "saves", "path": "UserData application folder (or <install>/UserData with -localdata) stores emulator EEPROM and other user data; game software images remain external.", "naming": "Jaguar EEPROM is emulator-managed; official documentation does not promise one portable EEPROM filename across platforms.", "evidence": ["docs:BigPEmu home page (EEPROM preservation)", "docs:BigPEmu User Manual Data Accessibility"] },
+        { "purpose": "states", "path": "UserData application folder; -localdata relocates it beside the executable. Per-game states use the image hash in the filename when per-game states are enabled.", "naming": "stateXXX.bigpstate, or gameXXXXXXXXXXXXXXXX_YYY.bigpstate where X is the 64-bit FNV-1a image hash and Y is the slot.", "evidence": ["docs:BigPEmu bugreport (stateXXX.bigpstate and per-game naming)", "docs:BigPEmu User Manual Data Accessibility and -localdata"] },
+        { "purpose": "bios", "path": "No external BIOS is required for ordinary Jaguar cartridges; custom boot ROM images are supported and selected through BigPEmu's System settings.", "naming": "Custom boot ROM filename is user-selected; official documentation publishes no universal firmware name/checksum.", "evidence": ["docs:BigPEmu home page (custom boot ROM images)", "docs:BigPEmu User Manual system settings"] },
+        { "purpose": "keys", "path": "No external decryption key file is documented for Jaguar cartridge/CD operation.", "naming": "No external key filename/checksum published.", "evidence": ["docs:BigPEmu User Manual and FAQ"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "%APPDATA%\\BigPEmu\\BigPEmuConfig.bigpcfg; -localdata instead uses <install>\\UserData\\BigPEmuConfig.bigpcfg; -cfgpath/-cfgpathabs select another config.", "evidence": ["docs:BigPEmu User Manual (Windows config path and command-line options)"] },
+        { "purpose": "input", "path": "BigPEmuConfig.bigpcfg or alongside the loaded image as <image>.bigpcfg; Input menu writes the per-device mapping properties.", "naming": "Category/property .bigpcfg syntax; use official GUI or -setcfgprop rather than assuming generic SDL names.", "evidence": ["docs:BigPEmu User Manual Configuring Input and Per-Game Profiles"] },
+        { "purpose": "saves", "path": "%APPDATA%\\BigPEmu\\UserData (or <install>\\UserData with -localdata) contains EEPROM and user data; cartridge/CD images remain external.", "naming": "EEPROM is emulator-managed; no cross-platform filename contract is published.", "evidence": ["docs:BigPEmu home page", "docs:BigPEmu User Manual Data Accessibility"] },
+        { "purpose": "states", "path": "%APPDATA%\\BigPEmu\\UserData by default (or <install>\\UserData with -localdata).", "naming": "stateXXX.bigpstate; per-game mode: gameXXXXXXXXXXXXXXXX_YYY.bigpstate (64-bit FNV-1a image hash plus slot).", "evidence": ["docs:BigPEmu bugreport"] },
+        { "purpose": "bios", "path": "No ordinary BIOS file required; optional custom boot ROM image is selected in System settings.", "naming": "User-selected custom boot ROM name; no universal canonical checksum.", "evidence": ["docs:BigPEmu home page"] },
+        { "purpose": "keys", "path": "No external key file documented.", "naming": "No external key filename/checksum.", "evidence": ["docs:BigPEmu FAQ/User Manual"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The official download page lists Windows and Linux archives but no BigPEmu Flatpak.", "evidence": ["docs:BigPEmu official download page"] },
+    "macos": { "status": "no_verified_package", "reason": "The official standalone desktop downloads list Windows and Linux; macOS is not listed as a current desktop archive.", "evidence": ["docs:BigPEmu official download page", "docs:BigPEmu home page ports statement"] }
+  }
+}

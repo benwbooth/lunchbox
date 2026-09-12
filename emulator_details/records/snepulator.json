@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "slug": "snepulator",
+  "emulator": "Snepulator",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://snepulator.net/",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/snepulator/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/snepulator/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/snepulator/saves/<content-basename>.sav",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS file required",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/Snepulator/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/Snepulator/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Library/Application Support/Snepulator/saves/<content-basename>.sav",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS file required",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\\\Snepulator/config.ini",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\\\Snepulator/config.ini",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "%APPDATA%\\\\Snepulator/saves/<content-basename>.sav",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS file required",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://snepulator.net/"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://snepulator.net/"
+      ]
+    }
+  }
+}

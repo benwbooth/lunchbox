@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "slug": "azahar",
+  "emulator": "Azahar",
+  "sources": [
+    { "kind": "source", "repo": "azahar-emu/azahar", "role": "desktop path roots, input ParamPackages, NAND saves, keys and save states" },
+    { "kind": "docs", "url": "https://azahar-emu.org/", "role": "official supported desktop distribution" },
+    { "kind": "source", "repo": "flathub/org.azahar_emu.Azahar", "role": "Flatpak manifest and app data roots" },
+    { "kind": "docs", "url": "https://github.com/azahar-emu/azahar/releases", "role": "save-state version compatibility and desktop releases" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "~/.config/azahar-emu/qt-config.ini (portable user/ directory beside the executable takes priority); controller settings are in the [Controls] section and input profiles are ~/.config/azahar-emu/input/<profile>.ini.", "evidence": ["source:azahar-emu/azahar src/common/fs/fs_paths.h and path_util.cpp (AZAHAR_DIR, ConfigDir)", "source:azahar-emu/azahar src/citra_qt/configuration/qt_config.cpp"] },
+        { "purpose": "input", "path": "qt-config.ini [Controls] and input profiles; each button/axis is a serialized Common::ParamPackage such as engine:keyboard,code:<integer>,toggle:0 or engine:sdl,joystick:<id>,button:<n>,axis:<n>,direction:<positive|negative>.", "naming": "ParamPackage comma-separated key:value syntax with $0/$1/$2 escaping; profile files are <profile>.ini under input/.", "evidence": ["source:azahar-emu/azahar src/citra_qt/configuration/configure_input.cpp", "source:azahar-emu/azahar src/input_common/main.cpp and ParamPackage", "source:azahar-emu/azahar src/citra_qt/configuration/input_profiles.cpp"] },
+        { "purpose": "saves", "path": "~/.local/share/azahar-emu/nand/user/save/ (account/<128-bit UUID>/<16-hex title id>/0/ or device/<16-hex title id>/0/); SD-card data is ~/.local/share/azahar-emu/sdmc.", "naming": "Per-title directories use uppercase 16-hex title IDs and the account/device layout created by the savedata factory.", "evidence": ["source:azahar-emu/azahar src/core/file_sys/savedata_factory.cpp", "source:azahar-emu/azahar src/common/fs/path_util.cpp (NANDDir/SDMCDir)"] },
+        { "purpose": "states", "path": "Azahar's Save State UI writes .cst files to the user-selected state location (the UI also exposes quick save/load and numbered slots); there is no stable cross-version state directory in the public desktop documentation.", "naming": "<game/title context>.cst state files; current releases lock states to the Azahar version that created them.", "evidence": ["source:azahar-emu/azahar src/citra_qt/main.cpp and state menu actions", "docs:azahar-emu/azahar releases (states are version-locked)", "source:azahar-emu/azahar core/frontend/state.cpp"] },
+        { "purpose": "bios", "path": "3DS system files are installed as NAND system contents under ~/.local/share/azahar-emu/nand/system/Contents/registered/ (and user/Contents/registered where applicable); this is firmware content, not one BIOS image.", "naming": "Registered NCA content is selected by NAND title metadata; Azahar does not publish a universal external firmware filename/checksum.", "evidence": ["source:azahar-emu/azahar src/core/file_sys/bis_factory.cpp", "source:azahar-emu/azahar src/core/hle/service/fs/archive.cpp"] },
+        { "purpose": "keys", "path": "~/.local/share/azahar-emu/keys/prod.keys plus optional title.keys, dev.keys and key_retail.bin.", "naming": "Exact key names are prod.keys and title.keys; optional dev.keys/key_retail.bin are accepted. Upstream publishes no canonical checksum for user key files.", "evidence": ["source:azahar-emu/azahar src/core/crypto/key_manager.cpp", "source:azahar-emu/azahar src/common/fs/path_util.cpp"] }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        { "purpose": "config", "path": "~/.var/app/org.azahar_emu.Azahar/config/azahar-emu/qt-config.ini; input profiles are in the same per-app config root under input/.", "evidence": ["flatpak:flathub/org.azahar_emu.Azahar manifest", "docs:flatpak.org conventions", "source:azahar-emu/azahar path_util.cpp"] },
+        { "purpose": "input", "path": "Same [Controls] ParamPackage syntax as native Linux, in qt-config.ini; profiles are input/<profile>.ini.", "naming": "engine:keyboard / engine:sdl ParamPackages with comma-separated key:value pairs and escaping.", "evidence": ["source:azahar-emu/azahar configure_input.cpp", "flatpak:org.azahar_emu.Azahar"] },
+        { "purpose": "saves", "path": "~/.var/app/org.azahar_emu.Azahar/data/azahar-emu/nand/user/save/ and sdmc/ under the Flatpak XDG data root.", "naming": "account/<UUID>/<TITLEID>/0 and device/<TITLEID>/0 directories; game files are title-defined.", "evidence": ["source:azahar-emu/azahar savedata_factory.cpp", "flatpak:org.azahar_emu.Azahar manifest"] },
+        { "purpose": "states", "path": "User-selected .cst state files in the writable Flatpak data/config location; slots are exposed by the Save State menu.", "naming": "*.cst; version-locked to the Azahar release that created them.", "evidence": ["source:azahar-emu/azahar state and Qt UI code", "docs:azahar releases", "flatpak:org.azahar_emu.Azahar"] },
+        { "purpose": "bios", "path": "NAND firmware registered content under ~/.var/app/org.azahar_emu.Azahar/data/azahar-emu/nand/system/Contents/registered/.", "naming": "NCA registered content selected by NAND metadata; no universal BIOS filename/checksum.", "evidence": ["source:azahar-emu/azahar bis_factory.cpp", "flatpak:org.azahar_emu.Azahar"] },
+        { "purpose": "keys", "path": "~/.var/app/org.azahar_emu.Azahar/data/azahar-emu/keys/prod.keys plus optional title.keys/dev.keys/key_retail.bin.", "naming": "Exact names are prod.keys and title.keys; no canonical checksums published.", "evidence": ["source:azahar-emu/azahar key_manager.cpp", "flatpak:org.azahar_emu.Azahar"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "%APPDATA%\\azahar-emu\\qt-config.ini (portable user\\ directory beside azahar.exe takes priority); input profiles are %APPDATA%\\azahar-emu\\input\\<profile>.ini.", "evidence": ["source:azahar-emu/azahar src/common/fs/path_util.cpp (_WIN32 AppData/config root)", "source:azahar-emu/azahar qt_config.cpp"] },
+        { "purpose": "input", "path": "qt-config.ini [Controls] using Common::ParamPackage values such as engine:keyboard,code:<integer> and engine:sdl,joystick:<id>,button:<n>/axis:<n>,direction:<positive|negative>.", "naming": "Comma-separated ParamPackage key:value syntax; profiles input/<profile>.ini.", "evidence": ["source:azahar-emu/azahar configure_input.cpp", "source:azahar-emu/azahar ParamPackage"] },
+        { "purpose": "saves", "path": "%APPDATA%\\azahar-emu\\nand\\user\\save\\ (account/<UUID>/<TITLEID>/0 and device/<TITLEID>/0); SDMC is %APPDATA%\\azahar-emu\\sdmc.", "naming": "Per-title account/device directories keyed by uppercase 16-hex title ID.", "evidence": ["source:azahar-emu/azahar savedata_factory.cpp", "source:azahar-emu/azahar path_util.cpp"] },
+        { "purpose": "states", "path": "Save State menu writes .cst files to the user-selected location; quick and numbered slots are available.", "naming": "*.cst and version-locked to the creating Azahar version.", "evidence": ["source:azahar-emu/azahar Qt state UI", "docs:azahar releases"] },
+        { "purpose": "bios", "path": "%APPDATA%\\azahar-emu\\nand\\system\\Contents\\registered\\ for installed 3DS firmware NCA content.", "naming": "NAND registered-content layout, not a single BIOS file; no universal checksum.", "evidence": ["source:azahar-emu/azahar bis_factory.cpp"] },
+        { "purpose": "keys", "path": "%APPDATA%\\azahar-emu\\keys\\prod.keys (+ title.keys, optional dev.keys/key_retail.bin).", "naming": "Exact names prod.keys/title.keys; no canonical checksum published.", "evidence": ["source:azahar-emu/azahar key_manager.cpp"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "~/.config/azahar-emu/qt-config.ini and input/<profile>.ini; Azahar's POSIX path branch applies on macOS, with a portable user/ directory taking priority.", "evidence": ["source:azahar-emu/azahar path_util.cpp POSIX branch", "source:azahar-emu/azahar qt_config.cpp"] },
+        { "purpose": "input", "path": "[Controls] ParamPackages in qt-config.ini; engine:keyboard and engine:sdl joystick/axis/button syntax is the same as Linux.", "naming": "Comma-separated key:value ParamPackage values; input profiles are <profile>.ini.", "evidence": ["source:azahar-emu/azahar configure_input.cpp", "source:azahar-emu/azahar ParamPackage"] },
+        { "purpose": "saves", "path": "~/.local/share/azahar-emu/nand/user/save/ (account/<UUID>/<TITLEID>/0 and device/<TITLEID>/0); SDMC is ~/.local/share/azahar-emu/sdmc.", "naming": "Per-title uppercase 16-hex title-ID directories.", "evidence": ["source:azahar-emu/azahar savedata_factory.cpp", "source:azahar-emu/azahar path_util.cpp"] },
+        { "purpose": "states", "path": "User-selected .cst state files through the Save State menu; states are version-locked.", "naming": "*.cst; no stable fixed directory documented.", "evidence": ["source:azahar-emu/azahar Qt state UI", "docs:azahar releases"] },
+        { "purpose": "bios", "path": "~/.local/share/azahar-emu/nand/system/Contents/registered/ for installed firmware NCA content.", "naming": "NAND registered-content layout; no universal BIOS filename/checksum.", "evidence": ["source:azahar-emu/azahar bis_factory.cpp"] },
+        { "purpose": "keys", "path": "~/.local/share/azahar-emu/keys/prod.keys (+ title.keys, optional dev.keys/key_retail.bin).", "naming": "Exact names prod.keys/title.keys; no canonical checksum published.", "evidence": ["source:azahar-emu/azahar key_manager.cpp"] }
+      ]
+    }
+  }
+}

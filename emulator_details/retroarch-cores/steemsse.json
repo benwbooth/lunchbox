@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "core": "steemsse",
+  "display_name": "Atari - ST (Steem SSE)",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": null,
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:steemsse:embedded-ste-two-joysticks"
+    ],
+    "mapping_summary": "The explicit two-port profile maps each RetroPad D-pad to an Atari ST joystick and maps A/B as alternate host buttons for the same one-bit fire line; keyboard and mouse remain separate inputs.",
+    "evidence": [
+      "crates/lunchbox-app/data/controllers/catalog.json profile retroarch:steemsse:embedded-ste-two-joysticks",
+      "https://sourceforge.net/p/steemsse/code/1501/tree/trunk/steemsse/steem/libretro/libretro-core.cpp"
+    ]
+  },
+  "firmware": {
+    "status": "optional",
+    "files": [
+      {
+        "path": "SteemSSE/tosEmu.img",
+        "description": "Optional external EmuTOS image overriding the embedded EmuTOS fallback",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "https://sourceforge.net/p/steemsse/code/1501/tree/trunk/steemsse/steem/libretro/libretro-core.cpp",
+          "docs/STEEMSSE_CONTROLLER_CONTRACT.md"
+        ]
+      }
+    ],
+    "notes": "The core can fall back to embedded EmuTOS; an external system/SteemSSE/tosEmu.img overrides it. Upstream does not publish a canonical digest for arbitrary replacement images.",
+    "evidence": [
+      "sources/steemsse-libretro.json pinned official archive",
+      "https://sourceforge.net/p/steemsse/code/1501/tree/trunk/steemsse/steem/libretro/libretro-core.cpp"
+    ]
+  },
+  "saves": {
+    "status": "supported",
+    "extensions": [
+      ".srm"
+    ],
+    "naming": "RetroArch persistent memory uses <content-basename>.srm in the configured save directory.",
+    "notes": "The pinned official Steem64 core-info declares libretro_saves=true; runtime persistence and restore still require matrix testing.",
+    "evidence": [
+      "sources/steemsse-libretro.json core_info_file: libretro_saves=true"
+    ]
+  },
+  "states": {
+    "status": "supported",
+    "serialization": "serialized",
+    "naming": "<content-basename>.state for slot 0 and <content-basename>.stateN for numbered slots in RetroArch's configured state directory.",
+    "notes": "The pinned official Steem64 core-info declares savestate=true and savestate_features=serialized.",
+    "evidence": [
+      "sources/steemsse-libretro.json core_info_file: savestate=true/savestate_features=serialized"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "The pinned official libretro archive contains Windows DLLs but no native Linux library; a separate current native Linux core package was not established.",
+      "evidence": [
+        "sources/steemsse-libretro.json archive inventory"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "The pinned official libretro archive contains Windows DLLs; availability of a Steem SSE core through the RetroArch Flatpak updater was not established.",
+      "evidence": [
+        "sources/steemsse-libretro.json archive inventory"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "The pinned official libretro archive contains Windows DLLs but no macOS dynamic library; a separate current macOS package was not established.",
+      "evidence": [
+        "sources/steemsse-libretro.json archive inventory"
+      ]
+    },
+    "windows": {
+      "status": "available",
+      "reason": "The pinned official Steem SSE libretro archive contains Steem32_libretro.dll and Steem64_libretro.dll.",
+      "evidence": [
+        "sources/steemsse-libretro.json archive inventory and SHA-256"
+      ]
+    }
+  }
+}

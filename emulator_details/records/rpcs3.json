@@ -18,6 +18,12 @@
           "evidence": ["source:Utilities/File.cpp fs::get_config_dir (pinned 54014a7d)", "source:rpcs3/Emu/system_utils.cpp get_input_config_root/get_input_config_dir (pinned 54014a7d)", "source:rpcs3/Emu/System.cpp:502 config.yml path (pinned 54014a7d)", "source:rpcs3/Emu/Io/pad_config.h default_config \"Default\" (pinned 54014a7d)", "contract:crates/lunchbox-app/src/controller_rpcs3/paths.rs resolve()", "contract:crates/lunchbox-app/src/controller_native_targets.rs rpcs3/Input pin"]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/rpcs3/input_configs/global/ (or the selected configuration root's input_configs/)",
+          "naming": "YAML profiles are input_configs/global/<profile>.yml (default profile Default), with per-game overrides in input_configs/<TITLE_ID>/<profile>.yml; active_input_configurations.yml is alongside global/",
+          "evidence": ["source:rpcs3/Emu/system_utils.cpp get_input_config_root/get_input_config_dir and Emu/Io/pad_config.h default_config @54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6", "contract:crates/lunchbox-app/src/controller_native_targets.rs"]
+        },
+        {
           "purpose": "saves",
           "path": "dev_hdd0/home/00000001/savedata/ under the configuration root (default ~/.config/rpcs3/dev_hdd0/; dev_hdd0 relocatable via the dev_hdd0 entry in vfs.yml, $(EmulatorDir) prefix)",
           "naming": "one folder per game named by the game's savedata directory name (SAVEDATA_DIRECTORY in each PARAM.SFO; typically TITLE_ID-based, e.g. BLUS30463-...), containing PARAM.SFO, PARAM.PFD, ICON0.PNG plus per-game data files",
@@ -32,7 +38,7 @@
         {
           "purpose": "bios",
           "path": "no user BIOS file: PS3 firmware PS3UPDAT.PUP is chosen from any location and installed (GUI \"Install firmware\" dialog, or --installfw <path> on the command line) into dev_flash/ (plus dev_flash2/ and dev_flash3/) under the configuration root",
-          "naming": "installed firmware is the extracted dev_flash tree; RPCS3 prompts \"Missing Firmware Detected!\" with a Locate PS3UPDAT.PUP button when booting commercial games without it",
+          "naming": "Input package is PS3UPDAT.PUP; RPCS3 extracts it into dev_flash/, dev_flash2/ and dev_flash3/. No canonical firmware checksum is declared by the pinned source; installed firmware is a runtime-specific manifest/tree",
           "evidence": ["source:rpcs3/rpcs3qt/main_window.cpp InstallPup and missing-firmware dialog (pinned 54014a7d)", "source:rpcs3/rpcs3.cpp arg_installfw \"--installfw\" (pinned 54014a7d)", "source:rpcs3/Emu/vfs_config.h dev_flash default $(EmulatorDir)dev_flash/ (pinned 54014a7d)", "docs:https://rpcs3.net/quickstart (linked from the missing-firmware dialog)"]
         }
       ],
@@ -45,6 +51,12 @@
           "path": "~/.var/app/net.rpcs3.RPCS3/config/rpcs3/config.yml with input profiles in ~/.var/app/net.rpcs3.RPCS3/config/rpcs3/input_configs/ (flatpak sandbox sets XDG_CONFIG_HOME to ~/.var/app/net.rpcs3.RPCS3/config; the manifest mounts home read-only, so all writes stay under ~/.var/app)",
           "naming": "input_configs/global/<profile>.yml (default profile \"Default\"); per-game overrides in input_configs/<TITLE_ID>/<profile>.yml",
           "evidence": ["docs:https://flathub.org/apps/net.rpcs3.RPCS3 (id net.rpcs3.RPCS3)", "manifest:flathub/net.rpcs3.RPCS3 finish-args --filesystem=home:ro", "source:Utilities/File.cpp XDG_CONFIG_HOME branch of fs::get_config_dir (pinned 54014a7d)", "source:rpcs3/Emu/system_utils.cpp get_input_config_root (pinned 54014a7d)"]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.var/app/net.rpcs3.RPCS3/config/rpcs3/input_configs/global/",
+          "naming": "YAML profiles input_configs/global/<profile>.yml (default Default), per-game input_configs/<TITLE_ID>/<profile>.yml, and active_input_configurations.yml alongside global/",
+          "evidence": ["source:rpcs3/Emu/system_utils.cpp and Emu/Io/pad_config.h @54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6", "manifest:flathub/net.rpcs3.RPCS3 finish-args"]
         },
         {
           "purpose": "saves",
@@ -61,6 +73,7 @@
         {
           "purpose": "bios",
           "path": "no user BIOS file: PS3UPDAT.PUP from any location is installed via the GUI or --installfw into ~/.var/app/net.rpcs3.RPCS3/config/rpcs3/dev_flash/ (plus dev_flash2/, dev_flash3/)",
+          "naming": "Input package must be named PS3UPDAT.PUP when selected; RPCS3 extracts it into dev_flash/, dev_flash2/ and dev_flash3/. The pinned source defines no canonical firmware checksum; installed firmware is runtime-specific",
           "evidence": ["source:rpcs3/rpcs3qt/main_window.cpp InstallPup (pinned 54014a7d)", "source:rpcs3/rpcs3.cpp arg_installfw (pinned 54014a7d)", "source:rpcs3/Emu/vfs_config.h dev_flash default (pinned 54014a7d)"]
         }
       ],
@@ -73,6 +86,12 @@
           "path": "config.yml under <root>\\config\\ next to rpcs3.exe by default; the root is the executable's own directory (portable-style), relocated by the RPCS3_CONFIG_DIR environment variable, or replaced wholesale by an executable-adjacent portable\\ directory; a legacy config.yml directly in the root is auto-migrated into config\\",
           "naming": "input profiles at <root>\\config\\input_configs\\global\\<profile>.yml (default profile \"Default\") with active_input_configurations.yml alongside; per-game overrides in input_configs\\<TITLE_ID>\\<profile>.yml",
           "evidence": ["source:Utilities/File.cpp fs::get_config_dir Windows branch, RPCS3_CONFIG_DIR, get_config_subdirectory appends config/ (pinned 54014a7d)", "source:rpcs3/Emu/System.cpp:502-517 deprecated config.yml migration (pinned 54014a7d)", "source:rpcs3/Emu/system_utils.cpp get_input_config_root uses get_config_dir(true) (pinned 54014a7d)"]
+        },
+        {
+          "purpose": "input",
+          "path": "<root>\\config\\input_configs\\global\\ (next to config.yml)",
+          "naming": "YAML profiles input_configs\\global\\<profile>.yml (default Default), per-game input_configs\\<TITLE_ID>\\<profile>.yml, and active_input_configurations.yml",
+          "evidence": ["source:rpcs3/Emu/system_utils.cpp and Emu/Io/pad_config.h @54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6"]
         },
         {
           "purpose": "saves",
@@ -89,6 +108,7 @@
         {
           "purpose": "bios",
           "path": "no user BIOS file: PS3UPDAT.PUP from any location is installed via the GUI \"Install firmware\" dialog or --installfw <path> into <root>\\dev_flash\\ (plus dev_flash2\\, dev_flash3\\)",
+          "naming": "Input package is PS3UPDAT.PUP; installation extracts dev_flash\\, dev_flash2\\ and dev_flash3\\. No canonical firmware checksum is declared by the pinned source; installed firmware is runtime-specific",
           "evidence": ["source:rpcs3/rpcs3qt/main_window.cpp InstallPup and missing-firmware dialog (pinned 54014a7d)", "source:rpcs3/rpcs3.cpp arg_installfw (pinned 54014a7d)", "source:rpcs3/Emu/vfs_config.h dev_flash default (pinned 54014a7d)"]
         }
       ],
@@ -101,6 +121,12 @@
           "path": "~/Library/Application Support/rpcs3/config.yml (from $HOME; get_config_dir's config/ subfolder is Windows-only, so config.yml sits directly in the root); an executable-adjacent portable/ directory takes precedence",
           "naming": "input profiles in ~/Library/Application Support/rpcs3/input_configs/global/<profile>.yml (default profile \"Default\") with active_input_configurations.yml alongside; per-game overrides in input_configs/<TITLE_ID>/<profile>.yml",
           "evidence": ["source:Utilities/File.cpp __APPLE__ branch of fs::get_config_dir: $HOME + /Library/Application Support + /rpcs3/ (pinned 54014a7d)", "source:rpcs3/Emu/system_utils.cpp get_input_config_root (pinned 54014a7d)"]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/rpcs3/input_configs/global/",
+          "naming": "YAML profiles input_configs/global/<profile>.yml (default profile Default), per-game input_configs/<TITLE_ID>/<profile>.yml, and active_input_configurations.yml",
+          "evidence": ["source:rpcs3/Emu/system_utils.cpp and Emu/Io/pad_config.h @54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6"]
         },
         {
           "purpose": "saves",
@@ -117,6 +143,7 @@
         {
           "purpose": "bios",
           "path": "no user BIOS file: PS3UPDAT.PUP from any location is installed via the GUI \"Install firmware\" dialog or --installfw <path> into ~/Library/Application Support/rpcs3/dev_flash/ (plus dev_flash2/, dev_flash3/)",
+          "naming": "Input package is PS3UPDAT.PUP; installation extracts dev_flash/, dev_flash2/ and dev_flash3/. No canonical firmware checksum is declared by the pinned source; installed firmware is runtime-specific",
           "evidence": ["source:rpcs3/rpcs3qt/main_window.cpp InstallPup and missing-firmware dialog (pinned 54014a7d)", "source:rpcs3/rpcs3.cpp arg_installfw (pinned 54014a7d)", "source:rpcs3/Emu/vfs_config.h dev_flash default (pinned 54014a7d)"]
         }
       ],

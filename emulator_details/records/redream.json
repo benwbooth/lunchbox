@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "slug": "redream",
+  "emulator": "redream",
+  "sources": [
+    { "kind": "source", "repo": "redream/redream", "role": "product runtime and desktop data layout" },
+    { "kind": "docs", "url": "https://redream.io/help", "role": "official desktop platform, BIOS, input and media documentation" }
+  ],
+  "platforms": {
+    "linux": { "paths": [
+      { "purpose": "config", "path": "redream working directory (the extracted portable desktop directory)", "naming": "Settings are managed by redream's UI; the official help does not publish a stable text config filename or grammar", "evidence": ["docs:redream help installation and desktop paths"] },
+      { "purpose": "input", "path": "Input menu in the redream UI; SDL controller database auto-configures devices", "naming": "Select a port/device, then Input > Customize binds; no user-editable binding-file syntax is published by the official desktop documentation", "evidence": ["docs:redream help controller input and SDL database"] },
+      { "purpose": "bios", "path": "Optional original Dreamcast BIOS in the redream working directory", "naming": "Exact filename boot.bin; redream otherwise uses its replacement BIOS. No canonical BIOS checksum is published by the cited official source", "evidence": ["docs:redream help BIOS and desktop working directory"] },
+      { "purpose": "keys", "path": "No cryptographic firmware-key files", "naming": "No key asset exists", "evidence": ["docs:redream help BIOS architecture"] },
+      { "purpose": "saves", "path": "VMU images in the redream working/data directory", "naming": "VMU slot images use vmu0.bin, vmu1.bin and so on; game save records are files inside the virtual VMU", "evidence": ["docs:libretro redream core VMU file names", "docs:redream help Boot to BIOS/VMU management"] },
+      { "purpose": "states", "path": "No authoritative standalone desktop save-state path/filename convention is published by redream help", "naming": "Save-state disposition unresolved from the cited official desktop documentation; do not treat VMU files as emulator states", "evidence": ["docs:redream help official desktop feature documentation"] }
+    ] },
+    "windows": { "paths": [
+      { "purpose": "config", "path": "redream working directory beside redream.exe", "naming": "UI-managed settings; no stable text config filename/grammar is published", "evidence": ["docs:redream help desktop installation"] },
+      { "purpose": "input", "path": "redream Input menu with SDL controller database auto-configuration", "naming": "Port/device selection followed by Customize binds; no documented text binding grammar", "evidence": ["docs:redream help controller input"] },
+      { "purpose": "bios", "path": "Optional boot.bin beside redream.exe", "naming": "Exact filename boot.bin; replacement BIOS is the default; no canonical checksum is published", "evidence": ["docs:redream help BIOS and Windows working directory"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["docs:redream help BIOS architecture"] },
+      { "purpose": "saves", "path": "VMU images in the redream working/data directory", "naming": "vmu0.bin, vmu1.bin and subsequent VMU slots; game records live inside the VMU image", "evidence": ["docs:libretro redream VMU names", "docs:redream help VMU management"] },
+      { "purpose": "states", "path": "No authoritative standalone desktop save-state path/filename convention published", "naming": "Save-state disposition unresolved in cited official desktop docs", "evidence": ["docs:redream help"] }
+    ] },
+    "macos": { "paths": [
+      { "purpose": "config", "path": "~/Library/Application Support/redream/ (official Mac working/data directory)", "naming": "UI-managed settings; no stable text config filename/grammar is published", "evidence": ["docs:redream help Mac working directory"] },
+      { "purpose": "input", "path": "redream Input menu with SDL controller database auto-configuration", "naming": "Port/device selection followed by Customize binds; no documented text binding grammar", "evidence": ["docs:redream help controller input"] },
+      { "purpose": "bios", "path": "~/Library/Application Support/redream/boot.bin", "naming": "Exact filename boot.bin; replacement BIOS is the default; no canonical checksum is published", "evidence": ["docs:redream help BIOS and Mac working directory"] },
+      { "purpose": "keys", "path": "No cryptographic firmware keys", "naming": "No key asset exists", "evidence": ["docs:redream help BIOS architecture"] },
+      { "purpose": "saves", "path": "VMU images in ~/Library/Application Support/redream/", "naming": "vmu0.bin, vmu1.bin and subsequent VMU slots; records are inside the VMU image", "evidence": ["docs:libretro redream VMU names", "docs:redream help VMU management"] },
+      { "purpose": "states", "path": "No authoritative standalone desktop save-state path/filename convention published", "naming": "Save-state disposition unresolved in cited official desktop docs", "evidence": ["docs:redream help"] }
+    ] }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No official redream Flatpak package or manifest is identified; the official help documents extracted desktop binaries for Linux, Windows and macOS.", "evidence": ["docs:https://redream.io/help desktop requirements and installation", "source:redream desktop distribution metadata"] }
+  }
+}

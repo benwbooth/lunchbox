@@ -2,6 +2,7 @@ mod audit;
 mod compress;
 mod database;
 mod emulators;
+mod feature_matrix;
 mod firmware;
 mod ids;
 mod inspect;
@@ -109,6 +110,21 @@ enum Command {
         emulators: PathBuf,
         #[arg(long)]
         minerva: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Generate the cross-host controller/firmware/save capture and test matrix.
+    FeatureMatrix {
+        #[arg(long)]
+        database: PathBuf,
+        #[arg(long)]
+        records: PathBuf,
+        #[arg(long)]
+        retroarch_cores: PathBuf,
+        #[arg(long)]
+        controller_catalog: PathBuf,
+        #[arg(long)]
+        firmware_rules: PathBuf,
         #[arg(long)]
         output: PathBuf,
     },
@@ -225,6 +241,24 @@ fn main() -> Result<()> {
             let report =
                 inspect::inspect_existing(&legacy_catalog, &openvgdb, &emulators, &minerva)?;
             inspect::write_report(&output, &report)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        Command::FeatureMatrix {
+            database,
+            records,
+            retroarch_cores,
+            controller_catalog,
+            firmware_rules,
+            output,
+        } => {
+            let report = feature_matrix::generate(
+                &database,
+                &records,
+                &retroarch_cores,
+                &controller_catalog,
+                &firmware_rules,
+                &output,
+            )?;
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         Command::Compress {

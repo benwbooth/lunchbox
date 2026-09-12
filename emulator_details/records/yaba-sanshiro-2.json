@@ -26,6 +26,12 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/YabaSanshiro/qt/yabause.ini (same [0.9.11] QSettings INI as general config)",
+          "naming": "Controller identity is Input/Port/<port>/Id/<id>/Type, Device and DeviceName; bindings are Input/Port/<port>/Id/<id>/Controller/<peripheral type>/Key/<button index> = u32 core key code",
+          "evidence": ["source:yabause/src/qt/InputPortConfig.h INPUTPORT_KEY_TYPE/DEVICE/DEVICE_NAME/BINDING @1.20.37", "source:yabause/src/qt/ui/UIControllerSetting.cpp setPadKey and YabauseThread.cpp Input/Port binding loops @1.20.37"]
+        },
+        {
           "purpose": "saves",
           "path": "Single internal backup RAM image at Memory/Path, default getDataDirPath() + \"/bkram.bin\" - on non-Windows desktop builds getDataDirPath() is QStandardPaths::AppConfigLocation with the application name 'YabaSanshiro' (empty organization), i.e. ~/.config/YabaSanshiro, so the default image is ~/.config/YabaSanshiro/bkram.bin. Saturn cartridge memory is a separate user-chosen file via Cartridge/Path",
           "naming": "bkram.bin is one formatted backup memory volume, not per-game files: Yaba Sanshiro maps it with the 'BackUpRam Format' header check; with Memory/ExtendMemory (default true) it is an extended 8 MiB image (tweak_backup_file_size = 8*1024*1024, devmiyax extended-Backup RAM mapped at 0x06300000), otherwise a 64 KiB (0x10000) image; files over 10 MiB are reformatted, undersized files extended. Per-game saves are directory entries INSIDE this image (created/managed by the emulated Saturn BIOS), listed/copied/deleted through the in-app Backup Manager (BackupManager.cpp getFilelist/putFile/copy) rather than existing as separate files",
@@ -52,7 +58,7 @@
         {
           "purpose": "bios",
           "path": "Saturn BIOS: file path from General/Bios, loaded into the 0x80000-byte BiosRom (no hardcoded filename - any dumped BIOS image works, saturn.bin is just the conventional dump name; the Android builds expect saturn.bin, which popularized the name). When General/Bios is empty (or General/EnableEmulatedBios is checked, the 'Enable BIOS emulation' settings checkbox) Yaba Sanshiro boots with its built-in BIOS emulation (yabsys.emulatebios = 1), but a real BIOS is the recommended configuration. Lunchbox DB firmware_rules has no yabasanshiro entries - gap captured, not changed by this record",
-          "naming": "User-selected BIOS file (conventionally saturn.bin); no BIOS archive/folder convention in the desktop port",
+          "naming": "User-selected BIOS file (conventionally saturn.bin); no BIOS archive/folder convention in the desktop port; no canonical BIOS checksum is specified in the cited upstream source",
           "evidence": [
             "source:yabause/src/qt/YabauseThread.cpp biospath = strdup(\"\") when General/EnableEmulatedBios else General/Bios; YabauseThread_IsUseBios",
             "source:yabause/src/yabause.c YabauseInit (init->biospath non-empty -> LoadBios + yabsys.emulatebios = 0, else yabsys.emulatebios = 1)",
@@ -74,6 +80,12 @@
             "source:yabause/src/qt/InputPortConfig.h INPUTPORT_KEY_* defines",
             "source:yabause/src/qt/Settings.cpp beginGroup(\"0.9.11\")"
           ]
+        },
+        {
+          "purpose": "input",
+          "path": "Legacy <yabause.exe directory>\\yabause.ini or default %APPDATA%\\YabaSanshiro\\yabause.ini",
+          "naming": "Same [0.9.11] INI controller grammar: Input/Port/<port>/Id/<id>/Type, Device, DeviceName and Controller/<peripheral type>/Key/<button index> = u32 core key code",
+          "evidence": ["source:yabause/src/qt/InputPortConfig.h INPUTPORT_KEY_* definitions @1.20.37", "source:yabause/src/qt/Settings.cpp Windows legacy/default INI resolution @1.20.37"]
         },
         {
           "purpose": "saves",
@@ -98,7 +110,7 @@
         {
           "purpose": "bios",
           "path": "Same settings as Linux: General/Bios file path with the General/EnableEmulatedBios fallback (built-in BIOS emulation). No lunchbox firmware_rules resolution exists for yabasanshiro on any platform",
-          "naming": "User-selected BIOS file (conventionally saturn.bin)",
+          "naming": "User-selected BIOS file (conventionally saturn.bin); no canonical BIOS checksum is specified in the cited upstream source",
           "evidence": [
             "source:yabause/src/qt/YabauseThread.cpp biospath wiring",
             "source:yabause/src/yabause.c YabauseInit emulatebios branch",
@@ -107,6 +119,18 @@
         }
       ],
       "notes": "Windows is the primary desktop target: yabasanshiro.com/download ships an installer (.msi) and a standalone zip ('The third target for this project which has cloud sync function with Android version'), both v1.20.37 at capture. Portable installs (yabause.ini next to the exe) are honored, but the default data root without a portable ini is %APPDATA%\\YabaSanshiro."
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The official download page lists Android, iOS and Windows binaries but no Flatpak; no trustworthy Flatpak manifest/package capture exists.",
+      "evidence": ["docs:https://www.yabasanshiro.com/download (official binary list)", "source:devmiyax/yabause corresponding source v1.20.37 (no upstream Flatpak manifest/package)" ]
+    },
+    "macos": {
+      "status": "no_verified_package",
+      "reason": "The official download page lists Android, iOS and Windows binaries but no macOS binary; the corresponding-source tarball does not provide a verified macOS package capture.",
+      "evidence": ["docs:https://www.yabasanshiro.com/download (official binary list)", "source:devmiyax/yabause corresponding source v1.20.37 (native macOS packaging/runtime not verified)" ]
     }
   }
 }

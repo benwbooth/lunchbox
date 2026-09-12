@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "core": "virtual_jaguar",
+  "display_name": "Atari - Jaguar (Virtual Jaguar)",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": "virtualjaguar_libretro.info",
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:virtual_jaguar:full-keypad-sticks"
+    ],
+    "mapping_summary": "Jaguar full-keypad/sticks profile maps the numeric keypad, action buttons and analog controls.",
+    "evidence": [
+      "catalog.json: retroarch:virtual_jaguar:full-keypad-sticks"
+    ]
+  },
+  "firmware": {
+    "status": "optional",
+    "files": [
+      {
+        "path": "[BIOS] Atari Jaguar CD (World).j64",
+        "description": "[BIOS] Atari Jaguar CD (World).j64 (Jaguar CD BIOS, retail - optional override)",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "virtualjaguar_libretro.info firmware0_path/firmware0_opt"
+        ]
+      },
+      {
+        "path": "[BIOS] Atari Jaguar Developer CD (World).j64",
+        "description": "[BIOS] Atari Jaguar Developer CD (World).j64 (Jaguar CD BIOS, developer - optional override)",
+        "required": false,
+        "checksum_status": "not_published",
+        "checksums": [],
+        "evidence": [
+          "virtualjaguar_libretro.info firmware1_path/firmware1_opt"
+        ]
+      }
+    ],
+    "notes": "Jaguar boot ROM and CD BIOS images are embedded; these optional system-directory files override the embedded CD BIOS in real-BIOS CD mode.",
+    "evidence": [
+      "pinned virtualjaguar_libretro.info revision 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+    ]
+  },
+  "saves": {
+    "status": "content_dependent",
+    "extensions": [
+      ".srm"
+    ],
+    "naming": "Jaguar EEPROM persistence, when supported, uses the RetroArch content basename.",
+    "notes": "Virtual Jaguar save support is cartridge-dependent.",
+    "evidence": [
+      "Virtual Jaguar libretro save implementation"
+    ]
+  },
+  "states": {
+    "status": "supported",
+    "serialization": "3",
+    "naming": "RetroArch frontend state names are <content-basename>.state and <content-basename>.stateN for slots.",
+    "notes": "virtualjaguar_libretro.info declares savestate=true and savestate_features=3.",
+    "evidence": [
+      "virtualjaguar_libretro.info savestate=true/savestate_features=3"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "windows": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    }
+  }
+}

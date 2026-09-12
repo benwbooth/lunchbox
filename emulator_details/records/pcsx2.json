@@ -24,6 +24,12 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/PCSX2/inis/PCSX2.ini (or the platform data root's inis/PCSX2.ini)",
+          "naming": "Bindings are INI sections [InputSources], [Pad] and [Pad1]..[Pad8]; hotkeys are [Hotkeys]. Named profiles are inputprofiles/<name>.ini and per-game settings are gamesettings/; the Qt build has no PCSX2_keys.ini",
+          "evidence": ["source:pcsx2/SIO/Pad/Pad.cpp GetConfigSection and source:pcsx2/Input/InputManager.cpp Hotkeys @98697735f1bb1a1452d975251269abd1019876d1", "repo:crates/lunchbox-app/src/controller_pcsx2/configuration.rs"]
+        },
+        {
           "purpose": "saves",
           "path": "~/.config/PCSX2/memcards/ (default [Folders] MemoryCards=memcards under the data root; user-overridable to any absolute path)",
           "naming": "Default slot files Mcd001.ps2 and Mcd002.ps2 (\"Mcd%03u.ps2\"); multitap slots \"Mcd-Multitap<port>-Slot<slot>.ps2\"; slots are wired by [MemoryCards] SlotN_Filename (MultitapN_SlotM_Filename) and resolved against the memcards folder via FullpathToMcd; folder memory cards are directories whose name ends in .ps2 and contains a _pcsx2_superblock marker; image extensions .ps2/.mcr/.mcd/.bin/.mc2 are accepted (.bin/.mc2 are converted no-ECC images); per-game saves are served by serial-filtered folder cards (sioSetGameSerial -> ReIndex), PCSX2 does not auto-create serial-named card files",
@@ -71,6 +77,12 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "~/.var/app/net.pcsx2.PCSX2/config/PCSX2/inis/PCSX2.ini",
+          "naming": "Same sections [InputSources], [Pad], [Pad1]..[Pad8] and [Hotkeys]; named profiles are inputprofiles/<name>.ini and no PCSX2_keys.ini exists in the Qt build",
+          "evidence": ["source:pcsx2/SIO/Pad/Pad.cpp and Input/InputManager.cpp @98697735f1bb1a1452d975251269abd1019876d1", "repo:crates/lunchbox-app/src/controller_pcsx2/configuration.rs"]
+        },
+        {
           "purpose": "saves",
           "path": "~/.var/app/net.pcsx2.PCSX2/config/PCSX2/memcards/",
           "naming": "Identical to native Linux: default Mcd001.ps2/Mcd002.ps2 (\"Mcd%03u.ps2\"), multitap \"Mcd-Multitap<port>-Slot<slot>.ps2\", .ps2-named folder cards with _pcsx2_superblock, [MemoryCards] SlotN_Filename selection, serial-filtered folder cards for per-game saves",
@@ -114,6 +126,12 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "%USERPROFILE%\\Documents\\PCSX2\\inis\\PCSX2.ini",
+          "naming": "Same INI binding sections [InputSources], [Pad], [Pad1]..[Pad8] and [Hotkeys]; named profiles live in inputprofiles\\<name>.ini; the Qt build has no PCSX2_keys.ini",
+          "evidence": ["source:pcsx2/SIO/Pad/Pad.cpp and Input/InputManager.cpp @98697735f1bb1a1452d975251269abd1019876d1", "repo:crates/lunchbox-app/src/controller_pcsx2/configuration.rs"]
+        },
+        {
           "purpose": "saves",
           "path": "%USERPROFILE%\\Documents\\PCSX2\\memcards\\",
           "naming": "Default slot files Mcd001.ps2 and Mcd002.ps2 (\"Mcd%03u.ps2\"); multitap \"Mcd-Multitap<port>-Slot<slot>.ps2\"; .ps2-named folder memory card directories containing _pcsx2_superblock; slots chosen by [MemoryCards] SlotN_Filename; per-game saves via serial-filtered folder cards, not serial-named files",
@@ -143,7 +161,7 @@
           ]
         }
       ],
-      "notes": "The pinned source puts the Windows data root in Documents\\PCSX2 (FOLDERID_Documents), not AppData. Lunchbox's firmware.rs currently resolves the Windows PCSX2 BIOS root from the roaming config dir (config_dir()/PCSX2/bios), which does not match the pinned source; captured here for follow-up, not changed by this record."
+      "notes": "The pinned source puts the Windows data root in Documents\\PCSX2 (FOLDERID_Documents), not AppData. Lunchbox's firmware adapter follows that Documents root for new installs."
     },
     "macos": {
       "paths": [
@@ -156,6 +174,12 @@
             "source:pcsx2/SIO/Pad/Pad.cpp GetConfigSection -> [PadN]; source:pcsx2/Input/InputManager.cpp [Hotkeys] section",
             "repo:crates/lunchbox-app/src/controller_pcsx2/configuration.rs"
           ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/PCSX2/inis/PCSX2.ini",
+          "naming": "Same INI binding sections [InputSources], [Pad], [Pad1]..[Pad8] and [Hotkeys]; named profiles are inputprofiles/<name>.ini; the Qt build has no PCSX2_keys.ini",
+          "evidence": ["source:pcsx2/SIO/Pad/Pad.cpp and Input/InputManager.cpp @98697735f1bb1a1452d975251269abd1019876d1", "repo:crates/lunchbox-app/src/controller_pcsx2/configuration.rs"]
         },
         {
           "purpose": "saves",

@@ -18,6 +18,12 @@
           "evidence": ["source:backends/platform/sdl/posix/posix.cpp OSystem_POSIX::getDefaultConfigFileName (XDG_CONFIG_HOME, ~/.scummvmrc legacy)", "docs:configuration_file Linux section", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md (-c launch with private XDG_CONFIG_HOME)"]
         },
         {
+          "purpose": "input",
+          "path": "$XDG_CONFIG_HOME/scummvm/scummvm.ini, default ~/.config/scummvm/scummvm.ini (or -c <file> private config)",
+          "naming": "[keymapper] and per-target INI domains store keymap_<keymap-id>_<action-id> = <space-separated hardware input ids>; default engine keymap actions include LCLK, RCLK, PAUSE, MENU, SKIP, SKLI, PIND, RETURN, UP, DOWN, LEFT and RIGHT",
+          "evidence": ["source:common/config-manager.cpp and backends/keymapper/keymap.cpp keymap_ serialization @3f6428df202e2c044ef53208acba0f665ea92096", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
+        },
+        {
           "purpose": "saves",
           "path": "savepath key (Paths tab), default $XDG_DATA_HOME/scummvm/saves i.e. ~/.local/share/scummvm/saves (legacy ~/.scummvm while it exists; SCUMMVM_SAVEPATH env or --savepath override)",
           "naming": "Per-target savegames named <target>.NNN (e.g. target.001) for engines with kSimpleSavesNames, <target>.sNN (e.g. target.s01) otherwise — one numbered file per slot in the target's id, plus an autosave slot (autosave every 5 minutes by default)",
@@ -32,6 +38,7 @@
         {
           "purpose": "bios",
           "path": "No BIOS required; a few engines want extra data files (extras) reachable via the extrapath setting / Paths tab in addition to the game data",
+          "naming": "No external BIOS filename or canonical checksum: optional engine data is an extrapath directory, whose exact files are engine/game-specific",
           "evidence": ["docs:configuration_file paths table (extrapath: \"Extra path for additional game data\")", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
         }
       ],
@@ -43,6 +50,12 @@
           "purpose": "config",
           "path": "~/.var/app/org.scummvm.ScummVM/config/scummvm/scummvm.ini (flatpak points XDG_CONFIG_HOME at the per-app ~/.var/app dir)",
           "evidence": ["flathub:org.scummvm.ScummVM (app exists, current releases)", "source:posix.cpp XDG_CONFIG_HOME-based resolution"]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.var/app/org.scummvm.ScummVM/config/scummvm/scummvm.ini",
+          "naming": "Same [keymapper] and per-target keymap_<keymap-id>_<action-id> = <hardware ids> grammar as native; default actions are engine-default_* entries",
+          "evidence": ["source:common/config-manager.cpp and backends/keymapper/keymap.cpp @3f6428df202e2c044ef53208acba0f665ea92096", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md", "flathub:org.scummvm.ScummVM"]
         },
         {
           "purpose": "saves",
@@ -59,6 +72,7 @@
         {
           "purpose": "bios",
           "path": "No BIOS required; engine extras (extrapath) may be needed inside the sandbox",
+          "naming": "No external BIOS filename or canonical checksum; optional engine-specific data is supplied through the extrapath directory",
           "evidence": ["docs:configuration_file paths table", "flathub:org.scummvm.ScummVM"]
         }
       ]
@@ -69,6 +83,12 @@
           "purpose": "config",
           "path": "%APPDATA%\\ScummVM\\scummvm.ini (portable mode: scummvm.ini next to the executable; legacy C:\\WINDOWS\\scummvm.ini on 9x-era installs)",
           "evidence": ["source:backends/platform/sdl/win32/win32.cpp getDefaultConfigFileName (CSIDL_APPDATA + \\ScummVM, portable detection, windows-dir fallback)", "docs:configuration_file Windows section"]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\ScummVM\\scummvm.ini (portable mode: scummvm.ini next to the executable)",
+          "naming": "Same [keymapper] and per-target keymap_<keymap-id>_<action-id> = <hardware ids> grammar; engine-default actions include LCLK/RCLK, PAUSE, MENU, SKIP/SKLI, PIND, RETURN and directions",
+          "evidence": ["source:common/config-manager.cpp and backends/keymapper/keymap.cpp @3f6428df202e2c044ef53208acba0f665ea92096", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -85,6 +105,7 @@
         {
           "purpose": "bios",
           "path": "No BIOS required; engine extras (extrapath) sometimes needed",
+          "naming": "No external BIOS filename or canonical checksum; optional engine-specific data is supplied through extrapath",
           "evidence": ["docs:configuration_file paths table"]
         }
       ]
@@ -95,6 +116,12 @@
           "purpose": "config",
           "path": "~/Library/Preferences/ScummVM Preferences (legacy ~/.scummvmrc from older installs)",
           "evidence": ["source:backends/platform/sdl/macosx/macosx.cpp getDefaultConfigFileName (\"Library/Preferences/<bundle> Preferences\")", "docs:configuration_file macOS section"]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Preferences/ScummVM Preferences",
+          "naming": "Same [keymapper] and per-target keymap_<keymap-id>_<action-id> = <hardware ids> grammar; default actions are stored as keymap_engine-default_* entries in the target domain",
+          "evidence": ["source:common/config-manager.cpp and backends/keymapper/keymap.cpp @3f6428df202e2c044ef53208acba0f665ea92096", "source:backends/platform/sdl/macosx/macosx.cpp preference path"]
         },
         {
           "purpose": "saves",
@@ -111,6 +138,7 @@
         {
           "purpose": "bios",
           "path": "No BIOS required; engine extras (extrapath) sometimes needed",
+          "naming": "No external BIOS filename or canonical checksum; optional engine-specific data is supplied through extrapath",
           "evidence": ["docs:configuration_file paths table"]
         }
       ]

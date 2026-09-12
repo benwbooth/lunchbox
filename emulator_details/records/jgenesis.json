@@ -45,6 +45,7 @@
         {
           "purpose": "bios",
           "path": "No BIOS files are required or looked up in a firmware directory: Genesis/32X cartridges, SMS, Game Gear, SG-1000, NES, SNES, and GB/GBC all boot directly into the game. Optional boot ROMs are plain paths in jgenesis-config.toml: [smsgg] sms_boot_from_bios/gg_boot_from_bios (default false) activate sms_bios_path/gg_bios_path; [game_boy] dmg_boot_rom/cgb_boot_rom (default false) activate dmg_boot_rom_path/cgb_boot_rom_path. Sega CD (beyond this record's cart scope) refuses to start without a BIOS from [sega_cd] bios_path/eu_bios_path/jp_bios_path (per_region_bios default true). jgenesis does not emulate Colecovision; its 8-bit Sega coverage is SG-1000/SMS/Game Gear",
+          "naming": "No external BIOS for ordinary cartridge systems; optional boot ROM paths are explicit config values (sms_bios_path, gg_bios_path, dmg_boot_rom_path, cgb_boot_rom_path, and Sega CD region paths), with no canonical filename/checksum in this source",
           "evidence": [
             "source:jgenesis frontend/jgenesis-native-config/src/smsgg.rs sms_boot_from_bios/gg_boot_from_bios + sms_bios_path/gg_bios_path defaulting false/None @cbe7f12",
             "source:jgenesis frontend/jgenesis-native-config/src/gb.rs dmg_boot_rom/cgb_boot_rom + dmg_boot_rom_path/cgb_boot_rom_path defaulting false/None @cbe7f12",
@@ -88,6 +89,7 @@
         {
           "purpose": "bios",
           "path": "Identical to Linux: no BIOS needed for cartridge systems; optional SMS/GG boot ROMs via [smsgg] sms_boot_from_bios/gg_boot_from_bios + sms_bios_path/gg_bios_path, optional GB/GBC boot ROMs via [game_boy] dmg_boot_rom/cgb_boot_rom + *_boot_rom_path; Sega CD requires [sega_cd] bios paths. All BIOS/boot-ROM locations are explicit config paths, not a firmware folder",
+          "naming": "Same explicit config-path naming as Linux; ordinary cartridges need no external BIOS and this source publishes no canonical filenames/checksums for optional boot ROMs",
           "evidence": [
             "source:jgenesis frontend/jgenesis-native-config/src/smsgg.rs and gb.rs boot-ROM fields defaulting false/None @cbe7f12",
             "source:jgenesis frontend/jgenesis-native-driver/src/mainloop/genesis.rs SegaCD BIOS requirement only under has_sega_cd() @cbe7f12"
@@ -95,6 +97,18 @@
         }
       ],
       "notes": "Lunchbox installs the official v0.14.1 windows-x86_64 zip (sources/emulator-install-sources.json). macOS is not captured: no official macOS builds exist upstream and no Lunchbox macOS installable is declared."
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The pinned upstream release provides Linux AppImage and Windows ZIP artifacts; no trustworthy Flatpak package is declared by the project.",
+      "evidence": ["docs:https://github.com/jsgroth/jgenesis/blob/cbe7f129e3f5c805a2a2e4318981834192116e90/README.md (official supported platforms)", "contract:sources/emulator-install-sources.json (approved AppImage/Windows artifacts only)"]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "The pinned upstream README supports Linux, Windows, and web, not macOS; the pinned release and CI expose no macOS build.",
+      "evidence": ["docs:https://github.com/jsgroth/jgenesis/blob/cbe7f129e3f5c805a2a2e4318981834192116e90/README.md (official platform list)", "source:jsgroth/jgenesis@cbe7f129e3f5c805a2a2e4318981834192116e90 (.github/workflows/rust.yml has no macOS job)"]
     }
   }
 }

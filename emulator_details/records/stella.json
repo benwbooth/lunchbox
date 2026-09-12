@@ -17,6 +17,12 @@
           "evidence": ["docs:index 'The database file is named stella.sqlite3 ... Linux/Unix $HOME/.config/stella/'", "source:src/os/unix/OSystemUNIX.cxx getBaseDirectories -> XDGPaths::instance().configDir(\"stella\")", "source:src/emucore/OSystemStandalone.cxx SQLite settings repository", "contract:docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md (-basedir, settings(setting,value) table)"]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/stella/stella.sqlite3 (or the -basedir root's stella.sqlite3)",
+          "naming": "SQLite settings table row joymap contains a JSON array of per-joystick objects with name, port (Left/Right/Auto), six kMenuMode/kJoystickMode/kPaddlesMode/kKeyboardMode/kDrivingMode/kCommonMode arrays, and event_ver=9; entries use button, axis x/y/z/a3..a7 plus direction, or hat plus direction",
+          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md"]
+        },
+        {
           "purpose": "saves",
           "path": "~/.config/stella/nvram/ - Atari 2600 game saves only exist for cart hardware with EEPROM: SaveKey and AtariVox EEPROM images live here; carts without EEPROM hardware keep progress only inside save states",
           "naming": "Per-device, not per-ROM: atarivox_eeprom.dat and savekey_eeprom.dat, created on demand and initialized to all $FF like real EEPROM",
@@ -31,6 +37,7 @@
         {
           "purpose": "bios",
           "path": "None - the Atari 2600 has no BIOS/firmware ROMs; Stella ships everything it needs (bankswitch and cart helper ROMs like Supercharger loading screens are emulated in code; -fastscbios only toggles the progress-bar display)",
+          "naming": "No external BIOS/firmware filename or canonical checksum exists for Stella; all required console behavior is shipped/emulated in code",
           "evidence": ["docs:index Features list (no firmware/system ROM requirement anywhere)", "db:no firmware_rules rows exist for stella (none are needed)"]
         }
       ],
@@ -42,6 +49,12 @@
           "purpose": "config",
           "path": "~/.var/app/io.github.stella_emu.Stella/.config/stella/stella.sqlite3 (the sandbox gives the app its own HOME under ~/.var/app/<id>, so the same HOME-relative .config/stella layout lands there)",
           "evidence": ["flathub:io.github.stella_emu.Stella (app exists)", "source:src/os/unix/OSystemUNIX.cxx XDG config dir resolution relative to $HOME/XDG_CONFIG_HOME"]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.var/app/io.github.stella_emu.Stella/.config/stella/stella.sqlite3",
+          "naming": "Same SQLite joymap JSON grammar and event_ver=9 as native: per-joystick name/port, six mode arrays, button/axis/hat event fields",
+          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md", "flathub:io.github.stella_emu.Stella"]
         },
         {
           "purpose": "saves",
@@ -58,6 +71,7 @@
         {
           "purpose": "bios",
           "path": "None - no BIOS/firmware, as on native Linux",
+          "naming": "No external BIOS/firmware filename or canonical checksum; Stella ships/emulates the required Atari behavior",
           "evidence": ["docs:index Features list", "db:no firmware_rules rows exist for stella"]
         }
       ],
@@ -69,6 +83,12 @@
           "purpose": "config",
           "path": "%APPDATA%\\Stella\\stella.sqlite3 (Roaming profile; -baseinappdir switches the base dir to the application directory, Windows-only)",
           "evidence": ["docs:index settings database location 'Windows %APPDATA%\\Stella\\'", "source:src/os/windows/HomeFinder.hxx FOLDERID_RoamingAppData + OSystemWINDOWS.cxx appends \"Stella\\\\\"", "docs:index -basedir/-baseinappdir option notes"]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\Stella\\stella.sqlite3 (or the -baseinappdir base directory)",
+          "naming": "Same SQLite joymap JSON grammar and event_ver=9: joystick name/port, six mode arrays and button/axis/hat event fields",
+          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -85,6 +105,7 @@
         {
           "purpose": "bios",
           "path": "None - no BIOS/firmware",
+          "naming": "No external BIOS/firmware filename or canonical checksum; Stella ships/emulates the required Atari behavior",
           "evidence": ["docs:index Features list", "db:no firmware_rules rows exist for stella"]
         }
       ]
@@ -95,6 +116,12 @@
           "purpose": "config",
           "path": "~/Library/Application Support/Stella/stella.sqlite3 (-basedir is documented as not available for macOS)",
           "evidence": ["docs:index settings database location 'Macintosh $HOME/Library/Application Support/Stella/'", "source:src/os/macos/OSystemMACOS.cxx applicationSupportPath() + \"/Stella/\"", "docs:index '-basedir ... Note: Not available for macOS'"]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/Stella/stella.sqlite3",
+          "naming": "Same SQLite joymap JSON grammar and event_ver=9: joystick name/port, six mode arrays and button/axis/hat event fields",
+          "evidence": ["source:src/emucore/PJoystickHandler.cxx and JoyMap.cxx @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1", "contract:docs/STELLA_NATIVE_CONTROLLER_CONTRACT.md"]
         },
         {
           "purpose": "saves",
@@ -111,6 +138,7 @@
         {
           "purpose": "bios",
           "path": "None - no BIOS/firmware",
+          "naming": "No external BIOS/firmware filename or canonical checksum; Stella ships/emulates the required Atari behavior",
           "evidence": ["docs:index Features list", "db:no firmware_rules rows exist for stella"]
         }
       ]

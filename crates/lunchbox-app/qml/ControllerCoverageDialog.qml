@@ -5,7 +5,7 @@ import QtQuick.Layouts
 Dialog {
     id: coverage
     required property var settingsModel
-    property var recordSlugs: ["blastem","bizhawk","duckstation","desmume","dolphin","flycast","gearcoleco","gopher64","hatari","jgenesis","mame","mednafen","melonds","mgba","nestopia-ue","openmsx","pcsx2","ppsspp","punes","retroarch","rmg","rpcs3","scummvm","simple64","stella","vice","xemu"]
+    readonly property var recordSlugs: report.record_slugs || []
     property var report: ({})
     property string selectionStatus: ""
     signal nativeRuntimeRequested()

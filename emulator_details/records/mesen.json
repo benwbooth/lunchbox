@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "slug": "mesen",
+  "emulator": "Mesen",
+  "sources": [
+    { "kind": "source", "repo": "SourMesen/Mesen2", "commit": "b9fa69ddc6d0a331fb103fdb5eef6904305703c2", "role": "Mesen 2.1.1 configuration, input mapping, save/state folders, firmware names and SHA-256 allow-list" },
+    { "kind": "docs", "url": "https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/README.md", "role": "official supported host list and native/AppImage distribution" },
+    { "kind": "docs", "url": "https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/SteamOS.md", "role": "official Linux/AppImage guidance" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/Mesen2/settings.json by default (Environment.SpecialFolder.ApplicationData/Mesen2; $XDG_CONFIG_HOME is used by the .NET runtime when set). If settings.json already exists beside the executable, Mesen uses that portable folder instead. The JSON object contains Version, Nes, Snes, Gameboy, Sms, Cv, Gba, Ws, Input, Preferences and other sections",
+          "evidence": [
+            "source:UI/Config/ConfigManager.cs DefaultDocumentsFolder uses ApplicationData/Mesen2 on non-Windows; HomeFolder detects portable settings.json @b9fa69d",
+            "source:UI/Config/ConfigManager.cs GetConfigFile returns HomeFolder/settings.json and Configuration.cs serializes the object @b9fa69d",
+            "docs:README.md native Linux and Linux AppImage builds @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "input",
+          "naming": "Mappings are JSON Port1/Port2/ExpPort objects with Type and Mapping1..Mapping4; standard properties are A/B/Up/Down/Left/Right/Start/Select/Turbo* as UInt16 key codes",
+          "path": "Controller mappings are embedded in settings.json, not a separate key file. NES uses Nes.Port1/Port2/ExpPort (and mapper/expansion ports), each with Type and Mapping1..Mapping4 objects; each mapping has A/B/Up/Down/Left/Right/Start/Select/Turbo* properties stored as UInt16 platform key codes, plus device-specific arrays (Zapper, PowerPad, Mouse, etc.). Input contains global deadzone/mouse/force-feedback settings. The same schema is used for Snes, Gameboy, Sms, Cv, Gba and Ws sections; keyboard/gamepad/joystick key codes are assigned by the native key manager",
+          "evidence": [
+            "source:UI/Config/NesConfig.cs and NesControllerConfig.cs Port1/Port2/Type/Mapping1..4 and device-specific arrays @b9fa69d",
+            "source:UI/Config/InputConfig.cs KeyMapping UInt16 fields and ControllerConfig serialization @b9fa69d",
+            "source:InteropDLL/EmuApiWrapper.cpp LinuxKeyManager selection and Core key mapping API @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/Mesen2/Saves/ by default (HomeFolder/Saves); Preferences.SaveDataFolder plus OverrideSaveDataFolder can redirect it to an explicit directory",
+          "naming": "Battery-backed data uses <ROM filename stem>.sav; some devices add a suffix such as .chr.sav, .turbofile.sav or .battlebox.sav. Mesen creates the file only when the emulated device has battery data",
+          "evidence": [
+            "source:Utilities/FolderUtilities.cpp GetSaveFolder = HomeFolder/Saves and Core/Shared/BatteryManager.cpp GetBasePath @b9fa69d",
+            "source:Core/NES/BaseMapper.cpp .sav/.chr.sav and device save implementations @b9fa69d",
+            "source:UI/Config/ConfigManager.cs SaveFolder override properties @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.config/Mesen2/SaveStates/ by default (HomeFolder/SaveStates); Preferences.SaveStateFolder plus OverrideSaveStateFolder can redirect it",
+          "naming": "Quick slots 1..10 are <ROM filename stem>_<slot>.mss. Auto-save uses slot 11; File > Save State can write a user-selected .mss. Files carry an MSS header, emulator/version metadata and serialized state",
+          "evidence": [
+            "source:Core/Shared/SaveStateManager.cpp GetStateFilepath <rom>_<index>.mss @b9fa69d",
+            "source:Core/Shared/SaveStateManager.h MaxIndex=10 and AutoSaveStateIndex=11 @b9fa69d",
+            "source:Utilities/FolderUtilities.cpp GetSaveStateFolder = HomeFolder/SaveStates and UI/Config/ConfigManager.cs overrides @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Firmware is read from ~/.config/Mesen2/Firmware/ (HomeFolder/Firmware); no external firmware is needed for ordinary NES/SNES cartridge play, but optional/required files for other supported systems use exact names from UI/Interop/FirmwareTypeExtensions.cs. Authoritative SHA-256 values are embedded there: FDS disksys.rom or FdsBios.bin (8192 bytes; 99C18490ED9002D9C6D999B9D8D15BE5C051BDFA7CC7E73318053C9A994B0178 or A0A9D57CBACE21BF9C85C2B85E86656317F0768D7772ACC90C7411AB1DBFF2BF); Game Boy dmg_boot.bin/gb_bios.bin (256; CF053ECCB4CCAFFF9E67339D4E78E98DCE7D1ED59BE819D2A1BA2232C6FCE1C7 or 26E71CF01E301E5DC40E987CD2ECBF6D0276245890AC829DB2A25323DA86818), cgb_boot.bin/gbc_bios.bin (2304; B4F2E416A35EEF52CBA161B159C7C8523A92594FACB924B3EDE0D722867C50C7 or 3A307A41689BEE99A9A32EA021BF45136906C86B2E4F06C806738398E4F92E45), gba_bios.bin (16384; FD2547724B505F487E6DCB29EC2ECFF3AF35A841A77AB2E85FD87350ABD36570), sgb_boot.bin (256; 0E4DDFF32FC9D1EEAAE812A157DD246459B00C9E14F2F61751F661F32361E360), sgb2_boot.bin (256; FD243C4FB27008986316CE3DF29E9CFBCDC0CD52704970555A8BB76EDBEC3988), bios.col (8192; 990BF1956F10207D8781B619EB74F89B00D921C8D45C95C334C16C8CCECA09AD or FB4A898EB93B19B36773D87A6C70EB28F981B2686BEBDD2D431B05DCDF9CFFD4), and bios.gg (1024; 8C8A21335038285CFA03DC076100C1F0BFADF3E4FF70796F11F3DFAAAB60EEE2). SMS uses bios.sms with size-dependent accepted hashes; WonderSwan uses bootrom.ws/bootrom.wsc/bootrom_sc.wsc; SNES coprocessors use dsp1.rom/dsp1b.rom/dsp2.rom/dsp3.rom/dsp4.rom/st010.rom/st011.rom/st018.rom; PCE uses syscard3.pce or gecard.pce. Their exact sizes/hashes are the source allow-list. No firmware checksum is claimed where the source does not list one",
+          "naming": "Firmware names and sizes are source-defined; known SHA-256 values are the allow-list in UI/Interop/FirmwareTypeExtensions.cs, while entries without a source hash remain unverified",
+          "evidence": [
+            "source:Utilities/FolderUtilities.cpp GetFirmwareFolder = HomeFolder/Firmware @b9fa69d",
+            "source:Core/Shared/FirmwareHelper.h exact firmware filenames, sizes and fallback aliases @b9fa69d",
+            "source:UI/Interop/FirmwareTypeExtensions.cs authoritative names/sizes/SHA-256 allow-list @b9fa69d"
+          ]
+        }
+      ],
+      "notes": "Mesen's official README lists Linux native and AppImage builds. No first-party Flatpak manifest was found, so linux-flatpak is not asserted."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/Mesen2/settings.json by default (Environment.SpecialFolder.ApplicationData/Mesen2). A settings.json beside the executable selects the portable folder instead; all controller and emulator settings remain in that JSON",
+          "evidence": [
+            "source:UI/Config/ConfigManager.cs non-Windows DefaultDocumentsFolder uses ApplicationData/Mesen2 and portable settings detection @b9fa69d",
+            "source:UI/Config/ConfigManager.cs GetConfigFile HomeFolder/settings.json @b9fa69d",
+            "docs:README.md macOS Intel and Apple Silicon native builds @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "settings.json sections Nes/Snes/Gameboy/Sms/Cv/Gba/Ws hold Port1/Port2/etc. Type and Mapping1..Mapping4 objects. Mapping properties A/B/Up/Down/Left/Right/Start/Select/Turbo* are UInt16 key codes; device-specific arrays cover Zapper, Mouse, PowerPad and other controllers. Global Input settings hold deadzone, mouse sensitivity and force feedback",
+          "naming": "Same JSON controller grammar as Linux: system sections contain Port/ExpPort Type plus Mapping1..Mapping4 objects with standard button properties and UInt16 key codes",
+          "evidence": [
+            "source:UI/Config/InputConfig.cs KeyMapping/ControllerConfig UInt16 mapping fields @b9fa69d",
+            "source:UI/Config/NesConfig.cs and NesControllerConfig.cs NES ports and controller mapping schema @b9fa69d",
+            "source:InteropDLL/EmuApiWrapper.cpp __APPLE__ selects MacOSKeyManager @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Library/Application Support/Mesen2/Saves/ by default; Preferences SaveDataFolder/OverrideSaveDataFolder can redirect",
+          "naming": "<ROM filename stem>.sav for battery data, with device-specific suffixes such as .chr.sav/.turbofile.sav/.battlebox.sav when applicable",
+          "evidence": [
+            "source:Utilities/FolderUtilities.cpp GetSaveFolder and Core/Shared/BatteryManager.cpp @b9fa69d",
+            "source:Core/NES/BaseMapper.cpp save extensions @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Library/Application Support/Mesen2/SaveStates/ by default; Preferences SaveStateFolder/OverrideSaveStateFolder can redirect",
+          "naming": "<ROM filename stem>_1.mss through <ROM filename stem>_10.mss for quick slots; slot 11 is automatic save; explicit file saves use .mss",
+          "evidence": [
+            "source:Core/Shared/SaveStateManager.cpp/.h state path and MaxIndex=10 @b9fa69d",
+            "source:Utilities/FolderUtilities.cpp GetSaveStateFolder @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/Library/Application Support/Mesen2/Firmware/; ordinary NES/SNES cartridges need no external firmware. Exact optional/required names and authoritative SHA-256 allow-list are the same as Linux because Core/Shared/FirmwareHelper.h uses the platform-independent Firmware folder: disksys.rom/FdsBios.bin, dmg_boot.bin/gb_bios.bin, cgb_boot.bin/gbc_bios.bin, gba_bios.bin, sgb_boot.bin, sgb2_boot.bin, bios.col, bios.sms, bios.gg, bootrom.ws/bootrom.wsc/bootrom_sc.wsc, SNES dsp*.rom/st010.rom/st011.rom/st018.rom, and PCE syscard3.pce/gecard.pce",
+          "naming": "Firmware names and sizes are source-defined; known SHA-256 values are the same platform-independent allow-list, while entries without a source hash remain unverified",
+          "evidence": [
+            "source:Utilities/FolderUtilities.cpp GetFirmwareFolder @b9fa69d",
+            "source:Core/Shared/FirmwareHelper.h and UI/Interop/FirmwareTypeExtensions.cs exact names/sizes/hashes @b9fa69d"
+          ]
+        }
+      ],
+      "notes": "Official README lists separate Intel and Apple Silicon macOS builds. Native Mesen uses the same platform-independent folder contract; no macOS-specific firmware checksum variation is defined."
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%USERPROFILE%\\Documents\\Mesen2\\settings.json by default (Environment.SpecialFolder.MyDocuments/Mesen2). If settings.json exists beside Mesen.exe, Mesen uses that executable directory as portable HomeFolder instead",
+          "evidence": [
+            "source:UI/Config/ConfigManager.cs Windows DefaultDocumentsFolder uses MyDocuments/Mesen2; HomeFolder detects portable settings.json @b9fa69d",
+            "source:UI/Config/ConfigManager.cs GetConfigFile HomeFolder/settings.json @b9fa69d",
+            "docs:README.md Windows 10/11 native build @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "settings.json embeds NES/SNES/GB/SMS/Coleco/GBA/WS controller mappings under each system's Port1/Port2/etc. ControllerConfig.Type selects the device and Mapping1..Mapping4 contain UInt16 key codes for A/B/Up/Down/Left/Right/Start/Select/Turbo* plus device-specific arrays; WindowsKeyManager supplies keyboard/XInput/DirectInput codes. There is no separate mapping file",
+          "naming": "Same JSON controller grammar as Linux: system sections contain Port/ExpPort Type plus Mapping1..Mapping4 objects with standard button properties and UInt16 key codes",
+          "evidence": [
+            "source:UI/Config/InputConfig.cs KeyMapping/ControllerConfig fields and JSON serialization @b9fa69d",
+            "source:UI/Config/NesConfig.cs/NesControllerConfig.cs port/type/mapping schema @b9fa69d",
+            "source:Windows/WindowsKeyManager.cpp XInput/DirectInput key definitions @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "%USERPROFILE%\\Documents\\Mesen2\\Saves\\ by default; Preferences SaveDataFolder/OverrideSaveDataFolder can redirect",
+          "naming": "<ROM filename stem>.sav for battery data, with device-specific .chr.sav/.turbofile.sav/.battlebox.sav variants where applicable",
+          "evidence": [
+            "source:Utilities/FolderUtilities.cpp GetSaveFolder and Core/Shared/BatteryManager.cpp @b9fa69d",
+            "source:Core/NES/BaseMapper.cpp save extensions @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "%USERPROFILE%\\Documents\\Mesen2\\SaveStates\\ by default; Preferences SaveStateFolder/OverrideSaveStateFolder can redirect",
+          "naming": "<ROM filename stem>_1.mss through <ROM filename stem>_10.mss for quick slots; slot 11 automatic save; explicit Save State files use .mss and include an MSS header",
+          "evidence": [
+            "source:Core/Shared/SaveStateManager.cpp/.h GetStateFilepath, MaxIndex=10, AutoSaveStateIndex=11 @b9fa69d",
+            "source:Utilities/FolderUtilities.cpp GetSaveStateFolder @b9fa69d"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "%USERPROFILE%\\Documents\\Mesen2\\Firmware\\; ordinary NES/SNES cartridges need no external firmware. Exact names are disksys.rom/FdsBios.bin, dmg_boot.bin/gb_bios.bin, cgb_boot.bin/gbc_bios.bin, gba_bios.bin, sgb_boot.bin, sgb2_boot.bin, bios.col, bios.sms, bios.gg, bootrom.ws/bootrom.wsc/bootrom_sc.wsc, dsp1.rom/dsp1b.rom/dsp2.rom/dsp3.rom/dsp4.rom/st010.rom/st011.rom/st018.rom, and syscard3.pce/gecard.pce; known SHA-256 values are the allow-list in UI/Interop/FirmwareTypeExtensions.cs, with no checksum claimed for entries lacking one",
+          "naming": "Firmware names and sizes are source-defined; known SHA-256 values are the same platform-independent allow-list, while entries without a source hash remain unverified",
+          "evidence": [
+            "source:Utilities/FolderUtilities.cpp GetFirmwareFolder and source:Core/Shared/FirmwareHelper.h lookup @b9fa69d",
+            "source:UI/Interop/FirmwareTypeExtensions.cs exact names/sizes/SHA-256 values @b9fa69d"
+          ]
+        }
+      ],
+      "notes": "Official README lists Windows 10/11 native builds. Mesen stores user-profile data in Documents/Mesen2 by source design, with executable-directory portable mode."
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The pinned upstream README and SteamOS guidance provide native/AppImage Linux distribution instructions but no first-party Flatpak package.",
+      "evidence": ["docs:https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/README.md (official supported hosts/artifacts)", "docs:https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/SteamOS.md (official Linux/AppImage guidance)"]
+    }
+  }
+}

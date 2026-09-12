@@ -3,37 +3,100 @@
   "slug": "duckstation",
   "emulator": "DuckStation",
   "sources": [
-    { "kind": "source", "repo": "stenzel/duckstation", "commit": "0a53bc47c", "role": "controller contract" },
-    { "kind": "docs", "url": "https://www.duckstation.org/wiki/FAQ", "role": "paths" }
+    { "kind": "source", "repo": "stenzek/duckstation", "commit": "ed6720bbf59011b276faafb098ecc1c2407e74a3", "role": "user directories, INI sections, controller binding syntax, memory-card/save-state naming and BIOS database" },
+    { "kind": "docs", "url": "https://github.com/stenzek/duckstation/blob/master/README.md", "role": "official platform/user-directory/controller documentation" }
   ],
   "platforms": {
     "linux": {
       "paths": [
         {
           "purpose": "config",
-          "path": "~/.local/share/duckstation/settings.ini (portable mode disables this)",
-          "evidence": ["docs:FAQ", "controller contract: docs/CONTROLLERS.md"]
+          "path": "~/.local/share/duckstation/settings.ini ($XDG_DATA_HOME/duckstation; portable.txt beside the executable makes the program directory the user directory). Controller mappings are INI sections [Pad1]...[Pad8] and [Hotkeys], with keys named by the virtual control (for example Up, Cross, L1, L2, LLeft) and values parsed as Keyboard/<key>, SDL-<index>/Button<index>, SDL-<index>/+Axis<index>, SDL-<index>/-Axis<index>, or FullAxis variants; source serializes chorded bindings with ` & `.",
+          "evidence": ["source:src/core/settings.cpp GetSectionSaveOrder", "source:src/core/analog_controller.cpp binding names", "source:src/util/input_manager.cpp ParseInputBindingKey/ConvertGenericControllerKeyToString", "docs:README.md User Directories and Bindings"]
         },
         {
           "purpose": "saves",
-          "path": " covers/ and the memory card directory from settings; per-game memory cards are <serial>.mcr / <serial>.sanyo.mcr keyed by DuckStation's disc serial",
-          "naming": "Memory cards named from the disc serial (e.g. SCUS-94163.mcr); shared card slots use the names configured in settings",
-          "evidence": ["docs:FAQ", "source:duckstation_config GameIdentity/serial usage"]
+          "path": "memcards/ under the user directory by default (configurable via [MemoryCards] Directory); per-game cards may be selected by the game serial/title and shared cards use configured filenames",
+          "naming": "Default card names are <serial>_1.mcd / <serial>_2.mcd for shared cards; legacy/imported card formats include .mcr, .srm and .mc. The exact active name is controlled by the MemoryCards settings and card type.",
+          "evidence": ["source:src/core/settings.cpp EmuFolders::MemoryCards and GetMemoryCardPath", "source:src/core/system.cpp GetGameMemoryCardPath", "docs:README.md User Directories"]
         },
         {
           "purpose": "states",
-          "path": "savestates/ in the user directory",
-          "naming": "<serial>.<slot>.sav with a savestate screenshot alongside; slots 1..10 plus resume",
-          "evidence": ["docs:FAQ"]
+          "path": "savestates/ in the user directory by default (configurable via [Folders] SaveStates)",
+          "naming": "<serial>_<slot>.sav for numbered slots and <serial>_resume.sav for resume; current source also creates backup/undo state data as part of save-state operations. Save-state screenshots are embedded in the .sav format, not a required sidecar.",
+          "evidence": ["source:src/core/settings.cpp EmuFolders::SaveStates", "source:src/core/system.cpp GetGameSaveStatePath", "docs:README.md save-state support"]
         },
         {
           "purpose": "bios",
-          "path": "bios/ in the user directory",
-          "naming": "Standard PlayStation BIOS images (scph1001 etc.); DuckStation HLE BIOS is the no-firmware fallback",
-          "evidence": ["docs:FAQ", "db:firmware_rules duckstation entries"]
+          "path": "bios/ in the user directory by default (configurable via [BIOS] SearchDirectory); DuckStation's fast-boot/HLE options do not make a dumped BIOS universally unnecessary for all software",
+          "naming": "Canonical names in the source BIOS database include ps-10j.bin, ps-22a.bin, ps-22e.bin, ps-30a.bin, ps-30e.bin, ps-30j.bin, ps-41a.bin, ps-41e.bin, psone-44a.bin, psone-44e.bin and many PS2 BIOS names. Example authoritative MD5 values: ps-22a.bin 924e392ed05558ffdb115408c263dccf; ps-30a.bin 490f666e1afb15b7362b406ed1cea246; ps-30e.bin 32736f17079d0b2b7024407c39bd3050; ps-30j.bin 8dd7d5296a650fac7319bce665a6a53c. The database contains more regional/version-specific names and hashes; no single BIOS filename is valid for every region.",
+          "evidence": ["source:src/core/bios.cpp BIOS::ImageInfo database and hash values", "source:src/core/settings.cpp EmuFolders::Bios", "docs:README.md User Directories"]
         }
       ],
       "notes": "Lunchbox launches with a private data root; native saves stay in their configured locations."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/DuckStation/settings.ini (portable.txt beside the executable switches to portable mode). Controller mappings use [Pad1]...[Pad8] and [Hotkeys] with Keyboard/<key>, SDL-<index>/Button<index>, SDL-<index>/+Axis<index>, SDL-<index>/-Axis<index> or FullAxis values; source serializes chorded bindings with ` & `.",
+          "evidence": ["source:src/core/settings.cpp EmuFolders::DataRoot and input sections", "source:src/util/input_manager.cpp binding parser", "docs:README.md User Directories and Bindings"]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Library/Application Support/DuckStation/memcards/ by default; [MemoryCards] Directory can override it",
+          "naming": "Per-game/shared memory-card names follow configured card type and serial, commonly <serial>_1.mcd / <serial>_2.mcd; imported formats may be .mcr/.srm/.mc.",
+          "evidence": ["source:src/core/settings.cpp", "source:src/core/system.cpp GetGameMemoryCardPath", "docs:README.md"]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Library/Application Support/DuckStation/savestates/ by default; [Folders] SaveStates can override it",
+          "naming": "<serial>_<slot>.sav and <serial>_resume.sav; screenshots are embedded in the save-state file.",
+          "evidence": ["source:src/core/settings.cpp", "source:src/core/system.cpp GetGameSaveStatePath"]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/Library/Application Support/DuckStation/bios/ by default; [BIOS] SearchDirectory can override it",
+          "naming": "Use source database names such as ps-22a.bin, ps-30a.bin, ps-30e.bin and ps-30j.bin; source records MD5 hashes, including ps-30a 490f666e1afb15b7362b406ed1cea246, ps-30e 32736f17079d0b2b7024407c39bd3050 and ps-30j 8dd7d5296a650fac7319bce665a6a53c. No one filename suits all regions.",
+          "evidence": ["source:src/core/bios.cpp", "source:src/core/settings.cpp", "docs:README.md"]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%LOCALAPPDATA%\\DuckStation\\settings.ini (older installs may use %USERPROFILE%\\Documents\\DuckStation; portable.txt beside the executable switches to portable mode). Controller mappings use [Pad1]...[Pad8] and [Hotkeys] with Keyboard/<key>, SDL-<index>/Button<index>, SDL-<index>/+Axis<index>, SDL-<index>/-Axis<index> or FullAxis values; source serializes chorded bindings with ` & `.",
+          "evidence": ["source:src/core/settings.cpp EmuFolders::DataRoot and input sections", "source:src/util/input_manager.cpp binding parser", "docs:README.md User Directories and Bindings"]
+        },
+        {
+          "purpose": "saves",
+          "path": "%LOCALAPPDATA%\\DuckStation\\memcards\\ by default; [MemoryCards] Directory can override it",
+          "naming": "Per-game/shared memory-card names follow configured card type and serial, commonly <serial>_1.mcd / <serial>_2.mcd; imported formats may be .mcr/.srm/.mc.",
+          "evidence": ["source:src/core/settings.cpp", "source:src/core/system.cpp GetGameMemoryCardPath", "docs:README.md"]
+        },
+        {
+          "purpose": "states",
+          "path": "%LOCALAPPDATA%\\DuckStation\\savestates\\ by default; [Folders] SaveStates can override it",
+          "naming": "<serial>_<slot>.sav and <serial>_resume.sav; screenshots are embedded in the save-state file.",
+          "evidence": ["source:src/core/settings.cpp", "source:src/core/system.cpp GetGameSaveStatePath"]
+        },
+        {
+          "purpose": "bios",
+          "path": "%LOCALAPPDATA%\\DuckStation\\bios\\ by default; [BIOS] SearchDirectory can override it",
+          "naming": "Use source database names such as ps-22a.bin, ps-30a.bin, ps-30e.bin and ps-30j.bin; source records MD5 hashes, including ps-30a 490f666e1afb15b7362b406ed1cea246, ps-30e 32736f17079d0b2b7024407c39bd3050 and ps-30j 8dd7d5296a650fac7319bce665a6a53c. No one filename suits all regions.",
+          "evidence": ["source:src/core/bios.cpp", "source:src/core/settings.cpp", "docs:README.md"]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream DuckStation project documents native desktop user directories but no trustworthy upstream Flatpak package is identified for this pinned source.",
+      "evidence": [
+        "docs:stenzek/duckstation README.md at commit ed6720bbf59011b276faafb098ecc1c2407e74a3 — official desktop distribution documentation does not identify an upstream Flatpak package"
+      ]
     }
   }
 }

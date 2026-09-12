@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "core": "vbam",
+  "display_name": "Nintendo - Game Boy Advance (VBA-M)",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": "vbam_libretro.info",
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:vbam:gba",
+      "retroarch:vbam:gameboy-dmg",
+      "retroarch:vbam:gameboy-color"
+    ],
+    "mapping_summary": "GBA, Game Boy and Game Boy Color profiles map the appropriate handheld controls to VBA-M.",
+    "evidence": [
+      "catalog.json controller profile"
+    ]
+  },
+  "firmware": {
+    "status": "optional",
+    "files": [
+      {
+        "path": "gba_bios.bin",
+        "description": "Game Boy Advance BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "a860e8c0b6d573d191e4ec7db1b1e4f6",
+            "source": "vbam_libretro.info firmware path/optional/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "vbam_libretro.info firmware path/optional/notes"
+        ]
+      },
+      {
+        "path": "gb_bios.bin",
+        "description": "Game Boy BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "32fbbd84168d3482956eb3c5051637f5",
+            "source": "vbam_libretro.info firmware path/optional/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "vbam_libretro.info firmware path/optional/notes"
+        ]
+      },
+      {
+        "path": "gbc_bios.bin",
+        "description": "Game Boy Color BIOS",
+        "required": false,
+        "checksum_status": "published",
+        "checksums": [
+          {
+            "algorithm": "md5",
+            "value": "dbfce9db9deaa2567f6a84fde55f9680",
+            "source": "vbam_libretro.info firmware path/optional/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+          }
+        ],
+        "evidence": [
+          "vbam_libretro.info firmware path/optional/notes"
+        ]
+      }
+    ],
+    "notes": "VBA-M lists optional GBA, GB and GBC BIOS files with canonical MD5 digests.",
+    "evidence": [
+      "vbam_libretro.info firmware_count/firmware*_path/firmware*_opt/notes at 2e8b29be1683344e7a69b3dc4af1c0da88415def"
+    ]
+  },
+  "saves": {
+    "status": "supported",
+    "extensions": [
+      ".sav"
+    ],
+    "naming": "RetroArch uses <content-basename>.sav for VBA-M battery-backed cartridge RAM.",
+    "notes": "Battery/RTC persistence varies by loaded cartridge.",
+    "evidence": [
+      "VBA-M libretro save implementation"
+    ]
+  },
+  "states": {
+    "status": "supported",
+    "serialization": "deterministic",
+    "naming": "Frontend state names are <content-basename>.state and <content-basename>.stateN.",
+    "notes": "vbam_libretro.info declares deterministic savestates.",
+    "evidence": [
+      "vbam_libretro.info savestate=true/savestate_features=deterministic"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "windows": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    }
+  }
+}

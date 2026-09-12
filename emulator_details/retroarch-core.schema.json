@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lunchbox.local/schemas/retroarch-core.schema.json",
+  "title": "Lunchbox RetroArch core feature record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "core",
+    "display_name",
+    "reviewed_at",
+    "core_info_file",
+    "hosts",
+    "controller",
+    "firmware",
+    "saves",
+    "states"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "core": { "type": "string", "minLength": 1 },
+    "display_name": { "type": "string", "minLength": 1 },
+    "reviewed_at": { "type": "string", "format": "date" },
+    "core_info_file": {
+      "oneOf": [
+        { "type": "string", "pattern": "_libretro\\.info$" },
+        { "type": "null" }
+      ]
+    },
+    "hosts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["linux", "linux-flatpak", "macos", "windows"],
+      "properties": {
+        "linux": { "$ref": "#/$defs/host" },
+        "linux-flatpak": { "$ref": "#/$defs/host" },
+        "macos": { "$ref": "#/$defs/host" },
+        "windows": { "$ref": "#/$defs/host" }
+      }
+    },
+    "controller": { "$ref": "#/$defs/controller" },
+    "firmware": { "$ref": "#/$defs/firmware" },
+    "saves": { "$ref": "#/$defs/saveFeature" },
+    "states": { "$ref": "#/$defs/stateFeature" }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason", "evidence"],
+      "properties": {
+        "status": { "enum": ["available", "unavailable", "unverified"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "controller": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "profile_ids", "mapping_summary", "evidence"],
+      "properties": {
+        "status": {
+          "enum": ["contracted", "missing_contract", "not_applicable"]
+        },
+        "profile_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "mapping_summary": { "type": "string", "minLength": 1 },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "checksum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value", "source"],
+      "properties": {
+        "algorithm": { "enum": ["crc32", "md5", "sha1", "sha256"] },
+        "value": { "type": "string", "minLength": 8 },
+        "source": { "type": "string", "minLength": 1 }
+      }
+    },
+    "firmwareFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "description",
+        "required",
+        "checksum_status",
+        "checksums",
+        "evidence"
+      ],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" },
+        "checksum_status": {
+          "enum": [
+            "published",
+            "not_published",
+            "not_applicable",
+            "dynamic_or_multi_variant"
+          ]
+        },
+        "checksums": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/checksum" }
+        },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "firmware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "files", "notes", "evidence"],
+      "properties": {
+        "status": {
+          "enum": [
+            "required",
+            "optional",
+            "mixed",
+            "not_required",
+            "content_dependent",
+            "unknown"
+          ]
+        },
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/firmwareFile" }
+        },
+        "notes": { "type": "string", "minLength": 1 },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "saveFeature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "extensions", "naming", "notes", "evidence"],
+      "properties": {
+        "status": {
+          "enum": ["supported", "not_supported", "content_dependent", "unknown"]
+        },
+        "extensions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "naming": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string", "minLength": 1 },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "stateFeature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "serialization", "naming", "notes", "evidence"],
+      "properties": {
+        "status": { "enum": ["supported", "not_supported", "unknown"] },
+        "serialization": { "type": "string", "minLength": 1 },
+        "naming": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string", "minLength": 1 },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    }
+  }
+}

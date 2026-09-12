@@ -17,6 +17,7 @@
         {
           "purpose": "config",
           "path": "mame.ini in the MAME folder via `mame -createconfig` (distro builds run it from the terminal); inipath default is \"$HOME/.mame;.;ini\", and layering adds source/<sourcefile>.ini, BIOS/parent and per-system <shortname>.ini; ui.ini/plugin.ini are written by -createconfig. Per-game input/config: cfg/default.cfg (global input defaults) and cfg/<shortname>.cfg (per-machine) as <mameconfig version=\"10\"> XML holding mapper-written input sequences (KEYCODE_*/JOYCODE_* tokens, STARTn/COINn etc.). Controller presets: ctrlrpath default \"ctrlr\"; MAME ships sample files there and -ctrlr <name> loads <name>.cfg with <mapdevice> stable-ID elements and default/parent/BIOS/source-file <system> sections",
+          "naming": "Controller syntax is MAME v10 XML in cfg/default.cfg and cfg/<shortname>.cfg (`KEYCODE_*`/`JOYCODE_*` sequences); optional ctrlr/<name>.cfg profiles use <mapdevice> stable IDs",
           "evidence": [
             "docs:configuringmame (-createconfig, mame.ini in installation folder)",
             "docs:multiconfig (ini layering, saves to first inipath entry)",
@@ -51,6 +52,7 @@
         {
           "purpose": "bios",
           "path": "roms/ (rompath default \"roms\") keyed by MAME machine set names and hash metadata in hash/*.xml (hashpath default \"hash\"); device ROMs are ordinary MAME ROM sets, not per-game BIOS folders",
+          "naming": "MAME ROM-set naming: <machine short name> archives/files plus hash/*.xml manifests; exact BIOS/device filenames and hashes come from the per-set XML or firmware rule, not a universal BIOS name",
           "evidence": [
             "docs:commandline-all (rompath default roms, hashpath default hash)",
             "db:firmware_rules mame entries (sources/firmware-rules.json: runtime_kind mame, target_strategy mame_rompath, e.g. neogeo/casloopy/coco romsets plus github:mame-hash-files XMLs with target_subdir @hash)",
@@ -66,6 +68,7 @@
         {
           "purpose": "config",
           "path": "org.mamedev.MAME: the manifest persists $HOME/.mame (--persist=.mame) and the bundled mame.ini pins cfg/nvram/inp/sta/snap/diff/comments/share under $HOME/.mame/ inside the sandbox; inipath is \"$HOME/.mame;/app/share/mame/ini\" so a user mame.ini (from -createconfig) lives in the persisted .mame/ while read-only defaults stay under /app/share/mame; ctrlr presets resolve from ctrlrpath /app/share/mame/ctrlr unless overridden in the user mame.ini",
+          "naming": "Controller syntax is the same MAME v10 XML as native: cfg/default.cfg and cfg/<shortname>.cfg hold KEYCODE_*/JOYCODE_* sequences; ctrlr/<name>.cfg profiles use <mapdevice> stable IDs",
           "evidence": [
             "flathub:org.mamedev.MAME org.mamedev.MAME.yaml (finish-args --persist=.mame, --filesystem=host:ro)",
             "flathub:org.mamedev.MAME mame.ini (cfg_directory $HOME/.mame/cfg, ctrlrpath /app/share/mame/ctrlr, inipath $HOME/.mame;/app/share/mame/ini)",
@@ -97,6 +100,7 @@
         {
           "purpose": "bios",
           "path": "bundled rompath is /app/share/mame/roms (read-only /app); hashpath /app/share/mame/hash. Lunchbox installs MAME firmware into the per-app data root ~/.var/app/org.mamedev.MAME/data/mame/roms and appends that directory to -rompath at launch; the manifest also grants --filesystem=host:ro for external roms/samples",
+          "naming": "MAME ROM-set naming: <machine short name> archives/files plus hash/*.xml manifests; exact BIOS/device filenames and hashes come from the per-set XML or firmware rule, not a universal BIOS name",
           "evidence": [
             "flathub:org.mamedev.MAME mame.ini (rompath /app/share/mame/roms, hashpath /app/share/mame/hash)",
             "flathub:org.mamedev.MAME README.md (--filesystem=host:ro for external data, roms, samples)",
@@ -113,6 +117,7 @@
         {
           "purpose": "config",
           "path": "mame.ini created by running `mame -createconfig` in the MAME installation folder (docs: 'MAME will then create the mame.ini file in the MAME installation folder'); inipath default \".;ini;ini/presets\"; per-game cfg/default.cfg and cfg/<shortname>.cfg plus ctrlr/ presets behave exactly as on Linux",
+          "naming": "Same MAME v10 XML controller syntax as Linux: cfg/default.cfg and cfg/<shortname>.cfg use KEYCODE_*/JOYCODE_* sequences; ctrlr/<name>.cfg profiles use <mapdevice> stable IDs",
           "evidence": [
             "docs:configuringmame (cd to install dir, mame -createconfig, mame.ini in installation folder)",
             "docs:commandline-all (inipath \".;ini;ini/presets\", cfg_directory/ctrlrpath defaults)",
@@ -143,6 +148,7 @@
         {
           "purpose": "bios",
           "path": "roms/ beneath the MAME folder with hash/*.xml verification; Lunchbox's Windows firmware adapter stages MAME romsets and hash XMLs under %LOCALAPPDATA%/mame (roms at mame/roms) and passes that root as the runtime -rompath",
+          "naming": "MAME ROM-set naming: <machine short name> archives/files plus hash/*.xml manifests; exact BIOS/device filenames and hashes come from the per-set XML or firmware rule, not a universal BIOS name",
           "evidence": [
             "docs:commandline-all (rompath default roms, hashpath default hash)",
             "db:firmware_rules mame entries (mame_rompath + @hash rules)",
@@ -158,6 +164,7 @@
         {
           "purpose": "config",
           "path": "mame.ini via `./mame -createconfig` from the MAME folder; inipath default \"$HOME/Library/Application Support/mame;$HOME/.mame;.;ini\", so user ini layering (mame.ini, source/<sourcefile>.ini, parent/BIOS and per-system ini) resolves there first; cfg/default.cfg, cfg/<shortname>.cfg and ctrlr/ presets as on Linux",
+          "naming": "Same MAME v10 XML controller syntax as Linux: cfg/default.cfg and cfg/<shortname>.cfg use KEYCODE_*/JOYCODE_* sequences; ctrlr/<name>.cfg profiles use <mapdevice> stable IDs",
           "evidence": [
             "docs:configuringmame (macOS: cd to MAME directory, ./mame -createconfig)",
             "docs:commandline-all (macOS inipath includes $HOME/Library/Application Support/mame and $HOME/.mame;.;ini; cfg/ctrlrpath defaults)",
@@ -188,6 +195,7 @@
         {
           "purpose": "bios",
           "path": "roms/ beneath the MAME folder with hash/*.xml verification; Lunchbox's macOS mame firmware adapter stages romsets/hash XMLs under ~/.mame/roms (same root as Linux)",
+          "naming": "MAME ROM-set naming: <machine short name> archives/files plus hash/*.xml manifests; exact BIOS/device filenames and hashes come from the per-set XML or firmware rule, not a universal BIOS name",
           "evidence": [
             "docs:commandline-all (rompath default roms, hashpath default hash)",
             "db:firmware_rules mame entries (mame_rompath + @hash rules)",

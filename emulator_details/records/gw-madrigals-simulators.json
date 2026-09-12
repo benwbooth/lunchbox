@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "slug": "gw-madrigals-simulators",
+  "emulator": "GW (MADrigal's Simulators)",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://www.madrigaldesign.it/sim/",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/retroarch/retroarch.cfg",
+          "naming": "RetroArch key = value syntax; core options are namespaced by the loaded libretro core.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/retroarch/retroarch.cfg",
+          "naming": "Per-port bindings use input_playerN_<button>_btn/_axis; autoconfig profiles use <Device Name>.cfg with input_<button>_btn/input_<axis>_axis.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/retroarch/saves/",
+          "naming": "<content-basename>.srm (core-specific sidecars may be documented by the core).",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.config/retroarch/states/",
+          "naming": "<content-basename>.state and <content-basename>.stateN.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.config/retroarch/system/",
+          "naming": "Core-specific system files use names documented by the core; no filename is invented here.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "~/.config/retroarch/system/",
+          "naming": "No separate encryption-key file is established for this core by the upstream source.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Documents/RetroArch/retroarch.cfg",
+          "naming": "RetroArch key = value syntax; core options are namespaced by the loaded libretro core.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Documents/RetroArch/retroarch.cfg",
+          "naming": "Per-port bindings use input_playerN_<button>_btn/_axis; autoconfig profiles use <Device Name>.cfg with input_<button>_btn/input_<axis>_axis.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Documents/RetroArch/saves/",
+          "naming": "<content-basename>.srm (core-specific sidecars may be documented by the core).",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Documents/RetroArch/states/",
+          "naming": "<content-basename>.state and <content-basename>.stateN.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/Documents/RetroArch/system/",
+          "naming": "Core-specific system files use names documented by the core; no filename is invented here.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "~/Documents/RetroArch/system/",
+          "naming": "No separate encryption-key file is established for this core by the upstream source.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<RetroArch application directory>/retroarch.cfg",
+          "naming": "RetroArch key = value syntax; core options are namespaced by the loaded libretro core.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "<RetroArch application directory>/retroarch.cfg",
+          "naming": "Per-port bindings use input_playerN_<button>_btn/_axis; autoconfig profiles use <Device Name>.cfg with input_<button>_btn/input_<axis>_axis.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<RetroArch application directory>/saves/",
+          "naming": "<content-basename>.srm (core-specific sidecars may be documented by the core).",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<RetroArch application directory>/states/",
+          "naming": "<content-basename>.state and <content-basename>.stateN.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<RetroArch application directory>/system/",
+          "naming": "Core-specific system files use names documented by the core; no filename is invented here.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "<RetroArch application directory>/system/",
+          "naming": "No separate encryption-key file is established for this core by the upstream source.",
+          "evidence": [
+            "https://www.madrigaldesign.it/sim/",
+            "https://docs.libretro.com/guides/change-directories/"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "No official Flatpak package is documented by the upstream project.",
+      "evidence": [
+        "https://www.madrigaldesign.it/sim/"
+      ]
+    }
+  }
+}

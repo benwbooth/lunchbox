@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "slug": "vcc",
+  "emulator": "VCC",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://github.com/VCCE/VCC",
+      "role": "official project/platform and runtime documentation"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\\\VCC",
+          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/VCCE/VCC"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\\\VCC",
+          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "evidence": [
+            "https://github.com/VCCE/VCC"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "%APPDATA%\\\\VCC\\\\<disk>.dsk or <disk>.vhd",
+          "naming": "Persistent data uses the documented media filename or content basename.",
+          "evidence": [
+            "https://github.com/VCCE/VCC"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected state file",
+          "naming": "State output uses the documented frontend-selected path or extension.",
+          "evidence": [
+            "https://github.com/VCCE/VCC"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS file required",
+          "naming": "Explicit firmware disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/VCCE/VCC"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external encryption-key file.",
+          "naming": "Explicit key-material disposition from the upstream project.",
+          "evidence": [
+            "https://github.com/VCCE/VCC"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://github.com/VCCE/VCC"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://github.com/VCCE/VCC"
+      ]
+    },
+    "macos": {
+      "status": "no_verified_package",
+      "reason": "The upstream project does not document a package for this host.",
+      "evidence": [
+        "https://github.com/VCCE/VCC"
+      ]
+    }
+  }
+}

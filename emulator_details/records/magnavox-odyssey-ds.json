@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "slug": "magnavox-odyssey-ds",
+  "emulator": "Magnavox Odyssey DS",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
+      "url": "https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
+      "role": "official upstream project identity and implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
+      "role": "official distribution or project documentation"
+    }
+  ],
+  "platform_gaps": {
+    "linux": {
+      "status": "unresolved",
+      "reason": "The official Magnavox Odyssey DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unresolved",
+      "reason": "The official Magnavox Odyssey DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "macos": {
+      "status": "unresolved",
+      "reason": "The official Magnavox Odyssey DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    },
+    "windows": {
+      "status": "unresolved",
+      "reason": "The official Magnavox Odyssey DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "evidence": [
+        "official:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
+        "host capture intentionally withheld until all six purposes are source-backed"
+      ]
+    }
+  }
+}

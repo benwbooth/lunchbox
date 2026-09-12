@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "slug": "adamem-sdl",
+  "emulator": "ADAMEm SDL",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/geoffdaddy/adamem_sdl",
+      "url": "https://github.com/geoffdaddy/adamem_sdl",
+      "role": "official upstream identity and implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/geoffdaddy/adamem_sdl",
+      "role": "official distribution/documentation evidence"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "application directory; exact config filename not published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "SDL2 keyboard/joystick input configured by the UI; no persistent binding grammar published",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".sta and writable ADAM media",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected .sta snapshots; slot grammar unverified",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No canonical ADAM BIOS filename/hash published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "application directory; exact config filename not published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "SDL2 keyboard/joystick input configured by the UI; no persistent binding grammar published",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".sta and writable ADAM media",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected .sta snapshots; slot grammar unverified",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No canonical ADAM BIOS filename/hash published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "application directory; exact config filename not published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "SDL2 keyboard/joystick input configured by the UI; no persistent binding grammar published",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".sta and writable ADAM media",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected .sta snapshots; slot grammar unverified",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No canonical ADAM BIOS filename/hash published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "application directory; exact config filename not published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "SDL2 keyboard/joystick input configured by the UI; no persistent binding grammar published",
+          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".sta and writable ADAM media",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected .sta snapshots; slot grammar unverified",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No canonical ADAM BIOS filename/hash published",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "No naming beyond the upstream evidence is asserted.",
+          "evidence": [
+            "official:https://github.com/geoffdaddy/adamem_sdl",
+            "source evidence is incomplete where explicitly stated"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {}
+}

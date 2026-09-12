@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "slug": "denise",
+  "emulator": "Denise",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://sourceforge.net/projects/deniseemu/",
+      "url": "https://sourceforge.net/projects/deniseemu/",
+      "role": "official upstream identity/distribution evidence"
+    },
+    {
+      "kind": "docs",
+      "url": "https://sourceforge.net/projects/deniseemu/",
+      "role": "official documentation/platform evidence"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "No exact configuration path published in the reviewed official source.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "saves",
+          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "states",
+          "path": "No verified state filename or slot grammar is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "No canonical BIOS/firmware filename or checksum is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file is documented.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "No exact configuration path published in the reviewed official source.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "saves",
+          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "states",
+          "path": "No verified state filename or slot grammar is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "No canonical BIOS/firmware filename or checksum is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file is documented.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "No exact configuration path published in the reviewed official source.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "saves",
+          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "states",
+          "path": "No verified state filename or slot grammar is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "bios",
+          "path": "No canonical BIOS/firmware filename or checksum is published.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file is documented.",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://sourceforge.net/projects/deniseemu/",
+            "Windows/Linux/macOS/FreeBSD listed"
+          ],
+          "status": "unresolved"
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The official project lists native Linux, macOS, and Windows support, but no verified Flatpak package or manifest was found.",
+      "evidence": [
+        "official:https://sourceforge.net/projects/deniseemu/"
+      ]
+    }
+  }
+}

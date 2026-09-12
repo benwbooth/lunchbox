@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "provider": "libretro-core-info",
+  "repository": "https://github.com/libretro/libretro-core-info",
+  "revision": "2e8b29be1683344e7a69b3dc4af1c0da88415def",
+  "archive_url": "https://codeload.github.com/libretro/libretro-core-info/tar.gz/2e8b29be1683344e7a69b3dc4af1c0da88415def",
+  "archive_bytes": 106530,
+  "archive_sha256": "4ef65470cf54d816b6b7467de53d85345f137d8a469282474513353e2a424bf1",
+  "info_file_count": 318,
+  "data_license": "MIT",
+  "license_file": "COPYING",
+  "license_sha256": "13d593901fad682d6e5b4e7f487e865098f6019aa94f8e22c0d8ec80bcdd0dad",
+  "reviewed_at": "2026-09-12",
+  "notes": "Pinned machine-readable core metadata supplies core identity, declared firmware paths and optionality, and save-state capability. Per-core records retain exact provenance and add controller/save semantics from the corresponding upstream core documentation."
+}

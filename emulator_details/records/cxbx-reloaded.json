@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "slug": "cxbx-reloaded",
+  "emulator": "Cxbx-Reloaded",
+  "sources": [
+    { "kind": "source", "repo": "Cxbx-Reloaded/Cxbx-Reloaded", "role": "official Windows/Wine distribution, path and input implementation" },
+    { "kind": "docs", "url": "https://cxbx-reloaded.co.uk/", "role": "official downloads and supported host statement" }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "%APPDATA%\\Cxbx-Reloaded\\ (the emulator's user-data root; GUI settings and profiles are stored here).", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded path code", "docs:cxbx-reloaded.co.uk downloads/wiki"] },
+        { "purpose": "input", "path": "Controller configuration is written by the Cxbx-Reloaded GUI into its user-data/configuration files; XInput/DirectInput gamepad bindings are selected through the controller settings UI.", "naming": "No stable public controller-profile text grammar is documented; preserve the release-generated settings rather than guessing names.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded GUI/input code", "docs:Cxbx-Reloaded wiki controller setup"] },
+        { "purpose": "saves", "path": "%APPDATA%\\Cxbx-Reloaded\\EmuDisk\\Partition1\\UDATA\\<title-id>\\<save-id>\\ (emulated Xbox user-data partition).", "naming": "Xbox title/save identifiers are directory names below Partition1/UDATA; files use the original Xbox save-container layout.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded EmuDisk/FilePaths code", "docs:Cxbx-Reloaded wiki"] },
+        { "purpose": "states", "path": "No documented general-purpose Cxbx-Reloaded save-state facility or state-slot directory.", "naming": "Not applicable.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded frontend code", "docs:cxbx-reloaded.co.uk/wiki"] },
+        { "purpose": "bios", "path": "Cxbx-Reloaded uses HLE Xbox kernel/firmware components; it does not require a retail BIOS ROM file for ordinary XBE launches.", "naming": "No universal external BIOS filename/checksum is published; EEPROM/HDD images are separate emulated storage, not BIOS.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded kernel/HLE source", "docs:Cxbx-Reloaded README (HLE emulator) "] },
+        { "purpose": "keys", "path": "No external decryption key file is documented for Cxbx-Reloaded game launches.", "naming": "No external key filename/checksum.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded", "docs:cxbx-reloaded.co.uk"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "no_verified_package", "reason": "Cxbx-Reloaded documents running its Windows binary under Wine, but no native Linux package is an official Cxbx runtime.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded README (Windows and Wine)"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No official Cxbx-Reloaded Flatpak package is identified.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded official distribution"] },
+    "macos": { "status": "no_verified_package", "reason": "The canonical project distributes Windows binaries; Wine on macOS is not a native macOS package capture.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded README and official downloads"] }
+  }
+}

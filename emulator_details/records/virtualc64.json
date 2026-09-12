@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "slug": "virtualc64",
+  "emulator": "VirtualC64",
+  "sources": [
+    { "kind": "source", "repo": "dirkwhoffmann/virtualc64", "role": "macOS application configuration, controller mapping, media saves, workspaces and ROM loading" },
+    { "kind": "docs", "url": "https://dirkwhoffmann.github.io/virtualc64/", "role": "official macOS product and user documentation" }
+  ],
+  "platforms": {
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "~/Library/Containers/de.dirkwhoffmann.VirtualC64/Data/Library/Application Support/VirtualC64/ (sandboxed app support; settings are managed by the Cocoa application)", "naming": "VirtualC64 preferences are Cocoa/NSUserDefaults data; the upstream application does not define a portable cross-platform INI/TOML config filename", "evidence": ["source:VirtualC64 application/preferences code", "docs:https://dirkwhoffmann.github.io/virtualc64/ macOS application documentation"] },
+        { "purpose": "input", "path": "Cocoa preferences and the Input/Controls settings pane; no separate input file is required by the macOS product", "naming": "Controller bindings are VirtualC64 preference keys selected in the GUI (keyboard keys, joystick buttons and axes); no stable user-editable binding-file grammar is published by the upstream documentation", "evidence": ["source:VirtualC64 input/preferences code", "docs:VirtualC64 user manual controller settings"] },
+        { "purpose": "bios", "path": "No external BIOS is required for ordinary C64 emulation; optional C64 ROM images are loaded through the virtual machine configuration/media UI", "naming": "C64 ROM images are selected per machine configuration rather than a single required filename; the cited upstream source publishes no canonical checksum for optional ROM images", "evidence": ["source:VirtualC64 C64 ROM loading code", "docs:VirtualC64 ROM/media configuration"] },
+        { "purpose": "keys", "path": "No cryptographic firmware-key files are used by VirtualC64", "naming": "No cryptographic key asset exists for this runtime", "evidence": ["source:VirtualC64 machine/ROM model"] },
+        { "purpose": "saves", "path": "Save data is stored in the attached virtual disk/tape media or exported machine documents; the product is document/workspace based", "naming": "C64 software saves retain the filename and filesystem format of the attached D64/G64/D71/D81/T64/CRT media; no universal sidecar save filename is defined", "evidence": ["source:VirtualC64 media and disk emulation code", "docs:VirtualC64 disk-image and workspace documentation"] },
+        { "purpose": "states", "path": "Virtual machine workspaces/document bundles selected by the save-workspace UI", "naming": "Workspace bundles contain the machine state and media; the upstream product does not publish a separate portable slot suffix convention", "evidence": ["source:VirtualC64 workspace/document code", "docs:VirtualC64 workspace documentation"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "unsupported", "reason": "VirtualC64 is documented and distributed as a macOS-native application; no upstream Linux runtime is captured.", "evidence": ["docs:https://dirkwhoffmann.github.io/virtualc64/ official platform/download documentation"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No upstream VirtualC64 Flatpak package or manifest is identified.", "evidence": ["docs:https://dirkwhoffmann.github.io/virtualc64/ official distribution page"] },
+    "windows": { "status": "unsupported", "reason": "VirtualC64 is a macOS-native product and no upstream Windows runtime is documented.", "evidence": ["docs:https://dirkwhoffmann.github.io/virtualc64/ official platform/download documentation"] }
+  }
+}

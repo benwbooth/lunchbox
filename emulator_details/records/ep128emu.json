@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "slug": "ep128emu",
+  "emulator": "ep128emu",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/istvan-v/ep128emu",
+      "url": "https://github.com/istvan-v/ep128emu",
+      "role": "official upstream identity/distribution evidence"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/istvan-v/ep128emu",
+      "role": "official documentation/platform evidence"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.ep128emu (POSIX; catalogued)",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings in emulator configuration/UI",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".ep128s/.ep128d/.dat media/save files",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected Enterprise snapshots",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Enterprise ROMs; no canonical checksum",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.ep128emu (POSIX; catalogued)",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings in emulator configuration/UI",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".ep128s/.ep128d/.dat media/save files",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected Enterprise snapshots",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Enterprise ROMs; no canonical checksum",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.ep128emu (POSIX; catalogued)",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings in emulator configuration/UI",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".ep128s/.ep128d/.dat media/save files",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected Enterprise snapshots",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Enterprise ROMs; no canonical checksum",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.ep128emu (POSIX; catalogued)",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Keyboard/joystick bindings in emulator configuration/UI",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": ".ep128s/.ep128d/.dat media/save files",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-selected Enterprise snapshots",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Enterprise ROMs; no canonical checksum",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No key file",
+          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "evidence": [
+            "official:https://github.com/istvan-v/ep128emu",
+            "Windows/Linux/macOS listed"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {}
+}

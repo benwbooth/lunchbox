@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "core": "vemulator",
+  "display_name": "VeMUlator",
+  "reviewed_at": "2026-09-12",
+  "core_info_file": "vemulator_libretro.info",
+  "controller": {
+    "status": "contracted",
+    "profile_ids": [
+      "retroarch:vemulator:vmu-gameplay"
+    ],
+    "mapping_summary": "VMU gameplay profile maps the VMU d-pad, action buttons and LCD/gameplay controls.",
+    "evidence": [
+      "catalog.json controller profile"
+    ]
+  },
+  "firmware": {
+    "status": "not_required",
+    "files": [],
+    "notes": "VeMUlator has no external firmware file in core-info.",
+    "evidence": [
+      "vemulator_libretro.info firmware_count absent/zero"
+    ]
+  },
+  "saves": {
+    "status": "supported",
+    "extensions": [
+      ".vms",
+      ".dci",
+      ".bin"
+    ],
+    "naming": "VMU save artifacts retain their VMU-compatible .vms, .dci or .bin names.",
+    "notes": "The VMU core exposes memory-card files rather than generic cartridge SRAM.",
+    "evidence": [
+      "VeMUlator libretro VMU save implementation"
+    ]
+  },
+  "states": {
+    "status": "not_supported",
+    "serialization": "none",
+    "naming": "No state files are created.",
+    "notes": "vemulator_libretro.info declares savestate=false.",
+    "evidence": [
+      "vemulator_libretro.info savestate=false"
+    ]
+  },
+  "hosts": {
+    "linux": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "macos": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    },
+    "windows": {
+      "status": "unverified",
+      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "evidence": [
+        "records/retroarch.json host paths",
+        "official per-core distribution not separately verified"
+      ]
+    }
+  }
+}

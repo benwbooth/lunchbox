@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "provider": "Steem SSE SourceForge",
+  "release": "4.2.1 R1",
+  "archive_url": "https://sourceforge.net/projects/steemsse/files/Steem%20SSE%204.2/v4.2.1/libretro_steemsse_421R1.7z/download",
+  "archive_bytes": 823539,
+  "archive_sha256": "2c9c20ce25ddca0a5db13da7ce320f83f64dd0e9047b8b06b1580fd11dde15f1",
+  "core_info_file": "info/Steem64_libretro.info",
+  "core_info_bytes": 997,
+  "core_info_sha256": "579d0271226f13767f3d44d777fa8e01f97e576882607624943b2e2cbebb5e6a",
+  "core_binary": "cores/Steem64_libretro.dll",
+  "data_license": "GPL-3.0",
+  "license_file": "gpl-3.0.txt",
+  "license_sha256": "0b383d5a63da644f628d99c33976ea6487ed89aaa59f0b3257992deac1171e6b",
+  "reviewed_at": "2026-09-12",
+  "notes": "The official archive contains Windows 32-bit and 64-bit libretro DLLs, core-info metadata, and optional drive sound assets. It is pinned as the evidence source for the canonical steemsse core because the pinned libretro-core-info repository snapshot contains no steemsse_libretro.info file."
+}
