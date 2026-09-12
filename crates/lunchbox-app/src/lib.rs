@@ -26,6 +26,8 @@ mod controller_hatari;
 mod controller_hatari_native;
 mod controller_jgenesis_native;
 mod controller_kronos;
+#[cfg(target_os = "linux")]
+mod controller_kronos_native;
 mod controller_launch;
 mod controller_launch_modes;
 mod controller_layout;

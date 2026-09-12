@@ -37,6 +37,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "xemu",
     "ScummVM",
     "jgenesis",
+    "kronos",
 ];
 
 pub fn report(selections: &HashMap<String, String>) -> Result<Value> {

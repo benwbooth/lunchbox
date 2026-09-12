@@ -46,6 +46,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "xemu"
                 | "scummvm"
                 | "jgenesis"
+                | "kronos"
         )
 }
 
