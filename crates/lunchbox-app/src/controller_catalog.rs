@@ -1372,6 +1372,7 @@ impl Catalog {
                             | "scummvm-native-settings"
                             | "jgenesis-native-settings"
                             | "bizhawk-native-settings"
+                            | "yaba-sanshiro-native-settings"
                     ),
                 "unsupported profile contract"
             );
