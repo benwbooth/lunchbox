@@ -1631,8 +1631,9 @@ impl Catalog {
                         | "mesen2-native-settings"
                         | "blastem-native-settings"
                         | "xemu-native-settings"
-                        | "scummvm-native-settings"
-                        | "jgenesis-native-settings" => {
+                            | "scummvm-native-settings"
+                            | "jgenesis-native-settings"
+                            | "yaba-sanshiro-native-settings" => {
                             crate::controller_native_targets::valid_output(profile, target, output)
                         }
                         "retropad" => {
