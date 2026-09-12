@@ -414,7 +414,7 @@ pub(crate) mod session {
             .arg("--hint")
             .arg("SDL_JOYSTICK_LINUX_CLASSIC=1");
         for path in paths {
-            command.arg("--bindings-for-path").arg(path);
+            command.arg("--match-path").arg(path);
         }
         let (output, _) = capture(&mut command, cancel)?;
         let snapshot: Snapshot =
@@ -454,21 +454,8 @@ pub(crate) mod session {
 
     fn mapped_profile(
         calibration: &Calibration,
-        device: &lunchbox_controller_probe::Device,
+        physical: &lunchbox_controller_probe::linux_classic::ClassicMap,
     ) -> Result<BTreeMap<String, Binding>> {
-        ensure!(
-            device.is_gamepad,
-            "RMG session requires an SDL-recognized gamepad for the verified probe"
-        );
-        let resolved = device
-            .resolved
-            .as_ref()
-            .context("RMG resolved SDL counts are absent")?;
-        let physical = device
-            .linux_classic
-            .as_ref()
-            .context("RMG classic Linux control map is absent")?;
-        physical.validate_counts(resolved)?;
         let profile = crate::controller_catalog::catalog()
             .emulator_profiles
             .iter()
@@ -557,6 +544,7 @@ pub(crate) mod session {
         runtime_paths: Vec<String>,
         topology: InputTopology,
         snapshot: Snapshot,
+        classic_maps: Vec<lunchbox_controller_probe::linux_classic::ClassicMap>,
         setup: settings::SavedSetup,
         hashes: BTreeMap<PathBuf, String>,
     }
@@ -606,8 +594,15 @@ pub(crate) mod session {
                 "RMG SDL routing changed during binding capture"
             );
             let mut ports = Vec::new();
+            let mut classic_maps = Vec::new();
             for (player, path) in setup.players.iter().zip(&runtime_paths) {
                 let device = snapshot.device_at_path(path)?;
+                ensure!(
+                    path.starts_with("/dev/input/js"),
+                    "RMG native Linux requires SDL's exact /dev/input/js* path"
+                );
+                let physical = lunchbox_controller_probe::linux_classic::read(Path::new(path))?;
+                classic_maps.push(physical.clone());
                 ports.push(PortConfig {
                     port: player.player,
                     device_name: device
@@ -620,7 +615,7 @@ pub(crate) mod session {
                         calibrations
                             .get(&player.controller_id)
                             .context("RMG calibration disappeared")?,
-                        device,
+                        &physical,
                     )?,
                 });
             }
@@ -648,6 +643,7 @@ pub(crate) mod session {
                 runtime_paths,
                 topology,
                 snapshot,
+                classic_maps,
                 setup: setup.clone(),
                 hashes,
             };
@@ -671,6 +667,12 @@ pub(crate) mod session {
                 comparable(&current, true)? == comparable(&self.snapshot, true)?,
                 "RMG SDL routing or resolved bindings changed before launch"
             );
+            for (path, expected) in self.runtime_paths.iter().zip(&self.classic_maps) {
+                ensure!(
+                    lunchbox_controller_probe::linux_classic::read(Path::new(path))? == *expected,
+                    "RMG SDL classic joystick map changed before launch"
+                );
+            }
             self.topology.verify()
         }
 

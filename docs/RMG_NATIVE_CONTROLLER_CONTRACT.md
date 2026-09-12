@@ -77,9 +77,9 @@ immediately before spawn:
   `SDL_JOYSTICK_LINUX_CLASSIC=1` hint;
 * each selected physical `/dev/input/js*` node still has the captured kernel
   topology identity and resolves to exactly one SDL path;
-* SDL joystick/gamepad counts match the verified classic map, and calibrated
-  values still resolve to the same native controls; and
-* the current SDL inventory and resolved bindings match the preparation
+* each selected `/dev/input/js*` node's verified classic map is unchanged, and
+  calibrated values still resolve to the same native controls; and
+* the current SDL inventory and exact device paths match the preparation
   snapshot.
 
 This is source-backed launch plumbing, not a claim that an RMG binary, SDL
