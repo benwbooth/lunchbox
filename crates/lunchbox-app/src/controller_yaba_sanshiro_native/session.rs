@@ -95,8 +95,8 @@ impl PreparedSession {
         for row in plan.rows {
             let pad_key =
                 super::super::controller_yaba_sanshiro::pad_key_for_target(&row.target_id)
-                    .with_context(|| {
-                        format!("Yaba Sanshiro 2 target {} outside contract", row.target_id)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Yaba Sanshiro 2 target {} outside contract", row.target_id)
                     })?;
             ensure!(
                 seen.insert(pad_key),
@@ -112,19 +112,23 @@ impl PreparedSession {
                 .context("Yaba Sanshiro 2 needs native controls")?;
             let code = (native.code & 0xffff) as u16;
             let host = match native.code >> 16 {
-                1 => if is_gamepad {
-                    super::super::controller_yaba_sanshiro::gc_button_code(device_index, code)
-                } else {
-                    super::super::controller_yaba_sanshiro::raw_button_code(device_index, code)
+                1 => {
+                    let composed = if is_gamepad {
+                        super::super::controller_yaba_sanshiro::gc_button_code(device_index, code)
+                    } else {
+                        super::super::controller_yaba_sanshiro::raw_button_code(device_index, code)
+                    };
+                    composed.map_err(|()| {
+                        anyhow::anyhow!("Yaba Sanshiro 2 button {code} outside host encoding")
+                    })?
                 }
-                .with_context(|| format!("Yaba Sanshiro 2 button {code} outside host encoding"))?,
                 3 => {
                     ensure!(
                         !(0x10..=0x17).contains(&u32::from(code)),
                         "Yaba Sanshiro 2 hat switches need SDL-hat identity mapping"
                     );
                     let positive = native.direction > 0;
-                    if is_gamepad {
+                    let composed = if is_gamepad {
                         super::super::controller_yaba_sanshiro::gc_axis_code(
                             device_index,
                             code,
@@ -136,8 +140,10 @@ impl PreparedSession {
                             code,
                             positive,
                         )
-                    }
-                    .with_context(|| format!("Yaba Sanshiro 2 axis {code} outside host encoding"))?
+                    };
+                    composed.map_err(|()| {
+                        anyhow::anyhow!("Yaba Sanshiro 2 axis {code} outside host encoding")
+                    })?
                 }
                 other => anyhow::bail!("Yaba Sanshiro 2 cannot consume input class {other}"),
             };
@@ -147,7 +153,8 @@ impl PreparedSession {
             setup.port,
             setup.device_id,
             &bindings,
-        )?;
+        )
+        .map_err(|()| anyhow::anyhow!("Yaba Sanshiro 2 pad key outside contract"))?;
         let directory = tempfile::Builder::new()
             .prefix("lunchbox-yaba-sanshiro-")
             .tempdir()?;
