@@ -1,9 +1,11 @@
 # Controller completion order
 
 Latest source checkpoint: [guided integration](CONTROLLER_GUIDED_INTEGRATION.md).
-This supersedes historical counts below: 93/94 RetroArch core contracts and
-15/249 partial standalone dispatches, or 108/343 source entries (31.5%), not
-overall completion. Eight existing native adapters consume guided choices,
+The cross-platform controller/firmware/save matrix is the
+[emulator platform integration checklist](EMULATOR_PLATFORM_INTEGRATION_CHECKLIST.md).
+It supersedes historical counts below: 93/94 RetroArch core contracts and
+28/249 partial standalone dispatches, or 121/343 source entries (35.3%), not
+overall completion. All 28 registered native adapters consume guided choices,
 with runtime setup/backend restrictions. Testing is deferred again by request.
 
 ## Current scope override — 2026-09-08

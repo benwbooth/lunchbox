@@ -1,6 +1,6 @@
 //! Centralized save/state/config/firmware location resolver, driven by the
 //! captured platform records in emulator_details/records. Data-derived
-//! coverage for every captured emulator; native launch adapters (the 25
+//! coverage for every captured emulator; native launch adapters (the 28
 //! calibrated sessions) remain authoritative where they exist and may
 //! override these locations at launch.
 //!

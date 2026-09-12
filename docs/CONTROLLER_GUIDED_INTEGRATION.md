@@ -1,7 +1,7 @@
 # Guided controller integration — source checkpoint
 
-Updated 2026-09-09. Steps 1–9 were written source-only, without builds, tests,
-native probes, device capture or app launches. Step 10 (runtime setup reuse)
+Reviewed through 2026-09-12. Steps 1–9 were written source-only, without builds,
+tests, native probes, device capture or app launches. Step 10 (runtime setup reuse)
 ships with unit tests covering reuse, per-game precedence, conflict refusal,
 launch-flag content resolution and Dolphin disc identity recomputation.
 Formatting/source inspection is not runtime verification.
@@ -12,10 +12,14 @@ The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
 - RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **25/249 (10.0%)**, including ares, bsnes, Stella, VICE, Hatari, DeSmuME, openMSX, Mesen2, BlastEm, xemu and ScummVM.
-- Combined source entry presence: **118/343 (34.4%)**.
-- Existing native adapters consuming guided choices: **25/25 (100.0%)**.
+- Standalone partial source dispatch: **28/249 (11.2%)**; the current registered
+  list is maintained by `controller_coverage.rs::NATIVE_ADAPTERS`.
+- Combined source entry presence: **121/343 (35.3%)**.
+- Existing native adapters consuming guided choices: **28/28 (100.0%)**.
 - Overall finished/verified coverage: **not established**.
+
+The cross-platform configuration/firmware/save checklist is
+[EMULATOR_PLATFORM_INTEGRATION_CHECKLIST.md](EMULATOR_PLATFORM_INTEGRATION_CHECKLIST.md).
 
 The native integration count includes runtime-setup and host/backend restrictions,
 not fifteen turnkey integrations. Catalog candidates with libretro alternatives
