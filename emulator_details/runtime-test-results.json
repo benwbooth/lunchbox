@@ -213,6 +213,26 @@
     },
     {
       "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:fbneo",
+      "host_os": "windows",
+      "controller_test_status": "blocked",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_applicable",
+      "state_test_status": "blocked",
+      "test_notes": "2026-09-13 GitHub-hosted Windows Server 2025 x86_64 identity audit: the official Libretro archive matched pinned sha256 8389e62bbd370282ea408db1498e0e64b443c346530e7fee650d551c5aaffc76, and its FinalBurn Neo v1.0.0.03 260904 GITa251c76 DLL matched sha256 4e097b6a1587ad58c3292e885ce218ec8eb8fbecebdf82a51489eb16f95ac3ca plus the expected full-path/block-extract metadata. The hosted runner had no LIBRETRO_ARCADE_1943_URL secret, so no game bytes were downloaded or executed and controller/state behavior remains blocked. A Wine preflight with the same DLL and local byte-pinned set is not counted as Windows proof. Core-info declares no persistent-save artifact, so save testing is not applicable; optional firmware remains untested. Evidence: https://github.com/benwbooth/lunchbox/actions/runs/34751199122 and target/runtime-evidence/libretro-arcade-windows-2026-09-13-run-34751199122."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mame",
+      "host_os": "windows",
+      "controller_test_status": "blocked",
+      "firmware_test_status": "not_applicable",
+      "save_test_status": "not_applicable",
+      "state_test_status": "blocked",
+      "test_notes": "2026-09-13 GitHub-hosted Windows Server 2025 x86_64 identity audit: the official Libretro archive matched pinned sha256 77d38183ba995e8bb3e2f514e680d30645eae3b8aad78d6b62026d166c664590, and its MAME 0.289 (4fc9a931) DLL matched sha256 b38c9ebb2cf679745701569c511f9c381e1f4f3f43e0212fe728397b0badbead plus the expected full-path/block-extract metadata. The hosted runner had no LIBRETRO_ARCADE_1943_URL secret, so no game bytes were downloaded or executed and controller/state behavior remains blocked. A Wine preflight with the same DLL and local byte-pinned set is not counted as Windows proof. Core-info declares neither required firmware nor a persistent-save artifact, so those features are not applicable. Evidence: https://github.com/benwbooth/lunchbox/actions/runs/34751199122 and target/runtime-evidence/libretro-arcade-windows-2026-09-13-run-34751199122."
+    },
+    {
+      "runtime_kind": "retroarch",
       "runtime_id": "retroarch:mgba",
       "host_os": "windows",
       "controller_test_status": "pass",

@@ -186,3 +186,24 @@ The retained reports are:
 The first fail-closed runs, which established rather than guessed the two
 arm64-specific state sizes, remain alongside them in directories ending in
 `-state-size-mismatch`.
+
+## Hosted Windows identity boundary, 2026-09-13
+
+GitHub Actions run
+[`34751199122`](https://github.com/benwbooth/lunchbox/actions/runs/34751199122)
+executed the identity-only path on Windows Server 2025 x86-64. The official
+archives and DLLs matched every pinned byte and reported identity:
+
+| Profile | Archive SHA-256 | Exact DLL identity | DLL SHA-256 |
+| --- | --- | --- | --- |
+| FBNeo | `8389e62bbd370282ea408db1498e0e64b443c346530e7fee650d551c5aaffc76` | `FinalBurn Neo` / `v1.0.0.03 260904 GITa251c76` | `4e097b6a1587ad58c3292e885ce218ec8eb8fbecebdf82a51489eb16f95ac3ca` |
+| MAME | `77d38183ba995e8bb3e2f514e680d30645eae3b8aad78d6b62026d166c664590` | `MAME` / `0.289 (4fc9a931)` | `b38c9ebb2cf679745701569c511f9c381e1f4f3f43e0212fe728397b0badbead` |
+
+The repository did not have the private `LIBRETRO_ARCADE_1943_URL` secret, so
+the workflow deliberately downloaded no game bytes and recorded both runtime
+audits as `blocked`. The earlier local Wine preflight is not promoted as Windows
+runtime evidence. Controller responses and save-state behavior therefore remain
+blocked on hosted Windows until the byte-pinned set can be supplied without
+publishing it. Identity reports are retained under
+`target/runtime-evidence/libretro-arcade-windows-2026-09-13-run-34751199122`;
+the retained artifact contains no ROM bytes or secret URL.
