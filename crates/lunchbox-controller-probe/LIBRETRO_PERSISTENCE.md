@@ -235,18 +235,20 @@ This is an oracle-interface limitation, not evidence that bsnes cannot persist
 SRAM or serialize state. Supporting bsnes requires a separate file-based
 diagnostic with equally strict isolation and fresh-process checks.
 
-## Exact Windows x86-64 verification on 2026-09-12
+## Exact Windows x86-64 verification through 2026-09-13
 
-GitHub Actions run
-[`34743651414`](https://github.com/benwbooth/lunchbox/actions/runs/34743651414)
-executed the schema-3 four-worker Game Boy oracle against official Libretro
-Windows x86-64 `latest` artifacts on separate Windows Server 2025 VMs. The
-downloaded evidence archives were then independently checked: each core DLL and
-source ZIP matched `download.json`, and each retained ROM, save, and state file
-matched its report hash.
+GitHub Actions runs
+[`34743651414`](https://github.com/benwbooth/lunchbox/actions/runs/34743651414) and
+[`34744774150`](https://github.com/benwbooth/lunchbox/actions/runs/34744774150)
+executed the schema-3 four-worker Game Boy oracles and the VBA-M GBA oracle
+against official Libretro Windows x86-64 `latest` artifacts on separate Windows
+Server 2025 VMs. The downloaded evidence archives were then independently
+checked: each core DLL and source ZIP matched `download.json`, and each retained
+ROM, save, and state file matched its report hash.
 
 | System | Core identity | Core SHA-256 | Save transition | State bytes |
 | --- | --- | --- | --- | ---: |
+| GBA | VBA-M `2.1.3 115defb` | `a88130470c10aa4f4e34fd39c07f56630af7b596cc81ebd211796326b8f3af8f` | 32 KiB SRAM; `LBSG01` to `LBSG02` in a fresh process | 723,452 |
 | Game Boy | Gambatte `v0.5.0-netlink d9d6cd0` | `c15eb6dc323b08610e8241ace11135d9fe8e1c8a3190541394f15457cdac59e1` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 59,650 |
 | Game Boy | mGBA `0.11-219-e31759b` | `d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 202,816 |
 | Game Boy | SameBoy `1.0.3 8230189` | `5b184f0bfa4a0bcf614c996cfa12985e60144722df815be2e9c8cd90bc259bfb` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 252,666 |

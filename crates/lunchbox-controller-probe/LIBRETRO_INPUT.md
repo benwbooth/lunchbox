@@ -197,11 +197,12 @@ subsequent exact-hash M1 two-player rerun produced clean JSON and repeated all
 58 observations. These are direct-core arm64 results; they do not promote
 RetroArch GUI/remap behavior or physical-device capture.
 
-## Exact Windows x86_64 verification on 2026-09-12
+## Exact Windows x86_64 verification through 2026-09-13
 
-GitHub Actions run
-[`34742154324`](https://github.com/benwbooth/lunchbox/actions/runs/34742154324)
-executed the same original diagnostics on separate Windows Server 2025 VMs
+GitHub Actions runs
+[`34742154324`](https://github.com/benwbooth/lunchbox/actions/runs/34742154324) and
+[`34744774150`](https://github.com/benwbooth/lunchbox/actions/runs/34744774150)
+executed the original diagnostics on separate Windows Server 2025 VMs
 against official Libretro x86_64 buildbot DLLs. Every retained report is
 machine-parseable JSON under its system-specific schema; native stdout and
 stderr are separate artifacts.
@@ -209,6 +210,7 @@ stderr are separate artifacts.
 | System | Exact core | Modes and observations |
 | --- | --- | --- |
 | GBA | mGBA `0.11-219-e31759b`, SHA-256 `d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33` | 26/26 in individual mode and 26/26 in bitmask mode |
+| GBA | VBA-M `2.1.3 115defb`, SHA-256 `a88130470c10aa4f4e34fd39c07f56630af7b596cc81ebd211796326b8f3af8f` | 26/26 in individual mode and 26/26 in bitmask mode |
 | Game Boy | Gambatte `v0.5.0-netlink d9d6cd0`, SHA-256 `c15eb6dc323b08610e8241ace11135d9fe8e1c8a3190541394f15457cdac59e1` | 24/24 in individual mode and 24/24 in bitmask mode |
 | Game Boy | mGBA `0.11-219-e31759b`, SHA-256 `d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33` | 24/24 in individual mode and 24/24 in bitmask mode |
 | Game Boy | SameBoy `1.0.3 8230189`, SHA-256 `5b184f0bfa4a0bcf614c996cfa12985e60144722df815be2e9c8cd90bc259bfb` | 48/48 in individual mode and 48/48 in bitmask mode; both advertised joypad devices |
