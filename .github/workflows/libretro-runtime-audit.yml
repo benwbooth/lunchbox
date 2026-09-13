@@ -1,0 +1,109 @@
+name: Libretro runtime audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows-input:
+    name: Windows input oracle (${{ matrix.core }})
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - core: mgba
+            system: gba
+          - core: genesis_plus_gx
+            system: gamegear
+          - core: fceumm
+            system: nes
+          - core: mesen
+            system: nes
+          - core: bsnes
+            system: snes
+          - core: snes9x
+            system: snes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build bounded direct-core oracle
+        run: >-
+          cargo build --locked --release --package lunchbox-controller-probe
+          --bin lunchbox-libretro-input
+      - name: Download and execute official core
+        shell: bash
+        env:
+          CORE: ${{ matrix.core }}
+          SYSTEM: ${{ matrix.system }}
+        run: |
+          set -euo pipefail
+
+          evidence="$RUNNER_TEMP/lunchbox-libretro-${CORE}"
+          mkdir -p "$evidence/unpacked"
+          url="https://buildbot.libretro.com/nightly/windows/x86_64/latest/${CORE}_libretro.dll.zip"
+          curl --fail --location --retry 3 "$url" -o "$evidence/core.zip"
+          unzip -q "$evidence/core.zip" -d "$evidence/unpacked"
+          core_path="$(find "$evidence/unpacked" -type f -name "${CORE}_libretro.dll" -print -quit)"
+          test -n "$core_path"
+          core_sha256="$(sha256sum "$core_path" | cut -d ' ' -f 1)"
+          archive_sha256="$(sha256sum "$evidence/core.zip" | cut -d ' ' -f 1)"
+          oracle="$GITHUB_WORKSPACE/target/release/lunchbox-libretro-input.exe"
+
+          printf '{\n  "source_url": "%s",\n  "archive_sha256": "%s",\n  "core_sha256": "%s"\n}\n' \
+            "$url" "$archive_sha256" "$core_sha256" > "$evidence/download.json"
+
+          run_oracle() {
+            local label="$1"
+            shift
+            if ! "$oracle" \
+              --core "$core_path" \
+              --sha256 "$core_sha256" \
+              --system "$SYSTEM" \
+              "$@" \
+              > "$evidence/${label}.json" \
+              2> "$evidence/${label}.stderr"; then
+              cat "$evidence/${label}.stderr" >&2
+              return 1
+            fi
+          }
+
+          run_oracle identity --identity-only
+
+          case "$SYSTEM" in
+            gba|gamegear)
+              run_oracle individual
+              run_oracle bitmask --bitmask
+              ;;
+            nes)
+              run_oracle two-player-individual --nes-topology two-player
+              run_oracle two-player-bitmask --nes-topology two-player --bitmask
+              run_oracle four-score-individual --nes-topology four-score
+              run_oracle four-score-bitmask --nes-topology four-score --bitmask
+              ;;
+            snes)
+              run_oracle two-player-individual --snes-topology two-player
+              run_oracle multitap-individual --snes-topology multitap
+              if [[ "$CORE" != bsnes ]]; then
+                run_oracle two-player-bitmask --snes-topology two-player --bitmask
+                run_oracle multitap-bitmask --snes-topology multitap --bitmask
+              fi
+              ;;
+            *)
+              echo "Unsupported system: $SYSTEM" >&2
+              exit 2
+              ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: libretro-windows-${{ matrix.core }}
+          path: ${{ runner.temp }}/lunchbox-libretro-${{ matrix.core }}
+          if-no-files-found: warn
+          retention-days: 14

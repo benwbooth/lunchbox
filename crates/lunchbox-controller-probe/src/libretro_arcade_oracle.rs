@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{CString, c_char, c_void};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
@@ -1332,13 +1333,16 @@ fn content_identity(path: &Path) -> Result<ContentIdentity> {
 fn create_private_dir(path: &Path) -> Result<()> {
     std::fs::create_dir(path)
         .with_context(|| format!("Creating private directory {}", path.display()))?;
+    #[cfg(unix)]
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
     Ok(())
 }
 
 fn write_private_new(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut options = OpenOptions::new();
-    options.write(true).create_new(true).mode(0o600);
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
     let mut file = options
         .open(path)
         .with_context(|| format!("Creating {}", path.display()))?;
@@ -1736,6 +1740,7 @@ fn make_evidence_root(requested: Option<&Path>) -> Result<PathBuf> {
         .prefix("lunchbox-libretro-arcade-")
         .tempdir()?;
     let path = temp.keep();
+    #[cfg(unix)]
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;
     Ok(path)
 }
