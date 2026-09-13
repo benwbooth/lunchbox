@@ -24,12 +24,12 @@ record is linked to at least one exact controller profile; together they cover
 four frontend hosts. Core host availability is intentionally conservative:
 thirteen exact macOS arm64 core/system combinations were executed from twelve
 official buildbot artifacts on an Apple Silicon host, seven Linux cores were
-executed directly (including two exact Flatpak-updater binaries), seven official
-Windows x86_64 buildbot cores were executed on hosted Windows Server 2025 VMs,
-and one Windows SteemSSE
-artifact is source-verified as available. Mesen-S is
+executed directly (including two exact Flatpak-updater binaries), eleven Windows
+core/system combinations were executed from ten official x86_64 buildbot
+artifacts on hosted Windows Server 2025 VMs, and one Windows SteemSSE artifact
+is source-verified as available. Mesen-S is
 explicitly unavailable on macOS and Windows because the current official
-artifact paths returned HTTP 404. The other 347 core/host cells remain `unverified`
+artifact paths returned HTTP 404. The other 344 core/host cells remain `unverified`
 rather than inheriting availability from the RetroArch frontend.
 
 Because the shared RetroArch frontend record supplies the platform paths for

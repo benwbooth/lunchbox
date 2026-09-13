@@ -176,15 +176,20 @@ RetroArch GUI/remap behavior or physical-device capture.
 ## Exact Windows x86_64 verification on 2026-09-12
 
 GitHub Actions run
-[`34739017401`](https://github.com/benwbooth/lunchbox/actions/runs/34739017401)
+[`34742154324`](https://github.com/benwbooth/lunchbox/actions/runs/34742154324)
 executed the same original diagnostics on separate Windows Server 2025 VMs
-against official Libretro x86_64 buildbot DLLs. Every retained report parses as
-schema 3; native stdout and stderr are separate artifacts.
+against official Libretro x86_64 buildbot DLLs. Every retained report is
+machine-parseable JSON under its system-specific schema; native stdout and
+stderr are separate artifacts.
 
 | System | Exact core | Modes and observations |
 | --- | --- | --- |
 | GBA | mGBA `0.11-219-e31759b`, SHA-256 `d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33` | 26/26 in individual mode and 26/26 in bitmask mode |
+| Game Boy | Gambatte `v0.5.0-netlink d9d6cd0`, SHA-256 `c15eb6dc323b08610e8241ace11135d9fe8e1c8a3190541394f15457cdac59e1` | 24/24 in individual mode and 24/24 in bitmask mode |
+| Game Boy | mGBA `0.11-219-e31759b`, SHA-256 `d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33` | 24/24 in individual mode and 24/24 in bitmask mode |
 | Game Boy | SameBoy `1.0.3 8230189`, SHA-256 `5b184f0bfa4a0bcf614c996cfa12985e60144722df815be2e9c8cd90bc259bfb` | 48/48 in individual mode and 48/48 in bitmask mode; both advertised joypad devices |
+| Game Boy | SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c`, SHA-256 `a9f020507fa90551107a40fb00c05e9d20f9bfb2140319aae9f5a9892c2973bc` | 24/24 in individual mode; bitmask unsupported |
+| Game Boy | VBA-M `2.1.3 115defb`, SHA-256 `a88130470c10aa4f4e34fd39c07f56630af7b596cc81ebd211796326b8f3af8f` | 24/24 in individual mode and 24/24 in bitmask mode |
 | Game Gear | Genesis Plus GX `v1.7.4 c2838c7`, SHA-256 `c53e9ef8fcb72f85d574ed2d0a4dc963a425586f1cd0039ee06ad381e6a4afc3` | 22/22 in individual mode and 22/22 in bitmask mode |
 | NES | FCEUmm `(SVN) 236ccdf`, SHA-256 `0fa1061243f0bfdded5a6b50c249dbaab94117cc5ac5285a1e001a20a2da69f4` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
 | NES | Mesen `0.9.9`, SHA-256 `53f3ebc11e4287c37b01cc53d3dc7975116ca5e99e73727425e5762f96353d9f` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
@@ -196,10 +201,10 @@ Snes9x wrote one `Map_LoROMMap` line per process to native stdout; explicit
 used private empty system/save directories and prove the direct-core controller
 paths only. They do not test optional firmware, persistent-save reload, state
 restoration, RetroArch frontend configuration, physical controllers, or sync.
-SameBoy was added by green run
-[`34739661776`](https://github.com/benwbooth/lunchbox/actions/runs/34739661776);
-its warning about the absent optional `dmg_boot.bin` precedes successful fallback
-to the built-in open boot ROM and is retained separately from the JSON reports.
+SameBoy's warning about the absent optional `dmg_boot.bin` precedes successful
+fallback to the built-in open boot ROM and is retained separately from the JSON
+reports. SkyEmu intentionally has no bitmask report because the oracle rejects
+that mode after proving the adapter never negotiates it.
 
 A follow-up run,
 [`34739246329`](https://github.com/benwbooth/lunchbox/actions/runs/34739246329),
@@ -272,16 +277,16 @@ nix develop -c cargo run -p lunchbox-controller-probe --bin lunchbox-libretro-in
 nix develop -c cargo run -p lunchbox-controller-probe --bin lunchbox-libretro-input -- --system gameboy --core /absolute/trusted/CORE_libretro.so --sha256 EXPECTED_SHA256 --bitmask --output /new/bitmask.json
 ```
 
-On 2026-09-12 official Libretro buildbot artifacts passed on native Linux x86_64
-and macOS 26.5.1 arm64:
+On 2026-09-12 official Libretro buildbot artifacts passed on native Linux
+x86_64, macOS 26.5.1 arm64, and hosted Windows Server 2025 x86_64:
 
-| Core | Linux SHA-256 | macOS arm64 SHA-256 | Verified modes |
-| --- | --- | --- | --- |
-| Gambatte `v0.5.0-netlink d9d6cd0` | `b8fba61ecbb840723a7c64d771196b37931c50ba4d98874cccedfd69a8aa27a6` | `19f088f910a89ffef80a26766f682dd01aa5ae81c95adca6926a3d9c10733a50` | 24/24 individual and 24/24 bitmask on each host |
-| mGBA `0.11-219-e31759b` | `768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4` | `085350861044d9d2ef37634a7c201f57b4816fd343bdf29cdcd09bfb754b9218` | 24/24 individual and 24/24 bitmask on each host |
-| SameBoy `1.0.3 8230189` | `26b3de38033e14cb2185f47811d38340bd47f56d55dd82cb14cdbd39a88a8208` | `581f35441d3263f53769d1a542cb3904656eff7ec2121fce3a17cacb8a282cb3` | 48/48 individual and 48/48 bitmask on each host |
-| SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c` | `bd5bf1f727d14e274a7f71b29e541d4d9188797c781a1557236aa94d54ed7c85` | `64778cf538f741dc5a55de2130390c196083fdb5346bec916b83d32accb9a24c` | 24/24 individual on each host; bitmask unsupported |
-| VBA-M `2.1.3 115defb` on Linux, version suffix `115defb` on macOS | `156dee1827dee4c36b8f88ab9ef6a9918b1e4e89a62195a4228fe0b1b982e31c` | `880d40f6338a7c60544b9c4662f8a950ea457bcd337dbc17240a03078328087f` | 24/24 individual and 24/24 bitmask on each host |
+| Core | Linux SHA-256 | macOS arm64 SHA-256 | Windows SHA-256 | Verified modes |
+| --- | --- | --- | --- | --- |
+| Gambatte `v0.5.0-netlink d9d6cd0` | `b8fba61ecbb840723a7c64d771196b37931c50ba4d98874cccedfd69a8aa27a6` | `19f088f910a89ffef80a26766f682dd01aa5ae81c95adca6926a3d9c10733a50` | `c15eb6dc323b08610e8241ace11135d9fe8e1c8a3190541394f15457cdac59e1` | 24/24 individual and 24/24 bitmask on each host |
+| mGBA `0.11-219-e31759b` | `768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4` | `085350861044d9d2ef37634a7c201f57b4816fd343bdf29cdcd09bfb754b9218` | `d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33` | 24/24 individual and 24/24 bitmask on each host |
+| SameBoy `1.0.3 8230189` | `26b3de38033e14cb2185f47811d38340bd47f56d55dd82cb14cdbd39a88a8208` | `581f35441d3263f53769d1a542cb3904656eff7ec2121fce3a17cacb8a282cb3` | `5b184f0bfa4a0bcf614c996cfa12985e60144722df815be2e9c8cd90bc259bfb` | 48/48 individual and 48/48 bitmask on each host |
+| SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c` | `bd5bf1f727d14e274a7f71b29e541d4d9188797c781a1557236aa94d54ed7c85` | `64778cf538f741dc5a55de2130390c196083fdb5346bec916b83d32accb9a24c` | `a9f020507fa90551107a40fb00c05e9d20f9bfb2140319aae9f5a9892c2973bc` | 24/24 individual on each host; bitmask unsupported |
+| VBA-M `2.1.3 115defb` on Linux/Windows, version suffix `115defb` on macOS | `156dee1827dee4c36b8f88ab9ef6a9918b1e4e89a62195a4228fe0b1b982e31c` | `880d40f6338a7c60544b9c4662f8a950ea457bcd337dbc17240a03078328087f` | `a88130470c10aa4f4e34fd39c07f56630af7b596cc81ebd211796326b8f3af8f` | 24/24 individual and 24/24 bitmask on each host |
 
 SkyEmu exposes a 98,304-byte composite memory structure through the standard
 system-memory ID; its pinned memory map places the diagnostic's C000 bytes at

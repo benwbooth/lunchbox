@@ -103,11 +103,12 @@
     },
     "windows": {
       "status": "available",
-      "reason": "The official Libretro Windows x86_64 buildbot artifact was downloaded and executed on a GitHub-hosted Windows Server 2025 VM.",
+      "reason": "The official Libretro Windows x86_64 buildbot artifact was downloaded and executed through the exact-core Game Boy input oracle on a GitHub-hosted Windows Server 2025 VM.",
       "evidence": [
         "buildbot:https://buildbot.libretro.com/nightly/windows/x86_64/latest/sameboy_libretro.dll.zip @2026-09-12",
         "runtime:Windows Server 2025 x86_64; SameBoy 1.0.3 8230189; sha256 5b184f0bfa4a0bcf614c996cfa12985e60144722df815be2e9c8cd90bc259bfb",
-        "github-actions:https://github.com/benwbooth/lunchbox/actions/runs/34739661776"
+        "github-actions:https://github.com/benwbooth/lunchbox/actions/runs/34742154324",
+        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md"
       ]
     }
   }

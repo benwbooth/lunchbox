@@ -17,7 +17,7 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const REPORT_SCHEMA: u32 = 2;
+const REPORT_SCHEMA: u32 = 3;
 const RETRO_MEMORY_SAVE_RAM: u32 = 0;
 const RETRO_MEMORY_SYSTEM_RAM: u32 = 2;
 const MARKER_OFFSET: usize = 0x100;
@@ -37,6 +37,11 @@ static OPTIONS: Mutex<Option<OptionEnvironment>> = Mutex::new(None);
 #[serde(rename_all = "kebab-case")]
 pub enum PersistenceSystem {
     Gba,
+    GameboyGambatte,
+    GameboyMgba,
+    GameboySameboy,
+    GameboySkyemu,
+    GameboyVbam,
     GameGear,
     NesFceumm,
     NesMesen,
@@ -56,10 +61,82 @@ impl PersistenceSystem {
                 pre_save_bytes: 128 * 1024,
                 post_save_bytes: 32 * 1024,
                 system_ram_bytes: 32 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 12,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
                 // mGBA's state contracts to the detected 32 KiB SRAM size.
                 state_bytes: Some(430_144),
+            },
+            Self::GameboyGambatte => CoreSpec {
+                name: "Gambatte",
+                version: "v0.5.0-netlink d9d6cd0",
+                extension: "gb",
+                need_fullpath: false,
+                pre_save_bytes: 32 * 1024,
+                post_save_bytes: 32 * 1024,
+                system_ram_bytes: 8 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 240,
+                first_observation: FIRST_SAVE_OBSERVATION,
+                second_observation: SECOND_SAVE_OBSERVATION,
+                state_bytes: Some(59_650),
+            },
+            Self::GameboyMgba => CoreSpec {
+                name: "mGBA",
+                version: "0.11-219-e31759b",
+                extension: "gb",
+                need_fullpath: false,
+                pre_save_bytes: 32 * 1024,
+                post_save_bytes: 32 * 1024,
+                system_ram_bytes: 32 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 240,
+                first_observation: FIRST_SAVE_OBSERVATION,
+                second_observation: SECOND_SAVE_OBSERVATION,
+                state_bytes: Some(202_816),
+            },
+            Self::GameboySameboy => CoreSpec {
+                name: "SameBoy",
+                version: "1.0.3 8230189",
+                extension: "gb",
+                need_fullpath: false,
+                pre_save_bytes: 32 * 1024,
+                post_save_bytes: 32 * 1024,
+                system_ram_bytes: 8 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 240,
+                first_observation: FIRST_SAVE_OBSERVATION,
+                second_observation: SECOND_SAVE_OBSERVATION,
+                state_bytes: Some(252_666),
+            },
+            Self::GameboySkyemu => CoreSpec {
+                name: "SkyEmu",
+                version: "adacd0788964ed89f5c43dcbc1f3cc26deec996c",
+                extension: "gb",
+                need_fullpath: false,
+                pre_save_bytes: 128 * 1024,
+                post_save_bytes: 128 * 1024,
+                system_ram_bytes: 96 * 1024,
+                system_ram_offset: 0xc000,
+                frame_limit: 240,
+                first_observation: FIRST_SAVE_OBSERVATION,
+                second_observation: SECOND_SAVE_OBSERVATION,
+                state_bytes: Some(246_416),
+            },
+            Self::GameboyVbam => CoreSpec {
+                name: "VBA-M",
+                version: "2.1.3 115defb",
+                extension: "gb",
+                need_fullpath: false,
+                pre_save_bytes: 32 * 1024,
+                post_save_bytes: 32 * 1024,
+                system_ram_bytes: 32 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 240,
+                first_observation: FIRST_SAVE_OBSERVATION,
+                second_observation: SECOND_SAVE_OBSERVATION,
+                state_bytes: Some(115_948),
             },
             Self::GameGear => CoreSpec {
                 name: "Genesis Plus GX",
@@ -69,6 +146,8 @@ impl PersistenceSystem {
                 pre_save_bytes: 64 * 1024,
                 post_save_bytes: FIRST_SAVE_OBSERVATION.len(),
                 system_ram_bytes: 8 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 12,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
                 state_bytes: Some(1_036_288),
@@ -81,6 +160,8 @@ impl PersistenceSystem {
                 pre_save_bytes: 8 * 1024,
                 post_save_bytes: 8 * 1024,
                 system_ram_bytes: 2 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 12,
                 first_observation: FIRST_NES_SAVE_OBSERVATION,
                 second_observation: SECOND_NES_SAVE_OBSERVATION,
                 state_bytes: Some(13_726),
@@ -93,6 +174,8 @@ impl PersistenceSystem {
                 pre_save_bytes: 8 * 1024,
                 post_save_bytes: 8 * 1024,
                 system_ram_bytes: 2 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 12,
                 first_observation: FIRST_NES_SAVE_OBSERVATION,
                 second_observation: SECOND_NES_SAVE_OBSERVATION,
                 state_bytes: Some(35_840),
@@ -105,6 +188,8 @@ impl PersistenceSystem {
                 pre_save_bytes: 8 * 1024,
                 post_save_bytes: 8 * 1024,
                 system_ram_bytes: 128 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 12,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
                 state_bytes: Some(823_407),
@@ -117,6 +202,8 @@ impl PersistenceSystem {
                 pre_save_bytes: 8 * 1024,
                 post_save_bytes: 8 * 1024,
                 system_ram_bytes: 128 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 12,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
                 state_bytes: None,
@@ -129,6 +216,8 @@ impl PersistenceSystem {
                 pre_save_bytes: 8 * 1024,
                 post_save_bytes: 8 * 1024,
                 system_ram_bytes: 128 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 12,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
                 state_bytes: Some(550_912),
@@ -139,6 +228,11 @@ impl PersistenceSystem {
     fn slug(self) -> &'static str {
         match self {
             Self::Gba => "gba",
+            Self::GameboyGambatte => "gameboy-gambatte",
+            Self::GameboyMgba => "gameboy-mgba",
+            Self::GameboySameboy => "gameboy-sameboy",
+            Self::GameboySkyemu => "gameboy-skyemu",
+            Self::GameboyVbam => "gameboy-vbam",
             Self::GameGear => "game-gear",
             Self::NesFceumm => "nes-fceumm",
             Self::NesMesen => "nes-mesen",
@@ -151,6 +245,11 @@ impl PersistenceSystem {
     fn diagnostic_rom(self) -> Vec<u8> {
         match self {
             Self::Gba => gba_persistence_rom(),
+            Self::GameboyGambatte
+            | Self::GameboyMgba
+            | Self::GameboySameboy
+            | Self::GameboySkyemu
+            | Self::GameboyVbam => gameboy_persistence_rom(),
             Self::GameGear => game_gear_persistence_rom(),
             Self::NesFceumm | Self::NesMesen => nes_persistence_rom(),
             Self::Snes9x | Self::Bsnes | Self::MesenS => snes_persistence_rom(),
@@ -167,6 +266,8 @@ struct CoreSpec {
     pre_save_bytes: usize,
     post_save_bytes: usize,
     system_ram_bytes: usize,
+    system_ram_offset: usize,
+    frame_limit: usize,
     first_observation: &'static [u8],
     second_observation: &'static [u8],
     state_bytes: Option<usize>,
@@ -270,6 +371,7 @@ struct WorkerReport {
     pre_save_bytes: Option<usize>,
     post_save_bytes: Option<usize>,
     system_ram_bytes: usize,
+    system_ram_offset: usize,
     observation_hex: Option<String>,
     save_sha256: Option<String>,
     state_bytes: Option<usize>,
@@ -289,6 +391,8 @@ struct PersistenceReport {
     runtime_libraries: Vec<RuntimeLibrary>,
     evidence_directory: PathBuf,
     diagnostic_rom: Artifact,
+    system_ram_bytes: usize,
+    system_ram_offset: usize,
     save_ram: SaveRamReport,
     save_state: SaveStateReport,
 }
@@ -337,6 +441,12 @@ struct GameInfo {
     meta: *const c_char,
 }
 
+#[repr(C)]
+struct Variable {
+    key: *const c_char,
+    value: *const c_char,
+}
+
 type Environment = unsafe extern "C" fn(u32, *mut c_void) -> bool;
 type Input = unsafe extern "C" fn(u32, u32, u32, u32) -> i16;
 type Video = unsafe extern "C" fn(*const c_void, u32, u32, usize);
@@ -349,6 +459,7 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
     if let Ok(mut options) = OPTIONS.lock()
         && let Some(options) = options.as_mut()
         && let Some(result) = unsafe { options.handle(command, data) }
+        && (result || command != 15)
     {
         return result;
     }
@@ -380,6 +491,24 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
         }
         10 => unsafe { *data.cast::<u32>() <= 2 },
         11 | 35 | 36 | 37 => true,
+        15 => {
+            let variable = unsafe { &mut *data.cast::<Variable>() };
+            if variable.key.is_null() {
+                return false;
+            }
+            let key = unsafe { CStr::from_ptr(variable.key) }.to_bytes();
+            variable.value = match key {
+                b"mgba_use_bios" => c"OFF".as_ptr(),
+                b"mgba_skip_bios" => c"ON".as_ptr(),
+                b"sameboy_model" => c"Game Boy".as_ptr(),
+                b"system_core_override" => c"Automatic".as_ptr(),
+                b"system_gb_bios_enable"
+                | b"system_gba_bios_enable"
+                | b"system_nds_bios_enable" => c"OFF".as_ptr(),
+                _ => std::ptr::null(),
+            };
+            !variable.value.is_null()
+        }
         24 => {
             unsafe { data.cast::<u64>().write(1 << 1) };
             true
@@ -487,9 +616,7 @@ impl Core {
 
         let mut runtime_dependencies = Vec::new();
         for path in runtime_library_paths {
-            runtime_dependencies.push(unsafe { Library::new(path) }.with_context(|| {
-                format!("Loading trusted runtime dependency {}", path.display())
-            })?);
+            runtime_dependencies.push(load_runtime_dependency(path)?);
         }
         let library = unsafe { Library::new(core_path) }
             .with_context(|| format!("Loading trusted core {}", core_path.display()))?;
@@ -622,22 +749,46 @@ impl Core {
         Ok(unsafe { std::slice::from_raw_parts_mut(data.cast(), size) })
     }
 
-    fn run_until_observation(&self, expected: &[u8]) -> Result<Vec<u8>> {
+    fn run_until_observation(
+        &self,
+        expected: &[u8],
+        system_ram_offset: usize,
+        frame_limit: usize,
+    ) -> Result<Vec<u8>> {
         let mut observed = Vec::new();
-        for _ in 0..12 {
+        for _ in 0..frame_limit {
             unsafe { (self.run)() };
             let memory = unsafe { self.memory_slice(RETRO_MEMORY_SYSTEM_RAM)? };
-            ensure!(memory.len() >= expected.len(), "System RAM is too small");
-            observed = memory[..expected.len()].to_vec();
+            ensure!(
+                memory.len() >= system_ram_offset + expected.len(),
+                "System RAM is too small for offset {system_ram_offset}"
+            );
+            observed = memory[system_ram_offset..system_ram_offset + expected.len()].to_vec();
             if observed == expected {
                 return Ok(observed);
             }
         }
         bail!(
-            "Diagnostic program did not publish {} (observed {})",
+            "Diagnostic program did not publish {} at system-RAM offset {system_ram_offset} in {frame_limit} frames (observed {})",
             bytes_hex(expected),
             bytes_hex(&observed)
         )
+    }
+}
+
+fn load_runtime_dependency(path: &Path) -> Result<Library> {
+    #[cfg(unix)]
+    {
+        let library = unsafe {
+            libloading::os::unix::Library::open(Some(path), libc::RTLD_NOW | libc::RTLD_GLOBAL)
+        }
+        .with_context(|| format!("Loading trusted runtime dependency {}", path.display()))?;
+        Ok(library.into())
+    }
+    #[cfg(not(unix))]
+    {
+        unsafe { Library::new(path) }
+            .with_context(|| format!("Loading trusted runtime dependency {}", path.display()))
     }
 }
 
@@ -775,6 +926,11 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         "Expected {} bytes of system RAM, got {system_ram_bytes}",
         spec.system_ram_bytes
     );
+    ensure!(
+        system_ram_bytes >= spec.system_ram_offset + MARKER_OFFSET + STATE_MARKER.len(),
+        "System RAM is too small for the configured diagnostic window"
+    );
+    let marker_offset = spec.system_ram_offset + MARKER_OFFSET;
     let mut report = WorkerReport {
         schema_version: REPORT_SCHEMA,
         phase: args.phase,
@@ -786,6 +942,7 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         pre_save_bytes: None,
         post_save_bytes: None,
         system_ram_bytes,
+        system_ram_offset: spec.system_ram_offset,
         observation_hex: None,
         save_sha256: None,
         state_bytes: None,
@@ -802,7 +959,11 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
                 "Expected {} pre-run save bytes, got {pre_size}",
                 spec.pre_save_bytes
             );
-            let observed = core.run_until_observation(spec.first_observation)?;
+            let observed = core.run_until_observation(
+                spec.first_observation,
+                spec.system_ram_offset,
+                spec.frame_limit,
+            )?;
             let post_size = core.memory_size(RETRO_MEMORY_SAVE_RAM);
             ensure!(
                 post_size == spec.post_save_bytes,
@@ -838,7 +999,11 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
             let target = unsafe { core.memory_slice_mut(RETRO_MEMORY_SAVE_RAM)? };
             target.fill(0xff);
             target[..save.len()].copy_from_slice(&save);
-            let observed = core.run_until_observation(spec.second_observation)?;
+            let observed = core.run_until_observation(
+                spec.second_observation,
+                spec.system_ram_offset,
+                spec.frame_limit,
+            )?;
             let post_size = core.memory_size(RETRO_MEMORY_SAVE_RAM);
             ensure!(
                 post_size == spec.post_save_bytes,
@@ -860,13 +1025,17 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         WorkerPhase::StateCreate => {
             let expected_state_bytes = expected_state_bytes
                 .context("No pinned state size; supply --expected-state-bytes for this system")?;
-            core.run_until_observation(spec.first_observation)?;
+            core.run_until_observation(
+                spec.first_observation,
+                spec.system_ram_offset,
+                spec.frame_limit,
+            )?;
             let ram = unsafe { core.memory_slice_mut(RETRO_MEMORY_SYSTEM_RAM)? };
             ensure!(
-                ram.len() >= MARKER_OFFSET + STATE_MARKER.len(),
+                ram.len() >= marker_offset + STATE_MARKER.len(),
                 "System RAM is too small"
             );
-            ram[MARKER_OFFSET..MARKER_OFFSET + STATE_MARKER.len()].copy_from_slice(STATE_MARKER);
+            ram[marker_offset..marker_offset + STATE_MARKER.len()].copy_from_slice(STATE_MARKER);
             let state_size = unsafe { (core.serialize_size)() };
             ensure!(
                 state_size > 0 && state_size <= 32 * 1024 * 1024,
@@ -882,14 +1051,14 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
                 "Core refused state serialization"
             );
             let ram = unsafe { core.memory_slice_mut(RETRO_MEMORY_SYSTEM_RAM)? };
-            ram[MARKER_OFFSET..MARKER_OFFSET + MUTATED_MARKER.len()]
+            ram[marker_offset..marker_offset + MUTATED_MARKER.len()]
                 .copy_from_slice(MUTATED_MARKER);
             ensure!(
                 unsafe { (core.unserialize)(state.as_ptr().cast(), state.len()) },
                 "Core refused same-process state restoration"
             );
             let restored = unsafe { core.memory_slice(RETRO_MEMORY_SYSTEM_RAM)? }
-                [MARKER_OFFSET..MARKER_OFFSET + STATE_MARKER.len()]
+                [marker_offset..marker_offset + STATE_MARKER.len()]
                 .to_vec();
             ensure!(
                 restored == STATE_MARKER,
@@ -904,9 +1073,13 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         WorkerPhase::StateReload => {
             let expected_state_bytes = expected_state_bytes
                 .context("No pinned state size; supply --expected-state-bytes for this system")?;
-            core.run_until_observation(spec.first_observation)?;
+            core.run_until_observation(
+                spec.first_observation,
+                spec.system_ram_offset,
+                spec.frame_limit,
+            )?;
             let before = unsafe { core.memory_slice(RETRO_MEMORY_SYSTEM_RAM)? }
-                [MARKER_OFFSET..MARKER_OFFSET + STATE_MARKER.len()]
+                [marker_offset..marker_offset + STATE_MARKER.len()]
                 .to_vec();
             ensure!(
                 before != STATE_MARKER,
@@ -929,7 +1102,7 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
                 "Fresh core refused persisted state"
             );
             let restored = unsafe { core.memory_slice(RETRO_MEMORY_SYSTEM_RAM)? }
-                [MARKER_OFFSET..MARKER_OFFSET + STATE_MARKER.len()]
+                [marker_offset..marker_offset + STATE_MARKER.len()]
                 .to_vec();
             ensure!(
                 restored == STATE_MARKER,
@@ -998,6 +1171,11 @@ fn run_worker(
         .arg("--system")
         .arg(match args.system {
             PersistenceSystem::Gba => "gba",
+            PersistenceSystem::GameboyGambatte => "gameboy-gambatte",
+            PersistenceSystem::GameboyMgba => "gameboy-mgba",
+            PersistenceSystem::GameboySameboy => "gameboy-sameboy",
+            PersistenceSystem::GameboySkyemu => "gameboy-skyemu",
+            PersistenceSystem::GameboyVbam => "gameboy-vbam",
             PersistenceSystem::GameGear => "game-gear",
             PersistenceSystem::NesFceumm => "nes-fceumm",
             PersistenceSystem::NesMesen => "nes-mesen",
@@ -1162,6 +1340,10 @@ fn validate_reports(
             report.system_ram_bytes == spec.system_ram_bytes,
             "System RAM size changed between workers"
         );
+        ensure!(
+            report.system_ram_offset == spec.system_ram_offset,
+            "System RAM offset changed between workers"
+        );
     }
     ensure!(
         reports[0].pre_save_bytes == Some(spec.pre_save_bytes)
@@ -1275,6 +1457,8 @@ fn supervisor(mut args: SupervisorArgs) -> Result<PersistenceReport> {
             diagnostic_path(&evidence, args.system),
             &reports[0].diagnostic_rom_sha256,
         )?,
+        system_ram_bytes: args.system.spec().system_ram_bytes,
+        system_ram_offset: args.system.spec().system_ram_offset,
         save_ram: SaveRamReport {
             status: "pass",
             initial_observation_hex: bytes_hex(args.system.spec().first_observation),
@@ -1414,6 +1598,85 @@ pub fn gba_persistence_rom() -> Vec<u8> {
         rom[offset..offset + 4].copy_from_slice(&word.to_le_bytes());
     }
     rom[0x300..0x309].copy_from_slice(b"SRAM_V113");
+    rom
+}
+
+/// Original LR35902 program in a 32 KiB MBC1+RAM+battery cartridge. It enables
+/// external RAM, selects MBC1 RAM-banking mode and bank zero, performs the same
+/// `LBSG01`/`LBSG02` transaction at `$A000`, and copies the result to `$C000`.
+pub fn gameboy_persistence_rom() -> Vec<u8> {
+    const CARTRIDGE_LOGO: [u8; 48] = [
+        0xce, 0xed, 0x66, 0x66, 0xcc, 0x0d, 0x00, 0x0b, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0c, 0x00,
+        0x0d, 0x00, 0x08, 0x11, 0x1f, 0x88, 0x89, 0x00, 0x0e, 0xdc, 0xcc, 0x6e, 0xe6, 0xdd, 0xdd,
+        0xd9, 0x99, 0xbb, 0xbb, 0x67, 0x63, 0x6e, 0x0e, 0xec, 0xcc, 0xdd, 0xdc, 0x99, 0x9f, 0xbb,
+        0xb9, 0x33, 0x3e,
+    ];
+
+    let mut program = vec![
+        0xf3, // di
+        0x31, 0xf0, 0xdf, // ld sp, $dff0
+        0x3e, 0x0a, // ld a, $0a
+        0xea, 0x00, 0x00, // ld ($0000), a: enable external RAM
+        0x3e, 0x01, // ld a, $01
+        0xea, 0x00, 0x60, // ld ($6000), a: MBC1 RAM-banking mode
+        0xaf, // xor a
+        0xea, 0x00, 0x40, // ld ($4000), a: RAM bank zero
+        0x21, 0x00, 0xa0, // ld hl, $a000
+    ];
+    let mut mismatch_operands = Vec::new();
+    for expected in b"LBSG" {
+        program.extend([0x7e, 0xfe, *expected, 0x20, 0]); // ld a,(hl); cp n; jr nz,init
+        mismatch_operands.push(program.len() - 1);
+        program.push(0x23); // inc hl
+    }
+    program.extend([0x23, 0x7e, 0x3c, 0x77, 0x18, 0]); // skip '0'; increment byte 5; jr publish
+    let publish_operand = program.len() - 1;
+    let initialize = program.len();
+    program.extend([0x21, 0x00, 0xa0]); // ld hl, $a000
+    for value in FIRST_SAVE_OBSERVATION {
+        program.extend([0x36, *value, 0x23]); // ld (hl),n; inc hl
+    }
+    let publish = program.len();
+    program.extend([
+        0x21, 0x00, 0xa0, // ld hl, $a000
+        0x11, 0x00, 0xc0, // ld de, $c000
+        0x06, 0x06, // ld b, 6
+        0x2a, // copy: ld a,(hl+)
+        0x12, // ld (de),a
+        0x13, // inc de
+        0x05, // dec b
+        0x20, 0xfa, // jr nz,copy
+        0x76, // halt
+        0x18, 0xfd, // jr halt
+    ]);
+    for operand in mismatch_operands {
+        let delta = isize::try_from(initialize).unwrap() - isize::try_from(operand + 1).unwrap();
+        assert!((-128..=127).contains(&delta));
+        program[operand] = delta as i8 as u8;
+    }
+    let delta = isize::try_from(publish).unwrap() - isize::try_from(publish_operand + 1).unwrap();
+    assert!((-128..=127).contains(&delta));
+    program[publish_operand] = delta as i8 as u8;
+
+    let mut rom = vec![0u8; 32 * 1024];
+    rom[0x100..0x104].copy_from_slice(&[0x00, 0xc3, 0x50, 0x01]); // nop; jp $0150
+    rom[0x104..0x134].copy_from_slice(&CARTRIDGE_LOGO);
+    rom[0x134..0x140].copy_from_slice(b"LUNCHBOXSAVE");
+    rom[0x147] = 0x03; // MBC1 + RAM + battery
+    rom[0x148] = 0x00; // 32 KiB ROM
+    rom[0x149] = 0x03; // 32 KiB external RAM
+    rom[0x14a] = 0x01; // non-Japanese destination
+    rom[0x14b] = 0x33; // extended licensee marker
+    rom[0x150..0x150 + program.len()].copy_from_slice(&program);
+    rom[0x14d] = rom[0x134..0x14d]
+        .iter()
+        .fold(0u8, |sum, byte| sum.wrapping_sub(*byte).wrapping_sub(1));
+    let global_checksum = rom
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !matches!(index, 0x14e | 0x14f))
+        .fold(0u16, |sum, (_, byte)| sum.wrapping_add(u16::from(*byte)));
+    rom[0x14e..0x150].copy_from_slice(&global_checksum.to_be_bytes());
     rom
 }
 
@@ -1683,6 +1946,32 @@ mod tests {
     }
 
     #[test]
+    fn gameboy_rom_is_reproducible_and_declares_mbc1_battery_ram() {
+        let rom = gameboy_persistence_rom();
+        assert_eq!(rom, gameboy_persistence_rom());
+        assert_eq!(rom.len(), 32 * 1024);
+        assert_eq!(&rom[0x100..0x104], &[0x00, 0xc3, 0x50, 0x01]);
+        assert_eq!(&rom[0x134..0x140], b"LUNCHBOXSAVE");
+        assert_eq!(&rom[0x147..0x14a], &[0x03, 0x00, 0x03]);
+        assert_eq!(
+            rom[0x14d],
+            rom[0x134..0x14d]
+                .iter()
+                .fold(0u8, |sum, byte| sum.wrapping_sub(*byte).wrapping_sub(1))
+        );
+        assert_eq!(
+            u16::from_be_bytes(rom[0x14e..0x150].try_into().unwrap()),
+            rom.iter()
+                .enumerate()
+                .filter(|(index, _)| !matches!(index, 0x14e | 0x14f))
+                .fold(0u16, |sum, (_, byte)| sum.wrapping_add(u16::from(*byte)))
+        );
+        assert!(rom.windows(3).any(|bytes| bytes == [0xea, 0x00, 0x00]));
+        assert!(rom.windows(3).any(|bytes| bytes == [0xea, 0x00, 0x60]));
+        assert!(rom.windows(3).any(|bytes| bytes == [0xea, 0x00, 0x40]));
+    }
+
+    #[test]
     fn nes_rom_is_reproducible_and_declares_battery_prg_ram() {
         let rom = nes_persistence_rom();
         assert_eq!(rom, nes_persistence_rom());
@@ -1741,6 +2030,73 @@ mod tests {
             (snes.name, snes.pre_save_bytes, snes.post_save_bytes),
             ("Snes9x", 8_192, 8_192)
         );
+        let gameboy = [
+            (
+                PersistenceSystem::GameboyGambatte,
+                "Gambatte",
+                "v0.5.0-netlink d9d6cd0",
+                32_768,
+                32_768,
+                8_192,
+                0,
+                59_650,
+            ),
+            (
+                PersistenceSystem::GameboyMgba,
+                "mGBA",
+                "0.11-219-e31759b",
+                32_768,
+                32_768,
+                32_768,
+                0,
+                202_816,
+            ),
+            (
+                PersistenceSystem::GameboySameboy,
+                "SameBoy",
+                "1.0.3 8230189",
+                32_768,
+                32_768,
+                8_192,
+                0,
+                252_666,
+            ),
+            (
+                PersistenceSystem::GameboySkyemu,
+                "SkyEmu",
+                "adacd0788964ed89f5c43dcbc1f3cc26deec996c",
+                131_072,
+                131_072,
+                98_304,
+                49_152,
+                246_416,
+            ),
+            (
+                PersistenceSystem::GameboyVbam,
+                "VBA-M",
+                "2.1.3 115defb",
+                32_768,
+                32_768,
+                32_768,
+                0,
+                115_948,
+            ),
+        ];
+        for (system, name, version, pre, post, ram, offset, state) in gameboy {
+            let spec = system.spec();
+            assert_eq!(spec.name, name);
+            assert_eq!(spec.version, version);
+            assert_eq!(spec.extension, "gb");
+            assert!(!spec.need_fullpath);
+            assert_eq!(spec.pre_save_bytes, pre);
+            assert_eq!(spec.post_save_bytes, post);
+            assert_eq!(spec.system_ram_bytes, ram);
+            assert_eq!(spec.system_ram_offset, offset);
+            assert_eq!(spec.frame_limit, 240);
+            assert_eq!(spec.first_observation, FIRST_SAVE_OBSERVATION);
+            assert_eq!(spec.second_observation, SECOND_SAVE_OBSERVATION);
+            assert_eq!(spec.state_bytes, Some(state));
+        }
         assert!(validate_hash(&"a".repeat(64)).is_ok());
         assert!(validate_hash(&"a".repeat(63)).is_err());
         assert!(validate_hash(&format!("{}z", "a".repeat(63))).is_err());
@@ -1800,6 +2156,7 @@ mod tests {
             pre_save_bytes: None,
             post_save_bytes: None,
             system_ram_bytes: spec.system_ram_bytes,
+            system_ram_offset: spec.system_ram_offset,
             observation_hex: None,
             save_sha256: None,
             state_bytes: None,

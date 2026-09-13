@@ -21,9 +21,11 @@ jobs:
             system: gba
             secondary_system: gameboy
             persistence_system: gba
+            secondary_persistence_system: gameboy-mgba
             persistence_expect: pass
             expected_version: '0.11-219-e31759b'
             expected_state_bytes: 430144
+            secondary_expected_state_bytes: 202816
           - core: genesis_plus_gx
             system: gamegear
             persistence_system: game-gear
@@ -57,31 +59,31 @@ jobs:
           - core: sameboy
             system: gameboy
             secondary_system: ''
-            persistence_system: ''
+            persistence_system: gameboy-sameboy
             persistence_expect: pass
-            expected_version: ''
-            expected_state_bytes: ''
+            expected_version: '1.0.3 8230189'
+            expected_state_bytes: 252666
           - core: gambatte
             system: gameboy
             secondary_system: ''
-            persistence_system: ''
+            persistence_system: gameboy-gambatte
             persistence_expect: pass
-            expected_version: ''
-            expected_state_bytes: ''
+            expected_version: 'v0.5.0-netlink d9d6cd0'
+            expected_state_bytes: 59650
           - core: skyemu
             system: gameboy
             secondary_system: ''
-            persistence_system: ''
+            persistence_system: gameboy-skyemu
             persistence_expect: pass
-            expected_version: ''
-            expected_state_bytes: ''
+            expected_version: 'adacd0788964ed89f5c43dcbc1f3cc26deec996c'
+            expected_state_bytes: 246416
           - core: vbam
             system: gameboy
             secondary_system: ''
-            persistence_system: ''
+            persistence_system: gameboy-vbam
             persistence_expect: pass
-            expected_version: ''
-            expected_state_bytes: ''
+            expected_version: '2.1.3 115defb'
+            expected_state_bytes: 115948
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -96,9 +98,11 @@ jobs:
           SYSTEM: ${{ matrix.system }}
           SECONDARY_SYSTEM: ${{ matrix.secondary_system }}
           PERSISTENCE_SYSTEM: ${{ matrix.persistence_system }}
+          SECONDARY_PERSISTENCE_SYSTEM: ${{ matrix.secondary_persistence_system }}
           PERSISTENCE_EXPECT: ${{ matrix.persistence_expect }}
           EXPECTED_VERSION: ${{ matrix.expected_version }}
           EXPECTED_STATE_BYTES: ${{ matrix.expected_state_bytes }}
+          SECONDARY_EXPECTED_STATE_BYTES: ${{ matrix.secondary_expected_state_bytes }}
         run: |
           set -euo pipefail
 
@@ -169,34 +173,45 @@ jobs:
             run_oracle gameboy-bitmask --bitmask
           fi
 
-          if [[ -n "$PERSISTENCE_SYSTEM" ]]; then
-            persistence="$workspace/target/release/lunchbox-libretro-persistence.exe"
+          persistence="$workspace/target/release/lunchbox-libretro-persistence.exe"
+          run_persistence() {
+            local label="$1"
+            local persistence_system="$2"
+            local expected_state_bytes="$3"
             persistence_args=(
               --core "$core_path"
               --sha256 "$core_sha256"
-              --system "$PERSISTENCE_SYSTEM"
+              --system "$persistence_system"
               --expected-version "$EXPECTED_VERSION"
-              --output "$evidence/persistence"
+              --output "$evidence/$label"
             )
-            if [[ -n "$EXPECTED_STATE_BYTES" ]]; then
-              persistence_args+=(--expected-state-bytes "$EXPECTED_STATE_BYTES")
+            if [[ -n "$expected_state_bytes" ]]; then
+              persistence_args+=(--expected-state-bytes "$expected_state_bytes")
             fi
             if [[ "$PERSISTENCE_EXPECT" == blocked ]]; then
               if "$persistence" "${persistence_args[@]}" \
-                > "$evidence/persistence.stdout" \
-                2> "$evidence/persistence.stderr"; then
+                > "$evidence/${label}.stdout" \
+                2> "$evidence/${label}.stderr"; then
                 echo 'bsnes unexpectedly passed the direct-memory persistence oracle' >&2
                 exit 1
               fi
               grep -F \
                 'bsnes 115 deliberately exposes neither save RAM nor system RAM through the libretro memory interface' \
-                "$evidence/persistence.stderr"
+                "$evidence/${label}.stderr"
             elif ! "$persistence" "${persistence_args[@]}" \
-              > "$evidence/persistence.stdout" \
-              2> "$evidence/persistence.stderr"; then
-                cat "$evidence/persistence.stderr" >&2
+              > "$evidence/${label}.stdout" \
+              2> "$evidence/${label}.stderr"; then
+                cat "$evidence/${label}.stderr" >&2
                 exit 1
             fi
+          }
+
+          if [[ -n "$PERSISTENCE_SYSTEM" ]]; then
+            run_persistence persistence "$PERSISTENCE_SYSTEM" "$EXPECTED_STATE_BYTES"
+          fi
+          if [[ -n "$SECONDARY_PERSISTENCE_SYSTEM" ]]; then
+            run_persistence persistence-secondary \
+              "$SECONDARY_PERSISTENCE_SYSTEM" "$SECONDARY_EXPECTED_STATE_BYTES"
           fi
 
       - uses: actions/upload-artifact@v4
