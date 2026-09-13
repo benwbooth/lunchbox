@@ -266,6 +266,7 @@ test host against official Libretro arm64 buildbot dylibs:
 | Game Gear | Genesis Plus GX `v1.7.4 c2838c7`, SHA-256 `0f4367774eddca7f6eb569648f9adc85cd62662577184634034be326199500d3` | 22/22 in individual mode and 22/22 in bitmask mode |
 | NES | FCEUmm `(SVN) 236ccdf`, SHA-256 `8afebce8967bb81c4c11fc9c930756e304c3ea81db89cc9607d38a2744da861a` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
 | NES | Mesen `0.9.9`, SHA-256 `3849098df9baf3b37fb58e27049c05d39ff4c4ffa63f0d739294188ba601c5d5` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
+| NES | Nestopia `1.99.0 5265136`, SHA-256 `31bdba996461c5214e706ca1c674138976f6932af0a4da1de431b031cf706540` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes; Four Score applied `nestopia_select_adapter=ntsc` |
 | SNES | bsnes `115`, SHA-256 `18900517569b4bd4a08c5a37dc8d2e3f1d8cf6891ab1bb786699867ecb635abf` | 58/58 two-player and 145/145 multitap observations in individual mode; bitmask mode unsupported |
 | SNES | Snes9x `1.63 890b5d4`, SHA-256 `0f8fe5bf4e9ee72f8a73b00439884126c5358b98f4509fd19dd3d7aac26b3e54` | 58/58 two-player and 145/145 multitap observations in each of individual and bitmask modes |
 | Atari 2600 | Stella `8.0_pre b52ccb02e`, SHA-256 `8ba747d971903b297e8071d891746a6ec8886005d7d5817de440ddc420c80923` | 36/36 joystick and console-switch observations in each of individual and bitmask modes |
@@ -276,6 +277,13 @@ retained. The current Unix helper temporarily isolates native-core stdout; a
 subsequent exact-hash M1 two-player rerun produced clean JSON and repeated all
 58 observations. These are direct-core arm64 results; they do not promote
 RetroArch GUI/remap behavior or physical-device capture.
+
+The Nestopia arm64 archive was 787,476 bytes with SHA-256
+`4b7b07895ff4595a5fb0ad705608f333b7008f960314129aa4bb5bcd79a29cdf`.
+Its newer runtime queried frontend ports three and four even in the two-player
+case, but deliberately nonzero disconnected-port callback state did not reach
+the NES hardware bytes. The four current-schema reports are retained under
+`target/runtime-evidence/libretro-nestopia-macos-2026-09-13`.
 
 ## Exact Windows x86_64 verification through 2026-09-13
 

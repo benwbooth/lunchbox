@@ -288,6 +288,7 @@ and schema 6 for Stella's state-only contract):
 | Game Gear | Genesis Plus GX `v1.7.4 c2838c7` | `0f4367774eddca7f6eb569648f9adc85cd62662577184634034be326199500d3` | six modified bytes; `LBSG01` to `LBSG02` in a fresh process | 1,036,288 |
 | NES | FCEUmm `(SVN) 236ccdf` | `8afebce8967bb81c4c11fc9c930756e304c3ea81db89cc9607d38a2744da861a` | 8 KiB; `LBSR\x01` to `LBSR\x02` in a fresh process | 13,758 |
 | NES | Mesen `0.9.9` | `3849098df9baf3b37fb58e27049c05d39ff4c4ffa63f0d739294188ba601c5d5` | 8 KiB; `LBSR\x01` to `LBSR\x02` in a fresh process | 35,840 |
+| NES | Nestopia `1.99.0 5265136` | `31bdba996461c5214e706ca1c674138976f6932af0a4da1de431b031cf706540` | 8 KiB; `LBSR\x01` to `LBSR\x02` in a fresh process | 21,781 |
 | SNES | Snes9x `1.63 890b5d4` | `0f8fe5bf4e9ee72f8a73b00439884126c5358b98f4509fd19dd3d7aac26b3e` | 8 KiB; `LBSG01` to `LBSG02` in a fresh process | 823,407 |
 | PlayStation | Beetle PSX `0.9.44.1 82d8e05` | `20e52419f9f693cce563dd63711ce70ff21ad3b30965696c97d828e38db4fd22` | 128 KiB memory-card ABI buffer; frontend marker `LBSG01` loaded and changed to `LBSG02` in a fresh process | 16,777,216 |
 | PlayStation | Beetle PSX HW `0.9.44.1 82d8e05` | `0a7018fd6574f3d56c804af949f69beccaffb4e41cda455ee02f9ef61c66cbcb` | 128 KiB memory-card ABI buffer; frontend marker `LBSG01` loaded and changed to `LBSG02` in a fresh process; software renderer selected explicitly | 16,777,216 |
@@ -314,6 +315,12 @@ The FCEUmm state-size drift from the Linux binary is why the exact
 `--expected-state-bytes 13758` override exists; a current schema-6 rerun on
 2026-09-13 enforced it in every worker and retained the report under
 `target/runtime-evidence/libretro-fceumm-macos-2026-09-13`. The
+Nestopia run likewise first failed closed when its arm64 diagnostic state was
+21,781 rather than the Linux runtime's 21,471 bytes, then passed all four fresh
+workers with that exact override. Its state SHA-256 was
+`9c57923f09dd86fc918aa41a0e6335bfaf526ff04a5e23cffc76e74a96ff52e0`;
+the report is under
+`target/runtime-evidence/libretro-nestopia-macos-2026-09-13`. The
 Snes9x and Genesis Plus GX serialized-state hashes changed across hosts or
 reruns even though the behavioral marker restoration passed, so no byte-level
 cross-build state determinism is claimed.
