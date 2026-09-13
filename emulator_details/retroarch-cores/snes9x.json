@@ -91,11 +91,11 @@
       ]
     },
     "macos": {
-      "status": "unverified",
-      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "status": "available",
+      "reason": "The official Libretro macOS arm64 buildbot artifact was downloaded and executed on an Apple Silicon host.",
       "evidence": [
-        "records/retroarch.json host paths",
-        "official per-core distribution not separately verified"
+        "buildbot:https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/snes9x_libretro.dylib.zip @2026-09-12",
+        "runtime:macOS 26.5.1 arm64; Snes9x 1.63 890b5d4; sha256 0f8fe5bf4e9ee72f8a73b00439884126c5358b98f4509fd19dd3d7aac26b3e54"
       ]
     },
     "windows": {

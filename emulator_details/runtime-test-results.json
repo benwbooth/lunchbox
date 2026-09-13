@@ -19,7 +19,7 @@
       "firmware_test_status": "not_tested",
       "save_test_status": "not_tested",
       "state_test_status": "not_tested",
-      "test_notes": "2026-09-12: Flathub dev.ares.ares 148, Flatpak commit 5b6ccf0aef391c237a34e41cf14da438446aa454371408e3c0d418f818132a77, /app/bin/ares sha256 48bb4b1dc279091860f8e725057b8c6f5888188b3efd00cac508215bee0e079f. The ignored installed-runtime test selected connected controller linux:045e:028e:usb-0000-56-00-0-1-input0 from the saved calibration, generated the complete N64 mapping through the production adapter, and had the real ares parser accept and round-trip every binding while the original settings.bml remained byte-identical. No game content was launched and no in-game response was observed, so controller acceptance remains blocked rather than pass. Firmware, persistent saves, states, and sync export/restore were not exercised."
+      "test_notes": "2026-09-12 bounded standalone recheck: Flathub dev.ares.ares 148, Flatpak commit 5b6ccf0aef391c237a34e41cf14da438446aa454371408e3c0d418f818132a77, /app/bin/ares sha256 48bb4b1dc279091860f8e725057b8c6f5888188b3efd00cac508215bee0e079f, and runtime SDL3 sha256 d8f6e0b9f3ecb2b2f202f98943a17999201ff030aeb2a0383629a25ba282552f. The ignored installed-runtime test selected connected controller linux:045e:028e:usb-0000-56-00-0-1-input0 from the saved calibration, generated the complete N64 mapping through the production adapter, and had the real ares parser accept and round-trip every binding (1 test passed). A separate launch on private Xvfb :97 reached the ares v148 window and OpenGL 4.6 initialization using an isolated --settings-file; the user's settings.bml remained byte-identical at sha256 34d24cac4f9c063b3ddcc8b54a67e255cf53bc869f05b10c53ebeb896e214d00. No game content was launched and no in-game response was observed, so controller acceptance remains blocked rather than pass. Firmware, persistent saves, states, and sync export/restore were not exercised."
     },
     {
       "runtime_kind": "retroarch",
@@ -27,9 +27,9 @@
       "host_os": "linux-flatpak",
       "controller_test_status": "pass",
       "firmware_test_status": "not_tested",
-      "save_test_status": "not_tested",
-      "state_test_status": "not_tested",
-      "test_notes": "2026-09-12: installed FCEUmm core identity FCEUmm (SVN) 5cd4a43, fceumm_libretro.so sha256 e7a17d1a5dacaeb7e02067f73aafab168f6a249a5dc0059ff16a5df44784d65c. An original generated NES NROM diagnostic exercised the real libretro core through the controller probe. Two-player and Four Score topologies both passed with individual-button and RETRO_DEVICE_ID_JOYPAD_MASK callback modes: 42/42 byte-exact observations per two-player run and 84/84 per Four Score run, 252/252 total. Every connected player was independently stimulated; published active-low NES register bytes matched exactly, and disconnected ports received zero queries. This establishes the probed core/controller callback contract, not physical GUI capture, optional FDS BIOS handling, persistent saves, save states, or sync export/restore."
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12: installed FCEUmm core identity FCEUmm (SVN) 5cd4a43, fceumm_libretro.so sha256 e7a17d1a5dacaeb7e02067f73aafab168f6a249a5dc0059ff16a5df44784d65c. An original generated NES NROM diagnostic exercised the real libretro core through the controller probe. Two-player and Four Score topologies both passed with individual-button and RETRO_DEVICE_ID_JOYPAD_MASK callback modes: 42/42 byte-exact observations per two-player run and 84/84 per Four Score run, 252/252 total. Every connected player was independently stimulated; published active-low NES register bytes matched exactly, and disconnected ports received zero queries. A separate exact-hash, fresh-process libretro probe used private save/state/system roots. An original 24,592-byte battery NROM (sha256 0ae807dfe80d7178f082e0d6297e94b145d2880ff5a974fa5c1b26f6bf1beaaa) executed and published LBSR01 from its 8,192-byte save RAM; a fresh process loaded that .srm (sha256 35f57192c251084b91b1a5fbfda019c4294db3266df377689c96a5769317745e), executed the cartridge, and published LBSR02, producing sha256 de5232a4b6205e474f7c169fda3dc0f1a22f3edd770c798340f7ee4571d2e124. Real Faxanadu content (sha256 9e5f12c5fb7f6aa2b360538038abc682488511293e79b9bd2ef199877a8c6d1d) produced a 13,772-byte state (sha256 d7c665ad5e6cf0d876edc2c5b8653edf883dc7313dcd1f334b3633fc1de5fffa): after deliberately replacing system-RAM bytes 0x100..0x107, same-process load restored LBSTATE1, and a fresh process started with 0effffffffffffff there before loading the same file and restoring LBSTATE1. This proves core-level persistent save-RAM reload and behavioral state restoration for these exact bytes, not RetroArch GUI/path handling, optional FDS BIOS handling, physical GUI capture, or sync export/restore. The save-sync status remains blocked because no real provider export/restore has been exercised on this host."
     },
     {
       "runtime_kind": "retroarch",
@@ -37,9 +37,179 @@
       "host_os": "linux-flatpak",
       "controller_test_status": "pass",
       "firmware_test_status": "not_tested",
-      "save_test_status": "not_tested",
-      "state_test_status": "not_tested",
-      "test_notes": "2026-09-12: installed Mesen 0.9.9 core, mesen_libretro.so sha256 552f8ab6ac1fd08bd555f589eb999be73a469c79ccfa929f884adb2cf3366b43. An original generated NES NROM diagnostic exercised the real libretro core through the controller probe. Two-player and Four Score topologies both passed with individual-button and RETRO_DEVICE_ID_JOYPAD_MASK callback modes: 42/42 byte-exact observations per two-player run and 84/84 per Four Score run, 252/252 total. Every connected player was independently stimulated and published active-low NES register bytes matched exactly. In bitmask mode Mesen queried all five frontend ports even when ports were disconnected, but deliberately nonzero synthetic states on disconnected ports never reached NES hardware; per-port query counts are preserved by the probe report. This establishes the probed core/controller callback contract, not physical GUI capture, persistent saves, save states, or sync export/restore."
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12: installed Mesen 0.9.9 core, mesen_libretro.so sha256 552f8ab6ac1fd08bd555f589eb999be73a469c79ccfa929f884adb2cf3366b43. An original generated NES NROM diagnostic exercised the real libretro core through the controller probe. Two-player and Four Score topologies both passed with individual-button and RETRO_DEVICE_ID_JOYPAD_MASK callback modes: 42/42 byte-exact observations per two-player run and 84/84 per Four Score run, 252/252 total. Every connected player was independently stimulated and published active-low NES register bytes matched exactly. In bitmask mode Mesen queried all five frontend ports even when ports were disconnected, but deliberately nonzero synthetic states on disconnected ports never reached NES hardware; per-port query counts are preserved by the probe report. A separate exact-hash, fresh-process libretro probe used private save/state/system roots. An original 24,592-byte battery NROM (sha256 0ae807dfe80d7178f082e0d6297e94b145d2880ff5a974fa5c1b26f6bf1beaaa) executed and published LBSR01 from its 8,192-byte save RAM; a fresh process loaded that .srm (sha256 35f57192c251084b91b1a5fbfda019c4294db3266df377689c96a5769317745e), executed the cartridge, and published LBSR02, producing sha256 de5232a4b6205e474f7c169fda3dc0f1a22f3edd770c798340f7ee4571d2e124. Real Faxanadu content (sha256 9e5f12c5fb7f6aa2b360538038abc682488511293e79b9bd2ef199877a8c6d1d) produced a 35,840-byte state (sha256 779f3ebb5a906fda3bd17cbcd7a6e1e61be0c5546dfc07cc529620d95c65495e): after deliberately replacing system-RAM bytes 0x100..0x107, same-process load restored LBSTATE1, and a fresh process started with 0e00000000000000 there before loading the same file and restoring LBSTATE1. This proves core-level persistent save-RAM reload and behavioral state restoration for these exact bytes, not RetroArch GUI/path handling, physical GUI capture, or sync export/restore. The save-sync status remains blocked because no real provider export/restore has been exercised on this host."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:bsnes",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "blocked",
+      "test_notes": "2026-09-12 installed Flatpak-updater direct-core probe: bsnes 115, bsnes_libretro.so sha256 ffd2898ddf27fbcac962e9e10a65e7562e8c1a7c2b795a0d93dc32a3ebfb8e8b. An original 32 KiB 65C816 LoROM manually clocked SNES controller ports and published generation-protected words into WRAM. Because this core exposes no standard system-memory region, the bounded oracle found one uniquely marked WRAM region in retro_serialize output and independently checked 58/58 two-player and 145/145 five-player port-two-multitap observations. Every player was stimulated separately while conflicting masks were held on the others. The core does not negotiate RETRO_DEVICE_ID_JOYPAD_MASK, so that mode was explicitly rejected rather than counted. The four-worker persistence oracle then failed closed because this exact bsnes exposes null pointers and zero sizes for both save RAM and system RAM, matching the reviewed upstream interface; save reload and behavioral state restoration require a separate file-based oracle. No real-provider sync or optional firmware was exercised."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:snes9x",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 installed Flatpak-updater direct-core probe: Snes9x 1.63 185488c, snes9x_libretro.so sha256 6e2d5fb3bbf57ef0a24834b36914187bea1a0b20f373da3adfdd5aebf75a4a99. An original 32 KiB 65C816 LoROM manually clocked SNES controller ports and published generation-protected words into the core's 131,072-byte standard WRAM region. Two-player passed 58/58 and port-two-multitap passed 145/145 observations in both individual-button and RETRO_DEVICE_ID_JOYPAD_MASK modes. Every player was stimulated separately while conflicting masks were held on the others. A separate four-worker persistence oracle used an original 32 KiB SRAM LoROM (sha256 68cf012eec8fa8d1bfa5494f4330fddca48b505ef9c4ef67aaa2bf26504493d6): a fresh process consumed LBSG01 and published LBSG02 from an 8,192-byte save, and an 823,407-byte state restored LBSTATE1 after mutation in the same and a fresh process. This proves direct-core save memory and behavioral state restoration, not RetroArch frontend paths, optional firmware, physical capture, or sync. Save sync remains blocked because no real-provider export/restore was exercised."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mesen-s",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "fail",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 installed Flatpak-updater direct-core probe: Mesen-S 0.4.0, mesen_s_libretro.so sha256 d43d7875316dc3f505ec160d5d34cc541fa899225c9227fed839697a7936cb5a. The original SNES hardware-register diagnostic passed all 58/58 two-player individual-button observations through the core's 131,072-byte WRAM region, including Start and Select despite their omission from its descriptor table. The core does not negotiate RETRO_DEVICE_ID_JOYPAD_MASK. Its advertised multitap path failed before button cases: the released-state readback was [0000,0000,0000,ffff,0000] rather than five released controllers, so controller status remains fail. A separate four-worker persistence oracle used the original SRAM LoROM: a fresh process consumed LBSG01 and published LBSG02 from an 8,192-byte save, and a 550,912-byte state restored LBSTATE1 after mutation in the same and a fresh process. This proves direct-core save memory and behavioral state restoration, not RetroArch frontend paths, optional firmware, physical capture, or sync. Save sync remains blocked because no real-provider export/restore was exercised."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mgba",
+      "host_os": "linux",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 native Linux direct-core probe: official buildbot mGBA 0.11-219-e31759b, mgba_libretro.so sha256 768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4. An original ARM GBA controller diagnostic passed all 26/26 KEYINPUT observations in both individual-button and RETRO_DEVICE_ID_JOYPAD_MASK callback modes; the core exposed 32,768 bytes of EWRAM and 16 input descriptors. A separate permanent four-worker oracle used private roots and an original 4,096-byte SRAM cartridge (sha256 272a6bd18723cb246342359c414e5515968152e2e31d54ffa4d27c96211c3030): the executing program published LBSG01, then a fresh process loaded the 32,768-byte save (sha256 d914ccf5f18d569cb1091616551130d2454655f2087588d7195a9da279f38d8f) and published LBSG02, yielding sha256 b53471673e7872e8de73c5a75a448d0d60bea5b27908fc0c53b29b1385df4d93. Its 430,144-byte state (sha256 b27f8f06b608f7b5d8f8132d682ef7f2f2e0b717a3601a24756064784a97bb90) restored LBSTATE1 after deliberate mutation in the same and a fresh process. This proves this core binary's callback, save-memory, and serialization behavior, not RetroArch GUI/path handling, physical capture, firmware acceptance, or sync export/restore. Save sync remains blocked because no real provider export/restore was exercised."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:genesis_plus_gx",
+      "host_os": "linux",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 native Linux direct-core probe: official buildbot Genesis Plus GX v1.7.4 c2838c7, genesis_plus_gx_libretro.so sha256 30abab06a9e1cfc26766a864fab83ee986cec1d6156c48dec13f9d03b46b2a6c. An original Z80 Game Gear controller diagnostic passed all 22/22 hardware-register observations in both individual-button and RETRO_DEVICE_ID_JOYPAD_MASK callback modes; the core exposed 8,192 bytes of work RAM, two complete controller-choice lists, and 96 descriptors. A separate permanent four-worker oracle used private roots and an original 65,536-byte mapper cartridge (sha256 132f435ad5f427bf20c16ab9dd06a68da1f62574ba9fb4ef500efb8eef700962): the executing program published LBSG01, then a fresh process loaded the six modified save bytes (sha256 e06cae62059ea3f685b6531f8db5eb0323807fc81b0b388b2c396c7a72493b3e) and published LBSG02, yielding sha256 2d18216b5ae17102aa2f4f61b02684b7ea10a388cb92d1c9c7e1ef51d82249dd. Its 1,036,288-byte state (sha256 f7d88c8408abf8263f0c2d68b51b3b1206850fe563a656f9be7f51260e1fd0eb) restored LBSTATE1 after deliberate mutation in the same and a fresh process. This proves this core binary's callback, save-memory, and serialization behavior, not RetroArch GUI/path handling, physical capture, firmware acceptance, or sync export/restore. Save sync remains blocked because no real provider export/restore was exercised."
+    },
+    {
+      "runtime_kind": "standalone",
+      "runtime_id": "8f627173-35d2-5c68-96cf-362a03e7545e",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "blocked",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 installed Snes9x Flatpak audit: com.snes9x.Snes9x 1.63 commit 79ac5baaad32c5f7289f36277f2f643bb51085c4ecb41fe653679f885612b725, /app/bin/snes9x-gtk sha256 6b8566f1ffc718058fdc3f322bf56b5b5556fd00f3b69ad9db94c4a08802fd2c. The production renderer generated a private two-player config, and an original 32 KiB LoROM (sha256 8d42522de6b9889a90ae608c98804d5dd7aaccdd80384067424606ead969852f) observed the exact 12-control sequence 0800,0400,0200,0100,1000,2000,0080,8000,0040,4000,0020,0010 independently for each player. Three fresh processes proved SRAM reload, and slot 000 restored ROM-visible bytes from 03 5a to 01 00. Production integration remains blocked: Lunchbox rejects Flatpak launch, and host SDL indices 0/3 differ from sandbox slots 3/6, so removing the guard would misroute players; safe support needs an in-sandbox probe and launch isolation. Ordinary no-BIOS startup passed, but optional BS-X/Sufami firmware was not tested. Save sync remains blocked because no real-provider export/restore was exercised. Detailed evidence: docs/SNES9X_STANDALONE_RUNTIME.md."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mgba",
+      "host_os": "macos",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 macOS 26.5.1 arm64 M1 direct-core audit: official Libretro buildbot mGBA 0.11-219-e31759b, mgba_libretro.dylib sha256 085350861044d9d2ef37634a7c201f57b4816fd343bdf29cdcd09bfb754b9218. The original GBA diagnostic passed 26/26 KEYINPUT observations in each of individual and bitmask modes. Four fresh workers then executed the original 4,096-byte SRAM cartridge, consumed LBSG01 and published LBSG02 from a 32,768-byte save, and restored LBSTATE1 from a 430,144-byte state after same-process and fresh-process mutation. Retained schema-2 report: /Users/ben/lunchbox-runtime-audit-20260912/evidence/mgba-macos-arm64-v2/results.json on the test host. This bypasses the RetroArch frontend and does not test optional BIOS acceptance, physical input, frontend paths, or sync. Save sync remains blocked because no real-provider export/restore was exercised."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:genesis_plus_gx",
+      "host_os": "macos",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 macOS 26.5.1 arm64 M1 direct-core audit: official Libretro buildbot Genesis Plus GX v1.7.4 c2838c7, genesis_plus_gx_libretro.dylib sha256 0f4367774eddca7f6eb569648f9adc85cd62662577184634034be326199500d3. The original Game Gear diagnostic passed 22/22 hardware-register observations in each of individual and bitmask modes. Four fresh workers then executed the original 65,536-byte mapper cartridge, consumed LBSG01 and published LBSG02 from the six modified save bytes, and restored LBSTATE1 from a 1,036,288-byte state after same-process and fresh-process mutation. Retained schema-2 report: /Users/ben/lunchbox-runtime-audit-20260912/evidence/genesis-plus-gx-macos-arm64-v2/results.json on the test host. This bypasses the RetroArch frontend and does not test optional BIOS acceptance, physical input, frontend paths, or sync. Save sync remains blocked because no real-provider export/restore was exercised."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:fceumm",
+      "host_os": "macos",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 macOS 26.5.1 arm64 M1 direct-core audit: official Libretro buildbot FCEUmm (SVN) 236ccdf, fceumm_libretro.dylib sha256 8afebce8967bb81c4c11fc9c930756e304c3ea81db89cc9607d38a2744da861a. Two-player and Four Score topologies passed in individual and bitmask modes: 42/42 observations for each two-player run and 84/84 for each Four Score run. Four fresh workers executed the original 24,592-byte battery NROM, consumed LBSR01 and published LBSR02 from an 8,192-byte save, and restored LBSTATE1 from the version-specific 13,758-byte state after same-process and fresh-process mutation. Retained schema-2 report: /Users/ben/lunchbox-runtime-audit-20260912/evidence/fceumm-macos-arm64-v3/results.json on the test host. This bypasses the RetroArch frontend and does not test optional FDS/Game Genie assets, physical input, frontend paths, or sync. Save sync remains blocked because no real-provider export/restore was exercised."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mesen",
+      "host_os": "macos",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 macOS 26.5.1 arm64 M1 direct-core audit: official Libretro buildbot Mesen 0.9.9, mesen_libretro.dylib sha256 3849098df9baf3b37fb58e27049c05d39ff4c4ffa63f0d739294188ba601c5d5. Two-player and Four Score topologies passed in individual and bitmask modes: 42/42 observations for each two-player run and 84/84 for each Four Score run. Four fresh workers executed the original battery NROM, consumed LBSR01 and published LBSR02 from an 8,192-byte save, and restored LBSTATE1 from a 35,840-byte state after same-process and fresh-process mutation. Retained schema-2 report: /Users/ben/lunchbox-runtime-audit-20260912/evidence/mesen-macos-arm64-v2/results.json on the test host. This bypasses the RetroArch frontend and does not test optional FDS BIOS acceptance, physical input, frontend paths, or sync. Save sync remains blocked because no real-provider export/restore was exercised."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:bsnes",
+      "host_os": "macos",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "blocked",
+      "test_notes": "2026-09-12 macOS 26.5.1 arm64 M1 direct-core audit: official Libretro buildbot bsnes 115, bsnes_libretro.dylib sha256 18900517569b4bd4a08c5a37dc8d2e3f1d8cf6891ab1bb786699867ecb635abf. The original SNES hardware diagnostic passed 58/58 two-player and 145/145 port-two-multitap observations in individual mode; the core does not negotiate joypad bitmasks, so that mode was explicitly rejected. Persistence/state testing failed closed because this core exposes null pointers and zero sizes for save RAM and system RAM; a file-based oracle is still required. Optional enhancement firmware, RetroArch frontend paths, physical input, and sync were not exercised."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:snes9x",
+      "host_os": "macos",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 macOS 26.5.1 arm64 M1 direct-core audit: official Libretro buildbot Snes9x 1.63 890b5d4, snes9x_libretro.dylib sha256 0f8fe5bf4e9ee72f8a73b00439884126c5358b98f4509fd19dd3d7aac26b3e54. The original SNES hardware diagnostic passed 58/58 two-player and 145/145 port-two-multitap observations in each of individual and bitmask modes. The core emits a trailing Map_LoROMMap line after the JSON at process exit; the four reports retained the complete JSON prefix and all behavioral assertions exited successfully. Four fresh workers then consumed LBSG01 and published LBSG02 from an 8,192-byte save and restored LBSTATE1 from an 823,407-byte state after same-process and fresh-process mutation. Retained schema-2 report: /Users/ben/lunchbox-runtime-audit-20260912/evidence/snes9x-macos-arm64-v3/results.json on the test host. Optional firmware, RetroArch frontend paths, physical input, and sync were not exercised. Save sync remains blocked because no real-provider export/restore was exercised."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mesen-s",
+      "host_os": "macos",
+      "controller_test_status": "not_applicable",
+      "firmware_test_status": "not_applicable",
+      "save_test_status": "not_applicable",
+      "state_test_status": "not_applicable",
+      "test_notes": "2026-09-12 macOS arm64 availability audit: the official Libretro buildbot returned HTTP 404 for the exact Mesen-S dylib archive at the arm64 latest, universal latest, and x86_64 latest paths. With no verified macOS core binary, controller, optional-firmware, persistent-save, and state execution are unavailable rather than runtime-tested on this host."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:fbneo",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "blocked",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_applicable",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 installed Flatpak-updater direct-core audit: FinalBurn Neo v1.0.0.03 260417 GITe923538, fbneo_libretro.so sha256 3555759523d6da5f78012c6846921ac27884b03264604387d07a4877579a177e, exact source e9235389cede90638ad2726cfe80660841b23425. The byte-pinned 805,560-byte 1943.zip (sha256 e44b89e80bf8bccc4f16476d7254d959d937a1668d27ec564d57103ac94fba6f) produced deterministic per-button and negotiated-bitmask responses: P1/P2 Start, directions, Fire 1, and Fire 2 were independently distinguished, 20/22 tested channels. Coin 1 and Coin 2 each responded but merged into the game's shared credit pool, and this two-button game cannot exercise the contracted six/eight-button layouts, so the whole controller contract remains blocked rather than pass. A 14,256-byte state restored exact RAM, video, and reserialized state after a 30-frame continuation in the same and a fresh process in both callback modes. Core-info declares no persistent-save artifact, so save testing is not applicable; optional system firmware, RetroArch frontend paths, physical input, and cloud sync were not exercised. Evidence: crates/lunchbox-controller-probe/LIBRETRO_ARCADE_ORACLE.md."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mame",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "blocked",
+      "firmware_test_status": "not_applicable",
+      "save_test_status": "not_applicable",
+      "state_test_status": "fail",
+      "test_notes": "2026-09-12 installed Flatpak-updater direct-core audit: MAME 0.287 (a891bc3b), mame_libretro.so sha256 8bcc096667a3c24baefece40b610f981a5c8de13447af486b0ad9381e28302e7, exact source a891bc3b98c5a9f00848c953c8768007c6d339cb. The byte-pinned 1943.zip produced deterministic per-button and negotiated-bitmask responses: P1/P2 Start, directions, Fire 1, and Fire 2 were independently distinguished, 20/22 tested channels. Coin 1 and Coin 2 each responded but merged into the game's shared credit outcome, and this two-button game cannot exercise the contracted six/eight-button layouts, so the whole controller contract remains blocked rather than pass. The 4,568,390-byte state restored exactly in-process, but a fresh process matched only the exposed 2 KiB RAM; its 30th rendered frame and reserialized state differed in both callback modes. That contradicts the record's deterministic cross-process state claim, so state status is fail. Core-info declares neither required firmware nor a persistent-save artifact; RetroArch frontend paths, physical input, and cloud sync were not exercised. Evidence: crates/lunchbox-controller-probe/LIBRETRO_ARCADE_ORACLE.md."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:fbneo",
+      "host_os": "macos",
+      "controller_test_status": "blocked",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_applicable",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 macOS 26.5.1 arm64 M1 direct-core audit: official Libretro buildbot FinalBurn Neo v1.0.0.03 GITa251c76, fbneo_libretro.dylib sha256 38f382d2c08c21491dbdc81839f36f0a3e995d7aa147e975bc9e03dc54bf7b61, exact source a251c76229f1637e433b93e29845039752771b6d. The same byte-pinned 1943.zip produced deterministic per-button and negotiated-bitmask responses: P1/P2 Start, directions, Fire 1, and Fire 2 were independently distinguished, 20/22 tested channels. Coin 1 and Coin 2 each responded but merged into the game's shared credit pool, and this two-button game cannot exercise the contracted six/eight-button layouts, so the whole controller contract remains blocked rather than pass. The arm64-specific 15,288-byte state restored exact RAM, video, and reserialized state after a 30-frame continuation in the same and a fresh process in both callback modes. Core-info declares no persistent-save artifact; optional system firmware, RetroArch frontend paths, physical input, and cloud sync were not exercised. Retained reports: /Users/ben/lunchbox-runtime-audit-20260912/evidence/fbneo-macos-arm64*/report.json on the test host."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mame",
+      "host_os": "macos",
+      "controller_test_status": "blocked",
+      "firmware_test_status": "not_applicable",
+      "save_test_status": "not_applicable",
+      "state_test_status": "fail",
+      "test_notes": "2026-09-12 macOS 26.5.1 arm64 M1 direct-core audit: official Libretro buildbot MAME 0.289 (4fc9a931), mame_libretro.dylib sha256 de43859a4ab93ea7a1df3f920ae7b2657212b7357b31e6ed72754394198baa4b, exact source 4fc9a9312baaf34963847f884961ad9793fbbc1d. The same byte-pinned 1943.zip produced deterministic per-button and negotiated-bitmask responses: P1/P2 Start, directions, Fire 1, and Fire 2 were independently distinguished, 20/22 tested channels. Coin 1 and Coin 2 each responded but merged into the game's shared credit outcome, and this two-button game cannot exercise the contracted six/eight-button layouts, so the whole controller contract remains blocked rather than pass. The arm64-specific 4,568,435-byte state restored exactly in-process, but a fresh process matched only the exposed 2 KiB RAM; its 30th rendered frame and reserialized state differed in both callback modes. That contradicts the record's deterministic cross-process state claim, so state status is fail. Core-info declares neither required firmware nor a persistent-save artifact; RetroArch frontend paths, physical input, and cloud sync were not exercised. Retained reports: /Users/ben/lunchbox-runtime-audit-20260912/evidence/mame-macos-arm64*/report.json on the test host."
     }
   ]
 }

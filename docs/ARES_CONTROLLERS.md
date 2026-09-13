@@ -35,6 +35,23 @@ These are default attached gamepad modes, not a claim of peripheral coverage.
 PCE multitaps, Mega Drive six-button attachments, PS analog-mode switching,
 and other non-default attachments are not configured by this adapter yet.
 
+## Installed-runtime inventory
+
+The bounded Linux inventory on 2026-09-12 found these standalone emulator
+Flatpaks: Nestopia UE 1.53.2, DOSBox-X 2026.08.31, Snes9x 1.63, ares 148,
+bsnes 115, puNES 0.111, DuckStation 0.1-9482-g0a53bc47c, MAME 0.289,
+openMSX 21.0, AltirraQt 0.1.0, and Ryujinx 1.3.3. RetroArch 1.22.2 was also
+installed but excluded from this standalone audit. The apparent native
+`dolphin` command was KDE Dolphin 26.04.3, not Dolphin Emulator, and no other
+common native emulator executable matched an installed registered adapter.
+
+Of the installed Flatpaks, ares was selected because its registered production
+adapter has a Flatpak-aware private-settings and SDL probe path. The installed
+Snes9x, bsnes, DuckStation, MAME, and openMSX adapters remain native-only;
+the other installed runtimes do not have a registered executable controller
+dispatch. This is an inventory result, not a compatibility claim for those
+unselected runtimes.
+
 ## Verification
 
 `controller_ares` tests cover device identities, SDL enum-to-raw translation,
@@ -49,8 +66,18 @@ LUNCHBOX_TEST_CONTROLLER=<exact saved controller ID>
 cargo test -p lunchbox-app --lib controller_ares -- --include-ignored
 ```
 
-Verified locally with ares Flatpak 148, its SDL 3.2.30, and the saved Brawler64
-Linux calibration. Parser acceptance is not an interactive gameplay test.
+Verified locally with ares Flatpak 148 (commit
+`5b6ccf0aef391c237a34e41cf14da438446aa454371408e3c0d418f818132a77`,
+`/app/bin/ares` SHA-256
+`48bb4b1dc279091860f8e725057b8c6f5888188b3efd00cac508215bee0e079f`),
+its SDL 3.2.30, and the saved Brawler64 Linux calibration. The focused ignored
+test passed and proved saved-calibration selection, production plan generation,
+real parser acceptance, complete binding roundtrip, and preservation of the
+user's settings file. A separate isolated `--settings-file` launch on private
+Xvfb `:97` reached the ares v148 window and OpenGL initialization. No game
+content was loaded and no emulated input response was observed, so the durable
+runtime result remains `blocked`, not `pass`. Parser/startup acceptance is not
+an interactive gameplay test.
 Windows/macOS gamepad translation is implemented but not runtime-verified;
 non-SDL3 calibrations on those OSes are explicitly rejected. An emulator whose
 bundled SDL cannot see a device (including newer hardware such as SC2) needs an

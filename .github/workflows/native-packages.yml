@@ -94,25 +94,15 @@ jobs:
           retention-days: 14
 
   macos:
-    name: macOS ${{ matrix.arch }} DMG
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            qt_arch: clang_64
-            arch: arm64
-          - runner: macos-15-intel
-            qt_arch: clang_64
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
+    name: macOS arm64 DMG
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          arch: ${{ matrix.qt_arch }}
+          arch: clang_64
           modules: qtimageformats qtmultimedia qtquick3d qtshadertools
           cache: true
       - name: Build release executable
@@ -142,7 +132,7 @@ jobs:
       - name: Build and verify DMG
         shell: bash
         env:
-          DMG_ARCH: ${{ matrix.arch }}
+          DMG_ARCH: arm64
         run: |
           set -euo pipefail
 
@@ -207,8 +197,8 @@ jobs:
           mounted=false
       - uses: actions/upload-artifact@v4
         with:
-          name: Lunchbox-macos-${{ matrix.arch }}
-          path: dist/Lunchbox-macos-${{ matrix.arch }}.dmg
+          name: Lunchbox-macos-arm64
+          path: dist/Lunchbox-macos-arm64.dmg
           if-no-files-found: error
           retention-days: 14
 
@@ -316,10 +306,8 @@ jobs:
           cargo_version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "lunchbox-app") | .version')"
           test "$version" = "$cargo_version"
           arm_dmg="release/Lunchbox-macos-arm64/Lunchbox-macos-arm64.dmg"
-          intel_dmg="release/Lunchbox-macos-x86_64/Lunchbox-macos-x86_64.dmg"
           arm_sha="$(sha256sum "$arm_dmg" | cut -d' ' -f1)"
-          intel_sha="$(sha256sum "$intel_dmg" | cut -d' ' -f1)"
-          sed -e "s/@VERSION@/$version/g" -e "s/@ARM64_SHA256@/$arm_sha/g" -e "s/@X86_64_SHA256@/$intel_sha/g" packaging/homebrew/lunchbox.rb.in > release/lunchbox.rb
+          sed -e "s/@VERSION@/$version/g" -e "s/@ARM64_SHA256@/$arm_sha/g" packaging/homebrew/lunchbox.rb.in > release/lunchbox.rb
           find release -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > release/SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:

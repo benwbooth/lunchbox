@@ -21,10 +21,13 @@ unresolved. There are no `missing_record` rows.
 The 94 canonical RetroArch cores also have one structured record apiece. Every
 record is linked to at least one exact controller profile; together they cover
 399 firmware-file dispositions, save behavior, state serialization, and all
-four frontend hosts. Core host availability is intentionally conservative: one
-Windows SteemSSE core artifact is source-verified as available, while the other
-375 core/host cells remain `unverified` rather than inheriting availability
-from the RetroArch frontend.
+four frontend hosts. Core host availability is intentionally conservative:
+eight official macOS arm64 buildbot artifacts were downloaded and executed on
+an Apple Silicon host, two exact Flatpak-updater Linux cores were executed, and
+one Windows SteemSSE artifact is source-verified as available. Mesen-S is
+explicitly unavailable on macOS because all current official dylib archive
+paths returned HTTP 404. The other 364 core/host cells remain `unverified`
+rather than inheriting availability from the RetroArch frontend.
 
 Because the shared RetroArch frontend record supplies the platform paths for
 all 94 core rows, the generated matrix contains 795 captured rows, 157 partial

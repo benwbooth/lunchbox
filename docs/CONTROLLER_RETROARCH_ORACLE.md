@@ -194,6 +194,82 @@ Flatpak runtime. This direct-core evidence does not cover the RetroArch GUI,
 physical calibration capture, firmware, persistent saves, save states, or
 save-sync export/restore.
 
+## Direct SNES core probe
+
+`lunchbox-libretro-input --system snes` runs an original 32 KiB LoROM through
+an exact-hash bsnes, Snes9x, or Mesen-S core. `--snes-topology two-player`
+selects ordinary joypads; `--snes-topology multitap` selects a joypad plus a
+port-two Super Multitap. The 65C816 diagnostic manually clocks `$4016` and
+`$4017`, switches the multitap halves through `$4201`, and publishes five
+completed serial words to emulated WRAM. Each connected frontend port is tested
+independently with different asserted state on all other ports.
+
+Verified on 2026-09-12 against these installed Flatpak updater binaries:
+
+- bsnes `115`, SHA-256
+  `ffd2898ddf27fbcac962e9e10a65e7562e8c1a7c2b795a0d93dc32a3ebfb8e8b`:
+  58/58 two-player and 145/145 multitap observations in individual mode.
+  Because this revision has no standard memory exposure, readback came from one
+  uniquely marked WRAM region in a bounded `retro_serialize` snapshot. It does
+  not negotiate the joypad bitmask API, so bitmask mode is explicitly rejected.
+- Snes9x `1.63 185488c`, SHA-256
+  `6e2d5fb3bbf57ef0a24834b36914187bea1a0b20f373da3adfdd5aebf75a4a99`:
+  58/58 two-player and 145/145 multitap observations in each of individual and
+  bitmask modes. Readback used its reported 131,072-byte system-RAM region.
+
+A supplemental run against Mesen-S `0.4.0`, SHA-256
+`d43d7875316dc3f505ec160d5d34cc541fa899225c9227fed839697a7936cb5a`,
+passed 58/58 two-player observations in individual mode. It does not negotiate
+bitmasks. Its multitap run failed the initial released-state gate with words
+`[0000, 0000, 0000, ffff, 0000]`, so there is no five-player compatibility
+claim for that binary. Mesen-S also omits Start and Select from its advertised
+descriptor table despite mapping both on the hardware-verified two-player path.
+
+The probe validates core controller choices and descriptors, callback mode and
+per-port queries in addition to hardware readback. This still bypasses the
+RetroArch frontend and therefore does not establish physical-device capture,
+generated remaps/configuration, GUI launch behavior, game compatibility,
+persistence, save states, or other SNES peripherals. Full command and source
+contract details are in [the direct-core diagnostic guide](../crates/lunchbox-controller-probe/LIBRETRO_INPUT.md).
+
+## FCEUmm and Mesen save/state behavioral probe
+
+A separate bounded probe on 2026-09-12 exercised the same exact installed
+FCEUmm and Mesen core binaries through the libretro API. Every worker was a
+fresh process with private `save`, `state`, and `system` directories under
+`target/runtime-evidence/retroarch-flatpak/<core>`. It verified memory after
+reload; file creation or a successful serialization return was not accepted by
+itself.
+
+Persistent save RAM used an original 24,592-byte battery-backed NROM diagnostic,
+SHA-256
+`0ae807dfe80d7178f082e0d6297e94b145d2880ff5a974fa5c1b26f6bf1beaaa`.
+The first process executed the cartridge and published `LBSR01` from the core's
+8,192-byte save-memory region. Its `.srm` had SHA-256
+`35f57192c251084b91b1a5fbfda019c4294db3266df377689c96a5769317745e`.
+A second process loaded those bytes before running the cartridge; the executing
+program observed the retained signature, incremented it, and published
+`LBSR02`. The updated `.srm` had SHA-256
+`de5232a4b6205e474f7c169fda3dc0f1a22f3edd770c798340f7ee4571d2e124`.
+Both exact cores produced the same independently checked transition.
+
+State behavior used the real Faxanadu NES image already available on the test
+host, SHA-256
+`9e5f12c5fb7f6aa2b360538038abc682488511293e79b9bd2ef199877a8c6d1d`.
+After 180 frames, the probe wrote `LBSTATE1` to NES RAM, serialized the core,
+replaced those bytes with `MUTATED!`, and required an immediate load to restore
+`LBSTATE1`. A second fresh process first observed unrelated bytes at the same
+address and then required the persisted state to restore `LBSTATE1` again.
+FCEUmm's 13,772-byte state had SHA-256
+`d7c665ad5e6cf0d876edc2c5b8653edf883dc7313dcd1f334b3633fc1de5fffa`;
+Mesen's 35,840-byte state had SHA-256
+`779f3ebb5a906fda3bd17cbcd7a6e1e61be0c5546dfc07cc529620d95c65495e`.
+
+These results establish core-level save-RAM persistence and behavioral state
+restoration for these exact Linux-installed binaries. They do not establish
+RetroArch GUI or frontend-path behavior, sync export/restore, firmware handling,
+or compatibility with other games, cores, versions, or hosts.
+
 ## Nestopia Flatpak state-path probe
 
 A separate manual probe on 2026-09-12 exercised the installed Flathub

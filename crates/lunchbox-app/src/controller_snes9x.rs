@@ -91,6 +91,103 @@ impl Binding {
 mod tests {
     use super::*;
 
+    fn oracle_pad(player: u8, joystick: u8) -> configuration::Pad {
+        configuration::Pad {
+            player,
+            bindings: configuration::CONTROLS
+                .iter()
+                .enumerate()
+                .map(|(button, name)| {
+                    (
+                        (*name).to_owned(),
+                        Binding {
+                            joystick,
+                            input: JoystickInput::Button(button as u16),
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    /// Opt-in bridge from the production renderer to the external runtime
+    /// oracle. Both paths must be under the system temporary directory so this
+    /// cannot be pointed at the user's native or Flatpak Snes9x profile.
+    #[test]
+    #[ignore = "writes an isolated two-player Snes9x runtime-oracle config"]
+    fn write_isolated_runtime_oracle_config() -> Result<()> {
+        use anyhow::Context;
+        use std::path::PathBuf;
+
+        let source = PathBuf::from(
+            std::env::var_os("LUNCHBOX_SNES9X_ORACLE_SOURCE_CONFIG")
+                .context("Missing isolated Snes9x source config")?,
+        );
+        let output = PathBuf::from(
+            std::env::var_os("LUNCHBOX_SNES9X_ORACLE_OUTPUT_CONFIG")
+                .context("Missing isolated Snes9x output config")?,
+        );
+        let temporary = std::env::temp_dir().canonicalize()?;
+        let source = source.canonicalize()?;
+        let output_parent = output
+            .parent()
+            .context("Missing isolated Snes9x output parent")?
+            .canonicalize()?;
+        ensure!(
+            source.starts_with(&temporary)
+                && output_parent.starts_with(&temporary)
+                && output != source,
+            "Snes9x runtime oracle may only write a distinct temporary config"
+        );
+        let joysticks = std::env::var("LUNCHBOX_SNES9X_ORACLE_JOYSTICKS")
+            .context("Missing one-based Snes9x oracle joystick numbers")?
+            .split(',')
+            .map(str::parse::<u8>)
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        ensure!(
+            joysticks.len() == 2
+                && joysticks[0] != joysticks[1]
+                && joysticks.iter().all(|value| (1..=15).contains(value)),
+            "Snes9x runtime oracle needs two distinct one-based joystick numbers"
+        );
+        let original = std::fs::read_to_string(&source)?;
+        let rendered = configuration::render(
+            &original,
+            &[
+                oracle_pad(1, joysticks[0] - 1),
+                oracle_pad(2, joysticks[1] - 1),
+            ],
+        )?;
+        use std::io::Write;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&output)?
+            .write_all(rendered.as_bytes())?;
+        ensure!(
+            std::fs::read_to_string(source)? == original,
+            "Snes9x runtime oracle changed its isolated source config"
+        );
+        let newline = if original.contains("\r\n") {
+            "\r\n"
+        } else {
+            "\n"
+        };
+        for (player, joystick) in [(0, joysticks[0]), (1, joysticks[1])] {
+            let mut expected = format!("[Joypad {player}]{newline}");
+            for (button, control) in configuration::CONTROLS.iter().enumerate() {
+                expected.push_str(&format!(
+                    "{control} = Joystick {joystick} Button {button}{newline}"
+                ));
+            }
+            ensure!(
+                rendered.contains(&expected),
+                "Snes9x runtime-oracle output omitted an ordered player binding bank"
+            );
+        }
+        Ok(())
+    }
+
     #[test]
     fn native_setting_and_packed_axis_are_one_based_and_signed() {
         let positive = Binding {

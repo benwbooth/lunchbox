@@ -4,6 +4,19 @@ The separate [libretro input diagnostic](LIBRETRO_INPUT.md) tests a real core's
 input interpretation using an original diagnostic program. It does not replace
 this SDL inventory tool; the existing default executable remains unchanged.
 
+The [libretro persistence diagnostic](LIBRETRO_PERSISTENCE.md) separately runs
+original battery-save programs and save-state restoration checks through four
+bounded fresh processes. It proves exact core-level memory and serialization
+behavior, not RetroArch path handling or Lunchbox cloud synchronization.
+
+The [exact-core arcade oracle](LIBRETRO_ARCADE_ORACLE.md) uses a byte-pinned,
+user-owned `1943.zip` in place to test the installed FBNeo and MAME cores. It
+proves deterministic P1/P2 coin, start, gameplay-control, bitmask, and state
+responses through private workers, while retaining shared-credit and
+fresh-process restoration mismatches as explicit boundaries. Caller-supplied
+version/hash/state-size expectations support fail-closed testing of other-host
+official builds without loosening the pinned Linux defaults.
+
 This small Rust helper dynamically loads an explicitly supplied, trusted SDL3
 library and emits a JSON inventory. Run it as its own process on the main thread,
 inside the emulator's runtime when that runtime differs from the host (Flatpak,

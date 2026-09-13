@@ -6,17 +6,13 @@
     # Current Eden AppImages use DwarFS. Keep its NixOS extraction tool on a
     # known-good nixpkgs revision while the primary rolling input advances.
     nixpkgs-dwarfs.url = "github:NixOS/nixpkgs/a5cc6f2c37bf518436dc8d1c288ccd0c43c2f4c4";
-    # Keep Intel macOS on the supported Darwin branch while Apple Silicon and
-    # Linux follow unstable.
-    nixpkgs-intel-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, nixpkgs-dwarfs, nixpkgs-intel-darwin, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs = { self, nixpkgs, nixpkgs-dwarfs, flake-utils }:
+    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ] (system:
       let
-        nixpkgsForSystem = if system == "x86_64-darwin" then nixpkgs-intel-darwin else nixpkgs;
-        pkgs = import nixpkgsForSystem { inherit system; };
+        pkgs = import nixpkgs { inherit system; };
         dwarfsPkgs = import nixpkgs-dwarfs { inherit system; };
         dwarfs = dwarfsPkgs.dwarfs;
         qtModules = with pkgs.qt6; [

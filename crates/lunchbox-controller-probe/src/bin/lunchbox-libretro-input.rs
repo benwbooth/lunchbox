@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use lunchbox_controller_probe::libretro_input::{Diagnostic, NesTopology};
+use lunchbox_controller_probe::libretro_input::{Diagnostic, NesTopology, SnesTopology};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -23,6 +23,9 @@ struct Args {
     /// NES controller topology; rejected for non-NES diagnostics unless left at its default.
     #[arg(long, value_enum, default_value = "two-player")]
     nes_topology: NesTopology,
+    /// SNES controller topology; rejected for non-SNES diagnostics unless left at its default.
+    #[arg(long, value_enum, default_value = "two-player")]
+    snes_topology: SnesTopology,
     #[arg(long, default_value_t = 15, value_parser = clap::value_parser!(u64).range(1..=120))]
     timeout_seconds: u64,
 }
@@ -51,6 +54,7 @@ fn run() -> Result<()> {
         args.system,
         args.bios_dir.as_deref(),
         args.nes_topology,
+        args.snes_topology,
     );
     let _ = done.send(());
     let _ = watchdog.join();

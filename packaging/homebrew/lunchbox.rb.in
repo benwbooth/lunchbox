@@ -1,14 +1,13 @@
 cask "lunchbox" do
   version "@VERSION@"
-  arch arm: "arm64", intel: "x86_64"
+  sha256 "@ARM64_SHA256@"
 
-  sha256 arm: "@ARM64_SHA256@",
-         intel: "@X86_64_SHA256@"
-
-  url "https://github.com/benwbooth/lunchbox/releases/download/v#{version}/Lunchbox-macos-#{arch}.dmg"
+  url "https://github.com/benwbooth/lunchbox/releases/download/v#{version}/Lunchbox-macos-arm64.dmg"
   name "Lunchbox"
   desc "Native game library, acquisition browser, and emulator frontend"
   homepage "https://github.com/benwbooth/lunchbox"
+
+  depends_on arch: :arm64
 
   app "Lunchbox.app"
 

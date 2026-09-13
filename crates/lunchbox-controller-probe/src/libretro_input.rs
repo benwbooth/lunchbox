@@ -255,10 +255,10 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
         let Ok(mut options) = INSPECTION_OPTIONS.lock() else {
             return false;
         };
-        if let Some(options) = options.as_mut() {
-            if let Some(result) = unsafe { options.handle(command, data) } {
-                return result;
-            }
+        if let Some(options) = options.as_mut()
+            && let Some(result) = unsafe { options.handle(command, data) }
+        {
+            return result;
         }
     }
     if command == 51 {
@@ -413,6 +413,49 @@ impl Drop for Lease {
         ACTIVE.store(false, Ordering::Release);
     }
 }
+
+// Some native cores use C stdio directly (Snes9x 1.63 prints its selected ROM
+// map). Keep the helper's stdout machine-readable; diagnostics still reach
+// stderr and the structured report. The core is dropped before this guard.
+#[cfg(unix)]
+struct NativeStdoutSilencer {
+    saved_fd: std::os::fd::RawFd,
+}
+
+#[cfg(unix)]
+impl NativeStdoutSilencer {
+    fn new() -> Result<Self> {
+        use std::io::Write;
+        use std::os::fd::AsRawFd;
+
+        std::io::stdout().flush()?;
+        unsafe {
+            libc::fflush(std::ptr::null_mut());
+        }
+        let saved_fd = unsafe { libc::dup(libc::STDOUT_FILENO) };
+        ensure!(saved_fd >= 0, "Could not preserve diagnostic stdout");
+        let null = std::fs::OpenOptions::new().write(true).open("/dev/null")?;
+        if unsafe { libc::dup2(null.as_raw_fd(), libc::STDOUT_FILENO) } < 0 {
+            unsafe {
+                libc::close(saved_fd);
+            }
+            anyhow::bail!("Could not isolate native-core stdout");
+        }
+        Ok(Self { saved_fd })
+    }
+}
+
+#[cfg(unix)]
+impl Drop for NativeStdoutSilencer {
+    fn drop(&mut self) {
+        unsafe {
+            libc::fflush(std::ptr::null_mut());
+            libc::dup2(self.saved_fd, libc::STDOUT_FILENO);
+            libc::close(self.saved_fd);
+        }
+    }
+}
+
 struct Core {
     _library: Library,
     deinit: unsafe extern "C" fn(),
@@ -420,6 +463,8 @@ struct Core {
     run: unsafe extern "C" fn(),
     memory: unsafe extern "C" fn(u32) -> *mut c_void,
     memory_size: unsafe extern "C" fn(u32) -> usize,
+    serialize: unsafe extern "C" fn(*mut c_void, usize) -> bool,
+    serialize_size: unsafe extern "C" fn() -> usize,
     set_device: unsafe extern "C" fn(u32, u32),
     initialized: bool,
     loaded: bool,
@@ -532,6 +577,121 @@ pub fn nes_diagnostic_rom() -> Vec<u8> {
         rom[HEADER_SIZE + vector..HEADER_SIZE + vector + 2]
             .copy_from_slice(&0x8000u16.to_le_bytes());
     }
+    rom
+}
+
+const SNES_MARKER: &[u8; 16] = b"LBN-SNES-INPUT!!";
+const SNES_GENERATION_OFFSET: usize = 0x2e;
+const SNES_MARKER_OFFSET: usize = 0x30;
+const SNES_RESULTS_OFFSET: usize = 0x40;
+
+/// Original 65C816 LoROM program that manually clocks both SNES controller
+/// ports. It also selects both halves of a port-two Super Multitap, publishing
+/// five completed 16-bit samples to WRAM behind an even generation counter.
+pub fn snes_diagnostic_rom() -> Vec<u8> {
+    fn branch_back(program: &mut Vec<u8>, target: usize) {
+        let from = program.len() + 2;
+        let displacement = isize::try_from(target).unwrap() - isize::try_from(from).unwrap();
+        assert!((-128..=127).contains(&displacement));
+        program.extend([0xd0, displacement as i8 as u8]); // bne target
+    }
+
+    let mut program = vec![
+        0x78, // sei
+        0xd8, // cld
+        0xa2,
+        0xff, // ldx #$ff
+        0x9a, // txs
+        0xa9,
+        0x00,
+        0x8d,
+        0x00,
+        0x42, // disable NMI/auto joypad
+        0x85,
+        SNES_GENERATION_OFFSET as u8, // generation = 0
+    ];
+    for (index, &byte) in SNES_MARKER.iter().enumerate() {
+        program.extend([
+            0xa9,
+            byte,
+            0x85,
+            u8::try_from(SNES_MARKER_OFFSET + index).unwrap(),
+        ]);
+    }
+
+    let poll = program.len();
+    program.extend([
+        0xa9, 0x01, 0x8d, 0x16, 0x40, // latch high
+        0xa9, 0x00, 0x8d, 0x16, 0x40, // latch low
+        0xa9, 0x80, 0x8d, 0x01, 0x42, // multitap select: players 2/3
+        0xa9, 0x00,
+    ]);
+    for address in 0x60..=0x69 {
+        program.extend([0x85, address]); // clear five temporary words
+    }
+    program.extend([0xa2, 0x00]); // ldx #0
+    let first_pair = program.len();
+    program.extend([
+        0xad, 0x16, 0x40, // player 1 serial bit
+        0x4a, 0x66, 0x61, 0x66, 0x60, // lsr; ror high; ror low
+        0xad, 0x17, 0x40, 0x85, 0x6a, // players 2/3 serial bits
+        0x4a, 0x66, 0x63, 0x66, 0x62, // bit 0 -> player 2
+        0xa5, 0x6a, 0x4a, 0x4a, 0x66, 0x65, 0x66, 0x64, // bit 1 -> player 3
+        0xe8, 0xe0, 0x10, // inx; cpx #16
+    ]);
+    branch_back(&mut program, first_pair);
+    program.extend([
+        0xa9, 0x00, 0x8d, 0x01, 0x42, // multitap select: players 4/5
+        0xa2, 0x00, // ldx #0
+    ]);
+    let second_pair = program.len();
+    program.extend([
+        0xad, 0x17, 0x40, 0x85, 0x6a, // players 4/5 serial bits
+        0x4a, 0x66, 0x67, 0x66, 0x66, // bit 0 -> player 4
+        0xa5, 0x6a, 0x4a, 0x4a, 0x66, 0x69, 0x66, 0x68, // bit 1 -> player 5
+        0xe8, 0xe0, 0x10, // inx; cpx #16
+    ]);
+    branch_back(&mut program, second_pair);
+    program.extend([0xe6, SNES_GENERATION_OFFSET as u8]); // odd: publishing
+    for index in 0..10 {
+        program.extend([
+            0xa5,
+            u8::try_from(0x60 + index).unwrap(),
+            0x85,
+            u8::try_from(SNES_RESULTS_OFFSET + index).unwrap(),
+        ]);
+    }
+    program.extend([
+        0xe6,
+        SNES_GENERATION_OFFSET as u8, // even: complete
+        0xad,
+        0x12,
+        0x42,
+        0x30,
+        0xfb, // wait while already in vertical blank
+        0xad,
+        0x12,
+        0x42,
+        0x10,
+        0xfb, // wait for the next vertical blank
+        0x4c,
+    ]);
+    program.extend(u16::try_from(0x8000 + poll).unwrap().to_le_bytes());
+
+    assert!(program.len() < 0x7fc0);
+    let mut rom = vec![0u8; 32 * 1024];
+    rom[..program.len()].copy_from_slice(&program);
+    rom[0x7fc0..0x7fd5].copy_from_slice(b"LUNCHBOX SNES INPUT  ");
+    rom[0x7fd5..0x7fdc].copy_from_slice(&[0x20, 0x00, 0x08, 0x00, 0x01, 0x33, 0x00]);
+    for vector in (0x7fe4..0x8000).step_by(2) {
+        rom[vector..vector + 2].copy_from_slice(&0x8000u16.to_le_bytes());
+    }
+    let checksum = rom
+        .iter()
+        .fold(0u16, |sum, &byte| sum.wrapping_add(u16::from(byte)))
+        .wrapping_add(0x01fe);
+    rom[0x7fdc..0x7fde].copy_from_slice(&(!checksum).to_le_bytes());
+    rom[0x7fde..0x7fe0].copy_from_slice(&checksum.to_le_bytes());
     rom
 }
 
@@ -679,6 +839,7 @@ pub enum Diagnostic {
     Gamegear,
     Gameboy,
     Nes,
+    Snes,
     Psx,
 }
 
@@ -705,6 +866,29 @@ impl NesTopology {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum SnesTopology {
+    #[default]
+    TwoPlayer,
+    Multitap,
+}
+
+impl SnesTopology {
+    fn connected_ports(self) -> usize {
+        match self {
+            Self::TwoPlayer => 2,
+            Self::Multitap => 5,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::TwoPlayer => "two-player",
+            Self::Multitap => "port-two-multitap",
+        }
+    }
+}
+
 impl Diagnostic {
     fn identity(self) -> (&'static str, &'static str, u32, u16) {
         match self {
@@ -715,6 +899,7 @@ impl Diagnostic {
             // standard-controller subclasses differ. Select that device only
             // after querying the loaded core identity.
             Self::Nes => ("FCEUmm or Mesen", "input.nes", 0, 0x00ff),
+            Self::Snes => ("bsnes, Snes9x, or Mesen-S", "input.sfc", 0, 0x0fff),
             Self::Psx => ("Beetle PSX", "input.exe", 517, 0xffff),
         }
     }
@@ -779,6 +964,23 @@ impl Diagnostic {
                 ("A+B", (1 << 8) | 1, 3),
                 ("Up+Left", (1 << 4) | (1 << 6), 0x50),
             ],
+            Self::Snes => &[
+                ("released", 0, 0),
+                ("B", 1 << 0, 1 << 0),
+                ("Y", 1 << 1, 1 << 1),
+                ("Select", 1 << 2, 1 << 2),
+                ("Start", 1 << 3, 1 << 3),
+                ("Up", 1 << 4, 1 << 4),
+                ("Down", 1 << 5, 1 << 5),
+                ("Left", 1 << 6, 1 << 6),
+                ("Right", 1 << 7, 1 << 7),
+                ("A", 1 << 8, 1 << 8),
+                ("X", 1 << 9, 1 << 9),
+                ("L", 1 << 10, 1 << 10),
+                ("R", 1 << 11, 1 << 11),
+                ("B+Y", (1 << 0) | (1 << 1), 3),
+                ("Up+Left", (1 << 4) | (1 << 6), 0x50),
+            ],
             Self::Psx => &[],
         }
     }
@@ -827,6 +1029,17 @@ pub struct NesObservation {
     pub observed_registers: Vec<u8>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct SnesObservation {
+    pub topology: &'static str,
+    pub target_port: u32,
+    pub name: String,
+    pub retropad_masks: Vec<u16>,
+    pub expected_registers: Vec<u16>,
+    pub observed_registers: Vec<u16>,
+    pub readback: &'static str,
+}
+
 #[derive(Debug, Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CoreIdentity {
@@ -859,6 +1072,8 @@ pub struct Report {
     pub observations: Vec<Observation>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub nes_observations: Vec<NesObservation>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub snes_observations: Vec<SnesObservation>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub psx_observations: Vec<PsxObservation>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -895,6 +1110,77 @@ fn nes_core_contract(core_name: &str) -> Result<NesCoreContract> {
             source_url: "https://github.com/libretro/Mesen/blob/0102910c39ad1a62bc3f784466f3f67ca9eae335/Libretro/libretro.cpp",
         }),
         _ => anyhow::bail!("NES diagnostic supports only exact FCEUmm or Mesen identities"),
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SnesReadback {
+    SystemRam,
+    SerializedState,
+}
+
+impl SnesReadback {
+    fn name(self) -> &'static str {
+        match self {
+            Self::SystemRam => "retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM)",
+            Self::SerializedState => "retro_serialize WRAM marker",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct SnesCoreContract {
+    supports_bitmask: bool,
+    readback: SnesReadback,
+    joypad_device: u32,
+    multitap_device: u32,
+    selects_virtual_multitap_ports: bool,
+    controller_label: &'static str,
+    describes_start_select: bool,
+    source_revision: &'static str,
+    source_url: &'static str,
+}
+
+fn snes_core_contract(core_name: &str) -> Result<SnesCoreContract> {
+    match core_name {
+        "bsnes" => Ok(SnesCoreContract {
+            supports_bitmask: false,
+            readback: SnesReadback::SerializedState,
+            joypad_device: 1,
+            multitap_device: 257,
+            selects_virtual_multitap_ports: false,
+            controller_label: "SNES Joypad",
+            describes_start_select: true,
+            source_revision: "8e80d2f8a43e34a82931e25143b279e5fbcfaedc",
+            source_url: "https://github.com/libretro/bsnes-libretro/tree/8e80d2f8a43e34a82931e25143b279e5fbcfaedc",
+        }),
+        "Snes9x" => Ok(SnesCoreContract {
+            supports_bitmask: true,
+            readback: SnesReadback::SystemRam,
+            joypad_device: 1,
+            multitap_device: 257,
+            selects_virtual_multitap_ports: false,
+            controller_label: "SNES Joypad",
+            describes_start_select: true,
+            source_revision: "185488cd83aaf274752a742c94d45561cbecb7af",
+            source_url: "https://github.com/snes9xgit/snes9x/tree/185488cd83aaf274752a742c94d45561cbecb7af",
+        }),
+        "Mesen-S" => Ok(SnesCoreContract {
+            supports_bitmask: false,
+            readback: SnesReadback::SystemRam,
+            joypad_device: 257,
+            multitap_device: 513,
+            selects_virtual_multitap_ports: true,
+            controller_label: "SNES Controller",
+            // The 0.4.0 libretro adapter maps both buttons but omits them from
+            // its published descriptor table.
+            describes_start_select: false,
+            source_revision: "dd0287088c53e1e96e5818ed81160f6a958646a8",
+            source_url: "https://github.com/libretro/Mesen-S/tree/dd0287088c53e1e96e5818ed81160f6a958646a8",
+        }),
+        _ => anyhow::bail!(
+            "SNES diagnostic supports only exact bsnes, Snes9x, or Mesen-S identities"
+        ),
     }
 }
 
@@ -957,6 +1243,84 @@ fn validate_nes_metadata(
     Ok(())
 }
 
+fn validate_snes_metadata(
+    topology: SnesTopology,
+    contract: SnesCoreContract,
+    controller_choices: Option<&[Vec<ControllerChoice>]>,
+    descriptors: &[InputDescriptor],
+) -> Result<()> {
+    let choices = controller_choices.context("SNES core did not advertise controller choices")?;
+    for (port, device, label) in [
+        (0usize, contract.joypad_device, contract.controller_label),
+        (
+            1,
+            if topology == SnesTopology::Multitap {
+                contract.multitap_device
+            } else {
+                contract.joypad_device
+            },
+            if topology == SnesTopology::Multitap {
+                "Multitap"
+            } else {
+                contract.controller_label
+            },
+        ),
+    ] {
+        ensure!(
+            choices.get(port).is_some_and(|port_choices| {
+                port_choices
+                    .iter()
+                    .any(|choice| choice.id == device && choice.description == label)
+            }),
+            "SNES physical port {} did not advertise {label} as device {device}",
+            port + 1
+        );
+    }
+    let required_descriptors = [
+        (0, "B"),
+        (1, "Y"),
+        (4, "D-Pad Up"),
+        (5, "D-Pad Down"),
+        (6, "D-Pad Left"),
+        (7, "D-Pad Right"),
+        (8, "A"),
+        (9, "X"),
+        (10, "L"),
+        (11, "R"),
+    ];
+    for port in 0..topology.connected_ports() {
+        for &(id, label) in &required_descriptors {
+            ensure!(
+                descriptors.iter().any(|descriptor| {
+                    descriptor.port == port as u32
+                        && descriptor.device == 1
+                        && descriptor.index == 0
+                        && descriptor.id == id
+                        && descriptor.description == label
+                }),
+                "SNES frontend port {} is missing descriptor {label} (joypad id {id})",
+                port + 1
+            );
+        }
+        if contract.describes_start_select {
+            for (id, label) in [(2, "Select"), (3, "Start")] {
+                ensure!(
+                    descriptors.iter().any(|descriptor| {
+                        descriptor.port == port as u32
+                            && descriptor.device == 1
+                            && descriptor.index == 0
+                            && descriptor.id == id
+                            && descriptor.description == label
+                    }),
+                    "SNES frontend port {} is missing descriptor {label} (joypad id {id})",
+                    port + 1
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Query a trusted native core's libretro identity without initializing it.
 pub fn core_identity(path: &Path, expected_sha256: &str) -> Result<CoreIdentity> {
     let path = path.canonicalize()?;
@@ -1014,6 +1378,7 @@ pub struct ContentControllerReport {
 /// Only full-path cores are accepted. The caller must trust the pinned core and
 /// enforce an external process timeout; native loading/running cannot be safely
 /// interrupted inside this function.
+#[allow(clippy::too_many_arguments)]
 pub fn inspect_content_controllers(
     path: &Path,
     expected_sha256: &str,
@@ -1041,6 +1406,8 @@ pub fn inspect_content_controllers(
         "Only one core inspection may run in this process"
     );
     let _lease = Lease;
+    #[cfg(unix)]
+    let _native_stdout = NativeStdoutSilencer::new()?;
     let directory = tempfile::tempdir()?;
     let content_directory = directory.path().join("content");
     let system_directory = directory.path().join("system");
@@ -1137,6 +1504,8 @@ pub fn inspect_content_controllers(
             run: *library.get(b"retro_run\0")?,
             memory: *library.get(b"retro_get_memory_data\0")?,
             memory_size: *library.get(b"retro_get_memory_size\0")?,
+            serialize: *library.get(b"retro_serialize\0")?,
+            serialize_size: *library.get(b"retro_serialize_size\0")?,
             set_device: *library.get(b"retro_set_controller_port_device\0")?,
             initialized: false,
             loaded: false,
@@ -1249,21 +1618,21 @@ pub fn inspect_content_controllers(
 
 // Inspection deliberately presents an idle frontend, with no host devices.
 unsafe extern "C" fn neutral_input(port: u32, device: u32, index: u32, id: u32) -> i16 {
-    if let Ok(mut queries) = INSPECTION_QUERIES.lock() {
-        if queries.failure.is_none() {
-            if port >= 16 || queries.calls >= 65536 {
-                queries.failure = Some("Input-query address/call limit exceeded".into());
-            } else {
-                queries.calls += 1;
-                queries.addresses.insert(InputQuery {
-                    port,
-                    device,
-                    index,
-                    id,
-                });
-                if queries.addresses.len() > 4096 {
-                    queries.failure = Some("Too many distinct input-query addresses".into());
-                }
+    if let Ok(mut queries) = INSPECTION_QUERIES.lock()
+        && queries.failure.is_none()
+    {
+        if port >= 16 || queries.calls >= 65536 {
+            queries.failure = Some("Input-query address/call limit exceeded".into());
+        } else {
+            queries.calls += 1;
+            queries.addresses.insert(InputQuery {
+                port,
+                device,
+                index,
+                id,
+            });
+            if queries.addresses.len() > 4096 {
+                queries.failure = Some("Too many distinct input-query addresses".into());
             }
         }
     }
@@ -1304,6 +1673,7 @@ pub fn inspect_with_system_directory(
         diagnostic,
         system_directory,
         NesTopology::default(),
+        SnesTopology::default(),
     )
 }
 
@@ -1314,10 +1684,15 @@ pub fn inspect_with_options(
     diagnostic: Diagnostic,
     system_directory: Option<&Path>,
     nes_topology: NesTopology,
+    snes_topology: SnesTopology,
 ) -> Result<Report> {
     ensure!(
         matches!(diagnostic, Diagnostic::Nes) || nes_topology == NesTopology::TwoPlayer,
         "NES topology is only applicable to the NES diagnostic"
+    );
+    ensure!(
+        matches!(diagnostic, Diagnostic::Snes) || snes_topology == SnesTopology::TwoPlayer,
+        "SNES topology is only applicable to the SNES diagnostic"
     );
     let (expected_core, filename, device, register_mask) = diagnostic.identity();
     let path = path.canonicalize()?;
@@ -1333,6 +1708,8 @@ pub fn inspect_with_options(
         "Only one core diagnostic may run in this process"
     );
     let _lease = Lease;
+    #[cfg(unix)]
+    let _native_stdout = NativeStdoutSilencer::new()?;
     let directory = tempfile::tempdir()?;
     let (system_path, firmware) = if matches!(diagnostic, Diagnostic::Psx) {
         let system_path = system_directory
@@ -1408,6 +1785,7 @@ pub fn inspect_with_options(
         Diagnostic::Gamegear => gamegear_diagnostic_rom(),
         Diagnostic::Gameboy => gameboy_diagnostic_rom(),
         Diagnostic::Nes => nes_diagnostic_rom(),
+        Diagnostic::Snes => snes_diagnostic_rom(),
         Diagnostic::Psx => psx_diagnostic_exe(),
     };
     let rom_path = CString::new(
@@ -1431,16 +1809,25 @@ pub fn inspect_with_options(
         );
         let name = CStr::from_ptr(info.name).to_str()?.to_owned();
         let revision = CStr::from_ptr(info.version).to_str()?.to_owned();
-        let core_name_matches = if matches!(diagnostic, Diagnostic::Nes) {
-            matches!(name.as_str(), "FCEUmm" | "Mesen")
-        } else {
-            name == expected_core
-                || (matches!(diagnostic, Diagnostic::Psx) && name == "Beetle PSX HW")
+        let core_name_matches = match diagnostic {
+            Diagnostic::Nes => matches!(name.as_str(), "FCEUmm" | "Mesen"),
+            Diagnostic::Snes => matches!(name.as_str(), "bsnes" | "Snes9x" | "Mesen-S"),
+            Diagnostic::Psx => name == expected_core || name == "Beetle PSX HW",
+            _ => name == expected_core,
         };
         ensure!(core_name_matches, "Expected {expected_core}, got {name}");
         let nes_contract = matches!(diagnostic, Diagnostic::Nes)
             .then(|| nes_core_contract(&name))
             .transpose()?;
+        let snes_contract = matches!(diagnostic, Diagnostic::Snes)
+            .then(|| snes_core_contract(&name))
+            .transpose()?;
+        if let Some(contract) = snes_contract {
+            ensure!(
+                !bitmask || contract.supports_bitmask,
+                "The {name} core does not negotiate libretro joypad bitmask input; rerun without --bitmask"
+            );
+        }
         if info.need_fullpath {
             std::fs::write(directory.path().join(filename), &rom)?;
         }
@@ -1455,6 +1842,8 @@ pub fn inspect_with_options(
             run: *library.get(b"retro_run\0")?,
             memory: *library.get(b"retro_get_memory_data\0")?,
             memory_size: *library.get(b"retro_get_memory_size\0")?,
+            serialize: *library.get(b"retro_serialize\0")?,
+            serialize_size: *library.get(b"retro_serialize_size\0")?,
             set_device,
             initialized: false,
             loaded: false,
@@ -1477,7 +1866,7 @@ pub fn inspect_with_options(
         callback!(b"retro_set_audio_sample_batch\0", AudioBatch, audio_batch);
         callback!(b"retro_set_input_poll\0", Poll, poll);
         callback!(b"retro_set_input_state\0", Input, input);
-        if !matches!(diagnostic, Diagnostic::Nes) {
+        if !matches!(diagnostic, Diagnostic::Nes | Diagnostic::Snes) {
             set_device(0, device);
         }
         ensure!(
@@ -1505,6 +1894,21 @@ pub fn inspect_with_options(
                     },
                 );
             }
+        } else if let Some(contract) = snes_contract {
+            set_device(0, contract.joypad_device);
+            set_device(
+                1,
+                if snes_topology == SnesTopology::Multitap {
+                    contract.multitap_device
+                } else {
+                    contract.joypad_device
+                },
+            );
+            if snes_topology == SnesTopology::Multitap && contract.selects_virtual_multitap_ports {
+                for port in 2..5 {
+                    set_device(port, contract.joypad_device);
+                }
+            }
         } else {
             set_device(0, device);
             set_device(
@@ -1525,7 +1929,7 @@ pub fn inspect_with_options(
                 reported_system_ram_bytes == 2 * 1024 * 1024,
                 "Unexpected exposed PSX RAM size: {reported_system_ram_bytes}"
             );
-        } else {
+        } else if !matches!(diagnostic, Diagnostic::Snes) {
             ensure!(
                 (8..=256 * 1024).contains(&reported_system_ram_bytes),
                 "Unexpected exposed system RAM size: {reported_system_ram_bytes}"
@@ -1562,6 +1966,7 @@ pub fn inspect_with_options(
                 reported_system_ram_bytes,
                 observations: Vec::new(),
                 nes_observations: Vec::new(),
+                snes_observations: Vec::new(),
                 psx_observations,
                 firmware,
                 contract_source_revision: Some("56f4732070835bb81078dd8ecab7246e203612a1"),
@@ -1618,6 +2023,78 @@ pub fn inspect_with_options(
                 reported_system_ram_bytes,
                 observations: Vec::new(),
                 nes_observations,
+                snes_observations: Vec::new(),
+                psx_observations: Vec::new(),
+                firmware,
+                contract_source_revision: Some(contract.source_revision),
+                contract_source_url: Some(contract.source_url),
+            });
+        }
+        if let Some(contract) = snes_contract {
+            match contract.readback {
+                SnesReadback::SystemRam => ensure!(
+                    reported_system_ram_bytes == 128 * 1024,
+                    "Unexpected exposed SNES WRAM size: {reported_system_ram_bytes}"
+                ),
+                SnesReadback::SerializedState => ensure!(
+                    reported_system_ram_bytes == 0 && (core.memory)(2).is_null(),
+                    "bsnes unexpectedly changed its standard memory-interface contract"
+                ),
+            }
+            let snes_observations = run_snes_observations(&core, snes_topology, contract)?;
+            let requests = joypad_requests_by_port();
+            for (port, &count) in requests.iter().enumerate() {
+                if port < snes_topology.connected_ports() {
+                    ensure!(
+                        count > 0,
+                        "SNES frontend port {} was never queried",
+                        port + 1
+                    );
+                } else {
+                    ensure!(
+                        count == 0,
+                        "SNES disconnected frontend port {} was unexpectedly queried",
+                        port + 1
+                    );
+                }
+            }
+            let bitmask_requests = MASK_REQUESTS.load(Ordering::Relaxed);
+            let individual_requests = SINGLE_REQUESTS.load(Ordering::Relaxed);
+            ensure!(
+                if bitmask {
+                    contract.supports_bitmask && bitmask_requests > 0 && individual_requests == 0
+                } else {
+                    bitmask_requests == 0 && individual_requests > 0
+                },
+                "Core did not exercise the requested input callback mode"
+            );
+            let (input_descriptor_updates, input_descriptors) = input_descriptor_snapshot()?;
+            let controller_choices = controller_choice_snapshot()?;
+            validate_snes_metadata(
+                snes_topology,
+                contract,
+                controller_choices.as_deref(),
+                &input_descriptors,
+            )?;
+            return Ok(Report {
+                schema_version: 5,
+                diagnostic: "snes-controller-ports",
+                core_sha256: hash,
+                core_name: name,
+                core_version: revision,
+                input_descriptors,
+                input_descriptor_updates,
+                controller_choices,
+                input_mode: if bitmask { "bitmask" } else { "individual" },
+                input_polls: POLLS.load(Ordering::Relaxed),
+                bitmask_requests,
+                individual_requests,
+                analog_requests: ANALOG_REQUESTS.load(Ordering::Relaxed),
+                joypad_requests_by_port: requests,
+                reported_system_ram_bytes,
+                observations: Vec::new(),
+                nes_observations: Vec::new(),
+                snes_observations,
                 psx_observations: Vec::new(),
                 firmware,
                 contract_source_revision: Some(contract.source_revision),
@@ -1718,6 +2195,7 @@ pub fn inspect_with_options(
                 Diagnostic::Gamegear => "gamegear-dc-00",
                 Diagnostic::Gameboy => "gameboy-joyp",
                 Diagnostic::Nes => unreachable!(),
+                Diagnostic::Snes => unreachable!(),
                 Diagnostic::Psx => unreachable!(),
             },
             core_sha256: hash,
@@ -1735,6 +2213,7 @@ pub fn inspect_with_options(
             reported_system_ram_bytes,
             observations,
             nes_observations: Vec::new(),
+            snes_observations: Vec::new(),
             psx_observations: Vec::new(),
             firmware,
             contract_source_revision: matches!(diagnostic, Diagnostic::Gameboy).then_some("8230189896a8bb6598574d302ba0ad3658f98ab4"),
@@ -1881,6 +2360,184 @@ fn run_nes_observations(
                     retropad_masks: vec![0; connected_ports],
                     expected_registers: expected,
                     observed_registers: observed,
+                });
+            }
+        }
+    }
+    Ok(observations)
+}
+
+fn parse_snes_wram(bytes: &[u8], marker_offset: usize) -> Result<Vec<u16>> {
+    ensure!(
+        marker_offset >= SNES_MARKER_OFFSET_DELTA
+            && marker_offset + SNES_MARKER.len() + 10 <= bytes.len(),
+        "SNES diagnostic WRAM marker has invalid bounds"
+    );
+    let generation = bytes[marker_offset - SNES_MARKER_OFFSET_DELTA];
+    ensure!(
+        generation != 0 && generation & 1 == 0,
+        "SNES diagnostic sample is incomplete (generation {generation})"
+    );
+    let results = marker_offset + SNES_MARKER.len();
+    Ok((0..5)
+        .map(|port| {
+            u16::from_le_bytes(
+                bytes[results + port * 2..results + port * 2 + 2]
+                    .try_into()
+                    .unwrap(),
+            )
+        })
+        .collect())
+}
+
+const SNES_MARKER_OFFSET_DELTA: usize = SNES_MARKER_OFFSET - SNES_GENERATION_OFFSET;
+
+fn read_snes_registers(core: &Core, contract: SnesCoreContract) -> Result<Vec<u16>> {
+    unsafe {
+        match contract.readback {
+            SnesReadback::SystemRam => {
+                ensure!(
+                    (core.memory_size)(2) >= SNES_RESULTS_OFFSET + 10,
+                    "SNES diagnostic WRAM became unavailable"
+                );
+                let memory = (core.memory)(2).cast::<u8>();
+                ensure!(!memory.is_null(), "No SNES system RAM exposed by core");
+                let bytes = std::slice::from_raw_parts(memory, SNES_RESULTS_OFFSET + 10);
+                ensure!(
+                    &bytes[SNES_MARKER_OFFSET..SNES_MARKER_OFFSET + SNES_MARKER.len()]
+                        == SNES_MARKER,
+                    "SNES diagnostic program did not execute"
+                );
+                parse_snes_wram(bytes, SNES_MARKER_OFFSET)
+            }
+            SnesReadback::SerializedState => {
+                let size = (core.serialize_size)();
+                ensure!(
+                    (SNES_MARKER.len() + 12..=64 * 1024 * 1024).contains(&size),
+                    "SNES serialized-state size is outside diagnostic bounds: {size}"
+                );
+                let mut state = vec![0u8; size];
+                ensure!(
+                    (core.serialize)(state.as_mut_ptr().cast(), state.len()),
+                    "SNES core rejected a correctly sized state snapshot"
+                );
+                let matches: Vec<usize> = state
+                    .windows(SNES_MARKER.len())
+                    .enumerate()
+                    .filter_map(|(offset, bytes)| (bytes == SNES_MARKER).then_some(offset))
+                    .collect();
+                ensure!(
+                    matches.len() == 1,
+                    "Expected one diagnostic WRAM marker in serialized state, found {}",
+                    matches.len()
+                );
+                parse_snes_wram(&state, matches[0])
+            }
+        }
+    }
+}
+
+fn wait_for_snes_registers(core: &Core, contract: SnesCoreContract) -> Result<Vec<u16>> {
+    let mut last_error = None;
+    for _ in 0..240 {
+        unsafe { (core.run)() };
+        match read_snes_registers(core, contract) {
+            Ok(registers) => return Ok(registers),
+            Err(error) => last_error = Some(error),
+        }
+    }
+    let detail = last_error
+        .map(|error| format!(": {error:#}"))
+        .unwrap_or_default();
+    anyhow::bail!("Original SNES diagnostic did not boot in 240 frames{detail}")
+}
+
+fn run_snes_observations(
+    core: &Core,
+    topology: SnesTopology,
+    contract: SnesCoreContract,
+) -> Result<Vec<SnesObservation>> {
+    let connected_ports = topology.connected_ports();
+    for pressed in &PRESSED {
+        pressed.store(0, Ordering::Relaxed);
+    }
+    let initial = wait_for_snes_registers(core, contract)?;
+    ensure!(
+        initial[..connected_ports].iter().all(|&value| value == 0),
+        "SNES released state was not zero: {:04x?}",
+        &initial[..connected_ports]
+    );
+
+    let mut observations = Vec::new();
+    for target_port in 0..connected_ports {
+        for (case_index, &(name, target_mask, expected_bits)) in
+            Diagnostic::Snes.cases().iter().enumerate()
+        {
+            let masks: Vec<u16> = (0..connected_ports)
+                .map(|port| {
+                    if port == target_port {
+                        target_mask
+                    } else {
+                        1u16 << ((port + target_port + case_index + 1) % 12)
+                    }
+                })
+                .collect();
+            for (port, &mask) in masks.iter().enumerate() {
+                PRESSED[port].store(mask, Ordering::Relaxed);
+            }
+            for (port, pressed) in PRESSED.iter().enumerate().skip(connected_ports) {
+                pressed.store(1 << ((port + case_index) % 12), Ordering::Relaxed);
+            }
+            for _ in 0..4 {
+                unsafe { (core.run)() };
+            }
+            let observed = read_snes_registers(core, contract)?;
+            let expected: Vec<u16> = masks.iter().map(|mask| mask & 0x0fff).collect();
+            ensure!(
+                expected[target_port] == expected_bits,
+                "Internal SNES case mapping mismatch for {name}"
+            );
+            ensure!(
+                observed[..connected_ports] == expected,
+                "SNES {} port {} {name}: expected words {expected:04x?}, observed {:04x?}",
+                topology.name(),
+                target_port + 1,
+                &observed[..connected_ports]
+            );
+            observations.push(SnesObservation {
+                topology: topology.name(),
+                target_port: u32::try_from(target_port + 1).unwrap(),
+                name: name.into(),
+                retropad_masks: masks,
+                expected_registers: expected.clone(),
+                observed_registers: observed[..connected_ports].to_vec(),
+                readback: contract.readback.name(),
+            });
+
+            if target_mask != 0 {
+                for pressed in &PRESSED {
+                    pressed.store(0, Ordering::Relaxed);
+                }
+                for _ in 0..4 {
+                    unsafe { (core.run)() };
+                }
+                let observed = read_snes_registers(core, contract)?;
+                let expected = vec![0; connected_ports];
+                ensure!(
+                    observed[..connected_ports] == expected,
+                    "SNES {} release after port {} {name}: expected zeroes, observed {:04x?}",
+                    topology.name(),
+                    target_port + 1,
+                    &observed[..connected_ports]
+                );
+                observations.push(SnesObservation {
+                    topology: topology.name(),
+                    target_port: u32::try_from(target_port + 1).unwrap(),
+                    name: format!("release after {name}"),
+                    retropad_masks: vec![0; connected_ports],
+                    expected_registers: expected,
+                    observed_registers: observed[..connected_ports].to_vec(),
+                    readback: contract.readback.name(),
                 });
             }
         }
@@ -2371,6 +3028,116 @@ mod tests {
             (257, "Standard Controller")
         );
         assert!(nes_core_contract("Nestopia").is_err());
+    }
+
+    #[test]
+    fn snes_rom_is_reproducible_lorom_with_serial_loops_and_valid_checksum() {
+        let rom = snes_diagnostic_rom();
+        assert_eq!(rom, snes_diagnostic_rom());
+        assert_eq!(rom.len(), 32 * 1024);
+        assert_eq!(&rom[0x7fc0..0x7fd5], b"LUNCHBOX SNES INPUT  ");
+        assert_eq!(
+            &rom[0x7fd5..0x7fdc],
+            &[0x20, 0x00, 0x08, 0x00, 0x01, 0x33, 0x00]
+        );
+        for vector in (0x7fe4..0x8000).step_by(2) {
+            assert_eq!(
+                u16::from_le_bytes(rom[vector..vector + 2].try_into().unwrap()),
+                0x8000
+            );
+        }
+        let complement = u16::from_le_bytes(rom[0x7fdc..0x7fde].try_into().unwrap());
+        let checksum = u16::from_le_bytes(rom[0x7fde..0x7fe0].try_into().unwrap());
+        assert_eq!(complement ^ checksum, 0xffff);
+        assert_eq!(
+            rom.iter()
+                .fold(0u16, |sum, byte| sum.wrapping_add(u16::from(*byte))),
+            checksum
+        );
+        assert!(
+            rom.windows(5)
+                .any(|bytes| bytes == [0xa9, 1, 0x8d, 0x16, 0x40])
+        );
+        assert!(
+            rom.windows(5)
+                .any(|bytes| bytes == [0xa9, 0x80, 0x8d, 0x01, 0x42])
+        );
+        assert!(
+            rom.windows(5)
+                .any(|bytes| bytes == [0xa9, 0x00, 0x8d, 0x01, 0x42])
+        );
+        assert!(
+            rom.windows(10)
+                .any(|bytes| bytes == [0xad, 0x12, 0x42, 0x30, 0xfb, 0xad, 0x12, 0x42, 0x10, 0xfb])
+        );
+
+        let loops: Vec<usize> = rom
+            .windows(4)
+            .enumerate()
+            .filter_map(|(offset, bytes)| (bytes == [0xe8, 0xe0, 0x10, 0xd0]).then_some(offset))
+            .collect();
+        assert_eq!(loops.len(), 2);
+        for (index, &offset) in loops.iter().enumerate() {
+            let branch = offset + 3;
+            let target = (branch + 2) as isize + rom[branch + 1] as i8 as isize;
+            assert_eq!(
+                &rom[target as usize..target as usize + 3],
+                if index == 0 {
+                    &[0xad, 0x16, 0x40]
+                } else {
+                    &[0xad, 0x17, 0x40]
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn snes_cases_cover_serial_word_and_contracts_are_explicit() {
+        let singles = &Diagnostic::Snes.cases()[1..13];
+        let mut hardware_bits = 0u16;
+        for &(_, retropad, hardware) in singles {
+            assert_eq!(retropad.count_ones(), 1);
+            assert_eq!(hardware.count_ones(), 1);
+            assert_eq!(retropad, hardware);
+            assert_eq!(hardware_bits & hardware, 0);
+            hardware_bits |= hardware;
+        }
+        assert_eq!(hardware_bits, 0x0fff);
+        assert_eq!(SnesTopology::TwoPlayer.connected_ports(), 2);
+        assert_eq!(SnesTopology::Multitap.connected_ports(), 5);
+
+        let bsnes = snes_core_contract("bsnes").unwrap();
+        assert!(!bsnes.supports_bitmask);
+        assert!(matches!(bsnes.readback, SnesReadback::SerializedState));
+        assert_eq!((bsnes.joypad_device, bsnes.multitap_device), (1, 257));
+        let snes9x = snes_core_contract("Snes9x").unwrap();
+        assert!(snes9x.supports_bitmask);
+        assert!(matches!(snes9x.readback, SnesReadback::SystemRam));
+        let mesen_s = snes_core_contract("Mesen-S").unwrap();
+        assert!(!mesen_s.supports_bitmask);
+        assert_eq!((mesen_s.joypad_device, mesen_s.multitap_device), (257, 513));
+        assert!(snes_core_contract("bsnes-hd").is_err());
+    }
+
+    #[test]
+    fn snes_wram_parser_requires_a_complete_generation() {
+        let marker_offset = 123;
+        let mut state = vec![0u8; marker_offset + SNES_MARKER.len() + 10];
+        state[marker_offset - SNES_MARKER_OFFSET_DELTA] = 2;
+        state[marker_offset..marker_offset + SNES_MARKER.len()].copy_from_slice(SNES_MARKER);
+        for (port, value) in [0x0000u16, 0x0001, 0x0100, 0x0800, 0x0fff]
+            .into_iter()
+            .enumerate()
+        {
+            let offset = marker_offset + SNES_MARKER.len() + port * 2;
+            state[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+        }
+        assert_eq!(
+            parse_snes_wram(&state, marker_offset).unwrap(),
+            [0x0000, 0x0001, 0x0100, 0x0800, 0x0fff]
+        );
+        state[marker_offset - SNES_MARKER_OFFSET_DELTA] = 3;
+        assert!(parse_snes_wram(&state, marker_offset).is_err());
     }
 
     #[test]
