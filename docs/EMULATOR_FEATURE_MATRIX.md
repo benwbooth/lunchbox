@@ -21,17 +21,19 @@ unresolved. There are no `missing_record` rows.
 The 94 canonical RetroArch cores also have one structured record apiece. Every
 record is linked to at least one exact controller profile; together they cover
 399 firmware-file dispositions, save behavior, state serialization, and all
-four frontend hosts. Core host availability is intentionally conservative:
-fifteen exact macOS arm64 core/system combinations were executed from fourteen
-official buildbot artifacts on an Apple Silicon host, eleven Linux core/host
-cells were executed (seven native, two exact Flatpak-updater binaries, and two
-external exact cores through the installed Flatpak frontend), eleven Windows
-core/system combinations were executed from ten official x86_64 buildbot
-artifacts on hosted Windows Server 2025 VMs, and one Windows SteemSSE artifact
-is source-verified as available. Mesen-S is
-explicitly unavailable on macOS and Windows because the current official
-artifact paths returned HTTP 404. The other 338 core/host cells remain `unverified`
-rather than inheriting availability from the RetroArch frontend.
+four frontend hosts. Core host availability is intentionally conservative: nine
+native Linux core cells are backed by executed official buildbot binaries, and
+eleven Linux Flatpak cells are backed by eight executed updater cores plus three
+exact external buildbot cores executed inside the installed Flatpak runtime.
+Sixteen macOS cells are backed by official arm64 cores executed on an Apple
+Silicon host. Windows has fifteen available cells: twelve official x86_64
+buildbot cores were executed on hosted Windows Server 2025 VMs, two additional
+official DLL identities (FBNeo and MAME) were verified there while feature
+execution remained blocked by unavailable game content, and the SteemSSE
+artifact is source-verified. Mesen-S is explicitly unavailable on macOS and
+Windows because the current official artifact paths returned HTTP 404. The
+other 323 core/host cells remain `unverified` rather than inheriting
+availability from the RetroArch frontend.
 
 Because the shared RetroArch frontend record supplies the platform paths for
 all 94 core rows, the generated matrix contains 795 captured rows, 157 partial

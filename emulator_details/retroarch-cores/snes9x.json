@@ -83,11 +83,11 @@
       ]
     },
     "linux-flatpak": {
-      "status": "unverified",
-      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "status": "available",
+      "reason": "The installed RetroArch Flatpak-updater core was loaded and executed through exact-hash direct-core probes.",
       "evidence": [
-        "records/retroarch.json host paths",
-        "official per-core distribution not separately verified"
+        "ledger:emulator_details/runtime-test-results.json retroarch:snes9x/linux-flatpak",
+        "identity:2026-09-12 installed Flatpak-updater direct-core probe: Snes9x 1.63 185488c, snes9x_libretro.so sha256 6e2d5fb3bbf57ef0a24834b36914187bea1a0b20f373da3adfdd5aebf75a4a99."
       ]
     },
     "macos": {

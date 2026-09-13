@@ -44,35 +44,35 @@
   },
   "hosts": {
     "linux": {
-      "status": "unverified",
-      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "status": "available",
+      "reason": "The official Libretro Linux x86_64 buildbot core was loaded and executed through exact-hash direct-core probes.",
       "evidence": [
-        "records/retroarch.json host paths",
-        "official per-core distribution not separately verified"
+        "ledger:emulator_details/runtime-test-results.json retroarch:stella/linux",
+        "identity:2026-09-13 native Linux x86_64 direct-core audit: official Libretro buildbot Stella 8.0_pre c65c845, stella_libretro.so sha256 c03832c957f808d3b0e0482352370aa2f2d526015eeada8350d22419b01811f1."
       ]
     },
     "linux-flatpak": {
-      "status": "unverified",
-      "reason": "Exact current RetroArch Flatpak core package availability was not separately verified.",
+      "status": "available",
+      "reason": "The exact official Linux buildbot core was mounted read-only and executed inside the installed RetroArch Flatpak runtime; this does not claim that the core was present in the Flatpak updater directory.",
       "evidence": [
-        "records/retroarch.json host paths",
-        "official per-core distribution not separately verified"
+        "ledger:emulator_details/runtime-test-results.json retroarch:stella/linux-flatpak",
+        "identity:2026-09-13 installed Flathub org.libretro.RetroArch 1.22.2 Git 69a4f0ea1e, Flatpak commit 9c51e2bcb6f7f29ecb327ee057b273c5b59efc22d35026e90aef601bc0052752. Its updater directory contained no Stella core, so the exact official Linux buildbot Stella 8.0_pre c65c845, stella_libretro.so sha256 c03832c957f808d3b0e0482352370aa2f2d526015eeada8350d22419b01811f1, was mounted read-only and the direct-core input and persistence executables ran inside the installed Flatpak runtime."
       ]
     },
     "macos": {
-      "status": "unverified",
-      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "status": "available",
+      "reason": "The official Libretro macOS arm64 buildbot core was downloaded and executed on an Apple Silicon host.",
       "evidence": [
-        "records/retroarch.json host paths",
-        "official per-core distribution not separately verified"
+        "ledger:emulator_details/runtime-test-results.json retroarch:stella/macos",
+        "identity:2026-09-13 macOS 26.5.1 arm64 M1 direct-core audit: official Libretro buildbot Stella 8.0_pre b52ccb02e, stella_libretro.dylib sha256 8ba747d971903b297e8071d891746a6ec8886005d7d5817de440ddc420c80923."
       ]
     },
     "windows": {
-      "status": "unverified",
-      "reason": "Exact current RetroArch core package availability on Windows was not separately verified.",
+      "status": "available",
+      "reason": "The official Libretro Windows x86_64 buildbot artifact was downloaded and executed on a GitHub-hosted Windows Server 2025 VM.",
       "evidence": [
-        "records/retroarch.json host paths",
-        "official per-core distribution not separately verified"
+        "ledger:emulator_details/runtime-test-results.json retroarch:stella/windows",
+        "identity:2026-09-13 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Stella 8.0_pre c65c845, stella_libretro.dll sha256 84e1f72c92fb15f30a496e4db85bc9fe78e26d885d709df82ff18000bf536527; archive sha256 8f877c3a630387d11697a24766097d3bd095c82e601017f1bdb95056ebdfd695."
       ]
     }
   }
