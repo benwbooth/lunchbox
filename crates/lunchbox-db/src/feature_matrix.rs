@@ -97,6 +97,13 @@ struct ControllerProfile {
     transport: String,
     status: String,
     source: String,
+    #[serde(default)]
+    retroarch_launch: Option<ControllerRetroarchLaunch>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ControllerRetroarchLaunch {
+    platforms: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -185,6 +192,7 @@ struct RuntimeAccumulator {
     name: String,
     platforms: BTreeSet<String>,
     owners: BTreeSet<String>,
+    platform_owners: BTreeMap<String, BTreeSet<String>>,
 }
 
 #[derive(Debug)]
@@ -193,6 +201,14 @@ struct Runtime {
     id: String,
     name: String,
     platforms: String,
+    platform_names: BTreeSet<String>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ControllerPlatformCoverage {
+    matching: BTreeSet<String>,
+    dynamic: BTreeSet<String>,
+    missing: BTreeSet<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -215,9 +231,23 @@ struct FeatureMatrixRow {
     retroarch_core_host_status: String,
     retroarch_core_host_reason: String,
     retroarch_core_host_evidence: String,
+    /// Whether this core has at least one explicit launch-enabled profile.
     controller_contract_status: String,
+    /// All documented RetroPad profiles, including non-launchable previews.
     controller_profile_count: usize,
     controller_profile_ids: String,
+    /// Lunchbox launch-writer support for this matrix host.
+    controller_launch_host_status: String,
+    controller_launch_profile_count: usize,
+    controller_launch_profile_ids: String,
+    controller_preview_profile_count: usize,
+    controller_preview_profile_ids: String,
+    controller_platform_coverage_status: String,
+    controller_platform_count: usize,
+    controller_platforms_with_launch_profiles: usize,
+    controller_platforms_with_dynamic_adapters: usize,
+    controller_platforms_without_launch_contracts: usize,
+    controller_platforms_missing_launch_contracts: String,
     controller_mapping_summary: String,
     controller_contract_evidence: String,
     firmware_status: String,
@@ -300,8 +330,19 @@ pub struct FeatureMatrixStats {
     pub platform_records: usize,
     pub retroarch_core_records: usize,
     pub missing_retroarch_core_records: usize,
-    pub contracted_retroarch_cores: usize,
-    pub missing_retroarch_controller_contracts: usize,
+    pub documented_retroarch_cores: usize,
+    pub missing_retroarch_controller_documentation: usize,
+    pub launch_enabled_retroarch_cores: usize,
+    pub missing_launch_enabled_retroarch_cores: usize,
+    pub documented_retroarch_controller_profiles: usize,
+    pub launch_enabled_retroarch_controller_profiles: usize,
+    pub preview_only_retroarch_controller_profiles: usize,
+    pub retroarch_core_platform_relationships: usize,
+    pub retroarch_core_platforms_with_launch_profiles: usize,
+    pub retroarch_core_platforms_with_dynamic_adapters: usize,
+    pub retroarch_core_platforms_without_launch_contracts: usize,
+    pub launch_supported_retroarch_controller_host_cells: usize,
+    pub missing_launch_adapter_retroarch_controller_host_cells: usize,
     pub available_retroarch_core_host_cells: usize,
     pub unavailable_retroarch_core_host_cells: usize,
     pub unverified_retroarch_core_host_cells: usize,
@@ -339,6 +380,7 @@ pub fn generate(
                 id: format!("record:{}", record.slug),
                 name: record.emulator.clone(),
                 platforms: "not present in canonical database".to_owned(),
+                platform_names: BTreeSet::new(),
             });
         }
     }
@@ -478,7 +520,7 @@ pub fn generate(
         .values()
         .map(|record| record.platform_gaps.len())
         .sum();
-    let contracted_retroarch_cores = retroarch_runtime_ids
+    let documented_retroarch_cores = retroarch_runtime_ids
         .iter()
         .filter(|core| {
             controller_profiles
@@ -486,6 +528,49 @@ pub fn generate(
                 .is_some_and(|profiles| !profiles.is_empty())
         })
         .count();
+    let launch_enabled_retroarch_cores = retroarch_runtime_ids
+        .iter()
+        .filter(|core| {
+            controller_profiles.get(**core).is_some_and(|profiles| {
+                profiles
+                    .iter()
+                    .any(|profile| profile.retroarch_launch.is_some())
+            })
+        })
+        .count();
+    let documented_retroarch_controller_profiles = retroarch_runtime_ids
+        .iter()
+        .flat_map(|core| controller_profiles.get(*core).into_iter().flatten())
+        .count();
+    let launch_enabled_retroarch_controller_profiles = retroarch_runtime_ids
+        .iter()
+        .flat_map(|core| controller_profiles.get(*core).into_iter().flatten())
+        .filter(|profile| profile.retroarch_launch.is_some())
+        .count();
+    let preview_only_retroarch_controller_profiles =
+        documented_retroarch_controller_profiles - launch_enabled_retroarch_controller_profiles;
+    let controller_platform_coverages = runtimes
+        .iter()
+        .filter(|runtime| runtime.kind == "retroarch")
+        .map(|runtime| {
+            controller_platform_coverage(runtime, controller_profiles.get(runtime.name.as_str()))
+        })
+        .collect::<Vec<_>>();
+    let retroarch_core_platforms_with_launch_profiles = controller_platform_coverages
+        .iter()
+        .map(|coverage| coverage.matching.len())
+        .sum::<usize>();
+    let retroarch_core_platforms_with_dynamic_adapters = controller_platform_coverages
+        .iter()
+        .map(|coverage| coverage.dynamic.len())
+        .sum::<usize>();
+    let retroarch_core_platforms_without_launch_contracts = controller_platform_coverages
+        .iter()
+        .map(|coverage| coverage.missing.len())
+        .sum::<usize>();
+    let retroarch_core_platform_relationships = retroarch_core_platforms_with_launch_profiles
+        + retroarch_core_platforms_with_dynamic_adapters
+        + retroarch_core_platforms_without_launch_contracts;
     let available_retroarch_core_host_cells = rows
         .iter()
         .filter(|row| row.retroarch_core_host_status == "available")
@@ -515,8 +600,25 @@ pub fn generate(
         platform_records: records.len(),
         retroarch_core_records: retroarch_core_records.len(),
         missing_retroarch_core_records: retroarch_cores - retroarch_core_records.len(),
-        contracted_retroarch_cores,
-        missing_retroarch_controller_contracts: retroarch_cores - contracted_retroarch_cores,
+        documented_retroarch_cores,
+        missing_retroarch_controller_documentation: retroarch_cores - documented_retroarch_cores,
+        launch_enabled_retroarch_cores,
+        missing_launch_enabled_retroarch_cores: retroarch_cores - launch_enabled_retroarch_cores,
+        documented_retroarch_controller_profiles,
+        launch_enabled_retroarch_controller_profiles,
+        preview_only_retroarch_controller_profiles,
+        retroarch_core_platform_relationships,
+        retroarch_core_platforms_with_launch_profiles,
+        retroarch_core_platforms_with_dynamic_adapters,
+        retroarch_core_platforms_without_launch_contracts,
+        launch_supported_retroarch_controller_host_cells: rows
+            .iter()
+            .filter(|row| row.controller_launch_host_status == "launch_supported")
+            .count(),
+        missing_launch_adapter_retroarch_controller_host_cells: rows
+            .iter()
+            .filter(|row| row.controller_launch_host_status == "launch_adapter_missing")
+            .count(),
         available_retroarch_core_host_cells,
         unavailable_retroarch_core_host_cells,
         unverified_retroarch_core_host_cells,
@@ -1089,6 +1191,11 @@ fn load_runtimes(connection: &Connection) -> Result<Vec<Runtime>> {
                 });
             runtime.platforms.insert(relationship.platform.clone());
             runtime.owners.insert(relationship.emulator_name.clone());
+            runtime
+                .platform_owners
+                .entry(relationship.platform.clone())
+                .or_default()
+                .insert(relationship.emulator_name.clone());
         }
     }
 
@@ -1100,9 +1207,11 @@ fn load_runtimes(connection: &Connection) -> Result<Vec<Runtime>> {
             name: runtime.name,
             platforms: runtime
                 .platforms
-                .into_iter()
+                .iter()
+                .cloned()
                 .collect::<Vec<_>>()
                 .join(" | "),
+            platform_names: runtime.platforms,
         })
         .collect::<Vec<_>>();
     runtimes.extend(
@@ -1114,15 +1223,29 @@ fn load_runtimes(connection: &Connection) -> Result<Vec<Runtime>> {
                     .iter()
                     .any(|owner| !owner.eq_ignore_ascii_case("BizHawk"))
             })
-            .map(|runtime| Runtime {
-                kind: "retroarch",
-                id: runtime.id,
-                name: runtime.name,
-                platforms: runtime
+            .map(|runtime| {
+                let platform_names = runtime
                     .platforms
                     .into_iter()
-                    .collect::<Vec<_>>()
-                    .join(" | "),
+                    .filter(|platform| {
+                        runtime.platform_owners.get(platform).is_some_and(|owners| {
+                            owners
+                                .iter()
+                                .any(|owner| !owner.eq_ignore_ascii_case("BizHawk"))
+                        })
+                    })
+                    .collect::<BTreeSet<_>>();
+                Runtime {
+                    kind: "retroarch",
+                    id: runtime.id,
+                    name: runtime.name,
+                    platforms: platform_names
+                        .iter()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(" | "),
+                    platform_names,
+                }
             }),
     );
     runtimes.sort_by(|left, right| {
@@ -1131,6 +1254,38 @@ fn load_runtimes(connection: &Connection) -> Result<Vec<Runtime>> {
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
     });
     Ok(runtimes)
+}
+
+fn controller_platform_coverage(
+    runtime: &Runtime,
+    profiles: Option<&Vec<ControllerProfile>>,
+) -> ControllerPlatformCoverage {
+    if runtime.kind != "retroarch" {
+        return ControllerPlatformCoverage::default();
+    }
+    let launch_profiles = profiles
+        .into_iter()
+        .flat_map(|profiles| profiles.iter())
+        .filter_map(|profile| profile.retroarch_launch.as_ref())
+        .collect::<Vec<_>>();
+    let mut coverage = ControllerPlatformCoverage::default();
+    for platform in &runtime.platform_names {
+        if launch_profiles.iter().any(|launch| {
+            launch
+                .platforms
+                .iter()
+                .any(|alias| alias.trim().eq_ignore_ascii_case(platform.trim()))
+        }) {
+            coverage.matching.insert(platform.clone());
+        } else if matches!(runtime.name.as_str(), "mame" | "fbneo") {
+            // These cores select inputs from per-game runtime inspection rather
+            // than pretending one static platform profile covers every system.
+            coverage.dynamic.insert(platform.clone());
+        } else {
+            coverage.missing.insert(platform.clone());
+        }
+    }
+    coverage
 }
 
 fn matrix_row(
@@ -1185,10 +1340,47 @@ fn matrix_row(
     } else {
         "missing_core_record"
     };
+    let launch_profiles = core_profiles
+        .into_iter()
+        .flat_map(|profiles| profiles.iter())
+        .filter(|profile| profile.retroarch_launch.is_some())
+        .collect::<Vec<_>>();
+    let preview_profiles = core_profiles
+        .into_iter()
+        .flat_map(|profiles| profiles.iter())
+        .filter(|profile| profile.retroarch_launch.is_none())
+        .collect::<Vec<_>>();
     let controller_contract_status = if runtime.kind != "retroarch" {
         "not_applicable"
-    } else if core_profiles.is_some_and(|profiles| !profiles.is_empty()) {
-        "contracted"
+    } else if !launch_profiles.is_empty() {
+        "launch_enabled"
+    } else if !preview_profiles.is_empty() {
+        "preview_only"
+    } else {
+        "missing_contract"
+    };
+    let controller_launch_host_status = if runtime.kind != "retroarch" {
+        "not_applicable"
+    } else if matches!(host, "linux" | "linux-flatpak") {
+        "launch_supported"
+    } else {
+        "launch_adapter_missing"
+    };
+    let platform_coverage = controller_platform_coverage(runtime, core_profiles);
+    let controller_platform_coverage_status = if runtime.kind != "retroarch" {
+        "not_applicable"
+    } else if !platform_coverage.missing.is_empty()
+        && (!platform_coverage.matching.is_empty() || !platform_coverage.dynamic.is_empty())
+    {
+        "partial"
+    } else if !platform_coverage.missing.is_empty() {
+        "missing_contract"
+    } else if !platform_coverage.matching.is_empty() && !platform_coverage.dynamic.is_empty() {
+        "covered_with_dynamic_adapters"
+    } else if !platform_coverage.dynamic.is_empty() {
+        "dynamic_per_game"
+    } else if !platform_coverage.matching.is_empty() {
+        "covered"
     } else {
         "missing_contract"
     };
@@ -1234,6 +1426,32 @@ fn matrix_row(
         controller_profile_ids: core_profiles
             .into_iter()
             .flat_map(|profiles| profiles.iter().map(|profile| profile.id.as_str()))
+            .collect::<Vec<_>>()
+            .join(" | "),
+        controller_launch_host_status: controller_launch_host_status.to_owned(),
+        controller_launch_profile_count: launch_profiles.len(),
+        controller_launch_profile_ids: launch_profiles
+            .iter()
+            .map(|profile| profile.id.as_str())
+            .collect::<Vec<_>>()
+            .join(" | "),
+        controller_preview_profile_count: preview_profiles.len(),
+        controller_preview_profile_ids: preview_profiles
+            .iter()
+            .map(|profile| profile.id.as_str())
+            .collect::<Vec<_>>()
+            .join(" | "),
+        controller_platform_coverage_status: controller_platform_coverage_status.to_owned(),
+        controller_platform_count: platform_coverage.matching.len()
+            + platform_coverage.dynamic.len()
+            + platform_coverage.missing.len(),
+        controller_platforms_with_launch_profiles: platform_coverage.matching.len(),
+        controller_platforms_with_dynamic_adapters: platform_coverage.dynamic.len(),
+        controller_platforms_without_launch_contracts: platform_coverage.missing.len(),
+        controller_platforms_missing_launch_contracts: platform_coverage
+            .missing
+            .iter()
+            .cloned()
             .collect::<Vec<_>>()
             .join(" | "),
         controller_mapping_summary: core_record
@@ -1501,6 +1719,44 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    fn controller_profile(id: &str, core: &str, platforms: Option<&[&str]>) -> ControllerProfile {
+        ControllerProfile {
+            id: id.to_owned(),
+            core: core.to_owned(),
+            transport: "retropad".to_owned(),
+            status: "documented".to_owned(),
+            source: "test source".to_owned(),
+            retroarch_launch: platforms.map(|platforms| ControllerRetroarchLaunch {
+                platforms: platforms
+                    .iter()
+                    .map(|platform| (*platform).to_owned())
+                    .collect(),
+            }),
+        }
+    }
+
+    fn retroarch_runtime(core: &str, platforms: &[&str]) -> Runtime {
+        let platform_names = platforms
+            .iter()
+            .map(|platform| (*platform).to_owned())
+            .collect::<BTreeSet<_>>();
+        Runtime {
+            kind: "retroarch",
+            id: format!("retroarch:{core}"),
+            name: core.to_owned(),
+            platforms: platform_names
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" | "),
+            platform_names,
+        }
+    }
+
+    fn repository_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
     fn save_feature(status: &str, extensions: &[&str]) -> CoreSaveFeature {
         CoreSaveFeature {
             status: status.to_owned(),
@@ -1556,6 +1812,146 @@ mod tests {
                     .contains(&format!("despite {status} save status"))
             );
         }
+    }
+
+    #[test]
+    fn catalog_distinguishes_exactly_three_preview_only_profiles() {
+        let path = repository_root().join("crates/lunchbox-app/data/controllers/catalog.json");
+        let catalog: ControllerCatalog = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let profiles = load_controller_profiles(&catalog).unwrap();
+        let all = profiles.values().flatten().collect::<Vec<_>>();
+        let launch_enabled = all
+            .iter()
+            .filter(|profile| profile.retroarch_launch.is_some())
+            .count();
+        let preview_ids = all
+            .iter()
+            .filter(|profile| profile.retroarch_launch.is_none())
+            .map(|profile| profile.id.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(all.len(), 299);
+        assert_eq!(launch_enabled, 296);
+        assert_eq!(
+            preview_ids,
+            BTreeSet::from([
+                "retroarch:genesis_plus_gx:md3",
+                "retroarch:mupen64plus_next:n64",
+                "retroarch:simcp:virtual-keyboard-preview",
+            ])
+        );
+    }
+
+    #[test]
+    fn checked_in_database_has_thirty_nine_static_platform_contract_gaps() {
+        let root = repository_root();
+        let extracted = tempfile::tempdir().unwrap();
+        sevenz_rust2::decompress_file(root.join("artifacts/lunchbox.db.7z"), extracted.path())
+            .unwrap();
+        let connection = database::open_read_only(&extracted.path().join("lunchbox.db")).unwrap();
+        let runtimes = load_runtimes(&connection).unwrap();
+        let catalog: ControllerCatalog = serde_json::from_slice(
+            &fs::read(root.join("crates/lunchbox-app/data/controllers/catalog.json")).unwrap(),
+        )
+        .unwrap();
+        let profiles = load_controller_profiles(&catalog).unwrap();
+        let coverage = runtimes
+            .iter()
+            .filter(|runtime| runtime.kind == "retroarch")
+            .map(|runtime| {
+                (
+                    runtime,
+                    controller_platform_coverage(runtime, profiles.get(runtime.name.as_str())),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(coverage.len(), 94);
+        assert_eq!(
+            coverage
+                .iter()
+                .map(|(_, coverage)| coverage.matching.len())
+                .sum::<usize>(),
+            113
+        );
+        assert_eq!(
+            coverage
+                .iter()
+                .map(|(_, coverage)| coverage.dynamic.len())
+                .sum::<usize>(),
+            84
+        );
+        assert_eq!(
+            coverage
+                .iter()
+                .map(|(_, coverage)| coverage.missing.len())
+                .sum::<usize>(),
+            39
+        );
+        assert_eq!(
+            coverage
+                .iter()
+                .map(|(_, coverage)| {
+                    coverage.matching.len() + coverage.dynamic.len() + coverage.missing.len()
+                })
+                .sum::<usize>(),
+            236
+        );
+
+        let mupen = coverage
+            .iter()
+            .find(|(runtime, _)| runtime.name == "mupen64plus_next")
+            .unwrap();
+        assert!(mupen.1.matching.contains("Nintendo 64"));
+        assert!(mupen.1.missing.contains("Nintendo 64DD"));
+        assert!(profiles["mupen64plus_next"].iter().any(|profile| {
+            profile.id == "retroarch:mupen64plus_next:n64-independent"
+                && profile.retroarch_launch.is_some()
+        }));
+        for core in ["mame", "fbneo"] {
+            let (_, coverage) = coverage
+                .iter()
+                .find(|(runtime, _)| runtime.name == core)
+                .unwrap();
+            assert!(!coverage.dynamic.is_empty());
+            assert!(coverage.missing.is_empty());
+        }
+    }
+
+    #[test]
+    fn matrix_rows_report_launch_adapter_host_support_separately() {
+        let runtime = retroarch_runtime("test_core", &["Test Platform"]);
+        let profiles = vec![controller_profile(
+            "retroarch:test_core:pad",
+            "test_core",
+            Some(&["Test Platform"]),
+        )];
+
+        let linux = matrix_row(&runtime, "linux", None, None, Some(&profiles), &[], None);
+        assert_eq!(linux.controller_contract_status, "launch_enabled");
+        assert_eq!(linux.controller_launch_host_status, "launch_supported");
+        assert_eq!(linux.controller_platform_coverage_status, "covered");
+
+        let windows = matrix_row(&runtime, "windows", None, None, Some(&profiles), &[], None);
+        assert_eq!(windows.controller_contract_status, "launch_enabled");
+        assert_eq!(
+            windows.controller_launch_host_status,
+            "launch_adapter_missing"
+        );
+
+        let preview = vec![controller_profile(
+            "retroarch:test_core:preview",
+            "test_core",
+            None,
+        )];
+        let preview_row = matrix_row(&runtime, "linux", None, None, Some(&preview), &[], None);
+        assert_eq!(preview_row.controller_contract_status, "preview_only");
+        assert_eq!(preview_row.controller_launch_profile_count, 0);
+        assert_eq!(preview_row.controller_preview_profile_count, 1);
+        assert_eq!(
+            preview_row.controller_platform_coverage_status,
+            "missing_contract"
+        );
     }
 
     #[test]

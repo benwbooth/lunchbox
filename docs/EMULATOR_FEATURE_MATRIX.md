@@ -19,10 +19,31 @@ The source set now contains 250 standalone platform records: every one of the
 unresolved. There are no `missing_record` rows.
 
 The 94 canonical RetroArch cores also have one structured record apiece. Every
-record is linked to at least one exact controller profile; together they cover
-399 firmware-file dispositions, save behavior, state serialization, and all
-four frontend hosts. Core host availability is intentionally conservative: nine
-native Linux core cells are backed by executed official buildbot binaries, and
+record is linked to at least one documented RetroPad profile, preserving 94/94
+controller-documentation coverage. Documentation is not the same as a launch
+contract: the catalog has 299 documented RetroPad profiles, of which 296 opt in
+to the implemented RetroArch launch writer and three are preview-only profiles.
+Every core still has at least one launch-enabled profile, including
+`mupen64plus_next` through its `n64-independent` profile.
+
+Platform matching is narrower than core-level profile presence. The database
+has 236 non-BizHawk-only core/platform relationships: 113 match a launch
+profile's declared platform aliases, 84 use the explicit per-game MAME/FBNeo
+adapters, and 39 have no launch contract for that platform. Dynamic MAME/FBNeo
+coverage is reported separately rather than counted as either a universal
+static profile or a gap.
+
+Host adapter coverage is separate again. The launch writer is implemented for
+the 188 Linux and Linux Flatpak core/host cells. The 188 macOS and Windows cells
+are `launch_adapter_missing`; they are not `not_applicable`, because the
+frontend/core may exist there. None of these source-derived fields is a runtime
+pass. Live acceptance remains confined to the test-status columns and their
+evidence.
+
+Together the core records also cover 399 firmware-file dispositions, save
+behavior, state serialization, and all four frontend hosts. Core host
+availability is intentionally conservative: nine native Linux core cells are
+backed by executed official buildbot binaries, and
 eleven Linux Flatpak cells are backed by eight executed updater cores plus three
 exact external buildbot cores executed inside the installed Flatpak runtime.
 Sixteen macOS cells are backed by official arm64 cores executed on an Apple
@@ -74,6 +95,28 @@ dynamic-identity, and "no canonical checksum" dispositions remain prose, which
 is why `firmware_checksum_status=captured_in_prose_unstructured` is not a
 validation result. RetroArch core firmware is machine-structured in separate
 records, but source metadata still is not runtime acceptance evidence.
+
+Controller coverage columns deliberately keep different evidence layers
+separate:
+
+- `controller_profile_count` and `controller_profile_ids` contain every
+  documented RetroPad profile, including previews.
+- `controller_launch_profile_count` and `controller_launch_profile_ids` contain
+  only profiles with an explicit `retroarch_launch` contract.
+- `controller_preview_profile_count` and `controller_preview_profile_ids`
+  expose documented profiles that cannot be launched by the writer.
+- `controller_contract_status` is `launch_enabled`, `preview_only`,
+  `missing_contract`, or `not_applicable` for non-RetroArch rows. It reports
+  core-level launch-contract presence, not platform coverage or runtime proof.
+- `controller_platform_coverage_status` and its count/list columns compare
+  launch aliases with exact database core/platform relationships. Statuses are
+  `covered`, `covered_with_dynamic_adapters`, `dynamic_per_game`, `partial`,
+  `missing_contract`, or `not_applicable`.
+- `controller_launch_host_status` is `launch_supported` on Linux and Linux
+  Flatpak, `launch_adapter_missing` on macOS and Windows, and `not_applicable`
+  for non-RetroArch rows. `launch_supported` means the writer path exists; it
+  does not establish core availability, successful launch, or controller
+  behavior.
 
 `record_status` uses these source-capture values:
 
