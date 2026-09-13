@@ -173,6 +173,7 @@ pub(crate) fn add_native_metadata(db: &mut Catalog) -> Result<()> {
             | "mednafen:standalone-gb" => (&["Nintendo Game Boy", "Nintendo Game Boy Color"], 1),
             "snes9x:standalone-gtk-snes" => (&["Super Nintendo Entertainment System"], 5),
             "nestopia-ue:flatpak-nes" => (&["Nintendo Entertainment System"], 2),
+            "punes:flatpak-nes-standard" => (&["Nintendo Entertainment System"], 2),
             "fceux:standalone-qt-nes" => (
                 &[
                     "Nintendo Entertainment System",

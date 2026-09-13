@@ -322,6 +322,20 @@ pub(super) fn reuse(
                 mapping.nestopia_ue_flatpak_launches.push(setup);
             }
         }
+        #[cfg(target_os = "linux")]
+        "punes"
+            if !mapping
+                .punes_flatpak_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.punes_flatpak_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.punes_flatpak_launches.push(setup);
+            }
+        }
         "sameboy"
             if !mapping
                 .sameboy_launches

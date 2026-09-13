@@ -14,6 +14,12 @@ struct Args {
     /// Supervise one exact Nestopia UE launch inside its target Flatpak.
     #[arg(long)]
     nestopia_supervise: Option<PathBuf>,
+    /// Inventory exact puNES target evdev devices inside its Flatpak.
+    #[arg(long)]
+    punes_target_inventory: bool,
+    /// Supervise one exact puNES launch inside its target Flatpak.
+    #[arg(long)]
+    punes_supervise: Option<PathBuf>,
     /// Inventory SDL2 for BizHawk instead of using the SDL3 adapter.
     #[arg(long)]
     sdl2_inventory: bool,
@@ -53,9 +59,57 @@ struct Args {
 fn run() -> Result<()> {
     let args = Args::parse();
     #[cfg(target_os = "linux")]
+    if args.punes_target_inventory {
+        ensure!(
+            args.snes9x_supervise.is_none()
+                && args.nestopia_supervise.is_none()
+                && args.punes_supervise.is_none()
+                && !args.sdl2_inventory
+                && args.sdl2_controls_for_path.is_empty()
+                && args.sdl2_mapping_db.is_none()
+                && args.sdl_library.is_none()
+                && args.mapping_db.is_none()
+                && args.hint.is_empty()
+                && args.match_path.is_empty()
+                && args.bindings_for_path.is_empty()
+                && args.duckstation_player_probe.is_none()
+                && !args.pcsx2_player_probe
+                && args.runtime_library.is_empty()
+                && args.evdev_catalog.is_empty(),
+            "puNES target inventory shares no options with other probe modes"
+        );
+        let inventory = lunchbox_controller_probe::punes_supervisor::inspect_targets()?;
+        println!("{}", serde_json::to_string(&inventory)?);
+        return Ok(());
+    }
+    #[cfg(target_os = "linux")]
+    if let Some(request) = &args.punes_supervise {
+        ensure!(
+            args.snes9x_supervise.is_none()
+                && args.nestopia_supervise.is_none()
+                && !args.punes_target_inventory
+                && !args.sdl2_inventory
+                && args.sdl2_controls_for_path.is_empty()
+                && args.sdl2_mapping_db.is_none()
+                && args.sdl_library.is_none()
+                && args.mapping_db.is_none()
+                && args.hint.is_empty()
+                && args.match_path.is_empty()
+                && args.bindings_for_path.is_empty()
+                && args.duckstation_player_probe.is_none()
+                && !args.pcsx2_player_probe
+                && args.runtime_library.is_empty()
+                && args.evdev_catalog.is_empty(),
+            "puNES supervision shares no options with inventory modes"
+        );
+        return lunchbox_controller_probe::punes_supervisor::run(request);
+    }
+    #[cfg(target_os = "linux")]
     if let Some(request) = &args.snes9x_supervise {
         ensure!(
             args.nestopia_supervise.is_none()
+                && args.punes_supervise.is_none()
+                && !args.punes_target_inventory
                 && !args.sdl2_inventory
                 && args.sdl2_controls_for_path.is_empty()
                 && args.sdl2_mapping_db.is_none()
@@ -76,6 +130,8 @@ fn run() -> Result<()> {
     if let Some(request) = &args.nestopia_supervise {
         ensure!(
             args.snes9x_supervise.is_none()
+                && args.punes_supervise.is_none()
+                && !args.punes_target_inventory
                 && !args.sdl2_inventory
                 && args.sdl2_controls_for_path.is_empty()
                 && args.sdl2_mapping_db.is_none()
@@ -94,7 +150,10 @@ fn run() -> Result<()> {
     }
     #[cfg(not(target_os = "linux"))]
     ensure!(
-        args.snes9x_supervise.is_none() && args.nestopia_supervise.is_none(),
+        args.snes9x_supervise.is_none()
+            && args.nestopia_supervise.is_none()
+            && args.punes_supervise.is_none()
+            && !args.punes_target_inventory,
         "Flatpak emulator supervision requires Linux"
     );
     #[cfg(target_os = "linux")]

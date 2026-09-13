@@ -42,6 +42,7 @@ enum PreparedJsonNativeLaunch {
     Rmg(crate::controller_rmg_native::native_command::NativeSession),
     Simple64(crate::controller_simple64_native::native_command::NativeSession),
     Nestopia(crate::controller_nestopia_ue_flatpak::PreparedLaunch),
+    Punes(crate::controller_punes_flatpak::PreparedLaunch),
 }
 
 #[cfg(target_os = "linux")]
@@ -59,6 +60,7 @@ impl PreparedJsonNativeLaunch {
             Self::Rmg(session) => session.spawn(plan, cancel),
             Self::Simple64(session) => session.spawn(plan, cancel),
             Self::Nestopia(session) => session.spawn(plan, cancel),
+            Self::Punes(session) => session.spawn(plan, cancel),
         }
     }
 
@@ -71,6 +73,7 @@ impl PreparedJsonNativeLaunch {
             Self::Rmg(session) => session.verify(cancel),
             Self::Simple64(session) => session.verify(cancel),
             Self::Nestopia(session) => session.verify(cancel),
+            Self::Punes(session) => session.verify(cancel),
         }
     }
 
@@ -83,6 +86,7 @@ impl PreparedJsonNativeLaunch {
             Self::Rmg(session) => session.check_health(),
             Self::Simple64(session) => session.check_health(),
             Self::Nestopia(session) => session.check_health(),
+            Self::Punes(session) => session.check_health(),
         }
     }
 }
@@ -7574,6 +7578,39 @@ pub fn prepare_with_cancellation(
             let mut launch = CalibratedLaunch::default();
             launch.jgenesis_native = Some(PreparedJsonNativeLaunch::Nestopia(prepared));
             launch.description = "Nestopia UE Flatpak 1.53.2: exact target-runtime SDL2 routing, private configuration, and persistent native save data".into();
+            return Ok(Some(launch));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("puNES")
+    {
+        let matches: Vec<_> = mapping
+            .punes_flatpak_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous puNES saved setup");
+        if let Some(setup) = matches.first() {
+            let prepared = crate::controller_punes_flatpak::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = prepared.plan.clone();
+            let mut launch = CalibratedLaunch::default();
+            launch.jgenesis_native = Some(PreparedJsonNativeLaunch::Punes(prepared));
+            launch.description = "puNES Flatpak 0.111: exact target evdev routing, private configuration, and persistent native save/state data".into();
             return Ok(Some(launch));
         }
     }

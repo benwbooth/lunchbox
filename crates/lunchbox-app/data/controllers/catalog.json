@@ -37086,6 +37086,17 @@
       "bindings": {"up":"Up", "down":"Down", "left":"Left", "right":"Right", "start":"Start", "select":"Select", "a":"A", "b":"B"}
     },
     {
+      "id": "punes:flatpak-nes-standard",
+      "name": "puNES Flatpak · Native NES gamepad",
+      "core": "punes",
+      "target_layout": "nes",
+      "transport": "punes-flatpak-settings",
+      "status": "documented",
+      "source": "https://github.com/punesemu/puNES/blob/613b7b44baddbe7bf2ff79e72348c3ee35f3e70b/src/core/jstick.c",
+      "conditions": ["Exact io.github.punesemu.puNES 0.111 Flatpak deployment and custom Linux udev/evdev runtime; fail-closed X11 only", "One or two standard NES cartridge pads with complete measured native mappings", "Private config and fixed target evdev routing; 2026-09-13 isolated-X11 production oracle passed two-player input, fresh-process battery reload, and exact State-menu slot-0 restoration; physical pads, axes/hats, hotplug, one-player runtime behavior, Wayland, FDS/other special modes, other packages/hosts, and provider save sync remain unverified"],
+      "bindings": {"up":"Up", "down":"Down", "left":"Left", "right":"Right", "start":"Start", "select":"Select", "a":"A", "b":"B"}
+    },
+    {
       "id": "snes9x:standalone-gtk-snes",
       "name": "Snes9x GTK · Native SNES gamepad",
       "core": "snes9x",

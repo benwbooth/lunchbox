@@ -43,6 +43,16 @@
     },
     {
       "runtime_kind": "standalone",
+      "runtime_id": "6320fd6a-3589-5ff5-a5a0-9ae7d3cdfd2f",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-13 installed puNES Flatpak production audit: io.github.punesemu.puNES 0.111 commit 335dff06f700b1d21f600fa8b77e34080f577536a40df9d8c2b319be5d4c86e9, /app/bin/punes sha256 ae027e3b7bc5396407f82db665c6dd9507dc65e2e41c7f4d9830165f14a15c45, org.kde.Platform/x86_64/5.15-25.08 commit 1e9b0aa4623015cebd20350b36dc515124567b0f43c2235bd4ea8259fc2b18de, runtime libudev sha256 ebee10d92fdc8bfb3d7b8df59771dbc8bed79552c3a0c4cf7d30989ac0d01e4d, and loader sha256 d204c9ce43348a62ec1cefad8e7a04eec7d365deb9e9dc3d881a236f2994dba1. The ordinary production prepare/spawn path ran twice under isolated Xvfb :177 with two real uinput source pads translated into separate fixed-identity target evdev pads. Although the Flatpak could still see the source nodes under devices=all, both launches acquired and held exclusive EVIOCGRABs on the identity-checked source FDs before target creation or puNES spawn, preventing puNES from receiving direct source events. The target supervisor proved the exact executable and runtime libudev, private config inodes and environment, and open descriptors for both target nodes before readiness. The private main config forced cheat mode disabled and cleared the Game Genie ROM path. On the first launch the generated battery NROM observed P1 A, saved slot 0 through the exact State/Save state menu action, observed P2 A, loaded through State/Load state, and then observed P1 Select. The first clean exit's 8192-byte .prb header was 4c4250550102 with event bytes 01000400: the post-save P2 mutation was absent, behaviorally proving restoration. A second fresh launch loaded generation 1, advanced to generation 2, retained those two events, and appended all eight controls for P1 followed by all eight for P2; final .prb sha256 b5326ae3bdb6402c9e4768e460283e11d8a98b4d8ccccba0803c19c4b9b720d8. The unchanged slot-0 .p00 sha256 was 118ef114d0303140284e1ae5d2039c46b743b98d7692e9267f9b200ec6f656e9. The post-fix ignored test passed 1/1 in 112.09 seconds, preserved the user's source config hashes, reaped every child, and removed its unique save/state outputs. This proves the exact Flatpak/X11 two-pad production path with successful exclusive source capture while source nodes remained visible, native battery reload, and slot-0 state restoration through application menu actions, not physical pads, axes/hats, hotplug, Wayland, one-player behavior, other packages/modes, FDS firmware, XTEST F1/F4 delivery, or provider save export/restore. Save sync remains blocked because no real provider export/restore was exercised. Evidence: docs/PUNES_FLATPAK_RUNTIME.md."
+    },
+    {
+      "runtime_kind": "standalone",
       "runtime_id": "b9438ec7-a562-5717-aa22-592c1150da76",
       "host_os": "linux-flatpak",
       "controller_test_status": "blocked",

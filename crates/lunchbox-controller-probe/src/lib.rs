@@ -27,6 +27,8 @@ pub mod live_sdl3;
 #[cfg(target_os = "linux")]
 pub mod nestopia_supervisor;
 pub mod players;
+#[cfg(target_os = "linux")]
+pub mod punes_supervisor;
 pub mod sdl2;
 pub mod sdl2_evdev;
 pub mod sdl2_mapping;

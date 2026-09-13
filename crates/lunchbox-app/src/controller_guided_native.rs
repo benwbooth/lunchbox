@@ -50,6 +50,43 @@ fn apply_nestopia_players(
     Ok(found)
 }
 
+#[cfg(target_os = "linux")]
+fn apply_punes_players(
+    mapping: &mut crate::settings::ControllerMappingSettings,
+    emulator_id: &str,
+    plan: &LaunchPlan,
+    ids: &[String],
+) -> Result<usize> {
+    ensure!(
+        matches!(ids.len(), 1 | 2),
+        "puNES requires one or two players"
+    );
+    let mut found = 0;
+    for setup in &mut mapping.punes_flatpak_launches {
+        if setup.emulator_id != emulator_id
+            || !plan
+                .arguments
+                .iter()
+                .any(|arg| arg == setup.content.as_os_str())
+        {
+            continue;
+        }
+        found += 1;
+        setup.players = ids
+            .iter()
+            .enumerate()
+            .map(
+                |(index, controller_id)| crate::controller_punes_flatpak::settings::Player {
+                    player: u8::try_from(index + 1).unwrap(),
+                    controller_id: controller_id.clone(),
+                },
+            )
+            .collect();
+        setup.review(&mapping.calibrations)?;
+    }
+    Ok(found)
+}
+
 pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
     profile.native_launch.is_some()
         && (matches!(
@@ -85,7 +122,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "simple64"
                 | "kronos"
                 | "yaba-sanshiro"
-        ) || cfg!(target_os = "linux") && profile.core == "nestopia")
+        ) || cfg!(target_os = "linux") && matches!(profile.core.as_str(), "nestopia" | "punes"))
 }
 
 pub(crate) fn settings_for_launch<'a>(
@@ -595,6 +632,10 @@ pub(crate) fn settings_for_launch<'a>(
         "nestopia" => {
             found += apply_nestopia_players(mapping, &option.emulator_id, plan, &ids)?;
         }
+        #[cfg(target_os = "linux")]
+        "punes" => {
+            found += apply_punes_players(mapping, &option.emulator_id, plan, &ids)?;
+        }
         "fceux" => {
             for setup in &mut mapping.fceux_launches {
                 if !matches(&setup.emulator_id, &setup.content) {
@@ -880,6 +921,70 @@ mod tests {
             .emulator_profiles
             .iter()
             .find(|profile| profile.id == "nestopia-ue:flatpak-nes")
+            .unwrap();
+        assert_eq!(
+            mapping.calibrations["pad-a"]
+                .plan_profile(profile)
+                .unwrap()
+                .rows
+                .len(),
+            8
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn guided_punes_apply_updates_two_player_setup() {
+        let directory = tempfile::tempdir().unwrap();
+        let content = directory.path().join("oracle.nes");
+        std::fs::write(&content, b"nes").unwrap();
+        let mut mapping = crate::settings::ControllerMappingSettings::default();
+        mapping
+            .calibrations
+            .insert("pad-a".into(), nes_calibration());
+        mapping
+            .calibrations
+            .insert("pad-b".into(), nes_calibration());
+        mapping.punes_flatpak_launches.push(
+            crate::controller_punes_flatpak::settings::SavedSetup {
+                emulator_id: "punes-id".into(),
+                content: content.clone(),
+                source_main_config: "/tmp/punes/puNES.cfg".into(),
+                source_input_config: "/tmp/punes/input.cfg".into(),
+                probe_program: "/tmp/lunchbox-controller-probe".into(),
+                executable_sha256: "a".repeat(64),
+                players: vec![crate::controller_punes_flatpak::settings::Player {
+                    player: 1,
+                    controller_id: "old-a".into(),
+                }],
+            },
+        );
+        let plan = LaunchPlan {
+            emulator_name: "puNES".into(),
+            program: "/usr/bin/flatpak".into(),
+            arguments: vec![OsString::from("run"), content.into_os_string()],
+            current_directory: PathBuf::from("/tmp"),
+            environment: Vec::new(),
+            cleanup_paths: Vec::new(),
+            retroarch_content: None,
+        };
+        assert_eq!(
+            apply_punes_players(
+                &mut mapping,
+                "punes-id",
+                &plan,
+                &["pad-a".into(), "pad-b".into()],
+            )
+            .unwrap(),
+            1
+        );
+        let players = &mapping.punes_flatpak_launches[0].players;
+        assert_eq!(players[0].controller_id, "pad-a");
+        assert_eq!(players[1].controller_id, "pad-b");
+        let profile = catalog()
+            .emulator_profiles
+            .iter()
+            .find(|profile| profile.id == "punes:flatpak-nes-standard")
             .unwrap();
         assert_eq!(
             mapping.calibrations["pad-a"]

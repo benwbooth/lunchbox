@@ -308,6 +308,7 @@ ColumnLayout {
         readonly property bool dolphin: adapter === "dolphin"
         readonly property bool snes9x: adapter === "snes9x"
         readonly property bool nestopia: adapter === "nestopia"
+        readonly property bool punes: adapter === "punes"
         readonly property bool fceux: adapter === "fceux"
         readonly property bool sameboy: adapter === "sameboy"
         readonly property bool bsnes: adapter === "bsnes"
@@ -332,7 +333,7 @@ ColumnLayout {
         readonly property bool rpcs3: adapter === "rpcs3"
         readonly property bool pcsx2: adapter === "pcsx2"
         readonly property var catalog: JSON.parse(setup.settingsModel.controller_catalog_json())
-        title: nestopia ? "Nestopia UE Flatpak setups — exact Linux deployment" : melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
+        title: punes ? "puNES Flatpak setups — exact Linux deployment" : nestopia ? "Nestopia UE Flatpak setups — exact Linux deployment" : melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
         width: Math.min(900, setup.width)
         height: 640
         modal: true
@@ -341,7 +342,9 @@ ColumnLayout {
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: duckstationSetups.nestopia
+                text: duckstationSetups.punes
+                    ? "puNES Flatpak 0.111: edit a JSON list with emulator_id, content, source_main_config, source_input_config, probe_program, executable_sha256, and one or two players. Each player has a contiguous player number and controller_id. Paths are absolute; configs must be siblings in the installed Flatpak profile. Launch pins the exact app/runtime hashes, creates fixed target evdev pads, stages private 0700/0600 config, and preserves the native data root. This contract accepts only ordinary .nes/.unf/.unif cartridges; FDS, NSF, Four Score, and special peripherals require separate review."
+                    : duckstationSetups.nestopia
                     ? "Nestopia UE Flatpak 1.53.2: edit a JSON list with emulator_id, content, source_main_config, source_input_config, probe_program, sdl_library, executable_sha256, and exactly two players. Each player has player (1 or 2) and controller_id. All paths are absolute; configs must be the installed Flatpak profile siblings. Review uses saved calibration only. Launch pins the exact app/runtime hashes, stages private 0700/0600 config, rechecks target SDL2 routing, and preserves native cartridge/state data."
                     : duckstationSetups.melonds
                     ? "melonDS standard controls: JSON setups require emulator_id, content, executable_sha256, source_config, probe_program, sdl_library, bubblewrap_program and players. runtime_libraries must be empty for the SDL2 probe. Supply one player entry with player: 1, controller_id and source_controls for a/b/x/y, up/down/left/right, start/select and l/r. Paths must be absolute. Review shows calibrated source links and the DS destination layout; stylus, lid and microphone controls are not implemented by this adapter. Native Linux launch integration is partial and untested."
@@ -483,6 +486,8 @@ ColumnLayout {
                             ? setup.settingsModel.review_sameboy_setups(duckstationEditor.text)
                             : duckstationSetups.fceux
                             ? setup.settingsModel.review_fceux_setups(duckstationEditor.text)
+                            : duckstationSetups.punes
+                            ? setup.settingsModel.review_punes_flatpak_setups(duckstationEditor.text)
                             : duckstationSetups.nestopia
                             ? setup.settingsModel.review_nestopia_ue_flatpak_setups(duckstationEditor.text)
                             : duckstationSetups.snes9x
@@ -551,6 +556,8 @@ ColumnLayout {
                             ? setup.settingsModel.stage_sameboy_setups(duckstationEditor.text)
                             : duckstationSetups.fceux
                             ? setup.settingsModel.stage_fceux_setups(duckstationEditor.text)
+                            : duckstationSetups.punes
+                            ? setup.settingsModel.stage_punes_flatpak_setups(duckstationEditor.text)
                             : duckstationSetups.nestopia
                             ? setup.settingsModel.stage_nestopia_ue_flatpak_setups(duckstationEditor.text)
                             : duckstationSetups.snes9x
@@ -608,6 +615,8 @@ ColumnLayout {
                             ? "Staged. Save settings in the main page. SameBoy native dispatch is partial; runtime details are user-declared and tilt-game axes remain unresolved; no devices were opened."
                             : duckstationSetups.fceux
                             ? "Staged. Save settings in the main page. FCEUX native dispatch is partial: ROM device overrides remain unresolved. No devices were opened."
+                            : duckstationSetups.punes
+                            ? "Staged. Save settings in the main page. puNES launch will verify the exact Flatpak runtime, private configs, fixed target evdev paths, and persistent native data root; no devices were opened while staging."
                             : duckstationSetups.nestopia
                             ? "Staged. Save settings in the main page. Nestopia launch will verify the exact Flatpak runtime, private configs, both controller paths, and persistent native data root; no devices were opened while staging."
                             : duckstationSetups.snes9x
@@ -673,6 +682,17 @@ ColumnLayout {
             duckstationEditor.text = setup.settingsModel.nestopia_ue_flatpak_setups_json()
             duckstationSetups.review = []
             duckstationStatus.text = "Saved mapping review only. Exact Flatpak runtime, controller routing, private config, and persistent data checks occur at launch."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "puNES Flatpak setups…"
+        visible: Qt.platform.os === "linux"
+        onClicked: {
+            duckstationSetups.adapter = "punes"
+            duckstationEditor.text = setup.settingsModel.punes_flatpak_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Saved mapping review only. Exact Flatpak runtime, fixed evdev routing, private config, and persistent data checks occur at launch."
             duckstationSetups.open()
         }
     }

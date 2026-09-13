@@ -738,7 +738,8 @@ impl GamepadFrame {
 
 /// Read-only input for exactly the selected gamepad controls. A session owner
 /// must publish `neutral()` on errors/shutdown and retain ownership of the
-/// selected device identity; this type does not discover or grab input devices.
+/// selected device identity. Device discovery remains the caller's job; callers
+/// that need exclusive delivery can grab this reader's already-verified FD.
 #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 pub struct GamepadReader {
     file: std::fs::File,
@@ -750,6 +751,8 @@ pub struct GamepadReader {
 
 #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 impl GamepadReader {
+    const EVIOCGRAB: libc::c_ulong = 0x4004_4590;
+
     pub fn open(
         path: &std::path::Path,
         frame: GamepadFrame,
@@ -770,6 +773,19 @@ impl GamepadReader {
             needs_snapshot: true,
             failed: false,
         })
+    }
+
+    /// Route all evdev events exclusively to this already-open reader until
+    /// its descriptor is dropped. Linux releases the grab when the FD closes.
+    pub fn grab_exclusive(&self) -> Result<()> {
+        use std::os::fd::AsRawFd;
+
+        ensure!(
+            unsafe { libc::ioctl(self.file.as_raw_fd(), Self::EVIOCGRAB, 1 as libc::c_int,) } >= 0,
+            "Cannot exclusively capture selected gamepad: {}",
+            std::io::Error::last_os_error()
+        );
+        Ok(())
     }
 
     fn bit(bits: &[u8; 96], code: u16) -> bool {
@@ -1647,6 +1663,25 @@ mod tests {
             maximum: 32767,
             ..Default::default()
         }
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+    fn exclusive_capture_fails_closed_for_a_non_evdev_descriptor() {
+        let reader = GamepadReader {
+            file: std::fs::File::open("/dev/null").unwrap(),
+            frame: GamepadFrame::new([0x130], []).unwrap(),
+            dropping: false,
+            needs_snapshot: true,
+            failed: false,
+        };
+        assert!(
+            reader
+                .grab_exclusive()
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot exclusively capture selected gamepad")
+        );
     }
 
     #[test]

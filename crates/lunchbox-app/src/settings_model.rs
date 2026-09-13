@@ -312,6 +312,18 @@ pub mod qobject {
             self: Pin<&mut SettingsModel>,
             configuration: QString,
         ) -> QString;
+        #[cfg(target_os = "linux")]
+        #[qinvokable]
+        fn punes_flatpak_setups_json(self: &SettingsModel) -> QString;
+        #[cfg(target_os = "linux")]
+        #[qinvokable]
+        fn review_punes_flatpak_setups(self: &SettingsModel, configuration: QString) -> QString;
+        #[cfg(target_os = "linux")]
+        #[qinvokable]
+        fn stage_punes_flatpak_setups(
+            self: Pin<&mut SettingsModel>,
+            configuration: QString,
+        ) -> QString;
         #[qinvokable]
         fn fceux_setups_json(self: &SettingsModel) -> QString;
         #[qinvokable]
@@ -3747,6 +3759,66 @@ impl qobject::SettingsModel {
                     .rust_mut()
                     .controller_mapping
                     .nestopia_ue_flatpak_launches = setups;
+                self.as_mut().controller_settings_changed();
+                qstring("")
+            }
+            Err(error) => qstring(format!("{error:#}")),
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn punes_flatpak_setups_json(&self) -> QString {
+        qstring(
+            serde_json::to_string_pretty(&self.rust().controller_mapping.punes_flatpak_launches)
+                .expect("puNES Flatpak setups serialize"),
+        )
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn review_punes_flatpak_setups(&self, configuration: QString) -> QString {
+        let result = (|| -> anyhow::Result<Vec<serde_json::Value>> {
+            let text = configuration.to_string();
+            anyhow::ensure!(
+                text.len() <= 2 * 1024 * 1024,
+                "puNES Flatpak setup text exceeds size limit"
+            );
+            let setups: Vec<crate::controller_punes_flatpak::settings::SavedSetup> =
+                serde_json::from_str(&text)?;
+            crate::controller_punes_flatpak::settings::validate_setups(&setups)?;
+            setups
+                .iter()
+                .map(|setup| setup.review(&self.rust().controller_mapping.calibrations))
+                .collect()
+        })();
+        qstring(match result {
+            Ok(reviews) => serde_json::json!({"setups":reviews}).to_string(),
+            Err(error) => serde_json::json!({"error":format!("{error:#}")}).to_string(),
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn stage_punes_flatpak_setups(mut self: Pin<&mut Self>, configuration: QString) -> QString {
+        let result =
+            (|| -> anyhow::Result<Vec<crate::controller_punes_flatpak::settings::SavedSetup>> {
+                let text = configuration.to_string();
+                anyhow::ensure!(
+                    text.len() <= 2 * 1024 * 1024,
+                    "puNES Flatpak setup text exceeds size limit"
+                );
+                let setups: Vec<crate::controller_punes_flatpak::settings::SavedSetup> =
+                    serde_json::from_str(&text)?;
+                crate::controller_punes_flatpak::settings::validate_setups(&setups)?;
+                for setup in &setups {
+                    setup.review(&self.rust().controller_mapping.calibrations)?;
+                }
+                Ok(setups)
+            })();
+        match result {
+            Ok(setups) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .punes_flatpak_launches = setups;
                 self.as_mut().controller_settings_changed();
                 qstring("")
             }

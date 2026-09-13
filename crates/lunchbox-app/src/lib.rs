@@ -136,6 +136,8 @@ mod controller_proton_standalone;
 mod controller_provenance_standalone;
 mod controller_psx;
 mod controller_puae;
+#[cfg(target_os = "linux")]
+mod controller_punes_flatpak;
 mod controller_punes_native;
 mod controller_px68k_standalone;
 mod controller_quasi88_standalone;
