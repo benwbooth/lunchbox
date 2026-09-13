@@ -67,8 +67,9 @@ jobs:
               --core "$core_path" \
               --sha256 "$core_sha256" \
               --system "$SYSTEM" \
+              --output "$evidence/${label}.json" \
               "$@" \
-              > "$evidence/${label}.json" \
+              > "$evidence/${label}.stdout" \
               2> "$evidence/${label}.stderr"; then
               cat "$evidence/${label}.stderr" >&2
               return 1

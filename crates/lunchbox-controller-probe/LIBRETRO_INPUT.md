@@ -19,7 +19,9 @@ configuration was accepted. Run both frontend callback paths:
     nix develop -c cargo run -p lunchbox-controller-probe --bin lunchbox-libretro-input -- --core /absolute/trusted/mgba_libretro.so --sha256 EXPECTED_SHA256 --bitmask
 
 Output records core identity/hash, callback request counts, reported memory size,
-and expected/observed KEYINPUT values. The CLI's watchdog terminates its own
+and expected/observed KEYINPUT values. Pass `--output /new/report.json` to write
+the report with create-new semantics while leaving native core stdout separate;
+without it, JSON is printed to stdout for compatibility. The CLI's watchdog terminates its own
 process after 15 seconds by default (`--timeout-seconds`, range 1–120). A core
 that does not return from a callback cannot hang the Lunchbox GUI because this
 helper is never loaded into that process. Native code is **not sandboxed** by the

@@ -1,6 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
 use lunchbox_controller_probe::libretro_input::{Diagnostic, NesTopology, SnesTopology};
+use serde::Serialize;
+use std::io::Write;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -12,6 +14,9 @@ struct Args {
     sha256: String,
     #[arg(long)]
     bitmask: bool,
+    /// New file that receives the JSON report; native core stdout remains separate.
+    #[arg(long)]
+    output: Option<PathBuf>,
     /// Only call retro_api_version and retro_get_system_info; do not initialize the core.
     #[arg(long)]
     identity_only: bool,
@@ -29,12 +34,29 @@ struct Args {
     #[arg(long, default_value_t = 15, value_parser = clap::value_parser!(u64).range(1..=120))]
     timeout_seconds: u64,
 }
+
+fn emit_json(value: &impl Serialize, output: Option<&PathBuf>) -> Result<()> {
+    let bytes = serde_json::to_vec_pretty(value)?;
+    if let Some(path) = output {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)?;
+        file.write_all(&bytes)?;
+        file.write_all(b"\n")?;
+        file.sync_all()?;
+    } else {
+        println!("{}", String::from_utf8(bytes)?);
+    }
+    Ok(())
+}
+
 fn run() -> Result<()> {
     let args = Args::parse();
     if args.identity_only {
         let identity =
             lunchbox_controller_probe::libretro_input::core_identity(&args.core, &args.sha256)?;
-        println!("{}", serde_json::to_string_pretty(&identity)?);
+        emit_json(&identity, args.output.as_ref())?;
         return Ok(());
     }
     let (done, receiver) = std::sync::mpsc::channel();
@@ -58,7 +80,7 @@ fn run() -> Result<()> {
     );
     let _ = done.send(());
     let _ = watchdog.join();
-    println!("{}", serde_json::to_string_pretty(&result?)?);
+    emit_json(&result?, args.output.as_ref())?;
     Ok(())
 }
 fn main() {
