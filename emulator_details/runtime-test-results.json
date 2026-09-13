@@ -217,9 +217,9 @@
       "host_os": "windows",
       "controller_test_status": "pass",
       "firmware_test_status": "not_tested",
-      "save_test_status": "not_tested",
-      "state_test_status": "not_tested",
-      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot mGBA 0.11-219-e31759b, mgba_libretro.dll sha256 d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33. The original GBA diagnostic passed all 26/26 KEYINPUT observations in individual mode and 26/26 in negotiated-bitmask mode. This proves the exact DLL's direct-core controller callback path only; optional BIOS acceptance, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Machine-parseable schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot mGBA 0.11-219-e31759b, mgba_libretro.dll sha256 d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33. The original GBA input diagnostic passed 26/26 KEYINPUT observations in each callback mode. Four fresh workers executed the original 4,096-byte SRAM cartridge (sha256 272a6bd18723cb246342359c414e5515968152e2e31d54ffa4d27c96211c3030), consumed LBSG01 and published LBSG02 from a 32,768-byte save, and restored LBSTATE1 from a 430,144-byte state (sha256 b27f8f06b608f7b5d8f8132d682ef7f2f2e0b717a3601a24756064784a97bb90) after same-process and fresh-process mutation. This proves direct-core save reload and behavioral state restoration, not optional BIOS acceptance, RetroArch frontend paths, physical input, or sync. Save sync remains blocked because no real-provider export/restore was exercised. Schema-2/3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739246329."
     },
     {
       "runtime_kind": "retroarch",
@@ -227,9 +227,9 @@
       "host_os": "windows",
       "controller_test_status": "pass",
       "firmware_test_status": "not_tested",
-      "save_test_status": "not_tested",
-      "state_test_status": "not_tested",
-      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Genesis Plus GX v1.7.4 c2838c7, genesis_plus_gx_libretro.dll sha256 c53e9ef8fcb72f85d574ed2d0a4dc963a425586f1cd0039ee06ad381e6a4afc3. The original Game Gear diagnostic passed all 22/22 hardware-register observations in individual mode and 22/22 in negotiated-bitmask mode. This proves the exact DLL's direct-core controller callback path only; optional firmware, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Machine-parseable schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Genesis Plus GX v1.7.4 c2838c7, genesis_plus_gx_libretro.dll sha256 c53e9ef8fcb72f85d574ed2d0a4dc963a425586f1cd0039ee06ad381e6a4afc3. The original Game Gear input diagnostic passed 22/22 hardware-register observations in each callback mode. Four fresh workers executed the original 65,536-byte mapper cartridge (sha256 132f435ad5f427bf20c16ab9dd06a68da1f62574ba9fb4ef500efb8eef700962), consumed LBSG01 and published LBSG02 from the six modified save bytes, and restored LBSTATE1 from a 1,036,288-byte state (sha256 f13681de6a5e39bf70143c5a6bbaebecb16cde9f926b325a1a7c7f0af288ae98) after same-process and fresh-process mutation. This proves direct-core save reload and behavioral state restoration, not optional firmware, RetroArch frontend paths, physical input, or sync. Save sync remains blocked because no real-provider export/restore was exercised. Schema-2/3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739246329."
     },
     {
       "runtime_kind": "retroarch",
@@ -237,9 +237,9 @@
       "host_os": "windows",
       "controller_test_status": "pass",
       "firmware_test_status": "not_tested",
-      "save_test_status": "not_tested",
-      "state_test_status": "not_tested",
-      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot FCEUmm (SVN) 236ccdf, fceumm_libretro.dll sha256 0fa1061243f0bfdded5a6b50c249dbaab94117cc5ac5285a1e001a20a2da69f4. The original NES diagnostic passed 42/42 two-player and 84/84 Four Score observations in each of individual and negotiated-bitmask modes; every connected player was stimulated independently. This proves the exact DLL's direct-core controller callback path only; optional FDS/Game Genie assets, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Machine-parseable schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot FCEUmm (SVN) 236ccdf, fceumm_libretro.dll sha256 0fa1061243f0bfdded5a6b50c249dbaab94117cc5ac5285a1e001a20a2da69f4. The original NES input diagnostic passed 42/42 two-player and 84/84 Four Score observations in each callback mode. Four fresh workers executed the original 24,592-byte battery NROM (sha256 0ae807dfe80d7178f082e0d6297e94b145d2880ff5a974fa5c1b26f6bf1beaaa), consumed LBSR01 and published LBSR02 from an 8,192-byte save, and restored LBSTATE1 from the Windows-build-specific 13,758-byte state (sha256 bee78e96580ffec841d9c4728fbfc03e1c0411e93a34b7780d91c6def6a3a604) after same-process and fresh-process mutation. This proves direct-core save reload and behavioral state restoration, not optional FDS/Game Genie assets, RetroArch frontend paths, physical input, or sync. Save sync remains blocked because no real-provider export/restore was exercised. Schema-2/3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739246329."
     },
     {
       "runtime_kind": "retroarch",
@@ -247,9 +247,9 @@
       "host_os": "windows",
       "controller_test_status": "pass",
       "firmware_test_status": "not_tested",
-      "save_test_status": "not_tested",
-      "state_test_status": "not_tested",
-      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Mesen 0.9.9, mesen_libretro.dll sha256 53f3ebc11e4287c37b01cc53d3dc7975116ca5e99e73727425e5762f96353d9f. The original NES diagnostic passed 42/42 two-player and 84/84 Four Score observations in each of individual and negotiated-bitmask modes; every connected player was stimulated independently. This proves the exact DLL's direct-core controller callback path only; optional FDS BIOS acceptance, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Machine-parseable schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Mesen 0.9.9, mesen_libretro.dll sha256 53f3ebc11e4287c37b01cc53d3dc7975116ca5e99e73727425e5762f96353d9f. The original NES input diagnostic passed 42/42 two-player and 84/84 Four Score observations in each callback mode. Four fresh workers executed the original 24,592-byte battery NROM (sha256 0ae807dfe80d7178f082e0d6297e94b145d2880ff5a974fa5c1b26f6bf1beaaa), consumed LBSR01 and published LBSR02 from an 8,192-byte save, and restored LBSTATE1 from a 35,840-byte state (sha256 48600d706efe59ec24a5d6ecefe71f821d108884ff736303113de45d3364081b) after same-process and fresh-process mutation. This proves direct-core save reload and behavioral state restoration, not optional FDS BIOS acceptance, RetroArch frontend paths, physical input, or sync. Save sync remains blocked because no real-provider export/restore was exercised. Schema-2/3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739246329."
     },
     {
       "runtime_kind": "retroarch",
@@ -267,9 +267,9 @@
       "host_os": "windows",
       "controller_test_status": "pass",
       "firmware_test_status": "not_tested",
-      "save_test_status": "not_tested",
-      "state_test_status": "not_tested",
-      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Snes9x 1.63 890b5d4, snes9x_libretro.dll sha256 9a7e9401efe087eab04a22c47f0fb71ae9381aabd761db22a5ccb18f42ccdf1e. The original SNES diagnostic passed all 58/58 two-player and 145/145 port-two-multitap observations in each of individual and negotiated-bitmask modes. Each process emitted one native Map_LoROMMap line, but explicit report-file output isolated it from the machine-parseable JSON. This proves the exact DLL's direct-core controller path only; optional firmware, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
+      "save_test_status": "blocked",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Snes9x 1.63 890b5d4, snes9x_libretro.dll sha256 9a7e9401efe087eab04a22c47f0fb71ae9381aabd761db22a5ccb18f42ccdf1e. The original SNES input diagnostic passed 58/58 two-player and 145/145 port-two-multitap observations in each callback mode; explicit report-file output isolated native Map_LoROMMap lines from JSON. Four fresh workers executed the original 32,768-byte SRAM LoROM (sha256 68cf012eec8fa8d1bfa5494f4330fddca48b505ef9c4ef67aaa2bf26504493d6), consumed LBSG01 and published LBSG02 from an 8,192-byte save, and restored LBSTATE1 from an 823,407-byte state (sha256 39b21c0669fd3b669401ec20e71bdc61d3a47e14231ef0bd5a19547fc00b691b) after same-process and fresh-process mutation. This proves direct-core save reload and behavioral state restoration, not optional firmware, RetroArch frontend paths, physical input, or sync. Save sync remains blocked because no real-provider export/restore was exercised. Schema-2/3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739246329."
     }
   ]
 }

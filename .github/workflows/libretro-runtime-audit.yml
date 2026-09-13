@@ -20,31 +20,37 @@ jobs:
           - core: mgba
             system: gba
             persistence_system: gba
+            persistence_expect: pass
             expected_version: '0.11-219-e31759b'
             expected_state_bytes: 430144
           - core: genesis_plus_gx
             system: gamegear
             persistence_system: game-gear
+            persistence_expect: pass
             expected_version: 'v1.7.4 c2838c7'
             expected_state_bytes: 1036288
           - core: fceumm
             system: nes
             persistence_system: nes-fceumm
+            persistence_expect: pass
             expected_version: '(SVN) 236ccdf'
             expected_state_bytes: 13758
           - core: mesen
             system: nes
             persistence_system: nes-mesen
+            persistence_expect: pass
             expected_version: '0.9.9'
             expected_state_bytes: 35840
           - core: bsnes
             system: snes
-            persistence_system: ''
+            persistence_system: bsnes
+            persistence_expect: blocked
             expected_version: '115'
-            expected_state_bytes: 0
+            expected_state_bytes: ''
           - core: snes9x
             system: snes
             persistence_system: snes9x
+            persistence_expect: pass
             expected_version: '1.63 890b5d4'
             expected_state_bytes: 823407
     steps:
@@ -60,6 +66,7 @@ jobs:
           CORE: ${{ matrix.core }}
           SYSTEM: ${{ matrix.system }}
           PERSISTENCE_SYSTEM: ${{ matrix.persistence_system }}
+          PERSISTENCE_EXPECT: ${{ matrix.persistence_expect }}
           EXPECTED_VERSION: ${{ matrix.expected_version }}
           EXPECTED_STATE_BYTES: ${{ matrix.expected_state_bytes }}
         run: |
@@ -126,17 +133,31 @@ jobs:
 
           if [[ -n "$PERSISTENCE_SYSTEM" ]]; then
             persistence="$workspace/target/release/lunchbox-libretro-persistence.exe"
-            if ! "$persistence" \
-              --core "$core_path" \
-              --sha256 "$core_sha256" \
-              --system "$PERSISTENCE_SYSTEM" \
-              --expected-version "$EXPECTED_VERSION" \
-              --expected-state-bytes "$EXPECTED_STATE_BYTES" \
-              --output "$evidence/persistence" \
+            persistence_args=(
+              --core "$core_path"
+              --sha256 "$core_sha256"
+              --system "$PERSISTENCE_SYSTEM"
+              --expected-version "$EXPECTED_VERSION"
+              --output "$evidence/persistence"
+            )
+            if [[ -n "$EXPECTED_STATE_BYTES" ]]; then
+              persistence_args+=(--expected-state-bytes "$EXPECTED_STATE_BYTES")
+            fi
+            if [[ "$PERSISTENCE_EXPECT" == blocked ]]; then
+              if "$persistence" "${persistence_args[@]}" \
+                > "$evidence/persistence.stdout" \
+                2> "$evidence/persistence.stderr"; then
+                echo 'bsnes unexpectedly passed the direct-memory persistence oracle' >&2
+                exit 1
+              fi
+              grep -F \
+                'bsnes 115 deliberately exposes neither save RAM nor system RAM through the libretro memory interface' \
+                "$evidence/persistence.stderr"
+            elif ! "$persistence" "${persistence_args[@]}" \
               > "$evidence/persistence.stdout" \
               2> "$evidence/persistence.stderr"; then
-              cat "$evidence/persistence.stderr" >&2
-              exit 1
+                cat "$evidence/persistence.stderr" >&2
+                exit 1
             fi
           fi
 

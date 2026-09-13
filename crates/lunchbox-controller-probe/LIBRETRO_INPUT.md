@@ -194,6 +194,26 @@ used private empty system/save directories and prove the direct-core controller
 paths only. They do not test optional firmware, persistent-save reload, state
 restoration, RetroArch frontend configuration, physical controllers, or sync.
 
+A follow-up run,
+[`34739246329`](https://github.com/benwbooth/lunchbox/actions/runs/34739246329),
+repeated the input assertions and ran the four-worker persistence oracle for
+the five cores that expose save and system memory. Each created a deterministic
+save, consumed it in a fresh process, wrote the second marker, and restored
+`LBSTATE1` after deliberate same-process and fresh-process mutation:
+
+| Core | Reloaded save | Exact state artifact |
+| --- | --- | --- |
+| mGBA | 32,768 bytes | 430,144 bytes, SHA-256 `b27f8f06b608f7b5d8f8132d682ef7f2f2e0b717a3601a24756064784a97bb90` |
+| Genesis Plus GX | 6 modified bytes | 1,036,288 bytes, SHA-256 `f13681de6a5e39bf70143c5a6bbaebecb16cde9f926b325a1a7c7f0af288ae98` |
+| FCEUmm | 8,192 bytes | 13,758 bytes, SHA-256 `bee78e96580ffec841d9c4728fbfc03e1c0411e93a34b7780d91c6def6a3a604` |
+| Mesen | 8,192 bytes | 35,840 bytes, SHA-256 `48600d706efe59ec24a5d6ecefe71f821d108884ff736303113de45d3364081b` |
+| Snes9x | 8,192 bytes | 823,407 bytes, SHA-256 `39b21c0669fd3b669401ec20e71bdc61d3a47e14231ef0bd5a19547fc00b691b` |
+
+This promotes behavioral state restoration, but not provider synchronization.
+The save status remains blocked until a real provider export/restore is tested
+without losing a newer version. bsnes remains outside this memory-ABI oracle
+because it exposes null save/system-memory pointers and zero sizes.
+
 ## PlayStation / Beetle PSX
 
 Select `--system psx`, a trusted Beetle PSX or Beetle PSX HW core and its expected
