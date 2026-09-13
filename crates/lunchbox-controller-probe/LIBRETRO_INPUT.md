@@ -213,6 +213,9 @@ This promotes behavioral state restoration, but not provider synchronization.
 The save status remains blocked until a real provider export/restore is tested
 without losing a newer version. bsnes remains outside this memory-ABI oracle
 because it exposes null save/system-memory pointers and zero sizes.
+Run [`34739476873`](https://github.com/benwbooth/lunchbox/actions/runs/34739476873)
+repeated that exact negative contract on Windows and retained the failure artifact;
+save and state remain blocked pending a separate file-based oracle.
 
 ## PlayStation / Beetle PSX
 

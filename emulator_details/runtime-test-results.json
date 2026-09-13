@@ -257,9 +257,9 @@
       "host_os": "windows",
       "controller_test_status": "pass",
       "firmware_test_status": "not_tested",
-      "save_test_status": "not_tested",
-      "state_test_status": "not_tested",
-      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot bsnes 115, bsnes_libretro.dll sha256 d6a6033215b96834ffbcf8702a1aad43f2358fa980a6af7c029940a94ba3ff89. The original SNES diagnostic passed all 58/58 two-player and 145/145 port-two-multitap observations in individual mode; this core does not negotiate libretro joypad bitmasks, so that mode was not claimed. This proves the exact DLL's direct-core controller path only; optional enhancement firmware, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Machine-parseable schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
+      "save_test_status": "blocked",
+      "state_test_status": "blocked",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot bsnes 115, bsnes_libretro.dll sha256 d6a6033215b96834ffbcf8702a1aad43f2358fa980a6af7c029940a94ba3ff89. The original SNES diagnostic passed all 58/58 two-player and 145/145 port-two-multitap observations in individual mode; this core does not negotiate libretro joypad bitmasks, so that mode was not claimed. The four-worker persistence oracle then verified that both libretro save-RAM and system-RAM interfaces returned null pointers and zero sizes before failing with its exact documented bsnes limitation. Save reload and behavioral state restoration therefore require a separate file-based oracle; optional enhancement firmware, RetroArch frontend paths, physical input, and sync remain untested. The input reports and expected negative persistence artifact are retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739476873."
     },
     {
       "runtime_kind": "retroarch",
