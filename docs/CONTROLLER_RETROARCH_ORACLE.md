@@ -26,7 +26,7 @@ Z buttons become L2/R2.
 
 For this additional test, set `LUNCHBOX_ORACLE_PSX_CORE` to the software Beetle
 core with SHA-256
-`767bb60bd96d3f19806a9311d96638c9ca39272d1236035a752952bb4b4c1968` and
+`c718ba34de4548937bce76efbd4130399c6c5fb25c335833080b391b92034674` and
 `LUNCHBOX_ORACLE_PSX_BIOS_DIR` to a local directory containing `scph5500.bin`,
 `scph5501.bin`, and `scph5502.bin`. BIOS files are copied only into the private
 test directory; no firmware or game data is bundled. Run the named PSX test
@@ -35,6 +35,14 @@ below. `READ_CORE_MEMORY 00020000 36` returns the execution marker and the
 first controller's four-byte BIOS response at offset `0x20`. The valid-response
 prefix is `00 41`, followed by two active-low button bytes.
 
+The companion `brawler64_config_reaches_psx_hw_hardware_through_retroarch`
+test uses `LUNCHBOX_ORACLE_PSX_HW_CORE` and pins SHA-256
+`25176f77c060cf74c4561f745bab181d9bb6b620591f92f82ad0d53c1cc7fb56`.
+It exercises the same digital hardware assertions through the PSX HW launch
+profile. The isolated Flatpak run negotiated an OpenGL Core 3.3 shared hardware
+context and executed it with Mesa llvmpipe; this proves the frontend/core HW
+context handshake in software rendering, not physical-GPU behavior.
+
 This test verifies the digital Brawler64 path on the software core, not disc
 compatibility overrides or the complete automatic `prepare` entry point.
 The separate `lunchbox-libretro-input --system psx` diagnostic checks both
@@ -42,6 +50,11 @@ Beetle variants directly, with DualShock on both ports and mixed digital /
 DualShock ports, in individual and bitmask callback modes. Each run makes 90
 observations. Its `contract_source_revision` describes the expected input
 contract; observed core hash and version identify the binary actually tested.
+The exact Linux x86_64 and macOS arm64 core identities and retained report
+locations are recorded in
+[`LIBRETRO_INPUT.md`](../crates/lunchbox-controller-probe/LIBRETRO_INPUT.md);
+these direct-core runs do not promote the separate Linux-only RetroArch launch
+oracle to another frontend or host.
 
 ## Saved-calibration launch path
 
@@ -300,4 +313,4 @@ save-sync export/restore test. The matrix therefore records only
 - [RetroArch 1.22.2 memory command response](https://github.com/libretro/RetroArch/blob/69a4f0ea1e8aaf442ae4858f2e7f2b31a1776576/command.c#L1074-L1114)
 - [RetroArch command syntax](https://github.com/libretro/RetroArch/blob/69a4f0ea1e8aaf442ae4858f2e7f2b31a1776576/command.h#L442-L457)
 - [mGBA libretro memory maps and frame input](https://github.com/mgba-emu/mgba/blob/e31759b24e7a4e3899285ff720d7b573ac328ae7/src/platform/libretro/libretro.c#L1537-L1821)
-- [Beetle PSX input and memory maps](https://github.com/libretro/beetle-psx-libretro/blob/56f4732070835bb81078dd8ecab7246e203612a1/libretro.c)
+- [Beetle PSX input and memory maps](https://github.com/libretro/beetle-psx-libretro/blob/82d8e051d1c7741a18d930be90e458b48abaa9a1/libretro.c)

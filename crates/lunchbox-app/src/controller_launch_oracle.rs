@@ -158,6 +158,13 @@ enum OracleTarget {
     Gba,
     Nes,
     Psx,
+    PsxHw,
+}
+
+impl OracleTarget {
+    fn is_psx(self) -> bool {
+        matches!(self, Self::Psx | Self::PsxHw)
+    }
 }
 
 fn await_keys(
@@ -184,7 +191,7 @@ fn await_keys(
             .write_all(match target {
                 OracleTarget::Gba => b"READ_CORE_MEMORY 02000000 8\n",
                 OracleTarget::Nes => b"READ_CORE_MEMORY 00000000 4\n",
-                OracleTarget::Psx => b"READ_CORE_MEMORY 00020000 36\n",
+                OracleTarget::Psx | OracleTarget::PsxHw => b"READ_CORE_MEMORY 00020000 36\n",
             })?;
         // A command written while the frontend is still creating its stdin
         // command driver may be consumed before the core publishes a memory
@@ -204,7 +211,7 @@ fn await_keys(
             .map(|s| u8::from_str_radix(s, 16))
             .collect::<std::result::Result<Vec<_>, _>>();
         if let Ok(bytes) = values {
-            if target == OracleTarget::Psx
+            if target.is_psx()
                 && bytes.len() == 36
                 && bytes[..4] == [0x4c, 0x42, 0x50, 0x53]
                 && bytes[32..34] == [0, 0x41]
@@ -305,6 +312,12 @@ fn brawler64_config_reaches_nes_hardware_through_nestopia() -> Result<()> {
 #[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, trusted Beetle PSX core and local BIOS; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn brawler64_config_reaches_psx_hardware_through_retroarch() -> Result<()> {
     brawler64_hardware_oracle(OracleTarget::Psx, false)
+}
+
+#[test]
+#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, trusted Beetle PSX HW core and local BIOS; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
+fn brawler64_config_reaches_psx_hw_hardware_through_retroarch() -> Result<()> {
+    brawler64_hardware_oracle(OracleTarget::PsxHw, false)
 }
 
 #[test]
@@ -534,7 +547,13 @@ fn brawler64_hardware_oracle(target: OracleTarget, saved_launch: bool) -> Result
             "LUNCHBOX_ORACLE_PSX_CORE",
             "mednafen_psx_libretro.so",
             "input.exe",
-            "767bb60bd96d3f19806a9311d96638c9ca39272d1236035a752952bb4b4c1968",
+            "c718ba34de4548937bce76efbd4130399c6c5fb25c335833080b391b92034674",
+        ),
+        OracleTarget::PsxHw => (
+            "LUNCHBOX_ORACLE_PSX_HW_CORE",
+            "mednafen_psx_hw_libretro.so",
+            "input.exe",
+            "25176f77c060cf74c4561f745bab181d9bb6b620591f92f82ad0d53c1cc7fb56",
         ),
     };
     let core = PathBuf::from(std::env::var(core_env).context("Set trusted core path")?);
@@ -572,10 +591,12 @@ fn brawler64_hardware_oracle(target: OracleTarget, saved_launch: bool) -> Result
         match target {
             OracleTarget::Gba => lunchbox_controller_probe::libretro_input::gba_diagnostic_rom(),
             OracleTarget::Nes => lunchbox_controller_probe::libretro_input::nes_diagnostic_rom(),
-            OracleTarget::Psx => lunchbox_controller_probe::libretro_input::psx_diagnostic_exe(),
+            OracleTarget::Psx | OracleTarget::PsxHw => {
+                lunchbox_controller_probe::libretro_input::psx_diagnostic_exe()
+            }
         },
     )?;
-    if target == OracleTarget::Psx {
+    if target.is_psx() {
         let bios = PathBuf::from(
             std::env::var("LUNCHBOX_ORACLE_PSX_BIOS_DIR")
                 .context("Set local PlayStation BIOS directory")?,
@@ -645,11 +666,12 @@ fn brawler64_hardware_oracle(target: OracleTarget, saved_launch: bool) -> Result
             .iter()
             .find(|profile| profile.id == "retroarch:nestopia:nes-2player"),
         OracleTarget::Psx => catalog().launch_mode("mednafen_psx", "PSX", 1),
+        OracleTarget::PsxHw => catalog().launch_mode("mednafen_psx_hw", "PSX", 1),
     }
     .context("Missing diagnostic core contract")?;
     if !saved_launch {
         let mut mapping = player_config(&calibration, profile, &numbering, 1)?;
-        if target == OracleTarget::Psx {
+        if target.is_psx() {
             mapping.push_str(&write_core_options_snapshot(profile, "", dir)?);
             mapping.push_str("input_libretro_device_p2 = \"0\"\ninput_max_users = \"1\"\n");
         }
@@ -789,7 +811,7 @@ fn brawler64_hardware_oracle(target: OracleTarget, saved_launch: bool) -> Result
     let released = match target {
         OracleTarget::Gba => 0x03ff,
         OracleTarget::Nes => 0x00ff,
-        OracleTarget::Psx => 0xffff,
+        OracleTarget::Psx | OracleTarget::PsxHw => 0xffff,
     };
     // Software GL and a cold shader cache can make isolated Flatpak startup
     // materially slower than an input transition once frames are running.
@@ -812,7 +834,7 @@ fn brawler64_hardware_oracle(target: OracleTarget, saved_launch: bool) -> Result
     }
     // Expected bits come from console hardware protocols, not generated config.
     let cases = match target {
-        OracleTarget::Psx => vec![
+        OracleTarget::Psx | OracleTarget::PsxHw => vec![
             (vec!["a"], 1 << 14),      // Cross
             (vec!["b"], 1 << 15),      // Square
             (vec!["c_down"], 1 << 13), // Circle

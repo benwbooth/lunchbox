@@ -557,8 +557,13 @@ unsafe fn capture_controllers(
         for index in 0..info.count as usize {
             let choice = unsafe { &*info.types.add(index) };
             // MAME 0.287 includes its null-label terminator in `count`. Accept
-            // that specific valid C-array shape rather than dereferencing it.
+            // only that exact final {NULL, 0} C-array entry rather than
+            // dereferencing it.
             if choice.description.is_null() {
+                ensure!(
+                    index + 1 == info.count as usize && choice.id == 0,
+                    "Controller-info has an invalid null-label terminator"
+                );
                 break;
             }
             choices.push(ControllerChoice {

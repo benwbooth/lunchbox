@@ -22,14 +22,15 @@ The 94 canonical RetroArch cores also have one structured record apiece. Every
 record is linked to at least one exact controller profile; together they cover
 399 firmware-file dispositions, save behavior, state serialization, and all
 four frontend hosts. Core host availability is intentionally conservative:
-thirteen exact macOS arm64 core/system combinations were executed from twelve
-official buildbot artifacts on an Apple Silicon host, seven Linux cores were
-executed directly (including two exact Flatpak-updater binaries), eleven Windows
+fifteen exact macOS arm64 core/system combinations were executed from fourteen
+official buildbot artifacts on an Apple Silicon host, eleven Linux core/host
+cells were executed (seven native, two exact Flatpak-updater binaries, and two
+external exact cores through the installed Flatpak frontend), eleven Windows
 core/system combinations were executed from ten official x86_64 buildbot
 artifacts on hosted Windows Server 2025 VMs, and one Windows SteemSSE artifact
 is source-verified as available. Mesen-S is
 explicitly unavailable on macOS and Windows because the current official
-artifact paths returned HTTP 404. The other 344 core/host cells remain `unverified`
+artifact paths returned HTTP 404. The other 338 core/host cells remain `unverified`
 rather than inheriting availability from the RetroArch frontend.
 
 Because the shared RetroArch frontend record supplies the platform paths for

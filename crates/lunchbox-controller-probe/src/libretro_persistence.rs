@@ -18,7 +18,7 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const REPORT_SCHEMA: u32 = 4;
+const REPORT_SCHEMA: u32 = 5;
 const RETRO_MEMORY_SAVE_RAM: u32 = 0;
 const RETRO_MEMORY_SYSTEM_RAM: u32 = 2;
 const MARKER_OFFSET: usize = 0x100;
@@ -28,6 +28,7 @@ const FIRST_SAVE_OBSERVATION: &[u8; 6] = b"LBSG01";
 const SECOND_SAVE_OBSERVATION: &[u8; 6] = b"LBSG02";
 const FIRST_NES_SAVE_OBSERVATION: &[u8; 5] = b"LBSR\x01";
 const SECOND_NES_SAVE_OBSERVATION: &[u8; 5] = b"LBSR\x02";
+const PSX_MEMORY_CARD_MARKER_OFFSET: usize = 0x1f000;
 const CAPTURE_LIMIT: usize = 1024 * 1024;
 
 static SYSTEM_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
@@ -52,6 +53,8 @@ pub enum PersistenceSystem {
     Snes9x,
     Bsnes,
     MesenS,
+    PsxBeetle,
+    PsxBeetleHw,
 }
 
 impl PersistenceSystem {
@@ -272,6 +275,36 @@ impl PersistenceSystem {
                 second_observation: SECOND_SAVE_OBSERVATION,
                 state_bytes: Some(550_912),
             },
+            Self::PsxBeetle => CoreSpec {
+                name: "Beetle PSX",
+                version: "0.9.44.1 82d8e05",
+                extension: "exe",
+                need_fullpath: true,
+                pre_save_bytes: 128 * 1024,
+                post_save_bytes: 128 * 1024,
+                system_ram_bytes: 2 * 1024 * 1024,
+                system_ram_offset: 0,
+                memory_map: None,
+                frame_limit: 12,
+                first_observation: FIRST_SAVE_OBSERVATION,
+                second_observation: SECOND_SAVE_OBSERVATION,
+                state_bytes: Some(16_777_216),
+            },
+            Self::PsxBeetleHw => CoreSpec {
+                name: "Beetle PSX HW",
+                version: "0.9.44.1 82d8e05",
+                extension: "exe",
+                need_fullpath: true,
+                pre_save_bytes: 128 * 1024,
+                post_save_bytes: 128 * 1024,
+                system_ram_bytes: 2 * 1024 * 1024,
+                system_ram_offset: 0,
+                memory_map: None,
+                frame_limit: 12,
+                first_observation: FIRST_SAVE_OBSERVATION,
+                second_observation: SECOND_SAVE_OBSERVATION,
+                state_bytes: Some(16_777_216),
+            },
         }
     }
 
@@ -291,6 +324,8 @@ impl PersistenceSystem {
             Self::Snes9x => "snes9x",
             Self::Bsnes => "bsnes",
             Self::MesenS => "mesen-s",
+            Self::PsxBeetle => "psx-beetle",
+            Self::PsxBeetleHw => "psx-beetle-hw",
         }
     }
 
@@ -305,6 +340,37 @@ impl PersistenceSystem {
             Self::GameGear => game_gear_persistence_rom(),
             Self::NesFceumm | Self::NesMesen => nes_persistence_rom(),
             Self::Snes9x | Self::Bsnes | Self::MesenS => snes_persistence_rom(),
+            Self::PsxBeetle | Self::PsxBeetleHw => {
+                lunchbox_controller_probe::libretro_input::psx_diagnostic_exe()
+            }
+        }
+    }
+
+    fn is_psx(self) -> bool {
+        matches!(self, Self::PsxBeetle | Self::PsxBeetleHw)
+    }
+
+    fn save_marker_offset(self) -> usize {
+        if self.is_psx() {
+            PSX_MEMORY_CARD_MARKER_OFFSET
+        } else {
+            0
+        }
+    }
+
+    fn save_observation_source(self) -> &'static str {
+        if self.is_psx() {
+            "frontend-libretro-memory-card-buffer"
+        } else {
+            "executed-diagnostic-program"
+        }
+    }
+
+    fn core_option_overrides(self) -> BTreeMap<String, String> {
+        if self == Self::PsxBeetleHw {
+            BTreeMap::from([("beetle_psx_hw_renderer".into(), "software".into())])
+        } else {
+            BTreeMap::new()
         }
     }
 }
@@ -352,6 +418,9 @@ pub struct SupervisorArgs {
     /// Trusted runtime dependency to load before the core, repeatable in dependency order.
     #[arg(long)]
     runtime_library: Vec<PathBuf>,
+    /// Directory containing exact scph5500.bin, scph5501.bin, and scph5502.bin dumps.
+    #[arg(long)]
+    bios_dir: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ValueEnum)]
@@ -393,6 +462,8 @@ struct WorkerArgs {
     #[arg(long)]
     runtime_library: Vec<PathBuf>,
     #[arg(long)]
+    bios_dir: Option<PathBuf>,
+    #[arg(long)]
     report: PathBuf,
 }
 
@@ -411,6 +482,14 @@ struct RuntimeLibrary {
     sha256: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct FirmwareIdentity {
+    filename: String,
+    bytes: usize,
+    sha256: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct WorkerReport {
@@ -420,6 +499,8 @@ struct WorkerReport {
     core: CoreIdentity,
     expected_state_bytes: Option<usize>,
     runtime_libraries: Vec<RuntimeLibrary>,
+    firmware: Vec<FirmwareIdentity>,
+    core_option_overrides: BTreeMap<String, String>,
     diagnostic_rom_sha256: String,
     pre_save_bytes: Option<usize>,
     post_save_bytes: Option<usize>,
@@ -428,6 +509,8 @@ struct WorkerReport {
     system_ram_emulated_address: Option<usize>,
     system_ram_bytes: usize,
     system_ram_offset: usize,
+    save_observation_source: String,
+    save_marker_offset: usize,
     observation_hex: Option<String>,
     save_sha256: Option<String>,
     state_bytes: Option<usize>,
@@ -445,6 +528,8 @@ struct PersistenceReport {
     core: CoreIdentity,
     expected_state_bytes: usize,
     runtime_libraries: Vec<RuntimeLibrary>,
+    firmware: Vec<FirmwareIdentity>,
+    core_option_overrides: BTreeMap<String, String>,
     evidence_directory: PathBuf,
     diagnostic_rom: Artifact,
     reported_system_ram_bytes: usize,
@@ -466,6 +551,8 @@ struct Artifact {
 #[derive(Debug, Serialize)]
 struct SaveRamReport {
     status: &'static str,
+    observation_source: String,
+    marker_offset: usize,
     initial_observation_hex: String,
     fresh_process_observation_hex: String,
     initial: Artifact,
@@ -657,6 +744,7 @@ impl Core {
         content_path: &Path,
         content: &[u8],
         root: &Path,
+        system_directory: Option<&Path>,
         runtime_library_paths: &[PathBuf],
     ) -> Result<Self> {
         let spec = system.spec();
@@ -674,10 +762,18 @@ impl Core {
         ] {
             std::fs::create_dir_all(root.join(directory))?;
         }
+        let system_directory = system_directory
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| root.join("system"))
+            .canonicalize()?;
+        ensure!(
+            system_directory.is_dir(),
+            "System directory is not a directory"
+        );
         *SYSTEM_DIRECTORY
             .lock()
             .map_err(|_| anyhow::anyhow!("System-directory callback lock poisoned"))? =
-            Some(path_c_string(&root.join("system"))?);
+            Some(path_c_string(&system_directory)?);
         *SAVE_DIRECTORY
             .lock()
             .map_err(|_| anyhow::anyhow!("Save-directory callback lock poisoned"))? =
@@ -685,7 +781,7 @@ impl Core {
         *OPTIONS
             .lock()
             .map_err(|_| anyhow::anyhow!("Core-option callback lock poisoned"))? =
-            Some(OptionEnvironment::new(BTreeMap::new())?);
+            Some(OptionEnvironment::new(system.core_option_overrides())?);
         *MEMORY_MAP
             .lock()
             .map_err(|_| anyhow::anyhow!("Memory-map capture lock poisoned"))? = Ok(None);
@@ -979,6 +1075,46 @@ fn runtime_inventory(paths: &[PathBuf]) -> Result<(Vec<PathBuf>, Vec<RuntimeLibr
     Ok((canonical, inventory))
 }
 
+fn psx_firmware_inventory(directory: &Path) -> Result<(PathBuf, Vec<FirmwareIdentity>)> {
+    let directory = directory
+        .canonicalize()
+        .context("Canonicalizing PSX BIOS directory")?;
+    ensure!(directory.is_dir(), "PSX BIOS path is not a directory");
+    let expected = [
+        (
+            "scph5500.bin",
+            "9c0421858e217805f4abe18698afea8d5aa36ff0727eb8484944e00eb5e7eadb",
+        ),
+        (
+            "scph5501.bin",
+            "11052b6499e466bbf0a709b1f9cb6834a9418e66680387912451e971cf8a1fef",
+        ),
+        (
+            "scph5502.bin",
+            "1faaa18fa820a0225e488d9f086296b8e6c46df739666093987ff7d8fd352c09",
+        ),
+    ];
+    let mut firmware = Vec::new();
+    for (filename, expected_hash) in expected {
+        let path = directory.join(filename);
+        let metadata = std::fs::metadata(&path)?;
+        ensure!(metadata.is_file(), "{filename} is not a regular file");
+        let bytes = usize::try_from(metadata.len()).context("PSX BIOS file is too large")?;
+        ensure!(bytes == 512 * 1024, "{filename} is not exactly 512 KiB");
+        let sha256 = file_hash(&path)?;
+        ensure!(
+            sha256 == expected_hash,
+            "{filename} SHA-256 is not the pinned dump"
+        );
+        firmware.push(FirmwareIdentity {
+            filename: filename.into(),
+            bytes,
+            sha256,
+        });
+    }
+    Ok((directory, firmware))
+}
+
 fn diagnostic_path(root: &Path, system: PersistenceSystem) -> PathBuf {
     root.join(format!(
         "persistence-diagnostic.{}",
@@ -1013,6 +1149,30 @@ fn pre_run_observation_bytes(
     }
 }
 
+fn applied_core_option_overrides(system: PersistenceSystem) -> Result<BTreeMap<String, String>> {
+    let requested = system.core_option_overrides();
+    let options = OPTIONS
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Core-option callback lock poisoned"))?;
+    let effective = options
+        .as_ref()
+        .context("Core-option environment is unavailable")?
+        .effective_values()?;
+    requested
+        .into_iter()
+        .map(|(key, expected)| {
+            let observed = effective
+                .get(&key)
+                .with_context(|| format!("Requested core option was not registered: {key}"))?;
+            ensure!(
+                observed == &expected,
+                "Core option {key} resolved to {observed}, expected {expected}"
+            );
+            Ok((key, expected))
+        })
+        .collect()
+}
+
 fn worker(args: WorkerArgs) -> Result<WorkerReport> {
     let expected_hash = validate_hash(&args.sha256)?;
     let expected_version = resolve_expected_version(args.system, Some(&args.expected_version))?;
@@ -1024,6 +1184,20 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
     );
     let (runtime_paths, runtime_libraries) = runtime_inventory(&args.runtime_library)?;
     let spec = args.system.spec();
+    let (system_directory, firmware) = if args.system.is_psx() {
+        let directory = args
+            .bios_dir
+            .as_deref()
+            .context("PSX persistence requires --bios-dir")?;
+        let (directory, firmware) = psx_firmware_inventory(directory)?;
+        (Some(directory), firmware)
+    } else {
+        ensure!(
+            args.bios_dir.is_none(),
+            "--bios-dir is only valid for PSX persistence"
+        );
+        (None, Vec::new())
+    };
     let rom = args.system.diagnostic_rom();
     let rom_path = diagnostic_path(&args.evidence, args.system);
     std::fs::create_dir_all(&args.evidence)?;
@@ -1038,9 +1212,11 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
             &rom_path,
             &rom,
             &args.evidence,
+            system_directory.as_deref(),
             &runtime_paths,
         )?
     };
+    let core_option_overrides = applied_core_option_overrides(args.system)?;
     if args.system == PersistenceSystem::Bsnes {
         let save_pointer = unsafe { (core.memory)(RETRO_MEMORY_SAVE_RAM) };
         let system_pointer = unsafe { (core.memory)(RETRO_MEMORY_SYSTEM_RAM) };
@@ -1076,6 +1252,8 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         core: core.identity.clone(),
         expected_state_bytes,
         runtime_libraries,
+        firmware,
+        core_option_overrides,
         diagnostic_rom_sha256: rom_hash,
         pre_save_bytes: None,
         post_save_bytes: None,
@@ -1088,6 +1266,8 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         system_ram_emulated_address: spec.memory_map.map(|mapping| mapping.address),
         system_ram_bytes,
         system_ram_offset: spec.system_ram_offset,
+        save_observation_source: args.system.save_observation_source().into(),
+        save_marker_offset: args.system.save_marker_offset(),
         observation_hex: None,
         save_sha256: None,
         state_bytes: None,
@@ -1104,8 +1284,20 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
                 "Expected {} pre-run save bytes, got {pre_size}",
                 spec.pre_save_bytes
             );
-            let observed =
-                core.run_until_observation(spec.first_observation, spec, spec.frame_limit)?;
+            let observed = if args.system.is_psx() {
+                unsafe { (core.run)() };
+                let offset = args.system.save_marker_offset();
+                let save = unsafe { core.memory_slice_mut(RETRO_MEMORY_SAVE_RAM)? };
+                ensure!(
+                    offset + spec.first_observation.len() <= save.len(),
+                    "PSX memory-card marker is outside save memory"
+                );
+                save[offset..offset + spec.first_observation.len()]
+                    .copy_from_slice(spec.first_observation);
+                save[offset..offset + spec.first_observation.len()].to_vec()
+            } else {
+                core.run_until_observation(spec.first_observation, spec, spec.frame_limit)?
+            };
             let post_size = core.memory_size(RETRO_MEMORY_SAVE_RAM);
             ensure!(
                 post_size == spec.post_save_bytes,
@@ -1113,9 +1305,11 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
                 spec.post_save_bytes
             );
             let save = unsafe { core.memory_slice(RETRO_MEMORY_SAVE_RAM)? }.to_vec();
+            let offset = args.system.save_marker_offset();
             ensure!(
-                save.starts_with(spec.first_observation),
-                "Save buffer does not contain the executed program's observation"
+                save.get(offset..offset + spec.first_observation.len())
+                    == Some(spec.first_observation),
+                "Save buffer does not contain the expected observation"
             );
             let path = save_path(&args.evidence, args.system, false);
             std::fs::write(&path, save)?;
@@ -1141,8 +1335,23 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
             let target = unsafe { core.memory_slice_mut(RETRO_MEMORY_SAVE_RAM)? };
             target.fill(0xff);
             target[..save.len()].copy_from_slice(&save);
-            let observed =
-                core.run_until_observation(spec.second_observation, spec, spec.frame_limit)?;
+            let observed = if args.system.is_psx() {
+                unsafe { (core.run)() };
+                let offset = args.system.save_marker_offset();
+                let target = unsafe { core.memory_slice_mut(RETRO_MEMORY_SAVE_RAM)? };
+                ensure!(
+                    target.get(offset..offset + spec.first_observation.len())
+                        == Some(spec.first_observation),
+                    "Fresh PSX process did not receive the persisted memory-card marker"
+                );
+                target[offset..offset + spec.second_observation.len()]
+                    .copy_from_slice(spec.second_observation);
+                unsafe { (core.run)() };
+                let target = unsafe { core.memory_slice(RETRO_MEMORY_SAVE_RAM)? };
+                target[offset..offset + spec.second_observation.len()].to_vec()
+            } else {
+                core.run_until_observation(spec.second_observation, spec, spec.frame_limit)?
+            };
             let post_size = core.memory_size(RETRO_MEMORY_SAVE_RAM);
             ensure!(
                 post_size == spec.post_save_bytes,
@@ -1150,9 +1359,11 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
                 spec.post_save_bytes
             );
             let after = unsafe { core.memory_slice(RETRO_MEMORY_SAVE_RAM)? }.to_vec();
+            let offset = args.system.save_marker_offset();
             ensure!(
-                after.starts_with(spec.second_observation),
-                "Reloaded save buffer was not updated by emulated code"
+                after.get(offset..offset + spec.second_observation.len())
+                    == Some(spec.second_observation),
+                "Reloaded save buffer does not contain the second observation"
             );
             let after_path = save_path(&args.evidence, args.system, true);
             std::fs::write(&after_path, after)?;
@@ -1164,7 +1375,11 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         WorkerPhase::StateCreate => {
             let expected_state_bytes = expected_state_bytes
                 .context("No pinned state size; supply --expected-state-bytes for this system")?;
-            core.run_until_observation(spec.first_observation, spec, spec.frame_limit)?;
+            if args.system.is_psx() {
+                unsafe { (core.run)() };
+            } else {
+                core.run_until_observation(spec.first_observation, spec, spec.frame_limit)?;
+            }
             let ram = unsafe { core.observation_memory_slice_mut(spec)? };
             ensure!(
                 ram.len() >= marker_offset + STATE_MARKER.len(),
@@ -1208,7 +1423,11 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         WorkerPhase::StateReload => {
             let expected_state_bytes = expected_state_bytes
                 .context("No pinned state size; supply --expected-state-bytes for this system")?;
-            core.run_until_observation(spec.first_observation, spec, spec.frame_limit)?;
+            if args.system.is_psx() {
+                unsafe { (core.run)() };
+            } else {
+                core.run_until_observation(spec.first_observation, spec, spec.frame_limit)?;
+            }
             let before = unsafe { core.observation_memory_slice(spec)? }
                 [marker_offset..marker_offset + STATE_MARKER.len()]
                 .to_vec();
@@ -1315,6 +1534,8 @@ fn run_worker(
             PersistenceSystem::Snes9x => "snes9x",
             PersistenceSystem::Bsnes => "bsnes",
             PersistenceSystem::MesenS => "mesen-s",
+            PersistenceSystem::PsxBeetle => "psx-beetle",
+            PersistenceSystem::PsxBeetleHw => "psx-beetle-hw",
         })
         .arg("--expected-version")
         .arg(expected_version)
@@ -1327,6 +1548,9 @@ fn run_worker(
     }
     for path in &args.runtime_library {
         command.arg("--runtime-library").arg(path);
+    }
+    if let Some(path) = &args.bios_dir {
+        command.arg("--bios-dir").arg(path);
     }
     let mut child = command
         .env("XDG_CONFIG_HOME", evidence.join("xdg-config"))
@@ -1452,6 +1676,8 @@ fn validate_reports(
     };
     let diagnostic_hash = &reports[0].diagnostic_rom_sha256;
     let runtime_libraries = &reports[0].runtime_libraries;
+    let firmware = &reports[0].firmware;
+    let core_option_overrides = system.core_option_overrides();
     let expected_reported_system_ram_bytes = if spec.memory_map.is_some() {
         0
     } else {
@@ -1480,6 +1706,14 @@ fn validate_reports(
             "Runtime dependencies changed between workers"
         );
         ensure!(
+            report.firmware == *firmware,
+            "Firmware identities changed between workers"
+        );
+        ensure!(
+            report.core_option_overrides == core_option_overrides,
+            "Core-option overrides changed between workers"
+        );
+        ensure!(
             report.system_ram_bytes == spec.system_ram_bytes,
             "System RAM size changed between workers"
         );
@@ -1493,6 +1727,11 @@ fn validate_reports(
         ensure!(
             report.system_ram_offset == spec.system_ram_offset,
             "System RAM offset changed between workers"
+        );
+        ensure!(
+            report.save_observation_source == system.save_observation_source()
+                && report.save_marker_offset == system.save_marker_offset(),
+            "Save observation contract changed between workers"
         );
     }
     ensure!(
@@ -1533,6 +1772,21 @@ fn supervisor(mut args: SupervisorArgs) -> Result<PersistenceReport> {
         resolve_expected_state_bytes(args.system, args.expected_state_bytes)?;
     let (runtime_paths, runtime_libraries) = runtime_inventory(&args.runtime_library)?;
     args.runtime_library = runtime_paths;
+    let firmware = if args.system.is_psx() {
+        let bios = args
+            .bios_dir
+            .as_deref()
+            .context("PSX persistence requires --bios-dir")?;
+        let (bios, firmware) = psx_firmware_inventory(bios)?;
+        args.bios_dir = Some(bios);
+        firmware
+    } else {
+        ensure!(
+            args.bios_dir.is_none(),
+            "--bios-dir is only valid for PSX persistence"
+        );
+        Vec::new()
+    };
     let core = args
         .core
         .canonicalize()
@@ -1579,6 +1833,10 @@ fn supervisor(mut args: SupervisorArgs) -> Result<PersistenceReport> {
         reports[0].runtime_libraries == runtime_libraries,
         "Worker runtime dependency inventory differs from the supervisor"
     );
+    ensure!(
+        reports[0].firmware == firmware,
+        "Worker firmware inventory differs from the supervisor"
+    );
 
     let initial_save_hash = reports[0]
         .save_sha256
@@ -1602,6 +1860,8 @@ fn supervisor(mut args: SupervisorArgs) -> Result<PersistenceReport> {
         core: reports[0].core.clone(),
         expected_state_bytes,
         runtime_libraries,
+        firmware,
+        core_option_overrides: args.system.core_option_overrides(),
         evidence_directory: evidence.clone(),
         diagnostic_rom: artifact(
             diagnostic_path(&evidence, args.system),
@@ -1614,6 +1874,8 @@ fn supervisor(mut args: SupervisorArgs) -> Result<PersistenceReport> {
         system_ram_offset: args.system.spec().system_ram_offset,
         save_ram: SaveRamReport {
             status: "pass",
+            observation_source: args.system.save_observation_source().into(),
+            marker_offset: args.system.save_marker_offset(),
             initial_observation_hex: bytes_hex(args.system.spec().first_observation),
             fresh_process_observation_hex: bytes_hex(args.system.spec().second_observation),
             initial: artifact(save_path(&evidence, args.system, false), initial_save_hash)?,
@@ -2245,6 +2507,34 @@ mod tests {
             (snes.name, snes.pre_save_bytes, snes.post_save_bytes),
             ("Snes9x", 8_192, 8_192)
         );
+        for (system, name) in [
+            (PersistenceSystem::PsxBeetle, "Beetle PSX"),
+            (PersistenceSystem::PsxBeetleHw, "Beetle PSX HW"),
+        ] {
+            let psx = system.spec();
+            assert_eq!(psx.name, name);
+            assert_eq!(psx.version, "0.9.44.1 82d8e05");
+            assert_eq!(psx.extension, "exe");
+            assert!(psx.need_fullpath);
+            assert_eq!(psx.pre_save_bytes, 131_072);
+            assert_eq!(psx.post_save_bytes, 131_072);
+            assert_eq!(psx.system_ram_bytes, 2_097_152);
+            assert_eq!(psx.state_bytes, Some(16_777_216));
+            assert_eq!(system.save_marker_offset(), 126_976);
+            assert_eq!(
+                system.save_observation_source(),
+                "frontend-libretro-memory-card-buffer"
+            );
+        }
+        assert!(
+            PersistenceSystem::PsxBeetle
+                .core_option_overrides()
+                .is_empty()
+        );
+        assert_eq!(
+            PersistenceSystem::PsxBeetleHw.core_option_overrides(),
+            BTreeMap::from([("beetle_psx_hw_renderer".into(), "software".into())])
+        );
         let gameboy = [
             (
                 PersistenceSystem::GameboyGambatte,
@@ -2368,6 +2658,8 @@ mod tests {
             core: identity,
             expected_state_bytes: spec.state_bytes,
             runtime_libraries: Vec::new(),
+            firmware: Vec::new(),
+            core_option_overrides: BTreeMap::new(),
             diagnostic_rom_sha256: "b".repeat(64),
             pre_save_bytes: None,
             post_save_bytes: None,
@@ -2376,6 +2668,8 @@ mod tests {
             system_ram_emulated_address: None,
             system_ram_bytes: spec.system_ram_bytes,
             system_ram_offset: spec.system_ram_offset,
+            save_observation_source: system.save_observation_source().into(),
+            save_marker_offset: system.save_marker_offset(),
             observation_hex: None,
             save_sha256: None,
             state_bytes: None,

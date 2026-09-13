@@ -62,6 +62,7 @@ struct NativeControllerInfo {
 unsafe fn capture_controller_choices(
     data: *const NativeControllerInfo,
 ) -> Result<ControllerChoices> {
+    ensure!(!data.is_null(), "Core supplied a null controller-info list");
     let mut ports = Vec::new();
     for port in 0..=16 {
         let info = unsafe { &*data.add(port) };
@@ -79,10 +80,16 @@ unsafe fn capture_controller_choices(
         let mut choices = Vec::new();
         for index in 0..info.count as usize {
             let choice = unsafe { &*info.types.add(index) };
-            ensure!(
-                !choice.description.is_null(),
-                "Core controller choice has no label"
-            );
+            if choice.description.is_null() {
+                // Some released cores include their conventional {NULL, 0}
+                // C-array terminator in `count`. Accept only that exact final
+                // entry; a null label anywhere else is malformed.
+                ensure!(
+                    index + 1 == info.count as usize && choice.id == 0,
+                    "Core controller choice has an invalid null-label terminator"
+                );
+                break;
+            }
             let mut bytes = Vec::new();
             let mut terminated = false;
             for offset in 0..=1024 {
@@ -800,7 +807,7 @@ fn mips_j(op: u32, address: u32) -> u32 {
 /// The executable format and I/O protocol are independently reviewable; no
 /// Sony program or game bytes are embedded. Packet semantics are cross-checked
 /// against the pinned Beetle source revision used by the runtime diagnostic:
-/// <https://github.com/libretro/beetle-psx-libretro/tree/56f4732070835bb81078dd8ecab7246e203612a1>
+/// <https://github.com/libretro/beetle-psx-libretro/tree/82d8e051d1c7741a18d930be90e458b48abaa9a1>
 pub fn psx_diagnostic_exe() -> Vec<u8> {
     // Register aliases used below.
     const ZERO: u32 = 0;
@@ -2274,9 +2281,9 @@ pub fn inspect_with_runtime_options(
                 psx_observations,
                 firmware,
                 runtime_libraries: runtime_libraries.clone(),
-                contract_source_revision: Some("56f4732070835bb81078dd8ecab7246e203612a1"),
+                contract_source_revision: Some("82d8e051d1c7741a18d930be90e458b48abaa9a1"),
                 contract_source_url: Some(
-                    "https://github.com/libretro/beetle-psx-libretro/tree/56f4732070835bb81078dd8ecab7246e203612a1",
+                    "https://github.com/libretro/beetle-psx-libretro/tree/82d8e051d1c7741a18d930be90e458b48abaa9a1",
                 ),
             });
         }
@@ -3163,6 +3170,81 @@ fn run_psx_observations(core: &Core) -> Result<Vec<PsxObservation>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn controller_capture_accepts_only_a_counted_terminal_null_choice() {
+        let label = CString::new("PlayStation Controller").unwrap();
+        let valid_choices = [
+            NativeControllerChoice {
+                description: label.as_ptr(),
+                id: 1,
+            },
+            NativeControllerChoice {
+                description: std::ptr::null(),
+                id: 0,
+            },
+        ];
+        let valid_ports = [
+            NativeControllerInfo {
+                types: valid_choices.as_ptr(),
+                count: valid_choices.len() as u32,
+            },
+            NativeControllerInfo {
+                types: std::ptr::null(),
+                count: 0,
+            },
+        ];
+        let captured = unsafe { capture_controller_choices(valid_ports.as_ptr()) }.unwrap();
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].len(), 1);
+        assert_eq!(captured[0][0].description, "PlayStation Controller");
+        assert_eq!(captured[0][0].id, 1);
+
+        let misplaced_null = [
+            NativeControllerChoice {
+                description: std::ptr::null(),
+                id: 0,
+            },
+            NativeControllerChoice {
+                description: label.as_ptr(),
+                id: 1,
+            },
+        ];
+        let misplaced_ports = [
+            NativeControllerInfo {
+                types: misplaced_null.as_ptr(),
+                count: misplaced_null.len() as u32,
+            },
+            NativeControllerInfo {
+                types: std::ptr::null(),
+                count: 0,
+            },
+        ];
+        assert!(unsafe { capture_controller_choices(misplaced_ports.as_ptr()) }.is_err());
+
+        let nonzero_terminator = [
+            NativeControllerChoice {
+                description: label.as_ptr(),
+                id: 1,
+            },
+            NativeControllerChoice {
+                description: std::ptr::null(),
+                id: 7,
+            },
+        ];
+        let nonzero_ports = [
+            NativeControllerInfo {
+                types: nonzero_terminator.as_ptr(),
+                count: nonzero_terminator.len() as u32,
+            },
+            NativeControllerInfo {
+                types: std::ptr::null(),
+                count: 0,
+            },
+        ];
+        assert!(unsafe { capture_controller_choices(nonzero_ports.as_ptr()) }.is_err());
+        assert!(unsafe { capture_controller_choices(std::ptr::null()) }.is_err());
+    }
+
     #[test]
     fn psx_exe_is_reproducible_and_reloads_the_bios_vector() {
         let exe = psx_diagnostic_exe();

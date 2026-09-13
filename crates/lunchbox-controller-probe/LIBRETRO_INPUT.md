@@ -291,6 +291,38 @@ ports, then a mixed digital/DualShock configuration. Digital mode is checked not
 to request analog axes. Run both individual and `--bitmask` callback paths.
 Results appear in `psx_observations`, with firmware identities in `firmware`.
 
+On 2026-09-13 the official Linux x86-64 `latest` builds of Beetle PSX
+`0.9.44.1 82d8e05` passed both callback modes. Each report contains 90/90 exact
+PAD packet matches: 45 for each port, covering digital release and 14 buttons,
+DualShock release and all 16 buttons, and positive/negative movement on all four
+axes. Individual mode made 5,280 joypad queries; negotiated bitmask mode made
+330 mask queries and no individual-button queries. Both made 1,024 analog
+queries and exposed 2 MiB of system RAM.
+
+| Core | SHA-256 | Additional runtime dependency |
+| --- | --- | --- |
+| Beetle PSX | `c718ba34de4548937bce76efbd4130399c6c5fb25c335833080b391b92034674` | none |
+| Beetle PSX HW | `25176f77c060cf74c4561f745bab181d9bb6b620591f92f82ad0d53c1cc7fb56` | Nix libGLvnd `libGL.so.1.7.0`, SHA-256 `515b5485533697033854cedd09f5b6f2b9c74eb88edd4c7f34c4c3c3356b4332` |
+
+The official macOS arm64 `latest` dylibs repeated all 90/90 observations in
+both callback modes on macOS 26.5.1 on an M1, with the same query, descriptor,
+controller-choice, firmware, and 2 MiB RAM contracts:
+
+| Core | SHA-256 | Linked runtime dependency |
+| --- | --- | --- |
+| Beetle PSX | `20e52419f9f693cce563dd63711ce70ff21ad3b30965696c97d828e38db4fd22` | none beyond system libraries |
+| Beetle PSX HW | `0a7018fd6574f3d56c804af949f69beccaffb4e41cda455ee02f9ef61c66cbcb` | `/System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL` |
+
+The exact upstream revision includes a conventional `{NULL, 0}` terminator in
+its advertised controller-choice count. The capture code accepts only that
+exact final zero-ID entry and still rejects a null label elsewhere. Each core
+advertised nine real controller choices on both active ports and generated 160
+input descriptors across four device-selection updates. Retained reports are
+under `target/runtime-evidence/libretro-psx-linux-2026-09-13` and
+`target/runtime-evidence/libretro-psx-macos-arm64-2026-09-13`; the complete
+macOS audit directory is also retained on that host at
+`/Users/ben/lunchbox-runtime-audit-20260913-macos-psx/evidence`.
+
 This is a core-level input diagnostic, not a test of every game's compatibility
 rules or of physical-controller discovery and launch-time configuration. The
 application's prepared-disc compatibility checks and RetroArch launch oracle

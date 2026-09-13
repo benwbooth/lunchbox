@@ -230,6 +230,116 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  windows-psx-firmware-boundary:
+    name: Windows PSX firmware boundary (${{ matrix.core }})
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - core: mednafen_psx
+            persistence_system: psx-beetle
+            expected_version: '0.9.44.1 82d8e05'
+            expected_state_bytes: 16777216
+          - core: mednafen_psx_hw
+            persistence_system: psx-beetle-hw
+            expected_version: '0.9.44.1 82d8e05'
+            expected_state_bytes: 16777216
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build bounded PSX oracles
+        run: >-
+          cargo build --locked --release --package lunchbox-controller-probe
+          --bin lunchbox-libretro-input --bin lunchbox-libretro-persistence
+      - name: Pin core identity and verify the absent-firmware boundary
+        shell: bash
+        env:
+          CORE: ${{ matrix.core }}
+          PERSISTENCE_SYSTEM: ${{ matrix.persistence_system }}
+          EXPECTED_VERSION: ${{ matrix.expected_version }}
+          EXPECTED_STATE_BYTES: ${{ matrix.expected_state_bytes }}
+        run: |
+          set -euo pipefail
+
+          runner_temp="$(cygpath -u "$RUNNER_TEMP")"
+          workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
+          evidence="$runner_temp/lunchbox-libretro-${CORE}-firmware-boundary"
+          mkdir -p "$evidence/unpacked" "$evidence/empty-bios"
+          url="https://buildbot.libretro.com/nightly/windows/x86_64/latest/${CORE}_libretro.dll.zip"
+          curl --fail --location --retry 3 "$url" -o "$evidence/core.zip"
+          unzip -q "$evidence/core.zip" -d "$evidence/unpacked"
+          core_path="$(find "$evidence/unpacked" -type f -name "${CORE}_libretro.dll" -print -quit)"
+          test -n "$core_path"
+          core_sha256="$(sha256sum "$core_path" | cut -d ' ' -f 1)"
+          archive_sha256="$(sha256sum "$evidence/core.zip" | cut -d ' ' -f 1)"
+          input="$workspace/target/release/lunchbox-libretro-input.exe"
+          persistence="$workspace/target/release/lunchbox-libretro-persistence.exe"
+
+          "$input" \
+            --core "$core_path" \
+            --sha256 "$core_sha256" \
+            --identity-only \
+            --output "$evidence/identity.json"
+          test "$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["core_version"])' "$evidence/identity.json")" = "$EXPECTED_VERSION"
+
+          if "$input" \
+            --core "$core_path" \
+            --sha256 "$core_sha256" \
+            --system psx \
+            --bios-dir "$evidence/empty-bios" \
+            --output "$evidence/input.json" \
+            > "$evidence/input.stdout" \
+            2> "$evidence/input.stderr"; then
+            echo 'PSX input unexpectedly ran without the required BIOS set' >&2
+            exit 1
+          fi
+          grep -F 'Reading required BIOS' "$evidence/input.stderr"
+          grep -F 'scph5500.bin' "$evidence/input.stderr"
+
+          if "$persistence" \
+            --core "$core_path" \
+            --sha256 "$core_sha256" \
+            --system "$PERSISTENCE_SYSTEM" \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-state-bytes "$EXPECTED_STATE_BYTES" \
+            --bios-dir "$evidence/empty-bios" \
+            --output "$evidence/persistence" \
+            > "$evidence/persistence.stdout" \
+            2> "$evidence/persistence.stderr"; then
+            echo 'PSX persistence unexpectedly ran without the required BIOS set' >&2
+            exit 1
+          fi
+          grep -F 'scph5500.bin' "$evidence/persistence.stderr"
+
+          python - "$evidence/result.json" "$url" "$archive_sha256" "$core_sha256" <<'PY'
+          import json
+          import sys
+
+          path, url, archive_sha256, core_sha256 = sys.argv[1:]
+          with open(path, "w", encoding="utf-8") as output:
+              json.dump({
+                  "schema_version": 1,
+                  "status": "pass",
+                  "source_url": url,
+                  "archive_sha256": archive_sha256,
+                  "core_sha256": core_sha256,
+                  "controller_test_status": "blocked",
+                  "firmware_test_status": "blocked",
+                  "save_test_status": "blocked",
+                  "state_test_status": "blocked",
+                  "reason": "No user-supplied PSX BIOS was available on the hosted Windows VM; both strict oracles rejected the empty BIOS directory before content execution.",
+              }, output, indent=2)
+              output.write("\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: libretro-windows-${{ matrix.core }}-firmware-boundary
+          path: ${{ runner.temp }}/lunchbox-libretro-${{ matrix.core }}-firmware-boundary
+          if-no-files-found: warn
+          retention-days: 14
+
   windows-unavailable:
     name: Windows unavailable core (mesen-s)
     runs-on: windows-2025

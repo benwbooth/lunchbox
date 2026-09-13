@@ -1,7 +1,8 @@
 # Libretro persistent-save and save-state oracle
 
 `lunchbox-libretro-persistence` is an isolated diagnostic for an exact, trusted
-libretro core. It proves two narrow contracts with original test programs:
+libretro core. It proves two narrow contracts with original test programs, or
+with an explicitly labelled frontend-memory transaction for PlayStation cards:
 
 - the emulated program creates battery-backed save memory, a fresh process loads
   those bytes before its first frame, and the emulated program consumes and
@@ -53,6 +54,17 @@ declares ROM, 8 KiB RAM, and a battery. It accesses SRAM in bank `$70` and
 copies `LBSG01`, or `LBSG02` after reload, to WRAM bank `$7E`. The diagnostic
 ROMs contain no copyrighted game code or data.
 
+The PlayStation profiles run the original PS-X EXE used by the input oracle and
+require exact 512 KiB `scph5500.bin`, `scph5501.bin`, and `scph5502.bin` dumps.
+They pin each firmware SHA-256 and run the core far enough to execute through
+the selected BIOS. For persistent storage, the oracle writes `LBSG01` into a
+bounded offset of the 128 KiB `RETRO_MEMORY_SAVE_RAM` memory-card buffer, saves
+the complete buffer, injects it before the first frame of a fresh process,
+requires the marker to survive, changes it to `LBSG02`, and re-reads it after a
+frame. This proves the core/frontend memory-card persistence ABI, not an
+in-game BIOS file-operation or a RetroArch `.srm` path. State workers separately
+mutate emulated PSX RAM and require same-process and fresh-process restoration.
+
 ## Usage
 
 Build and run from the repository root:
@@ -88,10 +100,24 @@ nix develop -c cargo build -p lunchbox-controller-probe --bin lunchbox-libretro-
   --sha256 EXPECTED_64_HEX_DIGITS \
   --runtime-library /absolute/path/to/libz.so.1 \
   --runtime-library /absolute/path/to/libstdc++.so.6
+
+./target/debug/lunchbox-libretro-persistence \
+  --system psx-beetle \
+  --core /absolute/path/to/mednafen_psx_libretro.so \
+  --sha256 EXPECTED_64_HEX_DIGITS \
+  --bios-dir /absolute/path/to/bios
+
+./target/debug/lunchbox-libretro-persistence \
+  --system psx-beetle-hw \
+  --core /absolute/path/to/mednafen_psx_hw_libretro.so \
+  --sha256 EXPECTED_64_HEX_DIGITS \
+  --bios-dir /absolute/path/to/bios \
+  --runtime-library /absolute/path/to/libGL.so.1
 ```
 
 The other accepted system values are `gba-vbam`, `gameboy-mgba`, `gameboy-sameboy`,
-`gameboy-skyemu`, `gameboy-vbam`, `nes-mesen`, `mesen-s`, and `bsnes`.
+`gameboy-skyemu`, `gameboy-vbam`, `nes-mesen`, `mesen-s`, `bsnes`,
+`psx-beetle`, and `psx-beetle-hw`.
 `--expected-version` is required when the core's reported version differs from
 the pinned Linux identity in the verification tables below. If it is omitted,
 the driver uses that pinned identity. An override changes only the expected
@@ -149,12 +175,22 @@ The Linux x86-64 `latest` artifacts staged under
 | Game Boy | SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c` | `bd5bf1f727d14e274a7f71b29e541d4d9188797c781a1557236aa94d54ed7c85` | 128 KiB save buffer; `LBSG01` to `LBSG02` in a fresh process | 246,416 |
 | Game Boy | VBA-M `2.1.3 115defb` | `156dee1827dee4c36b8f88ab9ef6a9918b1e4e89a62195a4228fe0b1b982e31c` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 115,948 |
 | Game Gear | Genesis Plus GX `v1.7.4 c2838c7` | `30abab06a9e1cfc26766a864fab83ee986cec1d6156c48dec13f9d03b46b2a6c` | 64 KiB pre-run capacity to six modified bytes; `LBSG01` to `LBSG02` in a fresh process | 1,036,288 |
+| PlayStation | Beetle PSX `0.9.44.1 82d8e05` | `c718ba34de4548937bce76efbd4130399c6c5fb25c335833080b391b92034674` | 128 KiB memory-card ABI buffer; frontend marker `LBSG01` loaded and changed to `LBSG02` in a fresh process | 16,777,216 |
+| PlayStation | Beetle PSX HW `0.9.44.1 82d8e05` | `25176f77c060cf74c4561f745bab181d9bb6b620591f92f82ad0d53c1cc7fb56` | 128 KiB memory-card ABI buffer; frontend marker `LBSG01` loaded and changed to `LBSG02` in a fresh process; software renderer selected explicitly | 16,777,216 |
 
 The retained GBA and Game Gear reports are in
 `target/runtime-evidence/libretro-persistence-mgba-2026-09-12-final`,
 `target/runtime-evidence/libretro-persistence-gba-skyemu-2026-09-13-v2`,
 `target/runtime-evidence/libretro-persistence-vbam-gba-2026-09-13`, and
 `target/runtime-evidence/libretro-persistence-game-gear-2026-09-12-final`.
+The PSX reports are under
+`target/runtime-evidence/libretro-psx-linux-2026-09-13/beetle-psx/persistence-validated`
+and
+`target/runtime-evidence/libretro-psx-linux-2026-09-13/beetle-psx-hw/persistence-validated`.
+Both pin all three BIOS files. PSX HW also records Nix libGLvnd
+`libGL.so.1.7.0`, SHA-256
+`515b5485533697033854cedd09f5b6f2b9c74eb88edd4c7f34c4c3c3356b4332`,
+and the applied `beetle_psx_hw_renderer=software` override.
 Game Boy reports are under
 `target/runtime-evidence/libretro-persistence-gameboy-CORE-2026-09-12`. SkyEmu
 used host `libm.so.6` SHA-256
@@ -218,6 +254,8 @@ a complete four-worker pass with private system, save, and state roots (schema
 | NES | FCEUmm `(SVN) 236ccdf` | `8afebce8967bb81c4c11fc9c930756e304c3ea81db89cc9607d38a2744da861a` | 8 KiB; `LBSR\x01` to `LBSR\x02` in a fresh process | 13,758 |
 | NES | Mesen `0.9.9` | `3849098df9baf3b37fb58e27049c05d39ff4c4ffa63f0d739294188ba601c5d5` | 8 KiB; `LBSR\x01` to `LBSR\x02` in a fresh process | 35,840 |
 | SNES | Snes9x `1.63 890b5d4` | `0f8fe5bf4e9ee72f8a73b00439884126c5358b98f4509fd19dd3d7aac26b3e` | 8 KiB; `LBSG01` to `LBSG02` in a fresh process | 823,407 |
+| PlayStation | Beetle PSX `0.9.44.1 82d8e05` | `20e52419f9f693cce563dd63711ce70ff21ad3b30965696c97d828e38db4fd22` | 128 KiB memory-card ABI buffer; frontend marker `LBSG01` loaded and changed to `LBSG02` in a fresh process | 16,777,216 |
+| PlayStation | Beetle PSX HW `0.9.44.1 82d8e05` | `0a7018fd6574f3d56c804af949f69beccaffb4e41cda455ee02f9ef61c66cbcb` | 128 KiB memory-card ABI buffer; frontend marker `LBSG01` loaded and changed to `LBSG02` in a fresh process; software renderer selected explicitly | 16,777,216 |
 
 The retained earlier reports are under
 `/Users/ben/lunchbox-runtime-audit-20260912/evidence` on that host. Game Boy
@@ -225,6 +263,13 @@ reports are under
 `/Users/ben/lunchbox-runtime-audit-20260913-macos-gameboy/evidence` on that
 host; its `vbam-gba-macos-arm64-v2` directory contains the GBA VBA-M reports,
 and `skyemu-gba-macos-arm64-v2` contains the schema-4 SkyEmu GBA reports.
+The two schema-5 PlayStation reports are under
+`/Users/ben/lunchbox-runtime-audit-20260913-macos-psx/evidence`; compact JSON
+copies are retained under
+`target/runtime-evidence/libretro-psx-macos-arm64-2026-09-13`. Both builds
+independently pinned all three BIOS images, exposed 2 MiB system RAM, and
+produced the same behavioral state payload hash as the Linux software core;
+the HW persistence run explicitly applied and verified its software renderer.
 The FCEUmm
 state-size drift from the Linux binary is why the exact
 `--expected-state-bytes 13758` override exists; every worker enforced it. The
