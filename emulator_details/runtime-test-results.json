@@ -210,6 +210,66 @@
       "save_test_status": "not_applicable",
       "state_test_status": "fail",
       "test_notes": "2026-09-12 macOS 26.5.1 arm64 M1 direct-core audit: official Libretro buildbot MAME 0.289 (4fc9a931), mame_libretro.dylib sha256 de43859a4ab93ea7a1df3f920ae7b2657212b7357b31e6ed72754394198baa4b, exact source 4fc9a9312baaf34963847f884961ad9793fbbc1d. The same byte-pinned 1943.zip produced deterministic per-button and negotiated-bitmask responses: P1/P2 Start, directions, Fire 1, and Fire 2 were independently distinguished, 20/22 tested channels. Coin 1 and Coin 2 each responded but merged into the game's shared credit outcome, and this two-button game cannot exercise the contracted six/eight-button layouts, so the whole controller contract remains blocked rather than pass. The arm64-specific 4,568,435-byte state restored exactly in-process, but a fresh process matched only the exposed 2 KiB RAM; its 30th rendered frame and reserialized state differed in both callback modes. That contradicts the record's deterministic cross-process state claim, so state status is fail. Core-info declares neither required firmware nor a persistent-save artifact; RetroArch frontend paths, physical input, and cloud sync were not exercised. Retained reports: /Users/ben/lunchbox-runtime-audit-20260912/evidence/mame-macos-arm64*/report.json on the test host."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mgba",
+      "host_os": "windows",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_tested",
+      "state_test_status": "not_tested",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot mGBA 0.11-219-e31759b, mgba_libretro.dll sha256 d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33. The original GBA diagnostic passed all 26/26 KEYINPUT observations in individual mode and 26/26 in negotiated-bitmask mode. This proves the exact DLL's direct-core controller callback path only; optional BIOS acceptance, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Machine-parseable schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:genesis_plus_gx",
+      "host_os": "windows",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_tested",
+      "state_test_status": "not_tested",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Genesis Plus GX v1.7.4 c2838c7, genesis_plus_gx_libretro.dll sha256 c53e9ef8fcb72f85d574ed2d0a4dc963a425586f1cd0039ee06ad381e6a4afc3. The original Game Gear diagnostic passed all 22/22 hardware-register observations in individual mode and 22/22 in negotiated-bitmask mode. This proves the exact DLL's direct-core controller callback path only; optional firmware, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Machine-parseable schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:fceumm",
+      "host_os": "windows",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_tested",
+      "state_test_status": "not_tested",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot FCEUmm (SVN) 236ccdf, fceumm_libretro.dll sha256 0fa1061243f0bfdded5a6b50c249dbaab94117cc5ac5285a1e001a20a2da69f4. The original NES diagnostic passed 42/42 two-player and 84/84 Four Score observations in each of individual and negotiated-bitmask modes; every connected player was stimulated independently. This proves the exact DLL's direct-core controller callback path only; optional FDS/Game Genie assets, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Machine-parseable schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mesen",
+      "host_os": "windows",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_tested",
+      "state_test_status": "not_tested",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Mesen 0.9.9, mesen_libretro.dll sha256 53f3ebc11e4287c37b01cc53d3dc7975116ca5e99e73727425e5762f96353d9f. The original NES diagnostic passed 42/42 two-player and 84/84 Four Score observations in each of individual and negotiated-bitmask modes; every connected player was stimulated independently. This proves the exact DLL's direct-core controller callback path only; optional FDS BIOS acceptance, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Machine-parseable schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:bsnes",
+      "host_os": "windows",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_tested",
+      "state_test_status": "not_tested",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot bsnes 115, bsnes_libretro.dll sha256 d6a6033215b96834ffbcf8702a1aad43f2358fa980a6af7c029940a94ba3ff89. The original SNES diagnostic passed all 58/58 two-player and 145/145 port-two-multitap observations in individual mode; this core does not negotiate libretro joypad bitmasks, so that mode was not claimed. This proves the exact DLL's direct-core controller path only; optional enhancement firmware, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Machine-parseable schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:snes9x",
+      "host_os": "windows",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_tested",
+      "state_test_status": "not_tested",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Snes9x 1.63 890b5d4, snes9x_libretro.dll sha256 9a7e9401efe087eab04a22c47f0fb71ae9381aabd761db22a5ccb18f42ccdf1e. The original SNES diagnostic passed all 58/58 two-player and 145/145 port-two-multitap observations in each of individual and negotiated-bitmask modes. Each process emitted one native Map_LoROMMap line, but explicit report-file output isolated it from the machine-parseable JSON. This proves the exact DLL's direct-core controller path only; optional firmware, save reload, state restoration, RetroArch frontend configuration, physical input, and sync were not tested. Schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739017401."
     }
   ]
 }

@@ -171,6 +171,29 @@ subsequent exact-hash M1 two-player rerun produced clean JSON and repeated all
 58 observations. These are direct-core arm64 results; they do not promote
 RetroArch GUI/remap behavior or physical-device capture.
 
+## Exact Windows x86_64 verification on 2026-09-12
+
+GitHub Actions run
+[`34739017401`](https://github.com/benwbooth/lunchbox/actions/runs/34739017401)
+executed the same original diagnostics on separate Windows Server 2025 VMs
+against official Libretro x86_64 buildbot DLLs. Every retained report parses as
+schema 3; native stdout and stderr are separate artifacts.
+
+| System | Exact core | Modes and observations |
+| --- | --- | --- |
+| GBA | mGBA `0.11-219-e31759b`, SHA-256 `d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33` | 26/26 in individual mode and 26/26 in bitmask mode |
+| Game Gear | Genesis Plus GX `v1.7.4 c2838c7`, SHA-256 `c53e9ef8fcb72f85d574ed2d0a4dc963a425586f1cd0039ee06ad381e6a4afc3` | 22/22 in individual mode and 22/22 in bitmask mode |
+| NES | FCEUmm `(SVN) 236ccdf`, SHA-256 `0fa1061243f0bfdded5a6b50c249dbaab94117cc5ac5285a1e001a20a2da69f4` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
+| NES | Mesen `0.9.9`, SHA-256 `53f3ebc11e4287c37b01cc53d3dc7975116ca5e99e73727425e5762f96353d9f` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
+| SNES | bsnes `115`, SHA-256 `d6a6033215b96834ffbcf8702a1aad43f2358fa980a6af7c029940a94ba3ff89` | 58/58 two-player and 145/145 multitap observations in individual mode; bitmask mode unsupported |
+| SNES | Snes9x `1.63 890b5d4`, SHA-256 `9a7e9401efe087eab04a22c47f0fb71ae9381aabd761db22a5ccb18f42ccdf1e` | 58/58 two-player and 145/145 multitap observations in each of individual and bitmask modes |
+
+Snes9x wrote one `Map_LoROMMap` line per process to native stdout; explicit
+`--output` report files kept those lines outside the JSON evidence. These runs
+used private empty system/save directories and prove the direct-core controller
+paths only. They do not test optional firmware, persistent-save reload, state
+restoration, RetroArch frontend configuration, physical controllers, or sync.
+
 ## PlayStation / Beetle PSX
 
 Select `--system psx`, a trusted Beetle PSX or Beetle PSX HW core and its expected

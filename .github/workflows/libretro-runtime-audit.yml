@@ -11,7 +11,7 @@ env:
 
 jobs:
   windows-input:
-    name: Windows input oracle (${{ matrix.core }})
+    name: Windows core oracle (${{ matrix.core }})
     runs-on: windows-2025
     strategy:
       fail-fast: false
@@ -19,28 +19,49 @@ jobs:
         include:
           - core: mgba
             system: gba
+            persistence_system: gba
+            expected_version: '0.11-219-e31759b'
+            expected_state_bytes: 430144
           - core: genesis_plus_gx
             system: gamegear
+            persistence_system: game-gear
+            expected_version: 'v1.7.4 c2838c7'
+            expected_state_bytes: 1036288
           - core: fceumm
             system: nes
+            persistence_system: nes-fceumm
+            expected_version: '(SVN) 236ccdf'
+            expected_state_bytes: 13758
           - core: mesen
             system: nes
+            persistence_system: nes-mesen
+            expected_version: '0.9.9'
+            expected_state_bytes: 35840
           - core: bsnes
             system: snes
+            persistence_system: ''
+            expected_version: '115'
+            expected_state_bytes: 0
           - core: snes9x
             system: snes
+            persistence_system: snes9x
+            expected_version: '1.63 890b5d4'
+            expected_state_bytes: 823407
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Build bounded direct-core oracle
         run: >-
           cargo build --locked --release --package lunchbox-controller-probe
-          --bin lunchbox-libretro-input
+          --bin lunchbox-libretro-input --bin lunchbox-libretro-persistence
       - name: Download and execute official core
         shell: bash
         env:
           CORE: ${{ matrix.core }}
           SYSTEM: ${{ matrix.system }}
+          PERSISTENCE_SYSTEM: ${{ matrix.persistence_system }}
+          EXPECTED_VERSION: ${{ matrix.expected_version }}
+          EXPECTED_STATE_BYTES: ${{ matrix.expected_state_bytes }}
         run: |
           set -euo pipefail
 
@@ -102,6 +123,22 @@ jobs:
               exit 2
               ;;
           esac
+
+          if [[ -n "$PERSISTENCE_SYSTEM" ]]; then
+            persistence="$workspace/target/release/lunchbox-libretro-persistence.exe"
+            if ! "$persistence" \
+              --core "$core_path" \
+              --sha256 "$core_sha256" \
+              --system "$PERSISTENCE_SYSTEM" \
+              --expected-version "$EXPECTED_VERSION" \
+              --expected-state-bytes "$EXPECTED_STATE_BYTES" \
+              --output "$evidence/persistence" \
+              > "$evidence/persistence.stdout" \
+              2> "$evidence/persistence.stderr"; then
+              cat "$evidence/persistence.stderr" >&2
+              exit 1
+            fi
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
