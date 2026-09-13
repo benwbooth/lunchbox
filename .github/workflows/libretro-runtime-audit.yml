@@ -48,7 +48,7 @@ jobs:
             system: nes
             persistence_system: nes-nestopia
             persistence_expect: pass
-            expected_version: '1.53.2 473d307'
+            expected_version: '1.99.0 5265136'
             expected_state_bytes: 21471
           - core: mesen
             system: nes
