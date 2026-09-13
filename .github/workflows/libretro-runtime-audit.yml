@@ -44,6 +44,12 @@ jobs:
             persistence_expect: pass
             expected_version: '(SVN) 236ccdf'
             expected_state_bytes: 13758
+          - core: nestopia
+            system: nes
+            persistence_system: nes-nestopia
+            persistence_expect: pass
+            expected_version: '1.53.2 473d307'
+            expected_state_bytes: 21471
           - core: mesen
             system: nes
             persistence_system: nes-mesen
