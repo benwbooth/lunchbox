@@ -125,6 +125,7 @@ input polls; individual mode made 5,408 button queries, while bitmask mode made
 | Linux x86-64 | Stella `8.0_pre c65c845`, SHA-256 `c03832c957f808d3b0e0482352370aa2f2d526015eeada8350d22419b01811f1` | `target/runtime-evidence/libretro-stella-linux-2026-09-13` |
 | Flathub runtime on Linux x86-64 | Same exact Linux core, run inside installed `org.libretro.RetroArch` 1.22.2 / commit `9c51e2bcb6f7f29ecb327ee057b273c5b59efc22d35026e90aef601bc0052752` | `target/runtime-evidence/libretro-stella-flatpak-2026-09-13` |
 | macOS 26.5.1 arm64 | Stella `8.0_pre b52ccb02e`, SHA-256 `8ba747d971903b297e8071d891746a6ec8886005d7d5817de440ddc420c80923` | `target/runtime-evidence/libretro-stella-macos-2026-09-13` |
+| Windows Server 2025 x86-64 | Stella `8.0_pre c65c845`, SHA-256 `84e1f72c92fb15f30a496e4db85bc9fe78e26d885d709df82ff18000bf536527` | GitHub Actions run [`34750404594`](https://github.com/benwbooth/lunchbox/actions/runs/34750404594); downloaded under `target/runtime-evidence/libretro-stella-windows-2026-09-13` |
 
 The installed Flatpak updater directory had no Stella core, so that row used an
 explicit read-only grant for the exact external Linux core and ran the probe
@@ -267,6 +268,8 @@ GitHub Actions runs
 [`34744774150`](https://github.com/benwbooth/lunchbox/actions/runs/34744774150),
 plus SkyEmu GBA follow-up
 [`34746239843`](https://github.com/benwbooth/lunchbox/actions/runs/34746239843),
+and Stella follow-up
+[`34750404594`](https://github.com/benwbooth/lunchbox/actions/runs/34750404594),
 executed the original diagnostics on separate Windows Server 2025 VMs
 against official Libretro x86_64 buildbot DLLs. Every retained report is
 machine-parseable JSON under its system-specific schema; native stdout and
@@ -287,6 +290,7 @@ stderr are separate artifacts.
 | NES | Mesen `0.9.9`, SHA-256 `53f3ebc11e4287c37b01cc53d3dc7975116ca5e99e73727425e5762f96353d9f` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
 | SNES | bsnes `115`, SHA-256 `d6a6033215b96834ffbcf8702a1aad43f2358fa980a6af7c029940a94ba3ff89` | 58/58 two-player and 145/145 multitap observations in individual mode; bitmask mode unsupported |
 | SNES | Snes9x `1.63 890b5d4`, SHA-256 `9a7e9401efe087eab04a22c47f0fb71ae9381aabd761db22a5ccb18f42ccdf1e` | 58/58 two-player and 145/145 multitap observations in each of individual and bitmask modes |
+| Atari 2600 | Stella `8.0_pre c65c845`, SHA-256 `84e1f72c92fb15f30a496e4db85bc9fe78e26d885d709df82ff18000bf536527` | 36/36 joystick and console-switch observations in each of individual and bitmask modes |
 
 Snes9x wrote one `Map_LoROMMap` line per process to native stdout; explicit
 `--output` report files kept those lines outside the JSON evidence. These runs

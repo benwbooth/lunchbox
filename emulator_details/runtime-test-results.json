@@ -460,6 +460,46 @@
       "save_test_status": "blocked",
       "state_test_status": "not_tested",
       "test_notes": "2026-09-13 installed Flathub org.libretro.RetroArch 1.22.2 Git 69a4f0ea1e, Flatpak commit 9c51e2bcb6f7f29ecb327ee057b273c5b59efc22d35026e90aef601bc0052752. The installed updater-core directory contained no Beetle PSX HW binary, so the isolated launch supplied the exact official Linux x86_64 buildbot mednafen_psx_hw_libretro.so sha256 25176f77c060cf74c4561f745bab181d9bb6b620591f92f82ad0d53c1cc7fb56 through an explicit private filesystem grant; no user configuration was changed. A generated Brawler64 calibration and real uinput joydev traversed Lunchbox's production PSX HW RetroPad profile into the original PS-X EXE. RetroArch selected the private system directory, the core found scph5501.bin and logged canonical SHA-1 0555C6FAE8906F3F09BAF5988F00E55F88E9F30B, and all fourteen digital controls, Cross+Square and L1+R1 combinations, and every release matched the BIOS PAD buffer in emulated RAM. The core also negotiated a shared OpenGL Core 3.3 context and executed it with Mesa llvmpipe 4.6. This proves the production Flatpak controller/configuration path, selected BIOS startup, and frontend/core HW-context handshake in software rendering for the externally supplied exact core, not an installed updater core, physical-GPU behavior, DualShock analog routing, JP/EU startup, physical-device capture, save/state frontend paths, in-game BIOS card operations, or provider synchronization. The run used --sram-mode noload-nosave; save sync remains blocked and frontend save-state restoration was not tested. Retained log: target/runtime-evidence/libretro-psx-flatpak-2026-09-13/controller-oracle-hw.log."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:stella",
+      "host_os": "linux",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_applicable",
+      "save_test_status": "not_applicable",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-13 native Linux x86_64 direct-core audit: official Libretro buildbot Stella 8.0_pre c65c845, stella_libretro.so sha256 c03832c957f808d3b0e0482352370aa2f2d526015eeada8350d22419b01811f1. An original 4 KiB 6507 cartridge produced 36/36 exact RIOT/TIA observations in each of individual and negotiated bitmask callback modes: both players' Fire and four directions, diagonal combinations, cross-player isolation, releases, Select, Reset, both difficulty switches, and Color/BW. Each mode made 169 polls; individual mode made 5,408 button queries and bitmask mode made 338 mask queries. A schema-6 four-worker oracle confirmed null/zero save RAM and restored LBSTATE1 from a 1,041-byte state after same-process and fresh-process mutation. Core metadata and these exact ordinary cartridge runs require no external firmware, and the core declares no persistent save for this cartridge, so those features are not applicable. This proves direct-core automatic Joystick-pair behavior and state restoration, not RetroArch frontend paths, physical capture, Genesis, BoosterGrip/Joy 2B+, paddles, driving, keyboard, mouse, lightgun, QuadTari, MindLink, AtariVox, SaveKey, or KidVid. Retained evidence: target/runtime-evidence/libretro-stella-linux-2026-09-13."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:stella",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_applicable",
+      "save_test_status": "not_applicable",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-13 installed Flathub org.libretro.RetroArch 1.22.2 Git 69a4f0ea1e, Flatpak commit 9c51e2bcb6f7f29ecb327ee057b273c5b59efc22d35026e90aef601bc0052752. Its updater directory contained no Stella core, so the exact official Linux buildbot Stella 8.0_pre c65c845, stella_libretro.so sha256 c03832c957f808d3b0e0482352370aa2f2d526015eeada8350d22419b01811f1, was mounted read-only and the direct-core input and persistence executables ran inside the installed Flatpak runtime. The original 6507 cartridge passed all 36 RIOT/TIA observations in individual and bitmask modes, and a schema-6 four-worker run restored LBSTATE1 from a 1,041-byte state in the same and a fresh process. Save RAM was null/zero; ordinary cartridge startup and core metadata require no external firmware. This is an exact Flatpak runtime/ABI result, not proof of an installed updater core, a RetroArch frontend/config launch, physical capture, sync, or the advertised non-Joystick peripherals. Retained evidence: target/runtime-evidence/libretro-stella-flatpak-2026-09-13."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:stella",
+      "host_os": "macos",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_applicable",
+      "save_test_status": "not_applicable",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-13 macOS 26.5.1 arm64 M1 direct-core audit: official Libretro buildbot Stella 8.0_pre b52ccb02e, stella_libretro.dylib sha256 8ba747d971903b297e8071d891746a6ec8886005d7d5817de440ddc420c80923. The original 4 KiB 6507 cartridge passed all 36 RIOT/TIA observations in each of individual and negotiated bitmask modes, with 169 polls and exact per-port query accounting. This arm64 revision advertised only Automatic/None controller choices on all four ports, which the revision-bound oracle matched exactly. A schema-6 four-worker oracle confirmed null/zero save RAM and restored LBSTATE1 from an arm64-specific 1,228-byte state after same-process and fresh-process mutation. Ordinary cartridge startup and core metadata require no external firmware. This proves direct-core automatic Joystick-pair behavior and state restoration, not RetroArch frontend paths, physical capture, other controller types, or sync. Retained evidence: /Users/ben/lunchbox-runtime-audit-20260913-macos-stella/evidence and target/runtime-evidence/libretro-stella-macos-2026-09-13."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:stella",
+      "host_os": "windows",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_applicable",
+      "save_test_status": "not_applicable",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-13 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Stella 8.0_pre c65c845, stella_libretro.dll sha256 84e1f72c92fb15f30a496e4db85bc9fe78e26d885d709df82ff18000bf536527; downloaded archive sha256 8f877c3a630387d11697a24766097d3bd095c82e601017f1bdb95056ebdfd695. The original 4 KiB 6507 cartridge passed all 36 RIOT/TIA observations in each of individual and negotiated bitmask modes, with the same 169 polls, 5,408 individual queries, or 338 mask queries as Linux. A schema-6 four-worker oracle confirmed null/zero save RAM and restored LBSTATE1 from a 1,041-byte state, sha256 6ee8bd74a337598944e8ff0314c780d68b1556bcab336384795113f8b9a588ba, after same-process and fresh-process mutation. Ordinary cartridge startup and core metadata require no external firmware. This proves direct-core automatic Joystick-pair behavior and state restoration, not RetroArch frontend paths, physical capture, other controller types, or sync. The downloaded archive, DLL, generated content, state, and worker reports were independently re-hashed. Evidence: https://github.com/benwbooth/lunchbox/actions/runs/34750404594 and target/runtime-evidence/libretro-stella-windows-2026-09-13."
     }
   ]
 }

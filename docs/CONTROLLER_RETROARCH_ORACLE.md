@@ -256,7 +256,10 @@ updater directory contained no Stella binary, so the sandbox run used an
 explicit read-only grant for that exact external core; it does not establish an
 installed-core or RetroArch frontend launch path.
 
-The macOS arm64 buildbot dylib repeated both 36-observation modes on the M1.
+The macOS arm64 buildbot dylib repeated both 36-observation modes on the M1,
+and the official Windows x86-64 DLL repeated them on hosted Windows Server
+2025 in GitHub Actions run
+[`34750404594`](https://github.com/benwbooth/lunchbox/actions/runs/34750404594).
 The two current build streams advertise different exact controller-choice
 tables, which the probe binds to their respective pinned source revisions.
 Only the diagnostic's automatically detected Joystick pair was exercised;
