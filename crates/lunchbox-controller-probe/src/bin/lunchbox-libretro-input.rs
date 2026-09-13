@@ -12,6 +12,9 @@ struct Args {
     core: PathBuf,
     #[arg(long)]
     sha256: String,
+    /// Trusted dependency to load before the core; repeat in dependency order.
+    #[arg(long)]
+    runtime_library: Vec<PathBuf>,
     #[arg(long)]
     bitmask: bool,
     /// New file that receives the JSON report; native core stdout remains separate.
@@ -54,6 +57,10 @@ fn emit_json(value: &impl Serialize, output: Option<&PathBuf>) -> Result<()> {
 fn run() -> Result<()> {
     let args = Args::parse();
     if args.identity_only {
+        anyhow::ensure!(
+            args.runtime_library.is_empty(),
+            "--runtime-library is not supported with --identity-only"
+        );
         let identity =
             lunchbox_controller_probe::libretro_input::core_identity(&args.core, &args.sha256)?;
         emit_json(&identity, args.output.as_ref())?;
@@ -69,7 +76,7 @@ fn run() -> Result<()> {
             std::process::exit(124);
         }
     });
-    let result = lunchbox_controller_probe::libretro_input::inspect_with_options(
+    let result = lunchbox_controller_probe::libretro_input::inspect_with_runtime_options(
         &args.core,
         &args.sha256,
         args.bitmask,
@@ -77,6 +84,7 @@ fn run() -> Result<()> {
         args.bios_dir.as_deref(),
         args.nes_topology,
         args.snes_topology,
+        &args.runtime_library,
     );
     let _ = done.send(());
     let _ = watchdog.join();

@@ -5,7 +5,7 @@ use libloading::Library;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString, c_char, c_void};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{
     Mutex,
     atomic::{AtomicBool, AtomicI16, AtomicU16, AtomicU64, Ordering},
@@ -905,7 +905,7 @@ impl SnesTopology {
 impl Diagnostic {
     fn identity(self) -> (&'static str, &'static str, u32, u16) {
         match self {
-            Self::Gba => ("mGBA", "input.gba", 1, 0x3ff),
+            Self::Gba => ("mGBA or VBA-M", "input.gba", 1, 0x3ff),
             Self::Gamegear => ("Genesis Plus GX", "input.gg", 769, 0x803f),
             // The exact device is selected from the loaded core's contract.
             Self::Gameboy => (
@@ -1021,6 +1021,13 @@ pub struct FirmwareIdentity {
     pub bytes: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeLibraryIdentity {
+    pub path: PathBuf,
+    pub sha256: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct PsxObservation {
     pub port: u32,
@@ -1097,6 +1104,8 @@ pub struct Report {
     pub psx_observations: Vec<PsxObservation>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub firmware: Vec<FirmwareIdentity>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub runtime_libraries: Vec<RuntimeLibraryIdentity>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Reference used to define expectations, not a provenance assertion about
     /// an arbitrary caller-supplied core binary. Its actual hash/version above
@@ -1121,6 +1130,35 @@ struct GameboyCoreContract {
     system_ram_offset: usize,
     source_revision: &'static str,
     source_url: &'static str,
+}
+
+#[derive(Clone, Copy)]
+struct GbaCoreContract {
+    supports_bitmask: bool,
+    system_ram_bytes: usize,
+    system_ram_offset: usize,
+    source_revision: &'static str,
+    source_url: &'static str,
+}
+
+fn gba_core_contract(core_name: &str) -> Result<GbaCoreContract> {
+    match core_name {
+        "mGBA" => Ok(GbaCoreContract {
+            supports_bitmask: true,
+            system_ram_bytes: 32 * 1024,
+            system_ram_offset: 0,
+            source_revision: "e31759b24e7a4e3899285ff720d7b573ac328ae7",
+            source_url: "https://github.com/libretro/mgba/blob/e31759b24e7a4e3899285ff720d7b573ac328ae7/src/platform/libretro/libretro.c",
+        }),
+        "VBA-M" => Ok(GbaCoreContract {
+            supports_bitmask: true,
+            system_ram_bytes: 256 * 1024,
+            system_ram_offset: 0,
+            source_revision: "115defb3a318258ab84746d45258a1aec19d0b4b",
+            source_url: "https://github.com/libretro/vbam-libretro/blob/115defb3a318258ab84746d45258a1aec19d0b4b/src/libretro/libretro.cpp",
+        }),
+        _ => anyhow::bail!("GBA diagnostic supports only exact mGBA or VBA-M identities"),
+    }
 }
 
 fn gameboy_core_contract(core_name: &str) -> Result<GameboyCoreContract> {
@@ -1425,6 +1463,44 @@ pub fn core_identity(path: &Path, expected_sha256: &str) -> Result<CoreIdentity>
             need_fullpath: info.need_fullpath,
             block_extract: info.block_extract,
         })
+    }
+}
+
+fn runtime_library_inventory(paths: &[PathBuf]) -> Result<Vec<RuntimeLibraryIdentity>> {
+    let mut inventory = Vec::new();
+    for path in paths {
+        ensure!(path.is_absolute(), "Runtime library path must be absolute");
+        let path = path
+            .canonicalize()
+            .with_context(|| format!("Canonicalizing runtime library {}", path.display()))?;
+        ensure!(
+            !inventory
+                .iter()
+                .any(|library: &RuntimeLibraryIdentity| library.path == path),
+            "Duplicate runtime library {}",
+            path.display()
+        );
+        inventory.push(RuntimeLibraryIdentity {
+            sha256: crate::file_hash(&path)?,
+            path,
+        });
+    }
+    Ok(inventory)
+}
+
+fn load_runtime_dependency(path: &Path) -> Result<Library> {
+    #[cfg(unix)]
+    {
+        let library = unsafe {
+            libloading::os::unix::Library::open(Some(path), libc::RTLD_NOW | libc::RTLD_GLOBAL)
+        }
+        .with_context(|| format!("Loading trusted runtime dependency {}", path.display()))?;
+        Ok(library.into())
+    }
+    #[cfg(not(unix))]
+    {
+        unsafe { Library::new(path) }
+            .with_context(|| format!("Loading trusted runtime dependency {}", path.display()))
     }
 }
 
@@ -1762,6 +1838,29 @@ pub fn inspect_with_options(
     nes_topology: NesTopology,
     snes_topology: SnesTopology,
 ) -> Result<Report> {
+    inspect_with_runtime_options(
+        path,
+        expected_sha256,
+        bitmask,
+        diagnostic,
+        system_directory,
+        nes_topology,
+        snes_topology,
+        &[],
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn inspect_with_runtime_options(
+    path: &Path,
+    expected_sha256: &str,
+    bitmask: bool,
+    diagnostic: Diagnostic,
+    system_directory: Option<&Path>,
+    nes_topology: NesTopology,
+    snes_topology: SnesTopology,
+    runtime_library_paths: &[PathBuf],
+) -> Result<Report> {
     ensure!(
         matches!(diagnostic, Diagnostic::Nes) || nes_topology == NesTopology::TwoPlayer,
         "NES topology is only applicable to the NES diagnostic"
@@ -1777,6 +1876,11 @@ pub fn inspect_with_options(
         hash.eq_ignore_ascii_case(expected_sha256),
         "Core SHA256 mismatch"
     );
+    let runtime_libraries = runtime_library_inventory(runtime_library_paths)?;
+    let mut _runtime_dependencies = Vec::new();
+    for library in &runtime_libraries {
+        _runtime_dependencies.push(load_runtime_dependency(&library.path)?);
+    }
     ensure!(
         ACTIVE
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
@@ -1886,6 +1990,7 @@ pub fn inspect_with_options(
         let name = CStr::from_ptr(info.name).to_str()?.to_owned();
         let revision = CStr::from_ptr(info.version).to_str()?.to_owned();
         let core_name_matches = match diagnostic {
+            Diagnostic::Gba => matches!(name.as_str(), "mGBA" | "VBA-M"),
             Diagnostic::Gameboy => {
                 matches!(
                     name.as_str(),
@@ -1898,6 +2003,15 @@ pub fn inspect_with_options(
             _ => name == expected_core,
         };
         ensure!(core_name_matches, "Expected {expected_core}, got {name}");
+        let gba_contract = matches!(diagnostic, Diagnostic::Gba)
+            .then(|| gba_core_contract(&name))
+            .transpose()?;
+        if let Some(contract) = gba_contract {
+            ensure!(
+                !bitmask || contract.supports_bitmask,
+                "The {name} core does not negotiate libretro joypad bitmask input; rerun without --bitmask"
+            );
+        }
         let gameboy_contract = matches!(diagnostic, Diagnostic::Gameboy)
             .then(|| gameboy_core_contract(&name))
             .transpose()?;
@@ -2020,7 +2134,12 @@ pub fn inspect_with_options(
         // This pinned mGBA frontend reports the GB RAM size even for GBA.
         // Read only our eight diagnostic bytes, within its reported bounds;
         // never infer that the full 256 KiB hardware RAM is exposed by this API.
-        if matches!(diagnostic, Diagnostic::Psx) {
+        if let Some(contract) = gba_contract {
+            ensure!(
+                reported_system_ram_bytes == contract.system_ram_bytes,
+                "Unexpected exposed GBA RAM size: {reported_system_ram_bytes}"
+            );
+        } else if matches!(diagnostic, Diagnostic::Psx) {
             ensure!(
                 reported_system_ram_bytes == 2 * 1024 * 1024,
                 "Unexpected exposed PSX RAM size: {reported_system_ram_bytes}"
@@ -2065,6 +2184,7 @@ pub fn inspect_with_options(
                 snes_observations: Vec::new(),
                 psx_observations,
                 firmware,
+                runtime_libraries: runtime_libraries.clone(),
                 contract_source_revision: Some("56f4732070835bb81078dd8ecab7246e203612a1"),
                 contract_source_url: Some(
                     "https://github.com/libretro/beetle-psx-libretro/tree/56f4732070835bb81078dd8ecab7246e203612a1",
@@ -2122,6 +2242,7 @@ pub fn inspect_with_options(
                 snes_observations: Vec::new(),
                 psx_observations: Vec::new(),
                 firmware,
+                runtime_libraries: runtime_libraries.clone(),
                 contract_source_revision: Some(contract.source_revision),
                 contract_source_url: Some(contract.source_url),
             });
@@ -2193,6 +2314,7 @@ pub fn inspect_with_options(
                 snes_observations,
                 psx_observations: Vec::new(),
                 firmware,
+                runtime_libraries: runtime_libraries.clone(),
                 contract_source_revision: Some(contract.source_revision),
                 contract_source_url: Some(contract.source_url),
             });
@@ -2241,6 +2363,7 @@ pub fn inspect_with_options(
                     }
                     let memory_offset = gameboy_contract
                         .map(|contract| contract.system_ram_offset)
+                        .or_else(|| gba_contract.map(|contract| contract.system_ram_offset))
                         .unwrap_or(0);
                     ensure!(
                         (core.memory_size)(2) >= memory_offset + 8,
@@ -2287,7 +2410,13 @@ pub fn inspect_with_options(
         );
         let (input_descriptor_updates, input_descriptors) = input_descriptor_snapshot()?;
         Ok(Report {
-            schema_version: if gameboy_contract.is_some() { 6 } else { 1 },
+            schema_version: if gba_contract.is_some() {
+                7
+            } else if gameboy_contract.is_some() {
+                6
+            } else {
+                1
+            },
             diagnostic: match diagnostic {
                 Diagnostic::Gba => "gba-keyinput",
                 Diagnostic::Gamegear => "gamegear-dc-00",
@@ -2314,8 +2443,13 @@ pub fn inspect_with_options(
             snes_observations: Vec::new(),
             psx_observations: Vec::new(),
             firmware,
-            contract_source_revision: gameboy_contract.map(|contract| contract.source_revision),
-            contract_source_url: gameboy_contract.map(|contract| contract.source_url),
+            runtime_libraries,
+            contract_source_revision: gba_contract
+                .map(|contract| contract.source_revision)
+                .or_else(|| gameboy_contract.map(|contract| contract.source_revision)),
+            contract_source_url: gba_contract
+                .map(|contract| contract.source_url)
+                .or_else(|| gameboy_contract.map(|contract| contract.source_url)),
         })
     }
 }
@@ -3035,6 +3169,39 @@ mod tests {
             assert!(contract.source_url.contains(contract.source_revision));
         }
         assert!(gameboy_core_contract("unknown").is_err());
+    }
+
+    #[test]
+    fn gba_contracts_cover_each_supported_core() {
+        for (name, ram_bytes) in [("mGBA", 32 * 1024), ("VBA-M", 256 * 1024)] {
+            let contract = gba_core_contract(name).unwrap();
+            assert!(contract.supports_bitmask);
+            assert_eq!(contract.system_ram_bytes, ram_bytes);
+            assert_eq!(contract.system_ram_offset, 0);
+            assert_eq!(contract.source_revision.len(), 40);
+            assert!(contract.source_url.contains(contract.source_revision));
+        }
+        assert!(gba_core_contract("SkyEmu").is_err());
+    }
+
+    #[test]
+    fn runtime_library_inventory_is_canonical_hashed_and_unique() {
+        let directory = tempfile::tempdir().unwrap();
+        let library = directory.path().join("dependency.so");
+        std::fs::write(&library, b"trusted test dependency").unwrap();
+
+        let inventory = runtime_library_inventory(std::slice::from_ref(&library)).unwrap();
+        assert_eq!(inventory.len(), 1);
+        assert_eq!(inventory[0].path, library.canonicalize().unwrap());
+        assert_eq!(inventory[0].sha256, crate::file_hash(&library).unwrap());
+        assert!(
+            runtime_library_inventory(&[library.clone(), library.clone()])
+                .unwrap_err()
+                .to_string()
+                .contains("Duplicate runtime library")
+        );
+        assert!(runtime_library_inventory(&[PathBuf::from("relative.so")]).is_err());
+        assert!(runtime_library_inventory(&[directory.path().join("missing.so")]).is_err());
     }
 
     #[test]

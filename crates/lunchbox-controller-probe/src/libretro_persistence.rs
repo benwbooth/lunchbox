@@ -37,6 +37,7 @@ static OPTIONS: Mutex<Option<OptionEnvironment>> = Mutex::new(None);
 #[serde(rename_all = "kebab-case")]
 pub enum PersistenceSystem {
     Gba,
+    GbaVbam,
     GameboyGambatte,
     GameboyMgba,
     GameboySameboy,
@@ -67,6 +68,20 @@ impl PersistenceSystem {
                 second_observation: SECOND_SAVE_OBSERVATION,
                 // mGBA's state contracts to the detected 32 KiB SRAM size.
                 state_bytes: Some(430_144),
+            },
+            Self::GbaVbam => CoreSpec {
+                name: "VBA-M",
+                version: "2.1.3 115defb",
+                extension: "gba",
+                need_fullpath: false,
+                pre_save_bytes: 32 * 1024,
+                post_save_bytes: 32 * 1024,
+                system_ram_bytes: 256 * 1024,
+                system_ram_offset: 0,
+                frame_limit: 12,
+                first_observation: FIRST_SAVE_OBSERVATION,
+                second_observation: SECOND_SAVE_OBSERVATION,
+                state_bytes: Some(723_452),
             },
             Self::GameboyGambatte => CoreSpec {
                 name: "Gambatte",
@@ -228,6 +243,7 @@ impl PersistenceSystem {
     fn slug(self) -> &'static str {
         match self {
             Self::Gba => "gba",
+            Self::GbaVbam => "gba-vbam",
             Self::GameboyGambatte => "gameboy-gambatte",
             Self::GameboyMgba => "gameboy-mgba",
             Self::GameboySameboy => "gameboy-sameboy",
@@ -244,7 +260,7 @@ impl PersistenceSystem {
 
     fn diagnostic_rom(self) -> Vec<u8> {
         match self {
-            Self::Gba => gba_persistence_rom(),
+            Self::Gba | Self::GbaVbam => gba_persistence_rom(),
             Self::GameboyGambatte
             | Self::GameboyMgba
             | Self::GameboySameboy
@@ -1171,6 +1187,7 @@ fn run_worker(
         .arg("--system")
         .arg(match args.system {
             PersistenceSystem::Gba => "gba",
+            PersistenceSystem::GbaVbam => "gba-vbam",
             PersistenceSystem::GameboyGambatte => "gameboy-gambatte",
             PersistenceSystem::GameboyMgba => "gameboy-mgba",
             PersistenceSystem::GameboySameboy => "gameboy-sameboy",
@@ -2019,6 +2036,27 @@ mod tests {
         assert_eq!(
             (gba.name, gba.pre_save_bytes, gba.post_save_bytes),
             ("mGBA", 131_072, 32_768)
+        );
+        let gba_vbam = PersistenceSystem::GbaVbam.spec();
+        assert_eq!(
+            (
+                gba_vbam.name,
+                gba_vbam.version,
+                gba_vbam.pre_save_bytes,
+                gba_vbam.post_save_bytes,
+                gba_vbam.system_ram_bytes,
+                gba_vbam.system_ram_offset,
+                gba_vbam.state_bytes,
+            ),
+            (
+                "VBA-M",
+                "2.1.3 115defb",
+                32_768,
+                32_768,
+                262_144,
+                0,
+                Some(723_452),
+            )
         );
         let gg = PersistenceSystem::GameGear.spec();
         assert_eq!(

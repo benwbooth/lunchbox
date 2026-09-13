@@ -90,7 +90,7 @@ nix develop -c cargo build -p lunchbox-controller-probe --bin lunchbox-libretro-
   --runtime-library /absolute/path/to/libstdc++.so.6
 ```
 
-The other accepted system values are `gameboy-mgba`, `gameboy-sameboy`,
+The other accepted system values are `gba-vbam`, `gameboy-mgba`, `gameboy-sameboy`,
 `gameboy-skyemu`, `gameboy-vbam`, `nes-mesen`, `mesen-s`, and `bsnes`.
 `--expected-version` is required when the core's reported version differs from
 the pinned Linux identity in the verification tables below. If it is omitted,
@@ -132,7 +132,7 @@ observations; and the same-process and fresh-process state markers. A top-level
 `"status": "pass"` is emitted only after the driver re-hashes every retained
 artifact.
 
-## Exact buildbot verification on 2026-09-12
+## Exact Linux buildbot verification through 2026-09-13
 
 The Linux x86-64 `latest` artifacts staged under
 `target/runtime-evidence/retroarch-buildbot-2026-09-12` passed:
@@ -140,6 +140,7 @@ The Linux x86-64 `latest` artifacts staged under
 | System | Core identity | Core SHA-256 | Save transition | State bytes |
 | --- | --- | --- | --- | ---: |
 | GBA | mGBA `0.11-219-e31759b` | `768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4` | 128 KiB autodetect capacity to 32 KiB SRAM; `LBSG01` to `LBSG02` in a fresh process | 430,144 |
+| GBA | VBA-M `2.1.3 115defb` | `156dee1827dee4c36b8f88ab9ef6a9918b1e4e89a62195a4228fe0b1b982e31c` | 32 KiB SRAM; `LBSG01` to `LBSG02` in a fresh process | 723,452 |
 | Game Boy | Gambatte `v0.5.0-netlink d9d6cd0` | `b8fba61ecbb840723a7c64d771196b37931c50ba4d98874cccedfd69a8aa27a6` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 59,650 |
 | Game Boy | mGBA `0.11-219-e31759b` | `768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 202,816 |
 | Game Boy | SameBoy `1.0.3 8230189` | `26b3de38033e14cb2185f47811d38340bd47f56d55dd82cb14cdbd39a88a8208` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 252,666 |
@@ -148,7 +149,8 @@ The Linux x86-64 `latest` artifacts staged under
 | Game Gear | Genesis Plus GX `v1.7.4 c2838c7` | `30abab06a9e1cfc26766a864fab83ee986cec1d6156c48dec13f9d03b46b2a6c` | 64 KiB pre-run capacity to six modified bytes; `LBSG01` to `LBSG02` in a fresh process | 1,036,288 |
 
 The retained GBA and Game Gear reports are in
-`target/runtime-evidence/libretro-persistence-mgba-2026-09-12-final` and
+`target/runtime-evidence/libretro-persistence-mgba-2026-09-12-final`,
+`target/runtime-evidence/libretro-persistence-vbam-gba-2026-09-13`, and
 `target/runtime-evidence/libretro-persistence-game-gear-2026-09-12-final`.
 Game Boy reports are under
 `target/runtime-evidence/libretro-persistence-gameboy-CORE-2026-09-12`. SkyEmu
@@ -188,16 +190,17 @@ The retained passing reports are in:
 - `target/runtime-evidence/libretro-persistence-snes9x-2026-09-12-final3`
 - `target/runtime-evidence/libretro-persistence-mesen-s-2026-09-12-final3`
 
-## Exact macOS arm64 verification on 2026-09-12
+## Exact macOS arm64 verification through 2026-09-13
 
 The official Libretro macOS arm64 `latest` archives were downloaded on the
 Apple Silicon test host and exercised there on macOS 26.5.1. Each row below is
 a complete four-worker pass with private system, save, and state roots (schema
-2 for the earlier systems, schema 3 for Game Boy):
+2 for the earlier systems, schema 3 for Game Boy and the newer VBA-M GBA run):
 
 | System | Core identity | Core SHA-256 | Save transition | State bytes |
 | --- | --- | --- | --- | ---: |
 | GBA | mGBA `0.11-219-e31759b` | `085350861044d9d2ef37634a7c201f57b4816fd343bdf29cdcd09bfb754b9218` | 32 KiB; `LBSG01` to `LBSG02` in a fresh process | 430,144 |
+| GBA | VBA-M version string ` 115defb` | `880d40f6338a7c60544b9c4662f8a950ea457bcd337dbc17240a03078328087f` | 32 KiB; `LBSG01` to `LBSG02` in a fresh process | 723,452 |
 | Game Boy | Gambatte `v0.5.0-netlink d9d6cd0` | `19f088f910a89ffef80a26766f682dd01aa5ae81c95adca6926a3d9c10733a50` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 59,650 |
 | Game Boy | mGBA `0.11-219-e31759b` | `085350861044d9d2ef37634a7c201f57b4816fd343bdf29cdcd09bfb754b9218` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 202,816 |
 | Game Boy | SameBoy `1.0.3 8230189` | `581f35441d3263f53769d1a542cb3904656eff7ec2121fce3a17cacb8a282cb3` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 252,666 |
@@ -212,7 +215,8 @@ The retained earlier reports are under
 `/Users/ben/lunchbox-runtime-audit-20260912/evidence` on that host. Game Boy
 reports are under
 `/Users/ben/lunchbox-runtime-audit-20260913-macos-gameboy/evidence` on that
-host. The FCEUmm
+host; its `vbam-gba-macos-arm64-v2` directory contains the GBA VBA-M reports.
+The FCEUmm
 state-size drift from the Linux binary is why the exact
 `--expected-state-bytes 13758` override exists; every worker enforced it. The
 Snes9x and Genesis Plus GX serialized-state hashes changed across hosts or

@@ -2,9 +2,9 @@
 
 `lunchbox-libretro-input` is an opt-in, separate-process test harness. It loads an
 explicitly supplied trusted core, verifies its SHA256, and runs an original
-diagnostic. The default mGBA backend runs an ARM program from memory, copying the
-emulated GBA KEYINPUT register to EWRAM alongside an execution marker. The Game
-Gear backend runs an original Z80 program in Genesis Plus GX. The NES backend
+diagnostic. The GBA backend runs an ARM program from memory in mGBA or VBA-M,
+copying the emulated GBA KEYINPUT register to EWRAM alongside an execution
+marker. The Game Gear backend runs an original Z80 program in Genesis Plus GX. The NES backend
 runs an original mapper-0 program in FCEUmm or Mesen. The SNES backend runs an
 original 65C816 LoROM program in bsnes, Snes9x, or Mesen-S. Those four backends
 need no BIOS. The Game Boy backend runs an original LR35902 cartridge across
@@ -23,8 +23,17 @@ configuration was accepted. Run both frontend callback paths:
 Output records core identity/hash, callback request counts, reported memory size,
 and expected/observed KEYINPUT values. Pass `--output /new/report.json` to write
 the report with create-new semantics while leaving native core stdout separate;
-without it, JSON is printed to stdout for compatibility. The CLI's watchdog terminates its own
-process after 15 seconds by default (`--timeout-seconds`, range 1–120). A core
+without it, JSON is printed to stdout for compatibility. For a core with a
+trusted dependency that is not otherwise available to the host process, repeat
+`--runtime-library /absolute/path` in dependency order. The helper canonicalizes
+and hashes every supplied library, loads it before the core with immediate,
+process-global symbol visibility on Unix, and records the inventory in the JSON
+report. It never discovers a dependency implicitly, and identity-only mode
+rejects the option because its compact identity report has no dependency
+inventory in which to preserve that evidence.
+
+The CLI's watchdog terminates its own process after 15 seconds by default
+(`--timeout-seconds`, range 1–120). A core
 that does not return from a callback cannot hang the Lunchbox GUI because this
 helper is never loaded into that process. Native code is **not sandboxed** by the
 helper: a matching hash identifies a file, not whether its publisher is trusted.
@@ -43,6 +52,20 @@ The initial individual and bitmask runs each passed all 26 observations.
 The referenced source is [mGBA's libretro frontend](https://github.com/libretro/mgba/blob/e31759b24e7a4e3899285ff720d7b573ac328ae7/src/platform/libretro/libretro.c).
 Its system-memory API reports 32 KiB even for the GBA EWRAM pointer; the harness
 reads only eight bytes within the reported bounds, not an assumed 256 KiB span.
+
+On 2026-09-13 the same 26 observations passed in individual and bitmask mode
+against official Libretro VBA-M builds on Linux x86_64 and macOS 26.5.1 arm64:
+
+| Host | Exact core | Reported system memory |
+| --- | --- | ---: |
+| Linux x86_64 | VBA-M `2.1.3 115defb`, SHA-256 `156dee1827dee4c36b8f88ab9ef6a9918b1e4e89a62195a4228fe0b1b982e31c` | 262,144 bytes |
+| macOS arm64 | VBA-M version string ` 115defb`, SHA-256 `880d40f6338a7c60544b9c4662f8a950ea457bcd337dbc17240a03078328087f` | 262,144 bytes |
+
+The Linux core was loaded after the exact Nix `libstdc++.so.6.0.34`, SHA-256
+`a9beac36ef8a23642461e5c66f0dbd0fecb2e2d864fcb181d15f824a7e4744c`;
+its canonical path and hash are retained in both schema-7 reports. The expected
+VBA-M behavior is defined by the pinned
+[VBA-M libretro frontend](https://github.com/libretro/vbam-libretro/blob/115defb3a318258ab84746d45258a1aec19d0b4b/src/libretro/libretro.cpp).
 
 This verifies the **frontend RetroPad → core → emulated hardware** portion only.
 It does not test physical-device calibration, OS/SDL enumeration, RetroArch's
@@ -152,7 +175,7 @@ This is direct-core evidence only. It does not cover physical controllers,
 RetroArch configuration/remaps, the GUI launch path, game compatibility,
 firmware, persistence, states, rumble, or other SNES peripherals.
 
-## Exact macOS arm64 verification on 2026-09-12
+## Exact macOS arm64 verification through 2026-09-13
 
 The same original hardware-register diagnostics ran on macOS 26.5.1 on the M1
 test host against official Libretro arm64 buildbot dylibs:
@@ -160,6 +183,7 @@ test host against official Libretro arm64 buildbot dylibs:
 | System | Exact core | Modes and observations |
 | --- | --- | --- |
 | GBA | mGBA `0.11-219-e31759b`, SHA-256 `085350861044d9d2ef37634a7c201f57b4816fd343bdf29cdcd09bfb754b9218` | 26/26 in individual mode and 26/26 in bitmask mode |
+| GBA | VBA-M version string ` 115defb`, SHA-256 `880d40f6338a7c60544b9c4662f8a950ea457bcd337dbc17240a03078328087f` | 26/26 in individual mode and 26/26 in bitmask mode |
 | Game Gear | Genesis Plus GX `v1.7.4 c2838c7`, SHA-256 `0f4367774eddca7f6eb569648f9adc85cd62662577184634034be326199500d3` | 22/22 in individual mode and 22/22 in bitmask mode |
 | NES | FCEUmm `(SVN) 236ccdf`, SHA-256 `8afebce8967bb81c4c11fc9c930756e304c3ea81db89cc9607d38a2744da861a` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
 | NES | Mesen `0.9.9`, SHA-256 `3849098df9baf3b37fb58e27049c05d39ff4c4ffa63f0d739294188ba601c5d5` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |

@@ -79,11 +79,13 @@ jobs:
             expected_state_bytes: 246416
           - core: vbam
             system: gameboy
-            secondary_system: ''
+            secondary_system: gba
             persistence_system: gameboy-vbam
+            secondary_persistence_system: gba-vbam
             persistence_expect: pass
             expected_version: '2.1.3 115defb'
             expected_state_bytes: 115948
+            secondary_expected_state_bytes: 723452
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -124,11 +126,12 @@ jobs:
 
           run_oracle() {
             local label="$1"
-            shift
+            local oracle_system="$2"
+            shift 2
             if ! "$oracle" \
               --core "$core_path" \
               --sha256 "$core_sha256" \
-              --system "$SYSTEM" \
+              --system "$oracle_system" \
               --output "$evidence/${label}.json" \
               "$@" \
               > "$evidence/${label}.stdout" \
@@ -138,39 +141,42 @@ jobs:
             fi
           }
 
-          run_oracle identity --identity-only
-
-          case "$SYSTEM" in
+          run_input_suite() {
+            local oracle_system="$1"
+            local label_prefix="$2"
+            case "$oracle_system" in
             gba|gamegear|gameboy)
-              run_oracle individual
+              run_oracle "${label_prefix}individual" "$oracle_system"
               if [[ "$CORE" != skyemu ]]; then
-                run_oracle bitmask --bitmask
+                run_oracle "${label_prefix}bitmask" "$oracle_system" --bitmask
               fi
               ;;
             nes)
-              run_oracle two-player-individual --nes-topology two-player
-              run_oracle two-player-bitmask --nes-topology two-player --bitmask
-              run_oracle four-score-individual --nes-topology four-score
-              run_oracle four-score-bitmask --nes-topology four-score --bitmask
+              run_oracle "${label_prefix}two-player-individual" "$oracle_system" --nes-topology two-player
+              run_oracle "${label_prefix}two-player-bitmask" "$oracle_system" --nes-topology two-player --bitmask
+              run_oracle "${label_prefix}four-score-individual" "$oracle_system" --nes-topology four-score
+              run_oracle "${label_prefix}four-score-bitmask" "$oracle_system" --nes-topology four-score --bitmask
               ;;
             snes)
-              run_oracle two-player-individual --snes-topology two-player
-              run_oracle multitap-individual --snes-topology multitap
+              run_oracle "${label_prefix}two-player-individual" "$oracle_system" --snes-topology two-player
+              run_oracle "${label_prefix}multitap-individual" "$oracle_system" --snes-topology multitap
               if [[ "$CORE" != bsnes ]]; then
-                run_oracle two-player-bitmask --snes-topology two-player --bitmask
-                run_oracle multitap-bitmask --snes-topology multitap --bitmask
+                run_oracle "${label_prefix}two-player-bitmask" "$oracle_system" --snes-topology two-player --bitmask
+                run_oracle "${label_prefix}multitap-bitmask" "$oracle_system" --snes-topology multitap --bitmask
               fi
               ;;
             *)
-              echo "Unsupported system: $SYSTEM" >&2
+              echo "Unsupported system: $oracle_system" >&2
               exit 2
               ;;
-          esac
+            esac
+          }
+
+          run_oracle identity "$SYSTEM" --identity-only
+          run_input_suite "$SYSTEM" ''
 
           if [[ -n "$SECONDARY_SYSTEM" ]]; then
-            SYSTEM="$SECONDARY_SYSTEM"
-            run_oracle gameboy-individual
-            run_oracle gameboy-bitmask --bitmask
+            run_input_suite "$SECONDARY_SYSTEM" "${SECONDARY_SYSTEM}-"
           fi
 
           persistence="$workspace/target/release/lunchbox-libretro-persistence.exe"
