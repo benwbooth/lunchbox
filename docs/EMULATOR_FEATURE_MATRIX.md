@@ -23,11 +23,11 @@ record is linked to at least one exact controller profile; together they cover
 399 firmware-file dispositions, save behavior, state serialization, and all
 four frontend hosts. Core host availability is intentionally conservative:
 eight official macOS arm64 buildbot artifacts were downloaded and executed on
-an Apple Silicon host, two exact Flatpak-updater Linux cores were executed, six
+an Apple Silicon host, two exact Flatpak-updater Linux cores were executed, seven
 official Windows x86_64 buildbot cores were executed on hosted Windows Server
 2025 VMs, and one Windows SteemSSE artifact is source-verified as available. Mesen-S is
-explicitly unavailable on macOS because all current official dylib archive
-paths returned HTTP 404. The other 358 core/host cells remain `unverified`
+explicitly unavailable on macOS and Windows because the current official
+artifact paths returned HTTP 404. The other 356 core/host cells remain `unverified`
 rather than inheriting availability from the RetroArch frontend.
 
 Because the shared RetroArch frontend record supplies the platform paths for

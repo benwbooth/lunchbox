@@ -270,6 +270,26 @@
       "save_test_status": "blocked",
       "state_test_status": "pass",
       "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot Snes9x 1.63 890b5d4, snes9x_libretro.dll sha256 9a7e9401efe087eab04a22c47f0fb71ae9381aabd761db22a5ccb18f42ccdf1e. The original SNES input diagnostic passed 58/58 two-player and 145/145 port-two-multitap observations in each callback mode; explicit report-file output isolated native Map_LoROMMap lines from JSON. Four fresh workers executed the original 32,768-byte SRAM LoROM (sha256 68cf012eec8fa8d1bfa5494f4330fddca48b505ef9c4ef67aaa2bf26504493d6), consumed LBSG01 and published LBSG02 from an 8,192-byte save, and restored LBSTATE1 from an 823,407-byte state (sha256 39b21c0669fd3b669401ec20e71bdc61d3a47e14231ef0bd5a19547fc00b691b) after same-process and fresh-process mutation. This proves direct-core save reload and behavioral state restoration, not optional firmware, RetroArch frontend paths, physical input, or sync. Save sync remains blocked because no real-provider export/restore was exercised. Schema-2/3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739246329."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:sameboy",
+      "host_os": "windows",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_tested",
+      "state_test_status": "not_tested",
+      "test_notes": "2026-09-12 GitHub-hosted Windows Server 2025 x86_64 direct-core audit: official Libretro buildbot SameBoy 1.0.3 8230189, sameboy_libretro.dll sha256 5b184f0bfa4a0bcf614c996cfa12985e60144722df815be2e9c8cd90bc259bfb. An original 32 KiB LR35902 diagnostic used SameBoy's built-in open boot ROM and passed all 48/48 JOYP observations in each of individual and negotiated-bitmask modes, including generic joypad device 1 and advertised subclass 257; the core exposed 8,192 bytes of WRAM. This proves ordinary Game Boy direct-core input without external firmware, not optional boot-ROM acceptance, SGB multiplayer, save/state behavior, RetroArch frontend configuration, physical input, or sync. Machine-parseable schema-3 evidence is retained by GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739661776."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mesen-s",
+      "host_os": "windows",
+      "controller_test_status": "not_applicable",
+      "firmware_test_status": "not_applicable",
+      "save_test_status": "not_applicable",
+      "state_test_status": "not_applicable",
+      "test_notes": "2026-09-12 hosted Windows Server 2025 x86_64 availability audit: the official Libretro buildbot returned HTTP 404 for the exact current Mesen-S DLL archive path. With no verified Windows core binary, controller, optional-firmware, persistent-save, and state execution are unavailable rather than runtime-tested. The retained response and status are in GitHub Actions run https://github.com/benwbooth/lunchbox/actions/runs/34739661776."
     }
   ]
 }

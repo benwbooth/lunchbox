@@ -182,6 +182,7 @@ schema 3; native stdout and stderr are separate artifacts.
 | System | Exact core | Modes and observations |
 | --- | --- | --- |
 | GBA | mGBA `0.11-219-e31759b`, SHA-256 `d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33` | 26/26 in individual mode and 26/26 in bitmask mode |
+| Game Boy | SameBoy `1.0.3 8230189`, SHA-256 `5b184f0bfa4a0bcf614c996cfa12985e60144722df815be2e9c8cd90bc259bfb` | 48/48 in individual mode and 48/48 in bitmask mode; both advertised joypad devices |
 | Game Gear | Genesis Plus GX `v1.7.4 c2838c7`, SHA-256 `c53e9ef8fcb72f85d574ed2d0a4dc963a425586f1cd0039ee06ad381e6a4afc3` | 22/22 in individual mode and 22/22 in bitmask mode |
 | NES | FCEUmm `(SVN) 236ccdf`, SHA-256 `0fa1061243f0bfdded5a6b50c249dbaab94117cc5ac5285a1e001a20a2da69f4` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
 | NES | Mesen `0.9.9`, SHA-256 `53f3ebc11e4287c37b01cc53d3dc7975116ca5e99e73727425e5762f96353d9f` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
@@ -193,6 +194,10 @@ Snes9x wrote one `Map_LoROMMap` line per process to native stdout; explicit
 used private empty system/save directories and prove the direct-core controller
 paths only. They do not test optional firmware, persistent-save reload, state
 restoration, RetroArch frontend configuration, physical controllers, or sync.
+SameBoy was added by green run
+[`34739661776`](https://github.com/benwbooth/lunchbox/actions/runs/34739661776);
+its warning about the absent optional `dmg_boot.bin` precedes successful fallback
+to the built-in open boot ROM and is retained separately from the JSON reports.
 
 A follow-up run,
 [`34739246329`](https://github.com/benwbooth/lunchbox/actions/runs/34739246329),
