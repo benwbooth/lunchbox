@@ -236,6 +236,7 @@ four fresh worker processes and a newly created mode-`0700` evidence root:
 | --- | --- | --- | --- | ---: |
 | NES | FCEUmm `(SVN) 5cd4a43` | `e7a17d1a5dacaeb7e02067f73aafab168f6a249a5dc0059ff16a5df44784d65c` | 8 KiB; `LBSR\x01` to `LBSR\x02` in a fresh process | 13,726 |
 | NES | Mesen `0.9.9` | `552f8ab6ac1fd08bd555f589eb999be73a469c79ccfa929f884adb2cf3366b43` | 8 KiB; `LBSR\x01` to `LBSR\x02` in a fresh process | 35,840 |
+| NES | Nestopia `1.53.2 473d307` | `3d517a4aa301b37d9d65e2a984e7d4e4db2fae7ccdad17abed7093316f2efec4` | 8 KiB; `LBSR\x01` to `LBSR\x02` in a fresh process | 21,471 |
 | SNES | Snes9x `1.63 185488c` | `6e2d5fb3bbf57ef0a24834b36914187bea1a0b20f373da3adfdd5aebf75a4a99` | 8 KiB; `LBSG01` to `LBSG02` in a fresh process | 823,407 |
 | SNES | Mesen-S `0.4.0` | `d43d7875316dc3f505ec160d5d34cc541fa899225c9227fed839697a7936cb5a` | 8 KiB; `LBSG01` to `LBSG02` in a fresh process | 550,912 |
 | Atari 2600 | Stella `8.0_pre c65c845` | `c03832c957f808d3b0e0482352370aa2f2d526015eeada8350d22419b01811f1` | not applicable; null/zero save RAM | 1,041 |
@@ -250,7 +251,7 @@ runtime/ABI result, not proof of an installed Stella updater core or RetroArch's
 frontend save-state path. Evidence is under
 `target/runtime-evidence/libretro-stella-flatpak-2026-09-13`.
 
-Mesen and Mesen-S required Flatpak `libstdc++.so.6` SHA-256
+Mesen, Mesen-S, and Nestopia required Flatpak `libstdc++.so.6` SHA-256
 `efca9ca0397af47196d837603f6ea29155ec3f150155559583c3ab696d2497b0`.
 Snes9x required Flatpak `libz.so.1` SHA-256
 `08b646c80eafa289f68199f2422e935219c0618e29d9027329a202bd28dcbac9`
@@ -262,6 +263,7 @@ The retained passing reports are in:
 
 - `target/runtime-evidence/libretro-persistence-nes-fceumm-2026-09-12-final3`
 - `target/runtime-evidence/libretro-persistence-nes-mesen-2026-09-12-final3`
+- `target/runtime-evidence/libretro-nestopia-flatpak-core-2026-09-13/persistence-current`
 - `target/runtime-evidence/libretro-persistence-snes9x-2026-09-12-final3`
 - `target/runtime-evidence/libretro-persistence-mesen-s-2026-09-12-final3`
 

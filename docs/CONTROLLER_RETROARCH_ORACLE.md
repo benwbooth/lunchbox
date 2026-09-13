@@ -329,8 +329,25 @@ This is evidence for Nestopia's RetroArch Flatpak state path and a save/load
 state serialization round-trip. It is not controller-mapping evidence because
 no input response was observed, not persistent-save evidence because the game
 did not create and reload save RAM, not optional FDS BIOS evidence, and not a
-save-sync export/restore test. The matrix therefore records only
-`state_test_status=pass` for this runtime/host probe.
+save-sync export/restore test.
+
+On 2026-09-13 the same installed updater core was also exercised directly with
+its exact Flatpak C++ runtime through the current Lunchbox oracles. The
+schema-10 input reports passed 42/42 two-player and 84/84 Four Score
+observations in both individual and bitmask callback modes. Four Score applied
+and verified `nestopia_select_adapter=ntsc`, and disconnected ports received no
+queries. A separate schema-6 four-worker persistence run consumed `LBSR01` and
+published `LBSR02` through an 8,192-byte save in a fresh process, then restored
+`LBSTATE1` after both same-process and fresh-process mutation from a
+content-specific 21,471-byte state, SHA-256
+`baebe1d106d0acaf02982a8ed90b4c5c33967a06a640f22d60f4bc175b506807`.
+The report is under
+`target/runtime-evidence/libretro-nestopia-flatpak-core-2026-09-13`.
+
+This newer evidence proves the exact direct-core controller, save-RAM reload,
+and behavioral state contracts. It still does not exercise physical input,
+optional FDS firmware, or a real-provider sync export/restore. The matrix keeps
+firmware `not_tested`, states `pass`, and save synchronization `blocked`.
 
 ## Source contract
 

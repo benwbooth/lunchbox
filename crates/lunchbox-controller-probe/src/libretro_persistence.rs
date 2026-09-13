@@ -55,6 +55,7 @@ pub enum PersistenceSystem {
     GameGear,
     NesFceumm,
     NesMesen,
+    NesNestopia,
     Snes9x,
     Bsnes,
     MesenS,
@@ -250,6 +251,21 @@ impl PersistenceSystem {
                 second_observation: SECOND_NES_SAVE_OBSERVATION,
                 state_bytes: Some(35_840),
             },
+            Self::NesNestopia => CoreSpec {
+                name: "Nestopia",
+                version: "1.53.2 473d307",
+                extension: "nes",
+                need_fullpath: false,
+                pre_save_bytes: 8 * 1024,
+                post_save_bytes: 8 * 1024,
+                system_ram_bytes: 2 * 1024,
+                system_ram_offset: 0,
+                memory_map: None,
+                frame_limit: 12,
+                first_observation: FIRST_NES_SAVE_OBSERVATION,
+                second_observation: SECOND_NES_SAVE_OBSERVATION,
+                state_bytes: Some(21_471),
+            },
             Self::Snes9x => CoreSpec {
                 name: "Snes9x",
                 version: "1.63 185488c",
@@ -342,6 +358,7 @@ impl PersistenceSystem {
             Self::GameGear => "game-gear",
             Self::NesFceumm => "nes-fceumm",
             Self::NesMesen => "nes-mesen",
+            Self::NesNestopia => "nes-nestopia",
             Self::Snes9x => "snes9x",
             Self::Bsnes => "bsnes",
             Self::MesenS => "mesen-s",
@@ -362,7 +379,7 @@ impl PersistenceSystem {
                 lunchbox_controller_probe::libretro_input::atari2600_diagnostic_rom()
             }
             Self::GameGear => game_gear_persistence_rom(),
-            Self::NesFceumm | Self::NesMesen => nes_persistence_rom(),
+            Self::NesFceumm | Self::NesMesen | Self::NesNestopia => nes_persistence_rom(),
             Self::Snes9x | Self::Bsnes | Self::MesenS => snes_persistence_rom(),
             Self::PsxBeetle | Self::PsxBeetleHw => {
                 lunchbox_controller_probe::libretro_input::psx_diagnostic_exe()
@@ -1650,6 +1667,7 @@ fn run_worker(
             PersistenceSystem::GameGear => "game-gear",
             PersistenceSystem::NesFceumm => "nes-fceumm",
             PersistenceSystem::NesMesen => "nes-mesen",
+            PersistenceSystem::NesNestopia => "nes-nestopia",
             PersistenceSystem::Snes9x => "snes9x",
             PersistenceSystem::Bsnes => "bsnes",
             PersistenceSystem::MesenS => "mesen-s",
@@ -2677,6 +2695,27 @@ mod tests {
         assert_eq!(
             (gg.name, gg.pre_save_bytes, gg.post_save_bytes),
             ("Genesis Plus GX", 65_536, 6)
+        );
+        let nestopia = PersistenceSystem::NesNestopia.spec();
+        assert_eq!(
+            (
+                nestopia.name,
+                nestopia.version,
+                nestopia.need_fullpath,
+                nestopia.pre_save_bytes,
+                nestopia.post_save_bytes,
+                nestopia.system_ram_bytes,
+                nestopia.state_bytes,
+            ),
+            (
+                "Nestopia",
+                "1.53.2 473d307",
+                false,
+                8_192,
+                8_192,
+                2_048,
+                Some(21_471),
+            )
         );
         let snes = PersistenceSystem::Snes9x.spec();
         assert_eq!(

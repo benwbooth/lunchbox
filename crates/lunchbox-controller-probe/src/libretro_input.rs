@@ -980,10 +980,10 @@ impl Diagnostic {
                 0x0f0f,
             ),
             Self::Atari2600 => ("Stella", "input.bin", 1, 0),
-            // NES supports two exact core identities whose advertised explicit
+            // NES supports three exact core identities whose advertised explicit
             // standard-controller subclasses differ. Select that device only
             // after querying the loaded core identity.
-            Self::Nes => ("FCEUmm or Mesen", "input.nes", 0, 0x00ff),
+            Self::Nes => ("FCEUmm, Mesen, or Nestopia", "input.nes", 0, 0x00ff),
             Self::Snes => ("bsnes, Snes9x, or Mesen-S", "input.sfc", 0, 0x0fff),
             Self::Psx => ("Beetle PSX", "input.exe", 517, 0xffff),
         }
@@ -1192,6 +1192,8 @@ pub struct Report {
     pub firmware: Vec<FirmwareIdentity>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub runtime_libraries: Vec<RuntimeLibraryIdentity>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub core_option_overrides: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Reference used to define expectations, not a provenance assertion about
     /// an arbitrary caller-supplied core binary. Its actual hash/version above
@@ -1205,6 +1207,7 @@ pub struct Report {
 struct NesCoreContract {
     controller_device: u32,
     controller_label: &'static str,
+    four_player_option: Option<(&'static str, &'static str)>,
     source_revision: &'static str,
     source_url: &'static str,
 }
@@ -1352,17 +1355,39 @@ fn nes_core_contract(core_name: &str) -> Result<NesCoreContract> {
         "FCEUmm" => Ok(NesCoreContract {
             controller_device: 513,
             controller_label: "Gamepad",
+            four_player_option: None,
             source_revision: "5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2",
             source_url: "https://github.com/libretro/libretro-fceumm/tree/5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2",
         }),
         "Mesen" => Ok(NesCoreContract {
             controller_device: 257,
             controller_label: "Standard Controller",
+            four_player_option: None,
             source_revision: "0102910c39ad1a62bc3f784466f3f67ca9eae335",
             source_url: "https://github.com/libretro/Mesen/blob/0102910c39ad1a62bc3f784466f3f67ca9eae335/Libretro/libretro.cpp",
         }),
-        _ => anyhow::bail!("NES diagnostic supports only exact FCEUmm or Mesen identities"),
+        "Nestopia" => Ok(NesCoreContract {
+            controller_device: 257,
+            controller_label: "Gamepad",
+            four_player_option: Some(("nestopia_select_adapter", "ntsc")),
+            source_revision: "473d3072be67fa2542ca833c274ef6682cf0f0bc",
+            source_url: "https://github.com/libretro/nestopia/blob/473d3072be67fa2542ca833c274ef6682cf0f0bc/libretro/libretro.cpp",
+        }),
+        _ => anyhow::bail!(
+            "NES diagnostic supports only exact FCEUmm, Mesen, or Nestopia identities"
+        ),
     }
+}
+
+fn nes_core_option_overrides(
+    contract: NesCoreContract,
+    topology: NesTopology,
+) -> BTreeMap<String, String> {
+    contract
+        .four_player_option
+        .filter(|_| topology == NesTopology::FourScore)
+        .map(|(key, value)| [(key.to_owned(), value.to_owned())].into_iter().collect())
+        .unwrap_or_default()
 }
 
 #[derive(Clone, Copy)]
@@ -2145,7 +2170,7 @@ pub fn inspect_with_runtime_options(
                 )
             }
             Diagnostic::Atari2600 => name == "Stella",
-            Diagnostic::Nes => matches!(name.as_str(), "FCEUmm" | "Mesen"),
+            Diagnostic::Nes => matches!(name.as_str(), "FCEUmm" | "Mesen" | "Nestopia"),
             Diagnostic::Snes => matches!(name.as_str(), "bsnes" | "Snes9x" | "Mesen-S"),
             Diagnostic::Psx => name == expected_core || name == "Beetle PSX HW",
             _ => name == expected_core,
@@ -2172,6 +2197,16 @@ pub fn inspect_with_runtime_options(
         let nes_contract = matches!(diagnostic, Diagnostic::Nes)
             .then(|| nes_core_contract(&name))
             .transpose()?;
+        let core_option_overrides = nes_contract
+            .map(|contract| nes_core_option_overrides(contract, nes_topology))
+            .unwrap_or_default();
+        if !core_option_overrides.is_empty() {
+            *INSPECTION_OPTIONS
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Core-option callback lock poisoned"))? = Some(
+                crate::libretro_options::OptionEnvironment::new(core_option_overrides.clone())?,
+            );
+        }
         let snes_contract = matches!(diagnostic, Diagnostic::Snes)
             .then(|| snes_core_contract(&name))
             .transpose()?;
@@ -2242,6 +2277,21 @@ pub fn inspect_with_runtime_options(
             "Core rejected original diagnostic ROM"
         );
         core.loaded = true;
+        if !core_option_overrides.is_empty() {
+            let options = INSPECTION_OPTIONS
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Core-option callback lock poisoned"))?;
+            let effective = options
+                .as_ref()
+                .context("NES core-option environment disappeared")?
+                .effective_values()?;
+            for (key, value) in &core_option_overrides {
+                ensure!(
+                    effective.get(key) == Some(value),
+                    "NES core did not apply requested option {key}={value}"
+                );
+            }
+        }
         if let Some(contract) = gameboy_contract {
             set_device(0, contract.device_modes[0]);
         } else if let Some(contract) = nes_contract {
@@ -2362,6 +2412,7 @@ pub fn inspect_with_runtime_options(
                 psx_observations: Vec::new(),
                 firmware,
                 runtime_libraries: runtime_libraries.clone(),
+                core_option_overrides: core_option_overrides.clone(),
                 contract_source_revision: Some(contract_source_revision),
                 contract_source_url: Some(contract_source_url),
             });
@@ -2405,6 +2456,7 @@ pub fn inspect_with_runtime_options(
                 psx_observations,
                 firmware,
                 runtime_libraries: runtime_libraries.clone(),
+                core_option_overrides: core_option_overrides.clone(),
                 contract_source_revision: Some("82d8e051d1c7741a18d930be90e458b48abaa9a1"),
                 contract_source_url: Some(
                     "https://github.com/libretro/beetle-psx-libretro/tree/82d8e051d1c7741a18d930be90e458b48abaa9a1",
@@ -2442,7 +2494,7 @@ pub fn inspect_with_runtime_options(
                 &input_descriptors,
             )?;
             return Ok(Report {
-                schema_version: 4,
+                schema_version: 10,
                 diagnostic: "nes-controller-ports",
                 core_sha256: hash,
                 core_name: name,
@@ -2467,6 +2519,7 @@ pub fn inspect_with_runtime_options(
                 psx_observations: Vec::new(),
                 firmware,
                 runtime_libraries: runtime_libraries.clone(),
+                core_option_overrides: core_option_overrides.clone(),
                 contract_source_revision: Some(contract.source_revision),
                 contract_source_url: Some(contract.source_url),
             });
@@ -2543,6 +2596,7 @@ pub fn inspect_with_runtime_options(
                 psx_observations: Vec::new(),
                 firmware,
                 runtime_libraries: runtime_libraries.clone(),
+                core_option_overrides: core_option_overrides.clone(),
                 contract_source_revision: Some(contract.source_revision),
                 contract_source_url: Some(contract.source_url),
             });
@@ -2680,6 +2734,7 @@ pub fn inspect_with_runtime_options(
             psx_observations: Vec::new(),
             firmware,
             runtime_libraries,
+            core_option_overrides,
             contract_source_revision: gba_contract
                 .map(|contract| contract.source_revision)
                 .or_else(|| gameboy_contract.map(|contract| contract.source_revision)),
@@ -4005,7 +4060,18 @@ mod tests {
             (mesen.controller_device, mesen.controller_label),
             (257, "Standard Controller")
         );
-        assert!(nes_core_contract("Nestopia").is_err());
+        let nestopia = nes_core_contract("Nestopia").unwrap();
+        assert_eq!(
+            (nestopia.controller_device, nestopia.controller_label),
+            (257, "Gamepad")
+        );
+        assert!(nes_core_option_overrides(nestopia, NesTopology::TwoPlayer).is_empty());
+        assert_eq!(
+            nes_core_option_overrides(nestopia, NesTopology::FourScore),
+            [("nestopia_select_adapter".into(), "ntsc".into())]
+                .into_iter()
+                .collect()
+        );
     }
 
     #[test]

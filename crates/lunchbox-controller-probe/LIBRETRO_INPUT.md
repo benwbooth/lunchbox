@@ -162,9 +162,9 @@ and [hardware I/O](https://github.com/libretro/Genesis-Plus-GX/blob/a7985a9c4278
 provide the source contract. This does not verify physical input, RetroArch
 configuration processing, other Genesis Plus GX systems, or link-cable hardware.
 
-## NES / FCEUmm and Mesen
+## NES / FCEUmm, Mesen, and Nestopia
 
-Select `--system nes` with an exact-hash FCEUmm or Mesen core. Choose
+Select `--system nes` with an exact-hash FCEUmm, Mesen, or Nestopia core. Choose
 `--nes-topology two-player` or `--nes-topology four-score`, and run each once
 normally and once with `--bitmask`. The probe selects each core's advertised
 standard-controller device, validates controller choices and input descriptors,
@@ -185,6 +185,22 @@ nonzero disconnected-port states never appeared in the emulated hardware bytes.
 The Mesen binary requires its Flatpak C++ runtime when loaded directly from the
 host. These runs do not establish physical-device capture, RetroArch remap or
 launch behavior, firmware handling, saves, states, or sync behavior.
+
+On 2026-09-13 the installed Flatpak updater Nestopia core `1.53.2 473d307`,
+SHA256
+`3d517a4aa301b37d9d65e2a984e7d4e4db2fae7ccdad17abed7093316f2efec4`,
+passed the same four current-schema runs: 42/42 observations in each two-player
+mode and 84/84 in each Four Score mode. Four Score explicitly applied and then
+verified `nestopia_select_adapter=ntsc`; the two-player path did not override a
+core option. Individual mode issued 5,536 queries for two players and 21,824
+for Four Score. Bitmask mode issued 346 and 1,364 mask queries respectively,
+with zero individual queries. Every disconnected port remained unqueried.
+Nestopia and Mesen used the exact Flatpak `libstdc++.so.6.0.34`, SHA256
+`efca9ca0397af47196d837603f6ea29155ec3f150155559583c3ab696d2497b0`.
+Reports are retained under
+`target/runtime-evidence/libretro-nestopia-flatpak-core-2026-09-13/current-schema10`.
+This is a direct-core Linux/Flatpak-runtime ABI result, not a RetroArch frontend
+launch or physical-controller test.
 
 ## SNES / bsnes and Snes9x
 
