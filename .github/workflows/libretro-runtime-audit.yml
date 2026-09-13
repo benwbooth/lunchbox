@@ -32,6 +32,12 @@ jobs:
             persistence_expect: pass
             expected_version: 'v1.7.4 c2838c7'
             expected_state_bytes: 1036288
+          - core: stella
+            system: atari2600
+            persistence_system: atari2600-stella
+            persistence_expect: pass
+            expected_version: '8.0_pre c65c845'
+            expected_state_bytes: 1041
           - core: fceumm
             system: nes
             persistence_system: nes-fceumm
@@ -147,7 +153,7 @@ jobs:
             local oracle_system="$1"
             local label_prefix="$2"
             case "$oracle_system" in
-            gba|gamegear|gameboy)
+            gba|gamegear|gameboy|atari2600)
               run_oracle "${label_prefix}individual" "$oracle_system"
               if [[ "$CORE" != skyemu ]]; then
                 run_oracle "${label_prefix}bitmask" "$oracle_system" --bitmask

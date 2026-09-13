@@ -245,6 +245,27 @@ generated remaps/configuration, GUI launch behavior, game compatibility,
 persistence, save states, or other SNES peripherals. Full command and source
 contract details are in [the direct-core diagnostic guide](../crates/lunchbox-controller-probe/LIBRETRO_INPUT.md).
 
+## Direct Stella core probe
+
+`lunchbox-libretro-input --system atari2600` executes an original 4 KiB 6507
+cartridge and compares both joysticks, both trigger lines, and the Atari 2600
+console switches at the emulated RIOT/TIA register boundary. The exact Linux
+buildbot core passed 36/36 observations in individual and bitmask modes both on
+the host and from inside the installed Flathub RetroArch runtime. The Flatpak
+updater directory contained no Stella binary, so the sandbox run used an
+explicit read-only grant for that exact external core; it does not establish an
+installed-core or RetroArch frontend launch path.
+
+The macOS arm64 buildbot dylib repeated both 36-observation modes on the M1.
+The two current build streams advertise different exact controller-choice
+tables, which the probe binds to their respective pinned source revisions.
+Only the diagnostic's automatically detected Joystick pair was exercised;
+Genesis-pad, BoosterGrip/Joy 2B+, and all non-digital peripherals remain
+unverified. Exact hashes, query counts, state results, and retained evidence
+locations are recorded in
+[`LIBRETRO_INPUT.md`](../crates/lunchbox-controller-probe/LIBRETRO_INPUT.md) and
+[`LIBRETRO_PERSISTENCE.md`](../crates/lunchbox-controller-probe/LIBRETRO_PERSISTENCE.md).
+
 ## FCEUmm and Mesen save/state behavioral probe
 
 A separate bounded probe on 2026-09-12 exercised the same exact installed

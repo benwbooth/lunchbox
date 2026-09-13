@@ -18,7 +18,7 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const REPORT_SCHEMA: u32 = 5;
+const REPORT_SCHEMA: u32 = 6;
 const RETRO_MEMORY_SAVE_RAM: u32 = 0;
 const RETRO_MEMORY_SYSTEM_RAM: u32 = 2;
 const MARKER_OFFSET: usize = 0x100;
@@ -47,6 +47,7 @@ pub enum PersistenceSystem {
     GameboySameboy,
     GameboySkyemu,
     GameboyVbam,
+    Atari2600Stella,
     GameGear,
     NesFceumm,
     NesMesen,
@@ -185,6 +186,21 @@ impl PersistenceSystem {
                 second_observation: SECOND_SAVE_OBSERVATION,
                 state_bytes: Some(115_948),
             },
+            Self::Atari2600Stella => CoreSpec {
+                name: "Stella",
+                version: "8.0_pre c65c845",
+                extension: "bin",
+                need_fullpath: false,
+                pre_save_bytes: 0,
+                post_save_bytes: 0,
+                system_ram_bytes: 128,
+                system_ram_offset: 0,
+                memory_map: None,
+                frame_limit: 120,
+                first_observation: b"LB26",
+                second_observation: b"",
+                state_bytes: Some(1_041),
+            },
             Self::GameGear => CoreSpec {
                 name: "Genesis Plus GX",
                 version: "v1.7.4 c2838c7",
@@ -318,6 +334,7 @@ impl PersistenceSystem {
             Self::GameboySameboy => "gameboy-sameboy",
             Self::GameboySkyemu => "gameboy-skyemu",
             Self::GameboyVbam => "gameboy-vbam",
+            Self::Atari2600Stella => "atari2600-stella",
             Self::GameGear => "game-gear",
             Self::NesFceumm => "nes-fceumm",
             Self::NesMesen => "nes-mesen",
@@ -337,6 +354,9 @@ impl PersistenceSystem {
             | Self::GameboySameboy
             | Self::GameboySkyemu
             | Self::GameboyVbam => gameboy_persistence_rom(),
+            Self::Atari2600Stella => {
+                lunchbox_controller_probe::libretro_input::atari2600_diagnostic_rom()
+            }
             Self::GameGear => game_gear_persistence_rom(),
             Self::NesFceumm | Self::NesMesen => nes_persistence_rom(),
             Self::Snes9x | Self::Bsnes | Self::MesenS => snes_persistence_rom(),
@@ -348,6 +368,29 @@ impl PersistenceSystem {
 
     fn is_psx(self) -> bool {
         matches!(self, Self::PsxBeetle | Self::PsxBeetleHw)
+    }
+
+    fn save_supported(self) -> bool {
+        self != Self::Atari2600Stella
+    }
+
+    fn state_marker_offset(self) -> usize {
+        if self == Self::Atari2600Stella {
+            0x20
+        } else {
+            self.spec().system_ram_offset + MARKER_OFFSET
+        }
+    }
+
+    fn state_ready_spec(self) -> CoreSpec {
+        if self == Self::Atari2600Stella {
+            CoreSpec {
+                system_ram_offset: 4,
+                ..self.spec()
+            }
+        } else {
+            self.spec()
+        }
     }
 
     fn save_marker_offset(self) -> usize {
@@ -502,6 +545,7 @@ struct WorkerReport {
     firmware: Vec<FirmwareIdentity>,
     core_option_overrides: BTreeMap<String, String>,
     diagnostic_rom_sha256: String,
+    save_status: String,
     pre_save_bytes: Option<usize>,
     post_save_bytes: Option<usize>,
     reported_system_ram_bytes: usize,
@@ -551,12 +595,18 @@ struct Artifact {
 #[derive(Debug, Serialize)]
 struct SaveRamReport {
     status: &'static str,
-    observation_source: String,
-    marker_offset: usize,
-    initial_observation_hex: String,
-    fresh_process_observation_hex: String,
-    initial: Artifact,
-    after_reload: Artifact,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    observation_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    marker_offset: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    initial_observation_hex: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fresh_process_observation_hex: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    initial: Option<Artifact>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    after_reload: Option<Artifact>,
 }
 
 #[derive(Debug, Serialize)]
@@ -679,7 +729,8 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             unsafe { data.cast::<i32>().write(3) };
             true
         }
-        _ => false,
+        _ => unsafe { lunchbox_controller_probe::libretro_vfs::handle_environment(command, data) }
+            .unwrap_or(false),
     }
 }
 
@@ -1240,11 +1291,11 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         "Expected {} bytes of observation RAM, got {system_ram_bytes}",
         spec.system_ram_bytes
     );
+    let marker_offset = args.system.state_marker_offset();
     ensure!(
-        system_ram_bytes >= spec.system_ram_offset + MARKER_OFFSET + STATE_MARKER.len(),
+        system_ram_bytes >= marker_offset + STATE_MARKER.len(),
         "System RAM is too small for the configured diagnostic window"
     );
-    let marker_offset = spec.system_ram_offset + MARKER_OFFSET;
     let mut report = WorkerReport {
         schema_version: REPORT_SCHEMA,
         phase: args.phase,
@@ -1255,6 +1306,11 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         firmware,
         core_option_overrides,
         diagnostic_rom_sha256: rom_hash,
+        save_status: if args.system.save_supported() {
+            "pass".into()
+        } else {
+            "not_applicable".into()
+        },
         pre_save_bytes: None,
         post_save_bytes: None,
         reported_system_ram_bytes,
@@ -1278,6 +1334,16 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
 
     match args.phase {
         WorkerPhase::SaveCreate => {
+            if !args.system.save_supported() {
+                ensure!(
+                    core.memory_size(RETRO_MEMORY_SAVE_RAM) == 0
+                        && unsafe { (core.memory)(RETRO_MEMORY_SAVE_RAM) }.is_null(),
+                    "State-only core unexpectedly exposed save RAM"
+                );
+                report.pre_save_bytes = Some(0);
+                report.post_save_bytes = Some(0);
+                return Ok(report);
+            }
             let pre_size = core.memory_size(RETRO_MEMORY_SAVE_RAM);
             ensure!(
                 pre_size == spec.pre_save_bytes,
@@ -1319,6 +1385,16 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
             report.save_sha256 = Some(file_hash(&path)?);
         }
         WorkerPhase::SaveReload => {
+            if !args.system.save_supported() {
+                ensure!(
+                    core.memory_size(RETRO_MEMORY_SAVE_RAM) == 0
+                        && unsafe { (core.memory)(RETRO_MEMORY_SAVE_RAM) }.is_null(),
+                    "State-only core unexpectedly exposed save RAM"
+                );
+                report.pre_save_bytes = Some(0);
+                report.post_save_bytes = Some(0);
+                return Ok(report);
+            }
             let path = save_path(&args.evidence, args.system, false);
             let save = std::fs::read(&path)
                 .with_context(|| format!("Reading prior save {}", path.display()))?;
@@ -1378,7 +1454,12 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
             if args.system.is_psx() {
                 unsafe { (core.run)() };
             } else {
-                core.run_until_observation(spec.first_observation, spec, spec.frame_limit)?;
+                let ready_spec = args.system.state_ready_spec();
+                core.run_until_observation(
+                    ready_spec.first_observation,
+                    ready_spec,
+                    ready_spec.frame_limit,
+                )?;
             }
             let ram = unsafe { core.observation_memory_slice_mut(spec)? };
             ensure!(
@@ -1386,6 +1467,17 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
                 "System RAM is too small"
             );
             ram[marker_offset..marker_offset + STATE_MARKER.len()].copy_from_slice(STATE_MARKER);
+            // `RETRO_MEMORY_SYSTEM_RAM` may be a frontend-facing mirror rather
+            // than the core's internal allocation. Run a frame and require the
+            // marker to survive before serializing so the mutation is known to
+            // have entered emulated state.
+            unsafe { (core.run)() };
+            ensure!(
+                unsafe { core.observation_memory_slice(spec)? }
+                    [marker_offset..marker_offset + STATE_MARKER.len()]
+                    == *STATE_MARKER,
+                "Core did not retain the state marker through an emulated frame"
+            );
             let state_size = unsafe { (core.serialize_size)() };
             ensure!(
                 state_size > 0 && state_size <= 32 * 1024 * 1024,
@@ -1403,6 +1495,13 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
             let ram = unsafe { core.observation_memory_slice_mut(spec)? };
             ram[marker_offset..marker_offset + MUTATED_MARKER.len()]
                 .copy_from_slice(MUTATED_MARKER);
+            unsafe { (core.run)() };
+            ensure!(
+                unsafe { core.observation_memory_slice(spec)? }
+                    [marker_offset..marker_offset + MUTATED_MARKER.len()]
+                    == *MUTATED_MARKER,
+                "Core did not retain the mutated marker through an emulated frame"
+            );
             ensure!(
                 unsafe { (core.unserialize)(state.as_ptr().cast(), state.len()) },
                 "Core refused same-process state restoration"
@@ -1426,7 +1525,12 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
             if args.system.is_psx() {
                 unsafe { (core.run)() };
             } else {
-                core.run_until_observation(spec.first_observation, spec, spec.frame_limit)?;
+                let ready_spec = args.system.state_ready_spec();
+                core.run_until_observation(
+                    ready_spec.first_observation,
+                    ready_spec,
+                    ready_spec.frame_limit,
+                )?;
             }
             let before = unsafe { core.observation_memory_slice(spec)? }
                 [marker_offset..marker_offset + STATE_MARKER.len()]
@@ -1528,6 +1632,7 @@ fn run_worker(
             PersistenceSystem::GameboySameboy => "gameboy-sameboy",
             PersistenceSystem::GameboySkyemu => "gameboy-skyemu",
             PersistenceSystem::GameboyVbam => "gameboy-vbam",
+            PersistenceSystem::Atari2600Stella => "atari2600-stella",
             PersistenceSystem::GameGear => "game-gear",
             PersistenceSystem::NesFceumm => "nes-fceumm",
             PersistenceSystem::NesMesen => "nes-mesen",
@@ -1702,6 +1807,15 @@ fn validate_reports(
             "Diagnostic ROM changed between workers"
         );
         ensure!(
+            report.save_status
+                == if system.save_supported() {
+                    "pass"
+                } else {
+                    "not_applicable"
+                },
+            "Save applicability changed between workers"
+        );
+        ensure!(
             report.runtime_libraries == *runtime_libraries,
             "Runtime dependencies changed between workers"
         );
@@ -1734,18 +1848,32 @@ fn validate_reports(
             "Save observation contract changed between workers"
         );
     }
-    ensure!(
-        reports[0].pre_save_bytes == Some(spec.pre_save_bytes)
-            && reports[0].post_save_bytes == Some(spec.post_save_bytes)
-            && reports[0].observation_hex.as_deref() == Some(&bytes_hex(spec.first_observation)),
-        "Save-create report violated its contract"
-    );
-    ensure!(
-        reports[1].pre_save_bytes == Some(spec.pre_save_bytes)
-            && reports[1].post_save_bytes == Some(spec.post_save_bytes)
-            && reports[1].observation_hex.as_deref() == Some(&bytes_hex(spec.second_observation)),
-        "Save-reload report violated its contract"
-    );
+    if system.save_supported() {
+        ensure!(
+            reports[0].pre_save_bytes == Some(spec.pre_save_bytes)
+                && reports[0].post_save_bytes == Some(spec.post_save_bytes)
+                && reports[0].observation_hex.as_deref()
+                    == Some(&bytes_hex(spec.first_observation)),
+            "Save-create report violated its contract"
+        );
+        ensure!(
+            reports[1].pre_save_bytes == Some(spec.pre_save_bytes)
+                && reports[1].post_save_bytes == Some(spec.post_save_bytes)
+                && reports[1].observation_hex.as_deref()
+                    == Some(&bytes_hex(spec.second_observation)),
+            "Save-reload report violated its contract"
+        );
+    } else {
+        for report in &reports[..2] {
+            ensure!(
+                report.pre_save_bytes == Some(0)
+                    && report.post_save_bytes == Some(0)
+                    && report.observation_hex.is_none()
+                    && report.save_sha256.is_none(),
+                "State-only save disposition changed"
+            );
+        }
+    }
     ensure!(
         expected_state_bytes.is_some()
             && reports[2].state_bytes == expected_state_bytes
@@ -1838,14 +1966,19 @@ fn supervisor(mut args: SupervisorArgs) -> Result<PersistenceReport> {
         "Worker firmware inventory differs from the supervisor"
     );
 
-    let initial_save_hash = reports[0]
-        .save_sha256
-        .as_deref()
-        .context("Missing initial save hash")?;
-    let reloaded_save_hash = reports[1]
-        .save_sha256
-        .as_deref()
-        .context("Missing reloaded save hash")?;
+    let initial_save_hash = reports[0].save_sha256.as_deref();
+    let reloaded_save_hash = reports[1].save_sha256.as_deref();
+    if args.system.save_supported() {
+        ensure!(
+            initial_save_hash.is_some() && reloaded_save_hash.is_some(),
+            "Missing save artifact hash"
+        );
+    } else {
+        ensure!(
+            initial_save_hash.is_none() && reloaded_save_hash.is_none(),
+            "State-only core produced an unexpected save artifact hash"
+        );
+    }
     let state_hash = reports[2]
         .state_sha256
         .as_deref()
@@ -1873,13 +2006,33 @@ fn supervisor(mut args: SupervisorArgs) -> Result<PersistenceReport> {
         system_ram_bytes: args.system.spec().system_ram_bytes,
         system_ram_offset: args.system.spec().system_ram_offset,
         save_ram: SaveRamReport {
-            status: "pass",
-            observation_source: args.system.save_observation_source().into(),
-            marker_offset: args.system.save_marker_offset(),
-            initial_observation_hex: bytes_hex(args.system.spec().first_observation),
-            fresh_process_observation_hex: bytes_hex(args.system.spec().second_observation),
-            initial: artifact(save_path(&evidence, args.system, false), initial_save_hash)?,
-            after_reload: artifact(save_path(&evidence, args.system, true), reloaded_save_hash)?,
+            status: if args.system.save_supported() {
+                "pass"
+            } else {
+                "not_applicable"
+            },
+            observation_source: args
+                .system
+                .save_supported()
+                .then(|| args.system.save_observation_source().into()),
+            marker_offset: args
+                .system
+                .save_supported()
+                .then(|| args.system.save_marker_offset()),
+            initial_observation_hex: args
+                .system
+                .save_supported()
+                .then(|| bytes_hex(args.system.spec().first_observation)),
+            fresh_process_observation_hex: args
+                .system
+                .save_supported()
+                .then(|| bytes_hex(args.system.spec().second_observation)),
+            initial: initial_save_hash
+                .map(|hash| artifact(save_path(&evidence, args.system, false), hash))
+                .transpose()?,
+            after_reload: reloaded_save_hash
+                .map(|hash| artifact(save_path(&evidence, args.system, true), hash))
+                .transpose()?,
         },
         save_state: SaveStateReport {
             status: "pass",
@@ -2507,6 +2660,29 @@ mod tests {
             (snes.name, snes.pre_save_bytes, snes.post_save_bytes),
             ("Snes9x", 8_192, 8_192)
         );
+        let stella = PersistenceSystem::Atari2600Stella.spec();
+        assert_eq!(
+            (
+                stella.name,
+                stella.version,
+                stella.pre_save_bytes,
+                stella.post_save_bytes,
+                stella.system_ram_bytes,
+                stella.state_bytes,
+            ),
+            ("Stella", "8.0_pre c65c845", 0, 0, 128, Some(1_041))
+        );
+        assert!(!PersistenceSystem::Atari2600Stella.save_supported());
+        assert_eq!(
+            PersistenceSystem::Atari2600Stella.state_marker_offset(),
+            0x20
+        );
+        assert_eq!(
+            PersistenceSystem::Atari2600Stella
+                .state_ready_spec()
+                .system_ram_offset,
+            4
+        );
         for (system, name) in [
             (PersistenceSystem::PsxBeetle, "Beetle PSX"),
             (PersistenceSystem::PsxBeetleHw, "Beetle PSX HW"),
@@ -2661,6 +2837,7 @@ mod tests {
             firmware: Vec::new(),
             core_option_overrides: BTreeMap::new(),
             diagnostic_rom_sha256: "b".repeat(64),
+            save_status: "pass".into(),
             pre_save_bytes: None,
             post_save_bytes: None,
             reported_system_ram_bytes: spec.system_ram_bytes,

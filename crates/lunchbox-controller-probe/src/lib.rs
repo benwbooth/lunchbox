@@ -21,6 +21,7 @@ pub mod libretro_input;
 pub mod libretro_log;
 pub mod libretro_memory_map;
 pub mod libretro_options;
+pub mod libretro_vfs;
 pub mod linux_classic;
 pub mod live_sdl3;
 pub mod players;

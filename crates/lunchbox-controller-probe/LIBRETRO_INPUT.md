@@ -4,7 +4,8 @@
 explicitly supplied trusted core, verifies its SHA256, and runs an original
 diagnostic. The GBA backend runs an ARM program from memory in mGBA, VBA-M, or
 SkyEmu, copying the emulated GBA KEYINPUT register to EWRAM alongside an
-execution marker. The Game Gear backend runs an original Z80 program in Genesis Plus GX. The NES backend
+execution marker. The Atari 2600 backend runs an original 6507 program in
+Stella. The Game Gear backend runs an original Z80 program in Genesis Plus GX. The NES backend
 runs an original mapper-0 program in FCEUmm or Mesen. The SNES backend runs an
 original 65C816 LoROM program in bsnes, Snes9x, or Mesen-S. Those four backends
 need no BIOS. The Game Boy backend runs an original LR35902 cartridge across
@@ -88,6 +89,50 @@ It does not test physical-device calibration, OS/SDL enumeration, RetroArch's
 configuration/remap processing, other cores, cartridge sensors, or rumble.
 Those layers require separate evidence. Audio/video callbacks intentionally
 discard output: this is a headless input diagnostic, not a game frontend.
+
+## Atari 2600 / Stella
+
+Select `--system atari2600` with an exact-hash Stella core. The generated 4 KiB
+cartridge executes a 6507 loop that samples both joystick nibbles from RIOT
+`SWCHA`, both TIA trigger inputs from `INPT4`/`INPT5`, and the console panel from
+`SWCHB`. It publishes those bytes beside `LB26` in the core's exposed 128-byte
+RIOT RAM. The cartridge emits a normal 262-scanline NTSC frame so every
+`retro_run` call returns without relying on an emulator's runaway-scanline
+guard.
+
+Each callback mode makes 36 hardware observations. Both joystick ports are
+tested independently for Fire, four directions, Up+Left, and releases while a
+different direction+Fire is held on the other port. Port zero then drives and
+checks Select, Reset, both left/right difficulty settings, and Color/BW; the
+momentary switches are also checked after release. The oracle validates the
+core's four advertised controller-choice lists and its 40 input descriptors.
+Current Linux builds advertise the full peripheral catalog on ports one and
+two, while the pinned macOS arm64 build exposes only Automatic/None on all four
+ports; each exact table is accepted only with its matching source revision.
+
+Stella requests Libretro VFS v3 even though it consumes the bounded content
+buffer. The helper supplies only a metadata `stat` callback for the private
+diagnostic path; VFS open, read, write, delete, and directory operations remain
+unavailable.
+
+On 2026-09-13 the following exact official buildbot cores passed all 36
+observations in both individual and negotiated bitmask modes. Every run made 169
+input polls; individual mode made 5,408 button queries, while bitmask mode made
+338 mask queries and no individual queries.
+
+| Host/runtime | Exact core | Evidence |
+| --- | --- | --- |
+| Linux x86-64 | Stella `8.0_pre c65c845`, SHA-256 `c03832c957f808d3b0e0482352370aa2f2d526015eeada8350d22419b01811f1` | `target/runtime-evidence/libretro-stella-linux-2026-09-13` |
+| Flathub runtime on Linux x86-64 | Same exact Linux core, run inside installed `org.libretro.RetroArch` 1.22.2 / commit `9c51e2bcb6f7f29ecb327ee057b273c5b59efc22d35026e90aef601bc0052752` | `target/runtime-evidence/libretro-stella-flatpak-2026-09-13` |
+| macOS 26.5.1 arm64 | Stella `8.0_pre b52ccb02e`, SHA-256 `8ba747d971903b297e8071d891746a6ec8886005d7d5817de440ddc420c80923` | `target/runtime-evidence/libretro-stella-macos-2026-09-13` |
+
+The installed Flatpak updater directory had no Stella core, so that row used an
+explicit read-only grant for the exact external Linux core and ran the probe
+inside the Flatpak runtime. It does not claim an installed updater core or a
+RetroArch frontend/configuration launch. These runs prove the automatic
+Joystick topology used by this diagnostic. They do **not** promote the separate
+Genesis-pad or BoosterGrip/Joy 2B+ catalog profiles, nor paddles, driving,
+keyboard, mouse, lightgun, QuadTari, MindLink, AtariVox, SaveKey, or KidVid.
 
 ## Game Gear / Genesis Plus GX
 
@@ -206,6 +251,7 @@ test host against official Libretro arm64 buildbot dylibs:
 | NES | Mesen `0.9.9`, SHA-256 `3849098df9baf3b37fb58e27049c05d39ff4c4ffa63f0d739294188ba601c5d5` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
 | SNES | bsnes `115`, SHA-256 `18900517569b4bd4a08c5a37dc8d2e3f1d8cf6891ab1bb786699867ecb635abf` | 58/58 two-player and 145/145 multitap observations in individual mode; bitmask mode unsupported |
 | SNES | Snes9x `1.63 890b5d4`, SHA-256 `0f8fe5bf4e9ee72f8a73b00439884126c5358b98f4509fd19dd3d7aac26b3e54` | 58/58 two-player and 145/145 multitap observations in each of individual and bitmask modes |
+| Atari 2600 | Stella `8.0_pre b52ccb02e`, SHA-256 `8ba747d971903b297e8071d891746a6ec8886005d7d5817de440ddc420c80923` | 36/36 joystick and console-switch observations in each of individual and bitmask modes |
 
 Snes9x printed `Map_LoROMMap` from an exit handler after the four original JSON
 reports. Every assertion exited successfully and the complete JSON prefix was

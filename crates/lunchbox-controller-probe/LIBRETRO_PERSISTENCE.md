@@ -10,6 +10,11 @@ with an explicitly labelled frontend-memory transaction for PlayStation cards:
 - the core serializes and restores system RAM in the same process, then a fresh
   process restores the persisted state and the same RAM marker.
 
+For a system such as an ordinary Atari 2600 cartridge that has no persistent
+save-memory ABI, the first contract is recorded as `not_applicable`; the oracle
+still requires null/zero save RAM in both save workers and performs the complete
+same-process and fresh-process state proof.
+
 This is runtime evidence for the supplied core binary. It does not configure
 RetroArch, exercise RetroArch's file naming or autosave policy, prove atomic
 writes, or enable Lunchbox persistence. Loading a native core executes code, so
@@ -54,6 +59,14 @@ declares ROM, 8 KiB RAM, and a battery. It accesses SRAM in bank `$70` and
 copies `LBSG01`, or `LBSG02` after reload, to WRAM bank `$7E`. The diagnostic
 ROMs contain no copyrighted game code or data.
 
+The Atari 2600 profile reuses the original 4 KiB Stella input cartridge. It
+waits for the cartridge's `LB26` marker in the 128-byte RIOT RAM, writes a state
+marker at offset `$20`, and runs another frame before serialization. Requiring
+that marker to survive the frame establishes that a frontend-facing RAM mirror
+has propagated into emulated state. Stella exposes no `RETRO_MEMORY_SAVE_RAM`
+for this cartridge, which the two save workers verify as a null pointer and
+zero bytes.
+
 The PlayStation profiles run the original PS-X EXE used by the input oracle and
 require exact 512 KiB `scph5500.bin`, `scph5501.bin`, and `scph5502.bin` dumps.
 They pin each firmware SHA-256 and run the core far enough to execute through
@@ -85,6 +98,11 @@ nix develop -c cargo build -p lunchbox-controller-probe --bin lunchbox-libretro-
 ./target/debug/lunchbox-libretro-persistence \
   --system game-gear \
   --core /absolute/path/to/genesis_plus_gx_libretro.so \
+  --sha256 EXPECTED_64_HEX_DIGITS
+
+./target/debug/lunchbox-libretro-persistence \
+  --system atari2600-stella \
+  --core /absolute/path/to/stella_libretro.so \
   --sha256 EXPECTED_64_HEX_DIGITS
 
 ./target/debug/lunchbox-libretro-persistence \
@@ -175,6 +193,7 @@ The Linux x86-64 `latest` artifacts staged under
 | Game Boy | SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c` | `bd5bf1f727d14e274a7f71b29e541d4d9188797c781a1557236aa94d54ed7c85` | 128 KiB save buffer; `LBSG01` to `LBSG02` in a fresh process | 246,416 |
 | Game Boy | VBA-M `2.1.3 115defb` | `156dee1827dee4c36b8f88ab9ef6a9918b1e4e89a62195a4228fe0b1b982e31c` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 115,948 |
 | Game Gear | Genesis Plus GX `v1.7.4 c2838c7` | `30abab06a9e1cfc26766a864fab83ee986cec1d6156c48dec13f9d03b46b2a6c` | 64 KiB pre-run capacity to six modified bytes; `LBSG01` to `LBSG02` in a fresh process | 1,036,288 |
+| Atari 2600 | Stella `8.0_pre c65c845` | `c03832c957f808d3b0e0482352370aa2f2d526015eeada8350d22419b01811f1` | not applicable; save RAM was null/zero in both fresh workers | 1,041 |
 | PlayStation | Beetle PSX `0.9.44.1 82d8e05` | `c718ba34de4548937bce76efbd4130399c6c5fb25c335833080b391b92034674` | 128 KiB memory-card ABI buffer; frontend marker `LBSG01` loaded and changed to `LBSG02` in a fresh process | 16,777,216 |
 | PlayStation | Beetle PSX HW `0.9.44.1 82d8e05` | `25176f77c060cf74c4561f745bab181d9bb6b620591f92f82ad0d53c1cc7fb56` | 128 KiB memory-card ABI buffer; frontend marker `LBSG01` loaded and changed to `LBSG02` in a fresh process; software renderer selected explicitly | 16,777,216 |
 
@@ -183,6 +202,8 @@ The retained GBA and Game Gear reports are in
 `target/runtime-evidence/libretro-persistence-gba-skyemu-2026-09-13-v2`,
 `target/runtime-evidence/libretro-persistence-vbam-gba-2026-09-13`, and
 `target/runtime-evidence/libretro-persistence-game-gear-2026-09-12-final`.
+The Stella report is under
+`target/runtime-evidence/libretro-stella-linux-2026-09-13/persistence`.
 The PSX reports are under
 `target/runtime-evidence/libretro-psx-linux-2026-09-13/beetle-psx/persistence-validated`
 and
@@ -205,7 +226,7 @@ size contracts intentionally fail closed rather than treating a new build as
 already verified. State restoration is a behavioral claim: state hashes for
 Gambatte, SameBoy, and SkyEmu varied across valid reruns.
 
-## Exact installed Flatpak verification on 2026-09-12
+## Exact Flatpak-runtime verification through 2026-09-13
 
 The following Linux x86-64 cores were read from
 `~/.var/app/org.libretro.RetroArch/config/retroarch/cores`. Each passing row used
@@ -217,6 +238,17 @@ four fresh worker processes and a newly created mode-`0700` evidence root:
 | NES | Mesen `0.9.9` | `552f8ab6ac1fd08bd555f589eb999be73a469c79ccfa929f884adb2cf3366b43` | 8 KiB; `LBSR\x01` to `LBSR\x02` in a fresh process | 35,840 |
 | SNES | Snes9x `1.63 185488c` | `6e2d5fb3bbf57ef0a24834b36914187bea1a0b20f373da3adfdd5aebf75a4a99` | 8 KiB; `LBSG01` to `LBSG02` in a fresh process | 823,407 |
 | SNES | Mesen-S `0.4.0` | `d43d7875316dc3f505ec160d5d34cc541fa899225c9227fed839697a7936cb5a` | 8 KiB; `LBSG01` to `LBSG02` in a fresh process | 550,912 |
+| Atari 2600 | Stella `8.0_pre c65c845` | `c03832c957f808d3b0e0482352370aa2f2d526015eeada8350d22419b01811f1` | not applicable; null/zero save RAM | 1,041 |
+
+The first four cores came from the installed updater directory. That directory
+contained no Stella binary, so the Stella row used the exact official Linux
+buildbot core through an explicit read-only filesystem grant and executed this
+probe inside installed Flathub `org.libretro.RetroArch` 1.22.2, commit
+`9c51e2bcb6f7f29ecb327ee057b273c5b59efc22d35026e90aef601bc0052752`.
+Its state marker restored in the same and a fresh process. This is a Flatpak
+runtime/ABI result, not proof of an installed Stella updater core or RetroArch's
+frontend save-state path. Evidence is under
+`target/runtime-evidence/libretro-stella-flatpak-2026-09-13`.
 
 Mesen and Mesen-S required Flatpak `libstdc++.so.6` SHA-256
 `efca9ca0397af47196d837603f6ea29155ec3f150155559583c3ab696d2497b0`.
@@ -238,7 +270,8 @@ The retained passing reports are in:
 The official Libretro macOS arm64 `latest` archives were downloaded on the
 Apple Silicon test host and exercised there on macOS 26.5.1. Each row below is
 a complete four-worker pass with private system, save, and state roots (schema
-2 for the earlier systems, schema 3 for Game Boy and the newer VBA-M GBA run):
+2 for the earlier systems, schema 3 for Game Boy and the newer VBA-M GBA run,
+and schema 6 for Stella's state-only contract):
 
 | System | Core identity | Core SHA-256 | Save transition | State bytes |
 | --- | --- | --- | --- | ---: |
@@ -256,6 +289,7 @@ a complete four-worker pass with private system, save, and state roots (schema
 | SNES | Snes9x `1.63 890b5d4` | `0f8fe5bf4e9ee72f8a73b00439884126c5358b98f4509fd19dd3d7aac26b3e` | 8 KiB; `LBSG01` to `LBSG02` in a fresh process | 823,407 |
 | PlayStation | Beetle PSX `0.9.44.1 82d8e05` | `20e52419f9f693cce563dd63711ce70ff21ad3b30965696c97d828e38db4fd22` | 128 KiB memory-card ABI buffer; frontend marker `LBSG01` loaded and changed to `LBSG02` in a fresh process | 16,777,216 |
 | PlayStation | Beetle PSX HW `0.9.44.1 82d8e05` | `0a7018fd6574f3d56c804af949f69beccaffb4e41cda455ee02f9ef61c66cbcb` | 128 KiB memory-card ABI buffer; frontend marker `LBSG01` loaded and changed to `LBSG02` in a fresh process; software renderer selected explicitly | 16,777,216 |
+| Atari 2600 | Stella `8.0_pre b52ccb02e` | `8ba747d971903b297e8071d891746a6ec8886005d7d5817de440ddc420c80923` | not applicable; save RAM was null/zero in both fresh workers | 1,228 |
 
 The retained earlier reports are under
 `/Users/ben/lunchbox-runtime-audit-20260912/evidence` on that host. Game Boy
@@ -270,6 +304,10 @@ copies are retained under
 independently pinned all three BIOS images, exposed 2 MiB system RAM, and
 produced the same behavioral state payload hash as the Linux software core;
 the HW persistence run explicitly applied and verified its software renderer.
+The Stella schema-6 report is retained on the M1 under
+`/Users/ben/lunchbox-runtime-audit-20260913-macos-stella/evidence/persistence-final`
+and compactly under
+`target/runtime-evidence/libretro-stella-macos-2026-09-13/persistence`.
 The FCEUmm
 state-size drift from the Linux binary is why the exact
 `--expected-state-bytes 13758` override exists; every worker enforced it. The

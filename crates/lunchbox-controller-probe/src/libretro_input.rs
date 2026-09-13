@@ -41,7 +41,7 @@ static INSPECTION_QUERIES: Mutex<QueryCapture> = Mutex::new(QueryCapture {
 type ControllerChoices = Vec<Vec<ControllerChoice>>;
 static CONTROLLER_CHOICES: Mutex<Result<Option<ControllerChoices>, String>> = Mutex::new(Ok(None));
 
-#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ControllerChoice {
     pub description: String,
@@ -251,6 +251,7 @@ struct Variable {
     key: *const c_char,
     value: *const c_char,
 }
+
 type Environment = unsafe extern "C" fn(u32, *mut c_void) -> bool;
 type Input = unsafe extern "C" fn(u32, u32, u32, u32) -> i16;
 type Video = unsafe extern "C" fn(*const c_void, u32, u32, usize);
@@ -387,7 +388,7 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             }
             true
         }
-        _ => false,
+        _ => unsafe { crate::libretro_vfs::handle_environment(command, data) }.unwrap_or(false),
     }
 }
 unsafe extern "C" fn input(port: u32, device: u32, index: u32, id: u32) -> i16 {
@@ -789,6 +790,40 @@ pub fn gameboy_diagnostic_rom() -> Vec<u8> {
     rom
 }
 
+/// Original 6507 loop for a 4 KiB Atari 2600 cartridge. It samples both
+/// joystick ports, both trigger inputs, and the console switches into RIOT RAM.
+/// The core exposes that 128-byte RAM through `RETRO_MEMORY_SYSTEM_RAM`, so the
+/// frontend can verify hardware-visible input without inspecting Stella's
+/// internal event state.
+pub fn atari2600_diagnostic_rom() -> Vec<u8> {
+    let mut rom = vec![0xea; 4 * 1024]; // NOP-filled 4K cartridge
+    let program = [
+        0x78, // sei
+        0xd8, // cld
+        0xa9, b'L', 0x85, 0x84, // marker $84..$87 = LB26
+        0xa9, b'B', 0x85, 0x85, 0xa9, b'2', 0x85, 0x86, 0xa9, b'6', 0x85, 0x87, 0xad, 0x80, 0x02,
+        0x85, 0x80, // loop: SWCHA -> $80
+        0xad, 0x0c, 0x00, 0x85, 0x81, // INPT4 -> $81
+        0xad, 0x0d, 0x00, 0x85, 0x82, // INPT5 -> $82
+        0xad, 0x82, 0x02, 0x85, 0x83, // SWCHB -> $83
+        // Emit an ordinary 262-scanline frame. Depending on an emulator's
+        // runaway-scanline guard made the same ROM return quickly on one host
+        // while remaining inside a single retro_run call on another.
+        0xa9, 0x02, 0x85, 0x00, // VSYNC high
+        0xa2, 0x03, // three VSYNC scanlines
+        0x85, 0x02, 0xca, 0xd0, 0xfb, // sta WSYNC; dex; bne
+        0xa9, 0x00, 0x85, 0x00, // VSYNC low
+        0xa2, 0x00, // 256 scanlines
+        0x85, 0x02, 0xca, 0xd0, 0xfb, 0xa0, 0x03, // final three scanlines
+        0x85, 0x02, 0x88, 0xd0, 0xfb, 0x4c, 0x12, 0xf0, // jmp loop
+    ];
+    rom[..program.len()].copy_from_slice(&program);
+    for vector in [0x0ffa, 0x0ffc, 0x0ffe] {
+        rom[vector..vector + 2].copy_from_slice(&0xf000u16.to_le_bytes());
+    }
+    rom
+}
+
 fn mips_i(op: u32, rs: u32, rt: u32, immediate: i16) -> u32 {
     (op << 26) | (rs << 21) | (rt << 16) | u32::from(immediate as u16)
 }
@@ -875,6 +910,7 @@ pub enum Diagnostic {
     Gba,
     Gamegear,
     Gameboy,
+    Atari2600,
     Nes,
     Snes,
     Psx,
@@ -938,6 +974,7 @@ impl Diagnostic {
                 1,
                 0x0f0f,
             ),
+            Self::Atari2600 => ("Stella", "input.bin", 1, 0),
             // NES supports two exact core identities whose advertised explicit
             // standard-controller subclasses differ. Select that device only
             // after querying the loaded core identity.
@@ -994,6 +1031,7 @@ impl Diagnostic {
                 ("A+Right", (1 << 8) | (1 << 7), 0x101),
                 ("Shoulders are unassigned", (1 << 10) | (1 << 11), 0),
             ],
+            Self::Atari2600 => &[],
             Self::Nes => &[
                 ("released", 0, 0),
                 ("A", 1 << 8, 1 << 0),
@@ -1090,6 +1128,19 @@ pub struct SnesObservation {
     pub readback: &'static str,
 }
 
+#[derive(Debug, Serialize)]
+pub struct Atari2600Observation {
+    /// One-based joystick port under test; zero denotes a console-switch case.
+    pub target_port: u32,
+    pub name: String,
+    pub retropad_masks: [u16; 2],
+    /// SWCHA, INPT4, INPT5, SWCHB as sampled by the original 6507 program.
+    pub expected_registers: [u8; 4],
+    pub observed_registers: [u8; 4],
+    /// Relevant bits in each register. Unrelated switch/TIA bits are ignored.
+    pub comparison_masks: [u8; 4],
+}
+
 #[derive(Debug, Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CoreIdentity {
@@ -1128,6 +1179,8 @@ pub struct Report {
     pub nes_observations: Vec<NesObservation>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub snes_observations: Vec<SnesObservation>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub atari2600_observations: Vec<Atari2600Observation>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub psx_observations: Vec<PsxObservation>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -2047,17 +2100,19 @@ pub fn inspect_with_runtime_options(
         Diagnostic::Gba => gba_diagnostic_rom(),
         Diagnostic::Gamegear => gamegear_diagnostic_rom(),
         Diagnostic::Gameboy => gameboy_diagnostic_rom(),
+        Diagnostic::Atari2600 => atari2600_diagnostic_rom(),
         Diagnostic::Nes => nes_diagnostic_rom(),
         Diagnostic::Snes => snes_diagnostic_rom(),
         Diagnostic::Psx => psx_diagnostic_exe(),
     };
-    let rom_path = CString::new(
-        directory
-            .path()
-            .join(filename)
-            .to_str()
-            .context("UTF-8 ROM path required")?,
-    )?;
+    let core_rom_path = if matches!(diagnostic, Diagnostic::Atari2600) {
+        // Stella's libretro filesystem backend consumes the in-memory image,
+        // but its ROM-type detector expects a simple content filename.
+        PathBuf::from(filename)
+    } else {
+        directory.path().join(filename)
+    };
+    let rom_path = CString::new(core_rom_path.to_str().context("UTF-8 ROM path required")?)?;
     unsafe {
         let library = Library::new(&path).context("Loading trusted libretro core")?;
         let version = *library.get::<unsafe extern "C" fn() -> u32>(b"retro_api_version\0")?;
@@ -2080,6 +2135,7 @@ pub fn inspect_with_runtime_options(
                     "Gambatte" | "mGBA" | "SameBoy" | "SkyEmu" | "VBA-M"
                 )
             }
+            Diagnostic::Atari2600 => name == "Stella",
             Diagnostic::Nes => matches!(name.as_str(), "FCEUmm" | "Mesen"),
             Diagnostic::Snes => matches!(name.as_str(), "bsnes" | "Snes9x" | "Mesen-S"),
             Diagnostic::Psx => name == expected_core || name == "Beetle PSX HW",
@@ -2116,7 +2172,10 @@ pub fn inspect_with_runtime_options(
                 "The {name} core does not negotiate libretro joypad bitmask input; rerun without --bitmask"
             );
         }
-        if info.need_fullpath {
+        // Stella advertises `need_fullpath=false` and consumes the supplied
+        // buffer, but its current ROM-name validator still asks the host file
+        // backend whether the path exists before reading that buffer.
+        if info.need_fullpath || matches!(diagnostic, Diagnostic::Atari2600) {
             std::fs::write(directory.path().join(filename), &rom)?;
         }
         let init = *library.get::<unsafe extern "C" fn()>(b"retro_init\0")?;
@@ -2243,6 +2302,61 @@ pub fn inspect_with_runtime_options(
                 ),
                 None => ("retro-memory-system-ram", reported_system_ram_bytes, None),
             };
+        if matches!(diagnostic, Diagnostic::Atari2600) {
+            ensure!(
+                reported_system_ram_bytes == 128,
+                "Unexpected exposed Atari 2600 RIOT RAM size: {reported_system_ram_bytes}"
+            );
+            let atari2600_observations = run_atari2600_observations(&core)?;
+            let requests = joypad_requests_by_port();
+            ensure!(
+                requests[0] > 0 && requests[1] > 0,
+                "Stella did not query both joystick frontend ports"
+            );
+            let bitmask_requests = MASK_REQUESTS.load(Ordering::Relaxed);
+            let individual_requests = SINGLE_REQUESTS.load(Ordering::Relaxed);
+            ensure!(
+                if bitmask {
+                    bitmask_requests > 0 && individual_requests == 0
+                } else {
+                    bitmask_requests == 0 && individual_requests > 0
+                },
+                "Stella did not exercise the requested input callback mode"
+            );
+            let (input_descriptor_updates, input_descriptors) = input_descriptor_snapshot()?;
+            let controller_choices = controller_choice_snapshot()?;
+            let (contract_source_revision, contract_source_url) =
+                validate_atari2600_metadata(controller_choices.as_deref(), &input_descriptors)?;
+            return Ok(Report {
+                schema_version: 9,
+                diagnostic: "atari2600-joysticks-console-switches",
+                core_sha256: hash,
+                core_name: name,
+                core_version: revision,
+                input_descriptors,
+                input_descriptor_updates,
+                controller_choices,
+                input_mode: if bitmask { "bitmask" } else { "individual" },
+                input_polls: POLLS.load(Ordering::Relaxed),
+                bitmask_requests,
+                individual_requests,
+                analog_requests: ANALOG_REQUESTS.load(Ordering::Relaxed),
+                joypad_requests_by_port: requests,
+                reported_system_ram_bytes,
+                observation_memory_source,
+                observation_memory_bytes,
+                observation_memory_address,
+                observations: Vec::new(),
+                nes_observations: Vec::new(),
+                snes_observations: Vec::new(),
+                atari2600_observations,
+                psx_observations: Vec::new(),
+                firmware,
+                runtime_libraries: runtime_libraries.clone(),
+                contract_source_revision: Some(contract_source_revision),
+                contract_source_url: Some(contract_source_url),
+            });
+        }
         if matches!(diagnostic, Diagnostic::Psx) {
             let psx_observations = run_psx_observations(&core)?;
             let bitmask_requests = MASK_REQUESTS.load(Ordering::Relaxed);
@@ -2278,6 +2392,7 @@ pub fn inspect_with_runtime_options(
                 observations: Vec::new(),
                 nes_observations: Vec::new(),
                 snes_observations: Vec::new(),
+                atari2600_observations: Vec::new(),
                 psx_observations,
                 firmware,
                 runtime_libraries: runtime_libraries.clone(),
@@ -2339,6 +2454,7 @@ pub fn inspect_with_runtime_options(
                 observations: Vec::new(),
                 nes_observations,
                 snes_observations: Vec::new(),
+                atari2600_observations: Vec::new(),
                 psx_observations: Vec::new(),
                 firmware,
                 runtime_libraries: runtime_libraries.clone(),
@@ -2414,6 +2530,7 @@ pub fn inspect_with_runtime_options(
                 observations: Vec::new(),
                 nes_observations: Vec::new(),
                 snes_observations,
+                atari2600_observations: Vec::new(),
                 psx_observations: Vec::new(),
                 firmware,
                 runtime_libraries: runtime_libraries.clone(),
@@ -2526,6 +2643,7 @@ pub fn inspect_with_runtime_options(
                 Diagnostic::Gba => "gba-keyinput",
                 Diagnostic::Gamegear => "gamegear-dc-00",
                 Diagnostic::Gameboy => "gameboy-joyp",
+                Diagnostic::Atari2600 => unreachable!(),
                 Diagnostic::Nes => unreachable!(),
                 Diagnostic::Snes => unreachable!(),
                 Diagnostic::Psx => unreachable!(),
@@ -2549,6 +2667,7 @@ pub fn inspect_with_runtime_options(
             observations,
             nes_observations: Vec::new(),
             snes_observations: Vec::new(),
+            atari2600_observations: Vec::new(),
             psx_observations: Vec::new(),
             firmware,
             runtime_libraries,
@@ -2564,6 +2683,331 @@ pub fn inspect_with_runtime_options(
 
 const NES_RESULT_OFFSETS: [usize; 4] = [0, 4, 5, 6];
 const NES_RETROPAD_IDS: [u32; 8] = [8, 0, 2, 3, 4, 5, 6, 7];
+
+fn validate_atari2600_metadata(
+    controller_choices: Option<&[Vec<ControllerChoice>]>,
+    descriptors: &[InputDescriptor],
+) -> Result<(&'static str, &'static str)> {
+    let choices = controller_choices.context("Stella did not advertise controller choices")?;
+    ensure!(
+        choices.len() == 4,
+        "Stella did not advertise four input ports"
+    );
+    let primary_choices = [
+        ("Automatic (from ROM database)", 1),
+        ("Joystick", 257),
+        ("BoosterGrip", 513),
+        ("Genesis", 769),
+        ("Joy 2B+", 1025),
+        ("Paddles", 1281),
+        ("Driving", 1537),
+        ("Keyboard", 1793),
+        ("TrakBall", 2049),
+        ("Amiga Mouse", 2305),
+        ("Atari Mouse", 2561),
+        ("Lightgun", 2817),
+        ("QuadTari", 3073),
+        ("MindLink", 3329),
+        ("AtariVox", 3585),
+        ("SaveKey", 3841),
+        ("KidVid", 4097),
+        ("None", 0),
+    ];
+    let legacy = choices.iter().all(|choices| {
+        choices
+            == &[
+                ControllerChoice {
+                    description: "Automatic".into(),
+                    id: 1,
+                },
+                ControllerChoice {
+                    description: "None".into(),
+                    id: 0,
+                },
+            ]
+    });
+    for (port, choices) in choices.iter().enumerate() {
+        let expected: Vec<ControllerChoice> = if port < 2 {
+            if legacy {
+                [("Automatic", 1), ("None", 0)]
+                    .into_iter()
+                    .map(|(description, id)| ControllerChoice {
+                        description: description.into(),
+                        id,
+                    })
+                    .collect()
+            } else {
+                primary_choices
+                    .iter()
+                    .map(|&(description, id)| ControllerChoice {
+                        description: description.into(),
+                        id,
+                    })
+                    .collect()
+            }
+        } else {
+            [("Automatic", 1), ("None", 0)]
+                .into_iter()
+                .map(|(description, id)| ControllerChoice {
+                    description: description.into(),
+                    id,
+                })
+                .collect()
+        };
+        ensure!(
+            choices == &expected,
+            "Unexpected Stella controller choices on port {}: {choices:?}",
+            port + 1
+        );
+    }
+    ensure!(
+        descriptors.len() == 40,
+        "Unexpected Stella input descriptor count: {}",
+        descriptors.len()
+    );
+    let required = [
+        (4, "Up"),
+        (5, "Down"),
+        (6, "Left"),
+        (7, "Right"),
+        (0, "Fire"),
+        (8, "Trigger"),
+        (1, "Booster"),
+        (2, "Select"),
+        (3, "Reset"),
+        (10, "Left Difficulty A"),
+        (11, "Right Difficulty A"),
+        (12, "Left Difficulty B"),
+        (13, "Right Difficulty B"),
+        (14, "Color"),
+        (15, "Black/White"),
+    ];
+    for port in 0..2 {
+        for &(id, description) in &required {
+            ensure!(
+                descriptors.iter().any(|entry| {
+                    entry.port == port
+                        && entry.device == 1
+                        && entry.index == 0
+                        && entry.id == id
+                        && entry.description == description
+                }),
+                "Stella is missing the expected {description} descriptor on port {}",
+                port + 1
+            );
+        }
+    }
+    Ok(if legacy {
+        (
+            "ba52c43b9eda950eb0c0eec69cda9b17dee8c39b",
+            "https://github.com/libretro/stella/tree/ba52c43b9eda950eb0c0eec69cda9b17dee8c39b",
+        )
+    } else {
+        (
+            "c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1",
+            "https://github.com/stella-emu/stella/tree/c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1",
+        )
+    })
+}
+
+fn atari2600_expected_registers(port_masks: [u16; 2], swchb: u8) -> [u8; 4] {
+    let mut swcha = 0xff;
+    for (port, mask) in port_masks.into_iter().enumerate() {
+        for (retropad_id, direction) in [(4, 0), (5, 1), (6, 2), (7, 3)] {
+            if mask & (1 << retropad_id) != 0 {
+                let riot_bit = if port == 0 { direction + 4 } else { direction };
+                swcha &= !(1 << riot_bit);
+            }
+        }
+    }
+    [
+        swcha,
+        if port_masks[0] & 1 == 0 { 0x80 } else { 0 },
+        if port_masks[1] & 1 == 0 { 0x80 } else { 0 },
+        swchb,
+    ]
+}
+
+fn read_atari2600_registers(core: &Core) -> Result<[u8; 4]> {
+    unsafe {
+        ensure!(
+            (core.memory_size)(2) == 128,
+            "Atari 2600 RIOT RAM became unavailable"
+        );
+        let memory = (core.memory)(2).cast::<u8>();
+        ensure!(!memory.is_null(), "No Atari 2600 RIOT RAM exposed by core");
+        let bytes = std::slice::from_raw_parts(memory, 8);
+        ensure!(
+            &bytes[4..8] == b"LB26",
+            "Atari 2600 diagnostic program did not execute"
+        );
+        Ok(bytes[..4].try_into().unwrap())
+    }
+}
+
+fn wait_for_atari2600_registers(core: &Core) -> Result<[u8; 4]> {
+    let mut last = None;
+    for _ in 0..120 {
+        unsafe { (core.run)() };
+        match read_atari2600_registers(core) {
+            Ok(registers) => return Ok(registers),
+            Err(error) => last = Some(error),
+        }
+    }
+    let detail = last.map(|error| format!(": {error:#}")).unwrap_or_default();
+    anyhow::bail!("Original Atari 2600 diagnostic did not boot in 120 frames{detail}")
+}
+
+fn compare_atari2600_registers(
+    name: &str,
+    observed: [u8; 4],
+    expected: [u8; 4],
+    masks: [u8; 4],
+) -> Result<()> {
+    for index in 0..4 {
+        ensure!(
+            observed[index] & masks[index] == expected[index] & masks[index],
+            "Atari 2600 {name}: register {index} expected {:#04x} under mask {:#04x}, observed {:#04x}",
+            expected[index],
+            masks[index],
+            observed[index]
+        );
+    }
+    Ok(())
+}
+
+fn run_atari2600_observations(core: &Core) -> Result<Vec<Atari2600Observation>> {
+    for pressed in &PRESSED {
+        pressed.store(0, Ordering::Relaxed);
+    }
+    let initial = wait_for_atari2600_registers(core)?;
+    let joystick_masks = [0xff, 0x80, 0x80, 0];
+    let released = atari2600_expected_registers([0, 0], initial[3]);
+    compare_atari2600_registers("initial release", initial, released, joystick_masks)?;
+
+    let cases = [
+        ("released", 0),
+        ("Fire", 1 << 0),
+        ("Up", 1 << 4),
+        ("Down", 1 << 5),
+        ("Left", 1 << 6),
+        ("Right", 1 << 7),
+        ("Up+Left", (1 << 4) | (1 << 6)),
+    ];
+    let mut observations = Vec::new();
+    for target in 0..2 {
+        for (case_index, &(name, target_mask)) in cases.iter().enumerate() {
+            let other = 1 - target;
+            let mut masks = [0u16; 2];
+            masks[target] = target_mask;
+            // A distinct held direction+fire on the other port makes routing
+            // errors visible in every target-port observation.
+            masks[other] = if (case_index + target) % 2 == 0 {
+                (1 << 7) | 1
+            } else {
+                (1 << 6) | 1
+            };
+            for (port, mask) in masks.into_iter().enumerate() {
+                PRESSED[port].store(mask, Ordering::Relaxed);
+            }
+            for _ in 0..4 {
+                unsafe { (core.run)() };
+            }
+            let observed = read_atari2600_registers(core)?;
+            let expected = atari2600_expected_registers(masks, observed[3]);
+            compare_atari2600_registers(name, observed, expected, joystick_masks)?;
+            observations.push(Atari2600Observation {
+                target_port: u32::try_from(target + 1).unwrap(),
+                name: name.into(),
+                retropad_masks: masks,
+                expected_registers: expected,
+                observed_registers: observed,
+                comparison_masks: joystick_masks,
+            });
+
+            if target_mask != 0 {
+                PRESSED[0].store(0, Ordering::Relaxed);
+                PRESSED[1].store(0, Ordering::Relaxed);
+                for _ in 0..4 {
+                    unsafe { (core.run)() };
+                }
+                let observed = read_atari2600_registers(core)?;
+                let expected = atari2600_expected_registers([0, 0], observed[3]);
+                compare_atari2600_registers(
+                    &format!("release after port {} {name}", target + 1),
+                    observed,
+                    expected,
+                    joystick_masks,
+                )?;
+                observations.push(Atari2600Observation {
+                    target_port: u32::try_from(target + 1).unwrap(),
+                    name: format!("release after {name}"),
+                    retropad_masks: [0, 0],
+                    expected_registers: expected,
+                    observed_registers: observed,
+                    comparison_masks: joystick_masks,
+                });
+            }
+        }
+    }
+
+    // Console switches are driven from frontend port zero regardless of the
+    // emulated joystick port. Difficulty and color/BW are latched settings;
+    // Select and Reset are active only while held.
+    let switch_cases = [
+        ("Select", 1 << 2, 0x02, 0x00),
+        ("Reset", 1 << 3, 0x01, 0x00),
+        ("Left difficulty A", 1 << 10, 0x40, 0x40),
+        ("Left difficulty B", 1 << 12, 0x40, 0x00),
+        ("Right difficulty A", 1 << 11, 0x80, 0x80),
+        ("Right difficulty B", 1 << 13, 0x80, 0x00),
+        ("Color", 1 << 14, 0x08, 0x08),
+        ("Black/White", 1 << 15, 0x08, 0x00),
+    ];
+    for &(name, retropad_mask, switch_mask, expected_switch_bits) in &switch_cases {
+        PRESSED[0].store(retropad_mask, Ordering::Relaxed);
+        PRESSED[1].store(0, Ordering::Relaxed);
+        for _ in 0..4 {
+            unsafe { (core.run)() };
+        }
+        let observed = read_atari2600_registers(core)?;
+        let expected = atari2600_expected_registers([retropad_mask, 0], expected_switch_bits);
+        let comparison_masks = [0xff, 0x80, 0x80, switch_mask];
+        compare_atari2600_registers(name, observed, expected, comparison_masks)?;
+        observations.push(Atari2600Observation {
+            target_port: 0,
+            name: name.into(),
+            retropad_masks: [retropad_mask, 0],
+            expected_registers: expected,
+            observed_registers: observed,
+            comparison_masks,
+        });
+
+        PRESSED[0].store(0, Ordering::Relaxed);
+        for _ in 0..4 {
+            unsafe { (core.run)() };
+        }
+        if switch_mask <= 0x02 {
+            let observed = read_atari2600_registers(core)?;
+            let expected = atari2600_expected_registers([0, 0], switch_mask);
+            compare_atari2600_registers(
+                &format!("release after {name}"),
+                observed,
+                expected,
+                comparison_masks,
+            )?;
+            observations.push(Atari2600Observation {
+                target_port: 0,
+                name: format!("release after {name}"),
+                retropad_masks: [0, 0],
+                expected_registers: expected,
+                observed_registers: observed,
+                comparison_masks,
+            });
+        }
+    }
+    Ok(observations)
+}
 
 fn nes_hardware_bits(retropad_mask: u16) -> u8 {
     NES_RETROPAD_IDS
@@ -3330,6 +3774,43 @@ mod tests {
             hardware_bits |= hardware;
         }
         assert_eq!(hardware_bits, mask);
+    }
+
+    #[test]
+    fn atari2600_rom_and_register_mapping_are_reproducible() {
+        let rom = atari2600_diagnostic_rom();
+        assert_eq!(rom, atari2600_diagnostic_rom());
+        assert_eq!(rom.len(), 4 * 1024);
+        for vector in [0x0ffa, 0x0ffc, 0x0ffe] {
+            assert_eq!(
+                u16::from_le_bytes(rom[vector..vector + 2].try_into().unwrap()),
+                0xf000
+            );
+        }
+        assert_eq!(
+            &rom[2..18],
+            &[
+                0xa9, b'L', 0x85, 0x84, 0xa9, b'B', 0x85, 0x85, 0xa9, b'2', 0x85, 0x86, 0xa9, b'6',
+                0x85, 0x87
+            ]
+        );
+        assert!(
+            rom[..0x60]
+                .windows(3)
+                .any(|bytes| bytes == [0x4c, 0x12, 0xf0])
+        );
+
+        assert_eq!(
+            atari2600_expected_registers([0, 0], 0xff),
+            [0xff, 0x80, 0x80, 0xff]
+        );
+        assert_eq!(
+            atari2600_expected_registers([(1 << 4) | (1 << 6) | 1, (1 << 5) | (1 << 7) | 1], 0x49),
+            [0xa5, 0x00, 0x00, 0x49]
+        );
+        let (_, filename, device, mask) = Diagnostic::Atari2600.identity();
+        assert_eq!((filename, device, mask), ("input.bin", 1, 0));
+        assert!(Diagnostic::Atari2600.cases().is_empty());
     }
 
     #[test]
