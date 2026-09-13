@@ -218,7 +218,9 @@ RetroArch GUI/remap behavior or physical-device capture.
 
 GitHub Actions runs
 [`34742154324`](https://github.com/benwbooth/lunchbox/actions/runs/34742154324) and
-[`34744774150`](https://github.com/benwbooth/lunchbox/actions/runs/34744774150)
+[`34744774150`](https://github.com/benwbooth/lunchbox/actions/runs/34744774150),
+plus SkyEmu GBA follow-up
+[`34746239843`](https://github.com/benwbooth/lunchbox/actions/runs/34746239843),
 executed the original diagnostics on separate Windows Server 2025 VMs
 against official Libretro x86_64 buildbot DLLs. Every retained report is
 machine-parseable JSON under its system-specific schema; native stdout and
@@ -227,6 +229,7 @@ stderr are separate artifacts.
 | System | Exact core | Modes and observations |
 | --- | --- | --- |
 | GBA | mGBA `0.11-219-e31759b`, SHA-256 `d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33` | 26/26 in individual mode and 26/26 in bitmask mode |
+| GBA | SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c`, SHA-256 `a9f020507fa90551107a40fb00c05e9d20f9bfb2140319aae9f5a9892c2973bc` | 26/26 in individual mode; bitmask unsupported |
 | GBA | VBA-M `2.1.3 115defb`, SHA-256 `a88130470c10aa4f4e34fd39c07f56630af7b596cc81ebd211796326b8f3af8f` | 26/26 in individual mode and 26/26 in bitmask mode |
 | Game Boy | Gambatte `v0.5.0-netlink d9d6cd0`, SHA-256 `c15eb6dc323b08610e8241ace11135d9fe8e1c8a3190541394f15457cdac59e1` | 24/24 in individual mode and 24/24 in bitmask mode |
 | Game Boy | mGBA `0.11-219-e31759b`, SHA-256 `d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33` | 24/24 in individual mode and 24/24 in bitmask mode |
@@ -247,7 +250,9 @@ restoration, RetroArch frontend configuration, physical controllers, or sync.
 SameBoy's warning about the absent optional `dmg_boot.bin` precedes successful
 fallback to the built-in open boot ROM and is retained separately from the JSON
 reports. SkyEmu intentionally has no bitmask report because the oracle rejects
-that mode after proving the adapter never negotiates it.
+that mode after proving the adapter never negotiates it. Its GBA report records
+zero standard system-RAM bytes and the exact writable 262,144-byte memory-map
+descriptor at emulated address `0x02000000` used for the KEYINPUT observation.
 
 A follow-up run,
 [`34739246329`](https://github.com/benwbooth/lunchbox/actions/runs/34739246329),

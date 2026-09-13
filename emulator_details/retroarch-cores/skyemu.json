@@ -174,12 +174,15 @@
     },
     "windows": {
       "status": "available",
-      "reason": "The official Libretro Windows x86_64 buildbot artifact was downloaded and executed through the exact-core Game Boy input oracle on a GitHub-hosted Windows Server 2025 VM.",
+      "reason": "The official Libretro Windows x86_64 buildbot artifact was downloaded and executed through the exact-core Game Boy and GBA input and persistence oracles on GitHub-hosted Windows Server 2025 VMs.",
       "evidence": [
-        "buildbot:https://buildbot.libretro.com/nightly/windows/x86_64/latest/skyemu_libretro.dll.zip @2026-09-12",
+        "buildbot:https://buildbot.libretro.com/nightly/windows/x86_64/latest/skyemu_libretro.dll.zip @2026-09-13",
         "runtime:Windows Server 2025 x86_64; SkyEmu adacd0788964ed89f5c43dcbc1f3cc26deec996c; sha256 a9f020507fa90551107a40fb00c05e9d20f9bfb2140319aae9f5a9892c2973bc",
         "github-actions:https://github.com/benwbooth/lunchbox/actions/runs/34742154324",
-        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md"
+        "github-actions:https://github.com/benwbooth/lunchbox/actions/runs/34743651414",
+        "github-actions:https://github.com/benwbooth/lunchbox/actions/runs/34746239843",
+        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md",
+        "crates/lunchbox-controller-probe/LIBRETRO_PERSISTENCE.md"
       ]
     }
   }

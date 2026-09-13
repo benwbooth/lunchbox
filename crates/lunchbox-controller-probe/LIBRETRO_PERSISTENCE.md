@@ -248,8 +248,11 @@ diagnostic with equally strict isolation and fresh-process checks.
 
 GitHub Actions runs
 [`34743651414`](https://github.com/benwbooth/lunchbox/actions/runs/34743651414) and
-[`34744774150`](https://github.com/benwbooth/lunchbox/actions/runs/34744774150)
-executed the schema-3 four-worker Game Boy oracles and the VBA-M GBA oracle
+[`34744774150`](https://github.com/benwbooth/lunchbox/actions/runs/34744774150),
+plus SkyEmu GBA follow-up
+[`34746239843`](https://github.com/benwbooth/lunchbox/actions/runs/34746239843),
+executed the schema-3 four-worker Game Boy oracles, the VBA-M GBA oracle, and
+the schema-4 SkyEmu GBA oracle
 against official Libretro Windows x86-64 `latest` artifacts on separate Windows
 Server 2025 VMs. The downloaded evidence archives were then independently
 checked: each core DLL and source ZIP matched `download.json`, and each retained
@@ -257,6 +260,7 @@ ROM, save, and state file matched its report hash.
 
 | System | Core identity | Core SHA-256 | Save transition | State bytes |
 | --- | --- | --- | --- | ---: |
+| GBA | SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c` | `a9f020507fa90551107a40fb00c05e9d20f9bfb2140319aae9f5a9892c2973bc` | 128 KiB save buffer; `LBSG01` to `LBSG02` in a fresh process | 581,832 |
 | GBA | VBA-M `2.1.3 115defb` | `a88130470c10aa4f4e34fd39c07f56630af7b596cc81ebd211796326b8f3af8f` | 32 KiB SRAM; `LBSG01` to `LBSG02` in a fresh process | 723,452 |
 | Game Boy | Gambatte `v0.5.0-netlink d9d6cd0` | `c15eb6dc323b08610e8241ace11135d9fe8e1c8a3190541394f15457cdac59e1` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 59,650 |
 | Game Boy | mGBA `0.11-219-e31759b` | `d5a3fcc915609ab5c81ede3cd1d0a9ea7a7670d3a7e325990297a16d6e987a33` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 202,816 |
@@ -267,5 +271,7 @@ ROM, save, and state file matched its report hash.
 Every Windows state size exactly matched the pinned Linux and macOS size for
 the same core revision. This is still behavioral state-restoration evidence,
 not a claim that serialized bytes remain identical across processes, reruns, or
-platform builds. Save synchronization remains separately blocked until a real
-provider export and restore is exercised.
+platform builds. The schema-4 SkyEmu GBA reports also agree on zero standard
+system-RAM bytes and the exact writable 262,144-byte memory-map descriptor at
+emulated address `0x02000000`. Save synchronization remains separately blocked
+until a real provider export and restore is exercised.
