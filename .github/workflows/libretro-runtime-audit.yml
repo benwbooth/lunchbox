@@ -236,6 +236,241 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  windows-arcade:
+    name: Windows arcade oracle (${{ matrix.core }})
+    runs-on: windows-2025
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - core: fbneo
+            expected_archive_sha256: 8389e62bbd370282ea408db1498e0e64b443c346530e7fee650d551c5aaffc76
+            expected_core_sha256: 4e097b6a1587ad58c3292e885ce218ec8eb8fbecebdf82a51489eb16f95ac3ca
+            expected_core_name: FinalBurn Neo
+            expected_core_version: 'v1.0.0.03 260904 GITa251c76'
+            expected_source_commit: a251c76229f1637e433b93e29845039752771b6d
+            expected_state_bytes: 15288
+            timeout_seconds: 120
+          - core: mame
+            expected_archive_sha256: 77d38183ba995e8bb3e2f514e680d30645eae3b8aad78d6b62026d166c664590
+            expected_core_sha256: b38c9ebb2cf679745701569c511f9c381e1f4f3f43e0212fe728397b0badbead
+            expected_core_name: MAME
+            expected_core_version: '0.289 (4fc9a931)'
+            expected_source_commit: 4fc9a9312baaf34963847f884961ad9793fbbc1d
+            expected_state_bytes: 4568435
+            timeout_seconds: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build bounded arcade oracle
+        run: >-
+          cargo build --locked --release --package lunchbox-controller-probe
+          --bin lunchbox-libretro-input --bin lunchbox-libretro-arcade-oracle
+      - name: Verify core and run arcade oracle when content is available
+        shell: bash
+        env:
+          ARCADE_CONTENT_URL: ${{ secrets.LIBRETRO_ARCADE_1943_URL }}
+          CORE: ${{ matrix.core }}
+          EXPECTED_ARCHIVE_SHA256: ${{ matrix.expected_archive_sha256 }}
+          EXPECTED_CORE_SHA256: ${{ matrix.expected_core_sha256 }}
+          EXPECTED_CORE_NAME: ${{ matrix.expected_core_name }}
+          EXPECTED_CORE_VERSION: ${{ matrix.expected_core_version }}
+          EXPECTED_SOURCE_COMMIT: ${{ matrix.expected_source_commit }}
+          EXPECTED_STATE_BYTES: ${{ matrix.expected_state_bytes }}
+          TIMEOUT_SECONDS: ${{ matrix.timeout_seconds }}
+        run: |
+          set -euo pipefail
+
+          runner_temp="$(cygpath -u "$RUNNER_TEMP")"
+          workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
+          evidence="$runner_temp/lunchbox-libretro-arcade-${CORE}"
+          core_root="$runner_temp/lunchbox-libretro-arcade-core-${CORE}"
+          content_root="$runner_temp/lunchbox-libretro-arcade-content-${CORE}"
+          mkdir -p "$evidence" "$core_root/unpacked" "$content_root"
+
+          result_status=failed
+          result_reason='The Windows arcade audit failed before completion.'
+          write_result() {
+            RESULT_PATH="$evidence/result.json" \
+            RESULT_STATUS="$result_status" \
+            RESULT_REASON="$result_reason" \
+            python - <<'PY'
+          import json
+          import os
+
+          with open(os.environ["RESULT_PATH"], "w", encoding="utf-8") as output:
+              json.dump({
+                  "schema_version": 1,
+                  "status": os.environ["RESULT_STATUS"],
+                  "reason": os.environ["RESULT_REASON"],
+              }, output, indent=2)
+              output.write("\n")
+          PY
+          }
+          trap write_result EXIT
+
+          core_url="https://buildbot.libretro.com/nightly/windows/x86_64/latest/${CORE}_libretro.dll.zip"
+          core_archive="$core_root/${CORE}_libretro.dll.zip"
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 300 \
+            "$core_url" -o "$core_archive"
+          archive_sha256="$(sha256sum "$core_archive" | cut -d ' ' -f 1)"
+          printf 'source_url=%s\nexpected_archive_sha256=%s\nobserved_archive_sha256=%s\n' \
+            "$core_url" "$EXPECTED_ARCHIVE_SHA256" "$archive_sha256" \
+            > "$evidence/core-download.txt"
+          if [[ "$archive_sha256" != "$EXPECTED_ARCHIVE_SHA256" ]]; then
+            result_reason='Official core archive SHA-256 differs from the pinned Windows artifact.'
+            exit 1
+          fi
+
+          unzip -q "$core_archive" -d "$core_root/unpacked"
+          core_path="$(find "$core_root/unpacked" -type f -name "${CORE}_libretro.dll" -print -quit)"
+          if [[ -z "$core_path" ]]; then
+            result_reason='Pinned core archive did not contain the expected DLL.'
+            exit 1
+          fi
+          core_sha256="$(sha256sum "$core_path" | cut -d ' ' -f 1)"
+          printf 'expected_core_sha256=%s\nobserved_core_sha256=%s\n' \
+            "$EXPECTED_CORE_SHA256" "$core_sha256" >> "$evidence/core-download.txt"
+          if [[ "$core_sha256" != "$EXPECTED_CORE_SHA256" ]]; then
+            result_reason='Core DLL SHA-256 differs from the pinned Windows artifact.'
+            exit 1
+          fi
+
+          result_reason='Pinned core identity-only inspection failed or returned an unexpected name/version.'
+          identity_oracle="$workspace/target/release/lunchbox-libretro-input.exe"
+          "$identity_oracle" \
+            --core "$core_path" \
+            --sha256 "$EXPECTED_CORE_SHA256" \
+            --identity-only \
+            --output "$evidence/core-identity.json" \
+            > "$evidence/core-identity.stdout" \
+            2> "$evidence/core-identity.stderr"
+          IDENTITY_PATH="$evidence/core-identity.json" \
+          EXPECTED_CORE_NAME="$EXPECTED_CORE_NAME" \
+          EXPECTED_CORE_VERSION="$EXPECTED_CORE_VERSION" \
+          python - <<'PY'
+          import json
+          import os
+
+          with open(os.environ["IDENTITY_PATH"], encoding="utf-8") as source:
+              identity = json.load(source)
+          if identity["core_name"] != os.environ["EXPECTED_CORE_NAME"]:
+              raise SystemExit(
+                  f"core name mismatch: observed {identity['core_name']!r}, "
+                  f"expected {os.environ['EXPECTED_CORE_NAME']!r}"
+              )
+          if identity["core_version"] != os.environ["EXPECTED_CORE_VERSION"]:
+              raise SystemExit(
+                  f"core version mismatch: observed {identity['core_version']!r}, "
+                  f"expected {os.environ['EXPECTED_CORE_VERSION']!r}"
+              )
+          PY
+
+          if [[ -z "$ARCADE_CONTENT_URL" ]]; then
+            result_status=blocked
+            result_reason='LIBRETRO_ARCADE_1943_URL is unavailable; core identity was verified, but no game bytes were downloaded or executed.'
+            exit 0
+          fi
+
+          content="$content_root/1943.zip"
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 300 \
+            "$ARCADE_CONTENT_URL" -o "$content"
+          content_bytes="$(wc -c < "$content" | tr -d '[:space:]')"
+          content_sha256="$(sha256sum "$content" | cut -d ' ' -f 1)"
+          printf 'source=LIBRETRO_ARCADE_1943_URL\nexpected_bytes=805560\nobserved_bytes=%s\nexpected_sha256=%s\nobserved_sha256=%s\n' \
+            "$content_bytes" \
+            e44b89e80bf8bccc4f16476d7254d959d937a1668d27ec564d57103ac94fba6f \
+            "$content_sha256" > "$evidence/content-receipt.txt"
+          if [[ "$content_bytes" != 805560 ]]; then
+            result_reason='User-supplied 1943.zip byte count differs from the pinned content.'
+            exit 1
+          fi
+          if [[ "$content_sha256" != e44b89e80bf8bccc4f16476d7254d959d937a1668d27ec564d57103ac94fba6f ]]; then
+            result_reason='User-supplied 1943.zip SHA-256 differs from the pinned content.'
+            exit 1
+          fi
+
+          arcade_oracle="$workspace/target/release/lunchbox-libretro-arcade-oracle.exe"
+          run_oracle() {
+            local mode="$1"
+            shift
+            "$arcade_oracle" \
+              --profile "$CORE" \
+              --core "$core_path" \
+              --expected-core-sha256 "$EXPECTED_CORE_SHA256" \
+              --expected-core-version "$EXPECTED_CORE_VERSION" \
+              --expected-source-commit "$EXPECTED_SOURCE_COMMIT" \
+              --expected-state-bytes "$EXPECTED_STATE_BYTES" \
+              --content "$content" \
+              --output "$evidence/$mode" \
+              --timeout-seconds "$TIMEOUT_SECONDS" \
+              "$@" \
+              > "$evidence/${mode}.stdout" \
+              2> "$evidence/${mode}.stderr"
+          }
+
+          oracle_failed=0
+          if ! run_oracle individual; then
+            cat "$evidence/individual.stderr" >&2
+            oracle_failed=1
+          fi
+          if ! run_oracle bitmask --bitmask; then
+            cat "$evidence/bitmask.stderr" >&2
+            oracle_failed=1
+          fi
+          if [[ "$oracle_failed" != 0 ]]; then
+            result_reason='One or both pinned Windows arcade callback-mode runs failed.'
+            exit 1
+          fi
+
+          CORE="$CORE" EVIDENCE="$evidence" python - <<'PY'
+          import json
+          import os
+
+          expected_collisions = {
+              (1, "Coin", ("P2 Coin",)),
+              (2, "Coin", ("P1 Coin",)),
+          }
+          for mode in ("individual", "bitmask"):
+              with open(
+                  os.path.join(os.environ["EVIDENCE"], mode, "report.json"),
+                  encoding="utf-8",
+              ) as source:
+                  report = json.load(source)
+              if report["profile"] != os.environ["CORE"]:
+                  raise SystemExit(f"{mode}: unexpected profile")
+              if report["status"] != "partial":
+                  raise SystemExit(f"{mode}: expected explicit partial status")
+              responses = report["responses"]
+              promoted = [item for item in responses if item["promoted_as_distinguished"]]
+              collisions = {
+                  (
+                      item["player"],
+                      item["control"],
+                      tuple(item["collision_with"]),
+                  )
+                  for item in responses
+                  if not item["promoted_as_distinguished"]
+              }
+              if len(responses) != 22 or len(promoted) != 20:
+                  raise SystemExit(f"{mode}: expected 20 of 22 distinguished channels")
+              if collisions != expected_collisions:
+                  raise SystemExit(f"{mode}: unexpected undistinguished-channel boundary")
+              if not report["state_restore"]["same_process_exact"]:
+                  raise SystemExit(f"{mode}: same-process state restoration was not exact")
+          PY
+
+          result_status=partial
+          result_reason='Pinned Windows arcade core completed both callback modes with 20 of 22 distinct channels; the shared-credit and fresh-process state boundaries remain explicit in each report.'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: libretro-windows-${{ matrix.core }}-arcade
+          path: ${{ runner.temp }}/lunchbox-libretro-arcade-${{ matrix.core }}
+          if-no-files-found: warn
+          retention-days: 14
+
   windows-psx-firmware-boundary:
     name: Windows PSX firmware boundary (${{ matrix.core }})
     runs-on: windows-2025
