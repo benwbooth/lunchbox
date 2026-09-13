@@ -44,7 +44,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          evidence="$RUNNER_TEMP/lunchbox-libretro-${CORE}"
+          runner_temp="$(cygpath -u "$RUNNER_TEMP")"
+          workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
+          evidence="$runner_temp/lunchbox-libretro-${CORE}"
           mkdir -p "$evidence/unpacked"
           url="https://buildbot.libretro.com/nightly/windows/x86_64/latest/${CORE}_libretro.dll.zip"
           curl --fail --location --retry 3 "$url" -o "$evidence/core.zip"
@@ -53,7 +55,7 @@ jobs:
           test -n "$core_path"
           core_sha256="$(sha256sum "$core_path" | cut -d ' ' -f 1)"
           archive_sha256="$(sha256sum "$evidence/core.zip" | cut -d ' ' -f 1)"
-          oracle="$GITHUB_WORKSPACE/target/release/lunchbox-libretro-input.exe"
+          oracle="$workspace/target/release/lunchbox-libretro-input.exe"
 
           printf '{\n  "source_url": "%s",\n  "archive_sha256": "%s",\n  "core_sha256": "%s"\n}\n' \
             "$url" "$archive_sha256" "$core_sha256" > "$evidence/download.json"
