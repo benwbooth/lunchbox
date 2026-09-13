@@ -997,6 +997,22 @@ fn state_path(root: &Path, system: PersistenceSystem) -> PathBuf {
         .join(format!("{}-persistence.state", system.slug()))
 }
 
+fn pre_run_observation_bytes(
+    spec: CoreSpec,
+    reported_system_ram_bytes: usize,
+    mapped_bytes: impl FnOnce() -> Result<usize>,
+) -> Result<usize> {
+    if spec.memory_map.is_some() {
+        mapped_bytes()
+    } else {
+        // Some cores publish the standard memory size during load but leave its
+        // pointer null until the first retro_run. The phase-specific paths run
+        // a frame before dereferencing observation RAM, matching that ABI
+        // lifecycle while still pinning the advertised size here.
+        Ok(reported_system_ram_bytes)
+    }
+}
+
 fn worker(args: WorkerArgs) -> Result<WorkerReport> {
     let expected_hash = validate_hash(&args.sha256)?;
     let expected_version = resolve_expected_version(args.system, Some(&args.expected_version))?;
@@ -1040,7 +1056,9 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         );
     }
     let reported_system_ram_bytes = core.memory_size(RETRO_MEMORY_SYSTEM_RAM);
-    let system_ram_bytes = unsafe { core.observation_memory_slice(spec)? }.len();
+    let system_ram_bytes = pre_run_observation_bytes(spec, reported_system_ram_bytes, || {
+        Ok(unsafe { core.observation_memory_slice(spec)? }.len())
+    })?;
     ensure!(
         system_ram_bytes == spec.system_ram_bytes,
         "Expected {} bytes of observation RAM, got {system_ram_bytes}",
@@ -2145,6 +2163,24 @@ mod tests {
         assert!(
             rom.windows(4)
                 .any(|bytes| bytes == [0x8f, 0x00, 0x00, 0x7e])
+        );
+    }
+
+    #[test]
+    fn standard_memory_is_not_dereferenced_before_the_first_frame() {
+        let mgba_gameboy = PersistenceSystem::GameboyMgba.spec();
+        assert_eq!(
+            pre_run_observation_bytes(mgba_gameboy, 32_768, || {
+                panic!("standard-memory pointer was inspected before retro_run")
+            })
+            .unwrap(),
+            32_768
+        );
+
+        let skyemu_gba = PersistenceSystem::GbaSkyemu.spec();
+        assert_eq!(
+            pre_run_observation_bytes(skyemu_gba, 0, || Ok(262_144)).unwrap(),
+            262_144
         );
     }
 
