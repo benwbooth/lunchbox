@@ -14,6 +14,30 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 605: completed the exact-hash native macOS/Windows RetroArch Nestopia
+frontend-autoconfiguration batch for the existing two- and four-player profiles.
+The retained session now pins the complete prepared environment through spawn and
+passes explicit `--device=PORT:ID` arguments because a global append config does
+not apply `input_libretro_device_pN` at core startup. The Windows production oracle
+passed two-player input, independent Four Score P1/P2/P3/P4 bytes FE/FD/FE/FD,
+fresh-process SRAM, same-/fresh-process state restoration, ten drift cases,
+process cleanup and 15 private-session removals in 270.23 seconds; its 5,221-byte
+report SHA-256 is
+`c48aad1a575e5efaf2aa3c335681b9e6250ffa45114737420575d3c50e94847c`.
+The macOS M1 production oracle passed eight launches in 290.26 seconds, including
+two-player FF/FF to FE/FF to FF/FD, independent Four Score FE/FD/F7/7F, SRAM,
+state restoration, sealed-resource/environment drift and complete cleanup; its
+24,853-byte report SHA-256 is
+`06ac244a5231dce41a3dd5a20ca18c01de8703db38a6e4b2663fab8bce3f6af5`.
+All eight macOS launches were bounded forced terminations. The helper suite passes
+22/22 and the Windows oracle cross-target `cargo check` passes; the app-wide
+MinGW check remains blocked in `aws-lc-sys` on missing `pthread.h`, outside this
+adapter. Catalog stays
+91/95 cores (95.8%), 289 profiles and 157 layouts because these profiles already
+existed. Remaining for this scope is physical-pad/runtime-autoconfiguration proof,
+optional FDS firmware, normal macOS shutdown observation, real-provider save sync,
+and any native RetroArch core/profile beyond this exact pair. Uncommitted/unreviewed.
+
 Step 604: added explicit absolute capture controls to the advanced calibration
 dialog: exact device/axis selection, 50 ms polling, named edge confirmations,
 finish-to-review draft and separate add-to-JSON action. Existing device records
@@ -5575,3 +5599,28 @@ shake binding is a core-provided digital event, not host motion capture.
 Every progress update must name what changed, current/remaining coverage, and
 estimated remaining work for the current batch. New support claims require actual
 contracts/implementation; UI visibility alone does not increase supported counts.
+
+## Native RetroArch Nestopia frontend autoconfiguration (2026-09-13)
+
+The explicit `retroarch:nestopia:nes-2player` and
+`retroarch:nestopia:nes-4player` ordinary-cartridge profiles now dispatch on
+native macOS and Windows through a retained `frontend_autoconfig` session. The
+adapter is deliberately exact-hash limited, snapshots every main-config and
+core-options precedence input, rejects unresolved custom config/environment and
+user device CLI layers, and verifies frontend/core/content, argv, the exact launch
+environment, source snapshots, private files and permissions again at spawn. It
+preserves RetroArch's physical driver/autoconfiguration and user save/state paths.
+The helper supplies device 257/257/0/0 or 257/257/257/257 through both its private
+record and explicit CLI arguments so the mode is active at initial core load.
+
+This exact production-helper path now has retained native evidence on both hosts.
+Windows 1.19.1 passed the two-player cases, independent Four Score FE/FD/FE/FD,
+fresh-process SRAM, behavioral same-/fresh-process state restoration, drift gates,
+process cleanup and private-session cleanup. macOS 1.22.2 passed eight launches,
+including two-player FF/FF to FE/FF to FF/FD, Four Score FE/FD/F7/7F, SRAM/state,
+bundle/environment drift and cleanup. See
+`RETROARCH_NATIVE_FRONTEND_AUTOCONFIG.md` for exact reports and hashes. macOS used
+deterministic BSV replay and bounded forced termination for every launch. Physical
+controllers, optional FDS firmware, provider save sync, ordinary macOS shutdown,
+and other native cores/profiles remain untested; no broad native RetroArch claim
+is made.

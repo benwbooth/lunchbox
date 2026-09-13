@@ -113,10 +113,11 @@ separate:
   `covered`, `covered_with_dynamic_adapters`, `dynamic_per_game`, `partial`,
   `missing_contract`, or `not_applicable`.
 - `controller_launch_host_status` is `launch_supported` on Linux and Linux
-  Flatpak, `launch_adapter_missing` on macOS and Windows, and `not_applicable`
-  for non-RetroArch rows. `launch_supported` means the writer path exists; it
-  does not establish core availability, successful launch, or controller
-  behavior.
+  Flatpak. The exact Nestopia ordinary-cartridge profiles are also
+  `launch_supported` on macOS and Windows through their pinned native frontend
+  adapter; other RetroArch rows remain `launch_adapter_missing` there.
+  `launch_supported` means the writer path exists; it does not establish core
+  availability, successful launch, or controller behavior.
 
 `record_status` uses these source-capture values:
 

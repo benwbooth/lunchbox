@@ -267,7 +267,12 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             } else {
                 "missing"
             };
-            let detail = if status == "explicit" {
+            let detail = if status == "explicit"
+                && core == "nestopia"
+                && cfg!(any(target_os = "macos", target_os = "windows"))
+            {
+                "Choose the explicit ordinary NES two- or four-pad topology. Native launch requires the exact audited RetroArch/Nestopia binaries, snapshots effective frontend options into a private layer, preserves physical autoconfiguration and save/state paths, and rejects custom config/device overrides. Physical-pad behavior remains unverified."
+            } else if status == "explicit" {
                 "Choose a target input/topology mode below. It is not inferred from attached controllers. Review the contract's content/peripheral limitations before selecting a default for this core/platform."
             } else if !modes.is_empty() {
                 "Listed modes only. Requires a compatible saved calibration, supported device/options and Linux RetroArch. Other peripherals/modes are not implied."

@@ -2221,12 +2221,15 @@ dependencies = [
  "anyhow",
  "cc",
  "clap",
+ "hex",
  "libc",
  "libloading",
+ "quick-xml 0.37.5",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

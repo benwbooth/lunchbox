@@ -4,11 +4,11 @@
 //! worker runs an original diagnostic ROM, never user content, and exercises
 //! the core's save-memory and serialization ABIs directly.
 
+use crate::libretro_memory_map::{ExactMapping, MemoryMapSnapshot};
+use crate::{file_hash, libretro_options::OptionEnvironment};
 use anyhow::{Context, Result, bail, ensure};
 use clap::{Parser, ValueEnum};
 use libloading::Library;
-use lunchbox_controller_probe::libretro_memory_map::{ExactMapping, MemoryMapSnapshot};
-use lunchbox_controller_probe::{file_hash, libretro_options::OptionEnvironment};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString, OsString, c_char, c_void};
@@ -375,15 +375,11 @@ impl PersistenceSystem {
             | Self::GameboySameboy
             | Self::GameboySkyemu
             | Self::GameboyVbam => gameboy_persistence_rom(),
-            Self::Atari2600Stella => {
-                lunchbox_controller_probe::libretro_input::atari2600_diagnostic_rom()
-            }
+            Self::Atari2600Stella => crate::libretro_input::atari2600_diagnostic_rom(),
             Self::GameGear => game_gear_persistence_rom(),
             Self::NesFceumm | Self::NesMesen | Self::NesNestopia => nes_persistence_rom(),
             Self::Snes9x | Self::Bsnes | Self::MesenS => snes_persistence_rom(),
-            Self::PsxBeetle | Self::PsxBeetleHw => {
-                lunchbox_controller_probe::libretro_input::psx_diagnostic_exe()
-            }
+            Self::PsxBeetle | Self::PsxBeetleHw => crate::libretro_input::psx_diagnostic_exe(),
         }
     }
 
@@ -741,7 +737,7 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             unsafe { data.cast::<u64>().write(1 << 1) };
             true
         }
-        27 => unsafe { lunchbox_controller_probe::libretro_log::install(data) },
+        27 => unsafe { crate::libretro_log::install(data) },
         39 => {
             unsafe { data.cast::<u32>().write(0) };
             true
@@ -751,8 +747,7 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             true
         }
         _ if METADATA_VFS_ENABLED.load(Ordering::Relaxed) => {
-            unsafe { lunchbox_controller_probe::libretro_vfs::handle_environment(command, data) }
-                .unwrap_or(false)
+            unsafe { crate::libretro_vfs::handle_environment(command, data) }.unwrap_or(false)
         }
         _ => false,
     }

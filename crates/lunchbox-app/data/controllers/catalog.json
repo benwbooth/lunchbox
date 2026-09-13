@@ -35941,11 +35941,11 @@
       "status": "documented",
       "source": "https://github.com/libretro/nestopia/blob/4ed9d68bd251e122f1311895fabe68bde89da86a/libretro/libretro.cpp",
       "conditions": [
-        "Source-grounded implementation; runtime verification is deferred.",
+        "Source-grounded core contract. Native macOS/Windows launch is limited to exact audited RetroArch/Nestopia binary identities and preserves frontend physical autoconfiguration; physical controller behavior remains unverified.",
         "Explicit ordinary standard-pad content mode; this does not infer the cartridge's required peripheral from its filename or the number of connected pads.",
         "FDS, NSF, VS coin, Famicom microphone and non-pad peripherals need separate profiles. Turbo duplicates remain unbound.",
         "All remaining frontend ports are explicitly disconnected.",
-        "Only button-shift mode is forced; the effective adapter-protocol option is preserved."
+        "Only button-shift mode is forced; the effective adapter-protocol option is preserved. Native launch snapshots effective config/options and writes only a private append/options layer; user save/state paths are not redirected."
       ],
       "bindings": {
         "up": "DPadUp",
@@ -35989,11 +35989,11 @@
       "status": "documented",
       "source": "https://github.com/libretro/nestopia/blob/4ed9d68bd251e122f1311895fabe68bde89da86a/libretro/libretro.cpp",
       "conditions": [
-        "Source-grounded implementation; runtime verification is deferred.",
+        "Source-grounded core contract. Native macOS/Windows launch is limited to exact audited RetroArch/Nestopia binary identities and preserves frontend physical autoconfiguration; physical controller behavior remains unverified.",
         "Explicit ordinary standard-pad content mode; this does not infer the cartridge's required peripheral from its filename or the number of connected pads.",
         "FDS, NSF, VS coin, Famicom microphone and non-pad peripherals need separate profiles. Turbo duplicates remain unbound.",
         "The effective NES/Famicom adapter protocol is preserved; third/fourth pads enable the four-pad adapter.",
-        "Only button-shift mode is forced; the effective adapter-protocol option is preserved."
+        "Only button-shift mode is forced; the effective adapter-protocol option is preserved. Native launch snapshots effective config/options and writes only a private append/options layer; user save/state paths are not redirected."
       ],
       "bindings": {
         "up": "DPadUp",

@@ -23,6 +23,61 @@ enum PreparedBizhawkLaunch {
     Captured(crate::controller_bizhawk::digital_session::PreparedCartridgeHandoff),
 }
 
+enum RetainedLaunchDirectory {
+    Plain(tempfile::TempDir),
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    FrontendAutoconfig(crate::retroarch_frontend_autoconfig::FrontendAutoconfigSession),
+}
+
+impl From<tempfile::TempDir> for RetainedLaunchDirectory {
+    fn from(value: tempfile::TempDir) -> Self {
+        Self::Plain(value)
+    }
+}
+
+impl RetainedLaunchDirectory {
+    #[cfg(target_os = "linux")]
+    fn path(&self) -> &Path {
+        match self {
+            Self::Plain(directory) => directory.path(),
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            Self::FrontendAutoconfig(session) => session.root(),
+        }
+    }
+
+    fn verify(&self) -> Result<()> {
+        match self {
+            Self::Plain(directory) => ensure!(
+                directory.path().is_dir(),
+                "Private controller launch directory disappeared"
+            ),
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            Self::FrontendAutoconfig(session) => session.verify()?,
+        }
+        Ok(())
+    }
+
+    fn verify_plan(&self, plan: &LaunchPlan) -> Result<()> {
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let _ = plan;
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        if let Self::FrontendAutoconfig(session) = self {
+            let identity = plan
+                .retroarch_content
+                .as_ref()
+                .context("frontend_autoconfig launch lost its core/content identity")?;
+            session.verify_launch_identity(
+                &plan.program,
+                &identity.core,
+                &identity.content,
+                &plan.arguments,
+                &plan.environment,
+            )?;
+        }
+        Ok(())
+    }
+}
+
 impl PreparedBizhawkLaunch {
     fn verify(&self) -> Result<()> {
         match self {
@@ -143,7 +198,7 @@ pub struct CalibratedLaunch {
     #[cfg(target_os = "linux")]
     duckstation: Option<crate::controller_duckstation::native_command::NativeSession>,
     // Keeps the private append config alive until the child exits, including errors.
-    _directory: Option<tempfile::TempDir>,
+    _directory: Option<RetainedLaunchDirectory>,
     bizhawk: Option<PreparedBizhawkLaunch>,
     #[cfg(target_os = "linux")]
     bizhawk_topology: Option<crate::controller_bizhawk_guard::InputTopology>,
@@ -174,6 +229,9 @@ impl CalibratedLaunch {
         cancel: &std::sync::atomic::AtomicBool,
     ) -> Result<std::process::Child> {
         check_preparation_cancel(cancel)?;
+        if let Some(directory) = &self._directory {
+            directory.verify_plan(plan)?;
+        }
         self.check_launch_inputs()?;
         let input = self
             .fbneo
@@ -485,6 +543,10 @@ impl CalibratedLaunch {
                     && input.inspection.relative_button_assignments.is_empty()),
             "MAME relative startup is missing or already consumed; prepare a new launch session"
         );
+        if let Some(directory) = &self._directory {
+            directory.verify_plan(plan)?;
+        }
+        self.check_launch_inputs()?;
         crate::emulator::spawn_launch_plan(plan)
     }
 
@@ -872,6 +934,9 @@ impl CalibratedLaunch {
     }
 
     pub fn check_launch_inputs(&self) -> Result<()> {
+        if let Some(directory) = &self._directory {
+            directory.verify()?;
+        }
         #[cfg(target_os = "linux")]
         if let Some(native) = &self.snes9x_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
@@ -1187,6 +1252,12 @@ pub fn contract(core: &str, platform: &str) -> Option<&'static EmulatorProfile> 
 
 pub fn supports_profile(profile: &EmulatorProfile) -> bool {
     (cfg!(target_os = "linux") && profile.retroarch_launch.is_some())
+        || (cfg!(any(target_os = "macos", target_os = "windows"))
+            && matches!(
+                profile.id.as_str(),
+                crate::retroarch_frontend_autoconfig::NESTOPIA_NES_TWO_PLAYER_PROFILE
+                    | crate::retroarch_frontend_autoconfig::NESTOPIA_NES_FOUR_PLAYER_PROFILE
+            ))
         || profile.transport == "ares-settings"
 }
 
@@ -1657,7 +1728,7 @@ pub(crate) fn attach_fbneo_session(
         ppsspp: None,
         #[cfg(target_os = "linux")]
         duckstation: None,
-        _directory: Some(directory),
+        _directory: Some(directory.into()),
         bizhawk: None,
         #[cfg(target_os = "linux")]
         bizhawk_topology: None,
@@ -3437,7 +3508,7 @@ pub(crate) fn prepare_mame_calibrated_session(
         ppsspp: None,
         #[cfg(target_os = "linux")]
         duckstation: None,
-        _directory: Some(directory),
+        _directory: Some(directory.into()),
         bizhawk: None,
         #[cfg(target_os = "linux")]
         bizhawk_topology: None,
@@ -5308,6 +5379,193 @@ fn restrict_players(
     Ok(eligible_count)
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn selected_frontend_autoconfig_profile(
+    settings: &AppSettings,
+    option: &RomEmulatorOption,
+    platform: &str,
+) -> Result<Option<&'static EmulatorProfile>> {
+    let mapping = &settings.controller_mapping;
+    let profile =
+        if let Some(profile) = crate::controller_target::selected(mapping, option, platform)? {
+            Some(profile)
+        } else if let Some(id) = mapping
+            .launch_mode_selections
+            .get(&selection_key(&option.core_name, platform))
+        {
+            catalog()
+                .platform_profiles(&option.core_name, platform)
+                .into_iter()
+                .find(|profile| profile.id == *id && profile.explicit_selection)
+        } else {
+            None
+        };
+    Ok(profile.filter(|profile| {
+        matches!(
+            profile.id.as_str(),
+            crate::retroarch_frontend_autoconfig::NESTOPIA_NES_TWO_PLAYER_PROFILE
+                | crate::retroarch_frontend_autoconfig::NESTOPIA_NES_FOUR_PLAYER_PROFILE
+        )
+    }))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn frontend_autoconfig_profile_spec(
+    profile: &EmulatorProfile,
+) -> Result<crate::retroarch_frontend_autoconfig::FrontendAutoconfigProfileSpec> {
+    let launch = profile
+        .retroarch_launch
+        .as_ref()
+        .context("frontend_autoconfig profile has no RetroArch launch contract")?;
+    Ok(
+        crate::retroarch_frontend_autoconfig::FrontendAutoconfigProfileSpec {
+            id: profile.id.clone(),
+            core: profile.core.clone(),
+            target_layout: profile.target_layout.clone(),
+            transport: profile.transport.clone(),
+            retroarch_library: profile.retroarch_library.clone(),
+            explicit_selection: profile.explicit_selection,
+            platforms: launch.platforms.iter().cloned().collect(),
+            content_extensions: profile.content_extensions.clone(),
+            frontend_ports: profile.frontend_port_count(),
+            max_players: launch.max_players,
+            default_device: launch.device,
+            port_devices: profile.port_devices.clone(),
+            core_options: profile.core_options.clone(),
+            content_guard: profile.content_guard.map(|guard| format!("{guard:?}")),
+            requires_fresh_start: profile.requires_fresh_start,
+            has_player_topology: launch.player_topology.is_some(),
+            dynamic_profile: matches!(profile.core.as_str(), "mame" | "fbneo"),
+            special_preparation: false,
+        },
+    )
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn native_frontend_autoconfig_request(
+    executable: &Path,
+) -> Result<crate::retroarch_frontend_autoconfig::NativeRetroArchPathRequest> {
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var_os("HOME")
+            .filter(|value| !value.is_empty())
+            .map(std::path::PathBuf::from)
+            .context("Native macOS RetroArch needs the exact inherited HOME directory")?;
+        ensure!(
+            home.is_absolute(),
+            "Native macOS RetroArch HOME must be absolute"
+        );
+        let macos_directory = executable
+            .parent()
+            .context("Native macOS RetroArch executable has no parent directory")?;
+        ensure!(
+            macos_directory.file_name() == Some(std::ffi::OsStr::new("MacOS")),
+            "Native macOS RetroArch executable is not inside an application bundle"
+        );
+        let contents = macos_directory
+            .parent()
+            .context("Native macOS RetroArch executable has no Contents directory")?;
+        ensure!(
+            contents.file_name() == Some(std::ffi::OsStr::new("Contents")),
+            "Native macOS RetroArch executable is not inside an application bundle"
+        );
+        let application_bundle = contents
+            .parent()
+            .context("Native macOS RetroArch executable has no application bundle")?
+            .to_path_buf();
+        return Ok(
+            crate::retroarch_frontend_autoconfig::NativeRetroArchPathRequest::MacOs {
+                executable: executable.to_path_buf(),
+                application_bundle,
+                application_support: home.join("Library/Application Support"),
+                home,
+                install: crate::retroarch_frontend_autoconfig::MacOsInstallDisposition::Ambiguous,
+            },
+        );
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let roaming_app_data = std::env::var_os("APPDATA")
+            .filter(|value| !value.is_empty())
+            .map(std::path::PathBuf::from)
+            .context("Native Windows RetroArch needs the effective APPDATA directory")?;
+        Ok(
+            crate::retroarch_frontend_autoconfig::NativeRetroArchPathRequest::Windows {
+                executable: executable.to_path_buf(),
+                home: std::env::var_os("HOME")
+                    .filter(|value| !value.is_empty())
+                    .map(std::path::PathBuf::from),
+                roaming_app_data,
+            },
+        )
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn prepare_native_frontend_autoconfig(
+    settings: &AppSettings,
+    platform: &str,
+    option: &RomEmulatorOption,
+    plan: &mut LaunchPlan,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<Option<CalibratedLaunch>> {
+    if option.runtime_kind != EmulatorRuntimeKind::RetroArch {
+        return Ok(None);
+    }
+    let EmulatorExecutable::Native(executable) = &option.executable else {
+        return Ok(None);
+    };
+    let Some(profile) = selected_frontend_autoconfig_profile(settings, option, platform)? else {
+        return Ok(None);
+    };
+    check_preparation_cancel(cancel)?;
+    ensure!(
+        plan.program == *executable,
+        "Customized native RetroArch program needs exact frontend resolution"
+    );
+    let content = plan
+        .retroarch_content
+        .as_ref()
+        .context("frontend_autoconfig needs prepared content identity")?;
+    crate::controller_launch_modes::validate_arguments(&plan.arguments, content)?;
+    let request = native_frontend_autoconfig_request(executable)?;
+    let cache = directories::BaseDirs::new()
+        .context("Finding controller launch cache")?
+        .cache_dir()
+        .join("lunchbox/controller-launch");
+    let spec = frontend_autoconfig_profile_spec(profile)?;
+    #[cfg(target_os = "macos")]
+    let (frontend_sha256, core_sha256) = (
+        crate::retroarch_frontend_autoconfig::MACOS_RETROARCH_1_22_2_SHA256,
+        crate::retroarch_frontend_autoconfig::MACOS_NESTOPIA_SHA256,
+    );
+    #[cfg(target_os = "windows")]
+    let (frontend_sha256, core_sha256) = (
+        crate::retroarch_frontend_autoconfig::WINDOWS_RETROARCH_1_19_1_SHA256,
+        crate::retroarch_frontend_autoconfig::WINDOWS_NESTOPIA_SHA256,
+    );
+    let (session, prepared_arguments) =
+        crate::retroarch_frontend_autoconfig::prepare_pinned_frontend_autoconfig_session(
+            &request,
+            &content.core,
+            frontend_sha256,
+            core_sha256,
+            &spec,
+            &content.content,
+            &plan.arguments,
+            &plan.environment,
+            &cache,
+        )?;
+    check_preparation_cancel(cancel)?;
+    let description = session.artifacts.description.clone();
+    plan.arguments = prepared_arguments;
+    Ok(Some(CalibratedLaunch {
+        _directory: Some(RetainedLaunchDirectory::FrontendAutoconfig(session)),
+        description,
+        ..Default::default()
+    }))
+}
+
 /// Returns None only when no saved calibrated launch was requested. Failures are
 /// surfaced at the launch boundary instead of reporting a miswired game as ready.
 pub fn prepare(
@@ -5345,6 +5603,12 @@ pub fn prepare_with_cancellation(
     let mapping = &settings.controller_mapping;
     if !mapping.calibrated_launch {
         return Ok(None);
+    }
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    if let Some(session) =
+        prepare_native_frontend_autoconfig(settings, platform, option, plan, cancel)?
+    {
+        return Ok(Some(session));
     }
     let mut warnings = Vec::new();
     let inventory = crate::controllers::list_local_controllers(&mut warnings);
@@ -8313,7 +8577,7 @@ pub fn prepare_with_cancellation(
         let directory =
             crate::controller_ares::prepare(settings, platform, option, plan, &devices, cancel)?;
         return Ok(Some(CalibratedLaunch {
-            _directory: Some(directory),
+            _directory: Some(directory.into()),
             description: format!(
                 "ares: applied {} player mapping(s) to a private settings file",
                 devices.len()
@@ -8864,7 +9128,7 @@ pub fn prepare_with_cancellation(
         attach_config(plan, &option.executable, &path)?;
     }
     Ok(Some(CalibratedLaunch {
-        _directory: Some(directory),
+        _directory: Some(directory.into()),
         bizhawk: None,
         #[cfg(target_os = "linux")]
         bizhawk_topology: None,
@@ -9287,7 +9551,7 @@ fn prepare_mode_aware(
     check_preparation_cancel(cancel)?;
     attach_config(plan, &option.executable, &path)?;
     Ok(Some(CalibratedLaunch {
-        _directory: Some(directory),
+        _directory: Some(directory.into()),
         bizhawk: None,
         #[cfg(target_os = "linux")]
         bizhawk_topology: None,

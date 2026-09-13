@@ -67,7 +67,7 @@ their exact controls, modes and output IDs must be verified before activation.
 | Relative and absolute pointing | Coleco spinner/roller modes, DS/`desmume` and `melonds_ds`, Wii/`dolphin`, ScummVM | Distinguish relative motion, absolute position, touch and sensors. Extend calibration/transport where needed; these are not interchangeable scalar buttons. |
 | Keyboard-oriented systems | C64/`vice_x64sc`, Amiga/`puae`, MSX/`bluemsx`, DOS/`dosbox_pure`, ZX Spectrum/`fuse` | Separate joystick modes from keyboard needs; represent per-content requirements and explicit virtual-keyboard/layer behavior. |
 | Multi-system arcade | `mame`, `fbneo`, `flycast` arcade modes | Resolve per-machine input descriptions and player/control topology. A single generic six-button profile does not cover every arcade machine. |
-| Standalone and other hosts | Database-linked native emulators, Windows/macOS/Wine paths | Reuse the mapping plan, but implement each configuration/driver transport. The current automatic launch boundary accepts Linux native/Flatpak RetroArch only. |
+| Standalone and other hosts | Database-linked native emulators, Windows/macOS/Wine paths | Reuse the mapping plan, but implement each configuration/driver transport. Native macOS/Windows support is currently limited to the exact-hash Nestopia profiles below; it is not general native RetroArch or standalone-emulator coverage. |
 
 Three verified examples show why simply adding more face-button diagrams is not
 enough:
@@ -91,10 +91,13 @@ Nestopia's standard-pad source audit is now pinned to
 [`4ed9d68bd251e122f1311895fabe68bde89da86a`](https://github.com/libretro/nestopia/blob/4ed9d68bd251e122f1311895fabe68bde89da86a/libretro/libretro.cpp#L579-L612):
 device 1 is Auto (potentially a database-selected peripheral), while explicit
 Gamepad is 257. Its adapter option selects NES/Famicom protocol, not port count;
-connecting pads three/four creates the multitap. Before activating a contract,
-resolve explicit device CLI overrides, automatic peripheral selection, shifted
-button mode, and the intended two/four-player topology. This audit does not add
-Nestopia to the enabled catalog or repurpose SameBoy's option-topology table for it.
+connecting pads three/four creates the multitap. The explicit ordinary-cartridge
+two/four-player contracts now have a pinned native macOS/Windows
+`frontend_autoconfig` launch path. It rejects custom config/device overrides,
+copies the effective options into a private launch layer, and leaves RetroArch's
+physical autoconfiguration and save/state paths intact. This does not cover FDS,
+NSF, VS, microphone/non-pad peripherals, unpinned binaries, or physical-pad
+runtime behavior; see [the exact boundary](RETROARCH_NATIVE_FRONTEND_AUTOCONFIG.md).
 
 ## Cross-cutting gaps before all-core completion
 

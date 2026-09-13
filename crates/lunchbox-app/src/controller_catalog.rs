@@ -2006,7 +2006,15 @@ impl Calibration {
             }
         }
         let source = &measured_source;
-        let adapter = (self.backend != "sdl3-gamepad" || profile.transport == "ares-settings")
+        let frontend_autoconfig = cfg!(any(target_os = "macos", target_os = "windows"))
+            && matches!(
+                profile.id.as_str(),
+                crate::retroarch_frontend_autoconfig::NESTOPIA_NES_TWO_PLAYER_PROFILE
+                    | crate::retroarch_frontend_autoconfig::NESTOPIA_NES_FOUR_PLAYER_PROFILE
+            );
+        let adapter = (frontend_autoconfig
+            || self.backend != "sdl3-gamepad"
+            || profile.transport == "ares-settings")
             && crate::controller_launch::supports_profile(profile);
         if self.backend == "sdl3-gamepad" && profile.transport != "ares-settings" {
             warnings.push("SDL3 native input is ready for setup and mapping preview. This target still requires an SDL3-aware launch transport; SDL logical codes are not evdev codes.".into());
@@ -2017,6 +2025,8 @@ impl Calibration {
             "Native Linux mGBA SDL discovers runtime paths at launch and applies guided Player 1. An existing config.ini and physical calibration are required; this plan does not establish runtime readiness."
         } else if crate::controller_guided_native::supports(profile) {
             "Guided players and target choices are connected to this native adapter. A matching native runtime setup and physical calibration are still required; the preview does not establish runtime readiness."
+        } else if frontend_autoconfig {
+            "Native macOS/Windows RetroArch frontend-autoconfiguration is available for the exact audited frontend/core pair. RetroArch retains physical device discovery and bindings; the explicit topology, binary identity, configuration snapshots and private layer are checked again at launch."
         } else if adapter {
             "Native Linux RetroArch launch adapter available. Physical bindings and connected-device numbering are checked again at launch; automatic RetroArch remaps/overrides are suspended for that session."
         } else {
@@ -2153,18 +2163,20 @@ impl Calibration {
         }
         let automatic_launch_ready = adapter
             && (self.os == "linux"
+                || frontend_autoconfig
                 || (profile.transport == "ares-settings" && self.backend == "sdl3-gamepad"))
             && self.os == std::env::consts::OS
-            && rows.iter().all(|row| {
-                row.input.as_ref().is_some_and(|input| {
-                    input.native.is_some()
-                        || (profile.transport == "ares-settings"
-                            && crate::controller_sdl3::valid_binding(input))
-                }) || target
-                    .controls
-                    .iter()
-                    .any(|c| c.id == row.target_id && c.optional)
-            });
+            && (frontend_autoconfig
+                || rows.iter().all(|row| {
+                    row.input.as_ref().is_some_and(|input| {
+                        input.native.is_some()
+                            || (profile.transport == "ares-settings"
+                                && crate::controller_sdl3::valid_binding(input))
+                    }) || target
+                        .controls
+                        .iter()
+                        .any(|c| c.id == row.target_id && c.optional)
+                }));
         Ok(MappingPlan {
             mapping_policy_version: resolution.policy_version,
             profile: profile.name.clone(),

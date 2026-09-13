@@ -21,6 +21,7 @@ pub mod libretro_input;
 pub mod libretro_log;
 pub mod libretro_memory_map;
 pub mod libretro_options;
+pub mod libretro_persistence;
 pub mod libretro_vfs;
 pub mod linux_classic;
 pub mod live_sdl3;
@@ -29,6 +30,7 @@ pub mod nestopia_supervisor;
 pub mod players;
 #[cfg(target_os = "linux")]
 pub mod punes_supervisor;
+pub mod retroarch_frontend_autoconfig;
 pub mod sdl2;
 pub mod sdl2_evdev;
 pub mod sdl2_mapping;

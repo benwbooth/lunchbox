@@ -232,6 +232,7 @@ mod profile_backup;
 mod provider_image;
 mod qbittorrent;
 mod region_priority;
+use lunchbox_controller_probe::retroarch_frontend_autoconfig;
 mod retroarch_shaders;
 mod rom_launch_preparation;
 mod save_cloud;

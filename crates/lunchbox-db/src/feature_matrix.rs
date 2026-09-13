@@ -1361,7 +1361,9 @@ fn matrix_row(
     };
     let controller_launch_host_status = if runtime.kind != "retroarch" {
         "not_applicable"
-    } else if matches!(host, "linux" | "linux-flatpak") {
+    } else if matches!(host, "linux" | "linux-flatpak")
+        || (runtime.name == "nestopia" && matches!(host, "macos" | "windows"))
+    {
         "launch_supported"
     } else {
         "launch_adapter_missing"
@@ -1938,6 +1940,12 @@ mod tests {
             windows.controller_launch_host_status,
             "launch_adapter_missing"
         );
+
+        let nestopia = retroarch_runtime("nestopia", &["Nintendo Entertainment System"]);
+        for host in ["macos", "windows"] {
+            let row = matrix_row(&nestopia, host, None, None, Some(&profiles), &[], None);
+            assert_eq!(row.controller_launch_host_status, "launch_supported");
+        }
 
         let preview = vec![controller_profile(
             "retroarch:test_core:preview",
