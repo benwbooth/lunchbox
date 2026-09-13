@@ -53,6 +53,12 @@ jobs:
             persistence_expect: pass
             expected_version: '1.63 890b5d4'
             expected_state_bytes: 823407
+          - core: sameboy
+            system: gameboy
+            persistence_system: ''
+            persistence_expect: pass
+            expected_version: ''
+            expected_state_bytes: ''
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -107,7 +113,7 @@ jobs:
           run_oracle identity --identity-only
 
           case "$SYSTEM" in
-            gba|gamegear)
+            gba|gamegear|gameboy)
               run_oracle individual
               run_oracle bitmask --bitmask
               ;;
@@ -166,5 +172,28 @@ jobs:
         with:
           name: libretro-windows-${{ matrix.core }}
           path: ${{ runner.temp }}/lunchbox-libretro-${{ matrix.core }}
+          if-no-files-found: warn
+          retention-days: 14
+
+  windows-unavailable:
+    name: Windows unavailable core (mesen-s)
+    runs-on: windows-2025
+    steps:
+      - name: Verify official artifact is absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          runner_temp="$(cygpath -u "$RUNNER_TEMP")"
+          evidence="$runner_temp/lunchbox-libretro-mesen-s-unavailable"
+          mkdir -p "$evidence"
+          url='https://buildbot.libretro.com/nightly/windows/x86_64/latest/mesen_s_libretro.dll.zip'
+          status="$(curl --location --silent --show-error --output "$evidence/response" --write-out '%{http_code}' "$url")"
+          printf 'source_url=%s\nhttp_status=%s\n' "$url" "$status" > "$evidence/result.txt"
+          test "$status" = 404
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: libretro-windows-mesen-s-unavailable
+          path: ${{ runner.temp }}/lunchbox-libretro-mesen-s-unavailable
           if-no-files-found: warn
           retention-days: 14
