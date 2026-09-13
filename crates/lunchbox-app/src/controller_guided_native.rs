@@ -16,9 +16,43 @@ use std::{
 
 mod runtime;
 
+#[cfg(target_os = "linux")]
+fn apply_nestopia_players(
+    mapping: &mut crate::settings::ControllerMappingSettings,
+    emulator_id: &str,
+    plan: &LaunchPlan,
+    ids: &[String],
+) -> Result<usize> {
+    ensure!(ids.len() == 2, "Nestopia UE requires exactly two players");
+    let mut found = 0;
+    for setup in &mut mapping.nestopia_ue_flatpak_launches {
+        if setup.emulator_id != emulator_id
+            || !plan
+                .arguments
+                .iter()
+                .any(|arg| arg == setup.content.as_os_str())
+        {
+            continue;
+        }
+        found += 1;
+        setup.players = [
+            crate::controller_nestopia_ue_flatpak::settings::Player {
+                player: 1,
+                controller_id: ids[0].clone(),
+            },
+            crate::controller_nestopia_ue_flatpak::settings::Player {
+                player: 2,
+                controller_id: ids[1].clone(),
+            },
+        ];
+        setup.review(&mapping.calibrations)?;
+    }
+    Ok(found)
+}
+
 pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
     profile.native_launch.is_some()
-        && matches!(
+        && (matches!(
             profile.core.as_str(),
             "ares"
                 | "duckstation"
@@ -51,7 +85,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "simple64"
                 | "kronos"
                 | "yaba-sanshiro"
-        )
+        ) || cfg!(target_os = "linux") && profile.core == "nestopia")
 }
 
 pub(crate) fn settings_for_launch<'a>(
@@ -557,6 +591,10 @@ pub(crate) fn settings_for_launch<'a>(
                 setup.review(&mapping.calibrations)?;
             }
         }
+        #[cfg(target_os = "linux")]
+        "nestopia" => {
+            found += apply_nestopia_players(mapping, &option.emulator_id, plan, &ids)?;
+        }
         "fceux" => {
             for setup in &mut mapping.fceux_launches {
                 if !matches(&setup.emulator_id, &setup.content) {
@@ -743,4 +781,113 @@ fn player_ids(
         calibration.plan_profile(profile)?;
         Ok(id.clone())
     }).collect()
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use crate::controller_catalog::{Calibration, InputBinding, NativeInput, catalog};
+    use std::{collections::BTreeMap, ffi::OsString, path::PathBuf};
+
+    fn nes_calibration() -> Calibration {
+        Calibration {
+            target_mappings: BTreeMap::new(),
+            layout: "nes".into(),
+            os: "linux".into(),
+            backend: "gilrs-0.11".into(),
+            bindings: catalog()
+                .layout("nes")
+                .unwrap()
+                .controls
+                .iter()
+                .enumerate()
+                .map(|(index, control)| {
+                    (
+                        control.id.clone(),
+                        InputBinding {
+                            code: index as u32,
+                            kind: "button".into(),
+                            direction: 0,
+                            logical: control.label.clone(),
+                            native: Some(NativeInput {
+                                code: 0x1_0000 + index as u32,
+                                direction: 0,
+                            }),
+                            axis: None,
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn guided_nestopia_apply_updates_exact_two_player_setup() {
+        let directory = tempfile::tempdir().unwrap();
+        let content = directory.path().join("oracle.nes");
+        std::fs::write(&content, b"nes").unwrap();
+        let mut mapping = crate::settings::ControllerMappingSettings::default();
+        mapping
+            .calibrations
+            .insert("pad-a".into(), nes_calibration());
+        mapping
+            .calibrations
+            .insert("pad-b".into(), nes_calibration());
+        mapping.nestopia_ue_flatpak_launches.push(
+            crate::controller_nestopia_ue_flatpak::settings::SavedSetup {
+                emulator_id: "nestopia-id".into(),
+                content: content.clone(),
+                source_main_config: "/tmp/nestopia/nestopia.conf".into(),
+                source_input_config: "/tmp/nestopia/input.conf".into(),
+                probe_program: "/tmp/lunchbox-controller-probe".into(),
+                sdl_library: "/tmp/libSDL2.so".into(),
+                executable_sha256: "a".repeat(64),
+                players: [
+                    crate::controller_nestopia_ue_flatpak::settings::Player {
+                        player: 1,
+                        controller_id: "old-a".into(),
+                    },
+                    crate::controller_nestopia_ue_flatpak::settings::Player {
+                        player: 2,
+                        controller_id: "old-b".into(),
+                    },
+                ],
+            },
+        );
+        let plan = LaunchPlan {
+            emulator_name: "Nestopia UE".into(),
+            program: "/usr/bin/flatpak".into(),
+            arguments: vec![OsString::from("run"), content.into_os_string()],
+            current_directory: PathBuf::from("/tmp"),
+            environment: Vec::new(),
+            cleanup_paths: Vec::new(),
+            retroarch_content: None,
+        };
+        assert_eq!(
+            apply_nestopia_players(
+                &mut mapping,
+                "nestopia-id",
+                &plan,
+                &["pad-a".into(), "pad-b".into()],
+            )
+            .unwrap(),
+            1
+        );
+        let players = &mapping.nestopia_ue_flatpak_launches[0].players;
+        assert_eq!(players[0].controller_id, "pad-a");
+        assert_eq!(players[1].controller_id, "pad-b");
+        let profile = catalog()
+            .emulator_profiles
+            .iter()
+            .find(|profile| profile.id == "nestopia-ue:flatpak-nes")
+            .unwrap();
+        assert_eq!(
+            mapping.calibrations["pad-a"]
+                .plan_profile(profile)
+                .unwrap()
+                .rows
+                .len(),
+            8
+        );
+    }
 }

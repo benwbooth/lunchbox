@@ -47,6 +47,8 @@ impl Scope {
         let core = core.trim().to_lowercase();
         let core = if retroarch {
             canonical_retroarch_core_name(&core)
+        } else if core == "nestopia ue" {
+            "nestopia"
         } else {
             &core
         }
@@ -170,6 +172,7 @@ pub(crate) fn add_native_metadata(db: &mut Catalog) -> Result<()> {
             | "sameboy:standalone-sdl-gameboy"
             | "mednafen:standalone-gb" => (&["Nintendo Game Boy", "Nintendo Game Boy Color"], 1),
             "snes9x:standalone-gtk-snes" => (&["Super Nintendo Entertainment System"], 5),
+            "nestopia-ue:flatpak-nes" => (&["Nintendo Entertainment System"], 2),
             "fceux:standalone-qt-nes" => (
                 &[
                     "Nintendo Entertainment System",
@@ -224,4 +227,23 @@ pub(crate) fn add_native_metadata(db: &mut Catalog) -> Result<()> {
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nestopia_ue_native_name_uses_the_catalog_core_key() {
+        let scope = Scope::from_label("Nestopia UE", "Nintendo Entertainment System").unwrap();
+        assert!(!scope.retroarch);
+        assert_eq!(scope.core, "nestopia");
+        assert_eq!(
+            scope
+                .profile(catalog(), "nestopia-ue:flatpak-nes")
+                .unwrap()
+                .core,
+            "nestopia"
+        );
+    }
 }

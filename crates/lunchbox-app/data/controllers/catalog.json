@@ -37075,6 +37075,17 @@
       "bindings": {"up":"dpup", "down":"dpdown", "left":"dpleft", "right":"dpright", "start":"start", "select":"back", "a":"a", "b":"b"}
     },
     {
+      "id": "nestopia-ue:flatpak-nes",
+      "name": "Nestopia UE Flatpak · Native NES gamepad",
+      "core": "nestopia",
+      "target_layout": "nes",
+      "transport": "nestopia-ue-flatpak-settings",
+      "status": "documented",
+      "source": "https://github.com/0ldsk00l/nestopia/blob/4470a2e99199d8010322eef4bf680fb3760f6eda/source/fltkui/inputmanager.cpp",
+      "conditions": ["Exact ca._0ldsk00l.Nestopia 1.53.2 Flatpak deployment and target SDL2 runtime; fail-closed X11 only", "Exactly two standard NES pads with complete measured native mappings", "Private config and target-sandbox routing; 2026-09-13 isolated-X11 production oracle passed two-player input, fresh-process battery reload, and F5/F7 slot-0 state restoration; other backends, packages, modes, firmware, and save sync remain unverified"],
+      "bindings": {"up":"Up", "down":"Down", "left":"Left", "right":"Right", "start":"Start", "select":"Select", "a":"A", "b":"B"}
+    },
+    {
       "id": "snes9x:standalone-gtk-snes",
       "name": "Snes9x GTK · Native SNES gamepad",
       "core": "snes9x",

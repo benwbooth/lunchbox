@@ -1351,6 +1351,7 @@ impl Catalog {
                             | "ppsspp-settings"
                             | "mgba-settings"
                             | "snes9x-gtk-settings"
+                            | "nestopia-ue-flatpak-settings"
                             | "fceux-qt-settings"
                             | "sameboy-sdl-settings"
                             | "mednafen-settings"
@@ -1427,6 +1428,14 @@ impl Catalog {
                         && profile.target_layout == "snes"
                         && profile.retroarch_launch.is_none(),
                     "Native Snes9x GTK profile cannot use RetroArch dispatch"
+                );
+            }
+            if profile.transport == "nestopia-ue-flatpak-settings" {
+                ensure!(
+                    profile.core == "nestopia"
+                        && profile.target_layout == "nes"
+                        && profile.retroarch_launch.is_none(),
+                    "Nestopia UE Flatpak profile cannot use RetroArch dispatch"
                 );
             }
             if profile.transport == "fceux-qt-settings" {
@@ -1668,6 +1677,10 @@ impl Catalog {
                         }
                         "snes9x-gtk-settings" => crate::controller_snes9x::configuration::CONTROLS
                             .contains(&output.as_str()),
+                        "nestopia-ue-flatpak-settings" => {
+                            ["Up", "Down", "Left", "Right", "Select", "Start", "A", "B"]
+                                .contains(&output.as_str())
+                        }
                         "dolphin-settings" => crate::controller_dolphin::standalone::CONTROLS
                             .contains(&output.as_str()),
                         "fceux-qt-settings" => {

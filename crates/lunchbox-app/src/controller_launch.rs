@@ -41,6 +41,7 @@ enum PreparedJsonNativeLaunch {
     Gopher64(crate::controller_gopher64_native::native_command::NativeSession),
     Rmg(crate::controller_rmg_native::native_command::NativeSession),
     Simple64(crate::controller_simple64_native::native_command::NativeSession),
+    Nestopia(crate::controller_nestopia_ue_flatpak::PreparedLaunch),
 }
 
 #[cfg(target_os = "linux")]
@@ -57,6 +58,7 @@ impl PreparedJsonNativeLaunch {
             Self::Gopher64(session) => session.spawn(plan, cancel),
             Self::Rmg(session) => session.spawn(plan, cancel),
             Self::Simple64(session) => session.spawn(plan, cancel),
+            Self::Nestopia(session) => session.spawn(plan, cancel),
         }
     }
 
@@ -68,6 +70,7 @@ impl PreparedJsonNativeLaunch {
             Self::Gopher64(session) => session.verify(cancel),
             Self::Rmg(session) => session.verify(cancel),
             Self::Simple64(session) => session.verify(cancel),
+            Self::Nestopia(session) => session.verify(cancel),
         }
     }
 
@@ -79,6 +82,7 @@ impl PreparedJsonNativeLaunch {
             Self::Gopher64(session) => session.check_health(),
             Self::Rmg(session) => session.check_health(),
             Self::Simple64(session) => session.check_health(),
+            Self::Nestopia(session) => session.check_health(),
         }
     }
 }
@@ -7538,6 +7542,39 @@ pub fn prepare_with_cancellation(
                 description: "FCEUX Qt: calibrated native NES controls; partial Linux support; ROM device overrides not resolved"
                     .into(),
             }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Nestopia UE")
+    {
+        let matches: Vec<_> = mapping
+            .nestopia_ue_flatpak_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Nestopia UE saved setup");
+        if let Some(setup) = matches.first() {
+            let prepared = crate::controller_nestopia_ue_flatpak::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = prepared.plan.clone();
+            let mut launch = CalibratedLaunch::default();
+            launch.jgenesis_native = Some(PreparedJsonNativeLaunch::Nestopia(prepared));
+            launch.description = "Nestopia UE Flatpak 1.53.2: exact target-runtime SDL2 routing, private configuration, and persistent native save data".into();
+            return Ok(Some(launch));
         }
     }
 

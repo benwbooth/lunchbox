@@ -107,6 +107,8 @@ mod controller_nanoboyadvance_native;
 mod controller_native_process;
 mod controller_native_targets;
 mod controller_nes_emu_standalone;
+#[cfg(target_os = "linux")]
+mod controller_nestopia_ue_flatpak;
 mod controller_nestopia_ue_native;
 mod controller_nethersx2_standalone;
 mod controller_nuance_resurrection_native;

@@ -323,6 +323,10 @@ pub struct ControllerMappingSettings {
     pub(crate) melonds_launches: Vec<crate::controller_melonds::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) snes9x_launches: Vec<crate::controller_snes9x::settings::SavedSetup>,
+    #[cfg(target_os = "linux")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) nestopia_ue_flatpak_launches:
+        Vec<crate::controller_nestopia_ue_flatpak::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) dolphin_launches: Vec<crate::controller_dolphin::standalone::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -425,6 +429,8 @@ impl Default for ControllerMappingSettings {
             ppsspp_launches: Vec::new(),
             mgba_launches: Vec::new(),
             snes9x_launches: Vec::new(),
+            #[cfg(target_os = "linux")]
+            nestopia_ue_flatpak_launches: Vec::new(),
             fceux_launches: Vec::new(),
             sameboy_launches: Vec::new(),
             bsnes_launches: Vec::new(),
@@ -1400,6 +1406,10 @@ impl ControllerMappingSettings {
         crate::controller_ppsspp::settings::validate_setups(&self.ppsspp_launches)?;
         crate::controller_mgba::settings::validate_setups(&self.mgba_launches)?;
         crate::controller_snes9x::settings::validate_setups(&self.snes9x_launches)?;
+        #[cfg(target_os = "linux")]
+        crate::controller_nestopia_ue_flatpak::settings::validate_setups(
+            &self.nestopia_ue_flatpak_launches,
+        )?;
         crate::controller_fceux::settings::validate_setups(&self.fceux_launches)?;
         crate::controller_sameboy::settings::validate_setups(&self.sameboy_launches)?;
         crate::controller_bsnes::settings::validate_setups(&self.bsnes_launches)?;

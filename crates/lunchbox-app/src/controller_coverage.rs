@@ -18,6 +18,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "mGBA",
     "Dolphin",
     "Snes9x",
+    "Nestopia UE",
     "FCEUX",
     "SameBoy",
     "Mednafen",
@@ -309,6 +310,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let mgba = name.eq_ignore_ascii_case("mGBA");
             let dolphin = name.eq_ignore_ascii_case("Dolphin");
             let snes9x = name.eq_ignore_ascii_case("Snes9x");
+            let nestopia_ue = name.eq_ignore_ascii_case("Nestopia UE");
             let fceux = name.eq_ignore_ascii_case("FCEUX");
             let sameboy = name.eq_ignore_ascii_case("SameBoy");
             let mednafen = name.eq_ignore_ascii_case("Mednafen");
@@ -335,6 +337,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux DuckStation calibrated digital/analog launch dispatch is implemented for saved setups and the pinned executable/SDL contract. The child must confirm configuration/player routing. Flatpak/Wine and runtime verification remain incomplete."
                 } else if ppsspp {
                     "Native Linux SDL2 PPSSPP PSP gamepad launch dispatch is implemented for saved setups with a private SYSTEM overlay and child mapping/runtime confirmation. Flatpak/Wine, other frontend variants, unrecognized SDL fallback devices and runtime verification remain incomplete."
+                } else if nestopia_ue {
+                    "Linux Nestopia UE Flatpak 1.53.2 dispatch is connected for exact two-pad NES setups, with pinned app/runtime identity, private config, target-SDL routing checks, and persistent native data. A 2026-09-13 isolated-X11 production oracle passed two-player input, fresh-process battery reload, and F5/F7 slot-0 restoration. Wayland, other packages/hosts/modes, firmware, physical pads, hotplug, and save sync remain unverified."
                 } else if snes9x {
                     "Native Linux Snes9x GTK 1.63 dispatch is implemented for saved SNES controller setups, with private config, SDL identity and child mount/device checks. Qt, Wine/Flatpak, custom launch arguments and runtime testing remain incomplete."
                 } else if fceux {

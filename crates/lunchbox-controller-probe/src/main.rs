@@ -11,6 +11,9 @@ struct Args {
     /// Supervise one exact Snes9x GTK launch inside its target Flatpak.
     #[arg(long)]
     snes9x_supervise: Option<PathBuf>,
+    /// Supervise one exact Nestopia UE launch inside its target Flatpak.
+    #[arg(long)]
+    nestopia_supervise: Option<PathBuf>,
     /// Inventory SDL2 for BizHawk instead of using the SDL3 adapter.
     #[arg(long)]
     sdl2_inventory: bool,
@@ -52,7 +55,8 @@ fn run() -> Result<()> {
     #[cfg(target_os = "linux")]
     if let Some(request) = &args.snes9x_supervise {
         ensure!(
-            !args.sdl2_inventory
+            args.nestopia_supervise.is_none()
+                && !args.sdl2_inventory
                 && args.sdl2_controls_for_path.is_empty()
                 && args.sdl2_mapping_db.is_none()
                 && args.sdl_library.is_none()
@@ -68,10 +72,30 @@ fn run() -> Result<()> {
         );
         return lunchbox_controller_probe::snes9x_supervisor::run(request);
     }
+    #[cfg(target_os = "linux")]
+    if let Some(request) = &args.nestopia_supervise {
+        ensure!(
+            args.snes9x_supervise.is_none()
+                && !args.sdl2_inventory
+                && args.sdl2_controls_for_path.is_empty()
+                && args.sdl2_mapping_db.is_none()
+                && args.sdl_library.is_none()
+                && args.mapping_db.is_none()
+                && args.hint.is_empty()
+                && args.match_path.is_empty()
+                && args.bindings_for_path.is_empty()
+                && args.duckstation_player_probe.is_none()
+                && !args.pcsx2_player_probe
+                && args.runtime_library.is_empty()
+                && args.evdev_catalog.is_empty(),
+            "Nestopia supervision shares no options with inventory modes"
+        );
+        return lunchbox_controller_probe::nestopia_supervisor::run(request);
+    }
     #[cfg(not(target_os = "linux"))]
     ensure!(
-        args.snes9x_supervise.is_none(),
-        "Snes9x Flatpak supervision requires Linux"
+        args.snes9x_supervise.is_none() && args.nestopia_supervise.is_none(),
+        "Flatpak emulator supervision requires Linux"
     );
     #[cfg(target_os = "linux")]
     if !args.evdev_catalog.is_empty() {

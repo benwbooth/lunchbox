@@ -306,6 +306,22 @@ pub(super) fn reuse(
                 mapping.snes9x_launches.push(setup);
             }
         }
+        #[cfg(target_os = "linux")]
+        "nestopia"
+            if !mapping
+                .nestopia_ue_flatpak_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(
+                &mapping.nestopia_ue_flatpak_launches,
+                emulator,
+                &["players"],
+            )? {
+                setup.content = content(plan, &[])?;
+                mapping.nestopia_ue_flatpak_launches.push(setup);
+            }
+        }
         "sameboy"
             if !mapping
                 .sameboy_launches
@@ -394,6 +410,10 @@ pub(super) fn reuse(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_nestopia_ue_flatpak::settings::{
+        Player as NestopiaPlayer, SavedSetup as NestopiaSetup,
+    };
     use crate::controller_snes9x::settings::Player as Snes9xPlayer;
     use crate::controller_snes9x::settings::SavedSetup as Snes9xSetup;
     use std::ffi::OsString;
@@ -432,6 +452,52 @@ mod tests {
                 controller_id: "controller-a".into(),
             }],
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn nestopia_setup(emulator_id: &str, content: &Path) -> NestopiaSetup {
+        NestopiaSetup {
+            emulator_id: emulator_id.into(),
+            content: content.to_path_buf(),
+            source_main_config: PathBuf::from("/tmp/nestopia/nestopia.conf"),
+            source_input_config: PathBuf::from("/tmp/nestopia/input.conf"),
+            probe_program: PathBuf::from("/tmp/lunchbox-controller-probe"),
+            sdl_library: PathBuf::from("/tmp/libSDL2.so"),
+            executable_sha256: "a".repeat(64),
+            players: [
+                NestopiaPlayer {
+                    player: 1,
+                    controller_id: "controller-a".into(),
+                },
+                NestopiaPlayer {
+                    player: 2,
+                    controller_id: "controller-b".into(),
+                },
+            ],
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn nestopia_guided_reuse_creates_an_exact_content_setup() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = game_file(directory.path(), "first.nes");
+        let second = game_file(directory.path(), "second.nes");
+        let mut mapping = ControllerMappingSettings::default();
+        mapping
+            .nestopia_ue_flatpak_launches
+            .push(nestopia_setup("nestopia-id", &first));
+        let launch = plan(vec![second.clone().into_os_string()]);
+        reuse(&mut mapping, "nestopia", "nestopia-id", &launch).unwrap();
+        assert_eq!(mapping.nestopia_ue_flatpak_launches.len(), 2);
+        let reused = &mapping.nestopia_ue_flatpak_launches[1];
+        assert_eq!(reused.content, second);
+        assert_eq!(
+            reused.source_main_config,
+            PathBuf::from("/tmp/nestopia/nestopia.conf")
+        );
+        assert_eq!(reused.players[0].controller_id, "controller-a");
+        assert_eq!(reused.players[1].controller_id, "controller-b");
     }
 
     #[test]
