@@ -15,7 +15,10 @@ use std::ffi::{CStr, CString, OsString, c_char, c_void};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 
 const REPORT_SCHEMA: u32 = 6;
@@ -33,6 +36,7 @@ const CAPTURE_LIMIT: usize = 1024 * 1024;
 
 static SYSTEM_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
 static SAVE_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
+static METADATA_VFS_ENABLED: AtomicBool = AtomicBool::new(false);
 static OPTIONS: Mutex<Option<OptionEnvironment>> = Mutex::new(None);
 static MEMORY_MAP: Mutex<Result<Option<MemoryMapSnapshot>, String>> = Mutex::new(Ok(None));
 
@@ -729,8 +733,11 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             unsafe { data.cast::<i32>().write(3) };
             true
         }
-        _ => unsafe { lunchbox_controller_probe::libretro_vfs::handle_environment(command, data) }
-            .unwrap_or(false),
+        _ if METADATA_VFS_ENABLED.load(Ordering::Relaxed) => {
+            unsafe { lunchbox_controller_probe::libretro_vfs::handle_environment(command, data) }
+                .unwrap_or(false)
+        }
+        _ => false,
     }
 }
 
@@ -782,6 +789,7 @@ impl Drop for Core {
         if let Ok(mut value) = MEMORY_MAP.lock() {
             *value = Ok(None);
         }
+        METADATA_VFS_ENABLED.store(false, Ordering::Relaxed);
     }
 }
 
@@ -836,6 +844,10 @@ impl Core {
         *MEMORY_MAP
             .lock()
             .map_err(|_| anyhow::anyhow!("Memory-map capture lock poisoned"))? = Ok(None);
+        METADATA_VFS_ENABLED.store(
+            system == PersistenceSystem::Atari2600Stella,
+            Ordering::Relaxed,
+        );
 
         let mut runtime_dependencies = Vec::new();
         for path in runtime_library_paths {

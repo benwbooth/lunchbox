@@ -14,6 +14,7 @@ use std::sync::{
 use crate::libretro_memory_map::{ExactMapping, MemoryMapSnapshot};
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
+static METADATA_VFS_ENABLED: AtomicBool = AtomicBool::new(false);
 static SYSTEM_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
 static SAVE_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
 static INSPECTION_OPTIONS: Mutex<Option<crate::libretro_options::OptionEnvironment>> =
@@ -388,7 +389,10 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             }
             true
         }
-        _ => unsafe { crate::libretro_vfs::handle_environment(command, data) }.unwrap_or(false),
+        _ if METADATA_VFS_ENABLED.load(Ordering::Relaxed) => {
+            unsafe { crate::libretro_vfs::handle_environment(command, data) }.unwrap_or(false)
+        }
+        _ => false,
     }
 }
 unsafe extern "C" fn input(port: u32, device: u32, index: u32, id: u32) -> i16 {
@@ -440,6 +444,7 @@ impl Drop for Lease {
         if let Ok(mut memory_map) = MEMORY_MAP.lock() {
             *memory_map = Ok(None);
         }
+        METADATA_VFS_ENABLED.store(false, Ordering::Relaxed);
         ACTIVE.store(false, Ordering::Release);
     }
 }
@@ -2021,6 +2026,10 @@ pub fn inspect_with_runtime_options(
         "Only one core diagnostic may run in this process"
     );
     let _lease = Lease;
+    METADATA_VFS_ENABLED.store(
+        matches!(diagnostic, Diagnostic::Atari2600),
+        Ordering::Relaxed,
+    );
     #[cfg(unix)]
     let _native_stdout = NativeStdoutSilencer::new()?;
     let directory = tempfile::tempdir()?;
