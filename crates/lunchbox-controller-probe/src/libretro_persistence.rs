@@ -1160,11 +1160,13 @@ fn psx_firmware_inventory(directory: &Path) -> Result<(PathBuf, Vec<FirmwareIden
     let mut firmware = Vec::new();
     for (filename, expected_hash) in expected {
         let path = directory.join(filename);
-        let metadata = std::fs::metadata(&path)?;
+        let metadata = std::fs::metadata(&path)
+            .with_context(|| format!("Reading required BIOS {}", path.display()))?;
         ensure!(metadata.is_file(), "{filename} is not a regular file");
         let bytes = usize::try_from(metadata.len()).context("PSX BIOS file is too large")?;
         ensure!(bytes == 512 * 1024, "{filename} is not exactly 512 KiB");
-        let sha256 = file_hash(&path)?;
+        let sha256 = file_hash(&path)
+            .with_context(|| format!("Hashing required BIOS {}", path.display()))?;
         ensure!(
             sha256 == expected_hash,
             "{filename} SHA-256 is not the pinned dump"
@@ -2478,6 +2480,15 @@ pub fn snes_persistence_rom() -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_psx_bios_reports_the_required_filename() {
+        let directory = tempfile::tempdir().unwrap();
+        let error = psx_firmware_inventory(directory.path()).unwrap_err();
+        let message = format!("{error:#}");
+        assert!(message.contains("Reading required BIOS"));
+        assert!(message.contains("scph5500.bin"));
+    }
 
     #[test]
     fn gba_rom_is_reproducible_and_declares_sram() {
