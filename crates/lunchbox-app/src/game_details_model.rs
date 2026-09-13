@@ -5462,9 +5462,8 @@ impl qobject::GameDetailsModel {
         if *self.as_ref().launch_busy() || *self.as_ref().game_running() {
             return;
         }
-        if self
-            .as_ref()
-            .selected_firmware_statuses()
+        let firmware_statuses = self.as_ref().selected_firmware_statuses();
+        if firmware_statuses
             .iter()
             .any(crate::firmware::FirmwareStatus::needs_action)
         {
@@ -5628,6 +5627,26 @@ impl qobject::GameDetailsModel {
                     }
                     if let Some(session) = &calibrated_session {
                         session.check_launch_inputs().context("checking calibrated controller inputs before launch")?;
+                    }
+                    if launch_cancel.load(AtomicOrdering::Relaxed) {
+                        anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
+                    }
+                    if let LaunchInput::Rom {
+                        path,
+                        platform,
+                        option,
+                    } = &launch_input
+                    {
+                        crate::firmware::verify_for_launch(
+                            &firmware_statuses,
+                            platform,
+                            path,
+                            option,
+                        )
+                        .context("revalidating firmware immediately before launch")?;
+                    }
+                    if launch_cancel.load(AtomicOrdering::Relaxed) {
+                        anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
                     let mut child = match calibrated_session.as_mut() {
                         Some(session) => session.spawn_frontend(&plan, &launch_cancel)?,

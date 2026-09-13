@@ -57,12 +57,12 @@
         {
           "purpose": "bios",
           "path": "$XDG_DATA_HOME/nestopia/ (fallback ~/.local/share/nestopia/) is the bios/user-asset path; core assets (NstDatabase.xml, palettes) come from the install datadir ($(datadir)/nestopia)",
-          "naming": "no BIOS for base NES cartridge/NSF play; Famicom Disk System requires disksys.rom in the base path (or an auxiliary BIOS supplied by the frontend); lunchbox db has no nestopia firmware_rules entries to import it",
+          "naming": "no BIOS for base NES cartridge/NSF play; Famicom Disk System requires disksys.rom in the base path (or an auxiliary BIOS supplied by the frontend); Lunchbox leaves native Linux setup explicit and manual because its verified managed adapter is scoped to the exact Flatpak",
           "evidence": [
             "source:fltkui/jgmanager.cpp set_paths() L114-148 (pathinfo.bios = basepath; corepath = NST_DATADIR)",
             "source:fltkui/jg.cpp jg_game_load() L1425-1459 FDS: uses aux bios else pathinfo.bios + /disksys.rom, logs 'Failed to load FDS BIOS'",
             "source:Makefile.am databasedir = $(datadir)/nestopia (tag 1.53.2)",
-            "db:firmware_rules catalog sources/firmware-rules.json has 124 rules and no nestopia entry (verified 2026-09-11)"
+            "db:firmware_rules nestopia:nestopia:Nintendo - Famicom Disk System is managed only for the exact ca._0ldsk00l.Nestopia Flatpak; native Linux remains manual"
           ]
         },
         {
@@ -73,7 +73,7 @@
           "evidence": ["source:0ldsk00l/nestopia (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
-      "notes": "Captured from the 1.53.2 FLTK/SDL2 UI (the current 0ldsk00l GUI); the 1.4x SDL port it replaced kept everything in ~/.nestopia/ instead. Lunchbox launches with a private data root; native saves/states stay in the XDG locations."
+      "notes": "Captured from the 1.53.2 FLTK/SDL2 UI (the current 0ldsk00l GUI); the 1.4x SDL port it replaced kept everything in ~/.nestopia/ instead. The managed FDS firmware path is deliberately not claimed for native Linux; controller launch isolation uses private configuration while native saves/states stay in the XDG locations."
     },
     "linux-flatpak": {
       "paths": [
@@ -115,12 +115,14 @@
         },
         {
           "purpose": "bios",
-          "path": "~/.var/app/ca._0ldsk00l.Nestopia/data/nestopia/ is the sandbox bios/user-asset path; no BIOS is used for NES cartridges or NSF, while FDS requires disksys.rom there (or an auxiliary BIOS supplied by the frontend); no canonical checksum is published by this source",
-          "naming": "No external BIOS for NES cartridge/NSF; FDS firmware is named disksys.rom; this source publishes no canonical checksum",
+          "path": "~/.var/app/ca._0ldsk00l.Nestopia/data/nestopia/ is the sandbox bios/user-asset path; no BIOS is used for NES cartridges or NSF, while FDS requires disksys.rom there (or an auxiliary BIOS supplied by the frontend). Lunchbox accepts only two upstream-published SHA-256 identities and installs the user-supplied file as private mode 0600",
+          "naming": "No external BIOS for NES cartridge/NSF; exact FDS content requires disksys.rom. Accepted SHA-256: 99c18490ed9002d9c6d999b9d8d15be5c051bdfa7cc7e73318053c9a994b0178 or a0a9d57cbace21bf9c85c2b85e86656317f0768d7772acc90c7411ab1dbff2bf",
           "evidence": [
             "source:fltkui/jgmanager.cpp set_paths() pathinfo.bios = XDG data base @1.53.2",
             "source:fltkui/jg.cpp jg_game_load() FDS fallback pathinfo.bios/disksys.rom @1.53.2",
-            "repo:flathub/ca._0ldsk00l.Nestopia/ca._0ldsk00l.Nestopia.json @4338c4a12aa44cdd424c99f9df02a155a86ae1c8 (sandbox data home)"
+            "repo:flathub/ca._0ldsk00l.Nestopia/ca._0ldsk00l.Nestopia.json @4338c4a12aa44cdd424c99f9df02a155a86ae1c8 (sandbox data home)",
+            "source:SourMesen/Mesen2 UI/Interop/FirmwareTypeExtensions.cs @b9fa69ddc6d0a331fb103fdb5eef6904305703c2 (both accepted FDS SHA-256 identities)",
+            "db:firmware_rules nestopia:nestopia:Nintendo - Famicom Disk System managed exact-Flatpak import"
           ]
         },
         {
@@ -175,10 +177,11 @@
         {
           "purpose": "bios",
           "path": "FDS BIOS file configured in the FDS dialog (config key fds/bios); the default resolves to disksys.rom looked up through the file search paths (application/image directories); no BIOS is used for cartridge or NSF play",
-          "naming": "disksys.rom; when absent the FDS dialog prompts for a BIOS file and warns IDS_FDS_ERR_INVALIDBIOS on invalid images",
+          "naming": "disksys.rom; when absent the FDS dialog prompts for a BIOS file and warns IDS_FDS_ERR_INVALIDBIOS on invalid images. Lunchbox leaves this Windows configuration manual because its verified managed adapter is scoped to the exact Linux Flatpak",
           "evidence": [
             "source:win32/NstDialogFds.cpp L91-106 (fds/bios, default \"disksys.rom\" via paths.FindFile) and L136-165 (QueryBiosFile/SubmitBios -> Fds::SetBIOS)",
-            "source:win32/NstManagerFds.cpp L298-300 EVENT_DISK_QUERY_BIOS -> dialog->QueryBiosFile()"
+            "source:win32/NstManagerFds.cpp L298-300 EVENT_DISK_QUERY_BIOS -> dialog->QueryBiosFile()",
+            "db:firmware_rules managed Nestopia FDS installation is constrained to the exact Linux Flatpak; Windows remains explicit manual configuration"
           ]
         },
         {
@@ -232,10 +235,10 @@
         {
           "purpose": "bios",
           "path": "$XDG_DATA_HOME/nestopia/ else ~/.local/share/nestopia/ as bios/user path; core assets from the install datadir",
-          "naming": "disksys.rom required only for Famicom Disk System titles; no firmware needed for cartridge/NSF; lunchbox db firmware_rules has no nestopia entries",
+          "naming": "disksys.rom required only for Famicom Disk System titles; no firmware needed for cartridge/NSF; Lunchbox does not claim managed firmware installation for this native macOS source-build path",
           "evidence": [
             "source:fltkui/jg.cpp jg_game_load() L1433-1455 (pathinfo.bios + /disksys.rom fallback)",
-            "db:firmware_rules catalog sources/firmware-rules.json has no nestopia entry (verified 2026-09-11)",
+            "db:firmware_rules managed Nestopia FDS installation is constrained to the exact Linux Flatpak; native macOS remains explicit manual configuration",
             "docs:GitHub releases - no macOS binary asset at 1.53.2, macOS users build from source (make dist / autotools)"
           ]
         },

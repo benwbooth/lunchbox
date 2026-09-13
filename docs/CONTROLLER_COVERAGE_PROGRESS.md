@@ -5624,3 +5624,17 @@ deterministic BSV replay and bounded forced termination for every launch. Physic
 controllers, optional FDS firmware, provider save sync, ordinary macOS shutdown,
 and other native cores/profiles remain untested; no broad native RetroArch claim
 is made.
+
+## Nestopia UE Flatpak FDS firmware gate (2026-09-13)
+
+The exact Nestopia UE Flatpak now has a separate managed FDS firmware path. It
+binds the canonical FDS platform UUID/name, standalone Nestopia UUID/name,
+Flatpak app ID, selected canonical `.fds`/`.FDS` file, and sandbox data root.
+Import accepts only the two SHA-256 identities published by Mesen2 at pinned
+commit `b9fa69ddc6d0a331fb103fdb5eef6904305703c2`, installs privately without
+replacement, and performs a fresh verifier pass immediately before every exact
+FDS spawn regardless of controller path. Native Linux, macOS, Windows, and other
+Flatpak identities remain explicit manual configuration and are not marked
+managed-ready. The deterministic helper and integration tests are implemented;
+runtime FDS behavior remains `not_tested` until a lawfully obtained BIOS and FDS
+game are exercised end to end.

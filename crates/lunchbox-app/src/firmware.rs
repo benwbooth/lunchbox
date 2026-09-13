@@ -67,6 +67,10 @@ struct GitHubAsset {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FirmwareStatus {
+    pub platform_id: String,
+    pub platform_name: String,
+    pub content_path: String,
+    pub flatpak_app_id: String,
     pub rule_key: String,
     pub source_id: String,
     pub source_transport: String,
@@ -182,7 +186,15 @@ pub fn statuses_for_options(
             rules
                 .into_iter()
                 .map(|rule| {
-                    status_for_rule(&rule, option, platform, rom_path, &packages, &installs)
+                    status_for_rule(
+                        &rule,
+                        option,
+                        &platform_id,
+                        platform,
+                        rom_path,
+                        &packages,
+                        &installs,
+                    )
                 })
                 .collect()
         })
@@ -313,12 +325,28 @@ fn load_rules(
 fn status_for_rule(
     rule: &FirmwareRuleRow,
     option: &RomEmulatorOption,
+    platform_id: &str,
     platform: &str,
     rom_path: &Path,
     packages: &HashMap<(String, String), FirmwarePackageReceipt>,
     installs: &HashMap<(String, String), FirmwareInstallReceipt>,
 ) -> Result<FirmwareStatus> {
-    let runtime_root = runtime_root(rule, option, platform, rom_path)?;
+    let nestopia_fds_manual =
+        is_nestopia_ue_fds_rule(rule) && !is_exact_nestopia_ue_fds_runtime(option);
+    let effective_target_strategy = if nestopia_fds_manual {
+        "manual_import"
+    } else {
+        &rule.target_strategy
+    };
+    let runtime_root = if nestopia_fds_manual {
+        Some(manual_directory(
+            &rule.runtime_kind,
+            &rule.runtime_name,
+            platform,
+        )?)
+    } else {
+        runtime_root(rule, option, platform, rom_path)?
+    };
     let runtime_path = runtime_root
         .as_deref()
         .map(Path::to_path_buf)
@@ -340,16 +368,29 @@ fn status_for_rule(
     {
         let _ = migrate_legacy_ryubing_firmware_layout(target);
     }
-    let runtime_target_ready = target_path
-        .as_deref()
-        .is_some_and(|target| managed_runtime_target_ready(rule, target));
-    let imported = if rule.target_strategy == "manual_import" {
+    let runtime_target_ready = if is_nestopia_ue_fds_rule(rule) && !nestopia_fds_manual {
+        nestopia_ue_fds_runtime_ready(
+            rule,
+            option,
+            platform_id,
+            rom_path,
+            runtime_root.as_deref(),
+            target_path.as_deref(),
+        )
+    } else {
+        target_path
+            .as_deref()
+            .is_some_and(|target| managed_runtime_target_ready(rule, target))
+    };
+    let imported = if nestopia_fds_manual {
+        false
+    } else if effective_target_strategy == "manual_import" {
         directory_contains_files(&runtime_path)
     } else {
         packages.contains_key(&package_key) || runtime_target_ready
     };
     let runtime_text = runtime_path.to_string_lossy().into_owned();
-    let synced = if rule.target_strategy == "managed_import" {
+    let synced = if effective_target_strategy == "managed_import" {
         runtime_target_ready
     } else {
         target_path.as_ref().is_some_and(|target| {
@@ -365,6 +406,17 @@ fn status_for_rule(
     };
 
     Ok(FirmwareStatus {
+        platform_id: platform_id.to_owned(),
+        platform_name: if platform_id == crate::nestopia_ue_fds_firmware::FDS_PLATFORM_ID {
+            crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME.to_owned()
+        } else {
+            platform.to_owned()
+        },
+        content_path: rom_path.to_string_lossy().into_owned(),
+        flatpak_app_id: match &option.executable {
+            EmulatorExecutable::Flatpak { app_id, .. } => app_id.clone(),
+            _ => String::new(),
+        },
         rule_key: rule.rule_key.clone(),
         source_id: rule.source_id.clone(),
         source_transport: rule.source_transport.clone(),
@@ -374,9 +426,9 @@ fn status_for_rule(
         package_name: rule.package_name.clone(),
         runtime_kind: rule.runtime_kind.clone(),
         install_mode: rule.install_mode.clone(),
-        required: rule.required,
+        required: rule.required && !nestopia_fds_manual,
         supports_hle_fallback: rule.supports_hle_fallback,
-        target_strategy: rule.target_strategy.clone(),
+        target_strategy: effective_target_strategy.to_owned(),
         imported,
         synced,
         runtime_path: runtime_text,
@@ -385,8 +437,85 @@ fn status_for_rule(
             .map(Path::to_string_lossy)
             .map(|path| path.into_owned())
             .unwrap_or_default(),
-        notes: rule.notes.clone(),
+        notes: if nestopia_fds_manual {
+            format!(
+                "{} Managed validation and installation are available only for the exact Linux {} Flatpak; this runtime remains a manual emulator configuration and is not reported ready by Lunchbox.",
+                rule.notes,
+                crate::nestopia_ue_fds_firmware::NESTOPIA_UE_FLATPAK_ID
+            )
+        } else {
+            rule.notes.clone()
+        },
     })
+}
+
+fn is_nestopia_ue_fds_rule(rule: &FirmwareRuleRow) -> bool {
+    rule.runtime_kind == "nestopia"
+        && rule.source_id == "manual:nestopia-fds-bios"
+        && rule.package_name == crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME
+        && rule.install_mode == "copy_archive"
+        && rule.target_strategy == "managed_import"
+}
+
+fn is_exact_nestopia_ue_fds_runtime(option: &RomEmulatorOption) -> bool {
+    cfg!(target_os = "linux")
+        && option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_id == crate::nestopia_ue_fds_firmware::NESTOPIA_UE_EMULATOR_ID
+        && option.emulator_name == crate::nestopia_ue_fds_firmware::NESTOPIA_UE_EMULATOR_NAME
+        && matches!(
+            &option.executable,
+            EmulatorExecutable::Flatpak { app_id, .. }
+                if app_id == crate::nestopia_ue_fds_firmware::NESTOPIA_UE_FLATPAK_ID
+        )
+}
+
+fn is_nestopia_ue_fds_status(status: &FirmwareStatus) -> bool {
+    status.runtime_kind == "nestopia"
+        && status.source_id == "manual:nestopia-fds-bios"
+        && status.package_name == crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME
+        && status.install_mode == "copy_archive"
+        && status.target_strategy == "managed_import"
+        && status.platform_id == crate::nestopia_ue_fds_firmware::FDS_PLATFORM_ID
+        && status.platform_name == crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME
+        && status.flatpak_app_id == crate::nestopia_ue_fds_firmware::NESTOPIA_UE_FLATPAK_ID
+}
+
+fn nestopia_ue_fds_runtime_ready(
+    rule: &FirmwareRuleRow,
+    option: &RomEmulatorOption,
+    platform_id: &str,
+    rom_path: &Path,
+    runtime_root: Option<&Path>,
+    target_path: Option<&Path>,
+) -> bool {
+    if !is_nestopia_ue_fds_rule(rule)
+        || platform_id != crate::nestopia_ue_fds_firmware::FDS_PLATFORM_ID
+    {
+        return false;
+    }
+    let EmulatorExecutable::Flatpak { app_id, .. } = &option.executable else {
+        return false;
+    };
+    let (Some(runtime_root), Some(target_path), Some(data_home)) = (
+        runtime_root,
+        target_path,
+        runtime_root.and_then(Path::parent),
+    ) else {
+        return false;
+    };
+    if target_path != runtime_root.join(crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME) {
+        return false;
+    }
+    crate::nestopia_ue_fds_firmware::verify_fds_firmware_for_launch(
+        crate::nestopia_ue_fds_firmware::FdsRuntimeScope {
+            flatpak_app_id: app_id,
+            platform_id,
+            platform_name: crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME,
+            content_path: rom_path,
+            flatpak_data_home: data_home,
+        },
+    )
+    .is_ok()
 }
 
 fn managed_runtime_target_ready(rule: &FirmwareRuleRow, target: &Path) -> bool {
@@ -466,6 +595,14 @@ fn runtime_root(
             &switch_data_dir,
         )
         .map(Some);
+    }
+    if is_nestopia_ue_fds_rule(rule) && is_exact_nestopia_ue_fds_runtime(option) {
+        let EmulatorExecutable::Flatpak { app_id, .. } = &option.executable else {
+            unreachable!("exact Nestopia FDS runtime predicate requires a Flatpak")
+        };
+        return Ok(Some(
+            home.join(".var/app").join(app_id).join("data/nestopia"),
+        ));
     }
     let root = match rule.runtime_kind.as_str() {
         "retroarch" if cfg!(target_os = "linux") && flatpak => {
@@ -765,6 +902,37 @@ pub fn import_and_sync_with_progress(
         );
     }
     let selected = candidates[0];
+    if is_nestopia_ue_fds_status(selected) {
+        report("Validating the selected Nestopia FDS BIOS…".into(), 10);
+        let runtime_root = Path::new(&selected.runtime_path);
+        let data_home = runtime_root
+            .parent()
+            .context("the Nestopia Flatpak firmware target has no data root")?;
+        let receipt = crate::nestopia_ue_fds_firmware::install_fds_firmware(
+            crate::nestopia_ue_fds_firmware::InstallRequest {
+                flatpak_app_id: &selected.flatpak_app_id,
+                platform_id: &selected.platform_id,
+                platform_name: &selected.platform_name,
+                content_path: Path::new(&selected.content_path),
+                flatpak_data_home: data_home,
+                firmware_source: selected_path,
+            },
+        )?;
+        if receipt.target != Path::new(&selected.target_path) {
+            bail!("the installed Nestopia FDS BIOS did not resolve to the reviewed target");
+        }
+        report("Nestopia FDS firmware setup complete.".into(), 100);
+        return Ok(format!(
+            "Validated and {} {} for the exact Nestopia UE Flatpak FDS runtime.",
+            match receipt.disposition {
+                crate::nestopia_ue_fds_firmware::InstallDisposition::Installed => "installed",
+                crate::nestopia_ue_fds_firmware::InstallDisposition::AlreadyPresent => {
+                    "reverified"
+                }
+            },
+            selected.package_name
+        ));
+    }
     validate_managed_firmware_selection_with_progress(selected, selected_path, |done, total| {
         let percent = progress_between(2, 20, done, total);
         report(
@@ -814,6 +982,68 @@ pub fn import_and_sync_with_progress(
             )
         }
     ))
+}
+
+/// Revalidate exact Nestopia UE Flatpak FDS firmware against the selected
+/// content and emulator immediately before the process is spawned.
+pub fn verify_for_launch(
+    statuses: &[FirmwareStatus],
+    platform: &str,
+    content_path: &Path,
+    option: &RomEmulatorOption,
+) -> Result<()> {
+    if !is_exact_nestopia_ue_fds_launch(platform, content_path, option) {
+        return Ok(());
+    }
+
+    let matching = statuses
+        .iter()
+        .filter(|status| is_nestopia_ue_fds_status(status))
+        .collect::<Vec<_>>();
+    let [status] = matching.as_slice() else {
+        bail!("the exact Nestopia UE Flatpak FDS launch requires one reviewed firmware status");
+    };
+    let EmulatorExecutable::Flatpak { app_id, .. } = &option.executable else {
+        unreachable!("exact launch predicate already required a Flatpak")
+    };
+    if status.content_path != content_path.to_string_lossy()
+        || status.platform_name != platform
+        || status.flatpak_app_id != *app_id
+    {
+        bail!("the Nestopia FDS firmware status does not match the selected launch");
+    }
+    let runtime_root = Path::new(&status.runtime_path);
+    let data_home = runtime_root
+        .parent()
+        .context("the Nestopia Flatpak firmware target has no data root")?;
+    if Path::new(&status.target_path)
+        != runtime_root.join(crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME)
+    {
+        bail!("the Nestopia FDS firmware status has an unexpected runtime target");
+    }
+    crate::nestopia_ue_fds_firmware::verify_fds_firmware_for_launch(
+        crate::nestopia_ue_fds_firmware::FdsRuntimeScope {
+            flatpak_app_id: app_id,
+            platform_id: &status.platform_id,
+            platform_name: &status.platform_name,
+            content_path,
+            flatpak_data_home: data_home,
+        },
+    )?;
+    Ok(())
+}
+
+fn is_exact_nestopia_ue_fds_launch(
+    platform: &str,
+    content_path: &Path,
+    option: &RomEmulatorOption,
+) -> bool {
+    platform == crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME
+        && matches!(
+            content_path.extension().and_then(|value| value.to_str()),
+            Some("fds" | "FDS")
+        )
+        && is_exact_nestopia_ue_fds_runtime(option)
 }
 
 fn progress_between(start: u8, end: u8, done: usize, total: usize) -> u8 {
@@ -2420,6 +2650,34 @@ fn open_path(path: &Path) -> Result<()> {
 mod tests {
     use super::*;
 
+    fn nestopia_fds_rule() -> FirmwareRuleRow {
+        FirmwareRuleRow {
+            rule_key: "nestopia:nestopia:Nintendo - Famicom Disk System".into(),
+            runtime_kind: "nestopia".into(),
+            runtime_name: crate::nestopia_ue_fds_firmware::NESTOPIA_UE_EMULATOR_NAME.into(),
+            source_id: "manual:nestopia-fds-bios".into(),
+            source_transport: "manual".into(),
+            source_url: String::new(),
+            torrent_file: String::new(),
+            path_prefix: String::new(),
+            package_name: crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME.into(),
+            target_subdir: String::new(),
+            install_mode: "copy_archive".into(),
+            target_strategy: "managed_import".into(),
+            required: true,
+            supports_hle_fallback: false,
+            notes: "FDS firmware".into(),
+        }
+    }
+
+    fn nestopia_option(executable: EmulatorExecutable) -> RomEmulatorOption {
+        RomEmulatorOption::standalone(
+            crate::nestopia_ue_fds_firmware::NESTOPIA_UE_EMULATOR_ID.into(),
+            crate::nestopia_ue_fds_firmware::NESTOPIA_UE_EMULATOR_NAME.into(),
+            executable,
+        )
+    }
+
     fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {
         let file = File::create(path).unwrap();
         let mut archive = zip::ZipWriter::new(file);
@@ -2481,8 +2739,87 @@ mod tests {
     }
 
     #[test]
+    fn nestopia_fds_launch_predicate_is_exact_and_uses_the_emulator_uuid() {
+        let option = nestopia_option(EmulatorExecutable::Flatpak {
+            command: PathBuf::from("flatpak"),
+            app_id: crate::nestopia_ue_fds_firmware::NESTOPIA_UE_FLATPAK_ID.into(),
+        });
+        assert!(is_exact_nestopia_ue_fds_launch(
+            crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME,
+            Path::new("/games/disk.fds"),
+            &option,
+        ));
+        assert!(!is_exact_nestopia_ue_fds_launch(
+            "Nintendo Entertainment System",
+            Path::new("/games/disk.fds"),
+            &option,
+        ));
+        assert!(!is_exact_nestopia_ue_fds_launch(
+            crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME,
+            Path::new("/games/cart.nes"),
+            &option,
+        ));
+
+        let wrong_id = RomEmulatorOption::standalone(
+            "nestopia".into(),
+            crate::nestopia_ue_fds_firmware::NESTOPIA_UE_EMULATOR_NAME.into(),
+            option.executable.clone(),
+        );
+        assert!(!is_exact_nestopia_ue_fds_launch(
+            crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME,
+            Path::new("/games/disk.fds"),
+            &wrong_id,
+        ));
+        let wrong_name = RomEmulatorOption::standalone(
+            crate::nestopia_ue_fds_firmware::NESTOPIA_UE_EMULATOR_ID.into(),
+            "Nestopia".into(),
+            option.executable.clone(),
+        );
+        assert!(!is_exact_nestopia_ue_fds_launch(
+            crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME,
+            Path::new("/games/disk.fds"),
+            &wrong_name,
+        ));
+    }
+
+    #[test]
+    fn nestopia_fds_non_flatpak_status_stays_explicit_manual_and_non_blocking() {
+        let rule = nestopia_fds_rule();
+        for option in [
+            nestopia_option(EmulatorExecutable::Native(PathBuf::from(
+                "/usr/bin/nestopia",
+            ))),
+            nestopia_option(EmulatorExecutable::Flatpak {
+                command: PathBuf::from("flatpak"),
+                app_id: "example.WrongNestopia".into(),
+            }),
+        ] {
+            let status = status_for_rule(
+                &rule,
+                &option,
+                crate::nestopia_ue_fds_firmware::FDS_PLATFORM_ID,
+                crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME,
+                Path::new("/games/disk.fds"),
+                &HashMap::new(),
+                &HashMap::new(),
+            )
+            .unwrap();
+            assert_eq!(status.target_strategy, "manual_import");
+            assert!(!status.required);
+            assert!(!status.imported);
+            assert!(!status.synced);
+            assert!(!status.needs_action());
+            assert!(status.notes.contains("is not reported ready"));
+        }
+    }
+
+    #[test]
     fn firmware_summary_distinguishes_missing_optional_and_ready() {
         let status = |required, hle, imported, synced| FirmwareStatus {
+            platform_id: "platform-id".into(),
+            platform_name: "Platform".into(),
+            content_path: "/tmp/game.rom".into(),
+            flatpak_app_id: String::new(),
             rule_key: "rule".into(),
             source_id: "source".into(),
             source_transport: "minerva".into(),

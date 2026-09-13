@@ -608,6 +608,10 @@ mod tests {
         strategy: &str,
     ) -> FirmwareStatus {
         FirmwareStatus {
+            platform_id: "platform-id".into(),
+            platform_name: "Platform".into(),
+            content_path: "/tmp/game.rom".into(),
+            flatpak_app_id: String::new(),
             rule_key: "rule".into(),
             source_id: "source".into(),
             source_transport: "manual".into(),

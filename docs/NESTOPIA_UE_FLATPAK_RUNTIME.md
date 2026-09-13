@@ -27,6 +27,42 @@ Preparation and every launch re-read the deployed app/runtime commits and hash
 the executable, SDL2 library, loader, source controller probe, and private
 launch inputs. A mismatch is a refusal, not a compatibility fallback.
 
+## FDS firmware boundary
+
+Famicom Disk System content is a separate, firmware-gated path. For the exact
+platform UUID `d01f03eb-cbf9-5847-92a6-f5fb9ba80b15`, canonical platform name
+`Nintendo Famicom Disk System`, standalone emulator UUID
+`73ad4eb8-0f5f-56ca-b839-8398db3e8d77`, emulator name `Nestopia UE`, Flatpak
+app ID `ca._0ldsk00l.Nestopia`, and canonical `.fds` or `.FDS` content, Lunchbox
+accepts a user-selected file only when it is an exact raw 8,192-byte image with
+one of these SHA-256 identities:
+
+- `99c18490ed9002d9c6d999b9d8d15be5c051bdfa7cc7e73318053c9a994b0178`
+- `a0a9d57cbace21bf9c85c2b85e86656317f0768d7772acc90c7411ab1dbff2bf`
+
+Both values come from the primary-source Mesen2 allowlist in
+`UI/Interop/FirmwareTypeExtensions.cs` at commit
+`b9fa69ddc6d0a331fb103fdb5eef6904305703c2`. The known CRC32 values
+`5e607dcf` and `4df24a6c` are retained only as diagnostics; CRC32 never admits a
+file. Lunchbox does not discover, download, or bundle a BIOS or disk image.
+
+The installer rejects relative paths, symlinks, path-identity drift, wrong
+ownership, and an existing unrecognized target. It publishes
+`~/.var/app/ca._0ldsk00l.Nestopia/data/nestopia/disksys.rom` atomically without
+replacement, with mode `0600`, effective-user ownership, and one hard link.
+The status probe and general pre-spawn path reopen that installed file and
+recheck its directory identities, ownership, mode, link count, size, and
+SHA-256. The pre-spawn check runs after controller preparation and immediately
+before either calibrated or ordinary process spawning; cancellation is checked
+on both sides.
+
+The catalog rule remains host-agnostic, so other Nestopia packages are exposed
+as an explicit non-blocking manual configuration. They are never reported as
+managed-ready and never use this installer. The exact Flatpak implementation is
+covered by deterministic security and integration tests, but no lawfully
+obtained BIOS plus FDS game has been run through Nestopia here. Firmware runtime
+status therefore remains `not_tested`.
+
 ## Controller and configuration contract
 
 The production path requires exactly two distinct, non-virtual Linux
@@ -115,6 +151,7 @@ This proves the exact Flatpak/X11 production path for two stable eight-button
 uinput joydev pads, ordinary battery-backed NROM persistence across fresh
 processes, and slot-0 F5/F7 state restoration. It does not prove Wayland,
 physical controllers, hats or axes, hotplug, other player/device modes, other
-Nestopia packages or versions, FDS firmware, or save-provider export/restore.
+Nestopia packages or versions, FDS firmware runtime behavior, or save-provider
+export/restore.
 The shared ledger therefore records controller `pass`, state `pass`, firmware
 `not_tested`, and save sync `blocked` despite the proven native `.sav` reload.
