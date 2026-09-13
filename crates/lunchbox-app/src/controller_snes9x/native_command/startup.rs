@@ -61,6 +61,24 @@ pub(super) fn confirm(
     cancel: &AtomicBool,
 ) -> Result<()> {
     let deadline = Instant::now() + Duration::from_secs(20);
+    if session.inputs.flatpak_receipt_ready()?.is_some() {
+        loop {
+            cancelled(cancel)?;
+            ensure!(
+                child.try_wait()?.is_none(),
+                "Snes9x Flatpak supervisor exited before controller handoff"
+            );
+            if session.inputs.flatpak_receipt_ready()? == Some(true) {
+                session.verify(cancel)?;
+                return Ok(());
+            }
+            ensure!(
+                Instant::now() < deadline,
+                "Snes9x Flatpak supervisor did not prove controller routing before timeout"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
     loop {
         cancelled(cancel)?;
         ensure!(

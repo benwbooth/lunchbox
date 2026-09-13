@@ -29,6 +29,8 @@ pub mod sdl2;
 pub mod sdl2_evdev;
 pub mod sdl2_mapping;
 pub mod sdl2_physical;
+#[cfg(target_os = "linux")]
+pub mod snes9x_supervisor;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {

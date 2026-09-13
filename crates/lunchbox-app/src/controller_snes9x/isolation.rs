@@ -1,6 +1,8 @@
 //! Retain a native Snes9x GTK config overlay without changing the user's INI or saves.
 use anyhow::{Context, Result, ensure};
-use std::io::Read;
+use std::io::{Read, Write};
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 pub(crate) struct PreparedConfig {
@@ -23,6 +25,36 @@ fn read(path: &Path) -> Result<Vec<u8>> {
         "Snes9x GTK config exceeds size limit"
     );
     Ok(bytes)
+}
+
+fn set_mode(path: &Path, mode: u32) -> Result<()> {
+    #[cfg(unix)]
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+    #[cfg(not(unix))]
+    let _ = (path, mode);
+    Ok(())
+}
+
+fn ensure_mode(path: &Path, mode: u32, directory: bool) -> Result<()> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    ensure!(
+        if directory {
+            metadata.is_dir()
+        } else {
+            metadata.is_file()
+        },
+        "Snes9x private staging type or mode changed for {}",
+        path.display()
+    );
+    #[cfg(unix)]
+    ensure!(
+        metadata.mode() & 0o7777 == mode,
+        "Snes9x private staging type or mode changed for {}",
+        path.display()
+    );
+    #[cfg(not(unix))]
+    let _ = mode;
+    Ok(())
 }
 
 impl PreparedConfig {
@@ -55,10 +87,33 @@ impl PreparedConfig {
             std::str::from_utf8(&original).context("Snes9x GTK configuration is not UTF-8")?,
             pads,
         )?;
+        // Use Lunchbox's host-visible cache rather than a sandbox-private /tmp.
+        // This lets a separately launched target Flatpak receive one exact
+        // per-session directory without exposing or rewriting its real profile.
+        let home = directories::BaseDirs::new()
+            .context("Finding the user home for Snes9x controller staging")?
+            .home_dir()
+            .to_path_buf();
+        let cache = home.join(".cache/lunchbox/controller-launch");
+        std::fs::create_dir_all(&cache)?;
         let directory = tempfile::Builder::new()
-            .prefix("lunchbox-snes9x-config-")
-            .tempdir()?;
-        std::fs::write(directory.path().join("snes9x.conf"), config)?;
+            .prefix("snes9x-config-")
+            .tempdir_in(cache)?;
+        set_mode(directory.path(), 0o700)?;
+        for name in ["snes9x", "cache", "data", "state"] {
+            let path = directory.path().join(name);
+            std::fs::create_dir(&path)?;
+            set_mode(&path, 0o700)?;
+        }
+        let config_path = directory.path().join("snes9x/snes9x.conf");
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let mut config_file = options.open(&config_path)?;
+        #[cfg(unix)]
+        config_file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        config_file.write_all(config.as_bytes())?;
         let prepared = Self {
             directory,
             source,
@@ -70,10 +125,19 @@ impl PreparedConfig {
     }
 
     pub(crate) fn config_path(&self) -> PathBuf {
-        self.directory.path().join("snes9x.conf")
+        self.directory.path().join("snes9x/snes9x.conf")
+    }
+
+    pub(crate) fn root(&self) -> &Path {
+        self.directory.path()
     }
 
     pub(crate) fn verify(&self) -> Result<()> {
+        ensure_mode(self.root(), 0o700, true)?;
+        for name in ["snes9x", "cache", "data", "state"] {
+            ensure_mode(&self.root().join(name), 0o700, true)?;
+        }
+        ensure_mode(&self.config_path(), 0o600, false)?;
         ensure!(
             self.source.canonicalize()? == self.canonical_source
                 && read(&self.source)? == self.original,

@@ -1,5 +1,10 @@
 //! Native GTK launch ownership; never invoked during settings review.
-use super::{isolation::PreparedConfig, session::PreparedSession, settings::SavedSetup};
+use super::{
+    flatpak::PreparedFlatpak,
+    isolation::PreparedConfig,
+    session::{PreparedSession, Runtime},
+    settings::SavedSetup,
+};
 use crate::{
     controller_catalog::Calibration,
     controller_native_process::cancelled,
@@ -22,7 +27,7 @@ pub(crate) struct NativeSession {
     pub(crate) setup: SavedSetup,
     pub(crate) plan: LaunchPlan,
     files: BTreeMap<PathBuf, String>,
-    cwd: PathBuf,
+    native_cwd: Option<PathBuf>,
 }
 
 impl NativeSession {
@@ -51,11 +56,13 @@ impl NativeSession {
 
     pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
         cancelled(cancel)?;
-        ensure!(
-            PreparedConfig::native_path(&self.cwd)?.canonicalize()?
-                == self.setup.source_config.canonicalize()?,
-            "Snes9x native configuration selection changed"
-        );
+        if let Some(cwd) = &self.native_cwd {
+            ensure!(
+                PreparedConfig::native_path(cwd)?.canonicalize()?
+                    == self.setup.source_config.canonicalize()?,
+                "Snes9x native configuration selection changed"
+            );
+        }
         for (path, expected) in &self.files {
             ensure!(
                 file_hash(path)? == *expected,
@@ -76,36 +83,50 @@ pub(crate) fn prepare(
 ) -> Result<NativeSession> {
     cancelled(cancel)?;
     setup.validate()?;
-    let EmulatorExecutable::Native(executable) = &option.executable else {
-        anyhow::bail!("Snes9x GTK calibrated launch requires native Linux, not Wine/Flatpak");
-    };
     ensure!(
         setup.emulator_id == option.emulator_id && original.environment.is_empty(),
         "Snes9x identity differs or custom environment needs resolution"
     );
-    let executable = executable.canonicalize()?;
-    ensure!(
-        executable == original.program.canonicalize()?,
-        "Snes9x launch executable differs from selection"
-    );
-    ensure!(
-        original.arguments.len() == 1 && original.arguments[0] == setup.content.as_os_str(),
-        "Snes9x native calibrated launch currently requires exactly the saved ROM argument"
-    );
     let cwd = original.current_directory.canonicalize()?;
-    ensure!(
-        PreparedConfig::native_path(&cwd)?.canonicalize()? == setup.source_config.canonicalize()?,
-        "Snes9x saved config differs from GTK's XDG/HOME/cwd selection"
-    );
+    let (runtime, executable, native_cwd) = match &option.executable {
+        EmulatorExecutable::Native(executable) => {
+            let executable = executable.canonicalize()?;
+            ensure!(
+                executable == original.program.canonicalize()?,
+                "Snes9x launch executable differs from selection"
+            );
+            ensure!(
+                original.arguments.len() == 1 && original.arguments[0] == setup.content.as_os_str(),
+                "Snes9x native calibrated launch currently requires exactly the saved ROM argument"
+            );
+            ensure!(
+                PreparedConfig::native_path(&cwd)?.canonicalize()?
+                    == setup.source_config.canonicalize()?,
+                "Snes9x saved config differs from GTK's XDG/HOME/cwd selection"
+            );
+            (Runtime::Native, executable, Some(cwd.clone()))
+        }
+        EmulatorExecutable::Flatpak { command, app_id } => {
+            let runtime =
+                PreparedFlatpak::prepare(setup, option, original, command, app_id, cancel)?;
+            let executable = runtime.executable().to_path_buf();
+            (Runtime::Flatpak(runtime), executable, None)
+        }
+        EmulatorExecutable::Wine { .. } => {
+            anyhow::bail!("Snes9x GTK calibrated launch does not support Wine");
+        }
+    };
     let mut files = BTreeMap::new();
-    for path in [
-        &original.program,
+    let mut paths = vec![
         &executable,
         &setup.probe_program,
         &setup.sdl_library,
-        &setup.bubblewrap_program,
         &setup.content,
-    ] {
+    ];
+    if native_cwd.is_some() {
+        paths.extend([&original.program, &setup.bubblewrap_program]);
+    }
+    for path in paths {
         files.insert(path.clone(), file_hash(path)?);
     }
     ensure!(
@@ -115,20 +136,24 @@ pub(crate) fn prepare(
     // GTK initializes input devices and reads/writes configuration before
     // parsing ordinary options. Do not launch a supposedly harmless --version
     // subprocess against the original configuration as a version probe.
-    let inputs = PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
+    let mut inputs = PreparedSession::prepare(setup, calibrations, inventory, runtime, cancel)?;
     let mut plan = original.clone();
-    plan.program = setup.bubblewrap_program.clone();
-    plan.arguments =
-        inputs
-            .configuration
-            .overlay_arguments(&executable, &original.arguments, &cwd)?;
+    if let Some(arguments) = inputs.stage_flatpak_launch(original)? {
+        plan.arguments = arguments;
+    } else {
+        plan.program = setup.bubblewrap_program.clone();
+        plan.arguments =
+            inputs
+                .configuration
+                .overlay_arguments(&executable, &original.arguments, &cwd)?;
+    }
     let session = NativeSession {
         inputs,
         executable,
         setup: setup.clone(),
         plan,
         files,
-        cwd,
+        native_cwd,
     };
     session.verify(cancel)?;
     Ok(session)

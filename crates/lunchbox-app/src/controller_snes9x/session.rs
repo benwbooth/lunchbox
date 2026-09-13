@@ -1,16 +1,38 @@
 //! Native GTK launch-time SDL inventory and physical calibration ownership.
-use super::{isolation::PreparedConfig, physical::calibrated_pad, settings::SavedSetup};
+use super::{
+    flatpak::PreparedFlatpak, isolation::PreparedConfig, physical::calibrated_pad,
+    settings::SavedSetup,
+};
 use crate::{
     controller_bizhawk_guard::InputTopology,
     controller_catalog::Calibration,
     controller_native_process::{cancelled, capture},
     controllers::ControllerDevice,
+    emulator::LaunchPlan,
 };
 use anyhow::{Context, Result, ensure};
 use lunchbox_controller_probe::{file_hash, sdl2::Snapshot};
 use std::{collections::HashMap, process::Command, sync::atomic::AtomicBool};
 
-fn observe(setup: &SavedSetup, path: Option<&str>, cancel: &AtomicBool) -> Result<Snapshot> {
+pub(crate) enum Runtime {
+    Native,
+    Flatpak(PreparedFlatpak),
+}
+
+fn observe(
+    setup: &SavedSetup,
+    runtime: &Runtime,
+    path: Option<&str>,
+    cancel: &AtomicBool,
+) -> Result<Snapshot> {
+    if let Runtime::Flatpak(runtime) = runtime {
+        let snapshot = runtime.observe(path, cancel)?;
+        ensure!(
+            snapshot.version[0] == 2,
+            "Snes9x Flatpak helper did not inspect SDL2"
+        );
+        return Ok(snapshot);
+    }
     let mut command = Command::new(&setup.probe_program);
     command
         .arg("--sdl2-inventory")
@@ -59,6 +81,7 @@ pub(crate) struct PreparedSession {
     topology: InputTopology,
     initial: Snapshot,
     setup: SavedSetup,
+    runtime: Runtime,
 }
 
 impl PreparedSession {
@@ -66,6 +89,7 @@ impl PreparedSession {
         setup: &SavedSetup,
         calibrations: &HashMap<String, Calibration>,
         inventory: &[ControllerDevice],
+        runtime: Runtime,
         cancel: &AtomicBool,
     ) -> Result<Self> {
         cancelled(cancel)?;
@@ -85,7 +109,7 @@ impl PreparedSession {
             selected.push(device.device_path.clone());
         }
         let topology = InputTopology::capture(&selected)?;
-        let initial = routing(observe(setup, None, cancel)?);
+        let initial = routing(observe(setup, &runtime, None, cancel)?);
         let mut pads = Vec::new();
         let mut runtime_paths = Vec::new();
         for (player, selected) in setup.players.iter().zip(&selected) {
@@ -100,7 +124,7 @@ impl PreparedSession {
                 !runtime_paths.contains(&path),
                 "Snes9x players resolved to the same native controller"
             );
-            let captured = observe(setup, Some(&path), cancel)?;
+            let captured = observe(setup, &runtime, Some(&path), cancel)?;
             initial.ensure_same_routing(&routing(captured.clone()))?;
             topology.verify()?;
             pads.push(calibrated_pad(
@@ -120,6 +144,7 @@ impl PreparedSession {
             topology,
             initial,
             setup: setup.clone(),
+            runtime,
         };
         session.verify(cancel)?;
         Ok(session)
@@ -129,12 +154,42 @@ impl PreparedSession {
         cancelled(cancel)?;
         self.topology.verify()?;
         self.configuration.verify()?;
-        self.initial
-            .ensure_same_routing(&routing(observe(&self.setup, None, cancel)?))?;
+        if let Runtime::Flatpak(runtime) = &self.runtime {
+            runtime.verify(cancel)?;
+        }
+        self.initial.ensure_same_routing(&routing(observe(
+            &self.setup,
+            &self.runtime,
+            None,
+            cancel,
+        )?))?;
         self.topology.verify()
     }
 
     pub(crate) fn check_health(&self) -> Result<()> {
         self.topology.verify()
+    }
+
+    pub(crate) fn stage_flatpak_launch(
+        &mut self,
+        original: &LaunchPlan,
+    ) -> Result<Option<Vec<std::ffi::OsString>>> {
+        let Runtime::Flatpak(runtime) = &mut self.runtime else {
+            return Ok(None);
+        };
+        Ok(Some(runtime.prepare_launch(
+            &self.setup,
+            &self.configuration,
+            &self.initial,
+            &self.runtime_paths,
+            original,
+        )?))
+    }
+
+    pub(crate) fn flatpak_receipt_ready(&self) -> Result<Option<bool>> {
+        match &self.runtime {
+            Runtime::Native => Ok(None),
+            Runtime::Flatpak(runtime) => Ok(Some(runtime.receipt_ready()?)),
+        }
     }
 }

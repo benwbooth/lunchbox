@@ -1,6 +1,6 @@
 # Snes9x standalone runtime evidence
 
-Tested 2026-09-12 on Linux/x86_64 against the system Flatpak
+Tested 2026-09-12 and 2026-09-13 on Linux/x86_64 against the system Flatpak
 `com.snes9x.Snes9x` version 1.63. This document deliberately separates the
 installed emulator's observed behavior from Lunchbox's complete production
 adapter integration.
@@ -16,13 +16,13 @@ adapter integration.
 | Ordinary startup without BIOS | `passed` | A plain LoROM launch with no BIOS argument reached `Port 1: Pad #1`, `Port 2: Pad #2`, `Map_LoROMMap`, and created SRAM. |
 | Fresh-process SRAM reload | `passed` | Three separately launched Snes9x processes observed persisted boot counts 1, 2, and 3 before state restoration. |
 | Save-state mutate/restore | `passed` | Slot 000 restored the ROM-observed boot and mutation bytes from `03 5a` to `01 00`; the slot hash did not change and an exact undo file was produced. |
-| Lunchbox production adapter with Flatpak | `blocked` | The adapter rejects every `EmulatorExecutable::Flatpak` before launch. Removing that guard is unsafe because the existing host-side probe and target Flatpak enumerate different joystick indices (details below). |
+| Lunchbox production adapter with Flatpak | `passed` | The ordinary prepare/spawn path ran its retained probe and supervisor inside the target sandbox, resolved the two uinput pads to target slots 3 and 6, proved readiness, and passed the exact two-player hardware-register oracle while preserving the user's Flatpak profile. |
 | Multitap players 3–5, hats/axes, hotplug, physical pads | `not_tested` | The oracle intentionally covered two 12-button virtual pads and a stable topology only. |
 
-The proposed shared-ledger values are therefore: renderer `passed`; direct
-runtime controls `passed`; direct runtime players `passed`; no-BIOS startup
-`passed`; SRAM reload `passed`; state restore `passed`; production adapter
-integration `blocked`; unexercised variants `not_tested`.
+The shared-ledger values are therefore: controller `passed`; ordinary no-BIOS
+startup `passed`; state restore `passed`; firmware variants `not_tested`; save
+sync `blocked` because no provider export/restore was exercised. Players 3–5,
+hats/axes, hotplug and physical-pad capture remain `not_tested` boundaries.
 
 ## Original diagnostic
 
@@ -114,15 +114,10 @@ Its hash was identical before and after loading. The load created
 `ordered-diagnostic.undo` in the same directory, 2,693 bytes, SHA-256
 `0e43e8c105be80fc1c189b42ce7dbfdbb43587e672068f7038c0fd5ee33bd38c`.
 
-## Why production Flatpak integration remains blocked
+## Production Flatpak integration
 
-`controller_snes9x/native_command.rs` currently accepts only
-`EmulatorExecutable::Native` and returns
-`Snes9x GTK calibrated launch requires native Linux, not Wine/Flatpak` for the
-installed target.
-
-There is a deeper runtime reason not to delete that check. Inside the installed
-Flatpak, Snes9x reported these one-based slots:
+The original blocker was a real host/target routing mismatch. Inside the
+installed Flatpak, Snes9x reported these one-based slots:
 
 ```text
 1 ASRock LED Controller              /dev/input/js0
@@ -133,34 +128,50 @@ Flatpak, Snes9x reported these one-based slots:
 6 Lunchbox Snes9x hardware oracle P2 /dev/input/js6
 ```
 
-The current host-side controller probe, forced to load the exact Flatpak SDL2
+The host-side controller probe, forced to load the exact Flatpak SDL2
 2.32.10 library, instead reported four zero-based devices: P1 index 0, Xbox
 indices 1 and 2, and P2 index 3. The sandbox's different udev visibility makes
 the same SDL binary enumerate a different set. The existing session would
 therefore render P1/P2 as `Joystick 1`/`Joystick 4`, while the target actually
 requires `Joystick 3`/`Joystick 6`.
 
-The current host probe also cannot load that runtime library in its ordinary
+The host probe also cannot load that runtime library in its ordinary
 environment (`libwayland-egl.so.1` is absent). Adding the Flatpak library
 directory alone to `LD_LIBRARY_PATH` selects the Flatpak libc ahead of the Nix
 probe's libc and fails on the GLIBC_PRIVATE symbol `__nptl_change_stack_perm`.
 A diagnostic search path with the Nix libc directories first made the probe
 run, but did not fix the enumeration mismatch.
 
-A safe implementation must run the retained controller probe inside the
-target Flatpak environment, validate the app/runtime deployments, inject a
-launch-scoped private `XDG_CONFIG_HOME` plus its filesystem permission at the
-Flatpak app boundary, and teach startup confirmation to verify the sandboxed
-executable, config, SDL mapping, and device descriptors. Those changes span
-the session, isolation, native-command, and startup modules; they are outside
-this batch's permitted files. Production adapter integration therefore stays
-`blocked`, while the direct installed-runtime gates above remain `passed`.
+The production adapter now resolves that mismatch rather than deleting the
+guard. It validates the exact app and runtime deployments, hashes the GTK
+executable, SDL library, loader and retained probe, then runs probe inventory in
+the target sandbox. The final target-runtime supervisor rechecks that routing,
+starts only `/app/bin/snes9x-gtk`, verifies its executable and mapped SDL, the
+private config inode and XDG environment, and every selected open controller
+descriptor, then publishes an exact readiness receipt. The private root and its
+owned directories are forced to mode `0700`; config, request and receipt files
+are `0600`, and readiness/retained verification reject mode drift. Flatpak and
+supervisor parent-death handling prevents an orphan from outliving its retained
+configuration.
+
+On 2026-09-13 the opt-in production test ran that ordinary prepare/spawn path
+under an isolated Xvfb display with two real uinput joydev devices. The exact
+target inventory again selected slots 3 and 6. After controlled resume and all
+24 button pulses, the generated 32 KiB SRAM had SHA-256
+`574fd388becff29bcca04b7bef3ead446dd242dcf5f84cdf919ca5a7c93fd201`:
+the `LB 01 5a` header, 970 NMI samples, zero released/previous values, `fff0`
+aggregate and isolated masks for each player, counts 12/12, and both exact
+ordered logs shown above. The ignored test passed 1/1 in 60.94 seconds and
+gracefully reaped the emulator, supervisor and pad driver. Players 3–5,
+hats/axes, hotplug and physical controllers were not exercised.
 
 ## Preservation check
 
-The user's Flatpak config
-`~/.var/app/com.snes9x.Snes9x/config/snes9x/snes9x.conf` had SHA-256
-`c84749a20943926909346b0dd9140aa13dfa999080d3ba6ac1df0642d31fd231`
-before testing and the same hash after all runs. No user ROM path was supplied
-to the sandbox. All generated ROM, config, SRAM, and state paths were below
-`/tmp/lunchbox-snes9x-runtime-01a098ce`.
+The production test snapshots every directory, regular-file hash and symlink in
+the user's `~/.var/app/com.snes9x.Snes9x` tree before preparation and compares
+the exact map again after shutdown; the maps were identical. The current native
+config SHA-256 after the passing run was
+`873c76eb029fd8c9505028035d7cca2e9de55b073967f0010026676179d660d3`.
+The run used only the generated oracle ROM under
+`/tmp/lunchbox-snes9x-production-clb5qT`; its per-session config/probe cache
+directories and all processes were gone after the test.

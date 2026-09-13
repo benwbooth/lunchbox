@@ -2,16 +2,36 @@
 
 ## Current status
 
-Partial native Linux launch dispatch is connected for explicitly saved GTK 1.63
-SNES setups: source-to-destination visual review, calibration translation,
-standard pads/multitap configuration, private config mounting, exact runtime
-hashes, startup mount/library/device checks, cancellation/cleanup and live kernel
-topology checks. No tests, builds, probes or emulator launches were run.
-Qt, Wine/Flatpak, custom launch arguments and runtime compatibility remain open.
+Native Linux and installed Flatpak launch dispatch are connected for explicitly
+saved GTK 1.63 SNES setups: source-to-destination visual review, calibration
+translation, standard pads/multitap configuration, private config mounting, exact
+runtime hashes, startup mount/library/device checks, cancellation/cleanup and live
+kernel topology checks. The installed Flatpak production path passed the opt-in
+two-pad hardware-register oracle on 2026-09-13. Qt, Wine, custom launch arguments,
+players 3–5, hats/axes, hotplug and physical-pad certification remain open.
 Coverage is 93/94 RetroArch profiles (98.9%) and 6/249 standalone candidates with
 partial dispatch (2.4%). This supersedes historical pending-dispatch notes below.
 
 ## Implementation history
+
+Flatpak dispatch now validates the installed application/runtime deployments and
+hashes, stages the retained controller probe read-only, and runs SDL inventory in
+the target sandbox rather than projecting host indices into a different device
+set. A target-runtime supervisor rechecks that routing, starts only the pinned GTK
+executable, verifies the private config inode/environment and every selected open
+controller descriptor, and writes an exact readiness receipt before Lunchbox
+hands off the child. The private root and owned directories are mode `0700`; the
+rendered config, supervisor request and readiness receipt are mode `0600`, with
+mode drift rejected on both sides of the sandbox. Flatpak launcher/supervisor
+death terminates the emulator, and all failure paths remain bounded and reaped.
+
+The production ignored test ran the ordinary preparation/spawn path against the
+installed `com.snes9x.Snes9x`, two real uinput joydev nodes and the original
+checked-in 32 KiB LoROM under an isolated Xvfb display. It passed all twelve
+ordered controls independently for players 1 and 2, the `fff0` aggregate masks,
+zero released state, graceful SRAM publication and an exact pre/post snapshot of
+the user's Flatpak profile. This is two-player ordinary-cartridge evidence, not
+certification of the unexercised variants above.
 
 Conflict handling now resolves effective last-write-wins entries and native
 hash-comment escaping before inspecting old routes. It clears collisions in
