@@ -16,6 +16,7 @@
 //!   `src/paths.c` resolves the configuration home from `$HOME`, so a
 //!   private HOME keeps the user's own hatari.cfg and saves untouched.
 use anyhow::{Context, Result, ensure};
+use std::collections::BTreeSet;
 
 #[cfg(target_os = "linux")]
 pub(crate) mod native_command;
@@ -87,14 +88,34 @@ pub(crate) fn config(
     players: &[(usize, i32, &[(usize, u32)])],
     tos_image: &std::path::Path,
 ) -> Result<String> {
+    ensure!(
+        !players.is_empty() && players.len() <= 2,
+        "Hatari supports one or two joystick players"
+    );
+    let mut ports = BTreeSet::new();
     let mut result = String::new();
     for (port, device, fires) in players {
+        ensure!(
+            (1..=2).contains(port),
+            "Hatari joystick port must be 1 or 2"
+        );
+        ensure!(ports.insert(*port), "Hatari joystick port is duplicated");
+        ensure!(*device >= 0, "Hatari SDL device index cannot be negative");
         let (mode, section) = (1, port - 1);
         result.push_str(&format!(
             "[Joystick{section}]\nnJoystickMode = {mode}\nnJoyId = {device}\n"
         ));
         let mut slots = [None; 3];
         for &(slot, button) in *fires {
+            ensure!(
+                (1..=3).contains(&slot),
+                "Hatari fire slot must be 1, 2 or 3"
+            );
+            ensure!(
+                button <= i32::MAX as u32,
+                "Hatari SDL button index cannot overflow nJoyButIndex"
+            );
+            ensure!(slots[slot - 1].is_none(), "Hatari fire slot is duplicated");
             slots[slot - 1] = Some(button);
         }
         for (index, slot) in slots.iter().enumerate() {

@@ -1,1 +1,83 @@
-{"schema_version":1,"slug":"vice-xpet","emulator":"VICE (xpet)","sources":[{"kind":"source","repo":"https://vice-emu.sourceforge.io/","url":"https://vice-emu.sourceforge.io/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://vice-emu.sourceforge.io/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"VICE suite variant; no standalone host contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://vice-emu.sourceforge.io/"]},"linux-flatpak":{"status":"unresolved","reason":"VICE suite variant; no standalone host contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://vice-emu.sourceforge.io/"]},"windows":{"status":"unresolved","reason":"VICE suite variant; no standalone host contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://vice-emu.sourceforge.io/"]},"macos":{"status":"unresolved","reason":"VICE suite variant; no standalone host contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://vice-emu.sourceforge.io/"]}}}
+{
+  "schema_version": 1,
+  "slug": "vice-xpet",
+  "emulator": "VICE (xpet)",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/VICE-Team/svn-mirror",
+      "commit": "d322f7a8d6c269b97162c74e73214c58eaad9a71",
+      "url": "https://github.com/VICE-Team/svn-mirror/tree/d322f7a8d6c269b97162c74e73214c58eaad9a71",
+      "role": "pinned VICE source mirror; PET machine, keyboard, snapshot and ROM paths"
+    },
+    {
+      "kind": "docs",
+      "url": "https://vice-emu.sourceforge.io/vice_6.html",
+      "role": "VICE resource-file and media-save documentation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://vice-emu.sourceforge.io/vice_9.html",
+      "role": "VICE snapshot and .vsf documentation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://vice-emu.sourceforge.io/vice_3.html",
+      "role": "VICE PET ROM search path and filenames"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/VICE_XPET_CONTROLLER_BOUNDARY.md",
+      "role": "xpet-specific keyboard boundary; no reuse of generic VICE joystick writer"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "~/.config/vice/vicerc (SDL2: sdl-vicerc; -config <file> selects a private resource file)", "naming": "INI-like VICE resource sections; PET settings include KeyboardType and ROM resource names.", "evidence": ["source:src/arch/shared/archdep_user_config_path.c and src/arch/shared/archdep_defs.h @d322f7a8", "docs:vice_6.html"] },
+        { "purpose": "input", "path": "PET keyboard resources in vicerc and the SDL virtual keyboard; KeyboardType selects graphics/business PET layouts.", "naming": "Host keyboard events are machine-key mappings; VICE can export keyboard maps as .vkm, but xpet has no generic two-port joystick profile contract.", "evidence": ["source:src/pet/pet.c machine_get_keyboard_type and src/arch/sdl/xpet_ui.c @d322f7a8", "source:src/arch/gtk3/widgets/settings_keyboard.c .vkm export @d322f7a8"] },
+        { "purpose": "saves", "path": "Inside attached PET disk/tape images or FS-device directories; xpet has no generic per-game save sidecar.", "naming": "Guest program files retain the attached media's image/FS-device naming; FSDevice8SaveP00 controls .p00 versus .prg.", "evidence": ["docs:vice_4.html attached disk/tape images", "docs:vice_6.html FSDevice8 settings"] },
+        { "purpose": "states", "path": "~/.config/vice/PET.vsf for GTK/SDL quick snapshots; save-dialog snapshots use a chosen path and vice-snapshot-<datetime>.vsf proposal.", "naming": "VICE snapshot container with .vsf extension, machine tag PET, and version-bound module format.", "evidence": ["source:src/arch/gtk3/uisnapshot.c quicksnap_filename and src/pet/pet-snapshot.c machine_name=PET @d322f7a8", "docs:vice_9.html"] },
+        { "purpose": "bios", "path": "$XDG_DATA_HOME/vice/PET (normally ~/.local/share/vice/PET), then installed VICE data paths; PET ROM resources are loaded by the PET machine.", "naming": "Model-dependent PET ROMs include rom1g.vrs, rom2b.vrs, rom2g.vrs, rom4b40.vrs, rom4b80.vrs, rom4g40.vrs and romsuperpet.vrs; no canonical checksum is declared here.", "evidence": ["source:src/pet/petmodel.c and src/pet/petrom.c @d322f7a8", "docs:vice_3.html PET ROM files and Directory search path"] },
+        { "purpose": "keys", "path": "not applicable", "naming": "No external cryptographic key file is consumed by native xpet.", "status": "not_required", "evidence": ["source:VICE PET source tree @d322f7a8"] }
+      ],
+      "notes": "This standalone xpet record describes the PET binary, not RetroArch's vice_xpet libretro core. The existing generic VICE native integration's .vjm joystick writer is intentionally not reused."
+    },
+    "linux-flatpak": {
+      "paths": [
+        { "purpose": "config", "path": "~/.var/app/net.sf.VICE/.config/vice/vicerc (SDL2: sdl-vicerc)", "naming": "Same VICE resource syntax as native Linux under the Flatpak XDG config home.", "evidence": ["flatpak:net.sf.VICE", "source:src/arch/shared/archdep_user_config_path.c XDG resolution @d322f7a8"] },
+        { "purpose": "input", "path": "Flatpak VICE PET keyboard/virtual keyboard; controller device access is frontend/package dependent.", "naming": "KeyboardType and .vkm keyboard-map semantics remain VICE-owned; no xpet joystick writer.", "evidence": ["flatpak:net.sf.VICE", "source:src/arch/sdl/xpet_ui.c and src/arch/gtk3/widgets/settings_keyboard.c @d322f7a8"] },
+        { "purpose": "saves", "path": "Attached PET media or sandbox-visible FS-device directories.", "naming": "Guest files stay in attached images/FS-device paths; no generic xpet sidecar.", "evidence": ["flatpak:net.sf.VICE", "docs:vice_6.html FSDevice8 settings"] },
+        { "purpose": "states", "path": "~/.var/app/net.sf.VICE/.config/vice/PET.vsf quick snapshot or a user-selected .vsf path.", "naming": "PET-tagged, version-bound .vsf snapshot.", "evidence": ["flatpak:net.sf.VICE", "source:src/arch/gtk3/uisnapshot.c and src/pet/pet-snapshot.c @d322f7a8"] },
+        { "purpose": "bios", "path": "Sandbox VICE data directory under the Flatpak XDG data home, then installed PET data; user-supplied ROMs must be sandbox-visible.", "naming": "PET model ROM filenames as native xpet; no canonical checksum declared.", "evidence": ["flatpak:net.sf.VICE", "source:src/arch/shared/archdep_default_sysfile_pathlist.c and src/pet/petmodel.c @d322f7a8"] },
+        { "purpose": "keys", "path": "not applicable", "naming": "No external cryptographic key file.", "status": "not_required", "evidence": ["source:VICE PET source tree @d322f7a8"] }
+      ],
+      "notes": "Flathub package existence is documented, but effective sandbox launch and xpet input were not runtime verified."
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "%APPDATA%\\vice\\vice.ini (SDL2: sdl-vice.ini; a program-directory config may also be discovered)", "naming": "INI-like VICE resource sections with PET resources.", "evidence": ["source:src/arch/shared/archdep_user_config_path.c and src/arch/shared/archdep_defs.h @d322f7a8", "docs:vice_6.html"] },
+        { "purpose": "input", "path": "PET keyboard resources in vice.ini and SDL virtual keyboard; KeyboardType selects PET layouts.", "naming": "Keyboard mapping may be exported as .vkm; generic VICE .vjm joystick mapping is not xpet's keyboard contract.", "evidence": ["source:src/pet/pet.c and src/arch/sdl/xpet_ui.c @d322f7a8", "source:src/arch/gtk3/widgets/settings_keyboard.c @d322f7a8"] },
+        { "purpose": "saves", "path": "Inside attached PET disk/tape images or FS-device directories.", "naming": "Image and FS-device guest-file names, not emulator sidecars.", "evidence": ["docs:vice_4.html", "docs:vice_6.html"] },
+        { "purpose": "states", "path": "%APPDATA%\\vice\\PET.vsf quick snapshot or a user-selected .vsf path.", "naming": "PET-tagged .vsf snapshot, version-bound to VICE snapshot modules.", "evidence": ["source:src/arch/gtk3/uisnapshot.c and src/pet/pet-snapshot.c @d322f7a8", "docs:vice_9.html"] },
+        { "purpose": "bios", "path": "VICE Directory search path, including user data/config and installed data, with PET subdirectory.", "naming": "PET model ROM filenames rom1g.vrs, rom2b.vrs, rom2g.vrs, rom4b40.vrs, rom4b80.vrs, rom4g40.vrs and romsuperpet.vrs; no canonical checksum declared.", "evidence": ["source:src/arch/shared/archdep_default_sysfile_pathlist.c and src/pet/petmodel.c @d322f7a8", "docs:vice_3.html"] },
+        { "purpose": "keys", "path": "not applicable", "naming": "No external cryptographic key file.", "status": "not_required", "evidence": ["source:VICE PET source tree @d322f7a8"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "~/.config/vice/vicerc (SDL2: sdl-vicerc; macOS VICE builds use the UNIX XDG config branch)", "naming": "INI-like VICE resources with PET sections.", "evidence": ["source:src/arch/shared/archdep_user_config_path.c and configure.ac UNIX_COMPILE branch @d322f7a8", "docs:vice_6.html"] },
+        { "purpose": "input", "path": "PET keyboard resources in vicerc and SDL virtual keyboard; KeyboardType selects PET layouts.", "naming": "Optional exported .vkm keyboard maps; no generic joystick writer for xpet.", "evidence": ["source:src/pet/pet.c, src/arch/sdl/xpet_ui.c and src/arch/gtk3/widgets/settings_keyboard.c @d322f7a8"] },
+        { "purpose": "saves", "path": "Inside attached PET disk/tape images or FS-device directories.", "naming": "Guest files retain media/FS-device names; no generic sidecar.", "evidence": ["docs:vice_4.html", "docs:vice_6.html"] },
+        { "purpose": "states", "path": "~/.config/vice/PET.vsf quick snapshot or a user-selected .vsf path.", "naming": "PET-tagged, version-bound .vsf snapshot.", "evidence": ["source:src/arch/gtk3/uisnapshot.c and src/pet/pet-snapshot.c @d322f7a8", "docs:vice_9.html"] },
+        { "purpose": "bios", "path": "$XDG_DATA_HOME/vice/PET (~/.local/share/vice/PET), then installed VICE data paths.", "naming": "PET model ROM filenames as above; no canonical checksum declared.", "evidence": ["source:src/arch/shared/archdep_default_sysfile_pathlist.c and src/pet/petmodel.c @d322f7a8", "docs:vice_3.html"] },
+        { "purpose": "keys", "path": "not applicable", "naming": "No external cryptographic key file.", "status": "not_required", "evidence": ["source:VICE PET source tree @d322f7a8"] }
+      ]
+    }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not reuse the generic VICE joystick .vjm writer for xpet: PET keyboard and virtual-keyboard state are machine-specific, and no safe standalone xpet keyboard serializer has been implemented."
+  },
+  "notes": "VICE xpet is the native PET binary and is distinct from the generic VICE native controller integration and from the vice_xvic libretro-core identity. Runtime xpet launch and effective keyboard input remain unverified."
+}

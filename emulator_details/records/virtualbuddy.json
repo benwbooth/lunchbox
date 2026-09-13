@@ -1,1 +1,85 @@
-{"schema_version":1,"slug":"virtualbuddy","emulator":"VirtualBuddy","sources":[{"kind":"source","repo":"https://github.com/insidegui/VirtualBuddy","url":"https://github.com/insidegui/VirtualBuddy","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://github.com/insidegui/VirtualBuddy","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"macOS-only Apple Silicon virtualizer; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://github.com/insidegui/VirtualBuddy"]},"linux-flatpak":{"status":"unresolved","reason":"macOS-only Apple Silicon virtualizer; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://github.com/insidegui/VirtualBuddy"]},"windows":{"status":"unresolved","reason":"macOS-only Apple Silicon virtualizer; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://github.com/insidegui/VirtualBuddy"]},"macos":{"status":"unresolved","reason":"macOS-only Apple Silicon virtualizer; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://github.com/insidegui/VirtualBuddy"]}}}
+{
+  "schema_version": 1,
+  "slug": "virtualbuddy",
+  "emulator": "VirtualBuddy",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/insidegui/VirtualBuddy",
+      "commit": "683739a7e75921f83c492d15ece1ab89aa66e4cf",
+      "url": "https://github.com/insidegui/VirtualBuddy/tree/683739a7e75921f83c492d15ece1ab89aa66e4cf",
+      "role": "pinned VirtualBuddy source; VM bundle, keyboard-device, library and saved-state paths"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/insidegui/VirtualBuddy/blob/683739a7e75921f83c492d15ece1ab89aa66e4cf/README.md",
+      "role": "official host/platform requirements and product scope"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/VIRTUALBUDDY_CONTROLLER_BOUNDARY.md",
+      "role": "fail-closed virtual-machine input boundary"
+    }
+  ],
+  "platforms": {
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/VirtualBuddy/<VM>.bundle/.vbdata/Config.plist (library URL is user-selectable in VBSettings)",
+          "naming": "Property-list VM configuration; the bundle also contains Metadata.plist, MachineIdentifier, HardwareModel and AuxiliaryStorage",
+          "evidence": [
+            "source:VirtualCore/Source/Settings/VBSettings.swift defaultVirtualBuddyLibraryURL @683739a7e75921f83c492d15ece1ab89aa66e4cf",
+            "source:VirtualCore/Source/Models/VBVirtualMachine.swift configurationFilename=Config.plist @683739a7e75921f83c492d15ece1ab89aa66e4cf"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "<VM>.bundle/.vbdata/Config.plist hardware.keyboardDevice and pointing-device configuration; host gamepad profiles are not defined",
+          "naming": "Apple Virtualization keyboard/pointing devices are VM hardware configuration, not a portable physical-controller mapping",
+          "evidence": [
+            "source:VirtualCore/Source/Models/Configuration/ConfigurationModels.swift VBKeyboardDevice @683739a7e75921f83c492d15ece1ab89aa66e4cf",
+            "source:VirtualUI/Source/VM Configuration/Sections/KeyboardDeviceConfigurationView.swift @683739a7e75921f83c492d15ece1ab89aa66e4cf"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "VirtualBuddy VM bundle storage devices under the configured library URL",
+          "naming": "Guest files and software saves live in the attached virtual disk/media; VirtualBuddy does not define a universal host sidecar save filename",
+          "evidence": ["source:VirtualCore VM storage-device and bundle model @683739a7e75921f83c492d15ece1ab89aa66e4cf"]
+        },
+        {
+          "purpose": "states",
+          "path": "<library URL>/_SavedState/<snapshot>.vbst",
+          "naming": "VirtualBuddy saved-state package; state metadata pairs the package with its host and VM",
+          "evidence": ["source:VirtualCore/Source/Models/SavedState/VMLibraryController+SavedState.swift savedStateDirectoryName=_SavedState and VBSavedStatePackage @683739a7e75921f83c492d15ece1ab89aa66e4cf"]
+        },
+        {
+          "purpose": "bios",
+          "path": "No standalone BIOS file; Apple Virtualization firmware state is represented by the VM bundle's HardwareModel/AuxiliaryStorage",
+          "naming": "No canonical user-supplied firmware checksum is published by the pinned source",
+          "status": "not_required",
+          "evidence": ["source:VirtualCore/Source/Models/VBVirtualMachine.swift HardwareModel and AuxiliaryStorage bundle paths @683739a7e75921f83c492d15ece1ab89aa66e4cf"]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "naming": "No external cryptographic key file is consumed by VirtualBuddy",
+          "status": "not_required",
+          "evidence": ["source:VirtualBuddy VM model @683739a7e75921f83c492d15ece1ab89aa66e4cf"]
+        }
+      ],
+      "notes": "The pinned README requires an Apple Silicon Mac running macOS 13 or later and describes VirtualBuddy as a macOS 12+ virtualizer, not a console emulator."
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "unsupported", "reason": "The official source requires an Apple Silicon Mac host and uses Apple's Virtualization framework; no Linux host runtime is published.", "evidence": ["source:README.md system requirements @683739a7e75921f83c492d15ece1ab89aa66e4cf"] },
+    "linux-flatpak": { "status": "unsupported", "reason": "VirtualBuddy is a macOS-native Apple Silicon application with no Flatpak package or Linux host target in the pinned source.", "evidence": ["source:README.md system requirements @683739a7e75921f83c492d15ece1ab89aa66e4cf"] },
+    "windows": { "status": "unsupported", "reason": "The pinned project targets Apple Silicon macOS and does not publish a native Windows host runtime.", "evidence": ["source:README.md system requirements @683739a7e75921f83c492d15ece1ab89aa66e4cf"] }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not invent a VirtualBuddy game-controller writer: the pinned source defines VM keyboard/pointing hardware and Apple Virtualization state, but no portable host physical-controller profile grammar."
+  },
+  "notes": "Runtime launch and effective guest input were not verified. VirtualBuddy VM saved states are host- and VM-paired packages, not portable game-emulator slots."
+}

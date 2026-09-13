@@ -3,251 +3,43 @@
   "slug": "atari800",
   "emulator": "Atari800",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/atari800/atari800",
-      "url": "https://github.com/atari800/atari800",
-      "role": "official upstream identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/atari800/atari800",
-      "role": "official distribution/documentation evidence"
-    }
+    { "kind": "source", "repo": "atari800/atari800", "commit": "fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "role": "configuration, SDL2 joystick, state, ROM and image implementation (7.2.0)" },
+    { "kind": "docs", "url": "https://github.com/atari800/atari800", "role": "official upstream distribution and platform identity" },
+    { "kind": "contract", "path": "docs/ATARI800_NATIVE_CONTROLLER_CONTRACT.md", "role": "conservative native input overlay boundary" }
   ],
   "platforms": {
     "linux": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "~/.atari800.cfg (or explicit -config file; exact path is build-dependent)",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick mappings are stored in Atari800 configuration; exact keys are version-defined",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "Guest saves in writable ATR/XFD/ disk images; no universal sidecar",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "User-selected emulator snapshots; exact extension/slot grammar not asserted",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "Optional 5200/OS/BASIC ROM files; canonical hashes depend on ROM set",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
-      ]
-    },
-    "linux-flatpak": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "~/.atari800.cfg (or explicit -config file; exact path is build-dependent)",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick mappings are stored in Atari800 configuration; exact keys are version-defined",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "Guest saves in writable ATR/XFD/ disk images; no universal sidecar",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "User-selected emulator snapshots; exact extension/slot grammar not asserted",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "Optional 5200/OS/BASIC ROM files; canonical hashes depend on ROM set",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
+        { "purpose": "config", "path": "~/.atari800.cfg by default; -config selects an exact file. Portable lookup also accepts <executable-directory>/.atari800.cfg when writable.", "naming": "KEY=VALUE lines. SDL2 controller keys are SDL2_JOY_PORT_<0..3>_MODE/NAME/SLOT, SDL2_JOY_PORT_<n>_USE_HAT/AXES/DIAGONALS/BUTTON_ACTIONS/BUTTON_KEYS and SDL2_JOY_<0|1>_LEFT/RIGHT/UP/DOWN/TRIGGER; -autosave-config is opt-in.", "evidence": ["source:cfg.c CFG_LoadConfig and DEFAULT_CFG_NAME .atari800.cfg @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "source:sdl/input.c SDL_INPUT_ReadConfig/WriteConfig @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:NEWS 7.2.0 and 7.0.0 config search order"] },
+        { "purpose": "input", "path": "The same selected config file.", "naming": "SDL2_JOY_PORT_<n>_MODE: 0 none, 1 keyboard-1, 2 keyboard-2, 3 parallel, 4 host SDL joystick, 5 paddle. NAME/SLOT identify a host joystick by SDL display name and duplicate-name slot. USE_HAT is -1 auto, 0 axes, 1 hat; AXES is the first axis of the pair; DIAGONALS is 0/1/2. BUTTON_ACTIONS and BUTTON_KEYS are comma-separated arrays for up to 15 buttons (action 0 none, 1 UI, 2 Atari key, 3 keyboard).", "evidence": ["source:sdl/input.h JOY_MODE_* and INPUT_joystick_button enums @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "source:sdl/input.c SDL_INPUT_ReadConfig/WriteConfig and host-name matching @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:atari800.man SDL controller configuration section"] },
+        { "purpose": "saves", "path": "Guest saves are written inside mounted writable ATR/ATX/DCM/XFD/PRO and other emulated media images. SAVED_FILES_DIR only seeds UI file selectors; there is no universal per-game sidecar save directory.", "naming": "The image retains its own filename; write-back depends on image and protection state.", "evidence": ["source:cfg.c SAVED_FILES_DIR handling @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "source:sio and image backends in src/img_*.c @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:atari800.man disk/image options"] },
+        { "purpose": "states", "path": "Alt+S or -state uses a user-selected state file; quick-save is <directory-containing-selected-config>/.atari800-quicksave.state (CFG_data_dir).", "naming": "Gzip-compatible binary streams begin with the ATARI800 header; no fixed extension is required. Quick-save basename is exactly .atari800-quicksave.state.", "evidence": ["source:statesav.c StateSav_SaveAtariState/ReadAtariState header and version @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "source:ui.c get_state_filename @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:atari800.man -state and Alt+S/Alt+L"] },
+        { "purpose": "bios", "path": "Optional external OS/BASIC/5200 ROMs selected by -osa_rom, -osb_rom, -xlxe_rom, -5200_rom and -basic_rom; packaged Unix defaults are /usr/share/atari800/ATARIOSA.ROM, ATARIOSB.ROM, ATARIXL.ROM, ATARI5200.ROM and ATARIBAS.ROM. Built-in Altirra OS/BASIC/5200 revisions are available.", "naming": "ATARIOSA.ROM, ATARIOSB.ROM, ATARIXL.ROM, ATARI5200.ROM and ATARIBAS.ROM are documented names. Upstream publishes no canonical checksums for user ROM dumps.", "evidence": ["source:sysrom.c and atari800.man ROM options @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:atari800.man FILES and -800-rev/-xl-rev/-5200-rev/-basic-rev", "source:src/roms built-in Altirra ROM implementations @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf"] },
+        { "purpose": "keys", "path": "No separate cryptographic key file is required by Atari800.", "naming": "No key filename or checksum is published by upstream.", "evidence": ["source:atari800/atari800 @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf"] }
       ]
     },
     "windows": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "~/.atari800.cfg (or explicit -config file; exact path is build-dependent)",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick mappings are stored in Atari800 configuration; exact keys are version-defined",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "Guest saves in writable ATR/XFD/ disk images; no universal sidecar",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "User-selected emulator snapshots; exact extension/slot grammar not asserted",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "Optional 5200/OS/BASIC ROM files; canonical hashes depend on ROM set",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
+        { "purpose": "config", "path": "%USERPROFILE%/.atari800.cfg by default; -config selects an exact file; portable installs use <executable-directory>/.atari800.cfg when writable.", "naming": "Same KEY=VALUE and SDL2_JOY_PORT_<n> syntax as Linux.", "evidence": ["source:cfg.c DEFAULT_CFG_NAME and Util_GetHomeDir @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:NEWS 7.0.0 config search order and Windows USERPROFILE handling"] },
+        { "purpose": "input", "path": "The selected .atari800.cfg file.", "naming": "Same SDL2_JOY_PORT_<n> mode/name/slot/hat/axes/diagonal/button-array grammar as Linux; host identity is name plus duplicate-name slot, not a guessed controller layout.", "evidence": ["source:sdl/input.c SDL2 config parser/writer @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:atari800.man SDL controller configuration section"] },
+        { "purpose": "saves", "path": "Inside mounted writable emulated media images; Atari800 has no universal per-game sidecar save path.", "naming": "Mounted image's own filename.", "evidence": ["source:sio/image backends @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:atari800.man image options"] },
+        { "purpose": "states", "path": "User-selected state file; quick-save is <selected-config-directory>/.atari800-quicksave.state.", "naming": "Gzip-compatible ATARI800 binary; arbitrary user filename for explicit saves, exact quick-save basename .atari800-quicksave.state.", "evidence": ["source:statesav.c and ui.c @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:atari800.man -state"] },
+        { "purpose": "bios", "path": "External ROMs via -osa_rom/-osb_rom/-xlxe_rom/-5200_rom/-basic_rom; Windows package convention is ATARIOSA.ROM/ATARIOSB.ROM/ATARIXL.ROM/ATARI5200.ROM/ATARIBAS.ROM. Built-in Altirra revisions are available.", "naming": "Documented names above; no canonical user-ROM checksums are published.", "evidence": ["source:atari800.man ROM switches and FILES @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:NEWS 7.0.0 Windows package"] },
+        { "purpose": "keys", "path": "No separate key file is required.", "naming": "No upstream key filename/checksum.", "evidence": ["source:atari800/atari800 @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf"] }
       ]
     },
     "macos": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "~/.atari800.cfg (or explicit -config file; exact path is build-dependent)",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick mappings are stored in Atari800 configuration; exact keys are version-defined",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "Guest saves in writable ATR/XFD/ disk images; no universal sidecar",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "User-selected emulator snapshots; exact extension/slot grammar not asserted",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "Optional 5200/OS/BASIC ROM files; canonical hashes depend on ROM set",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/atari800/atari800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
+        { "purpose": "config", "path": "~/.atari800.cfg by default, or an exact file passed with -config; portable lookup may use <executable-directory>/.atari800.cfg.", "naming": "Same KEY=VALUE and SDL2_JOY_PORT_<n> grammar as Linux.", "evidence": ["source:cfg.c CFG_LoadConfig @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:NEWS 7.0.0/7.2.0 macOS and config changes"] },
+        { "purpose": "input", "path": "The selected .atari800.cfg file.", "naming": "Same SDL2 host-joystick mode and per-port keys as Linux; no controller model or axis orientation is inferred.", "evidence": ["source:sdl/input.c SDL2 config parser/writer @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "docs:atari800.man SDL controller configuration"] },
+        { "purpose": "saves", "path": "Inside mounted writable emulated media images; no universal sidecar save path.", "naming": "Mounted image filename.", "evidence": ["source:sio/image backends @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf"] },
+        { "purpose": "states", "path": "User-selected state file; quick-save is <selected-config-directory>/.atari800-quicksave.state.", "naming": "ATARI800 gzip-compatible binary; explicit save names are user-selected.", "evidence": ["source:statesav.c and ui.c @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf"] },
+        { "purpose": "bios", "path": "External OS/BASIC/5200 ROMs via documented -osa_rom/-osb_rom/-xlxe_rom/-5200_rom/-basic_rom options, or built-in Altirra revisions.", "naming": "ATARIOSA.ROM/ATARIOSB.ROM/ATARIXL.ROM/ATARI5200.ROM/ATARIBAS.ROM are documented conventions; no canonical user-ROM checksums.", "evidence": ["source:atari800.man ROM switches/FILES @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf"] },
+        { "purpose": "keys", "path": "No separate key file is required.", "naming": "No upstream key filename/checksum.", "evidence": ["source:atari800/atari800 @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf"] }
       ]
     }
   },
-  "platform_gaps": {}
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The pinned upstream repository documents Linux AppImage and source builds but does not identify an official Flatpak application/package.", "evidence": ["docs:NEWS 7.0.0 Linux AppImage builds @fe1d2890d9f05fcecb2fd033d09a5c43f534bebf", "official:https://github.com/atari800/atari800 (no upstream Flatpak identity)"] }
+  }
 }

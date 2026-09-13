@@ -1,1 +1,100 @@
-{"schema_version":1,"slug":"epc-8801ma","emulator":"ePC-8801MA","sources":[{"kind":"source","repo":"http://takeda-toshiya.my.coocan.jp/pc9801/index.html","url":"http://takeda-toshiya.my.coocan.jp/pc9801/index.html","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"http://takeda-toshiya.my.coocan.jp/pc9801/index.html","role":"official documentation/platform evidence"}],"platform_gaps":{"linux":{"status":"no_verified_package","reason":"The official epc-8801ma distribution does not publish a package for linux.","evidence":["official:http://takeda-toshiya.my.coocan.jp/pc9801/index.html"]},"linux-flatpak":{"status":"no_verified_package","reason":"The official epc-8801ma distribution does not publish a package for linux-flatpak.","evidence":["official:http://takeda-toshiya.my.coocan.jp/pc9801/index.html"]},"windows":{"status":"unresolved","reason":"No source-backed exact config/input/firmware/save/state contract was established for windows.","evidence":["official:http://takeda-toshiya.my.coocan.jp/pc9801/index.html"]},"macos":{"status":"no_verified_package","reason":"The official epc-8801ma distribution does not publish a package for macos.","evidence":["official:http://takeda-toshiya.my.coocan.jp/pc9801/index.html"]}}}
+{
+  "schema_version": 1,
+  "slug": "epc-8801ma",
+  "emulator": "ePC-8801MA",
+  "sources": [
+    {
+      "kind": "source",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/source.7z",
+      "sha256": "63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399",
+      "role": "official source archive; src/vm/pc8801, config.cpp, win32/winmain.cpp and win32/osd_input.cpp"
+    },
+    {
+      "kind": "binary",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/binary.7z",
+      "sha256": "9c0ecebc187d25b7c841f222b2057625ff6286abaf954adc85fe15cd8f778ff5",
+      "artifact": "binary/binary_x64/pc8801ma.exe",
+      "artifact_sha256": "bae1bce5d8757622efc5b9e346c4499586af84c5906ccb7d4bc636f48304ae7b",
+      "role": "official Windows x64 executable and distribution evidence"
+    },
+    {
+      "kind": "docs",
+      "url": "http://takeda-toshiya.my.coocan.jp/pc9801/index.html",
+      "role": "official PC-9801-family distribution page linking the Common Source Code Project release"
+    },
+    {
+      "kind": "docs",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/binary.7z",
+      "artifact": "binary/pc8801.txt",
+      "role": "official ePC-8801/ePC-8801MA Win32 readme and ROM/key map"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<directory containing pc8801ma.exe>\\pc8801ma.ini",
+          "naming": "Win32 load_config/save_config call create_local_path(\"pc8801ma.ini\"). [Control] persists BootMode, CPUType, DipSwitch, OptionSwitch, JoystickType, disk timing/CRC and sound settings; [RecentFiles] persists floppy, tape and compact-disc paths; [Input] persists JoyButtonsEx1_1..JoyButtonsEx8_16 and JoyToKey settings.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/pc8801/pc8801.h CONFIG_NAME=\\\"pc8801ma\\\"; src/win32/winmain.cpp load/save)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/config.cpp save_config)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "<directory containing pc8801ma.exe>\\pc8801ma.ini and optional keycode.cfg",
+          "naming": "The WinMM backend enumerates joystick IDs 0..3 at runtime and uses JoyButtonsEx values encoded as (joystick_index << 5) | direction/button/axis/POV bit. JoyToKeyButtons negative values encode Windows virtual keys; UseJoyToKey, JoyToKeyType and JoyToKeyNumPad5 are persisted in [Input]. The PC-8801MA [Control] JoystickType selects emulated joystick (0) or mouse (1). keycode.cfg is an optional 256-byte VK-to-DIK table, not a stable controller identity.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/osd_input.cpp joystick/keycode backend)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/winmain.cpp JoyWndProc/JoyToKeyWndProc and src/vm/pc8801/pc88.cpp DEVICE_JOYSTICK/DEVICE_MOUSE)",
+            "docs:http://takeda-toshiya.my.coocan.jp/common/binary.7z artifact=binary/pc8801.txt"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "The user-selected floppy, binary-only tape and optional CD image files; no ePC-8801MA game-save sidecar is written by the reviewed VM.",
+          "naming": "Floppy and CD persistence stays inside the attached image. TAPE_BINARY_ONLY means tape recording/playback uses the selected host file. [RecentFiles] stores paths, but the emulator does not translate them into a separate save directory.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/pc8801/pc8801.h media feature macros and pc8801.cpp media APIs)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/pc8801/pc88.cpp tape record/load paths)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<directory containing pc8801ma.exe>\\pc8801ma.sta0 through pc8801ma.sta9",
+          "naming": "Ten Win32 menu slots call state_file_path(n), formatting <CONFIG_NAME>.sta<n>. The stream includes the common outer/config state and the complete PC-8801MA device graph; it is version/build-bound (outer state version 3, config-state version 8) rather than a portable interchange format.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/emu.cpp state_file_path/save_state and src/vm/pc8801/pc8801.cpp process_state)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/winmain.cpp ID_SAVE_STATE0..9/ID_LOAD_STATE0..9)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<directory containing pc8801ma.exe>\\N88.ROM (or PC88.ROM aggregate) and KANJI1.ROM for the PC-8801MA baseline; optional N88_0.ROM..N88_3.ROM split expansion, N80.ROM, E1.ROM..E8.ROM disk-driver ROMs, KANJI2.ROM, JISYO.ROM and CDBIOS.ROM.",
+          "naming": "The MA source build loads the PC-8801 ROM set from the executable directory. N88.ROM or the split N88_0..N88_3 files provide the N88 system/expansion ROMs; KANJI1.ROM provides the Kanji ROM. N80.ROM is for N-BASIC mode, E1..E8 are optional DiskDrv ROMs, JISYO.ROM is the dictionary, and CDBIOS.ROM is read when the CD-ROM option is enabled. The MA build does not define SUPPORT_PC88_16BIT, so the PC-8801-16_I86.ROM/PC-8801-16_Z80.ROM pair listed for older family variants is not part of this target's load path. No canonical checksums are published for user-supplied ROMs.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/pc8801/pc88.cpp ROM loaders and src/vm/pc8801/pc8801.h MA feature defines)",
+            "docs:http://takeda-toshiya.my.coocan.jp/common/binary.7z artifact=binary/pc8801.txt"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "status": "not_required",
+          "path": "No cryptographic or firmware-key file is used by ePC-8801MA.",
+          "naming": "keycode.cfg is an input scan-code conversion table and belongs to the input disposition; ROMs are firmware assets, not decryption keys.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/osd_input.cpp keycode.cfg read)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (PC-8801MA target has no cryptographic key handling)"
+          ]
+        }
+      ],
+      "notes": "The official x64 artifact is a PE32+ Windows executable. Lunchbox has no verified native controller writer for this Windows-only target; it must not modify a user's pc8801ma.ini or keycode.cfg."
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "no_verified_package", "reason": "The official distribution provides Windows Win32/x64 ePC binaries and source with a Win32 frontend, but no verified native Linux ePC-8801MA package.", "evidence": ["docs:http://takeda-toshiya.my.coocan.jp/pc9801/index.html", "binary:http://takeda-toshiya.my.coocan.jp/common/binary.7z"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No official ePC-8801MA Flatpak package or manifest is published by the Common Source Code Project.", "evidence": ["docs:http://takeda-toshiya.my.coocan.jp/pc9801/index.html"] },
+    "macos": { "status": "no_verified_package", "reason": "The official distribution provides Windows Win32/x64 ePC binaries and no verified native macOS ePC-8801MA package.", "evidence": ["docs:http://takeda-toshiya.my.coocan.jp/pc9801/index.html", "binary:http://takeda-toshiya.my.coocan.jp/common/binary.7z"] }
+  }
+}

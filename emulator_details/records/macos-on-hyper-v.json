@@ -7,46 +7,118 @@
       "kind": "source",
       "repo": "https://github.com/balopez83/macOS_On_Hyper-V",
       "url": "https://github.com/balopez83/macOS_On_Hyper-V",
-      "role": "official upstream project identity and implementation"
+      "commit": "cacf043c6b362c621037d44a85ad15feca9ef7aa",
+      "role": "official archived Hyper-V/OpenCore source and EFI template"
     },
     {
       "kind": "docs",
-      "url": "https://github.com/balopez83/macOS_On_Hyper-V",
-      "role": "official distribution or project documentation"
+      "url": "https://github.com/balopez83/macOS_On_Hyper-V/blob/cacf043c6b362c621037d44a85ad15feca9ef7aa/1-QuickStart.md",
+      "role": "official Windows/Hyper-V installation and VM settings guide"
+    },
+    {
+      "kind": "artifact",
+      "url": "https://github.com/balopez83/macOS_On_Hyper-V/tree/cacf043c6b362c621037d44a85ad15feca9ef7aa/EFI%20-%20Testing",
+      "artifact": "EFI/OC/Config.plist",
+      "sha256": "b12badfafb109c1438a6080913671d9c2f60e018868db24ad1b707b8669e33fd",
+      "role": "pinned OpenCore configuration template; the distribution guide places it in UEFI.VHDX"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/MACOS_ON_HYPER_V_CONTROLLER_BOUNDARY.md",
+      "role": "Hyper-V VM persistence and controller boundary"
     }
   ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Mounted UEFI.VHDX\\EFI\\OC\\config.plist (the repository template is EFI - Testing/EFI/OC/Config.plist)",
+          "naming": "OpenCore plist; the installation guide says to mount UEFI.VHDX and edit config.plist with ProperTree. VM processor, memory, firmware boot order and integration-service settings are configured in Hyper-V's VM settings UI, not in a portable Lunchbox file.",
+          "status": "captured",
+          "evidence": [
+            "source:balopez83/macOS_On_Hyper-V@cacf043c6b362c621037d44a85ad15feca9ef7aa EFI - Testing/EFI/OC/Config.plist sha256=b12badfafb109c1438a6080913671d9c2f60e018868db24ad1b707b8669e33fd",
+            "docs:https://github.com/balopez83/macOS_On_Hyper-V/blob/cacf043c6b362c621037d44a85ad15feca9ef7aa/1-QuickStart.md (mount UEFI.VHDX and edit config.plist)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Hyper-V VM Integration Services and virtual keyboard/mouse devices configured in Hyper-V Manager; no project-owned mapping file.",
+          "naming": "The pinned guide enables all Integration Services. The project explicitly supports keyboard and trackpad/touchscreen/stylus input, with touchscreen/stylus passed as mouse input; USB and Bluetooth passthrough are explicitly unsupported. No gamepad mapping or stable physical-device identity is serialized.",
+          "status": "captured",
+          "evidence": [
+            "source:balopez83/macOS_On_Hyper-V@cacf043c6b362c621037d44a85ad15feca9ef7aa README.md (What works/doesn't work)",
+            "docs:https://github.com/balopez83/macOS_On_Hyper-V/blob/cacf043c6b362c621037d44a85ad15feca9ef7aa/1-QuickStart.md (Integration Services settings)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "User-selected Hyper-V virtual hard disk (.vhdx) attached as the macOS guest disk; guest saves persist inside its APFS filesystem.",
+          "naming": "The Hyper-V wizard lets the user choose the virtual-disk name, size, and location; the installer formats that Msft Virtual Disk Media as APFS. There is no emulator save sidecar or host-visible per-title filename grammar. File transfer without USB uses a separate user-created VHDX mounted alternately by Windows and the VM.",
+          "status": "captured",
+          "evidence": [
+            "docs:https://github.com/balopez83/macOS_On_Hyper-V/blob/cacf043c6b362c621037d44a85ad15feca9ef7aa/1-QuickStart.md (virtual disk and APFS installation steps)",
+            "source:balopez83/macOS_On_Hyper-V@cacf043c6b362c621037d44a85ad15feca9ef7aa README.md (this is a VM support project, not a guest save implementation)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No emulator save-state file or slot path. Hyper-V Checkpoints are explicitly disabled by the installation guide.",
+          "naming": "No project-defined state filename grammar; Hyper-V checkpoints are VM-management state and are not enabled by this guide.",
+          "status": "not_supported",
+          "evidence": [
+            "docs:https://github.com/balopez83/macOS_On_Hyper-V/blob/cacf043c6b362c621037d44a85ad15feca9ef7aa/1-QuickStart.md (Disable Checkpoints)",
+            "source:balopez83/macOS_On_Hyper-V@cacf043c6b362c621037d44a85ad15feca9ef7aa source tree (no state implementation)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Mounted UEFI.VHDX\\EFI\\BOOT and \\EFI\\OC (OpenCore UEFI bootloader and drivers); the template includes EFI binaries and config.plist.",
+          "naming": "UEFI.VHDX is the boot disk supplied by the project; no firmware checksum contract for a complete release VHDX is published in the pinned repository. The guide separately copies a version-specific com.apple.recovery.boot folder onto that mounted disk.",
+          "status": "captured",
+          "evidence": [
+            "source:balopez83/macOS_On_Hyper-V@cacf043c6b362c621037d44a85ad15feca9ef7aa EFI - Testing/EFI tree",
+            "docs:https://github.com/balopez83/macOS_On_Hyper-V/blob/cacf043c6b362c621037d44a85ad15feca9ef7aa/1-QuickStart.md (UEFI.VHDX and recovery folder)"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic/decryption-key file is defined by the Hyper-V project.",
+          "naming": "Not applicable; OpenCore config and macOS recovery assets are boot/installation data, not a key-file contract.",
+          "status": "not_required",
+          "evidence": [
+            "source:balopez83/macOS_On_Hyper-V@cacf043c6b362c621037d44a85ad15feca9ef7aa source tree",
+            "docs:https://github.com/balopez83/macOS_On_Hyper-V/blob/cacf043c6b362c621037d44a85ad15feca9ef7aa/1-QuickStart.md"
+          ]
+        }
+      ]
+    }
+  },
   "platform_gaps": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official macOS on Hyper-V source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "status": "unsupported",
+      "reason": "The pinned project is a Windows Hyper-V host guide and does not publish a Linux host implementation or package.",
       "evidence": [
-        "official:https://github.com/balopez83/macOS_On_Hyper-V",
-        "host capture intentionally withheld until all six purposes are source-backed"
+        "source:https://github.com/balopez83/macOS_On_Hyper-V@cacf043c6b362c621037d44a85ad15feca9ef7aa README.md",
+        "docs:https://github.com/balopez83/macOS_On_Hyper-V/blob/cacf043c6b362c621037d44a85ad15feca9ef7aa/1-QuickStart.md"
       ]
     },
     "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official macOS on Hyper-V source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "status": "unsupported",
+      "reason": "Hyper-V and its Windows VM-management UI are prerequisites; no Flatpak package or Linux virtualization contract is published.",
       "evidence": [
-        "official:https://github.com/balopez83/macOS_On_Hyper-V",
-        "host capture intentionally withheld until all six purposes are source-backed"
+        "source:https://github.com/balopez83/macOS_On_Hyper-V@cacf043c6b362c621037d44a85ad15feca9ef7aa README.md",
+        "docs:https://github.com/balopez83/macOS_On_Hyper-V/blob/cacf043c6b362c621037d44a85ad15feca9ef7aa/1-QuickStart.md"
       ]
     },
     "macos": {
-      "status": "unresolved",
-      "reason": "The official macOS on Hyper-V source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "status": "unsupported",
+      "reason": "The pinned project targets macOS as a guest under Windows Hyper-V; it does not publish a native macOS host package or virtualization backend.",
       "evidence": [
-        "official:https://github.com/balopez83/macOS_On_Hyper-V",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official macOS on Hyper-V source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/balopez83/macOS_On_Hyper-V",
-        "host capture intentionally withheld until all six purposes are source-backed"
+        "source:https://github.com/balopez83/macOS_On_Hyper-V@cacf043c6b362c621037d44a85ad15feca9ef7aa README.md",
+        "docs:https://github.com/balopez83/macOS_On_Hyper-V/blob/cacf043c6b362c621037d44a85ad15feca9ef7aa/1-QuickStart.md"
       ]
     }
-  }
+  },
+  "notes": "This is a Windows Hyper-V/OpenCore VM support project, not a conventional emulator. Its source-backed boundary covers the mounted UEFI.VHDX OpenCore configuration and boot assets, but it has no standalone gamepad mapper, host save/state format, or portable VM-settings writer. The repository was archived by its owner; its README recommends the more actively maintained OSX-Hyper-V project."
 }

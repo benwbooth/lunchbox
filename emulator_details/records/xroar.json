@@ -1,1 +1,53 @@
-{"schema_version":1,"slug":"xroar","emulator":"XRoar","sources":[{"kind":"source","repo":"https://www.6809.org.uk/xroar/","url":"https://www.6809.org.uk/xroar/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://www.6809.org.uk/xroar/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows/Linux/macOS listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.6809.org.uk/xroar/"]},"linux-flatpak":{"status":"unresolved","reason":"Windows/Linux/macOS listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.6809.org.uk/xroar/"]},"windows":{"status":"unresolved","reason":"Windows/Linux/macOS listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.6809.org.uk/xroar/"]},"macos":{"status":"unresolved","reason":"Windows/Linux/macOS listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.6809.org.uk/xroar/"]}}}
+{
+  "schema_version": 1,
+  "slug": "xroar",
+  "emulator": "XRoar",
+  "sources": [
+    { "kind": "source", "repo": "https://www.6809.org.uk/git/xroar.git", "url": "https://www.6809.org.uk/git/xroar.git/commit/?id=0229f97a636c3c80d51fd27e7d145d792f0a8932", "commit": "0229f97a636c3c80d51fd27e7d145d792f0a8932", "role": "joystick profile parser/printer, SDL3 physical-device grammar, config and snapshot implementation" },
+    { "kind": "docs", "url": "https://www.6809.org.uk/xroar/doc/xroar.shtml", "role": "official XRoar platform paths, firmware, media, joystick and snapshot documentation" },
+    { "kind": "contract", "path": "docs/ORICUTRON_XROAR_ZESARUX_NATIVE_CONTROLLER_CONTRACT.md", "role": "source-pinned native controller writer boundary" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "$HOME/.xroar/xroar.conf", "naming": "XRoar reads one directive per line; -config-auto-save writes the user configuration here. Joystick profiles use joy, joy-axis, joy-button, joy-right and joy-left directives.", "evidence": ["source:xroar@0229f97a src/xroar.c and src/joystick.c", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "input", "path": "$HOME/.xroar/xroar.conf plus SDL3/evdev runtime input devices", "naming": "The config can define named joystick profiles and map physical:<device>,<axis> or physical:<device>,%<button-mask>; SDL device numbers are current enumeration order and require same-launch measurement.", "evidence": ["source:xroar@0229f97a src/joystick.c", "source:xroar@0229f97a src/sdl3/joystick_sdl3.c", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "saves", "path": "User-selected .cas/.c10 cassette and .vdk/.jvc/.dmk disk images", "naming": "XRoar reads and writes virtual cassette and floppy images at the caller-supplied paths; the emulator does not define a universal game-save sidecar.", "evidence": ["source:xroar@0229f97a src/xroar.c media and disk modules", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "states", "path": "User-selected .sna snapshot path (or .ram for RAM-only snapshot)", "naming": "Ctrl+S writes an XRoar snapshot and Ctrl+L recognises .sna; snapshots preserve machine state but external ROM/media files must remain available at their original paths.", "evidence": ["source:xroar@0229f97a src/snapshot.c and src/xroar.c", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "bios", "path": "$HOME/.xroar/roms/", "naming": "Firmware is supplied as machine-named ROM images, including d32.rom, d64_1.rom, coco3.rom/coco3p.rom and disk11.rom (disk10.rom optional for RS-DOS).", "evidence": ["source:xroar@0229f97a README and src/xroar.c ROM lists", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "keys", "path": "No external cryptographic key file", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:xroar@0229f97a"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "%LOCALAPPDATA%\\XRoar\\xroar.conf", "naming": "XRoar reads one directive per line; -config-auto-save writes the user configuration here. Joystick profiles use joy, joy-axis, joy-button, joy-right and joy-left directives.", "evidence": ["source:xroar@0229f97a src/xroar.c and src/joystick.c", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "input", "path": "%LOCALAPPDATA%\\XRoar\\xroar.conf plus SDL3 runtime input devices", "naming": "The config can define named joystick profiles and map physical:<device>,<axis> or physical:<device>,%<button-mask>; SDL device numbers are current enumeration order and require same-launch measurement.", "evidence": ["source:xroar@0229f97a src/joystick.c", "source:xroar@0229f97a src/sdl3/joystick_sdl3.c", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "saves", "path": "User-selected .cas/.c10 cassette and .vdk/.jvc/.dmk disk images", "naming": "XRoar reads and writes virtual cassette and floppy images at the caller-supplied paths; the emulator does not define a universal game-save sidecar.", "evidence": ["source:xroar@0229f97a src/xroar.c media and disk modules", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "states", "path": "User-selected .sna snapshot path (or .ram for RAM-only snapshot)", "naming": "Ctrl+S writes an XRoar snapshot and Ctrl+L recognises .sna; snapshots preserve machine state but external ROM/media files must remain available at their original paths.", "evidence": ["source:xroar@0229f97a src/snapshot.c and src/xroar.c", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "bios", "path": "%LOCALAPPDATA%\\XRoar\\roms\\", "naming": "Firmware is supplied as machine-named ROM images, including d32.rom, d64_1.rom, coco3.rom/coco3p.rom and disk11.rom (disk10.rom optional for RS-DOS).", "evidence": ["source:xroar@0229f97a README and src/xroar.c ROM lists", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "keys", "path": "No external cryptographic key file", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:xroar@0229f97a"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "$HOME/Library/XRoar/xroar.conf", "naming": "XRoar reads one directive per line; -config-auto-save writes the user configuration here. Joystick profiles use joy, joy-axis, joy-button, joy-right and joy-left directives.", "evidence": ["source:xroar@0229f97a src/xroar.c and src/joystick.c", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "input", "path": "$HOME/Library/XRoar/xroar.conf plus SDL3 runtime input devices", "naming": "The config can define named joystick profiles and map physical:<device>,<axis> or physical:<device>,%<button-mask>; SDL device numbers are current enumeration order and require same-launch measurement.", "evidence": ["source:xroar@0229f97a src/joystick.c", "source:xroar@0229f97a src/sdl3/joystick_sdl3.c", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "saves", "path": "User-selected .cas/.c10 cassette and .vdk/.jvc/.dmk disk images", "naming": "XRoar reads and writes virtual cassette and floppy images at the caller-supplied paths; the emulator does not define a universal game-save sidecar.", "evidence": ["source:xroar@0229f97a src/xroar.c media and disk modules", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "states", "path": "User-selected .sna snapshot path (or .ram for RAM-only snapshot)", "naming": "Ctrl+S writes an XRoar snapshot and Ctrl+L recognises .sna; snapshots preserve machine state but external ROM/media files must remain available at their original paths.", "evidence": ["source:xroar@0229f97a src/snapshot.c and src/xroar.c", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "bios", "path": "$HOME/Library/XRoar/roms/", "naming": "Firmware is supplied as machine-named ROM images, including d32.rom, d64_1.rom, coco3.rom/coco3p.rom and disk11.rom (disk10.rom optional for RS-DOS).", "evidence": ["source:xroar@0229f97a README and src/xroar.c ROM lists", "docs:https://www.6809.org.uk/xroar/doc/xroar.shtml"] },
+        { "purpose": "keys", "path": "No external cryptographic key file", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:xroar@0229f97a"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The pinned XRoar source documents native Linux, Windows and macOS paths but publishes no authoritative Flatpak package or sandbox persistence contract.", "evidence": ["source:xroar@0229f97a README and configure.ac", "official:https://www.6809.org.uk/xroar/"] }
+  },
+  "controller_boundary": {
+    "native_writer": "writer_only",
+    "profile_id": "xroar:native-sdl3-joystick-v1",
+    "writer": "crates/lunchbox-app/src/controller_xroar_native.rs",
+    "refusal": "The writer appends only source-defined joy/joy-axis/joy-button/joy-right/joy-left declarations and requires a same-launch SDL enumeration index; it must not claim stable device identity or runtime-verified controller behavior.",
+    "contract": "docs/ORICUTRON_XROAR_ZESARUX_NATIVE_CONTROLLER_CONTRACT.md"
+  },
+  "notes": "XRoar's native writer is source-shaped but writer-only: ROM, media and snapshot paths remain caller-owned, and SDL device order remains a runtime boundary."
+}

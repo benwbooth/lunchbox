@@ -1,1 +1,63 @@
-{"schema_version":1,"slug":"retro8","emulator":"Retro8","sources":[{"kind":"source","repo":"https://github.com/libretro/retro8","url":"https://github.com/libretro/retro8","role":"official upstream project identity"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official Retro8 source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/libretro/retro8","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"linux-flatpak":{"status":"unresolved","reason":"The official Retro8 source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/libretro/retro8","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"macos":{"status":"unresolved","reason":"The official Retro8 source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/libretro/retro8","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"windows":{"status":"unresolved","reason":"The official Retro8 source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/libretro/retro8","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]}}}
+{
+  "schema_version": 1,
+  "slug": "retro8",
+  "emulator": "Retro8",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/libretro/retro8",
+      "commit": "ddc06a142398ee9755894b3f0bb17c8dc428151d",
+      "url": "https://github.com/libretro/retro8/tree/ddc06a142398ee9755894b3f0bb17c8dc428151d",
+      "role": "pinned Retro8 core, libretro input descriptors and serialization implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/libretro/retro8/blob/ddc06a142398ee9755894b3f0bb17c8dc428151d/README.md",
+      "role": "official project scope and desktop/libretro build description"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/RETRO8_CONTROLLER_BOUNDARY.md",
+      "role": "fail-closed libretro-core controller boundary"
+    }
+  ],
+  "platform_gaps": {
+    "linux": {
+      "status": "unresolved",
+      "reason": "Retro8 is a libretro core with runtime joypad callbacks; the pinned core owns neither the RetroArch host paths nor a persistent controller, save, state, firmware, or key namespace.",
+      "evidence": [
+        "source:src/libretro/libretro.cpp retro_set_input_poll/retro_set_input_state and RETRO_DEVICE_JOYPAD descriptors @ddc06a14",
+        "source:src/libretro/libretro.cpp retro_serialize_size returns 0 and serialize/unserialize are stubs @ddc06a14"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The pinned repository provides libretro and desktop build files but no Retro8 Flatpak manifest or verified Flatpak package.",
+      "evidence": [
+        "source:README.md describes compilation and RetroArch-core use but no Flatpak target @ddc06a14",
+        "source:repository tree contains no Flatpak manifest @ddc06a14"
+      ]
+    },
+    "windows": {
+      "status": "unresolved",
+      "reason": "The repository includes a Windows SDL project and a libretro core, but neither establishes a persistent host-controller grammar or core-owned save/state/firmware paths.",
+      "evidence": [
+        "source:projects/vs2017/retro8/retro8.vcxproj and src/config.h PLATFORM_WIN32 fixed SDL keyboard defaults @ddc06a14",
+        "source:src/libretro/libretro.cpp no persistent serialization implementation @ddc06a14"
+      ]
+    },
+    "macos": {
+      "status": "unresolved",
+      "reason": "The repository contains an Xcode project, but the libretro core still delegates host controller/configuration and persistence to its frontend; no stable Retro8-owned macOS path grammar is published.",
+      "evidence": [
+        "source:projects/xcode/retro8.xcodeproj and README.md build scope @ddc06a14",
+        "source:src/libretro/libretro.cpp runtime joypad callbacks and zero-size serialization @ddc06a14"
+      ]
+    }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not invent a Retro8 controller profile: the pinned libretro core exposes runtime RetroPad callbacks but no persistent host-controller mapping grammar; RetroArch configuration and device profiles are frontend-owned."
+  },
+  "notes": "Retro8 is an open-source PICO-8 reimplementation/core. The core reports p8/png content and fixed runtime descriptors, but does not implement serialized state or external BIOS/key loading. RetroArch frontend runtime and package behavior were not verified."
+}

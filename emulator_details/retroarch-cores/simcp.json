@@ -26,17 +26,12 @@
     ]
   },
   "saves": {
-    "status": "content_dependent",
-    "extensions": [
-      ".dsk",
-      ".mgt",
-      ".sad",
-      ".sbt"
-    ],
-    "naming": "SAM disk images are modified in place when software writes persistent data.",
-    "notes": "SimCoupe has no separate libretro save artifact; persistence depends on writable SAM disk content.",
+    "status": "unknown",
+    "extensions": [],
+    "naming": "The pinned core-info metadata does not declare libretro_saves; no persistent-save artifact or filename extension is claimed.",
+    "notes": "Persistent-save behavior remains unknown without revision-pinned core source evidence.",
     "evidence": [
-      "SimCoupe libretro content/save behavior"
+      "simcp_libretro.info libretro_saves=absent"
     ]
   },
   "states": {

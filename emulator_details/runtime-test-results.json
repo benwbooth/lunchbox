@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "results": [
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:nestopia",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_tested",
+      "state_test_status": "pass",
+      "test_notes": "2026-09-12: Flathub org.libretro.RetroArch 1.22.2 Git 69a4f0ea1e, Flatpak commit 9c51e2bcb6f7f29ecb327ee057b273c5b59efc22d35026e90aef601bc0052752. Controller oracle: reviewed Nestopia commit 4ed9d68bd251e122f1311895fabe68bde89da86a, core sha256 f6e2a6f96bd73385663b732324bff7832c168c4c2c1811732f7b0300c0de8376; a generated Brawler64 calibration and real uinput joydev traversed the production RetroPad config into an original NES hardware-register ROM, passing 21 independent RAM observations (initial release, eight buttons/directions, A+B and up+right, with releases). This does not test physical GUI capture. State-path probe: installed nestopia_libretro.so sha256 3d517a4aa301b37d9d65e2a984e7d4e4db2fae7ccdad17abed7093316f2efec4; real NES content loaded with private save/state/system roots, and SAVE_STATE plus LOAD_STATE reported the same 13,320-byte serialized payload at the redirected content-basename .state path. On-disk state: 4,766 bytes, sha256 5f355e158e8b7406e3dbc5261dabc7e61b8ff68cf19539f174274fd419452487. No persistent save-RAM reload, optional FDS BIOS acceptance, or sync export/restore was tested. Detailed boundary: docs/CONTROLLER_RETROARCH_ORACLE.md."
+    },
+    {
+      "runtime_kind": "standalone",
+      "runtime_id": "b9438ec7-a562-5717-aa22-592c1150da76",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "blocked",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_tested",
+      "state_test_status": "not_tested",
+      "test_notes": "2026-09-12: Flathub dev.ares.ares 148, Flatpak commit 5b6ccf0aef391c237a34e41cf14da438446aa454371408e3c0d418f818132a77, /app/bin/ares sha256 48bb4b1dc279091860f8e725057b8c6f5888188b3efd00cac508215bee0e079f. The ignored installed-runtime test selected connected controller linux:045e:028e:usb-0000-56-00-0-1-input0 from the saved calibration, generated the complete N64 mapping through the production adapter, and had the real ares parser accept and round-trip every binding while the original settings.bml remained byte-identical. No game content was launched and no in-game response was observed, so controller acceptance remains blocked rather than pass. Firmware, persistent saves, states, and sync export/restore were not exercised."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:fceumm",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_tested",
+      "state_test_status": "not_tested",
+      "test_notes": "2026-09-12: installed FCEUmm core identity FCEUmm (SVN) 5cd4a43, fceumm_libretro.so sha256 e7a17d1a5dacaeb7e02067f73aafab168f6a249a5dc0059ff16a5df44784d65c. An original generated NES NROM diagnostic exercised the real libretro core through the controller probe. Two-player and Four Score topologies both passed with individual-button and RETRO_DEVICE_ID_JOYPAD_MASK callback modes: 42/42 byte-exact observations per two-player run and 84/84 per Four Score run, 252/252 total. Every connected player was independently stimulated; published active-low NES register bytes matched exactly, and disconnected ports received zero queries. This establishes the probed core/controller callback contract, not physical GUI capture, optional FDS BIOS handling, persistent saves, save states, or sync export/restore."
+    },
+    {
+      "runtime_kind": "retroarch",
+      "runtime_id": "retroarch:mesen",
+      "host_os": "linux-flatpak",
+      "controller_test_status": "pass",
+      "firmware_test_status": "not_tested",
+      "save_test_status": "not_tested",
+      "state_test_status": "not_tested",
+      "test_notes": "2026-09-12: installed Mesen 0.9.9 core, mesen_libretro.so sha256 552f8ab6ac1fd08bd555f589eb999be73a469c79ccfa929f884adb2cf3366b43. An original generated NES NROM diagnostic exercised the real libretro core through the controller probe. Two-player and Four Score topologies both passed with individual-button and RETRO_DEVICE_ID_JOYPAD_MASK callback modes: 42/42 byte-exact observations per two-player run and 84/84 per Four Score run, 252/252 total. Every connected player was independently stimulated and published active-low NES register bytes matched exactly. In bitmask mode Mesen queried all five frontend ports even when ports were disconnected, but deliberately nonzero synthetic states on disconnected ports never reached NES hardware; per-port query counts are preserved by the probe report. This establishes the probed core/controller callback contract, not physical GUI capture, persistent saves, save states, or sync export/restore."
+    }
+  ]
+}

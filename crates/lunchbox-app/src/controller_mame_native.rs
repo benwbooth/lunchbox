@@ -186,3 +186,60 @@ pub(crate) fn controller_xml(players: &[Player<'_>]) -> Result<String> {
     xml.push_str("    </input>\n  </system>\n</mameconfig>\n");
     Ok(xml)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn panel_routes_match_native_player_and_button_names() {
+        let six = Panel::Six.routes(2);
+        assert_eq!(six["up"], "P2_JOYSTICK_UP");
+        assert_eq!(six["start"], "START2");
+        assert_eq!(six["coin"], "COIN2");
+        assert_eq!(six["button6"], "P2_BUTTON6");
+        assert!(!six.contains_key("button7"));
+        assert_eq!(Panel::Eight.buttons(), 8);
+    }
+
+    #[test]
+    fn controller_xml_rejects_shared_or_unresolved_tokens() {
+        let panel = Panel::Six;
+        let duplicate = panel
+            .routes(1)
+            .keys()
+            .map(|key| (key.clone(), "JOYCODE_1_BUTTON1".to_owned()))
+            .collect::<BTreeMap<_, _>>();
+        assert!(
+            controller_xml(&[Player {
+                number: 1,
+                panel,
+                tokens: &duplicate
+            }])
+            .is_err()
+        );
+        let mut tokens = panel
+            .routes(1)
+            .keys()
+            .enumerate()
+            .map(|(index, key)| (key.clone(), format!("JOYCODE_1_BUTTON{index}")))
+            .collect::<BTreeMap<_, _>>();
+        assert!(
+            controller_xml(&[Player {
+                number: 1,
+                panel,
+                tokens: &tokens
+            }])
+            .is_ok()
+        );
+        tokens.insert("up".to_owned(), "<xml>".to_owned());
+        assert!(
+            controller_xml(&[Player {
+                number: 1,
+                panel,
+                tokens: &tokens
+            }])
+            .is_err()
+        );
+    }
+}

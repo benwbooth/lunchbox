@@ -58,6 +58,13 @@
             "source:Core/Shared/FirmwareHelper.h exact firmware filenames, sizes and fallback aliases @b9fa69d",
             "source:UI/Interop/FirmwareTypeExtensions.cs authoritative names/sizes/SHA-256 allow-list @b9fa69d"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:SourMesen/Mesen2@b9fa69ddc6d0a331fb103fdb5eef6904305703c2 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Mesen's official README lists Linux native and AppImage builds. No first-party Flatpak manifest was found, so linux-flatpak is not asserted."
@@ -109,6 +116,13 @@
             "source:Utilities/FolderUtilities.cpp GetFirmwareFolder @b9fa69d",
             "source:Core/Shared/FirmwareHelper.h and UI/Interop/FirmwareTypeExtensions.cs exact names/sizes/hashes @b9fa69d"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:SourMesen/Mesen2@b9fa69ddc6d0a331fb103fdb5eef6904305703c2 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Official README lists separate Intel and Apple Silicon macOS builds. Native Mesen uses the same platform-independent folder contract; no macOS-specific firmware checksum variation is defined."
@@ -160,6 +174,13 @@
             "source:Utilities/FolderUtilities.cpp GetFirmwareFolder and source:Core/Shared/FirmwareHelper.h lookup @b9fa69d",
             "source:UI/Interop/FirmwareTypeExtensions.cs exact names/sizes/SHA-256 values @b9fa69d"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:SourMesen/Mesen2@b9fa69ddc6d0a331fb103fdb5eef6904305703c2 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Official README lists Windows 10/11 native builds. Mesen stores user-profile data in Documents/Mesen2 by source design, with executable-directory portable mode."

@@ -1,1 +1,89 @@
-{"schema_version":1,"slug":"winarcadia","emulator":"WinArcadia","sources":[{"kind":"source","repo":"https://amigan.1emu.net/releases/","url":"https://amigan.1emu.net/releases/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://amigan.1emu.net/releases/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows-only emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://amigan.1emu.net/releases/"]},"linux-flatpak":{"status":"unresolved","reason":"Windows-only emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://amigan.1emu.net/releases/"]},"windows":{"status":"unresolved","reason":"Windows-only emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://amigan.1emu.net/releases/"]},"macos":{"status":"unresolved","reason":"Windows-only emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://amigan.1emu.net/releases/"]}}}
+{
+  "schema_version": 1,
+  "slug": "winarcadia",
+  "emulator": "WinArcadia",
+  "sources": [
+    {
+      "kind": "artifact",
+      "url": "https://amigan.1emu.net/releases/WinArcadia-src.rar",
+      "version": "36.64",
+      "sha256": "061544e10b182ad06e0e084ecd1460303917e52f4877fee9ca4fb4ab221565f8",
+      "role": "official WinArcadia 36.64 Windows source archive downloaded from the release page"
+    },
+    {
+      "kind": "artifact",
+      "url": "https://amigan.1emu.net/releases/WinArcadia-bin.rar",
+      "version": "36.64",
+      "sha256": "cba786b3bca1a7a9da227f5826d8c120a863d850434c1da5d80487bc6101eabf",
+      "role": "official WinArcadia 36.64 Windows binary archive"
+    },
+    {
+      "kind": "docs",
+      "url": "https://amigan.1emu.net/releases/",
+      "role": "official release page; Windows XP/Vista/7/8/10/11 32/64-bit, DirectX 9+, source and feature scope"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/WINARCADIA_CONTROLLER_BOUNDARY.md",
+      "role": "fail-closed DirectInput/game-specific controller boundary"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<WinArcadia install directory>\\Configs\\WinArcadia.ini (custom config names remain below Configs\\)",
+          "naming": "Versioned line-oriented serializer with fields including version and host/controller settings; unrelated settings must be preserved",
+          "evidence": ["source:ibm.c sets fn_config=Configs\\WinArcadia.ini and engine1.c loadconfig/saveconfig in WinArcadia-src.rar sha256=061544e10b182ad06e0e084ecd1460303917e52f4877fee9ca4fb4ab221565f"]
+        },
+        {
+          "purpose": "input",
+          "path": "DirectInput host joystick/gamepad devices enumerated at runtime; guest left/right controller selection is held in WinArcadia configuration state",
+          "naming": "The source exposes two guest ports, host-device assignment and an interactive Rearrange Gamepad Buttons dialog; no independently validated Lunchbox serializer has been implemented",
+          "evidence": [
+            "source:ff.c DirectInput device enumeration and DIJOYSTATE polling in WinArcadia-src.rar sha256=061544e10b182ad06e0e084ecd1460303917e52f4877fee9ca4fb4ab221565f",
+            "source:wa-modal.c RearrangeDlgProc and engine1.c button[2][8] serializer in WinArcadia-src.rar sha256=061544e10b182ad06e0e084ecd1460303917e52f4877fee9ca4fb4ab221565f"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "The selected game/media directory; WinArcadia saves guest program data in the attached media format",
+          "naming": "No universal host-side game-save sidecar is established by the source archive; media extensions are machine/game dependent",
+          "evidence": ["source:WinArcadia engine/media and file-kind tables in WinArcadia-src.rar sha256=061544e10b182ad06e0e084ecd1460303917e52f4877fee9ca4fb4ab221565f"]
+        },
+        {
+          "purpose": "states",
+          "path": "<game path with extension replaced by .COS>; automatic names include AUTOSAVE.COS and QUICKSAV.COS",
+          "naming": "WinArcadia saved-state files use the COS extension and are selected through Save State/QuickSave UI",
+          "evidence": ["source:ibm.h COS file filter, ibm.c AUTOSAVE.COS, gui.c QUICKSAV.COS and engine2.c KIND_COS handling in WinArcadia-src.rar sha256=061544e10b182ad06e0e084ecd1460303917e52f4877fee9ca4fb4ab221565f"]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS file is required for the Arcadia 2001/VC 4000 machine cores documented on the release page; game/program media is user supplied",
+          "naming": "The source archive does not publish a single mandatory BIOS filename/checksum for these machines",
+          "status": "not_required",
+          "evidence": ["official:https://amigan.1emu.net/releases/ WinArcadia supported-machine and distribution page"]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "naming": "No external cryptographic key file is consumed by the WinArcadia host contract",
+          "status": "not_required",
+          "evidence": ["source:WinArcadia source archive sha256=061544e10b182ad06e0e084ecd1460303917e52f4877fee9ca4fb4ab221565f"]
+        }
+      ],
+      "notes": "The official release page identifies WinArcadia 36.64 as a Windows DirectX 9+ multi-emulator/assembler/disassembler with keyboard, joystick, gamepad, paddle, mouse and trackball support."
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "unsupported", "reason": "WinArcadia 36.64 is distributed as a Windows binary and its source uses Win32/DirectInput APIs; no native Linux host runtime is published.", "evidence": ["official:https://amigan.1emu.net/releases/", "source:ff.c and ibm.c Win32/DirectInput source in WinArcadia-src.rar"] },
+    "linux-flatpak": { "status": "unsupported", "reason": "No WinArcadia Linux binary or Flatpak package/manifest is published by the official release page.", "evidence": ["official:https://amigan.1emu.net/releases/"] },
+    "macos": { "status": "unsupported", "reason": "WinArcadia 36.64 is distributed for Windows and no native macOS host runtime is published.", "evidence": ["official:https://amigan.1emu.net/releases/"] }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not invent a WinArcadia controller writer: DirectInput device identity, guest-port assignment and the game-specific Rearrange Gamepad Buttons state require runtime probing and a verified serializer; the source archive alone is not enough for safe profile mutation."
+  },
+  "notes": "The source archive was inspected and hashed, but Windows launch and effective controller input were not runtime verified. WinArcadia's COS state files are game/core-version dependent."
+}

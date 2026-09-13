@@ -84,3 +84,24 @@ pub(crate) fn section(native_slot: u8) -> Result<String> {
     ensure!(native_slot < 8, "PCSX2 native pad slot is out of range");
     Ok(format!("Pad{}", native_slot + 1))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_slot_is_zero_based_but_section_is_one_based() {
+        assert_eq!(section(0).unwrap(), "Pad1");
+        assert_eq!(section(7).unwrap(), "Pad8");
+        assert!(section(8).is_err());
+    }
+
+    #[test]
+    fn visual_routes_keep_triggers_as_native_half_axes() {
+        let routes = visual_routes();
+        assert_eq!(routes["l2"], "L2");
+        assert_eq!(routes["r2"], "R2");
+        assert_eq!(bindings()["L2"], BindingKind::HalfAxis);
+        assert_eq!(bindings()["R2"], BindingKind::HalfAxis);
+    }
+}

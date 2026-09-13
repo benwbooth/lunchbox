@@ -55,6 +55,13 @@
             "source:mgba src/gba/core.c _GBACoreInit BIOS lookup chain ending in mCoreConfigDirectory() + \"gba_bios.bin\" @26b7884",
             "docs:mgba README.md \"A built-in BIOS implementation, and ability to load external BIOS files\" @26b7884"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:mgba-emu/mgba@26b7884bc25a5933960f3cdcd98bac1ae14d42e2 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "The CLI's -c selects a cheats file and -C sets scalar options; neither is a controller-config path (per the Lunchbox pinned contract)."
@@ -99,6 +106,13 @@
           "evidence": [
             "source:mgba src/gba/core.c BIOS lookup chain @26b7884"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:mgba-emu/mgba@26b7884bc25a5933960f3cdcd98bac1ae14d42e2 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "The pinned SDL controller contract targets the mgba binary; the Flatpak ships the Qt frontend (mgba-qt)."
@@ -143,6 +157,13 @@
             "source:mgba src/gba/core.c BIOS lookup chain @26b7884",
             "docs:mgba README.md built-in BIOS statement @26b7884"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:mgba-emu/mgba@26b7884bc25a5933960f3cdcd98bac1ae14d42e2 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Unlike melonDS, mGBA Windows builds are not portable by default; the marker file is portable.ini (not portable.txt)."
@@ -185,6 +206,13 @@
           "evidence": [
             "source:mgba src/gba/core.c BIOS lookup chain @26b7884"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:mgba-emu/mgba@26b7884bc25a5933960f3cdcd98bac1ae14d42e2 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Qt frontend on macOS reads its input mappings from qt.ini; the pinned SDL contract does not infer Qt behavior."

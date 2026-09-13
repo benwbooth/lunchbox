@@ -1,1 +1,54 @@
-{"schema_version":1,"slug":"beetle-vb","emulator":"RetroArch (Beetle VB)","sources":[{"kind":"docs","url":"https://www.retroarch.com/","role":"official RetroArch project identity"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official RetroArch source does not establish an exact six-purpose Beetle VB host contract for this catalog entry.","evidence":["official:https://www.retroarch.com/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"linux-flatpak":{"status":"unresolved","reason":"The official RetroArch source does not establish an exact six-purpose Beetle VB host contract for this catalog entry.","evidence":["official:https://www.retroarch.com/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"macos":{"status":"unresolved","reason":"The official RetroArch source does not establish an exact six-purpose Beetle VB host contract for this catalog entry.","evidence":["official:https://www.retroarch.com/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"windows":{"status":"unresolved","reason":"The official RetroArch source does not establish an exact six-purpose Beetle VB host contract for this catalog entry.","evidence":["official:https://www.retroarch.com/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]}}}
+{
+  "schema_version": 1,
+  "slug": "beetle-vb",
+  "emulator": "RetroArch (Beetle VB)",
+  "sources": [
+    { "kind": "source", "repo": "libretro/beetle-vb-libretro", "commit": "83ed42608601fb7b01d41e4f8fb2007a37b8c84e", "role": "pinned core source for Virtual Boy device channels and core options" },
+    { "kind": "source", "repo": "libretro/RetroArch", "commit": "0dc3b26c7c560f0e48a7b15002997a8c0676105f", "role": "RetroArch host config, controller profile, save/state and system-directory contract" },
+    { "kind": "docs", "url": "https://docs.libretro.com/library/beetle_vb/", "role": "official Beetle VB core controllers, options and firmware documentation" },
+    { "kind": "docs", "url": "https://docs.libretro.com/guides/controller-autoconfiguration/", "role": "official RetroArch autoconfig profile grammar" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "$XDG_CONFIG_HOME/retroarch/retroarch.cfg or $HOME/.config/retroarch/retroarch.cfg; core options may be in retroarch-core-options.cfg or a Beetle VB override", "naming": "RetroArch key = \"value\" syntax; this core's options are vb_3dmode, vb_anaglyph_preset, vb_sidebyside_separation, vb_color_mode, vb_right_analog_to_digital, vb_opposite_directions and vb_cpu_emulation", "evidence": ["source:libretro/RetroArch@0dc3b26c configuration.c, retroarch.cfg", "source:libretro/beetle-vb-libretro@83ed42608601fb7b01d41e4f8fb2007a37b8c84e libretro_core_options.h"] },
+        { "purpose": "input", "path": "$XDG_CONFIG_HOME/retroarch/retroarch.cfg plus autoconfig/<input-driver>/<Device Name>.cfg", "naming": "Existing RetroArch controller profile contract: main input_playerN_<button>_btn/_axis and autoconfig input_<button>_btn/input_<axis>_axis; Beetle VB core exposes left D-pad, right D-pad, A/B/L/R, Select/Start and right analog channels", "evidence": ["source:libretro/RetroArch@0dc3b26c retroarch.cfg and controller parser", "source:libretro/beetle-vb-libretro@83ed42608601fb7b01d41e4f8fb2007a37b8c84e libretro.cpp input descriptors"] },
+        { "purpose": "saves", "path": "$XDG_CONFIG_HOME/retroarch/saves/ (or configured savefile_directory; unset may place beside content)", "naming": "RetroArch frontend basename .srm and core-declared sidecars; Beetle VB core has no separate native save path", "evidence": ["source:libretro/RetroArch@0dc3b26c runloop.c, platform_unix.c", "docs:https://docs.libretro.com/library/beetle_vb/"] },
+        { "purpose": "states", "path": "$XDG_CONFIG_HOME/retroarch/states/ (or configured savestate_directory; unset may place beside content)", "naming": "RetroArch .state for slot 0, .stateN for numbered slots, .state.auto for Auto", "evidence": ["source:libretro/RetroArch@0dc3b26c runloop.c"] },
+        { "purpose": "bios", "path": "$XDG_CONFIG_HOME/retroarch/system/ (or configured system_directory)", "naming": "Beetle VB docs do not require an external BIOS file for the core; no firmware checksum asserted", "status": "not_required", "evidence": ["docs:https://docs.libretro.com/library/beetle_vb/", "source:libretro/RetroArch@0dc3b26c platform_unix.c"] },
+        { "purpose": "keys", "path": "No external encryption-key file", "naming": "Not applicable", "status": "not_required", "evidence": ["source:libretro/beetle-vb-libretro@83ed42608601fb7b01d41e4f8fb2007a37b8c84e"] }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        { "purpose": "config", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg and core-options overrides", "naming": "Same RetroArch key=value and Beetle VB vb_* option grammar", "evidence": ["source:libretro/RetroArch@0dc3b26c", "docs:https://docs.flatpak.org/en/latest/conventions.html"] },
+        { "purpose": "input", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg plus autoconfig/<input-driver>/", "naming": "Same existing RetroPad/autoconfig profile contract; no Beetle VB-specific native writer", "evidence": ["docs:https://docs.libretro.com/guides/controller-autoconfiguration/", "source:libretro/beetle-vb-libretro@83ed42608601fb7b01d41e4f8fb2007a37b8c84e"] },
+        { "purpose": "saves", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/saves/ or configured savefile_directory", "naming": "<content-basename>.srm and frontend/core sidecars", "evidence": ["source:libretro/RetroArch@0dc3b26c platform_unix.c, runloop.c"] },
+        { "purpose": "states", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/states/ or configured savestate_directory", "naming": ".state/.stateN/.state.auto frontend grammar", "evidence": ["source:libretro/RetroArch@0dc3b26c runloop.c"] },
+        { "purpose": "bios", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/system/ or configured system_directory", "naming": "No external Beetle VB BIOS required by official core docs", "status": "not_required", "evidence": ["docs:https://docs.libretro.com/library/beetle_vb/", "docs:https://docs.flatpak.org/en/latest/conventions.html"] },
+        { "purpose": "keys", "path": "No external key file", "naming": "Not applicable", "status": "not_required", "evidence": ["source:libretro/beetle-vb-libretro@83ed42608601fb7b01d41e4f8fb2007a37b8c84e"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "<RetroArch application directory>\\retroarch.cfg (primary), fallback %APPDATA%\\retroarch.cfg; Beetle VB options use RetroArch core-options files", "naming": "Same RetroArch key=value and vb_* core-option keys", "evidence": ["source:libretro/RetroArch@0dc3b26c configuration.c, platform_win32.c", "source:libretro/beetle-vb-libretro@83ed42608601fb7b01d41e4f8fb2007a37b8c84e libretro_core_options.h"] },
+        { "purpose": "input", "path": "<RetroArch application directory>\\retroarch.cfg plus autoconfig\\<input-driver>\\", "naming": "Existing RetroPad/autoconfig profile contract; do not create a standalone Beetle VB mapping", "evidence": ["source:libretro/RetroArch@0dc3b26c", "docs:https://docs.libretro.com/guides/controller-autoconfiguration/"] },
+        { "purpose": "saves", "path": "<RetroArch application directory>\\saves\\ or configured savefile_directory", "naming": "<content-basename>.srm and frontend/core sidecars", "evidence": ["source:libretro/RetroArch@0dc3b26c platform_win32.c, runloop.c"] },
+        { "purpose": "states", "path": "<RetroArch application directory>\\states\\ or configured savestate_directory", "naming": ".state/.stateN/.state.auto frontend grammar", "evidence": ["source:libretro/RetroArch@0dc3b26c platform_win32.c, runloop.c"] },
+        { "purpose": "bios", "path": "<RetroArch application directory>\\system\\ or configured system_directory", "naming": "No external Beetle VB BIOS required by official core docs", "status": "not_required", "evidence": ["docs:https://docs.libretro.com/library/beetle_vb/"] },
+        { "purpose": "keys", "path": "No external key file", "naming": "Not applicable", "status": "not_required", "evidence": ["source:libretro/beetle-vb-libretro@83ed42608601fb7b01d41e4f8fb2007a37b8c84e"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "~/Library/Application Support/RetroArch/config/retroarch.cfg (portable installs may use the app directory)", "naming": "Same RetroArch key=value and Beetle VB vb_* core-option grammar", "evidence": ["source:libretro/RetroArch@0dc3b26c platform_osx.c, configuration.c", "source:libretro/beetle-vb-libretro@83ed42608601fb7b01d41e4f8fb2007a37b8c84e"] },
+        { "purpose": "input", "path": "~/Library/Application Support/RetroArch/config/retroarch.cfg plus autoconfig/<input-driver>/", "naming": "Existing RetroPad/autoconfig profile contract", "evidence": ["source:libretro/RetroArch@0dc3b26c", "docs:https://docs.libretro.com/guides/controller-autoconfiguration/"] },
+        { "purpose": "saves", "path": "~/Library/Application Support/RetroArch/saves/ or configured savefile_directory", "naming": "<content-basename>.srm and frontend/core sidecars", "evidence": ["source:libretro/RetroArch@0dc3b26c platform_osx.c, runloop.c"] },
+        { "purpose": "states", "path": "~/Library/Application Support/RetroArch/states/ or configured savestate_directory", "naming": ".state/.stateN/.state.auto frontend grammar", "evidence": ["source:libretro/RetroArch@0dc3b26c platform_osx.c, runloop.c"] },
+        { "purpose": "bios", "path": "~/Library/Application Support/RetroArch/system/ or configured system_directory", "naming": "No external Beetle VB BIOS required by official core docs", "status": "not_required", "evidence": ["docs:https://docs.libretro.com/library/beetle_vb/"] },
+        { "purpose": "keys", "path": "No external key file", "naming": "Not applicable", "status": "not_required", "evidence": ["source:libretro/beetle-vb-libretro@83ed42608601fb7b01d41e4f8fb2007a37b8c84e"] }
+      ]
+    }
+  },
+  "notes": "Beetle VB is a libretro core hosted by RetroArch. Its controller surface remains the existing RetroArch RetroPad/autoconfig contract; this record deliberately adds no standalone Beetle VB native controller writer. Core-specific vb_* options are authorable through RetroArch core-options files, while input bindings remain frontend-owned."
+}

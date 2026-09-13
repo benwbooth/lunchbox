@@ -6,47 +6,45 @@
     {
       "kind": "source",
       "repo": "https://github.com/woesss/JL-Mod",
-      "url": "https://github.com/woesss/JL-Mod",
-      "role": "official upstream project identity and implementation"
+      "commit": "f723a190c0bdb44b31c3bc0ead6f8665c7ea517d",
+      "role": "Pinned upstream Android fork; Config.java, ProfileModel.java, KeyMapper.java, VirtualKeyboard.java and AndroidRecordStoreManager.java establish the persistent layout and input/data behavior."
     },
     {
       "kind": "docs",
-      "url": "https://github.com/woesss/JL-Mod",
-      "role": "official distribution or project documentation"
+      "url": "https://github.com/woesss/JL-Mod/blob/f723a190c0bdb44b31c3bc0ead6f8665c7ea517d/README.md",
+      "role": "Pinned upstream README identifies JL-Mod as an unofficial J2ME Loader fork for Android and documents soundbank/skin directories."
     }
   ],
   "platform_gaps": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official JL-Mod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/woesss/JL-Mod",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
+      "status": "unsupported",
+      "reason": "JL-Mod is an Android application, not a Linux desktop executable. Its source is Android-framework code and supplies no Linux runtime, desktop controller backend, or launchable artifact.",
+      "evidence": ["source:woesss/JL-Mod@f723a190c0bdb44b31c3bc0ead6f8665c7ea517d", "docs:README.md identifies an Android fork"]
     },
     "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official JL-Mod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/woesss/JL-Mod",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
+      "status": "unsupported",
+      "reason": "The upstream project publishes an Android application only; no Flatpak package or desktop runtime is provided.",
+      "evidence": ["source:woesss/JL-Mod@f723a190c0bdb44b31c3bc0ead6f8665c7ea517d", "docs:README.md identifies an Android fork"]
     },
     "macos": {
-      "status": "unresolved",
-      "reason": "The official JL-Mod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/woesss/JL-Mod",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
+      "status": "unsupported",
+      "reason": "JL-Mod is Android-framework code and has no macOS executable or native input/runtime contract.",
+      "evidence": ["source:woesss/JL-Mod@f723a190c0bdb44b31c3bc0ead6f8665c7ea517d", "docs:README.md identifies an Android fork"]
     },
     "windows": {
-      "status": "unresolved",
-      "reason": "The official JL-Mod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/woesss/JL-Mod",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
+      "status": "unsupported",
+      "reason": "The pinned upstream source and README provide Android APK code only; no Windows release or runtime contract is provided.",
+      "evidence": ["source:woesss/JL-Mod@f723a190c0bdb44b31c3bc0ead6f8665c7ea517d", "docs:README.md identifies an Android fork"]
     }
+  },
+  "android_boundary": {
+    "config": "The Android app stores per-MIDlet configs at <emulator-dir>/configs/<converted-app-name>/config.json. ProfileModel.java defines JSON fields including Layout, CustomKeys, KeyMappings, SoundBank and SystemProperties; ProfilesManager.java serializes with Gson.",
+    "input": "KeyMapper.java maps Android KeyEvent codes to MIDP Canvas codes, with default, Siemens, Motorola and custom layouts. KeyMappings is an Android SparseIntArray serialized by SparseIntArrayAdapter; custom virtual-keyboard geometry is a separate binary VirtualKeyboardLayout file with signature/version/block records.",
+    "saves": "MIDlet RMS data is under <emulator-dir>/data/<converted-app-name>/; AndroidRecordStoreManager.java uses <record-store>.rsh headers and <record-store>.<record-id>.rsr records. JL-Mod also has a source-documented <emulator-dir>/soundbanks/ resource directory, but that is not save data.",
+    "states": "No save-state or snapshot implementation is established by the pinned source; Android Activity savedInstanceState is UI lifecycle state, not an emulator state file.",
+    "bios_firmware": "No external BIOS or firmware file is required by the pinned JL-Mod source. Optional DLS/SF2 soundbanks are audio resources under soundbanks/, not firmware.",
+    "keys": "No external encryption-key file or desktop keyfile contract is established. The source's key terminology is input-key mapping, not cryptographic material.",
+    "native_writer": "not_implemented",
+    "refusal": "Do not add a desktop controller writer or claim four-host support: the exact config and input files are Android-specific, the runtime depends on Android classes, and no desktop executable or same-launch controller oracle exists. A future adapter would need a separately supported desktop J2ME runtime and measured effective mapping behavior."
   }
 }

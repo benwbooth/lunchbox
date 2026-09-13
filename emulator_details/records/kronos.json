@@ -25,6 +25,16 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/kronos/qt/kronos.ini (legacy ~/.kronos/kronos.ini is migrated): controller bindings are under Input/Port/<port>/Id/<pad id>/Controller/<peripheral type>/Key/<button index>",
+          "naming": "QSettings INI values store each pad key as a u32 Kronos core key code; <port>, <pad id>, peripheral type, and button index form the stable setting-key grammar, while the physical controller identity is selected by the UI",
+          "evidence": [
+            "source:yabause/src/port/qt/ui/UIPortManager.cpp UIPortManager::mSettingsKey = Input/Port/%1/Id/%2/Controller/%3/Key/%4 @d451a552",
+            "source:yabause/src/port/qt/ui/UIControllerSetting.cpp setPadKey/loadPadSettings QSettings read/write @d451a552",
+            "source:yabause/src/port/qt/Settings.cpp getIniFile and Settings::Settings beginGroup(\"1.0\") @d451a552"
+          ]
+        },
+        {
           "purpose": "saves",
           "path": "Single internal backup RAM image at Memory/Path, default <Kronos binary directory>/bkram.bin - on non-Windows platforms getDataDirPath() is QApplication::applicationDirPath(), so the default data root is the directory the kronos executable runs from (alongside it: default savestates and screenshots/). Saturn cartridge memory is a separate user-chosen file via Cartridge/Path (Kronos auto-selects the cart type per game through DBLookup with auto_cart=1)",
           "naming": "bkram.bin is one formatted backup memory volume, not per-game files: Kronos formats it with the 'BackUpRam Format' header as either standard 32 KiB (0x8000, mapped at 0x00180000) or extended 8 MiB (EXTENDED_BACKUP_SIZE 0x00800000 at 0x08000000, enabled by Memory/ExtendMemory, default true); an existing file is size-snapped to the matching format, wrong-size files are reformatted. Per-game saves are directory entries INSIDE this image (created/managed by the emulated Saturn BIOS); Kronos flushes writes to bupfilename on BackupFlush/BackupDeinit. ST-V mode: per-game EEPROM files <romset>.nv (e.g. critcrsh.nv) are written into the Cartridge/Path directory (eepromdir = cartpath)",
@@ -57,6 +67,13 @@
             "source:yabause/src/ctrl/src/stv.c STVGetRomList loads \"%s/stvbios.zip\" first then scans *.zip, writes gamelistv2.save; Bios table 'stvbios'/'STV Bios' with epr-*.ic8/stv110.bin/stv1061.bin blobs and stv_favorite_region (E=EU default)",
             "repo:crates/lunchbox-app/src/firmware.rs (no kronos firmware_rules entries)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:FCare/Kronos @d451a552 (the pinned source exposes BIOS, media, and controller settings but no cryptographic-key file)"]
         }
       ],
       "notes": "Kronos is distributed for Linux as a plain zip of binaries ('Kronos binaries for Ubuntu' release asset) meant to run in place, and the source makes the default data root the executable directory (getDataDirPath = applicationDirPath on non-Windows) - so bkram.bin and the default .yss states sit next to the kronos binary unless paths are set in kronos.ini; all_emulators.csv's ~/.local/share/kronos and the firmware_rules absence are divergences to reconcile. There is no official flatpak (Flathub search negative 2026-09-11) and no macOS packaging (README lists Windows + Linux only), so no linux-flatpak/macos entries are captured."
@@ -71,6 +88,15 @@
             "source:yabause/src/port/qt/Settings.cpp getIniFile Q_OS_WIN (oldinifile <exe dir>/<name>.ini wins, else getDataDirPath()/<name>.ini) and getDataDirPath Q_OS_WIN (QStandardPaths::DataLocation with application name 'kronos')",
             "source:yabause/src/port/qt/ui/UIPortManager.cpp mSettingsKey",
             "source:yabause/src/port/qt/Settings.cpp beginGroup(\"1.0\")"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Legacy <kronos.exe directory>\\kronos.ini or %APPDATA%\\kronos\\kronos.ini: controller bindings use Input/Port/<port>/Id/<pad id>/Controller/<peripheral type>/Key/<button index>",
+          "naming": "Same QSettings INI grammar as Linux; each pad key is a u32 Kronos core key code and the UI selects the physical controller",
+          "evidence": [
+            "source:yabause/src/port/qt/Settings.cpp Windows getIniFile path selection and [1.0] group @d451a552",
+            "source:yabause/src/port/qt/ui/UIPortManager.cpp mSettingsKey and UIControllerSetting.cpp setPadKey/loadPadSettings @d451a552"
           ]
         },
         {
@@ -101,6 +127,13 @@
             "source:yabause/src/ctrl/src/stv.c stvbios.zip scan",
             "repo:crates/lunchbox-app/src/firmware.rs (no kronos entries)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:FCare/Kronos @d451a552 (the pinned source exposes BIOS, media, and controller settings but no cryptographic-key file)"]
         }
       ],
       "notes": "Windows is a supported build target (README lists Windows; DirectInput/DirectSound cores compiled under Q_OS_WIN) but GitHub releases ship only the Ubuntu zip - README points Windows users to third-party archives (tradu-france.com) or self-building. Kronos is a Yaba Sanshiro fork requiring OpenGL 4.3; the libretro core (KRONOS_LIBRETRO_CORE) is a separate RetroArch concern and not captured here."

@@ -46,6 +46,9 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "xemu"
                 | "scummvm"
                 | "jgenesis"
+                | "gopher64"
+                | "rmg"
+                | "simple64"
                 | "kronos"
                 | "yaba-sanshiro"
         )
@@ -322,6 +325,61 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "gopher64" => {
+            for setup in &mut mapping.gopher64_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_gopher64_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "rmg" => {
+            for setup in &mut mapping.rmg_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_rmg_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "simple64" => {
+            for setup in &mut mapping.simple64_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_simple64_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
                 setup.review(&mapping.calibrations)?;
             }
         }

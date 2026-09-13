@@ -86,3 +86,78 @@ impl Binding {
         Ok(self.packed()? & !0x00ff0000)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_setting_and_packed_axis_are_one_based_and_signed() {
+        let positive = Binding {
+            joystick: 0,
+            input: JoystickInput::Axis {
+                index: 3,
+                positive: true,
+                threshold_percent: 50,
+            },
+        };
+        assert_eq!(positive.as_setting().unwrap(), "Joystick 1 Axis 3 + 50%");
+        assert_eq!(positive.packed().unwrap(), 0x21320207);
+        let negative = Binding {
+            joystick: 0,
+            input: JoystickInput::Axis {
+                index: 3,
+                positive: false,
+                threshold_percent: 50,
+            },
+        };
+        assert_ne!(
+            positive.routing_key().unwrap(),
+            negative.routing_key().unwrap()
+        );
+        let same_direction = Binding {
+            joystick: 0,
+            input: JoystickInput::Axis {
+                index: 3,
+                positive: true,
+                threshold_percent: 80,
+            },
+        };
+        assert_eq!(
+            positive.routing_key().unwrap(),
+            same_direction.routing_key().unwrap()
+        );
+    }
+
+    #[test]
+    fn native_binding_bounds_reject_aliasing_values() {
+        assert!(
+            Binding {
+                joystick: 15,
+                input: JoystickInput::Button(0)
+            }
+            .packed()
+            .is_err()
+        );
+        assert!(
+            Binding {
+                joystick: 0,
+                input: JoystickInput::Button(512)
+            }
+            .packed()
+            .is_err()
+        );
+        assert!(
+            Binding {
+                joystick: 0,
+                input: JoystickInput::Axis {
+                    index: 0,
+                    positive: true,
+                    threshold_percent: 0
+                }
+            }
+            .packed()
+            .is_err()
+        );
+    }
+}

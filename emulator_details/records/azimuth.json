@@ -3,50 +3,15 @@
   "slug": "azimuth",
   "emulator": "Azimuth",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://play.google.com/store/apps/details?id=johnidis.azimuth",
-      "url": "https://play.google.com/store/apps/details?id=johnidis.azimuth",
-      "role": "official upstream identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://play.google.com/store/apps/details?id=johnidis.azimuth",
-      "role": "official distribution/documentation evidence"
-    }
+    { "kind": "artifact", "url": "https://play.google.com/store/apps/details?id=johnidis.azimuth", "version": "listing updated 2025-12-21 (Google Play; APK version/hash not exposed by the public listing)", "role": "official distribution artifact for the Android-only Amstrad CPC emulator" },
+    { "kind": "docs", "url": "https://play.google.com/store/apps/details?id=johnidis.azimuth", "role": "official feature and platform evidence" }
   ],
   "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official source identifies Azimuth but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://play.google.com/store/apps/details?id=johnidis.azimuth",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official source identifies Azimuth but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://play.google.com/store/apps/details?id=johnidis.azimuth",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official source identifies Azimuth but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://play.google.com/store/apps/details?id=johnidis.azimuth",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official source identifies Azimuth but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://play.google.com/store/apps/details?id=johnidis.azimuth",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    }
-  }
+    "linux": { "status": "unsupported", "reason": "The official listing identifies Azimuth as an Android app and exposes no Linux artifact or host configuration grammar", "evidence": ["artifact:https://play.google.com/store/apps/details?id=johnidis.azimuth (Android device/TV description; updated 2025-12-21)"] },
+    "linux-flatpak": { "status": "unsupported", "reason": "No Linux or Flatpak package is published by the official listing", "evidence": ["artifact:https://play.google.com/store/apps/details?id=johnidis.azimuth"] },
+    "windows": { "status": "unsupported", "reason": "No Windows artifact or native persistence contract is published by the official listing", "evidence": ["artifact:https://play.google.com/store/apps/details?id=johnidis.azimuth"] },
+    "macos": { "status": "unsupported", "reason": "No macOS artifact or native persistence contract is published by the official listing", "evidence": ["artifact:https://play.google.com/store/apps/details?id=johnidis.azimuth"] }
+  },
+  "notes": "The listing advertises on-screen CPC keyboard/joystick, external keyboard/gamepad, disk/tape creation and in-app content access, but does not expose a file layout, controller-map serialization format, save-state grammar, BIOS/key files, or a downloadable APK digest. No native writer is implemented: reverse-engineering a closed Android package would not be source-backed.",
+  "android_boundary": { "status": "artifact_only", "package": "johnidis.azimuth", "native_writer": "not_implemented", "reason": "Public official artifact is a Play listing without an APK/hash or inspectable persistence source" }
 }

@@ -3,50 +3,43 @@
   "slug": "meka",
   "emulator": "MEKA",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://www.smspower.org/meka/",
-      "url": "https://www.smspower.org/meka/",
-      "role": "official upstream project identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://www.smspower.org/meka/",
-      "role": "official distribution or project documentation"
-    }
+    { "kind": "source", "repo": "ocornut/meka", "commit": "3bf4a519ab7ee52f53d7a739c638475a8a68ab50", "role": "native INP/CFG grammar, Allegro input selection, paths, saves, states and BIOS data" },
+    { "kind": "docs", "url": "https://www.smspower.org/meka/", "role": "official project identity and documentation" },
+    { "kind": "docs", "url": "https://github.com/ocornut/meka#readme", "role": "official build and platform documentation" }
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official MEKA source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://www.smspower.org/meka/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official MEKA source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://www.smspower.org/meka/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official MEKA source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://www.smspower.org/meka/",
-        "host capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "<emulator-directory>/meka.cfg", "naming": "Configuration_Save writes NAME = VALUE assignments to the native CFG file.", "evidence": ["source:meka/srcs/file.cpp ConfigurationFile path @ 3bf4a51", "source:meka/srcs/config.cpp Configuration_Load/Save @ 3bf4a51"] },
+        { "purpose": "input", "path": "<emulator-directory>/meka.inp", "naming": "Sections use type=joypad, connection=<one-based Allegro ordinal>, player=1|2, and player_{up,down,left,right,button1,button2,start_pause,reset} = joy_button N or joy stick S axis A dir D.", "evidence": ["source:meka/srcs/file.cpp Inputs.FileName @ 3bf4a51", "source:meka/srcs/inputs_f.cpp parser/writer @ 3bf4a51", "source:meka/srcs/inputs_i.cpp and inputs_u.cpp Allegro ordinal selection @ 3bf4a51"] },
+        { "purpose": "saves", "path": "<emulator-directory>/Saves/<ROM basename>.sav", "naming": "Filenames_Init_ROM replaces the ROM extension with .sav for battery-backed memory.", "evidence": ["source:meka/srcs/file.cpp BatteryBackedMemoryFile @ 3bf4a51"] },
+        { "purpose": "states", "path": "<emulator-directory>/Saves/<ROM basename>.S%02d", "naming": "Native slots are numbered 00 through 99 by Save_Get_Filename.", "evidence": ["source:meka/srcs/saves.cpp Save_Get_Filename/SaveState_SetSlot @ 3bf4a51"] },
+        { "purpose": "bios", "path": "<emulator-directory>/Data/rom_sms.rom, rom_smsj.rom, rom_coleco.rom, rom_sf7000.rom", "naming": "Data_LoadBinary loads bundled machine BIOS images from Data; no external universal BIOS path is used.", "evidence": ["source:meka/srcs/data.cpp BIOS Data_LoadBinary calls @ 3bf4a51"] },
+        { "purpose": "keys", "path": "No external key-material path established", "naming": "No key file or checksum is claimed.", "evidence": ["source:meka/srcs/file.cpp/data.cpp resource inventory @ 3bf4a51"] }
       ]
     },
     "windows": {
-      "status": "unresolved",
-      "reason": "The official MEKA source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://www.smspower.org/meka/",
-        "host capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "<emulator-directory>/mekaw.cfg", "naming": "Windows uses the same NAME = VALUE CFG grammar under the mekaw.cfg filename.", "evidence": ["source:meka/srcs/file.cpp ARCH_WIN32 ConfigurationFile path @ 3bf4a51", "source:meka/srcs/config.cpp @ 3bf4a51"] },
+        { "purpose": "input", "path": "<emulator-directory>/meka.inp", "naming": "Native INP grammar and Allegro connection ordinal are the same as Linux.", "evidence": ["source:meka/srcs/file.cpp and inputs_f.cpp @ 3bf4a51"] },
+        { "purpose": "saves", "path": "<emulator-directory>/Saves/<ROM basename>.sav", "naming": "ROM extension is replaced with .sav.", "evidence": ["source:meka/srcs/file.cpp @ 3bf4a51"] },
+        { "purpose": "states", "path": "<emulator-directory>/Saves/<ROM basename>.S%02d", "naming": "Slots range from 00 through 99.", "evidence": ["source:meka/srcs/saves.cpp @ 3bf4a51"] },
+        { "purpose": "bios", "path": "<emulator-directory>/Data/rom_sms.rom, rom_smsj.rom, rom_coleco.rom, rom_sf7000.rom", "naming": "Bundled BIOS images are loaded from Data.", "evidence": ["source:meka/srcs/data.cpp @ 3bf4a51"] },
+        { "purpose": "keys", "path": "No external key-material path established", "naming": "No key file or checksum is claimed.", "evidence": ["source:meka/srcs resource inventory @ 3bf4a51"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "Writable macOS internal-resource directory/meka.cfg", "naming": "macOS resolves a writable internal resource directory before assigning the CFG path.", "evidence": ["source:meka/srcs/file.cpp GetWritableInternalResourcePath and ConfigurationFile @ 3bf4a51"] },
+        { "purpose": "input", "path": "Writable macOS internal-resource directory/meka.inp", "naming": "The same INP grammar is copied to and rewritten in the writable resource directory.", "evidence": ["source:meka/srcs/file.cpp PopulateWritableInternalResourcesPath and Inputs.FileName @ 3bf4a51", "source:meka/srcs/inputs_f.cpp @ 3bf4a51"] },
+        { "purpose": "saves", "path": "Writable macOS external-resource directory/Saves/<ROM basename>.sav", "naming": "Battery-backed memory uses the ROM basename with .sav extension.", "evidence": ["source:meka/srcs/file.cpp external_resources_dir and BatteryBackedMemoryFile @ 3bf4a51"] },
+        { "purpose": "states", "path": "Writable macOS external-resource directory/Saves/<ROM basename>.S%02d", "naming": "Native savestate slots are 00 through 99.", "evidence": ["source:meka/srcs/file.cpp and saves.cpp @ 3bf4a51"] },
+        { "purpose": "bios", "path": "<emulator-directory>/Data/rom_sms.rom, rom_smsj.rom, rom_coleco.rom, rom_sf7000.rom", "naming": "Bundled BIOS images are loaded from Data beside the emulator resources.", "evidence": ["source:meka/srcs/data.cpp @ 3bf4a51"] },
+        { "purpose": "keys", "path": "No external key-material path established", "naming": "No key file or checksum is claimed.", "evidence": ["source:meka/srcs resource inventory @ 3bf4a51"] }
       ]
     }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The upstream README documents source builds but no first-party Flatpak package.", "evidence": ["docs:https://github.com/ocornut/meka#readme"] }
   }
 }

@@ -50,7 +50,7 @@ pub(crate) const CONTROLS: [(&str, &str); 8] = [
 ];
 
 /// One native KeyMapping UInt16.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) struct Binding(pub(crate) u16);
 
 impl Binding {
@@ -105,6 +105,7 @@ pub(crate) fn settings_json(mapping: &[(String, Binding)]) -> Result<String> {
                 .all(|(_, field)| mapping.iter().any(|(name, _)| name == field)),
         "Mesen2 needs every standard NES control"
     );
+    let mut inputs = std::collections::BTreeSet::new();
     let mut result = String::from(
         "{\n  \"Nes\": {\n    \"Port1\": {\n      \"Type\": \"NesController\",\n      \"Mapping1\": {\n",
     );
@@ -114,6 +115,10 @@ pub(crate) fn settings_json(mapping: &[(String, Binding)]) -> Result<String> {
             .find(|(name, _)| name == *field)
             .map(|(_, binding)| binding.0)
             .unwrap_or_default();
+        ensure!(
+            inputs.insert(code),
+            "Mesen2 physical input has multiple gameplay owners"
+        );
         let comma = if index + 1 < CONTROLS.len() { "," } else { "" };
         let control_comment = control;
         let _ = control_comment;
@@ -185,5 +190,14 @@ mod tests {
             "      }\n    },\n    \"Port2\": {\n      \"Type\": \"None\"\n    }\n  }\n}\n"
         ));
         assert!(settings_json(&mapping[..3].to_vec()).is_err());
+    }
+
+    #[test]
+    fn settings_json_rejects_shared_physical_inputs() {
+        let mapping = CONTROLS
+            .iter()
+            .map(|(_, field)| ((*field).to_owned(), Binding(0x1000)))
+            .collect::<Vec<_>>();
+        assert!(settings_json(&mapping).is_err());
     }
 }

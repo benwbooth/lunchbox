@@ -40,7 +40,8 @@
           "path": "User-dumped pair set via sys.files.bootrom_path (MCPX boot ROM, conventionally mcpx_1.0.bin, MD5 d49c52a4102f6df7bcf8d0617ac475ed) and sys.files.flashrom_path (BIOS flash from a 1.0 Xbox; debug or modded retail such as COMPLEX 4627 is required since unmodified retail BIOS cannot boot games); redistributable prebuilt xbox_hdd.qcow2 ships only a clean dashboard",
           "naming": "MCPX boot ROM is conventionally mcpx_1.0.bin; the cited xemu required-files documentation publishes MD5 d49c52a4102f6df7bcf8d0617ac475ed for that file. The BIOS flash is a user dump from a 1.0 Xbox (debug or modded retail, with COMPLEX 4627 cited as broadly compatible) and the cited upstream sources declare no single canonical filename or checksum for it",
           "evidence": ["docs:required-files MCPX/Flash/HDD sections", "docs:faq \"Your MCPX and BIOS dump should be from a 1.0 Xbox\"", "source:config_spec.yml sys.files bootrom_path/flashrom_path/eeprom_path/hdd_path", "contract:docs/XEMU_NATIVE_CONTROLLER_CONTRACT.md (user-declared MCPX boot ROM and flash image)"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "xemu does not consume an external cryptographic key file; required Xbox boot artifacts are captured under bios.", "status": "not_required", "evidence": ["source:config_spec.yml and xemu source tree @fd0ae0c0a189d56e87f8e46073b15b287e4a1e1a"] }
       ],
       "notes": "No xemu flatpak exists: a Flathub search for xemu returns no app (official channel is the AppImage). Lunchbox launches xemu with -config_path plus a private SDL pref path."
     },
@@ -74,7 +75,8 @@
           "path": "User-dumped MCPX boot ROM (mcpx_1.0.bin) and compatible BIOS flash image via sys.files.bootrom_path/flashrom_path",
           "naming": "MCPX boot ROM is conventionally mcpx_1.0.bin; the cited xemu required-files documentation publishes MD5 d49c52a4102f6df7bcf8d0617ac475ed for that file. The BIOS flash is a user dump from a 1.0 Xbox (debug or modded retail, with COMPLEX 4627 cited as broadly compatible) and the cited upstream sources declare no single canonical filename or checksum for it",
           "evidence": ["docs:required-files MCPX/Flash sections", "docs:faq \"Your MCPX and BIOS dump should be from a 1.0 Xbox\"", "source:config_spec.yml sys.files bootrom_path/flashrom_path"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "xemu does not consume an external cryptographic key file; required Xbox boot artifacts are captured under bios.", "status": "not_required", "evidence": ["source:config_spec.yml and xemu source tree @fd0ae0c0a189d56e87f8e46073b15b287e4a1e1a"] }
       ]
     },
     "macos": {
@@ -107,7 +109,8 @@
           "path": "User-dumped MCPX boot ROM (mcpx_1.0.bin) and compatible BIOS flash image via sys.files.bootrom_path/flashrom_path",
           "naming": "MCPX boot ROM is conventionally mcpx_1.0.bin; the cited xemu required-files documentation publishes MD5 d49c52a4102f6df7bcf8d0617ac475ed for that file. The BIOS flash is a user dump from a 1.0 Xbox (debug or modded retail, with COMPLEX 4627 cited as broadly compatible) and the cited upstream sources declare no single canonical filename or checksum for it",
           "evidence": ["docs:required-files MCPX/Flash sections", "docs:faq \"Your MCPX and BIOS dump should be from a 1.0 Xbox\"", "source:config_spec.yml sys.files bootrom_path/flashrom_path"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "xemu does not consume an external cryptographic key file; required Xbox boot artifacts are captured under bios.", "status": "not_required", "evidence": ["source:config_spec.yml and xemu source tree @fd0ae0c0a189d56e87f8e46073b15b287e4a1e1a"] }
       ]
     }
   },

@@ -153,15 +153,27 @@ impl Drop for RetroArch {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OracleTarget {
+    Gba,
+    Nes,
+    Psx,
+}
+
 fn await_keys(
     child: &mut RetroArch,
     replies: &Receiver<String>,
     expected: u16,
-    psx: bool,
+    target: OracleTarget,
+    timeout: Duration,
 ) -> Result<()> {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + timeout;
     let mut last = String::new();
     loop {
+        ensure!(
+            Instant::now() < deadline,
+            "Expected emulated buttons {expected:04x}, last reply: {last}"
+        );
         // Do not reap here: Drop must retain ownership of the numeric process
         // group until it has signalled it. EOF/broken pipe detect early exit.
         child
@@ -169,21 +181,30 @@ fn await_keys(
             .stdin
             .as_mut()
             .context("Missing stdin")?
-            .write_all(if psx {
-                b"READ_CORE_MEMORY 00020000 36\n"
-            } else {
-                b"READ_CORE_MEMORY 02000000 8\n"
+            .write_all(match target {
+                OracleTarget::Gba => b"READ_CORE_MEMORY 02000000 8\n",
+                OracleTarget::Nes => b"READ_CORE_MEMORY 00000000 4\n",
+                OracleTarget::Psx => b"READ_CORE_MEMORY 00020000 36\n",
             })?;
-        let response = replies
-            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-            .context("RetroArch memory response timeout")?;
+        // A command written while the frontend is still creating its stdin
+        // command driver may be consumed before the core publishes a memory
+        // map. Retry on a short cadence instead of spending the entire bounded
+        // wait on that first request.
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let response = match replies.recv_timeout(remaining.min(Duration::from_millis(200))) {
+            Ok(response) => response,
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                anyhow::bail!("RetroArch memory response stream closed")
+            }
+        };
         let values = response
             .split_whitespace()
             .skip(2)
             .map(|s| u8::from_str_radix(s, 16))
             .collect::<std::result::Result<Vec<_>, _>>();
         if let Ok(bytes) = values {
-            if psx
+            if target == OracleTarget::Psx
                 && bytes.len() == 36
                 && bytes[..4] == [0x4c, 0x42, 0x50, 0x53]
                 && bytes[32..34] == [0, 0x41]
@@ -191,10 +212,17 @@ fn await_keys(
             {
                 return Ok(());
             }
-            if !psx
+            if target == OracleTarget::Gba
                 && bytes.len() == 8
                 && bytes[4..] == [0x4e, 0x49, 0x42, 0x4c]
                 && u16::from_le_bytes([bytes[0], bytes[1]]) == expected
+            {
+                return Ok(());
+            }
+            if target == OracleTarget::Nes
+                && bytes.len() == 4
+                && bytes[1..] == *b"LBN"
+                && bytes[0] == expected as u8
             {
                 return Ok(());
             }
@@ -264,19 +292,25 @@ fn private_display_rejects_desktop_aliases_and_missing_desktop() {
 #[test]
 #[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, and trusted mGBA core; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn brawler64_config_reaches_gba_hardware_through_retroarch() -> Result<()> {
-    brawler64_hardware_oracle(false, false)
+    brawler64_hardware_oracle(OracleTarget::Gba, false)
+}
+
+#[test]
+#[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, and the reviewed Nestopia core; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
+fn brawler64_config_reaches_nes_hardware_through_nestopia() -> Result<()> {
+    brawler64_hardware_oracle(OracleTarget::Nes, false)
 }
 
 #[test]
 #[ignore = "requires writable uinput, isolated X display, Flatpak RetroArch, trusted Beetle PSX core and local BIOS; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn brawler64_config_reaches_psx_hardware_through_retroarch() -> Result<()> {
-    brawler64_hardware_oracle(true, false)
+    brawler64_hardware_oracle(OracleTarget::Psx, false)
 }
 
 #[test]
 #[ignore = "requires writable uinput, isolated X display and trusted mGBA; creates two Steam-compatible virtual pads; see docs/CONTROLLER_RETROARCH_ORACLE.md"]
 fn saved_brawler64_calibration_prepares_and_controls_gba_through_retroarch() -> Result<()> {
-    brawler64_hardware_oracle(false, true)
+    brawler64_hardware_oracle(OracleTarget::Gba, true)
 }
 
 fn saved_calibration_plan(
@@ -477,22 +511,31 @@ fn saved_calibration_plan(
     Ok((plan, session))
 }
 
-fn brawler64_hardware_oracle(psx: bool, saved_launch: bool) -> Result<()> {
+fn brawler64_hardware_oracle(target: OracleTarget, saved_launch: bool) -> Result<()> {
     use sha2::{Digest, Sha256};
-    let (core_env, core_name, rom_name, expected_hash) = if psx {
-        (
-            "LUNCHBOX_ORACLE_PSX_CORE",
-            "mednafen_psx_libretro.so",
-            "input.exe",
-            "767bb60bd96d3f19806a9311d96638c9ca39272d1236035a752952bb4b4c1968",
-        )
-    } else {
-        (
+    ensure!(
+        !saved_launch || target == OracleTarget::Gba,
+        "Saved-launch oracle is currently GBA-specific"
+    );
+    let (core_env, core_name, rom_name, expected_hash) = match target {
+        OracleTarget::Gba => (
             "LUNCHBOX_ORACLE_MGBA_CORE",
             "mgba_libretro.so",
             "input.gba",
             "768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4",
-        )
+        ),
+        OracleTarget::Nes => (
+            "LUNCHBOX_ORACLE_NESTOPIA_CORE",
+            "nestopia_libretro.so",
+            "input.nes",
+            "f6e2a6f96bd73385663b732324bff7832c168c4c2c1811732f7b0300c0de8376",
+        ),
+        OracleTarget::Psx => (
+            "LUNCHBOX_ORACLE_PSX_CORE",
+            "mednafen_psx_libretro.so",
+            "input.exe",
+            "767bb60bd96d3f19806a9311d96638c9ca39272d1236035a752952bb4b4c1968",
+        ),
     };
     let core = PathBuf::from(std::env::var(core_env).context("Set trusted core path")?);
     ensure!(core.is_absolute(), "Core path must be absolute");
@@ -526,13 +569,13 @@ fn brawler64_hardware_oracle(psx: bool, saved_launch: bool) -> Result<()> {
     fs::write(dir.join(core_name), core_bytes)?;
     fs::write(
         dir.join(rom_name),
-        if psx {
-            lunchbox_controller_probe::libretro_input::psx_diagnostic_exe()
-        } else {
-            lunchbox_controller_probe::libretro_input::gba_diagnostic_rom()
+        match target {
+            OracleTarget::Gba => lunchbox_controller_probe::libretro_input::gba_diagnostic_rom(),
+            OracleTarget::Nes => lunchbox_controller_probe::libretro_input::nes_diagnostic_rom(),
+            OracleTarget::Psx => lunchbox_controller_probe::libretro_input::psx_diagnostic_exe(),
         },
     )?;
-    if psx {
+    if target == OracleTarget::Psx {
         let bios = PathBuf::from(
             std::env::var("LUNCHBOX_ORACLE_PSX_BIOS_DIR")
                 .context("Set local PlayStation BIOS directory")?,
@@ -592,15 +635,21 @@ fn brawler64_hardware_oracle(psx: bool, saved_launch: bool) -> Result<()> {
         }
     }
     let numbering = JoydevMap::read(&path)?;
-    let profile = if psx {
-        catalog().launch_mode("mednafen_psx", "PSX", 1)
-    } else {
-        contract("mgba", "Nintendo Game Boy Advance")
+    let profile = match target {
+        OracleTarget::Gba => contract("mgba", "Nintendo Game Boy Advance"),
+        // Nestopia's ordinary two-pad contract is intentionally an explicit
+        // content-mode selection, so the default-contract lookup must not
+        // silently choose it. The oracle names the exact reviewed mode.
+        OracleTarget::Nes => catalog()
+            .emulator_profiles
+            .iter()
+            .find(|profile| profile.id == "retroarch:nestopia:nes-2player"),
+        OracleTarget::Psx => catalog().launch_mode("mednafen_psx", "PSX", 1),
     }
     .context("Missing diagnostic core contract")?;
     if !saved_launch {
         let mut mapping = player_config(&calibration, profile, &numbering, 1)?;
-        if psx {
+        if target == OracleTarget::Psx {
             mapping.push_str(&write_core_options_snapshot(profile, "", dir)?);
             mapping.push_str("input_libretro_device_p2 = \"0\"\ninput_max_users = \"1\"\n");
         }
@@ -737,8 +786,20 @@ fn brawler64_hardware_oracle(psx: bool, saved_launch: bool) -> Result<()> {
             }
         }
     });
-    let released = if psx { 0xffff } else { 0x3ff };
-    await_keys(&mut child, &replies, released, psx)?;
+    let released = match target {
+        OracleTarget::Gba => 0x03ff,
+        OracleTarget::Nes => 0x00ff,
+        OracleTarget::Psx => 0xffff,
+    };
+    // Software GL and a cold shader cache can make isolated Flatpak startup
+    // materially slower than an input transition once frames are running.
+    await_keys(
+        &mut child,
+        &replies,
+        released,
+        target,
+        Duration::from_secs(30),
+    )?;
     if let Some((other, _)) = &mut other_pad {
         // Keep conflicting inputs held across every selected-pad observation.
         // An immediate released read alone could precede event consumption.
@@ -750,8 +811,8 @@ fn brawler64_hardware_oracle(psx: bool, saved_launch: bool) -> Result<()> {
         }
     }
     // Expected bits come from console hardware protocols, not generated config.
-    let cases = if psx {
-        vec![
+    let cases = match target {
+        OracleTarget::Psx => vec![
             (vec!["a"], 1 << 14),      // Cross
             (vec!["b"], 1 << 15),      // Square
             (vec!["c_down"], 1 << 13), // Circle
@@ -768,9 +829,8 @@ fn brawler64_hardware_oracle(psx: bool, saved_launch: bool) -> Result<()> {
             (vec!["r"], 1 << 11),
             (vec!["a", "b"], (1 << 14) | (1 << 15)),
             (vec!["l", "r"], (1 << 10) | (1 << 11)),
-        ]
-    } else {
-        vec![
+        ],
+        OracleTarget::Gba => vec![
             (vec!["a"], 1),
             (vec!["b"], 2),
             (vec!["select"], 4),
@@ -783,7 +843,22 @@ fn brawler64_hardware_oracle(psx: bool, saved_launch: bool) -> Result<()> {
             (vec!["l"], 512),
             (vec!["a", "b"], 3),
             (vec!["l", "r"], 768),
-        ]
+        ],
+        OracleTarget::Nes => vec![
+            (vec!["a"], 1),
+            (vec!["b"], 2),
+            (vec!["select"], 4),
+            (vec!["start"], 8),
+            (vec!["up"], 16),
+            (vec!["down"], 32),
+            (vec!["left"], 64),
+            (vec!["right"], 128),
+            (vec!["a", "b"], 3),
+            // Nestopia rejects impossible opposing directions; a diagonal still
+            // proves simultaneous direction routing without depending on that
+            // core policy.
+            (vec!["up", "right"], 144),
+        ],
     };
     for (controls, bits) in cases {
         for id in &controls {
@@ -792,16 +867,28 @@ fn brawler64_hardware_oracle(psx: bool, saved_launch: bool) -> Result<()> {
                 true,
             )?;
         }
-        await_keys(&mut child, &replies, released & !bits, psx)
-            .with_context(|| format!("Pressed {controls:?}"))?;
+        await_keys(
+            &mut child,
+            &replies,
+            released & !bits,
+            target,
+            Duration::from_secs(10),
+        )
+        .with_context(|| format!("Pressed {controls:?}"))?;
         for id in &controls {
             pad.button(
                 (calibration.bindings[*id].native.as_ref().unwrap().code & 0xffff) as u16,
                 false,
             )?;
         }
-        await_keys(&mut child, &replies, released, psx)
-            .with_context(|| format!("Released {controls:?}"))?;
+        await_keys(
+            &mut child,
+            &replies,
+            released,
+            target,
+            Duration::from_secs(10),
+        )
+        .with_context(|| format!("Released {controls:?}"))?;
     }
     drop(child);
     drop(calibrated_session);

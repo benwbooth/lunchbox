@@ -89,3 +89,52 @@ impl Activation {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_encodings_keep_button_hat_and_axis_namespaces_distinct() {
+        assert_eq!(Input::Button(7).encode().unwrap(), 7);
+        assert_eq!(
+            Input::Hat {
+                index: 2,
+                direction: 4
+            }
+            .encode()
+            .unwrap(),
+            0x124
+        );
+        assert_eq!(
+            Input::Axis {
+                index: 3,
+                activation: Activation::Negative
+            }
+            .encode()
+            .unwrap(),
+            0x0311ffff
+        );
+        assert!(Input::Button(0xffff).encode().is_err());
+        assert!(
+            Input::Hat {
+                index: 0,
+                direction: 3
+            }
+            .encode()
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn activation_requires_release_to_pressed_threshold_crossing() {
+        assert!(Activation::Positive.validate_endpoints(0, 16385).is_ok());
+        assert!(Activation::Negative.validate_endpoints(0, -16385).is_ok());
+        assert!(Activation::Trigger.validate_endpoints(0, 1).is_ok());
+        assert!(
+            Activation::Positive
+                .validate_endpoints(17000, 18000)
+                .is_err()
+        );
+    }
+}

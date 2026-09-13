@@ -266,6 +266,11 @@ impl EmulatorUpdatePreferences {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ControllerMappingSettings {
+    #[serde(default)]
+    pub(crate) b2_native_launches: Vec<crate::controller_b2_native::settings::SavedSetup>,
+    #[serde(default)]
+    pub(crate) hypseus_native_launches:
+        Vec<crate::controller_hypseus_singe_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) fceux_launches: Vec<crate::controller_fceux::settings::SavedSetup>,
     #[serde(default)]
@@ -293,6 +298,14 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub(crate) jgenesis_native_launches:
         Vec<crate::controller_jgenesis_native::settings::SavedSetup>,
+    #[serde(default)]
+    pub(crate) gopher64_native_launches:
+        Vec<crate::controller_gopher64_native::settings::SavedSetup>,
+    #[serde(default)]
+    pub(crate) rmg_native_launches: Vec<crate::controller_rmg_native::settings::SavedSetup>,
+    #[serde(default)]
+    pub(crate) simple64_native_launches:
+        Vec<crate::controller_simple64_native::settings::SavedSetup>,
     #[serde(default)]
     pub(crate) yaba_sanshiro_native_launches:
         Vec<crate::controller_yaba_sanshiro_native::settings::SavedSetup>,
@@ -405,6 +418,8 @@ fn default_mame_arcade_layout() -> Option<crate::controller_mame::DigitalLayout>
 impl Default for ControllerMappingSettings {
     fn default() -> Self {
         Self {
+            b2_native_launches: Vec::new(),
+            hypseus_native_launches: Vec::new(),
             fbneo_launches: Vec::new(),
             duckstation_launches: Vec::new(),
             ppsspp_launches: Vec::new(),
@@ -423,6 +438,9 @@ impl Default for ControllerMappingSettings {
             xemu_native_launches: Vec::new(),
             scummvm_native_launches: Vec::new(),
             jgenesis_native_launches: Vec::new(),
+            gopher64_native_launches: Vec::new(),
+            rmg_native_launches: Vec::new(),
+            simple64_native_launches: Vec::new(),
             yaba_sanshiro_native_launches: Vec::new(),
             mednafen_launches: Vec::new(),
             mame_native_launches: Vec::new(),
@@ -1374,6 +1392,10 @@ impl ControllerMappingSettings {
             "Too many saved FBNeo per-game setups"
         );
         let mut fbneo_keys = std::collections::BTreeSet::new();
+        crate::controller_b2_native::settings::validate_setups(&self.b2_native_launches)?;
+        crate::controller_hypseus_singe_native::settings::validate_setups(
+            &self.hypseus_native_launches,
+        )?;
         crate::controller_duckstation::validate_setups(&self.duckstation_launches)?;
         crate::controller_ppsspp::settings::validate_setups(&self.ppsspp_launches)?;
         crate::controller_mgba::settings::validate_setups(&self.mgba_launches)?;
@@ -1392,6 +1414,13 @@ impl ControllerMappingSettings {
         crate::controller_scummvm_native::settings::validate_setups(&self.scummvm_native_launches)?;
         crate::controller_jgenesis_native::settings::validate_setups(
             &self.jgenesis_native_launches,
+        )?;
+        crate::controller_gopher64_native::settings::validate_setups(
+            &self.gopher64_native_launches,
+        )?;
+        crate::controller_rmg_native::settings::validate_setups(&self.rmg_native_launches)?;
+        crate::controller_simple64_native::settings::validate_setups(
+            &self.simple64_native_launches,
         )?;
         crate::controller_yaba_sanshiro_native::settings::validate_setups(
             &self.yaba_sanshiro_native_launches,

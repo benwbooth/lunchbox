@@ -7,6 +7,12 @@
       "kind": "docs",
       "url": "https://github.com/shonumi/gbe-plus",
       "role": "official project/platform and runtime documentation"
+    },
+    {
+      "kind": "source",
+      "repo": "shonumi/gbe-plus",
+      "commit": "05a05e931b3993ff3e6316b0d841a1fb4d3ac7a7",
+      "role": "native INI parser/saver and SDL gamepad event encoding"
     }
   ],
   "platforms": {
@@ -14,50 +20,53 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "~/.config/gbe-plus/config.ini",
-          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "path": "$HOME/.gbe_plus/gbe.ini (portable/install folder takes priority)",
+          "naming": "Compact bracket-section INI; [#gbe_joy_controls:A:B:X:Y:START:SELECT:LEFT:RIGHT:UP:DOWN:L:R] stores twelve decimal SDL event encodings.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/common/config.cpp load_ini_file/save_ini_file @05a05e9",
+            "source:src/gbe.ini default #gbe_joy_controls section @05a05e9"
           ]
         },
         {
           "purpose": "input",
-          "path": "~/.config/gbe-plus/config.ini",
-          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "path": "$HOME/.gbe_plus/gbe.ini (same file as config)",
+          "naming": "Gamepad field order is A, B, X, Y, START, SELECT, LEFT, RIGHT, UP, DOWN, LTRIGGER, RTRIGGER. Values are 100+button, 200+axis*2+(positive?1:0), or 300+hat*4+cardinal direction code; joy_id is a runtime SDL index and is not persisted.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/qt/general_settings.cpp process_joystick_event @05a05e9",
+            "source:src/dmg/gamepad.cpp SDL_JoystickOpen(config::joy_id) @05a05e9"
           ]
         },
         {
           "purpose": "saves",
-          "path": "./",
-          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "path": "Beside the loaded ROM by default; `#save_path` can redirect to a configured directory",
+          "naming": "<ROM stem>.sav for cartridge backup RAM; the source also uses a `.flash` sidecar for MBC6 flash when applicable.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/common/config.cpp parse_filenames and src/dmg/mmu.cpp load_backup/save_backup @05a05e9"
           ]
         },
         {
           "purpose": "states",
-          "path": "User-selected state file",
-          "naming": "The upstream frontend selects the state filename/path.",
+          "path": "Beside loaded ROM by default; `#save_path` can redirect to a configured directory",
+          "naming": "<ROM filename>.ss for slot 0 and <ROM filename>.ssN for slots 1 through 9; native binary state includes version/system/date metadata.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/dmg/core.cpp save_state/load_state @05a05e9",
+            "source:src/dmg/core.cpp get_save_state_info @05a05e9"
           ]
         },
         {
           "purpose": "bios",
-          "path": "No console BIOS file is required by GBE+",
-          "naming": "Explicit firmware disposition from the upstream project.",
+          "path": "Optional user-selected BIOS files; ordinary GB/GBC play does not require one",
+          "naming": "GBE+ exposes separate BIOS settings for supported systems; no canonical firmware filename or checksum is established here.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/common/config.h BIOS path fields and src/common/config.cpp BIOS option parsing @05a05e9"
           ]
         },
         {
           "purpose": "keys",
-          "path": "No external encryption-key file is used.",
-          "naming": "Explicit key-material disposition from the upstream project.",
+          "path": "No external encryption-key file",
+          "naming": "No encryption-key path or loader is present in the native configuration contract.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/common/config.cpp configuration parser and saver @05a05e9"
           ]
         }
       ]
@@ -66,50 +75,50 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "%APPDATA%\\\\GBE+\\\\config.ini",
-          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
+          "path": "%LOCALAPPDATA%\\gbe_plus\\gbe.ini",
+          "naming": "Compact bracket-section INI; [#gbe_joy_controls:A:B:X:Y:START:SELECT:LEFT:RIGHT:UP:DOWN:L:R] stores twelve decimal SDL event encodings.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/common/config.cpp load_ini_file/save_ini_file @05a05e9"
           ]
         },
         {
           "purpose": "input",
-          "path": "%APPDATA%\\\\GBE+\\\\config.ini",
-          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
+          "path": "%LOCALAPPDATA%\\gbe_plus\\gbe.ini (same file as config)",
+          "naming": "Gamepad field order is A, B, X, Y, START, SELECT, LEFT, RIGHT, UP, DOWN, LTRIGGER, RTRIGGER; joy_id is a runtime SDL index and is not persisted.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/qt/general_settings.cpp and src/dmg/gamepad.cpp @05a05e9"
           ]
         },
         {
           "purpose": "saves",
-          "path": "./",
-          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
+          "path": "Beside the loaded ROM by default; `#save_path` can redirect to a configured directory",
+          "naming": "<ROM stem>.sav for cartridge backup RAM; MBC6 may also use a `.flash` sidecar.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/common/config.cpp parse_filenames and src/dmg/mmu.cpp load_backup/save_backup @05a05e9"
           ]
         },
         {
           "purpose": "states",
-          "path": "User-selected state file",
-          "naming": "The upstream frontend selects the state filename/path.",
+          "path": "Beside loaded ROM by default; `#save_path` can redirect to a configured directory",
+          "naming": "<ROM filename>.ss for slot 0 and <ROM filename>.ssN for slots 1 through 9.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/dmg/core.cpp save_state/load_state @05a05e9"
           ]
         },
         {
           "purpose": "bios",
-          "path": "No console BIOS file is required by GBE+",
-          "naming": "Explicit firmware disposition from the upstream project.",
+          "path": "Optional user-selected BIOS files; ordinary GB/GBC play does not require one",
+          "naming": "GBE+ exposes separate BIOS settings for supported systems; no canonical firmware filename or checksum is established here.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/common/config.h BIOS path fields and src/common/config.cpp BIOS option parsing @05a05e9"
           ]
         },
         {
           "purpose": "keys",
-          "path": "No external encryption-key file is used.",
-          "naming": "Explicit key-material disposition from the upstream project.",
+          "path": "No external encryption-key file",
+          "naming": "No encryption-key path or loader is present in the native configuration contract.",
           "evidence": [
-            "https://github.com/shonumi/gbe-plus"
+            "source:src/common/config.cpp configuration parser and saver @05a05e9"
           ]
         }
       ]

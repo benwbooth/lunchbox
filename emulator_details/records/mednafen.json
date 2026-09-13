@@ -27,6 +27,16 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "<base>/mednafen.cfg and optional <base>/<system>.cfg or pgconfig/<FileBase>.<system>.cfg, where base defaults ~/.mednafen (or $MEDNAFEN_HOME)",
+          "naming": "Flat key/value input settings use <system>.input.port<n>.<device>.<button>; values are native expressions `joystick 0x<128-bit-id> button_<n>` or `abs_<n>[-+]` with gamepad/dualanalog/none device selectors",
+          "evidence": [
+            "docs:mednafen.github.io/documentation#Section_input_mapping_format (input expression syntax)",
+            "source:libretro-mirrors/mednafen-git drivers/input.cpp and drivers/main.cpp @f0ee9d5",
+            "repo:crates/lunchbox-app/src/controller_mednafen (native config/profile layering and native-ID discovery)"
+          ]
+        },
+        {
           "purpose": "saves",
           "path": "<base>/sav/ (filesys.path_sav, default 'sav' under the base directory, not beside the ROM); backups in <base>/b/",
           "naming": "saveram naming = ROM basename (FileBase) + per-system extension via filesys.fname_sav default %f.%M%x: PSX <base>.<slot>.mcr (e.g. gamename.0.mcr), GB <base>.sav, NES <base>.sav (FDS <base>.fds), SNES <base>.srm (+ .rtc), Saturn <base>.bkr, NGP <base>.flash, Virtual Boy <base>.sav, GBA <base>.sav plus <base>.eep for EEPROM",
@@ -55,6 +65,13 @@
             "repo:docs/MEDNAFEN_STANDALONE_PROGRESS.md (FDS disksys.rom firmware must pre-exist; Saturn/PSX native BIOS still required, firmware identity unverified)",
             "gap:sources/firmware-rules.json has no standalone-mednafen firmware rules (only retroarch beetle_psx/beetle_psx_hw PS1 BIOS packs); the pinned gb module exposes no BIOS setting"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:libretro-mirrors/mednafen-git @f0ee9d5 (standalone modules expose firmware settings but no cryptographic-key file)"]
         }
       ],
       "notes": "Lunchbox pins deep Mednafen contracts (docs/MEDNAFEN_STANDALONE_PROGRESS.md; controller_catalog mednafen-settings transport) and launches with a child-only MEDNAFEN_HOME private base, staged private config layers and bubblewrap mounts; only configuration files are replaced, native save/state locations are retained (controller_mednafen/native_command.rs, discovery.rs, isolation). Native 128-bit joystick IDs come from joydev/evdev inventory, never SDL GUIDs."
@@ -68,6 +85,15 @@
           "evidence": [
             "source:drivers/main.cpp GetBaseDirectory WIN32 branch (MEDNAFEN_HOME, HOME + .mednafen, GetModuleFileName fallback) @ f0ee9d5",
             "docs:mednafen.github.io/documentation (settings loaded/saved from mednafen.cfg under the base directory)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "<base>\\mednafen.cfg and optional <base>\\<system>.cfg or pgconfig\\<FileBase>.<system>.cfg, where base defaults %MEDNAFEN_HOME%, %HOME%\\.mednafen, or beside mednafen.exe",
+          "naming": "Same flat key/value grammar as Unix: <system>.input.port<n>.<device>.<button> with native 128-bit joystick ID expressions `joystick 0x<id> button_<n>` / `abs_<n>[-+]`",
+          "evidence": [
+            "source:libretro-mirrors/mednafen-git drivers/main.cpp Windows GetBaseDirectory and drivers/input.cpp @f0ee9d5",
+            "docs:mednafen.github.io/documentation#Section_input_mapping_format"
           ]
         },
         {
@@ -97,6 +123,13 @@
             "source:psx.cpp/ss.cpp/pce.cpp/GBA.cpp BIOS settings with default filenames @ f0ee9d5",
             "gap:sources/firmware-rules.json has no standalone-mednafen firmware rules"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:libretro-mirrors/mednafen-git @f0ee9d5 (standalone modules expose firmware settings but no cryptographic-key file)"]
         }
       ],
       "notes": "Official releases provide prebuilt 32-bit and 64-bit Windows binaries plus source; Windows is the only platform with official binaries (docs:mednafen.github.io/releases)."
@@ -110,6 +143,15 @@
           "evidence": [
             "source:drivers/main.cpp GetBaseDirectory non-WIN32 branch @ f0ee9d5",
             "docs:mednafen.github.io/documentation (HOME suffixed with '/.mednafen' as base directory)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "<base>/mednafen.cfg and optional <base>/<system>.cfg or pgconfig/<FileBase>.<system>.cfg, where base defaults ~/.mednafen (or $MEDNAFEN_HOME)",
+          "naming": "Same flat key/value grammar as Linux: <system>.input.port<n>.<device>.<button> with native 128-bit joystick ID expressions `joystick 0x<id> button_<n>` / `abs_<n>[-+]`",
+          "evidence": [
+            "source:libretro-mirrors/mednafen-git drivers/main.cpp Unix GetBaseDirectory and drivers/input.cpp @f0ee9d5",
+            "docs:mednafen.github.io/documentation#Section_input_mapping_format"
           ]
         },
         {
@@ -139,6 +181,13 @@
             "source:per-module BIOS settings @ f0ee9d5",
             "gap:sources/firmware-rules.json has no standalone-mednafen firmware rules"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:libretro-mirrors/mednafen-git @f0ee9d5 (standalone modules expose firmware settings but no cryptographic-key file)"]
         }
       ],
       "notes": "Verified via docs:mednafen.github.io/releases: macOS has no official binaries; releases ship Windows builds and source tarballs, with FreeBSD/Linux/NetBSD/OpenBSD/Windows listed as compiled platforms, so macOS runs only source builds (Homebrew formulae 'mednafen', MacPorts). Lunchbox's native Mednafen adapter (joydev/evdev inventory, bubblewrap isolation) is Linux-only."

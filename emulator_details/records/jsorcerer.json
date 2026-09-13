@@ -1,52 +1,38 @@
 {
-  "schema_version": 1,
-  "slug": "jsorcerer",
-  "emulator": "JSorcerer",
-  "sources": [
-    {
-      "kind": "source",
-      "repo": "http://www.liaquay.co.uk/sorcerer/",
-      "url": "http://www.liaquay.co.uk/sorcerer/",
-      "role": "official upstream project identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "http://www.liaquay.co.uk/sorcerer/",
-      "role": "official distribution or project documentation"
-    }
+  "schema_version":1,
+  "slug":"jsorcerer",
+  "emulator":"JSorcerer",
+  "sources":[
+    {"kind":"source","url":"http://www.liaquay.co.uk/sorcerer/sorcerer-1.30.zip","version":"1.30","sha256":"2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e","role":"Official source archive: Swing frame, AWT input, media and snapshot code."},
+    {"kind":"artifact","url":"http://www.liaquay.co.uk/sorcerer/sorcerer.jar","version":"1.30","sha256":"60af6401eb8cace30dad0836fd6fec7eb2c86dc026a1a6c435cdeba2ccde3524","role":"Official standalone Java artifact."},
+    {"kind":"docs","url":"http://www.liaquay.co.uk/sorcerer/","role":"Official project/distribution page."}
   ],
-  "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official JSorcerer source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:http://www.liaquay.co.uk/sorcerer/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official JSorcerer source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:http://www.liaquay.co.uk/sorcerer/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official JSorcerer source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:http://www.liaquay.co.uk/sorcerer/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official JSorcerer source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:http://www.liaquay.co.uk/sorcerer/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    }
-  }
+  "platforms":{
+    "linux":{"paths":[
+      {"purpose":"config","path":"No persisted config. Standalone command is `java sorcererII.SorcererFrame`; applet parameters refreshRate, sleepHack, scale, rom8k, snapshot, diska-d, tape1-2 and hardKeyMap are read at startup but never written.","naming":"Resources are relative to extracted working directory; no config or controller-map serializer.","status":"not_supported","evidence":["source:sorcererII/SorcererFrame.java main/init @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e","source:sorcererII/JSorcerer.java PARAMS/getParameter @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"input","path":"AWT KeyEvent input; standalone frame forwards keyPressed/keyReleased to doKey. hardKeyMap toggles fixed physical-key vs character mapping. No joystick backend.","naming":"Keyboard matrix is compiled; no persisted key map.","evidence":["source:SorcererFrame.java KeyAdapter @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e","source:JSorcerer.java hardKeyMap/useHardKeys @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"saves","path":"User-selected guest media, not NVRAM: four disk units and two cassette units.","naming":"User-selected `.dsk` disk files and `.wav`/`.tape` tapes; writable output uses selected path; no automatic save sidecar.","evidence":["source:JSorcererDiskDrive.java/JSorcererTapeDrive.java @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e","docs:instructions.html disk/tape formats @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"states","path":"User-selected snapshot through Swing; applet snapshot parameter loads one. Debug F3 writes first.snp in cwd.","naming":"`.snp` raw 65564 bytes: 28-byte Z80 header + 65536-byte memory; mounted media are not serialized.","evidence":["source:Sorcerer.java saveSNP/loadSNP @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e","docs:instructions.html snapshot controls @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"bios","path":"Required resources under roms/, relative to extracted cwd.","naming":"exmo1-1.dat 2048 bytes, exmo1-2.dat 2048, exchr-1.dat 1024, diskboot.dat 256. Optional user ROM packs are 8 KiB `.ROM`; alternate exmon12 files are present but not default.","evidence":["source:Sorcerer.java loadROMs @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e","source:JSorcererRomPack.java 8K filter @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"keys","path":"No external cryptographic/key-material file.","naming":"not applicable","status":"not_required","evidence":["source:JSorcerer 1.30 tree has no key loader @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]}
+    ],"notes":"Java 6/Swing standalone; paths are relative to extracted cwd unless user selects absolute media/state paths."},
+    "macos":{"paths":[
+      {"purpose":"config","path":"No persisted config; Java applet parameters are read at startup but never written.","naming":"No config or mapping serializer.","status":"not_supported","evidence":["source:SorcererFrame.java/JSorcerer.java @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"input","path":"AWT KeyEvent fixed/character mapping via hardKeyMap; no joystick.","naming":"No persisted key map.","evidence":["source:SorcererFrame.java/JSorcerer.java @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"saves","path":"User-selected `.dsk` disks and `.wav`/`.tape` tapes; no NVRAM sidecar.","naming":"Guest media paths are user-selected.","evidence":["source:JSorcererDiskDrive.java/JSorcererTapeDrive.java @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"states","path":"User-selected `.snp`; raw 28-byte Z80 header + 65536 memory (65564 bytes), no mounted media.","naming":"`.snp`; F3 debug `first.snp`.","evidence":["source:Sorcerer.java saveSNP/loadSNP @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"bios","path":"roms/exmo1-1.dat, exmo1-2.dat, exchr-1.dat, diskboot.dat relative to extracted directory; optional `.ROM` packs.","naming":"2048/2048/1024/256 bytes; no canonical firmware digest.","evidence":["source:Sorcerer.java loadROMs @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"keys","path":"No external key-material file.","naming":"not applicable","status":"not_required","evidence":["source:JSorcerer tree @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]}
+    ]},
+    "windows":{"paths":[
+      {"purpose":"config","path":"No persisted config; launch `java sorcererII.SorcererFrame` from the extracted directory.","naming":"No config grammar or serializer.","status":"not_supported","evidence":["source:SorcererFrame.java main and JSorcerer.java parameter reads @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"input","path":"AWT KeyEvent fixed/character keyboard mapping; no joystick.","naming":"No persisted key map.","evidence":["source:SorcererFrame.java/JSorcerer.java @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"saves","path":"User-selected `.dsk` disks and `.wav`/`.tape` tapes; no save sidecar.","naming":"Guest media paths selected by user.","evidence":["source:JSorcererDiskDrive.java/JSorcererTapeDrive.java @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"states","path":"User-selected `.snp`; raw 65564-byte Z80 snapshot, no media.","naming":"`.snp`; F3 `first.snp`.","evidence":["source:Sorcerer.java saveSNP/loadSNP @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"bios","path":"roms/exmo1-1.dat, exmo1-2.dat, exchr-1.dat, diskboot.dat beside extracted Java classes; optional 8 KiB `.ROM` packs.","naming":"2048/2048/1024/256 bytes; no canonical digest.","evidence":["source:Sorcerer.java/JSorcererRomPack.java @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]},
+      {"purpose":"keys","path":"No external key-material file.","naming":"not applicable","status":"not_required","evidence":["source:JSorcerer tree @2d8e625ff94b1d5c9f39aa00e2763fe2a120149ef14943b4dd283a2ef29d199e"]}
+    ]}
+  },
+  "platform_gaps":{"linux-flatpak":{"status":"no_verified_package","reason":"Official page provides Java source/archive but no Flatpak manifest or app ID.","evidence":["docs:http://www.liaquay.co.uk/sorcerer/","artifact:sorcerer.jar sha256 60af6401eb8cace30dad0836fd6fec7eb2c86dc026a1a6c435cdeba2ccde3524"]}},
+  "controller_boundary":{"native_writer":"not_implemented","refusal":"Do not add a guessed JSorcerer key/controller writer: only AWT KeyEvent handling and runtime hardKeyMap exist; no mapping grammar or joystick backend."}
 }

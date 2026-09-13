@@ -1,1 +1,18 @@
-{"schema_version":1,"slug":"nethersx2","emulator":"NetherSX2","sources":[{"kind":"source","repo":"https://github.com/Trixarian/NetherSX2-classic","url":"https://github.com/Trixarian/NetherSX2-classic","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://github.com/Trixarian/NetherSX2-classic","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Android-only AetherSX2 patch; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/Trixarian/NetherSX2-classic"]},"linux-flatpak":{"status":"unresolved","reason":"Android-only AetherSX2 patch; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/Trixarian/NetherSX2-classic"]},"windows":{"status":"unresolved","reason":"Android-only AetherSX2 patch; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/Trixarian/NetherSX2-classic"]},"macos":{"status":"unresolved","reason":"Android-only AetherSX2 patch; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/Trixarian/NetherSX2-classic"]}}}
+{
+  "schema_version": 1,
+  "slug": "nethersx2",
+  "emulator": "NetherSX2",
+  "sources": [
+    {"kind":"source","repo":"Trixarian/NetherSX2-classic","commit":"98ddad36d6c367a045b65fd06fdb26ba4c611387","url":"https://github.com/Trixarian/NetherSX2-classic/tree/98ddad36d6c367a045b65fd06fdb26ba4c611387","role":"pinned upstream patch/distribution source"},
+    {"kind":"docs","url":"https://github.com/Trixarian/NetherSX2-classic","role":"upstream Android distribution documentation"}
+  ],
+  "platforms": {},
+  "platform_gaps": {
+    "linux":{"status":"unsupported","reason":"NetherSX2 is an Android AetherSX2 patch/distribution; no desktop runtime or source-backed desktop controller-profile contract is published.","evidence":["source:README.md lines 6,18-26 @98ddad36d6c367a045b65fd06fdb26ba4c611387"]},
+    "linux-flatpak":{"status":"unsupported","reason":"No official Linux/Flatpak package; Android app storage, JNI, and input paths cannot be translated safely.","evidence":["source:README.md lines 6,18-26 @98ddad36d6c367a045b65fd06fdb26ba4c611387"]},
+    "windows":{"status":"unsupported","reason":"No official Windows package or source-backed Windows controller-profile format.","evidence":["source:README.md lines 6,18-26 @98ddad36d6c367a045b65fd06fdb26ba4c611387"]},
+    "macos":{"status":"unsupported","reason":"No official macOS package or source-backed macOS controller-profile format.","evidence":["source:README.md lines 6,18-26 @98ddad36d6c367a045b65fd06fdb26ba4c611387"]}
+  },
+  "android_boundary":{"native_writer":"not_implemented","reason":"Android preference/storage and Java input-device integration are outside this desktop adapter boundary.","saves":"Catalog lists Android/data/xyz.aethersx2.android/files/memcards; runtime verification is still required."},
+  "notes":"Fail closed on all four desktop host variants. The pinned source identifies a patch/distribution repository but does not establish a portable controller profile, desktop binary, BIOS/key contract, or runtime behavior."
+}

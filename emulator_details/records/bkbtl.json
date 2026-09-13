@@ -56,8 +56,8 @@
             "docs:https://github.com/nzeemin/bkbtl",
             "source:https://github.com/nzeemin/bkbtl official project documentation"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["docs:https://github.com/nzeemin/bkbtl (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "Cross-platform Qt BK emulator; WAV tape save/load is documented by project scope."
     },
     "macos": {
@@ -106,8 +106,8 @@
             "docs:https://github.com/nzeemin/bkbtl",
             "source:https://github.com/nzeemin/bkbtl official project documentation"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["docs:https://github.com/nzeemin/bkbtl (primary source cited by this record; keys capture remains unresolved for macos)"]}],
       "notes": "Cross-platform Qt BK emulator; WAV tape save/load is documented by project scope."
     },
     "windows": {
@@ -156,8 +156,8 @@
             "docs:https://github.com/nzeemin/bkbtl",
             "source:https://github.com/nzeemin/bkbtl official project documentation"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["docs:https://github.com/nzeemin/bkbtl (primary source cited by this record; keys capture remains unresolved for windows)"]}],
       "notes": "Cross-platform Qt BK emulator; WAV tape save/load is documented by project scope."
     }
   },

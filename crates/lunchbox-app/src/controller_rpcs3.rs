@@ -123,3 +123,27 @@ pub(crate) fn validate_controls(controls: &BTreeMap<String, String>) -> Result<(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn player_key_uses_native_one_based_names() {
+        assert_eq!(player_key(1).unwrap(), "Player 1 Input");
+        assert_eq!(player_key(7).unwrap(), "Player 7 Input");
+        assert!(player_key(0).is_err());
+        assert!(player_key(8).is_err());
+    }
+
+    #[test]
+    fn unknown_or_reused_sdl_inputs_are_rejected() {
+        let mut controls = BTreeMap::new();
+        for name in visual_routes().values() {
+            controls.insert((*name).to_owned(), "South".to_owned());
+        }
+        assert!(validate_controls(&controls).is_err());
+        controls.insert("Not a pad control".to_owned(), "North".to_owned());
+        assert!(validate_controls(&controls).is_err());
+    }
+}

@@ -1,1 +1,42 @@
-{"schema_version":1,"slug":"xm8","emulator":"XM8","sources":[{"kind":"source","repo":"http://retropc.net/pi/xm8/","url":"http://retropc.net/pi/xm8/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"http://retropc.net/pi/xm8/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows/Linux/macOS/Android listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://retropc.net/pi/xm8/"]},"linux-flatpak":{"status":"unresolved","reason":"Windows/Linux/macOS/Android listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://retropc.net/pi/xm8/"]},"windows":{"status":"unresolved","reason":"Windows/Linux/macOS/Android listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://retropc.net/pi/xm8/"]},"macos":{"status":"unresolved","reason":"Windows/Linux/macOS/Android listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://retropc.net/pi/xm8/"]}}}
+{
+  "schema_version": 1,
+  "slug": "xm8",
+  "emulator": "XM8",
+  "sources": [
+    { "kind": "source", "repo": "https://github.com/nakatamaho/xm8m", "url": "https://github.com/nakatamaho/xm8m/tree/2c4bf025840711a696d7d9ef55f3be3d0f3c84f9", "commit": "2c4bf025840711a696d7d9ef55f3be3d0f3c84f9", "role": "XM8 SDL settings, joystick, ROM, disk and save-state implementation" },
+    { "kind": "docs", "url": "https://github.com/nakatamaho/xm8m/blob/2c4bf025840711a696d7d9ef55f3be3d0f3c84f9/README-XM8.txt", "commit": "2c4bf025840711a696d7d9ef55f3be3d0f3c84f9", "role": "official XM8 ROM, media, joystick and save-state documentation" },
+    { "kind": "contract", "path": "docs/XM8_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller ownership boundary" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "$XDG_DATA_HOME/retro_pc_pi/xm8/setting.bin (default $HOME/.local/share/retro_pc_pi/xm8/setting.bin)", "naming": "SDL_GetPrefPath(\"retro_pc_pi\", \"xm8\") supplies the directory; setting.bin is a private binary containing display, emulation, directory, input and state-slot settings.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 UI/setting.cpp", "source:nakatamaho/xm8m@2c4bf02 UI/emu_sdl.cpp"] },
+        { "purpose": "input", "path": "$XDG_DATA_HOME/retro_pc_pi/xm8/setting.bin plus SDL joystick runtime", "naming": "The private settings blob stores joystick enable/swap/key-map values. The SDL backend opens every joystick by current enumeration index and polls axes 0/1 and a fixed button table; it has no stable physical-device profile selector.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 UI/setting.cpp", "source:nakatamaho/xm8m@2c4bf02 UI/input.cpp"] },
+        { "purpose": "saves", "path": "User-selected .d88/.d77 disk or tape image paths", "naming": "XM8 writes disk changes to the loaded image through the disk manager and remembers recent media paths in setting.bin; no separate generic game-save sidecar is defined.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 UI/diskmgr.cpp and ePC-8801MA/vm/disk.cpp", "source:nakatamaho/xm8m@2c4bf02 UI/setting.cpp", "source:nakatamaho/xm8m@2c4bf02 README-XM8.txt"] },
+        { "purpose": "states", "path": "$XDG_DATA_HOME/retro_pc_pi/xm8/state0.bin through state9.bin", "naming": "The native UI uses ten global binary save-state slots; slot 0 is also the automatic state slot and filenames are generated as state%d.bin in the setting directory.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 UI/app.cpp STATE_FILENAME and state load/save", "source:nakatamaho/xm8m@2c4bf02 UI/setting.cpp"] },
+        { "purpose": "bios", "path": "XM8 executable directory", "naming": "Linux SDL uses SDL_GetBasePath for BIOS/media base_path. The M88 set names N80.ROM, N88.ROM, N88_0.ROM through N88_3.ROM, DISK.ROM and KANJI1.ROM; KANJI2.ROM is optional, while PC88.ROM is the P88SR alternative.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 UI/emu_sdl.cpp and UI/font.cpp", "source:nakatamaho/xm8m@2c4bf02 README-XM8.txt"] },
+        { "purpose": "keys", "path": "No external cryptographic key file", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:nakatamaho/xm8m@2c4bf02"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "%APPDATA%\\retro_pc_pi\\xm8\\setting.bin", "naming": "SDL_GetPrefPath(\"retro_pc_pi\", \"xm8\") supplies the directory; setting.bin is a private binary containing display, emulation, directory, input and state-slot settings.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 UI/setting.cpp", "source:nakatamaho/xm8m@2c4bf02 UI/emu_sdl.cpp"] },
+        { "purpose": "input", "path": "%APPDATA%\\retro_pc_pi\\xm8\\setting.bin plus SDL joystick runtime", "naming": "The private settings blob stores joystick enable/swap/key-map values. The SDL backend opens every joystick by current enumeration index and polls axes 0/1 and a fixed button table; it has no stable physical-device profile selector.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 UI/setting.cpp", "source:nakatamaho/xm8m@2c4bf02 UI/input.cpp"] },
+        { "purpose": "saves", "path": "User-selected .d88/.d77 disk or tape image paths", "naming": "XM8 writes disk changes to the loaded image through the disk manager and remembers recent media paths in setting.bin; no separate generic game-save sidecar is defined.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 UI/diskmgr.cpp and ePC-8801MA/vm/disk.cpp", "source:nakatamaho/xm8m@2c4bf02 UI/setting.cpp", "source:nakatamaho/xm8m@2c4bf02 README-XM8.txt"] },
+        { "purpose": "states", "path": "%APPDATA%\\retro_pc_pi\\xm8\\state0.bin through state9.bin", "naming": "The native UI uses ten global binary save-state slots; slot 0 is also the automatic state slot and filenames are generated as state%d.bin in the setting directory.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 UI/app.cpp STATE_FILENAME and state load/save", "source:nakatamaho/xm8m@2c4bf02 UI/setting.cpp"] },
+        { "purpose": "bios", "path": "XM8.exe directory", "naming": "Windows SDL uses SDL_GetBasePath for BIOS/media base_path. The M88 set names N80.ROM, N88.ROM, N88_0.ROM through N88_3.ROM, DISK.ROM and KANJI1.ROM; KANJI2.ROM is optional, while PC88.ROM is the P88SR alternative.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 UI/emu_sdl.cpp and UI/font.cpp", "source:nakatamaho/xm8m@2c4bf02 README-XM8.txt"] },
+        { "purpose": "keys", "path": "No external cryptographic key file", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:nakatamaho/xm8m@2c4bf02"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The pinned XM8M source has native Linux and Windows build paths but no authoritative Flatpak package or sandbox persistence contract.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 Linux/makefile and README-BUILD.txt"] },
+    "macos": { "status": "unresolved", "reason": "The pinned source includes a macOS build directory, but this catalog capture does not establish a verified release artifact and complete macOS-specific controller/persistence contract.", "evidence": ["source:nakatamaho/xm8m@2c4bf02 macOS/makefile and UI/emu_sdl.cpp"] }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not synthesize an XM8 controller profile or patch setting.bin: it is a private binary settings blob and the SDL port selects joysticks by unstable enumeration order with hard-coded axis/button semantics.",
+    "contract": "docs/XM8_CONTROLLER_BOUNDARY.md"
+  },
+  "notes": "XM8's source-backed Linux and Windows settings, media, ROM and state paths are captured independently from the unresolved native controller identity boundary."
+}

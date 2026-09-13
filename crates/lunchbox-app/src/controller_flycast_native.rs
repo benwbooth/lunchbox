@@ -157,3 +157,76 @@ pub(crate) fn mapping_with_triggers(
     }
     Ok(text)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mapping_writes_version_three_and_keeps_axis_sign() {
+        let controls = BTreeMap::from([
+            ("btn_a".to_owned(), Input::Button(1)),
+            (
+                "axis_trigger_left".to_owned(),
+                Input::AxisHalf {
+                    code: 2,
+                    positive: true,
+                },
+            ),
+        ]);
+        let text = mapping(
+            &[Port {
+                port: 0,
+                controls: &controls,
+            }],
+            5,
+            100,
+        )
+        .unwrap();
+        assert!(text.contains("version = 3"));
+        assert!(text.contains("bind0 = 1:btn_a"));
+        assert!(text.contains("bind0 = 2+:axis_trigger_left"));
+    }
+
+    #[test]
+    fn trigger_metadata_is_explicit_and_rejects_negative_half() {
+        let controls = BTreeMap::from([(
+            "axis_trigger_left".to_owned(),
+            Input::AxisHalf {
+                code: 2,
+                positive: true,
+            },
+        )]);
+        let triggers = BTreeMap::from([(2_u32, true)]);
+        let text = mapping_with_triggers(
+            &[Port {
+                port: 0,
+                controls: &controls,
+            }],
+            0,
+            100,
+            &triggers,
+        )
+        .unwrap();
+        assert!(text.contains("triggers = 2~"));
+        let negative = BTreeMap::from([(
+            "axis_trigger_left".to_owned(),
+            Input::AxisHalf {
+                code: 2,
+                positive: false,
+            },
+        )]);
+        assert!(
+            mapping_with_triggers(
+                &[Port {
+                    port: 0,
+                    controls: &negative
+                }],
+                0,
+                100,
+                &triggers
+            )
+            .is_err()
+        );
+    }
+}

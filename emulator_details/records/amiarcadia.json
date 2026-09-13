@@ -3,50 +3,43 @@
   "slug": "amiarcadia",
   "emulator": "AmiArcadia",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://amigan.1emu.net/releases/",
-      "url": "https://amigan.1emu.net/releases/",
-      "role": "official upstream identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://amigan.1emu.net/releases/",
-      "role": "official distribution/documentation evidence"
-    }
+    { "kind": "source", "repo": "https://github.com/warmenhoven/amiarcadia", "commit": "8ca27c925833fe0021475155512c7f467924f647", "role": "WinArcadia native config, DirectInput, state and machine implementation" },
+    { "kind": "docs", "url": "https://github.com/warmenhoven/amiarcadia/blob/8ca27c925833fe0021475155512c7f467924f647/README.md", "role": "official libretro build and input documentation" },
+    { "kind": "contract", "path": "docs/AMIARCADIA_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
   ],
-  "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official source identifies AmiArcadia but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://amigan.1emu.net/releases/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+  "platforms": {
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "<WinArcadia working directory>\\Configs\\WinArcadia.ini", "naming": "Line-oriented key=value INI. The source writes controller_left/controller_right (0..8), leftbutton_0..7 and rightbutton_0..7; it also stores host keyboard scancodes, paths and unrelated settings.", "status": "captured", "evidence": ["source:WinArcadia/ibm.c sets fn_config to Configs\\WinArcadia.ini @8ca27c9", "source:WinArcadia/engine1.c serializeconfig/saveconfig @8ca27c9"] },
+        { "purpose": "input", "path": "The controller fields in Configs\\WinArcadia.ini; DirectInput devices are enumerated at runtime as the first and second attached joystick.", "naming": "controller_left/right values 0=none, 1=trackball, 2/3=first/second DirectInput joystick, 4=second analog joystick, 5..8=first/second DirectInput or analog pad. button fields are one-based joyfires[8] selectors; axes are fixed DirectInput X/Y. Device product names are runtime-only.", "status": "captured", "evidence": ["source:WinArcadia/aa.h CONTROLLER_* constants @8ca27c9", "source:WinArcadia/engine1.c controller and button serialization @8ca27c9", "source:WinArcadia/ff.c DirectInput enumeration, X/Y polling and rgbButtons @8ca27c9"] },
+        { "purpose": "saves", "path": "No universal battery-save sidecar is established by the reviewed WinArcadia source.", "naming": "Guest/software or machine-specific; do not infer a generic SRAM path.", "status": "unresolved", "evidence": ["source:WinArcadia engine and machine serializers @8ca27c9"] },
+        { "purpose": "states", "path": "User-selected .COS files under the configured Games path; quicksave uses QUICKSAV.COS and exit autosave uses AUTOSAVE.COS.", "naming": "WinArcadia COS state files carry a magic byte, COS version, state/recording kind and machine memory map; the normal Save State dialog chooses the filename.", "status": "captured", "evidence": ["source:WinArcadia/ibm.c quicksave path and engine1.c autosave path @8ca27c9", "source:WinArcadia/formats.c engine_save COS header and serialization @8ca27c9", "source:WinArcadia/ibm.h Saved States (*.COS) filter @8ca27c9"] },
+        { "purpose": "bios", "path": "Machine-specific built-in or selectable ROM images; no one universal BIOS filename/checksum is published for the multi-machine frontend.", "naming": "Some machine BIOS variants are selected by WinArcadia settings (for example PIPBUG, BINBUG, CD2650, PHUNSY and Selbstbau).", "status": "unresolved", "evidence": ["source:WinArcadia/engine1.c machine BIOS-version settings @8ca27c9", "docs:https://amigan.1emu.net/releases/"] },
+        { "purpose": "keys", "path": "No cryptographic key file is documented.", "naming": "not applicable", "status": "not_required", "evidence": ["source:WinArcadia source tree @8ca27c9"] }
       ]
     },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official source identifies AmiArcadia but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://amigan.1emu.net/releases/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "No verified standalone AmiArcadia native Linux frontend; the pinned native config is WinArcadia-only.", "naming": "The repository README documents the libretro core, not a Linux standalone config root.", "status": "unresolved", "evidence": ["source:WinArcadia/ibm.c Windows frontend @8ca27c9", "docs:README.md @8ca27c9"] },
+        { "purpose": "input", "path": "Libretro frontend input only; no AmiArcadia-native Linux profile is defined.", "naming": "Use the libretro frontend's RetroPad mapping; it is not the WinArcadia DirectInput INI schema.", "status": "unresolved", "evidence": ["source:src/libretro.c @8ca27c9", "docs:README.md Input Mapping @8ca27c9"] },
+        { "purpose": "saves", "path": "Libretro frontend-managed; no native Linux sidecar path is established by the reviewed source.", "naming": "Frontend-defined.", "status": "unresolved", "evidence": ["source:src/libretro.c @8ca27c9"] },
+        { "purpose": "states", "path": "Libretro COS state buffer API; filesystem naming is frontend-defined.", "naming": "No native Linux filename contract.", "status": "unresolved", "evidence": ["source:src/libretro.c serialize/deserialize state API @8ca27c9"] },
+        { "purpose": "bios", "path": "No universal external BIOS path is established.", "naming": "Machine-specific core data or built-in resources.", "status": "unresolved", "evidence": ["source:src/libretro.c @8ca27c9"] },
+        { "purpose": "keys", "path": "No cryptographic key file is documented.", "naming": "not applicable", "status": "not_required", "evidence": ["source:README.md @8ca27c9"] }
       ]
     },
     "macos": {
-      "status": "unresolved",
-      "reason": "The official source identifies AmiArcadia but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://amigan.1emu.net/releases/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official source identifies AmiArcadia but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://amigan.1emu.net/releases/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "No verified standalone AmiArcadia native macOS frontend; the pinned native config is WinArcadia-only.", "naming": "The repository README documents a libretro dylib, not a native macOS config root.", "status": "unresolved", "evidence": ["source:WinArcadia/ibm.c Windows frontend @8ca27c9", "docs:README.md @8ca27c9"] },
+        { "purpose": "input", "path": "Libretro frontend input only; no AmiArcadia-native macOS profile is defined.", "naming": "Frontend-managed RetroPad mapping, not the WinArcadia DirectInput INI schema.", "status": "unresolved", "evidence": ["source:src/libretro.c @8ca27c9", "docs:README.md Input Mapping @8ca27c9"] },
+        { "purpose": "saves", "path": "Libretro frontend-managed; no native macOS sidecar path is established by the reviewed source.", "naming": "Frontend-defined.", "status": "unresolved", "evidence": ["source:src/libretro.c @8ca27c9"] },
+        { "purpose": "states", "path": "Libretro COS state buffer API; filesystem naming is frontend-defined.", "naming": "No native macOS filename contract.", "status": "unresolved", "evidence": ["source:src/libretro.c serialize/deserialize state API @8ca27c9"] },
+        { "purpose": "bios", "path": "No universal external BIOS path is established.", "naming": "Machine-specific core data or built-in resources.", "status": "unresolved", "evidence": ["source:src/libretro.c @8ca27c9"] },
+        { "purpose": "keys", "path": "No cryptographic key file is documented.", "naming": "not applicable", "status": "not_required", "evidence": ["source:README.md @8ca27c9"] }
       ]
     }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The pinned upstream repository provides a libretro core but no authoritative AmiArcadia Flatpak package or native sandbox persistence contract.", "evidence": ["official:https://github.com/warmenhoven/amiarcadia"] }
   }
 }

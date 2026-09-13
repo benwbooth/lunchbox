@@ -39,7 +39,8 @@
           "path": "None - the Atari 2600 has no BIOS/firmware ROMs; Stella ships everything it needs (bankswitch and cart helper ROMs like Supercharger loading screens are emulated in code; -fastscbios only toggles the progress-bar display)",
           "naming": "No external BIOS/firmware filename or canonical checksum exists for Stella; all required console behavior is shipped/emulated in code",
           "evidence": ["docs:index Features list (no firmware/system ROM requirement anywhere)", "db:no firmware_rules rows exist for stella (none are needed)"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "Stella does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:Stella source tree @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1"] }
       ],
       "notes": "Lunchbox launches with -basedir <session dir> (contract native_command) so the settings DB, nvram and state/ tree all land inside the private base directory; native saves stay there across launches."
     },
@@ -73,7 +74,8 @@
           "path": "None - no BIOS/firmware, as on native Linux",
           "naming": "No external BIOS/firmware filename or canonical checksum; Stella ships/emulates the required Atari behavior",
           "evidence": ["docs:index Features list", "db:no firmware_rules rows exist for stella"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "Stella does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:Stella Flatpak build and source tree @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1"] }
       ],
       "notes": "Flathub build exists (io.github.stella_emu.Stella); Lunchbox's native Stella integration drives the binary with -basedir, which the Flatpak build also honors inside its sandbox."
     },
@@ -107,7 +109,8 @@
           "path": "None - no BIOS/firmware",
           "naming": "No external BIOS/firmware filename or canonical checksum; Stella ships/emulates the required Atari behavior",
           "evidence": ["docs:index Features list", "db:no firmware_rules rows exist for stella"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "Stella does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:Stella Windows source tree @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1"] }
       ]
     },
     "macos": {
@@ -140,7 +143,8 @@
           "path": "None - no BIOS/firmware",
           "naming": "No external BIOS/firmware filename or canonical checksum; Stella ships/emulates the required Atari behavior",
           "evidence": ["docs:index Features list", "db:no firmware_rules rows exist for stella"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "Stella does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:Stella macOS source tree @c65c845c8686c81698ffbd2fc9dfc5ccea5b32a1"] }
       ]
     }
   }

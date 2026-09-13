@@ -64,6 +64,13 @@
             "source:Makefile.am databasedir = $(datadir)/nestopia (tag 1.53.2)",
             "db:firmware_rules catalog sources/firmware-rules.json has 124 rules and no nestopia entry (verified 2026-09-11)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:0ldsk00l/nestopia (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Captured from the 1.53.2 FLTK/SDL2 UI (the current 0ldsk00l GUI); the 1.4x SDL port it replaced kept everything in ~/.nestopia/ instead. Lunchbox launches with a private data root; native saves/states stay in the XDG locations."
@@ -115,6 +122,13 @@
             "source:fltkui/jg.cpp jg_game_load() FDS fallback pathinfo.bios/disksys.rom @1.53.2",
             "repo:flathub/ca._0ldsk00l.Nestopia/ca._0ldsk00l.Nestopia.json @4338c4a12aa44cdd424c99f9df02a155a86ae1c8 (sandbox data home)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:0ldsk00l/nestopia (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Official Flathub package ca._0ldsk00l.Nestopia is the supported Flatpak distribution; its sandbox XDG config/data roots map under ~/.var/app/ca._0ldsk00l.Nestopia/."
@@ -166,6 +180,13 @@
             "source:win32/NstDialogFds.cpp L91-106 (fds/bios, default \"disksys.rom\" via paths.FindFile) and L136-165 (QueryBiosFile/SubmitBios -> Fds::SetBIOS)",
             "source:win32/NstManagerFds.cpp L298-300 EVENT_DISK_QUERY_BIOS -> dialog->QueryBiosFile()"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:0ldsk00l/nestopia (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "The win32 UI keeps everything portable beside the exe unless -lua is passed; the only release artifact at 1.53.2 is nestopia_1.53.2-win32.zip."
@@ -217,6 +238,13 @@
             "db:firmware_rules catalog sources/firmware-rules.json has no nestopia entry (verified 2026-09-11)",
             "docs:GitHub releases - no macOS binary asset at 1.53.2, macOS users build from source (make dist / autotools)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:0ldsk00l/nestopia (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "macOS is source-build only at 1.53.2 (no release asset); the autotools build has an explicit darwin branch and shares the fltkui frontend, so linux and macOS layouts match with $HOME fallbacks instead of XDG env vars."

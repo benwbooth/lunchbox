@@ -69,6 +69,13 @@
             "docs:https://docs.libretro.com/guides/change-directories/ (system_directory = \"default\" resolves to the content directory)",
             "db:firmware_rules retroarch:* runtime_dir entries (sources/firmware-rules.json)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:libretro/RetroArch@0dc3b26c7c560f0e48a7b15002997a8c0676105f (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "One record covers all cores: RetroArch has a single retroarch.cfg, saves/, states/ and system/ shared by every core. Core-specific exceptions: (1) firmware names/subfolders in system/ are per core (docs.libretro.com library pages; lunchbox firmware_rules retroarch:* target the runtime system dir); (2) sort_savefiles_enable/sort_savestates_enable create per-core subdirectories named after the core's reported library_name; (3) cores control SRAM usage, so cores without SRAM never produce a .srm, and subsystem-based content (e.g. MAME softlists) uses subsystem-declared extensions; (4) savestate file naming has no frontend-level per-core variants - documented defaults are .state/.stateN/.state.auto for all cores (core docs such as Beetle PSX only note compatibility caveats, not different file names)."
@@ -123,6 +130,13 @@
             "docs:https://docs.libretro.com/library/bios/ (system directory, per-core names and hashes)",
             "db:firmware_rules retroarch:* runtime_dir entries (sources/firmware-rules.json)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:libretro/RetroArch@0dc3b26c7c560f0e48a7b15002997a8c0676105f (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Gap: the save/state/system defaults under ~/.var/app/org.libretro.RetroArch/config/retroarch/ are derived (Flatpak XDG redirection + RetroArch frontend defaults) rather than stated verbatim in flathub documentation; the controller guide does explicitly confirm the .var/app config path for autoconfig. The manifest grants --filesystem=host and --filesystem=/run/udev:ro, so content files and controller device access work from any host location."
@@ -176,6 +190,13 @@
             "docs:https://docs.libretro.com/library/bios/ (system directory, per-core names and hashes)",
             "db:firmware_rules retroarch:* runtime_dir entries (sources/firmware-rules.json)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:libretro/RetroArch@0dc3b26c7c560f0e48a7b15002997a8c0676105f (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Windows RetroArch is portable-first: the distributed layout is a single RetroArch install folder holding retroarch.cfg, saves\\, states\\, system\\ and autoconfig\\ together. Gap: the widely repeated %APPDATA%\\RetroArch\\retroarch.cfg location does not match current master or v1.19.1, which use retroarch.cfg next to the exe first and %APPDATA%\\retroarch.cfg (no RetroArch segment) as fallback; capture follows the source."
@@ -226,6 +247,13 @@
             "docs:https://docs.libretro.com/library/bios/ (system directory, per-core names and hashes)",
             "db:firmware_rules retroarch:* runtime_dir entries (sources/firmware-rules.json)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:libretro/RetroArch@0dc3b26c7c560f0e48a7b15002997a8c0676105f (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "macOS defaults split data: retroarch.cfg and autoconfig/ live under ~/Library/Application Support/RetroArch (config/ subdir for the main config), while saves/, states/ and system/ default to ~/Documents/RetroArch so users can find and sync them. Portable installs (portable.txt, RAPortableInstall, Steam) concentrate everything next to the .app bundle. Verified on master and v1.19.1; older builds that wrote retroarch.cfg directly under ~/Library/Application Support/RetroArch (without the config/ segment) were not separately pinned."

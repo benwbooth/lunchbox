@@ -10,7 +10,7 @@
 //! the caller-supplied directory bases, and leading directory components
 //! are preserved verbatim so a resolved location is always rooted under one
 //! of the caller's bases or rejected.
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -289,7 +289,17 @@ pub fn save_route_roots_for_platform(
     platform: &str,
     bases: &LocationBases,
 ) -> Result<Vec<RouteRoot>> {
+    if emulator_slug.starts_with("retroarch-core-") {
+        bail!(
+            "{emulator_slug} has no safe core-specific physical save/state route on {platform}; RetroArch's shared frontend directories are intentionally refused until Lunchbox owns matching per-core launch-time directory overrides"
+        );
+    }
     let locations = save_locations_for_platform(records, emulator_slug, platform, bases)?;
+    if sync_model(emulator_slug).0 == SaveSyncModel::WholeImage {
+        bail!(
+            "{emulator_slug} uses whole-image save data on {platform}; synchronization is disabled until an exact stopped-runtime image route is implemented"
+        );
+    }
     let mut indices = BTreeMap::<&'static str, u16>::new();
     let mut roots = Vec::new();
     for location in locations {
@@ -745,6 +755,20 @@ mod tests {
     }
 
     #[test]
+    fn retroarch_core_scopes_refuse_shared_frontend_routes() {
+        let error = save_route_roots_for_platform(
+            &load_records().unwrap(),
+            "retroarch-core-fceumm",
+            "linux",
+            &bases(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("no safe core-specific physical save/state route"));
+        assert!(error.contains("shared frontend directories are intentionally refused"));
+    }
+
+    #[test]
     fn prose_paths_stay_documentation_only() {
         let locations = save_locations(&load_records().unwrap(), "vice", &bases());
         for location in locations {
@@ -808,6 +832,24 @@ mod tests {
             assert_eq!(sync_model(slug).0, SaveSyncModel::PerFile);
         }
         assert_eq!(sync_model("unknown-emulator").0, SaveSyncModel::PerFile);
+    }
+
+    #[test]
+    fn production_routes_fail_closed_for_whole_image_models() {
+        let records = load_records().unwrap();
+        for slug in [
+            "xemu",
+            "hatari",
+            "kronos",
+            "yaba-sanshiro-2",
+            "altirra",
+            "dosbox-staging",
+        ] {
+            let error = save_route_roots_for_platform(&records, slug, "linux", &bases())
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("whole-image save data"), "{slug}: {error}");
+        }
     }
 
     #[test]
@@ -900,7 +942,12 @@ mod tests {
         let input = adapter_locations(&records, "mesen", &[Purpose::Input], &bases());
         assert!(!input.is_empty());
         let mesen_keys = adapter_locations(&records, "mesen", &[Purpose::Keys], &bases());
-        assert!(mesen_keys.is_empty());
+        assert_eq!(mesen_keys.len(), 3);
+        assert!(
+            mesen_keys.iter().all(|location| {
+                location.status == "not_required" && location.resolved.is_none()
+            })
+        );
     }
 
     #[test]

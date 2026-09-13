@@ -4,13 +4,13 @@ use crate::save_cloud::{CloudStore, DeviceHead};
 use crate::save_sync::{
     ArtifactKey, ConflictChoice, LocalInventory, RouteRoot, SaveManifest, SaveRoute, SyncAction,
     SyncActionKind, SyncPlan, SyncScope, merged_files, plan_three_way, resolve_conflicts,
-    scan_local,
+    scan_local, validate_route_roots,
 };
 use anyhow::{Context, Result, bail, ensure};
-use serde::Serialize;
-use std::collections::BTreeMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -123,9 +123,22 @@ fn manifest_is_ancestor(
         .is_some_and(|manifest| manifest.id == ancestor_id))
 }
 
-#[derive(Clone, Debug, Serialize)]
+const RECOVERY_SCHEMA: u32 = 2;
+const LEGACY_TERMINAL_RECOVERY_SCHEMA: u32 = 1;
+const MAX_RECOVERY_JOURNAL_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_RECOVERY_MUTATIONS: usize = 4096;
+
+#[derive(Deserialize)]
+struct RecoveryJournalSchema {
+    schema: u32,
+}
+
+/// Schema 1 never supported restart recovery and therefore recorded no head
+/// linkage. It is accepted only for an already-complete directory produced by
+/// the old writer; an incomplete schema-1 journal remains unsafe to replay.
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RecoveryJournal {
+struct LegacyTerminalRecoveryJournal {
     schema: u32,
     scope: SyncScope,
     device_id: String,
@@ -133,7 +146,19 @@ struct RecoveryJournal {
     mutations: Vec<RecoveryMutation>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecoveryJournal {
+    schema: u32,
+    scope: SyncScope,
+    device_id: String,
+    created_unix_ms: i64,
+    previous_manifest_id: Option<String>,
+    next_manifest_id: String,
+    mutations: Vec<RecoveryMutation>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RecoveryMutation {
     key: ArtifactKey,
@@ -230,6 +255,22 @@ impl PreparedSync {
         now_unix_ms: i64,
     ) -> Result<AppliedSync> {
         ensure!(now_unix_ms >= 0, "sync timestamp is before the Unix epoch");
+        let recovered = recover_pending_sync_mutations(
+            store,
+            &self.scope,
+            &self.device_id,
+            &self.roots,
+            recovery_base,
+        )?;
+        ensure!(
+            recovered.is_empty(),
+            "recovered an interrupted save sync from {}; review a fresh sync plan before making new changes",
+            recovered
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         let current_own_manifest_id = store
             .device_heads(&self.scope)?
             .into_iter()
@@ -288,6 +329,14 @@ impl PreparedSync {
             store.put_blob_file(&self.scope, version, &path)?;
         }
 
+        let files = merged_files(&self.local, self.remote.as_ref(), &actions)?;
+        let manifest = SaveManifest::new(
+            self.scope.clone(),
+            self.parent_ids.clone(),
+            self.device_id.clone(),
+            now_unix_ms,
+            files,
+        )?;
         let mut recovery_directory = None;
         let local_actions = actions
             .iter()
@@ -308,19 +357,13 @@ impl PreparedSync {
                 &local_actions,
                 recovery_base,
                 now_unix_ms,
+                self.own_manifest_id.as_deref(),
+                &manifest.id,
             )?;
             apply_local_mutations(&recovery)?;
             recovery_directory = Some(recovery.directory.clone());
         }
 
-        let files = merged_files(&self.local, self.remote.as_ref(), &actions)?;
-        let manifest = SaveManifest::new(
-            self.scope.clone(),
-            self.parent_ids.clone(),
-            self.device_id.clone(),
-            now_unix_ms,
-            files,
-        )?;
         store.put_manifest(&manifest)?;
         store.set_device_head(&DeviceHead::new(
             self.scope.clone(),
@@ -344,6 +387,503 @@ struct PreparedLocalMutations {
     mutations: Vec<RecoveryMutation>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MutationRecoveryState {
+    Applied,
+    NotApplied,
+}
+
+struct ValidatedRecovery {
+    directory: PathBuf,
+    journal: RecoveryJournal,
+    states: Vec<MutationRecoveryState>,
+}
+
+/// Resolve one interrupted local save transaction before any new sync writes.
+///
+/// A journal is rolled back only while this device's cloud head still matches
+/// the head recorded before the transaction. If the intended head was already
+/// published, every local mutation must match its staged result before the
+/// journal is marked complete. Any other state is ambiguous and remains on
+/// disk while synchronization fails closed.
+pub fn recover_pending_sync_mutations(
+    store: &CloudStore,
+    scope: &SyncScope,
+    device_id: &str,
+    roots: &[RouteRoot],
+    recovery_base: &Path,
+) -> Result<Vec<PathBuf>> {
+    ensure!(
+        recovery_base.is_absolute(),
+        "sync recovery base must be absolute"
+    );
+    ensure_existing_ancestors_without_symlink(recovery_base)?;
+    let metadata = match std::fs::symlink_metadata(recovery_base) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error).context("reading save-sync recovery base"),
+    };
+    ensure!(
+        metadata.is_dir() && !metadata.file_type().is_symlink(),
+        "save-sync recovery base is not a physical directory"
+    );
+
+    let pending = pending_recovery_directories(store, recovery_base)?;
+    ensure!(
+        pending.len() <= 1,
+        "multiple incomplete save-sync recovery journals require manual review: {}",
+        pending
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    let Some(directory) = pending.into_iter().next() else {
+        return Ok(Vec::new());
+    };
+    let recovery = read_and_validate_recovery(&directory, scope, device_id, roots)?;
+    let current_manifest_id = store
+        .device_heads(&recovery.journal.scope)?
+        .into_iter()
+        .find(|head| head.device_id == recovery.journal.device_id)
+        .map(|head| head.manifest_id);
+
+    if current_manifest_id.as_deref() == Some(recovery.journal.next_manifest_id.as_str()) {
+        for (mutation, state) in recovery.journal.mutations.iter().zip(&recovery.states) {
+            ensure!(
+                *state == MutationRecoveryState::Applied,
+                "committed save-sync recovery target does not match its staged result: {}; recovery evidence retained at {}",
+                mutation.target.display(),
+                recovery.directory.display()
+            );
+        }
+        write_synced(
+            &recovery.directory.join("complete"),
+            recovery.journal.next_manifest_id.as_bytes(),
+        )?;
+    } else if current_manifest_id.as_deref() == recovery.journal.previous_manifest_id.as_deref() {
+        let applied = recovery
+            .journal
+            .mutations
+            .iter()
+            .zip(&recovery.states)
+            .filter(|(_, state)| **state == MutationRecoveryState::Applied)
+            .map(|(mutation, _)| mutation.clone())
+            .collect::<Vec<_>>();
+        rollback_mutations(&applied).with_context(|| {
+            format!(
+                "recovering interrupted save sync; recovery evidence retained at {}",
+                recovery.directory.display()
+            )
+        })?;
+        for mutation in &recovery.journal.mutations {
+            ensure!(
+                mutation_matches_original(mutation)?,
+                "rolled-back save-sync target could not be verified: {}; recovery evidence retained at {}",
+                mutation.target.display(),
+                recovery.directory.display()
+            );
+        }
+        write_synced(
+            &recovery.directory.join("rolled-back"),
+            recovery.journal.next_manifest_id.as_bytes(),
+        )?;
+    } else {
+        bail!(
+            "save-sync recovery journal has a stale cloud head; recovery evidence retained at {}",
+            recovery.directory.display()
+        );
+    }
+    Ok(vec![recovery.directory])
+}
+
+fn pending_recovery_directories(store: &CloudStore, recovery_base: &Path) -> Result<Vec<PathBuf>> {
+    let mut pending = Vec::new();
+    for entry in std::fs::read_dir(recovery_base).context("listing save-sync recovery journals")? {
+        let entry = entry.context("reading save-sync recovery directory entry")?;
+        let path = entry.path();
+        let metadata = std::fs::symlink_metadata(&path)
+            .context("reading save-sync recovery directory metadata")?;
+        ensure!(
+            metadata.is_dir() && !metadata.file_type().is_symlink(),
+            "unexpected non-directory in save-sync recovery base: {}",
+            path.display()
+        );
+        let timestamp = recovery_directory_timestamp(&path)?;
+        let complete = read_recovery_marker(&path.join("complete"))?;
+        let rolled_back = read_recovery_marker(&path.join("rolled-back"))?;
+        ensure!(
+            !(complete.is_some() && rolled_back.is_some()),
+            "save-sync recovery directory has conflicting completion markers: {}",
+            path.display()
+        );
+        if complete.is_some() || rolled_back.is_some() {
+            validate_terminal_recovery_journal(
+                store,
+                &path,
+                complete.as_deref(),
+                rolled_back.as_deref(),
+            )?;
+        } else {
+            pending.push((timestamp, path));
+        }
+    }
+    pending.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    Ok(pending.into_iter().map(|(_, path)| path).collect())
+}
+
+fn recovery_directory_timestamp(directory: &Path) -> Result<i64> {
+    let name = directory
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("save-sync recovery directory name is not UTF-8")?;
+    let (timestamp, id) = name
+        .split_once('-')
+        .context("invalid save-sync recovery directory name")?;
+    let timestamp = timestamp
+        .parse::<i64>()
+        .context("invalid save-sync recovery directory timestamp")?;
+    ensure!(timestamp >= 0, "save-sync recovery timestamp is negative");
+    ensure!(
+        id.len() == 32 && Uuid::parse_str(id).is_ok(),
+        "invalid save-sync recovery directory ID"
+    );
+    Ok(timestamp)
+}
+
+fn read_recovery_marker(path: &Path) -> Result<Option<String>> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error).context("reading save-sync recovery marker"),
+    };
+    ensure!(
+        metadata.is_file() && !metadata.file_type().is_symlink() && metadata.len() == 64,
+        "invalid save-sync recovery marker: {}",
+        path.display()
+    );
+    let value = std::fs::read_to_string(path).context("reading save-sync recovery marker")?;
+    ensure_manifest_id(&value)?;
+    Ok(Some(value))
+}
+
+fn parse_recovery_journal(directory: &Path) -> Result<RecoveryJournal> {
+    let bytes = read_recovery_journal_bytes(directory)?;
+    parse_recovery_journal_bytes(directory, &bytes)
+}
+
+fn read_recovery_journal_bytes(directory: &Path) -> Result<Vec<u8>> {
+    let journal_path = directory.join("journal.json");
+    let metadata = regular_file_metadata(&journal_path, "save-sync recovery journal")?;
+    ensure!(
+        metadata.len() <= MAX_RECOVERY_JOURNAL_BYTES,
+        "save-sync recovery journal is too large"
+    );
+    std::fs::read(&journal_path).context("reading save-sync recovery journal")
+}
+
+fn parse_recovery_journal_bytes(directory: &Path, bytes: &[u8]) -> Result<RecoveryJournal> {
+    let journal: RecoveryJournal =
+        serde_json::from_slice(bytes).context("parsing save-sync recovery journal")?;
+    ensure!(
+        journal.schema == RECOVERY_SCHEMA,
+        "unsupported save-sync recovery journal schema"
+    );
+    journal.scope.validate()?;
+    ensure!(
+        journal.created_unix_ms == recovery_directory_timestamp(directory)?,
+        "save-sync recovery journal timestamp does not match its directory"
+    );
+    ensure!(
+        !journal.mutations.is_empty() && journal.mutations.len() <= MAX_RECOVERY_MUTATIONS,
+        "save-sync recovery journal has an invalid mutation count"
+    );
+    ensure_manifest_id(&journal.next_manifest_id)?;
+    if let Some(previous) = &journal.previous_manifest_id {
+        ensure_manifest_id(previous)?;
+        ensure!(
+            previous != &journal.next_manifest_id,
+            "save-sync recovery journal did not advance the manifest"
+        );
+    }
+    DeviceHead::new(
+        journal.scope.clone(),
+        &journal.device_id,
+        journal.next_manifest_id.clone(),
+        journal.created_unix_ms,
+    )
+    .context("validating save-sync recovery identity")?;
+    Ok(journal)
+}
+
+fn validate_terminal_recovery_journal(
+    store: &CloudStore,
+    directory: &Path,
+    complete: Option<&str>,
+    rolled_back: Option<&str>,
+) -> Result<()> {
+    let marker = complete
+        .or(rolled_back)
+        .context("missing recovery marker")?;
+    let bytes = read_recovery_journal_bytes(directory)?;
+    let schema: RecoveryJournalSchema =
+        serde_json::from_slice(&bytes).context("reading save-sync recovery journal schema")?;
+    match schema.schema {
+        RECOVERY_SCHEMA => {
+            let journal = parse_recovery_journal_bytes(directory, &bytes)?;
+            ensure!(
+                marker == journal.next_manifest_id,
+                "save-sync recovery marker does not match its journal: {}",
+                directory.display()
+            );
+        }
+        LEGACY_TERMINAL_RECOVERY_SCHEMA => {
+            ensure!(
+                complete.is_some() && rolled_back.is_none(),
+                "legacy save-sync recovery journal has an impossible rollback marker: {}",
+                directory.display()
+            );
+            let journal: LegacyTerminalRecoveryJournal = serde_json::from_slice(&bytes)
+                .context("parsing legacy terminal save-sync recovery journal")?;
+            ensure!(
+                journal.schema == LEGACY_TERMINAL_RECOVERY_SCHEMA,
+                "unsupported save-sync recovery journal schema"
+            );
+            journal.scope.validate()?;
+            ensure!(
+                journal.created_unix_ms == recovery_directory_timestamp(directory)?,
+                "legacy save-sync recovery journal timestamp does not match its directory"
+            );
+            ensure!(
+                !journal.mutations.is_empty() && journal.mutations.len() <= MAX_RECOVERY_MUTATIONS,
+                "legacy save-sync recovery journal has an invalid mutation count"
+            );
+            DeviceHead::new(
+                journal.scope.clone(),
+                journal.device_id.clone(),
+                marker,
+                journal.created_unix_ms,
+            )
+            .context("validating legacy terminal save-sync recovery identity")?;
+            // Schema 1 did not persist the intended manifest ID. The old
+            // writer did, however, write `complete` only after publishing the
+            // immutable manifest. Resolve it to establish linkage instead of
+            // trusting the marker by shape alone.
+            let manifest = store
+                .get_manifest(&journal.scope, marker)
+                .context("resolving legacy completed save-sync manifest")?;
+            ensure!(
+                manifest.device_id == journal.device_id
+                    && manifest.created_unix_ms == journal.created_unix_ms,
+                "legacy save-sync recovery marker does not match its journal: {}",
+                directory.display()
+            );
+        }
+        _ => bail!("unsupported save-sync recovery journal schema"),
+    }
+    Ok(())
+}
+
+fn read_and_validate_recovery(
+    directory: &Path,
+    expected_scope: &SyncScope,
+    expected_device_id: &str,
+    roots: &[RouteRoot],
+) -> Result<ValidatedRecovery> {
+    let journal = parse_recovery_journal(directory)?;
+    ensure!(
+        &journal.scope == expected_scope,
+        "incomplete save-sync recovery journal belongs to a different scope: {}",
+        directory.display()
+    );
+    ensure!(
+        journal.device_id == expected_device_id,
+        "incomplete save-sync recovery journal belongs to a different device: {}",
+        directory.display()
+    );
+    let roots = root_map(roots)?;
+    let mut keys = BTreeSet::new();
+    let mut targets = BTreeSet::new();
+    let mut states = Vec::with_capacity(journal.mutations.len());
+    for (index, mutation) in journal.mutations.iter().enumerate() {
+        let route = mutation.key.route()?;
+        let relative = mutation.key.relative_path()?;
+        ensure!(
+            ArtifactKey::new(route, relative)?.as_str() == mutation.key.as_str(),
+            "save-sync recovery artifact key is not canonical"
+        );
+        ensure!(
+            keys.insert(mutation.key.clone()),
+            "duplicate artifact in save-sync recovery journal"
+        );
+        ensure!(
+            targets.insert(mutation.target.clone()),
+            "duplicate target in save-sync recovery journal"
+        );
+        let expected_target = artifact_path(&roots, &mutation.key)?;
+        ensure!(
+            mutation.target == expected_target,
+            "save-sync recovery target no longer matches its route: {}",
+            mutation.target.display()
+        );
+        validate_existing_path_chain(&roots, &mutation.key, &mutation.target)?;
+
+        let expected_backup = directory.join("backups").join(mutation.key.as_str());
+        if let Some(backup) = &mutation.backup {
+            ensure!(
+                backup == &expected_backup,
+                "save-sync recovery backup escaped its journal directory"
+            );
+            regular_file_metadata(backup, "save-sync recovery backup")?;
+        }
+        let expected_staged = directory.join("downloads").join(format!("{index}.part"));
+        match mutation.kind {
+            SyncActionKind::Download => {
+                let staged = mutation
+                    .staged_download
+                    .as_ref()
+                    .context("download recovery mutation has no staged file")?;
+                ensure!(
+                    staged == &expected_staged,
+                    "staged save download escaped its journal directory"
+                );
+                regular_file_metadata(staged, "staged save download")?;
+            }
+            SyncActionKind::DeleteLocal => {
+                ensure!(
+                    mutation.staged_download.is_none(),
+                    "delete recovery mutation unexpectedly has a staged download"
+                );
+                ensure!(
+                    mutation.backup.is_some(),
+                    "delete recovery mutation has no original backup"
+                );
+            }
+            _ => bail!("non-local action in save-sync recovery journal"),
+        }
+        states.push(classify_recovery_mutation(mutation)?);
+    }
+    Ok(ValidatedRecovery {
+        directory: directory.to_path_buf(),
+        journal,
+        states,
+    })
+}
+
+fn ensure_manifest_id(value: &str) -> Result<()> {
+    ensure!(
+        value.len() == 64
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+        "save-sync recovery manifest ID is not canonical SHA-256"
+    );
+    Ok(())
+}
+
+fn regular_file_metadata(path: &Path, label: &str) -> Result<std::fs::Metadata> {
+    ensure_existing_ancestors_without_symlink(path)?;
+    let metadata = std::fs::symlink_metadata(path).with_context(|| format!("reading {label}"))?;
+    ensure!(
+        metadata.is_file() && !metadata.file_type().is_symlink(),
+        "{label} is not a physical regular file: {}",
+        path.display()
+    );
+    Ok(metadata)
+}
+
+fn optional_regular_file(path: &Path, label: &str) -> Result<bool> {
+    ensure_existing_ancestors_without_symlink(path)?;
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            ensure!(
+                metadata.is_file() && !metadata.file_type().is_symlink(),
+                "{label} is not a physical regular file: {}",
+                path.display()
+            );
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).with_context(|| format!("reading {label}")),
+    }
+}
+
+fn classify_recovery_mutation(mutation: &RecoveryMutation) -> Result<MutationRecoveryState> {
+    let target_exists = optional_regular_file(&mutation.target, "save-sync recovery target")?;
+    match mutation.kind {
+        SyncActionKind::Download => {
+            let staged = mutation
+                .staged_download
+                .as_ref()
+                .context("download recovery mutation has no staged file")?;
+            if target_exists && files_equal(&mutation.target, staged)? {
+                return Ok(MutationRecoveryState::Applied);
+            }
+            match &mutation.backup {
+                Some(backup) if target_exists && files_equal(&mutation.target, backup)? => {
+                    Ok(MutationRecoveryState::NotApplied)
+                }
+                None if !target_exists => Ok(MutationRecoveryState::NotApplied),
+                _ => bail!(
+                    "save-sync recovery target is stale or ambiguous: {}",
+                    mutation.target.display()
+                ),
+            }
+        }
+        SyncActionKind::DeleteLocal => {
+            let backup = mutation
+                .backup
+                .as_ref()
+                .context("delete recovery mutation has no original backup")?;
+            if !target_exists {
+                Ok(MutationRecoveryState::Applied)
+            } else if files_equal(&mutation.target, backup)? {
+                Ok(MutationRecoveryState::NotApplied)
+            } else {
+                bail!(
+                    "save-sync recovery target is stale or ambiguous: {}",
+                    mutation.target.display()
+                )
+            }
+        }
+        _ => bail!("non-local action in save-sync recovery journal"),
+    }
+}
+
+fn mutation_matches_original(mutation: &RecoveryMutation) -> Result<bool> {
+    let target_exists = optional_regular_file(&mutation.target, "rolled-back save target")?;
+    match &mutation.backup {
+        Some(backup) => Ok(target_exists && files_equal(&mutation.target, backup)?),
+        None => Ok(!target_exists),
+    }
+}
+
+fn files_equal(left: &Path, right: &Path) -> Result<bool> {
+    let left_metadata = regular_file_metadata(left, "save-sync comparison file")?;
+    let right_metadata = regular_file_metadata(right, "save-sync comparison file")?;
+    if left_metadata.len() != right_metadata.len() {
+        return Ok(false);
+    }
+    let mut left = File::open(left).context("opening save-sync comparison file")?;
+    let mut right = File::open(right).context("opening save-sync comparison file")?;
+    let mut left_buffer = [0_u8; 64 * 1024];
+    let mut right_buffer = [0_u8; 64 * 1024];
+    loop {
+        let left_count = left
+            .read(&mut left_buffer)
+            .context("reading save-sync comparison file")?;
+        let right_count = right
+            .read(&mut right_buffer)
+            .context("reading save-sync comparison file")?;
+        if left_count != right_count || left_buffer[..left_count] != right_buffer[..right_count] {
+            return Ok(false);
+        }
+        if left_count == 0 {
+            return Ok(true);
+        }
+    }
+}
+
 fn prepare_local_mutations(
     store: &CloudStore,
     scope: &SyncScope,
@@ -352,6 +892,8 @@ fn prepare_local_mutations(
     actions: &[SyncAction],
     recovery_base: &Path,
     now_unix_ms: i64,
+    previous_manifest_id: Option<&str>,
+    next_manifest_id: &str,
 ) -> Result<PreparedLocalMutations> {
     ensure!(
         recovery_base.is_absolute(),
@@ -400,10 +942,12 @@ fn prepare_local_mutations(
         });
     }
     let journal = RecoveryJournal {
-        schema: 1,
+        schema: RECOVERY_SCHEMA,
         scope: scope.clone(),
         device_id: device_id.to_owned(),
         created_unix_ms: now_unix_ms,
+        previous_manifest_id: previous_manifest_id.map(str::to_owned),
+        next_manifest_id: next_manifest_id.to_owned(),
         mutations: mutations.clone(),
     };
     let journal_bytes =
@@ -537,9 +1081,9 @@ fn write_synced(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 fn root_map(roots: &[RouteRoot]) -> Result<BTreeMap<SaveRoute, PathBuf>> {
+    validate_route_roots(roots)?;
     let mut map = BTreeMap::new();
     for root in roots {
-        ensure!(root.path.is_absolute(), "save root must be absolute");
         ensure!(
             map.insert(root.route, root.path.clone()).is_none(),
             "duplicate save route"
@@ -920,5 +1464,319 @@ mod tests {
             std::fs::read(device_b.join("game.sav")).unwrap(),
             b"remote save"
         );
+    }
+
+    #[test]
+    fn restart_recovery_rolls_back_an_interrupted_multi_file_apply() {
+        let store = CloudStore::memory().unwrap();
+        let local = tempfile::tempdir().unwrap();
+        let recovery_base = tempfile::tempdir().unwrap();
+        std::fs::write(local.path().join("a.sav"), b"old a").unwrap();
+        std::fs::write(local.path().join("b.sav"), b"old b").unwrap();
+        let route = SaveRoute {
+            purpose: SavePurpose::Saves,
+            root_index: 0,
+        };
+        let roots = roots(local.path());
+        let root_map = root_map(&roots).unwrap();
+        let mut actions = Vec::new();
+        for (name, contents) in [("a.sav", b"new a".as_slice()), ("b.sav", b"new b")] {
+            let version = FileVersion::from_bytes(contents, 1000);
+            store.put_blob(&scope(), &version, contents).unwrap();
+            actions.push(SyncAction {
+                key: ArtifactKey::new(route, name).unwrap(),
+                kind: SyncActionKind::Download,
+                version: Some(version),
+            });
+        }
+        let prepared = prepare_local_mutations(
+            &store,
+            &scope(),
+            "device-a",
+            &root_map,
+            &actions,
+            recovery_base.path(),
+            1000,
+            None,
+            &"b".repeat(64),
+        )
+        .unwrap();
+
+        publish_download(&prepared.mutations[0]).unwrap();
+        assert_eq!(std::fs::read(local.path().join("a.sav")).unwrap(), b"new a");
+        assert_eq!(std::fs::read(local.path().join("b.sav")).unwrap(), b"old b");
+
+        let recovered = recover_pending_sync_mutations(
+            &store,
+            &scope(),
+            "device-a",
+            &roots,
+            recovery_base.path(),
+        )
+        .unwrap();
+        assert_eq!(recovered, vec![prepared.directory.clone()]);
+        assert_eq!(std::fs::read(local.path().join("a.sav")).unwrap(), b"old a");
+        assert_eq!(std::fs::read(local.path().join("b.sav")).unwrap(), b"old b");
+        assert!(prepared.directory.join("journal.json").is_file());
+        assert!(prepared.directory.join("backups/saves/0/a.sav").is_file());
+        assert!(prepared.directory.join("backups/saves/0/b.sav").is_file());
+        assert!(prepared.directory.join("rolled-back").is_file());
+        assert!(!prepared.directory.join("complete").exists());
+        assert!(
+            recover_pending_sync_mutations(
+                &store,
+                &scope(),
+                "device-a",
+                &roots,
+                recovery_base.path(),
+            )
+            .unwrap()
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn restart_recovery_malformed_journal_blocks_apply_without_discarding_evidence() {
+        let store = CloudStore::memory().unwrap();
+        let local = tempfile::tempdir().unwrap();
+        let recovery_base = tempfile::tempdir().unwrap();
+        std::fs::write(local.path().join("game.sav"), b"local").unwrap();
+        let prepared =
+            prepare_sync(&store, scope(), "device-a", roots(local.path()), None).unwrap();
+        let directory = recovery_base
+            .path()
+            .join(format!("1000-{}", Uuid::new_v4().simple()));
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::write(directory.join("journal.json"), b"{not-json").unwrap();
+
+        let error = prepared
+            .apply(&store, &BTreeMap::new(), recovery_base.path(), 2000)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("parsing save-sync recovery journal"),
+            "{error}"
+        );
+        assert!(directory.join("journal.json").is_file());
+        assert!(!directory.join("complete").exists());
+        assert!(!directory.join("rolled-back").exists());
+        assert!(store.device_heads(&scope()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn restart_recovery_stale_target_fails_closed_and_retains_backups() {
+        let store = CloudStore::memory().unwrap();
+        let local = tempfile::tempdir().unwrap();
+        let recovery_base = tempfile::tempdir().unwrap();
+        let target = local.path().join("game.sav");
+        std::fs::write(&target, b"original").unwrap();
+        let route = SaveRoute {
+            purpose: SavePurpose::Saves,
+            root_index: 0,
+        };
+        let roots = roots(local.path());
+        let version = FileVersion::from_bytes(b"download", 1000);
+        store.put_blob(&scope(), &version, b"download").unwrap();
+        let prepared = prepare_local_mutations(
+            &store,
+            &scope(),
+            "device-a",
+            &root_map(&roots).unwrap(),
+            &[SyncAction {
+                key: ArtifactKey::new(route, "game.sav").unwrap(),
+                kind: SyncActionKind::Download,
+                version: Some(version),
+            }],
+            recovery_base.path(),
+            1000,
+            None,
+            &"c".repeat(64),
+        )
+        .unwrap();
+        std::fs::write(&target, b"external change").unwrap();
+
+        let error = recover_pending_sync_mutations(
+            &store,
+            &scope(),
+            "device-a",
+            &roots,
+            recovery_base.path(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("stale or ambiguous"), "{error}");
+        assert_eq!(std::fs::read(&target).unwrap(), b"external change");
+        assert!(prepared.directory.join("journal.json").is_file());
+        assert!(
+            prepared
+                .directory
+                .join("backups/saves/0/game.sav")
+                .is_file()
+        );
+        assert!(!prepared.directory.join("complete").exists());
+        assert!(!prepared.directory.join("rolled-back").exists());
+    }
+
+    #[test]
+    fn restart_recovery_finishes_a_committed_journal_without_rolling_back() {
+        let store = CloudStore::memory().unwrap();
+        let local = tempfile::tempdir().unwrap();
+        let recovery_base = tempfile::tempdir().unwrap();
+        let target = local.path().join("game.sav");
+        std::fs::write(&target, b"old").unwrap();
+        let route = SaveRoute {
+            purpose: SavePurpose::Saves,
+            root_index: 0,
+        };
+        let key = ArtifactKey::new(route, "game.sav").unwrap();
+        let version = FileVersion::from_bytes(b"committed", 1000);
+        store.put_blob(&scope(), &version, b"committed").unwrap();
+        let manifest = SaveManifest::new(
+            scope(),
+            Vec::new(),
+            "device-a",
+            1000,
+            BTreeMap::from([(key.clone(), version.clone())]),
+        )
+        .unwrap();
+        let roots = roots(local.path());
+        let prepared = prepare_local_mutations(
+            &store,
+            &scope(),
+            "device-a",
+            &root_map(&roots).unwrap(),
+            &[SyncAction {
+                key,
+                kind: SyncActionKind::Download,
+                version: Some(version),
+            }],
+            recovery_base.path(),
+            1000,
+            None,
+            &manifest.id,
+        )
+        .unwrap();
+        apply_local_mutations(&prepared).unwrap();
+        store.put_manifest(&manifest).unwrap();
+        store
+            .set_device_head(
+                &DeviceHead::new(scope(), "device-a", manifest.id.clone(), 1000).unwrap(),
+            )
+            .unwrap();
+
+        let recovered = recover_pending_sync_mutations(
+            &store,
+            &scope(),
+            "device-a",
+            &roots,
+            recovery_base.path(),
+        )
+        .unwrap();
+        assert_eq!(recovered, vec![prepared.directory.clone()]);
+        assert_eq!(std::fs::read(target).unwrap(), b"committed");
+        assert!(prepared.directory.join("complete").is_file());
+        assert!(!prepared.directory.join("rolled-back").exists());
+        assert!(prepared.directory.join("journal.json").is_file());
+        assert!(
+            prepared
+                .directory
+                .join("backups/saves/0/game.sav")
+                .is_file()
+        );
+
+        std::fs::write(prepared.directory.join("complete"), "c".repeat(64)).unwrap();
+        let error = recover_pending_sync_mutations(
+            &store,
+            &scope(),
+            "device-a",
+            &roots,
+            recovery_base.path(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains("recovery marker does not match its journal"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn legacy_completed_journal_is_accepted_but_legacy_pending_journal_is_not_replayed() {
+        let store = CloudStore::memory().unwrap();
+        let local = tempfile::tempdir().unwrap();
+        let recovery_base = tempfile::tempdir().unwrap();
+        let directory = recovery_base
+            .path()
+            .join(format!("1000-{}", Uuid::new_v4().simple()));
+        std::fs::create_dir(&directory).unwrap();
+        let key = ArtifactKey::new(
+            SaveRoute {
+                purpose: SavePurpose::Saves,
+                root_index: 0,
+            },
+            "game.sav",
+        )
+        .unwrap();
+        let version = FileVersion::from_bytes(b"committed", 1000);
+        store.put_blob(&scope(), &version, b"committed").unwrap();
+        let manifest = SaveManifest::new(
+            scope(),
+            Vec::new(),
+            "device-a",
+            1000,
+            BTreeMap::from([(key.clone(), version)]),
+        )
+        .unwrap();
+        store.put_manifest(&manifest).unwrap();
+        let mutation = RecoveryMutation {
+            key,
+            kind: SyncActionKind::Download,
+            target: local.path().join("game.sav"),
+            backup: None,
+            staged_download: Some(directory.join("downloads/0.part")),
+        };
+        let journal = serde_json::json!({
+            "schema": LEGACY_TERMINAL_RECOVERY_SCHEMA,
+            "scope": scope(),
+            "device_id": "device-a",
+            "created_unix_ms": 1000,
+            "mutations": [mutation],
+        });
+        std::fs::write(
+            directory.join("journal.json"),
+            serde_json::to_vec_pretty(&journal).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(directory.join("complete"), &manifest.id).unwrap();
+
+        assert!(
+            recover_pending_sync_mutations(
+                &store,
+                &scope(),
+                "device-a",
+                &roots(local.path()),
+                recovery_base.path(),
+            )
+            .unwrap()
+            .is_empty()
+        );
+
+        std::fs::remove_file(directory.join("complete")).unwrap();
+        let error = recover_pending_sync_mutations(
+            &store,
+            &scope(),
+            "device-a",
+            &roots(local.path()),
+            recovery_base.path(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains("parsing save-sync recovery journal"),
+            "{error}"
+        );
+        assert!(directory.join("journal.json").is_file());
+        assert!(!directory.join("complete").exists());
+        assert!(!directory.join("rolled-back").exists());
     }
 }

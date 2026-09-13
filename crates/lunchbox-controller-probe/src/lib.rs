@@ -41,6 +41,11 @@ pub struct Device {
     pub product: u16,
     pub product_version: u16,
     pub is_gamepad: bool,
+    /// Zero-based position in SDL_GetGamepads for this exact snapshot. This is
+    /// distinct from the joystick enumeration position and SDL's optional
+    /// player-index hint. It is absent only in older serialized snapshots.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gamepad_index: Option<u16>,
     /// SDL's hint before opening; DuckStation can choose a different fallback.
     pub reported_player_index: i32,
     pub mapping: Option<String>,
@@ -289,6 +294,8 @@ pub fn inspect_target_runtime(
         let free = *library.get::<Free>(b"SDL_free\0")?;
         let joysticks =
             *library.get::<unsafe extern "C" fn(*mut c_int) -> *mut u32>(b"SDL_GetJoysticks\0")?;
+        let gamepads =
+            *library.get::<unsafe extern "C" fn(*mut c_int) -> *mut u32>(b"SDL_GetGamepads\0")?;
         let get_name = *library
             .get::<unsafe extern "C" fn(u32) -> *const c_char>(b"SDL_GetJoystickNameForID\0")?;
         let get_guid =
@@ -354,8 +361,38 @@ pub fn inspect_target_runtime(
             free,
         };
         ensure!((0..=1024).contains(&count), "Invalid SDL device count");
+        let mut gamepad_count = 0;
+        let gamepad_ids = gamepads(&mut gamepad_count);
+        ensure!(
+            !gamepad_ids.is_null(),
+            "SDL could not enumerate gamepads: {:?}",
+            string(get_error())?
+        );
+        let _gamepad_ids = Allocation {
+            pointer: gamepad_ids.cast(),
+            free,
+        };
+        ensure!(
+            (0..=1024).contains(&gamepad_count),
+            "Invalid SDL gamepad count"
+        );
+        let gamepad_order = std::slice::from_raw_parts(gamepad_ids, gamepad_count as usize)
+            .iter()
+            .enumerate()
+            .map(|(index, id)| {
+                (
+                    *id,
+                    u16::try_from(index).expect("bounded SDL gamepad index"),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        ensure!(
+            gamepad_order.len() == gamepad_count as usize,
+            "SDL returned duplicate gamepad instance ids"
+        );
         let mut devices = Vec::new();
         for id in std::slice::from_raw_parts(ids, count as usize) {
+            let gamepad = is_gamepad(*id);
             let raw_mapping = mapping(*id);
             let _mapping = Allocation {
                 pointer: raw_mapping.cast(),
@@ -364,7 +401,7 @@ pub fn inspect_target_runtime(
             devices.push(Device {
                 instance_id: *id,
                 name: string(get_name(*id))?,
-                gamepad_name: if is_gamepad(*id) {
+                gamepad_name: if gamepad {
                     string(gamepad_name(*id))?
                 } else {
                     None
@@ -379,12 +416,20 @@ pub fn inspect_target_runtime(
                 product: product(*id),
                 product_version: product_version(*id),
                 reported_player_index: player(*id),
-                is_gamepad: is_gamepad(*id),
+                is_gamepad: gamepad,
+                gamepad_index: gamepad_order.get(id).copied(),
                 mapping: string(raw_mapping)?,
                 resolved: None,
                 linux_classic: None,
             });
         }
+        ensure!(
+            devices.iter().filter(|device| device.is_gamepad).count() == gamepad_order.len()
+                && devices
+                    .iter()
+                    .all(|device| device.is_gamepad == device.gamepad_index.is_some()),
+            "SDL joystick and gamepad enumerations disagree"
+        );
         // Validate the complete selection before opening any device. Never open
         // another same-model pad when a selected pad disappears.
         for path in binding_paths {
@@ -661,6 +706,7 @@ mod tests {
                     product: 0x028e,
                     product_version: 1,
                     is_gamepad: true,
+                    gamepad_index: Some(i as u16),
                     reported_player_index: -1,
                     mapping: None,
                     resolved: None,
@@ -696,6 +742,10 @@ mod tests {
                 .unwrap()
                 .reported_player_index,
             -1
+        );
+        assert_eq!(
+            copy.device_at_path("/dev/input/js5").unwrap().gamepad_index,
+            Some(1)
         );
     }
     #[test]

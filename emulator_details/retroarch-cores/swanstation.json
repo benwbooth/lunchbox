@@ -20,7 +20,7 @@
     "files": [
       {
         "path": "psxonpsp660.bin",
-        "description": "PSP PS1 BIOS",
+        "description": "psxonpsp660.bin (PSP PS1 BIOS)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -36,7 +36,7 @@
       },
       {
         "path": "scph5500.bin",
-        "description": "PS1 Japan BIOS",
+        "description": "scph5500.bin (PS1 JP BIOS)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -52,7 +52,7 @@
       },
       {
         "path": "scph5501.bin",
-        "description": "PS1 US BIOS",
+        "description": "scph5501.bin (PS1 US BIOS)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -68,7 +68,7 @@
       },
       {
         "path": "scph5502.bin",
-        "description": "PS1 Europe BIOS",
+        "description": "scph5502.bin (PS1 EU BIOS)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -84,7 +84,7 @@
       },
       {
         "path": "ps1_rom.bin",
-        "description": "PS3 PS1 BIOS",
+        "description": "ps1_rom.bin (PS3 PS1 BIOS)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -105,14 +105,12 @@
     ]
   },
   "saves": {
-    "status": "supported",
-    "extensions": [
-      ".srm"
-    ],
-    "naming": "RetroArch uses <content-basename>.srm for the core's persistent memory-card/save data.",
-    "notes": "PlayStation memory-card persistence is content-dependent and may use configured card images.",
+    "status": "unknown",
+    "extensions": [],
+    "naming": "The pinned core-info metadata does not declare libretro_saves; no persistent-save artifact or filename extension is claimed.",
+    "notes": "Persistent-save behavior remains unknown without revision-pinned core source evidence.",
     "evidence": [
-      "SwanStation libretro memory-card implementation"
+      "swanstation_libretro.info libretro_saves=absent"
     ]
   },
   "states": {

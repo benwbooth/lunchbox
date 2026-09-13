@@ -123,6 +123,44 @@ pub(super) fn reuse(
                 mapping.jgenesis_native_launches.push(setup);
             }
         }
+        "gopher64"
+            if !mapping
+                .gopher64_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.gopher64_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.gopher64_native_launches.push(setup);
+            }
+        }
+        "rmg"
+            if !mapping
+                .rmg_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(&mapping.rmg_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.rmg_native_launches.push(setup);
+            }
+        }
+        "simple64"
+            if !mapping
+                .simple64_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.simple64_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.simple64_native_launches.push(setup);
+            }
+        }
         "yaba-sanshiro"
             if !mapping
                 .yaba_sanshiro_native_launches

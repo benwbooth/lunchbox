@@ -2,11 +2,15 @@
   "schema_version": 1,
   "slug": "pcsx-rearmed",
   "emulator": "PCSX-ReARMed",
-  "sources": [{ "kind": "source", "repo": "https://github.com/notaz/pcsx_rearmed", "url": "https://github.com/notaz/pcsx_rearmed", "role": "official upstream project identity" }],
+  "sources": [
+    {"kind":"source","repo":"notaz/pcsx_rearmed","commit":"d7d741db1d974cf8dd05a23149a1f12758fc1894","url":"https://github.com/notaz/pcsx_rearmed/tree/d7d741db1d974cf8dd05a23149a1f12758fc1894","role":"pinned upstream source"},
+    {"kind":"docs","url":"https://github.com/notaz/pcsx_rearmed/blob/d7d741db1d974cf8dd05a23149a1f12758fc1894/README.md","role":"upstream feature and frontend documentation"}
+  ],
   "platform_gaps": {
-    "linux": { "status": "unresolved", "reason": "The official PCSX-ReARMed source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/notaz/pcsx_rearmed", "host capture withheld until all six purposes are source-backed"] },
-    "linux-flatpak": { "status": "unresolved", "reason": "The official PCSX-ReARMed source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/notaz/pcsx_rearmed", "host capture withheld until all six purposes are source-backed"] },
-    "macos": { "status": "unresolved", "reason": "The official PCSX-ReARMed source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/notaz/pcsx_rearmed", "host capture withheld until all six purposes are source-backed"] },
-    "windows": { "status": "unresolved", "reason": "The official PCSX-ReARMed source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/notaz/pcsx_rearmed", "host capture withheld until all six purposes are source-backed"] }
-  }
+    "linux":{"status":"unresolved","reason":"The pinned source has a Linux CI build and a standalone frontend, but its input state is supplied by the frontend and no stable native config/profile path is established for this catalog entry.","evidence":["source:README.md lines 1-22 @d7d741db1d974cf8dd05a23149a1f12758fc1894","source:frontend/plugin_lib.c lines 704-726 @d7d741db1d974cf8dd05a23149a1f12758fc1894"]},
+    "linux-flatpak":{"status":"unresolved","reason":"No official Flatpak package and no source-backed Flatpak controller-profile path.","evidence":["source:README.md lines 1-22 @d7d741db1d974cf8dd05a23149a1f12758fc1894"]},
+    "windows":{"status":"unresolved","reason":"The source does not establish a current Windows distribution or stable native controller-profile path for this catalog entry.","evidence":["source:README.md lines 1-22 @d7d741db1d974cf8dd05a23149a1f12758fc1894"]},
+    "macos":{"status":"unresolved","reason":"The source does not establish a current macOS distribution or stable native controller-profile path for this catalog entry.","evidence":["source:README.md lines 1-22 @d7d741db1d974cf8dd05a23149a1f12758fc1894"]}
+  },
+  "notes":"PCSX-ReARMed is a core/fork whose frontend owns controller configuration, save-state and memory-card locations. Fail closed rather than writing RetroArch or frontend-owned settings under the core name. BIOS HLE is documented, but runtime and package behavior remain unverified."
 }

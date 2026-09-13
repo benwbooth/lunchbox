@@ -56,8 +56,8 @@
             "docs:https://github.com/emestee/bk-emulator",
             "source:https://github.com/emestee/bk-emulator official project documentation"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["docs:https://github.com/emestee/bk-emulator (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "SDL-based BK/Terak emulator; requires building from source. Native platform scope is Linux/macOS."
     },
     "macos": {
@@ -106,8 +106,8 @@
             "docs:https://github.com/emestee/bk-emulator",
             "source:https://github.com/emestee/bk-emulator official project documentation"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["docs:https://github.com/emestee/bk-emulator (primary source cited by this record; keys capture remains unresolved for macos)"]}],
       "notes": "SDL-based BK/Terak emulator; requires building from source. Native platform scope is Linux/macOS."
     }
   },

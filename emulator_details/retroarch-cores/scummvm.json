@@ -414,16 +414,12 @@
     ]
   },
   "saves": {
-    "status": "supported",
-    "extensions": [
-      ".s00",
-      ".s01",
-      ".s02"
-    ],
-    "naming": "ScummVM target savegames use numbered target files such as <target>.s01 or <target>.001.",
-    "notes": "ScummVM has engine-specific numbered saves and autosaves; the core does not implement RetroArch save states.",
+    "status": "not_supported",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=false; no standalone RetroArch persistent save artifact is claimed.",
+    "notes": "No libretro persistent-save interface is declared by the pinned core-info metadata.",
     "evidence": [
-      "ScummVM libretro save path and engine save naming"
+      "scummvm_libretro.info libretro_saves=false"
     ]
   },
   "states": {

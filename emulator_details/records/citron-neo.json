@@ -58,8 +58,8 @@
             "source:src/core/file_sys/bis_factory.cpp — GetOrCreateDirectoryRelative(nand_root, \"/system/Contents/registered\") and \"/user/Contents/registered\"",
             "source:src/android/app/.../MainActivity.kt — DirectoryInitialization.userDirectory + \"/nand/system/Contents/registered/\""
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:citron-neo/emulator@91bbce7231 (primary source cited by this record; input capture remains unresolved for linux)"]}],
       "notes": "No save-state feature: fs_paths.h defines no states directory and src/core has no savestate module at commit 91bbce7231 (purpose 'states' therefore omitted). Citron is the yuzu-descendant codebase, so the yuzu conventions hold but with CITRON_DIR \"citron\" (not citron-emu). Lunchbox DB gap: firmware-rules.json binds manual:nintendo-switch-keys and manual:nintendo-switch-firmware to eden/ryubing/torzu rules but has no citron:* rules yet."
     },
     "macos": {
@@ -107,8 +107,8 @@
           "evidence": [
             "source:src/core/file_sys/bis_factory.cpp — nand \"/system/Contents/registered\""
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:citron-neo/emulator@91bbce7231 (primary source cited by this record; input capture remains unresolved for macos)"]}],
       "notes": "macOS builds ship as dmg assets on the citron-neo/emulator GitHub releases (Lunchbox install source, x86_64 + aarch64); paths are the plain XDG defaults because the code has no macOS-specific data root."
     },
     "windows": {
@@ -154,8 +154,8 @@
           "evidence": [
             "source:src/core/file_sys/bis_factory.cpp — nand \"/system/Contents/registered\""
           ]
-        }
-      ]
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:citron-neo/emulator@91bbce7231 (primary source cited by this record; input capture remains unresolved for windows)"]}]
     }
   },
   "platform_gaps": {

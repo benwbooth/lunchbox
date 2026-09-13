@@ -3,50 +3,33 @@
   "slug": "adam-plus",
   "emulator": "ADAM+",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/dvdh1961/ADAMP",
-      "url": "https://github.com/dvdh1961/ADAMP",
-      "role": "official upstream identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/dvdh1961/ADAMP",
-      "role": "official distribution/documentation evidence"
-    }
+    { "kind": "source", "repo": "https://github.com/dvdh1961/ADAMP", "url": "https://github.com/dvdh1961/ADAMP", "commit": "f82570765bc97a2b95138cbeb33df57172d7ab94", "role": "official Qt source for settings, input, media and state paths" },
+    { "kind": "docs", "url": "https://github.com/dvdh1961/ADAMP/blob/f82570765bc97a2b95138cbeb33df57172d7ab94/README.md", "role": "official Windows/Linux release and platform evidence" }
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official source identifies ADAM+ but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://github.com/dvdh1961/ADAMP",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official source identifies ADAM+ but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://github.com/dvdh1961/ADAMP",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official source identifies ADAM+ but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://github.com/dvdh1961/ADAMP",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "settings.ini beside the executable", "naming": "Qt QSettings IniFormat; MainWindow loads and saves QCoreApplication::applicationDirPath()/settings.ini.", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 scrcpp/maingui.cpp"] },
+        { "purpose": "input", "path": "settings.ini [input] and [controller] QSettings keys", "naming": "input/p1/type, input/p1/0..17, input/p2/type, input/p2/0..17 and controller/joystickType (0 General, 1 PS, 2 Xbox). The physical joystick is not persisted; SimpleJoystick starts runtime index 0.", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 scrcpp/joypadwindow.cpp, inputwidget.cpp, simplejoystick.cpp"] },
+        { "purpose": "saves", "path": "Guest/media-dependent; no separate cartridge-save grammar is established by the pinned source.", "naming": "No portable ADAM+ cartridge save filename is claimed.", "status": "unresolved", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 source/CORE"] },
+        { "purpose": "states", "path": "Configured statePath directory (default media/states); MainWindow appends the current ROM basename and .sta.", "naming": "<rom-basename>.sta; the file path is user-selectable and persisted as statePath.", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 scrcpp/maingui.cpp"] },
+        { "purpose": "bios", "path": "Optional external paths bios/coleco, bios/eos, bios/writer; source also contains embedded BIOS arrays.", "naming": "No single external BIOS filename/checksum is required by the pinned source.", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 source/BIOS and scrcpp/maingui.cpp"] },
+        { "purpose": "keys", "path": "No external cryptographic key file interface is documented.", "naming": "No external key filename/checksum.", "status": "unresolved", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 source"] }
       ]
     },
     "windows": {
-      "status": "unresolved",
-      "reason": "The official source identifies ADAM+ but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://github.com/dvdh1961/ADAMP",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "settings.ini beside the executable", "naming": "Qt QSettings IniFormat; MainWindow loads and saves QCoreApplication::applicationDirPath()/settings.ini.", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 scrcpp/maingui.cpp"] },
+        { "purpose": "input", "path": "settings.ini [input] and [controller] QSettings keys", "naming": "input/p1/type, input/p1/0..17, input/p2/type, input/p2/0..17 and controller/joystickType (0 General, 1 PS, 2 Xbox). The physical joystick is not persisted; SimpleJoystick starts runtime index 0.", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 scrcpp/joypadwindow.cpp, inputwidget.cpp, simplejoystick.cpp"] },
+        { "purpose": "saves", "path": "Guest/media-dependent; no separate cartridge-save grammar is established by the pinned source.", "naming": "No portable ADAM+ cartridge save filename is claimed.", "status": "unresolved", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 source/CORE"] },
+        { "purpose": "states", "path": "Configured statePath directory; MainWindow appends the current ROM basename and .sta.", "naming": "<rom-basename>.sta; the file path is user-selectable and persisted as statePath.", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 scrcpp/maingui.cpp"] },
+        { "purpose": "bios", "path": "Optional external paths bios/coleco, bios/eos, bios/writer; source also contains embedded BIOS arrays.", "naming": "No single external BIOS filename/checksum is required by the pinned source.", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 source/BIOS and scrcpp/maingui.cpp"] },
+        { "purpose": "keys", "path": "No external cryptographic key file interface is documented.", "naming": "No external key filename/checksum.", "status": "unresolved", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 source"] }
       ]
     }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The official project publishes Linux archives but no verified Flatpak manifest or package.", "evidence": ["official:https://github.com/dvdh1961/ADAMP/releases"] },
+    "macos": { "status": "no_verified_package", "reason": "The official README advertises Windows and Linux builds; no verified native macOS package is published.", "evidence": ["source:ADAMP@f82570765bc97a2b95138cbeb33df57172d7ab94 README.md"] }
   }
 }

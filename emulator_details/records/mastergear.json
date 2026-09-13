@@ -1,52 +1,24 @@
 {
-  "schema_version": 1,
-  "slug": "mastergear",
-  "emulator": "MasterGear",
-  "sources": [
-    {
-      "kind": "source",
-      "repo": "https://fms.komkon.org/MG/",
-      "url": "https://fms.komkon.org/MG/",
-      "role": "official upstream project identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://fms.komkon.org/MG/",
-      "role": "official distribution or project documentation"
-    }
+  "schema_version":1,"slug":"mastergear","emulator":"MasterGear",
+  "sources":[
+    {"kind":"artifact","url":"https://fms.komkon.org/MG/MG49-Ubuntu-x86-bin.tgz","version":"4.9 (2021-03-31)","sha256":"25c8a0de74ed6eda5dc7c6b3c04e2cc7482198beaddb123b9cef492ac5941839","role":"official Linux binary"},
+    {"kind":"artifact","url":"https://fms.komkon.org/MG/MG49-Windows-bin.zip","version":"4.9 (2021-03-31)","sha256":"426d5e2c6db5d8f9a4256c2fef4a84ff4e422039341cf16bd38d62a988aa8661","role":"official Windows binary"},
+    {"kind":"docs","url":"https://fms.komkon.org/MG/","role":"official documentation; states source is not publicly available"}
   ],
+  "platforms":{
+    "linux":{"paths":[
+      {"purpose":"config","path":"No persistent MG-Linux configuration file. Configure each launch with documented command-line options and the runtime F5 menu.","naming":"MG 4.9 -help defines hardware/language, timing, audio, video, SRAM/EEPROM, scaling, synchronization, and other flags; no profile-file argument or file grammar is exposed.","status":"captured","evidence":["artifact:MG 4.9 Linux binary -help from MG49-Ubuntu-x86-bin.tgz sha256 25c8a0de","runtime:isolated MG 4.9 Linux test-ROM file trace opened only the ROM and its .sav/.sta sidecars; no HOME/XDG config path"]},
+      {"purpose":"input","path":"Runtime keyboard input with the fixed MG 4.9 bindings; no persistent MG-Linux controller profile.","naming":"Arrows are directions; Space/Shift/A/S/D/F/G/H/J/K/L/Q/E/T/U/O are FIRE-A, Control/Z/X/C/V/B/N/M/W/R/Y/I/P are FIRE-B, Enter is GameGear START, Tab is MasterSystem PAUSE, and Alt switches to controller 2. The official Linux binary/help does not expose a joystick selector or remapping grammar.","status":"captured","evidence":["artifact:MG 4.9 Linux binary -help from MG49-Ubuntu-x86-bin.tgz sha256 25c8a0de","artifact:MG.html @4.9 Keyboard Assignments"]},
+      {"purpose":"saves","path":"<cartridge directory>/<cartridge basename>.sav for cartridge save memory.","naming":".sav sidecar beside the cartridge; cartridge-dependent. An isolated absolute-path launch of test.sms probed test.sav in the same media directory.","status":"captured","evidence":["artifact:MG.exe 4.9 string table","runtime:isolated MG 4.9 Linux absolute-path test-ROM trace"]},
+      {"purpose":"states","path":"<cartridge directory>/<cartridge basename>.sta; loaded automatically on the next launch of that cartridge.","naming":"F7 saves and F6 loads the single cartridge-basename .STA state; cross-hardware/version compatibility is not guaranteed. An isolated absolute-path launch of test.sms probed test.sta beside the cartridge.","status":"captured","evidence":["artifact:MG.html @4.9 FAQ, save/load machine state","runtime:isolated MG 4.9 Linux absolute-path test-ROM trace"]},
+      {"purpose":"bios","path":"<working directory>/SF7000.ROM only for SF7000 disk mode; no universal Sega BIOS.","naming":"Exactly 8 KiB SF7000.ROM; ordinary MasterSystem/GameGear/SG1000/SC3000 cartridge modes do not have a documented external BIOS requirement.","status":"captured","evidence":["artifact:MG.html @4.9 FAQ, SF7000 disk images"]},
+      {"purpose":"keys","path":"not applicable","naming":"No cryptographic key file documented.","status":"not_required","evidence":["artifact:MG.html @4.9"]}
+    ]},
+    "windows":{"paths":[{"purpose":"config","path":"HKEY_CURRENT_USER\\Software\\EMUL8\\MG","naming":"MG-Windows stores DWORD/string settings in the registry rather than an INI. A clean isolated launch wrote Mode, UPeriod, UseSound, VideoType and, after opening the F5 setup panel, BackSnd, Effects, Filename, FullScreen, Height, SaveCPU, SndDelay, SndRate, Width, X, Y and controller fields.","status":"captured","evidence":["artifact:MG.exe 4.9 from MG49-Windows-bin.zip sha256 426d5e2c (Software\\EMUL8\\%s string)","runtime:isolated clean-prefix MG-Windows 4.9 registry oracle"]},{"purpose":"input","path":"HKEY_CURRENT_USER\\Software\\EMUL8\\MG values DIJoystick0..DIJoystick3 and BtnEXIT/FIREA/FIREB/FIREL/FIRER/SELECT/START for players 1 and 2.","naming":"DWORD values. MG 4.6 documents saving physical joystick/gamepad selection, while the setup panel writes DIJoystick0..3 and button bitmasks; these are DirectInput/runtime device selections, not stable cross-host identities.","status":"captured","evidence":["artifact:MG.html @4.9 history for MG 4.6","artifact:MG.exe 4.9 unpacked string table (DIJoystick%d and joystick setup labels)","runtime:isolated clean-prefix MG-Windows 4.9 F5 setup registry oracle"]},{"purpose":"saves","path":"<cartridge directory>\\<cartridge basename>.sav","naming":"Cartridge basename with a .sav suffix beside the cartridge; cartridge-dependent SRAM/EEPROM persistence.","status":"captured","evidence":["artifact:MG.exe 4.9 string table","runtime:MG 4.9 Linux absolute-path sidecar trace corroborates shared core naming"]},{"purpose":"states","path":"<cartridge directory>\\<cartridge basename>.sta","naming":"F7 saves and F6 loads the single cartridge-basename .STA state automatically used on the next launch; version/hardware compatibility is not guaranteed.","status":"captured","evidence":["artifact:MG.html @4.9 FAQ, save/load machine state","runtime:MG 4.9 Linux absolute-path sidecar trace corroborates shared core path behavior"]},{"purpose":"bios","path":"<working directory>\\SF7000.ROM only for SF7000 disk mode; no universal Sega BIOS.","naming":"Exactly 8 KiB SF7000.ROM; other supported cartridge modes have no documented external BIOS requirement.","status":"captured","evidence":["artifact:MG.html @4.9 FAQ, SF7000 disk images"]},{"purpose":"keys","path":"not applicable","status":"not_required","evidence":["artifact:MG.html @4.9"]}]}
+  },
   "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official MasterGear source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://fms.komkon.org/MG/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official MasterGear source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://fms.komkon.org/MG/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official MasterGear source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://fms.komkon.org/MG/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official MasterGear source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://fms.komkon.org/MG/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    }
-  }
+    "linux-flatpak":{"status":"unsupported","reason":"No official Flatpak package.","evidence":["official:https://fms.komkon.org/MG/"]},
+    "macos":{"status":"unsupported","reason":"No official macOS 4.9 artifact.","evidence":["official:https://fms.komkon.org/MG/"]}
+  },
+  "notes":"The official 4.9 binaries establish Linux command-line/fixed-keyboard behavior and the MG-Windows registry layout. A native controller writer remains intentionally absent because MG-Windows persists DirectInput/runtime enumeration selections rather than stable physical-device identities; official MasterGear source is unavailable. The isolated binary runs establish path behavior, not gameplay compatibility."
 }

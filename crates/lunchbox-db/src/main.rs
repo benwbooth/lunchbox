@@ -126,6 +126,8 @@ enum Command {
         #[arg(long)]
         firmware_rules: PathBuf,
         #[arg(long)]
+        test_results: Option<PathBuf>,
+        #[arg(long)]
         output: PathBuf,
     },
     /// Create a maximally compressed, tested 7z archive and checksum manifest.
@@ -249,6 +251,7 @@ fn main() -> Result<()> {
             retroarch_cores,
             controller_catalog,
             firmware_rules,
+            test_results,
             output,
         } => {
             let report = feature_matrix::generate(
@@ -257,6 +260,7 @@ fn main() -> Result<()> {
                 &retroarch_cores,
                 &controller_catalog,
                 &firmware_rules,
+                test_results.as_deref(),
                 &output,
             )?;
             println!("{}", serde_json::to_string_pretty(&report)?);

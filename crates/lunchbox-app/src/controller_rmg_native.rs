@@ -459,7 +459,7 @@ pub(crate) mod session {
         let profile = crate::controller_catalog::catalog()
             .emulator_profiles
             .iter()
-            .find(|profile| profile.id == settings::PROFILE_ID)
+            .find(|profile| profile.id == PROFILE_ID)
             .context("Missing native RMG profile")?;
         let mut mapped = BTreeMap::new();
         for row in calibration.plan_profile(profile)?.rows {
@@ -831,7 +831,9 @@ mod tests {
         let text = String::from_utf8(text).unwrap();
         assert!(text.contains("[Rosalie's Mupen GUI - Input Plugin Profile 0]\n"));
         assert!(text.contains("A_InputType = 2\nA_Data = 0\n"));
-        assert!(text.contains("AnalogStickLeft_InputType = 3\nAnalogStickLeft_ExtraData = 0\n"));
+        assert!(text.contains(
+            "AnalogStickLeft_InputType = 3\nAnalogStickLeft_Data = 0\nAnalogStickLeft_ExtraData = 0\n"
+        ));
         assert!(!text.contains("Profile 0 Game abc"));
         assert!(text.contains("SaveSRAMPath = \"/persistent\""));
         assert!(text.contains("[Rosalie's Mupen GUI - Input Plugin Profile 3]\n"));

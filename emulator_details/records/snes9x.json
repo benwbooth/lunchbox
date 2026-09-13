@@ -39,7 +39,8 @@
           "path": "No BIOS required for ordinary SNES cartridges. Optional files are looked up in the configured BIOS_DIR; GTK defaults an unset BIOS directory to the ROM directory, while the legacy Unix frontend creates ~/.snes9x/bios",
           "naming": "Optional Satellaview BIOS: BS-X.bin or BS-X.bios; optional ST-0010/ST-V-style data: STBIOS.bin. No authoritative canonical checksum is supplied by this source tree; normal SNES play has no external firmware requirement",
           "evidence": ["source:memmap.cpp STBIOS.bin lookup and bsx.cpp BS-X.bin/BS-X.bios lookup @7a8878f1", "source:gtk/src/gtk_file.cpp unset BIOS_DIR falls back to ROM directory @7a8878f1", "source:unix/unix.cpp dirNames BIOS_DIR = bios under ~/.snes9x @7a8878f1"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "Snes9x does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:Snes9x source tree @7a8878f1"] }
       ],
       "notes": "The official Linux build matrix includes GTK and X11 frontends; this record describes both config roots where they differ. The GTK frontend is the one packaged by Flathub."
     },
@@ -74,7 +75,8 @@
           "path": "No external BIOS required for ordinary SNES cartridges; optional BIOS_DIR files are user supplied and, with an unset GTK BIOS directory, resolve beside the ROM",
           "naming": "Optional BS-X.bin or BS-X.bios and STBIOS.bin; no authoritative canonical checksum exists in the upstream source",
           "evidence": ["source:memmap.cpp and bsx.cpp optional BIOS filenames @7a8878f1", "source:gtk/src/gtk_file.cpp BIOS_DIR fallback @7a8878f1", "packaging:com.snes9x.Snes9x.json command snes9x-gtk @5c4b272d"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "Snes9x does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:Snes9x GTK source tree @7a8878f1"] }
       ],
       "notes": "Flathub's community package uses the GTK frontend and grants home access. Flatpak changes the XDG config root, but ROM-relative saves/states remain next to the ROM unless the user configures another directory."
     },
@@ -109,7 +111,8 @@
           "path": "No BIOS required for ordinary SNES cartridges. Optional BIOSes folder is ~/Library/Application Support/Snes9x/BIOSes by default; the source calls it a dummy directory selector",
           "naming": "Optional BS-X.bin or BS-X.bios and STBIOS.bin where relevant; no authoritative canonical checksum is published in this source",
           "evidence": ["source:macosx/mac-file.mm .bio selector maps to BIOSes and FindApplicationSupportFolder @7a8878f1", "source:bsx.cpp BS-X.bin/BS-X.bios and memmap.cpp STBIOS.bin @7a8878f1"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "Snes9x does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:Snes9x macOS source tree @7a8878f1"] }
       ]
     },
     "windows": {
@@ -143,7 +146,8 @@
           "path": "<directory containing snes9x.exe>\\BIOS by default (Settings\\Win\\Files Dir:Bios = .\\BIOS); user configurable",
           "naming": "Optional BS-X.bios or BS-X.bin and STBIOS.bin; no authoritative canonical checksum is published in the upstream source. Ordinary SNES cartridge emulation needs no external firmware",
           "evidence": ["source:win32/wconfig.cpp Dir:Bios default .\\BIOS @7a8878f1", "source:win32/win32.cpp BIOS_DIR returns GUI.BiosDir @7a8878f1", "source:bsx.cpp and memmap.cpp optional BIOS names @7a8878f1"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "Snes9x does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:Snes9x Win32 source tree @7a8878f1"] }
       ]
     }
   },

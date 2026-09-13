@@ -92,3 +92,36 @@ pub(crate) fn binding(native_id: &str, input: Input, scale: u16) -> Result<Strin
         id.to_ascii_lowercase()
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_expression_keeps_128_bit_identity_and_fixed_point_scale() {
+        let id = "0x0123456789abcdef0123456789ABCDEF";
+        assert_eq!(
+            binding(id, Input::Button(7), 4096).unwrap(),
+            "joystick 0x0123456789abcdef0123456789abcdef button_7"
+        );
+        assert_eq!(
+            binding(
+                id,
+                Input::Absolute {
+                    index: 2,
+                    polarity: Polarity::Negative
+                },
+                2048
+            )
+            .unwrap(),
+            "joystick 0x0123456789abcdef0123456789abcdef abs_2- 2048"
+        );
+    }
+
+    #[test]
+    fn invalid_native_ids_inputs_and_scales_are_rejected() {
+        assert!(binding("short", Input::Button(0), 1).is_err());
+        assert!(binding("0123456789abcdef0123456789abcdef", Input::Button(1024), 1).is_err());
+        assert!(binding("0123456789abcdef0123456789abcdef", Input::Button(0), 0).is_err());
+    }
+}

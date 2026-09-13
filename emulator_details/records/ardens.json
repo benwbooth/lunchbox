@@ -3,50 +3,43 @@
   "slug": "ardens",
   "emulator": "Ardens",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/tiberiusbrown/Ardens",
-      "url": "https://github.com/tiberiusbrown/Ardens",
-      "role": "official upstream identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/tiberiusbrown/Ardens",
-      "role": "official distribution/documentation evidence"
-    }
+    { "kind": "source", "repo": "https://github.com/tiberiusbrown/Ardens", "commit": "661a7dd4febc8d00e790a4ecde44b936295adf97", "role": "native SDL input, settings, save-data and snapshot implementation" },
+    { "kind": "docs", "url": "https://github.com/tiberiusbrown/Ardens/blob/661a7dd4febc8d00e790a4ecde44b936295adf97/README.md", "role": "official desktop controls, command-line and persistence documentation" },
+    { "kind": "contract", "path": "docs/ARDENS_STANDALONE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official source identifies Ardens but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://github.com/tiberiusbrown/Ardens",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official source identifies Ardens but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://github.com/tiberiusbrown/Ardens",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official source identifies Ardens but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://github.com/tiberiusbrown/Ardens",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "~/.config/Ardens/Ardens.ini (or $XDG_CONFIG_HOME/Ardens/Ardens.ini)", "naming": "Dear ImGui INI with [UserData][Settings]. Persisted fields cover display/debugger/window settings; no controller profile or SDL device identity is written.", "status": "captured", "evidence": ["source:deps/cfgpath.h get_user_config_folder Linux branch @661a7dd", "source:src/common.cpp app_config_ini_path/init @661a7dd", "source:src/settings.cpp settings handler @661a7dd"] },
+        { "purpose": "input", "path": "Runtime SDL input: first SDL gamepad's standard south/east/d-pad buttons plus fixed keyboard keys (arrows, A/Z, B/S/X).", "naming": "No persistent mapping file or stable device selector; SDL gamepad enumeration is repeated at runtime and the first recognized gamepad is used.", "status": "captured", "evidence": ["source:src/main_sdl.cpp SDL_GetGamepads/SDL_OpenGamepad @661a7dd", "source:src/common.cpp set_current_buttons fixed ImGuiKey mapping @661a7dd", "docs:README.md Controls @661a7dd"] },
+        { "purpose": "saves", "path": "~/.config/Ardens/absim_<game_hash>.save (same Ardens config/user path)", "naming": "game_hash is an FNV-1a 64-bit hash over the loaded program/FX data and the Ardens boot image; filename uses lowercase hexadecimal. Save data serializes EEPROM and FX sectors, not an emulator snapshot.", "status": "captured", "evidence": ["source:src/saveload.cpp savedata_filename @661a7dd", "source:src/absim_arduboy.cpp update_game_hash @661a7dd", "source:src/absim_snapshot.cpp save_savedata/load_savedata @661a7dd"] },
+        { "purpose": "states", "path": "<current working directory>/ardens_<timestamp>.snapshot when F4/debugger snapshot is saved; CLI file= may load a .snapshot", "naming": "Compressed bitsery snapshot with `_ABSIM_` identifier, version header and zlib payload; timestamp is generated as ardens_YYYYMMDDhhmmss.snapshot. There are no persistent numbered desktop state slots.", "status": "captured", "evidence": ["source:src/common.cpp take_snapshot/timestamped_filename @661a7dd", "source:src/absim_snapshot.cpp save_snapshot/load_snapshot and SNAPSHOT_ID @661a7dd", "docs:README.md Controls/URL and CLI Parameters @661a7dd"] },
+        { "purpose": "bios", "path": "None required from the user; Arduboy boot images are compiled into src/boot and the simulator initializes the emulated device from them.", "naming": "No external BIOS/firmware filename or checksum is consumed by the native desktop target.", "status": "not_required", "evidence": ["source:src/absim_arduboy.cpp compiled boot includes @661a7dd", "docs:README.md libretro section @661a7dd"] },
+        { "purpose": "keys", "path": "No cryptographic key file is documented.", "naming": "not applicable", "status": "not_required", "evidence": ["source:Ardens source tree @661a7dd"] }
       ]
     },
     "windows": {
-      "status": "unresolved",
-      "reason": "The official source identifies Ardens but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://github.com/tiberiusbrown/Ardens",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "%APPDATA%\\Ardens\\Ardens.ini", "naming": "Dear ImGui INI [UserData][Settings]; display/debugger/window settings only, with no persistent controller profile or device identity.", "status": "captured", "evidence": ["source:deps/cfgpath.h Windows branch @661a7dd", "source:src/common.cpp app_config_ini_path/init @661a7dd"] },
+        { "purpose": "input", "path": "Runtime SDL input: first recognized SDL gamepad's standard south/east/d-pad buttons plus fixed keyboard keys.", "naming": "No persistent mapping file or stable device selector.", "status": "captured", "evidence": ["source:src/main_sdl.cpp @661a7dd", "source:src/common.cpp @661a7dd", "docs:README.md Controls @661a7dd"] },
+        { "purpose": "saves", "path": "%APPDATA%\\Ardens\\absim_<game_hash>.save", "naming": "Lowercase hexadecimal FNV-1a 64-bit game hash; payload is EEPROM/FX save data.", "status": "captured", "evidence": ["source:src/saveload.cpp @661a7dd", "source:src/absim_arduboy.cpp @661a7dd"] },
+        { "purpose": "states", "path": "<current working directory>\\ardens_<timestamp>.snapshot", "naming": "Compressed `_ABSIM_` snapshot; no numbered desktop state slots.", "status": "captured", "evidence": ["source:src/common.cpp take_snapshot/timestamped_filename @661a7dd", "source:src/absim_snapshot.cpp @661a7dd"] },
+        { "purpose": "bios", "path": "None required; boot images are compiled into the executable.", "naming": "No external BIOS/firmware filename or checksum.", "status": "not_required", "evidence": ["source:src/absim_arduboy.cpp @661a7dd"] },
+        { "purpose": "keys", "path": "No cryptographic key file is documented.", "naming": "not applicable", "status": "not_required", "evidence": ["source:Ardens source tree @661a7dd"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "~/Library/Application Support/Ardens/Ardens.ini", "naming": "Dear ImGui INI [UserData][Settings]; display/debugger/window settings only, with no persistent controller profile or device identity.", "status": "captured", "evidence": ["source:deps/cfgpath.h Mac branch @661a7dd", "source:src/common.cpp app_config_ini_path/init @661a7dd"] },
+        { "purpose": "input", "path": "Runtime SDL input: first recognized SDL gamepad's standard south/east/d-pad buttons plus fixed keyboard keys.", "naming": "No persistent mapping file or stable device selector.", "status": "captured", "evidence": ["source:src/main_sdl.cpp @661a7dd", "source:src/common.cpp @661a7dd", "docs:README.md Controls @661a7dd"] },
+        { "purpose": "saves", "path": "~/Library/Application Support/Ardens/absim_<game_hash>.save", "naming": "Lowercase hexadecimal FNV-1a 64-bit game hash; payload is EEPROM/FX save data.", "status": "captured", "evidence": ["source:src/saveload.cpp @661a7dd", "source:src/absim_arduboy.cpp @661a7dd"] },
+        { "purpose": "states", "path": "<current working directory>/ardens_<timestamp>.snapshot", "naming": "Compressed `_ABSIM_` snapshot; no numbered desktop state slots.", "status": "captured", "evidence": ["source:src/common.cpp take_snapshot/timestamped_filename @661a7dd", "source:src/absim_snapshot.cpp @661a7dd"] },
+        { "purpose": "bios", "path": "None required; boot images are compiled into the executable.", "naming": "No external BIOS/firmware filename or checksum.", "status": "not_required", "evidence": ["source:src/absim_arduboy.cpp @661a7dd"] },
+        { "purpose": "keys", "path": "No cryptographic key file is documented.", "naming": "not applicable", "status": "not_required", "evidence": ["source:Ardens source tree @661a7dd"] }
       ]
     }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The pinned upstream repository documents native and web builds but provides no authoritative Flatpak manifest or sandbox persistence contract.", "evidence": ["official:https://github.com/tiberiusbrown/Ardens"] }
   }
 }

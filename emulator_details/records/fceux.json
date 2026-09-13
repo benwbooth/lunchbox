@@ -59,8 +59,8 @@
             "source:src/fds.cpp FDS BIOS open and exact ftell == 8192 validation @a62b868",
             "source:src/cart.cpp FCEU_OpenGenie requires gg.rom @a62b868"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/fceux@a62b868e9247c4aafd66f597cdfa8d2609704087 (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "The official source builds Qt/SDL on Unix; this record captures the current FCEUX base-directory contract. No first-party Flatpak manifest was found, so no linux-flatpak cell is asserted."
     },
     "macos": {
@@ -108,8 +108,8 @@
             "source:src/file.cpp FCEUMKF_FDSROM/FCEUMKF_GGROM @a62b868",
             "source:src/fds.cpp exact 8192-byte FDS BIOS validation @a62b868"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/fceux@a62b868e9247c4aafd66f597cdfa8d2609704087 (primary source cited by this record; keys capture remains unresolved for macos)"]}],
       "notes": "CMake explicitly has APPLE and Unix branches for the Qt/SDL build, so macOS is a supported source-build host; no first-party macOS binary or Flatpak artifact is asserted here."
     },
     "windows": {
@@ -159,8 +159,8 @@
             "source:src/fds.cpp exact 8192-byte validation @a62b868",
             "source:src/cart.cpp Game Genie filename requirement @a62b868"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/fceux@a62b868e9247c4aafd66f597cdfa8d2609704087 (primary source cited by this record; keys capture remains unresolved for windows)"]}],
       "notes": "Official source includes the Windows native UI and Qt/SDL paths; the Windows release/build uses the executable directory as the default base directory."
     }
   },

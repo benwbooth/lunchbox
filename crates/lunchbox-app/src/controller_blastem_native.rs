@@ -47,7 +47,7 @@ pub(crate) const CONTROLS: [(&str, &str); 12] = [
 pub(crate) const DIGITAL_THRESHOLD: i32 = 16384;
 
 /// One host input binding in BlastEm's vocabulary.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) enum Binding {
     Button(u32),
     Axis { index: u32, positive: bool },
@@ -102,12 +102,17 @@ pub(crate) fn pad_block(device: u32, port: u8, controls: &[(&str, Binding)]) -> 
     let mut buttons = std::collections::BTreeMap::new();
     let mut axes = std::collections::BTreeMap::new();
     let mut dpads = std::collections::BTreeMap::new();
+    let mut inputs = std::collections::BTreeSet::new();
     for (control, binding) in controls {
         let button = CONTROLS
             .iter()
             .find(|(id, _)| id == control)
             .map(|(_, target)| *target)
-            .unwrap_or(control);
+            .ok_or_else(|| anyhow::anyhow!("Unknown BlastEm gameplay control {control}"))?;
+        ensure!(
+            inputs.insert(*binding),
+            "BlastEm physical input has multiple gameplay owners"
+        );
         let target = escape(&format!("gamepads.{port}.{button}"))?;
         match *binding {
             Binding::Button(index) => {
@@ -242,6 +247,19 @@ mod tests {
             }
             .lines("gamepads.1.left"),
             vec!["axes { 1.negative gamepads.1.left }".to_string()]
+        );
+    }
+
+    #[test]
+    fn pad_block_rejects_unknown_or_shared_controls() {
+        assert!(pad_block(0, 1, &[("unknown", Binding::Button(0))]).is_err());
+        assert!(
+            pad_block(
+                0,
+                1,
+                &[("a", Binding::Button(0)), ("b", Binding::Button(0))]
+            )
+            .is_err()
         );
     }
 }

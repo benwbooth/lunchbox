@@ -3,177 +3,37 @@
   "slug": "vba-m",
   "emulator": "VBA-M",
   "sources": [
-    {
-      "kind": "docs",
-      "url": "https://visualboyadvance-m.org/",
-      "role": "official project/platform and runtime documentation"
-    }
+    { "kind": "source", "repo": "https://github.com/visualboyadvance-m/visualboyadvance-m", "commit": "fd13034143c128c8b68133a7a18bc785178ec4e4", "role": "Qt/wx native configuration, SDL input, saves, states and optional BIOS" },
+    { "kind": "docs", "url": "https://visualboyadvance-m.org/", "role": "official project and release documentation" },
+    { "kind": "contract", "path": "docs/VBA_M_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
   ],
   "platforms": {
-    "linux": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "~/.config/vba-m/config.ini",
-          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "~/.config/vba-m/config.ini",
-          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "Same directory as ROM: <content-basename>.sav or .sgm",
-          "naming": "Persistent data uses the documented media filename or content basename.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "User-selected state file",
-          "naming": "State output uses the documented frontend-selected path or extension.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "gba_bios.bin, gb_bios.bin, and gbc_bios.bin are optional frontend firmware",
-          "naming": "Explicit firmware disposition from the upstream project.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No external encryption-key file.",
-          "naming": "Explicit key-material disposition from the upstream project.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        }
-      ]
-    },
-    "macos": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "~/Library/Application Support/VBA-M/config.ini",
-          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "~/Library/Application Support/VBA-M/config.ini",
-          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "Same directory as ROM: <content-basename>.sav or .sgm",
-          "naming": "Persistent data uses the documented media filename or content basename.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "User-selected state file",
-          "naming": "State output uses the documented frontend-selected path or extension.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "gba_bios.bin, gb_bios.bin, and gbc_bios.bin are optional frontend firmware",
-          "naming": "Explicit firmware disposition from the upstream project.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No external encryption-key file.",
-          "naming": "Explicit key-material disposition from the upstream project.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        }
-      ]
-    },
-    "windows": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "%APPDATA%\\\\VBA-M/config.ini",
-          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "%APPDATA%\\\\VBA-M/config.ini",
-          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "Same directory as ROM: <content-basename>.sav or .sgm",
-          "naming": "Persistent data uses the documented media filename or content basename.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "User-selected state file",
-          "naming": "State output uses the documented frontend-selected path or extension.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "gba_bios.bin, gb_bios.bin, and gbc_bios.bin are optional frontend firmware",
-          "naming": "Explicit firmware disposition from the upstream project.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No external encryption-key file.",
-          "naming": "Explicit key-material disposition from the upstream project.",
-          "evidence": [
-            "https://visualboyadvance-m.org/"
-          ]
-        }
-      ]
-    }
+    "linux": { "paths": [
+      { "purpose": "config", "path": "${XDG_CONFIG_HOME:-~/.config}/visualboyadvance-m/vbam.ini (wx) or vbam-qt.ini (Qt); legacy ~/.vbam is recognized", "naming": "Source QSettings/wxFileConfig INI; explicit --config/-c path overrides the default", "evidence": ["source:src/qt/app.cpp and src/wx/wxvbam.cpp @fd130341"] },
+      { "purpose": "input", "path": "The selected vbam.ini or vbam-qt.ini", "naming": "Joypad/1..4/<Up|Down|Left|Right|A|B|L|R|Select|Start> values use JoyN-ButtonM, JoyN-AxisM+/-, JoyN-HatMH or the source keyboard grammar; JoyN is an SDL runtime slot", "evidence": ["source:src/qt/config/command.cpp and user-input.cpp @fd130341", "source:src/wx/config/command.cpp and user-input.cpp @fd130341"] },
+      { "purpose": "saves", "path": "ROM-adjacent or user-selected native save path", "naming": "VBA-M native battery saves use .sav and legacy supplementary .sgm data where present; preserve the existing content basename and path", "evidence": ["source:VBA-M native save/config implementation @fd130341", "official:https://visualboyadvance-m.org/"] },
+      { "purpose": "states", "path": "User-selected native state files", "naming": "State filename/path is selected by the frontend; preserve all existing state files", "evidence": ["source:VBA-M native state/config implementation @fd130341", "official:https://visualboyadvance-m.org/"] },
+      { "purpose": "bios", "path": "Optional user-selected or configured firmware", "naming": "gba_bios.bin, gb_bios.bin and gbc_bios.bin are recognized project firmware names; no checksum is asserted", "evidence": ["official:https://visualboyadvance-m.org/", "source:VBA-M BIOS configuration @fd130341"] },
+      { "purpose": "keys", "path": "No separate cryptographic key file", "naming": "Controller and keyboard bindings remain in the frontend INI", "evidence": ["source:src/qt/config/user-input.cpp and src/wx/config/user-input.cpp @fd130341"] }
+    ] },
+    "windows": { "paths": [
+      { "purpose": "config", "path": "%APPDATA%\\visualboyadvance-m\\vbam.ini (wx) or vbam-qt.ini (Qt), subject to the source's writable-root search", "naming": "Source wxFileConfig/QSettings INI; explicit --config/-c path overrides the default", "evidence": ["source:src/qt/app.cpp and src/wx/wxvbam.cpp @fd130341"] },
+      { "purpose": "input", "path": "The selected vbam.ini or vbam-qt.ini", "naming": "Source Joypad/<player>/<control> values and SDL runtime JoyN tokens; no stable physical identity is stored", "evidence": ["source:src/qt/config/command.cpp and user-input.cpp @fd130341", "source:src/wx/config/command.cpp and user-input.cpp @fd130341"] },
+      { "purpose": "saves", "path": "ROM-adjacent or user-selected native save path", "naming": ".sav and legacy .sgm data where present; preserve user-selected paths", "evidence": ["source:VBA-M native save/config implementation @fd130341", "official:https://visualboyadvance-m.org/"] },
+      { "purpose": "states", "path": "User-selected native state files", "naming": "Frontend-selected state filenames; preserve existing files", "evidence": ["source:VBA-M native state/config implementation @fd130341", "official:https://visualboyadvance-m.org/"] },
+      { "purpose": "bios", "path": "Optional user-selected or configured firmware", "naming": "gba_bios.bin, gb_bios.bin and gbc_bios.bin names are source/project-supported; no checksum asserted", "evidence": ["official:https://visualboyadvance-m.org/", "source:VBA-M BIOS configuration @fd130341"] },
+      { "purpose": "keys", "path": "No separate cryptographic key file", "naming": "Bindings remain in the frontend INI", "evidence": ["source:src/qt/config/user-input.cpp and src/wx/config/user-input.cpp @fd130341"] }
+    ] },
+    "macos": { "paths": [
+      { "purpose": "config", "path": "~/Library/Application Support/visualboyadvance-m/vbam.ini (wx) or vbam-qt.ini (Qt), subject to the source's writable-root search", "naming": "Source wxFileConfig/QSettings INI; explicit --config/-c path overrides the default", "evidence": ["source:src/qt/app.cpp and src/wx/wxvbam.cpp @fd130341"] },
+      { "purpose": "input", "path": "The selected vbam.ini or vbam-qt.ini", "naming": "Source Joypad/<player>/<control> values and SDL runtime JoyN tokens; no stable physical identity is stored", "evidence": ["source:src/qt/config/command.cpp and user-input.cpp @fd130341", "source:src/wx/config/command.cpp and user-input.cpp @fd130341"] },
+      { "purpose": "saves", "path": "ROM-adjacent or user-selected native save path", "naming": ".sav and legacy .sgm data where present; preserve user-selected paths", "evidence": ["source:VBA-M native save/config implementation @fd130341", "official:https://visualboyadvance-m.org/"] },
+      { "purpose": "states", "path": "User-selected native state files", "naming": "Frontend-selected state filenames; preserve existing files", "evidence": ["source:VBA-M native state/config implementation @fd130341", "official:https://visualboyadvance-m.org/"] },
+      { "purpose": "bios", "path": "Optional user-selected or configured firmware", "naming": "gba_bios.bin, gb_bios.bin and gbc_bios.bin names are source/project-supported; no checksum asserted", "evidence": ["official:https://visualboyadvance-m.org/", "source:VBA-M BIOS configuration @fd130341"] },
+      { "purpose": "keys", "path": "No separate cryptographic key file", "naming": "Bindings remain in the frontend INI", "evidence": ["source:src/qt/config/user-input.cpp and src/wx/config/user-input.cpp @fd130341"] }
+    ] }
   },
   "platform_gaps": {
-    "linux-flatpak": {
-      "status": "no_verified_package",
-      "reason": "The upstream project does not document a package for this host.",
-      "evidence": [
-        "https://visualboyadvance-m.org/"
-      ]
-    }
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The pinned upstream repository does not provide an authoritative Flatpak artifact or sandbox persistence contract.", "evidence": ["official:https://visualboyadvance-m.org/", "source:https://github.com/visualboyadvance-m/visualboyadvance-m"] }
   }
 }

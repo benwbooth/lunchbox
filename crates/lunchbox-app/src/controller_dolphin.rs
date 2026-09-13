@@ -1,4 +1,4 @@
-//! Dolphin GameCube input contract, pinned to e1e6d25fa139.
+//! Dolphin GameCube input contract, pinned to 6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4.
 use anyhow::{Result, ensure};
 use sha2::{Digest, Sha256};
 
@@ -697,4 +697,43 @@ pub(crate) fn validate_gamecube_options(options: &BTreeMap<String, String>) -> R
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_ini_merge_preserves_sections_and_ignores_raw_patch_lines() {
+        let mut values = NativeIni::new();
+        merge_native_ini(
+            &mut values,
+            b"\xEF\xBB\xBF[GCPad1]\nDevice = \"evdev/0/pad\"\n$raw-cheat\nButtons/A = Button 0\n",
+        )
+        .unwrap();
+        assert_eq!(
+            values.get(&("gcpad1".to_owned(), "device".to_owned())),
+            Some(&"evdev/0/pad".to_owned())
+        );
+        assert!(!values.values().any(|value| value.contains("raw-cheat")));
+    }
+
+    #[test]
+    fn mixed_trigger_options_require_explicit_safe_defaults() {
+        let options = [
+            ("dolphin_save_load_settings", "enabled"),
+            ("dolphin_enable_gamecube_mic", "disabled"),
+            ("dolphin_enable_rumble", "disabled"),
+            ("dolphin_alt_gc_ports_on_wii", "disabled"),
+            ("dolphin_disc_based_games_boot_to_wii_menu", "disabled"),
+            ("dolphin_hotkey_activate_microphone", "Disabled"),
+        ]
+        .into_iter()
+        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        .collect();
+        assert!(validate_gamecube_options(&options).is_ok());
+        let mut changed = options;
+        changed.insert("dolphin_enable_rumble".to_owned(), "enabled".to_owned());
+        assert!(validate_gamecube_options(&changed).is_err());
+    }
 }

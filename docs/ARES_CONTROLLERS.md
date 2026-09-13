@@ -24,8 +24,9 @@ same saved physical calibrations shown in the UI.
   launching; every generated input key and binding must survive that check.
 
 Source update after `d52297d`: guided target choice now persists through launch,
-and an eight-button arcade panel is available. These subsequent changes have not
-been built or tested; see [guided integration status](CONTROLLER_GUIDED_INTEGRATION.md).
+and an eight-button arcade panel is available. The current tree builds and its
+focused source tests pass, but the installed-runtime probe below exercises only
+the N64 mapping; see [guided integration status](CONTROLLER_GUIDED_INTEGRATION.md).
 
 Default target modes: N64 (four players), NES/SNES/Master System/SG-1000/
 Mega Drive-family/PlayStation digital (two), GB/GBC/GBA/Game Gear/NGP/NGPC/PCE

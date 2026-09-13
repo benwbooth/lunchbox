@@ -3,255 +3,40 @@
   "slug": "b2",
   "emulator": "b2",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/tom-seddon/b2",
-      "url": "https://github.com/tom-seddon/b2",
-      "role": "official upstream identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/tom-seddon/b2",
-      "role": "official distribution/documentation evidence"
-    }
+    { "kind": "source", "repo": "tom-seddon/b2", "commit": "e1c9b84a9460909d4dc2030ad1d4e050012b1910", "role": "pinned source for platform paths, JSON config and SDL input" },
+    { "kind": "docs", "url": "https://github.com/tom-seddon/b2/tree/e1c9b84a9460909d4dc2030ad1d4e050012b1910", "role": "official upstream documentation" }
   ],
   "platforms": {
     "linux": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "User data/config directory selected by b2; exact default filename/path is not published",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "SDL keyboard/joystick mappings configured by UI/config; persistent grammar not published",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "No libretro-style save support; guest disk files are content-defined",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "No verified save-state facility",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "BBC ROM files are model-dependent; no universal checksum published",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
-      ]
-    },
-    "linux-flatpak": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "User data/config directory selected by b2; exact default filename/path is not published",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "SDL keyboard/joystick mappings configured by UI/config; persistent grammar not published",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "No libretro-style save support; guest disk files are content-defined",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "No verified save-state facility",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "BBC ROM files are model-dependent; no universal checksum published",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
+        { "purpose": "config", "path": "$XDG_CONFIG_HOME/b2/b2.json, or $HOME/.config/b2/b2.json when XDG_CONFIG_HOME is unset", "naming": "JSON root contains the persisted b2 settings; joystick settings are joysticks.device_names (three strings) and joysticks.swap_joysticks_when_shared", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2/load_save_config_rapidjson.cpp, src/b2/load_save.cpp"] },
+        { "purpose": "input", "path": "The same b2.json; SDL runtime devices are matched by configured device name", "naming": "joysticks.device_names[0..3) plus swap_joysticks_when_shared; empty means none and repeated configured names intentionally share one controller, but multiple attached devices reporting the same SDL name remain ambiguous because no stable physical id is persisted", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2/joysticks.cpp, src/b2/load_save_config_rapidjson.cpp"] },
+        { "purpose": "saves", "path": "Guest files remain in user-selected BBC disk images; b2 does not define a separate host SRAM/save directory", "naming": "Guest filing-system names and selected image names", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2/host.cpp, src/b2/disc.cpp"] },
+        { "purpose": "states", "path": "No persistent save-state file is implemented; emulator state is held in memory for session operations", "naming": "No numbered slots or state filename grammar", "status": "not_supported", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2"] },
+        { "purpose": "bios", "path": "BBC model ROM assets selected from the b2 resource tree; source assets are under data/roms", "naming": "Model-dependent ROM filenames; no universal checksum asserted", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 data, src/b2/roms.cpp"] },
+        { "purpose": "keys", "status": "not_required", "path": "No cryptographic or firmware-key file is used by b2", "naming": "Keyboard definitions and BBC model ROM files are not decryption keys", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2 and data/roms source tree"] }
       ]
     },
     "windows": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "User data/config directory selected by b2; exact default filename/path is not published",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "SDL keyboard/joystick mappings configured by UI/config; persistent grammar not published",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "No libretro-style save support; guest disk files are content-defined",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "No verified save-state facility",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "BBC ROM files are model-dependent; no universal checksum published",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
+        { "purpose": "config", "path": "%LOCALAPPDATA%\\b2\\b2.json", "naming": "Same JSON schema; joysticks.device_names is a three-entry array", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2/load_save_win.cpp, src/b2/load_save_config_rapidjson.cpp"] },
+        { "purpose": "input", "path": "%LOCALAPPDATA%\\b2\\b2.json", "naming": "SDL runtime name matching via joysticks.device_names; swap_joysticks_when_shared is persisted", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2/joysticks.cpp"] },
+        { "purpose": "saves", "path": "Guest files in user-selected BBC disk images; no separate native save directory", "naming": "Guest filing-system naming", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2/disc.cpp"] },
+        { "purpose": "states", "path": "No persistent save-state files; state is session-memory only", "naming": "No slot naming", "status": "not_supported", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2"] },
+        { "purpose": "bios", "path": "Installed b2 data/roms resource tree", "naming": "Model-dependent ROM names; no universal checksum asserted", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 data, src/b2/roms.cpp"] },
+        { "purpose": "keys", "status": "not_required", "path": "No cryptographic or firmware-key file is used by b2", "naming": "Keyboard definitions and BBC model ROM files are not decryption keys", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2 and data/roms source tree"] }
       ]
     },
     "macos": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "User data/config directory selected by b2; exact default filename/path is not published",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "SDL keyboard/joystick mappings configured by UI/config; persistent grammar not published",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "No libretro-style save support; guest disk files are content-defined",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "No verified save-state facility",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "BBC ROM files are model-dependent; no universal checksum published",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/tom-seddon/b2",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
+        { "purpose": "config", "path": "~/Library/Application Support/com.tom-seddon.b2/b2.json", "naming": "Same JSON schema", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2/load_save_mac.mm"] },
+        { "purpose": "input", "path": "~/Library/Application Support/com.tom-seddon.b2/b2.json", "naming": "joysticks.device_names[0..3) and swap_joysticks_when_shared", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2/joysticks.cpp"] },
+        { "purpose": "saves", "path": "Guest files in user-selected BBC disk images; no separate native save directory", "naming": "Guest filing-system naming", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2/disc.cpp"] },
+        { "purpose": "states", "path": "No persistent save-state files; state is session-memory only", "naming": "No slot naming", "status": "not_supported", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2"] },
+        { "purpose": "bios", "path": "Installed b2 data/roms resource tree", "naming": "Model-dependent ROM names; no universal checksum asserted", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 data, src/b2/roms.cpp"] },
+        { "purpose": "keys", "status": "not_required", "path": "No cryptographic or firmware-key file is used by b2", "naming": "Keyboard definitions and BBC model ROM files are not decryption keys", "evidence": ["source:tom-seddon/b2@e1c9b84a9460909d4dc2030ad1d4e050012b1910 src/b2 and data/roms source tree"] }
       ]
     }
   },
-  "platform_gaps": {}
+  "platform_gaps": { "linux-flatpak": { "status": "no_verified_package", "reason": "Pinned upstream source provides native platform paths but no verified Flatpak app id", "evidence": ["docs:https://github.com/tom-seddon/b2/tree/e1c9b84a9460909d4dc2030ad1d4e050012b1910"] } }
 }

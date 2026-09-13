@@ -23,16 +23,12 @@
     ]
   },
   "saves": {
-    "status": "content_dependent",
-    "extensions": [
-      ".d64",
-      ".d81",
-      ".t64"
-    ],
-    "naming": "Program saves are written into writable attached media; no generic sidecar save file is claimed.",
-    "notes": "Persistence depends on media and filesystem-device configuration.",
+    "status": "supported",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=true but does not declare a persistent-save filename extension.",
+    "notes": "Persistent save support is declared by the pinned core-info metadata; filename and content semantics are not specified there.",
     "evidence": [
-      "VICE libretro media-save behavior"
+      "vice_xpet_libretro.info libretro_saves=true"
     ]
   },
   "states": {

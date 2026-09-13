@@ -1719,3 +1719,44 @@ pub(crate) fn loaded_device_id(requested: u32, port: usize, msx_or_spectrum: boo
         _ => 5,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fbneo_transport_fields_keep_device_and_part_contracts_distinct() {
+        let joypad = InputAddress {
+            port: 0,
+            device: 1,
+            index: 0,
+            id: 8,
+        };
+        assert_eq!(retroarch_field(&joypad, BindingPart::Digital).unwrap(), "a");
+        assert_eq!(binding_parts(&joypad), &[BindingPart::Digital]);
+        let axis = InputAddress {
+            port: 0,
+            device: 5,
+            index: 1,
+            id: 0,
+        };
+        assert_eq!(
+            binding_parts(&axis),
+            &[BindingPart::Negative, BindingPart::Positive]
+        );
+        assert_eq!(loaded_device_id(999, 2, true), 3);
+    }
+
+    #[test]
+    fn fbneo_unknown_transport_addresses_are_not_guessed() {
+        let unknown = InputAddress {
+            port: 0,
+            device: 999,
+            index: 0,
+            id: 0,
+        };
+        assert!(retroarch_field(&unknown, BindingPart::Digital).is_err());
+        assert!(binding_parts(&unknown).is_empty());
+        assert_eq!(loaded_device_id(999, 0, false), 5);
+    }
+}

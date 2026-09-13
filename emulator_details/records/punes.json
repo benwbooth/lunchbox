@@ -3,7 +3,7 @@
   "slug": "punes",
   "emulator": "puNES",
   "sources": [
-    { "kind": "source", "repo": "punesemu/puNES", "commit": "b1758ec26", "role": "paths, naming and input config contract" },
+    { "kind": "source", "repo": "punesemu/puNES", "commit": "b1758ec26a3d6da10abf50dc184fa837236c5f61", "role": "paths, naming and input.cfg writer contract; P?J GUID selects a device while compiled jstick_db defaults provide controls" },
     { "kind": "docs", "url": "https://github.com/punesemu/puNES#readme", "role": "supported platforms (Linux/FreeBSD/OpenBSD/Windows only), portable mode" },
     { "kind": "docs", "url": "https://github.com/flathub/io.github.punesemu.puNES/blob/master/io.github.punesemu.puNES.yml", "role": "flatpak finish-args: home mounted read-only, so writes land in the sandbox HOME" }
   ],
@@ -39,6 +39,13 @@
           "path": "~/.local/share/puNES/bios/ — no BIOS needed for cart games; FDS (Famicom Disk System) needs disksys.rom, optional",
           "naming": "FDS BIOS search order: 1) 'fds bios file' from puNES.cfg, 2) disksys.rom in the working directory, 3) disksys.rom beside the .fds file, 4) <data folder>/bios/disksys.rom; Game Genie ROM also lives in bios/",
           "evidence": ["source:src/core/fds.c fds_load_bios search order, BIOSFILE \"disksys.rom\", step 4 = gui_data_folder() + BIOS_FOLDER + BIOSFILE", "source:src/core/cheat.c Game Genie rom under BIOS_FOLDER", "db:firmware_rules has no punes entry (checked build/lunchbox.db) — NES needs no mandatory firmware"]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:punesemu/puNES@b1758ec26a3d6da10abf50dc184fa837236c5f61 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Native (non-flatpak) layout per source; only the flatpak build is installed on this machine, so no native ~/.config/puNES exists here to inspect."
@@ -74,6 +81,13 @@
           "path": "~/.var/app/io.github.punesemu.puNES/data/puNES/bios/ — optional disksys.rom for FDS only",
           "naming": "disksys.rom; same 4-step search order as native linux (bios/ dir is the last fallback)",
           "evidence": ["local:data/puNES/bios/ exists (empty)", "source:src/core/fds.c fds_load_bios", "db:firmware_rules has no punes entry (checked build/lunchbox.db)"]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:punesemu/puNES@b1758ec26a3d6da10abf50dc184fa837236c5f61 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Flatpak v0.111 from flathub; README ships a DISABLE_PORTABLE_MODE build option 'useful with sandbox environments like Flatpak'."
@@ -109,6 +123,13 @@
           "path": "%APPDATA%\\puNES\\bios\\ — optional disksys.rom for FDS only",
           "naming": "disksys.rom; same 4-step search order as linux",
           "evidence": ["source:src/core/fds.c fds_load_bios step 4 = data folder + bios/ + disksys.rom", "db:firmware_rules has no punes entry (checked build/lunchbox.db)"]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:punesemu/puNES@b1758ec26a3d6da10abf50dc184fa837236c5f61 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Windows builds (32/64 bit, OpenGL or Direct3D9) are official per README and CI (mingw windows-latest job)."

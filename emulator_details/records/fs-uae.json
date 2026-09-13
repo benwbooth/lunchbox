@@ -1,7 +1,8 @@
 {
   "schema_version": 1, "slug": "fs-uae", "emulator": "FS-UAE",
   "sources": [
-    {"kind":"source","repo":"FrodeSolheim/fs-uae","commit":"f362278ccd4c60991caac3b4d240d4a3f751bea2","role":"configuration, input, savestate and Kickstart directory implementation"},
+    {"kind":"source","repo":"FrodeSolheim/fs-uae","commit":"f362278ccd4c60991caac3b4d240d4a3f751bea2","role":"native SDL input event vocabulary, configuration, savestate and Kickstart directory implementation"},
+    {"kind":"source","repo":"FrodeSolheim/fs-uae-launcher","commit":"350a7df368e50b44b8a5f91b4cb5663ab82aa406","role":"native controller-profile grammar, device-name normalization and duplicate-name matching"},
     {"kind":"docs","url":"https://fs-uae.net/docs/directories/","role":"official user directories"},
     {"kind":"docs","url":"https://fs-uae.net/docs/options/","role":"official options and input mapping names"}
   ],
@@ -11,22 +12,22 @@
       {"purpose":"input","path":"The same FS-UAE option/config files and Controllers data directory","naming":"joystick_<port>_<button|axis> = action_<name>; shipped controller profiles are named <controller>.conf and SDL mappings are in Data/Devs/Controllers/gamecontrollerdb.txt","evidence":["source:od-fs/fsemu/fsemu-sdlinput.c and docs/joysticks.md @f362278"]},
       {"purpose":"saves","path":"Save data is written by the emulated Amiga into mounted floppy/hard-disk media; FS-UAE does not invent a universal sidecar save extension","naming":"In-image files retain the Amiga application's filename; media remains the authoritative save container","evidence":["docs:fs-uae.net/docs/getting-started/ (Amiga media workflow)"]},
       {"purpose":"states","path":"~/FS-UAE/Save States/ under the FS-UAE base directory (configurable with save_states_dir)","naming":"Slot files use the configured save-state filename/mask and the .uss state format; actions are action_save_state_1 through action_save_state_9","evidence":["source:fsuae savestate.cpp and od-fs path service @f362278","docs:fs-uae.net/docs/options/ (save_states and save_states_dir)"]},
-      {"purpose":"bios","path":"~/FS-UAE/Kickstarts/ (configurable Kickstarts directory)","naming":"Kickstart ROMs use FS-UAE's recognized Kickstart names such as kick*.rom; no canonical checksum is asserted here because regional/revision images vary and the official docs do not provide one","evidence":["docs:fs-uae.net/docs/getting-started/","docs:fs-uae.net/docs/kickstarts/","source:od-fs/python/fsuae/services/pathservice.py @f362278"]}
-    ]},
+      {"purpose":"bios","path":"~/FS-UAE/Kickstarts/ (configurable Kickstarts directory)","naming":"Kickstart ROMs use FS-UAE's recognized Kickstart names such as kick*.rom; no canonical checksum is asserted here because regional/revision images vary and the official docs do not provide one","evidence":["docs:fs-uae.net/docs/getting-started/","docs:fs-uae.net/docs/kickstarts/","source:od-fs/python/fsuae/services/pathservice.py @f362278"]},
+    {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:FrodeSolheim/fs-uae@f362278ccd4c60991caac3b4d240d4a3f751bea2 (primary source cited by this record; keys capture remains unresolved for linux)"]}]},
     "windows":{"paths":[
       {"purpose":"config","path":"%USERPROFILE%\\Documents\\FS-UAE\\Configurations\\ and the FS-UAE user directory; per-game *.fs-uae files","naming":"INI-style option lines; joystick_<port>_<button|axis> = action_*","evidence":["source:od-fs path service @f362278","docs:fs-uae.net/docs/options/"]},
       {"purpose":"input","path":"FS-UAE option files plus the Controllers directory","naming":"joystick_<port>_<button|axis> = action_<name>; controller profiles are *.conf","evidence":["source:od-fs/fsemu/fsemu-sdlinput.c @f362278"]},
       {"purpose":"saves","path":"Inside mounted Amiga floppy/hard-disk media; no universal sidecar save path","naming":"Game/application-defined files inside the media image","evidence":["docs:fs-uae.net/docs/getting-started/"]},
       {"purpose":"states","path":"FS-UAE base directory Save States folder, configurable with save_states_dir","naming":".uss save-state files with numbered action_save_state_N slots","evidence":["source:fsuae savestate.cpp @f362278","docs:fs-uae.net/docs/options/"]},
-      {"purpose":"bios","path":"%USERPROFILE%\\Documents\\FS-UAE\\Kickstarts\\","naming":"kick*.rom Kickstart images; no canonical checksum claimed by the official source/docs","evidence":["docs:fs-uae.net/docs/getting-started/","source:od-fs/python/fsuae/services/pathservice.py @f362278"]}
-    ]},
+      {"purpose":"bios","path":"%USERPROFILE%\\Documents\\FS-UAE\\Kickstarts\\","naming":"kick*.rom Kickstart images; no canonical checksum claimed by the official source/docs","evidence":["docs:fs-uae.net/docs/getting-started/","source:od-fs/python/fsuae/services/pathservice.py @f362278"]},
+    {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:FrodeSolheim/fs-uae@f362278ccd4c60991caac3b4d240d4a3f751bea2 (primary source cited by this record; keys capture remains unresolved for windows)"]}]},
     "macos":{"paths":[
       {"purpose":"config","path":"~/Documents/FS-UAE/Configurations/ and the FS-UAE user directory; *.fs-uae option files","naming":"INI-style options, including joystick_<port>_<button|axis> = action_*","evidence":["source:od-fs path service @f362278","docs:fs-uae.net/docs/options/"]},
       {"purpose":"input","path":"FS-UAE option files and Controllers data directory","naming":"joystick_<port>_<button|axis> = action_<name>; controller profiles are *.conf","evidence":["source:od-fs/fsemu/fsemu-sdlinput.c @f362278"]},
       {"purpose":"saves","path":"Inside mounted Amiga media; no universal sidecar save directory","naming":"Application-defined files inside ADF/HDF or other mounted media","evidence":["docs:fs-uae.net/docs/getting-started/"]},
       {"purpose":"states","path":"FS-UAE base directory Save States, configurable by save_states_dir","naming":".uss numbered save-state files","evidence":["source:fsuae savestate.cpp @f362278","docs:fs-uae.net/docs/options/"]},
-      {"purpose":"bios","path":"~/Documents/FS-UAE/Kickstarts/","naming":"kick*.rom Kickstart images; no canonical checksum claimed by official docs","evidence":["docs:fs-uae.net/docs/kickstarts/","source:od-fs/python/fsuae/services/pathservice.py @f362278"]}
-    ]}
+      {"purpose":"bios","path":"~/Documents/FS-UAE/Kickstarts/","naming":"kick*.rom Kickstart images; no canonical checksum claimed by official docs","evidence":["docs:fs-uae.net/docs/kickstarts/","source:od-fs/python/fsuae/services/pathservice.py @f362278"]},
+    {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:FrodeSolheim/fs-uae@f362278ccd4c60991caac3b4d240d4a3f751bea2 (primary source cited by this record; keys capture remains unresolved for macos)"]}]}
   },
   "platform_gaps":{"linux-flatpak":{"status":"no_verified_package","reason":"The upstream project documents native Linux builds but no current first-party Flathub package is identified.","evidence":["docs:https://fs-uae.net/download","source:FrodeSolheim/fs-uae@f362278ccd4c"]}}
 }

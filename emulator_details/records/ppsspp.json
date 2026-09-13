@@ -68,6 +68,13 @@
             "docs:https://www.ppsspp.org/docs/getting-started/how-to-run-the-vsh/ (\"you need a PSP update. You can download 6.61 directly from Sony. Next, just open the update in PPSSPP, which will offer to install it for you\" - marked for version 1.21, after the pin)",
             "repo:crates/lunchbox-app/src/firmware.rs and crates/lunchbox-db (no ppsspp firmware_rules entries; PPSSPP needs no user firmware)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:hrydgard/ppsspp@e49c0bd8836a8a8f678565357773386f1174d3f5 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Lunchbox launches the SDL build with HOME/XDG_CONFIG_HOME deliberately unchanged and Bubblewrap-overlays only PSP/SYSTEM inside the child namespace (crates/lunchbox-app/src/controller_ppsspp/native_command.rs, configuration.rs), so native SAVEDATA/PPSSPP_STATE stay in ~/.config/ppsspp; the launcher re-verifies the resolved search directory XDG_CONFIG_HOME|~/.config + /ppsspp/PSP/SYSTEM before applying a saved setup."
@@ -120,6 +127,13 @@
             "source:ppsspp/Core/ConfigValues.h PSP_DEFAULT_FIRMWARE = 660",
             "docs:https://www.ppsspp.org/docs/getting-started/how-to-run-the-vsh/ (updater install flow, 1.21+)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:hrydgard/ppsspp@e49c0bd8836a8a8f678565357773386f1174d3f5 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "The Flathub sandbox grants --filesystem=host:ro (read-only visibility), so the writable memstick root necessarily lands in the app-scoped XDG_CONFIG_HOME; Lunchbox has no containerized launch adapter for PPSSPP yet (controller_ppsspp/native_command.rs requires a native Linux executable)."
@@ -174,6 +188,13 @@
             "source:ppsspp/Core/ConfigValues.h PSP_DEFAULT_FIRMWARE = 660",
             "docs:https://www.ppsspp.org/docs/getting-started/how-to-run-the-vsh/"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:hrydgard/ppsspp@e49c0bd8836a8a8f678565357773386f1174d3f5 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "The portable/portable-path rules (memstick dir, installed.txt, read-only fallback to Documents) live entirely in Windows/main.cpp InitSysDirectories; Lunchbox currently has no Windows launch adapter for PPSSPP (controller_ppsspp/native_command.rs rejects non-native routing), so these are capture-only facts."
@@ -227,6 +248,13 @@
             "source:ppsspp/Core/HLE/sceIo.cpp Apple branch mounts flash0 via DirectoryFileSystem(g_Config.flash0Directory)",
             "docs:https://www.ppsspp.org/docs/getting-started/how-to-run-the-vsh/"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:hrydgard/ppsspp@e49c0bd8836a8a8f678565357773386f1174d3f5 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "macOS uses the same SDL desktop code path as Linux, so the data root is ~/.config/ppsspp (not ~/Library/Application Support) unless the user picks another memstick folder, which PPSSPP persists in NSUserDefaults; capture reflects the pinned v1.19.3 SDL build described by ppsspp.org's macOS page."

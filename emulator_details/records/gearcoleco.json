@@ -3,7 +3,7 @@
   "slug": "gearcoleco",
   "emulator": "Gearcoleco",
   "sources": [
-    { "kind": "source", "repo": "drhelius/Gearcoleco", "commit": "8ad5f92c45e7ca616535a057495557c2352a9115", "role": "config root/INI path resolution, input config keys, save/state/bios file construction, libretro BIOS lookup" },
+    { "kind": "source", "repo": "drhelius/Gearcoleco", "commit": "8ad5f92c45e7ca616535a057495557c2352a9115", "role": "config root/INI path resolution, logical SDL input config keys, live player assignment, save/state/bios file construction, libretro BIOS lookup" },
     { "kind": "docs", "url": "https://github.com/drhelius/Gearcoleco#readme", "role": "platform availability (Windows x64/ARM64, macOS Apple Silicon/Intel + Homebrew cask, Linux PPA/RPM/Ubuntu builds, SDL3)" },
     { "kind": "docs", "url": "https://abdess.github.io/retrobios/emulators/gearcoleco/", "role": "colecovision.rom/coleco.rom 8192-byte BIOS, size-only validation, region patch at 0x69, no extra SGM BIOS" },
     { "kind": "source", "repo": "lunchbox crates/lunchbox-app/data/controllers/catalog.json", "role": "existing retroarch:gearcoleco core profile only; standalone desktop config contract is new coverage" }
@@ -24,13 +24,13 @@
         {
           "purpose": "input",
           "naming": "Controller INI grammar: [InputA]/[InputB] SDL_Scancode integers for ColecoVision keys, SDL gamepad button/axis integer fields, and [Hotkeys] <Name>Scancode/<Name>Mod pairs",
-          "path": "Controller bindings live inside config.ini itself, no separate key file: [InputA]/[InputB] hold one SDL_Scancode integer per ColecoVision key (KeyLeft/KeyRight/KeyUp/KeyDown, KeyLeftButton/KeyRightButton, KeyBlue/KeyPurple, Key0..Key9, KeyAsterisk, KeyHash; InputA defaults = arrows + A/S/D/F + numpad 0-9,*,/; InputB = J/L/I/K cluster) plus SDL gamepad fields as integer button/axis indices (Gamepad, GamepadDirectional 0=dpad/1=stick, GamepadInvertX/Y, GamepadX/GamepadY, GamepadLeftButton/GamepadRightButton, GamepadBlue/GamepadPurple, Gamepad0..Gamepad9, GamepadAsterisk, GamepadHash); [Hotkeys] stores <Name>Scancode/<Name>Mod int pairs (SaveState Ctrl+S, LoadState Ctrl+L, SelectSlot1..5 Ctrl+1..5); [InputGamepadShortcuts1]/[InputGamepadShortcuts2] map hotkeys to gamepad buttons. ColecoVision key set (GC_Keys) = 12-key keypad 0-9 + * + # , 4 joystick directions, Left/Right buttons, Super Action Controller Blue/Purple buttons. The bundled platforms/shared/gamecontrollerdb.txt (SDL GUID mappings) is loaded from beside the executable at startup. Super Action Controller spinner via [Emulator] Spinner + SpinnerSensitivity (mouse wheel/roller modes)",
+          "path": "Controller bindings live inside config.ini itself, no separate key file: [InputA]/[InputB] hold one SDL_Scancode integer per ColecoVision key (KeyLeft/KeyRight/KeyUp/KeyDown, KeyLeftButton/KeyRightButton, KeyBlue/KeyPurple, Key0..Key9, KeyAsterisk, KeyHash; InputA defaults = arrows + A/S/D/F + numpad 0-9,*,/; InputB = J/L/I/K cluster) plus SDL logical gamepad fields (Gamepad, GamepadDirectional 0=dpad/1=stick, GamepadInvertX/Y, GamepadX/GamepadY, GamepadLeft/GamepadRight, GamepadBlue/GamepadPurple, Gamepad0..Gamepad9, GamepadAsterisk, GamepadHash); gamepad.cpp assigns the first two live SDL gamepads to players and does not persist a physical-device index. [Hotkeys] stores <Name>Scancode/<Name>Mod int pairs (SaveState Ctrl+S, LoadState Ctrl+L, SelectSlot1..5 Ctrl+1..5); [InputGamepadShortcuts1]/[InputGamepadShortcuts2] map hotkeys to gamepad buttons. ColecoVision key set (GC_Keys) = 12-key keypad 0-9 + * + # , 4 joystick directions, Left/Right buttons, Super Action Controller Blue/Purple buttons. The bundled platforms/shared/gamecontrollerdb.txt (SDL GUID mappings) is loaded from beside the executable at startup. Super Action Controller spinner via [Emulator] Spinner + SpinnerSensitivity (mouse wheel/roller modes)",
             "evidence": [
             "source:platforms/shared/desktop/config_definitions.inc.h [InputA]/[InputB] CONFIG_SCANCODE/CONFIG_INT keys with keyboard_defaults, [Hotkeys] CONFIG_HOTKEY, [InputGamepadShortcuts1/2] @ 8ad5f92",
             "source:platforms/shared/desktop/events.cpp input_poll_controller button_map {scancode, GC_Keys, gamepad button} table + dpad/stick directional handling @ 8ad5f92",
             "source:src/definitions.h enum GC_Keys (Keypad_0..9, Asterisk, Hash, Key_Up/Right/Down/Left, Key_Left_Button/Key_Right_Button, Key_Blue/Key_Purple) @ 8ad5f92",
-            "source:platforms/shared/desktop/gamepad.cpp loads gamecontrollerdb.txt from exe_path @ 8ad5f92",
-            "gap:lunchbox data/controllers/catalog.json only has retroarch:gearcoleco profiles; no standalone gearcoleco input contract yet"
+            "source:platforms/shared/desktop/gamepad.cpp loads gamecontrollerdb.txt from exe_path and assigns the first two live gamepads to player slots @ 8ad5f92",
+            "source:crates/lunchbox-app/src/controller_gearcoleco_standalone.rs preserving standalone logical-mapping writer"
           ]
         },
         {
@@ -67,8 +67,8 @@
             "docs:abdess.github.io/retrobios/emulators/gearcoleco (colecovision.rom/coleco.rom, 8192 bytes required, size-only validation, 0x69 region patch, no SGM BIOS)",
             "gap:sources/firmware-rules.json has no standalone gearcoleco rule - only retroarch:fbneo:ColecoVision sourcing 'Coleco - ColecoVision (Gearcoleco).zip' for RetroArch cores, so a standalone Gearcoleco runtime would fail the firmware audit"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:drhelius/Gearcoleco@8ad5f92c45e7ca616535a057495557c2352a9115 (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "All user data (config.ini, imgui.ini, default saves/states) sits in one SDL_GetPrefPath root, so a private XDG_CONFIG_HOME or --portable isolates it; native saves/states keep their configured or ROM-side locations."
     },
     "windows": {
@@ -118,8 +118,8 @@
             "docs:abdess.github.io/retrobios/emulators/gearcoleco (8KB required, no hash check)",
             "gap:no standalone gearcoleco entry in sources/firmware-rules.json"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:drhelius/Gearcoleco@8ad5f92c45e7ca616535a057495557c2352a9115 (primary source cited by this record; keys capture remains unresolved for windows)"]}],
       "notes": "Windows is the only platform with both x64 and ARM64 official desktop builds (docs:github README downloads table, Gearcoleco-1.6.13-desktop-windows-*.zip)."
     },
     "macos": {
@@ -169,8 +169,8 @@
             "docs:abdess.github.io/retrobios/emulators/gearcoleco (8KB required, no hash check)",
             "gap:no standalone gearcoleco entry in sources/firmware-rules.json"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:drhelius/Gearcoleco@8ad5f92c45e7ca616535a057495557c2352a9115 (primary source cited by this record; keys capture remains unresolved for macos)"]}],
       "notes": "macOS availability verified from the README downloads table: Homebrew cask drhelius/geardome/gearcoleco plus official Apple Silicon and Intel desktop archives; SDL3-based and identical to other desktop builds apart from the .app portable path and Cmd modifiers."
     }
   },

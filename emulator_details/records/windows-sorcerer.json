@@ -1,1 +1,105 @@
-{"schema_version":1,"slug":"windows-sorcerer","emulator":"Windows Sorcerer","sources":[{"kind":"source","repo":"http://www.geocities.ws/emucompboy/","url":"http://www.geocities.ws/emucompboy/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"http://www.geocities.ws/emucompboy/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows-only obsolete freeware; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://www.geocities.ws/emucompboy/"]},"linux-flatpak":{"status":"unresolved","reason":"Windows-only obsolete freeware; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://www.geocities.ws/emucompboy/"]},"windows":{"status":"unresolved","reason":"Windows-only obsolete freeware; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://www.geocities.ws/emucompboy/"]},"macos":{"status":"unresolved","reason":"Windows-only obsolete freeware; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://www.geocities.ws/emucompboy/"]}}}
+{
+  "schema_version": 1,
+  "slug": "windows-sorcerer",
+  "emulator": "Windows Sorcerer",
+  "sources": [
+    {
+      "kind": "artifact",
+      "url": "https://www.vincenzoscarpa.it/emuwiki/pmwiki/myscripts/downloademulwin.php?fn=729",
+      "version": "v0.01",
+      "sha256": "b3171b5cf2020884c66cf5f3dee6481d230737492d914cc3797e6733e2b6c693",
+      "role": "Preserved Windows Sorcerer distribution; executable, INI, ROM, cartridge and snapshot assets"
+    },
+    {
+      "kind": "docs",
+      "url": "http://www.geocities.ws/emucompboy/",
+      "role": "Original upstream identity and distribution page cited by the bundled readme"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/WINDOWS_SORCERER_CONTROLLER_BOUNDARY.md",
+      "role": "Fail-closed DirectX/INI controller boundary"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "WSorcerer/WSORCER.ini (selects WSorcerer/default.ini in the extracted application directory)",
+          "naming": "Windows INI sections [PRINTER], [MEMORY], and [KEYBOARD]; keyboard entries use nXX=byte values",
+          "evidence": [
+            "artifact:https://www.vincenzoscarpa.it/emuwiki/pmwiki/myscripts/downloademulwin.php?fn=729 sha256=b3171b5cf2020884c66cf5f3dee6481d230737492d914cc3797e6733e2b6c693 (WSorcerer.ini and default.ini)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "DirectX joystick input and emulated keyboard at runtime; no verified host mapping file",
+          "naming": "Bundled readme says the joystick works but is not configurable and keyboard configuration is not working",
+          "status": "unresolved",
+          "evidence": [
+            "artifact:https://www.vincenzoscarpa.it/emuwiki/pmwiki/myscripts/downloademulwin.php?fn=729 sha256=b3171b5cf2020884c66cf5f3dee6481d230737492d914cc3797e6733e2b6c693 (docs/readme.txt joystick and keyboard sections)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "No guest disk, cassette, or cartridge-save format is established by this preliminary distribution",
+          "naming": "The archive supplies read-only/reference cartridge .bin files and .snp snapshots, but no documented guest save sidecar",
+          "status": "unresolved",
+          "evidence": [
+            "artifact:https://www.vincenzoscarpa.it/emuwiki/pmwiki/myscripts/downloademulwin.php?fn=729 sha256=b3171b5cf2020884c66cf5f3dee6481d230737492d914cc3797e6733e2b6c693 (archive listing and docs/readme.txt)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "WSorcerer/SNP/*.snp loaded through the emulator's Load Snapshot command",
+          "naming": "Snapshot files use the .snp extension; no slot or writable-state serializer is documented",
+          "evidence": [
+            "artifact:https://www.vincenzoscarpa.it/emuwiki/pmwiki/myscripts/downloademulwin.php?fn=729 sha256=b3171b5cf2020884c66cf5f3dee6481d230737492d914cc3797e6733e2b6c693 (SNP directory and docs/readme.txt)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "WSorcerer/OSROM/monitor.bin and WSorcerer/OSROM/chargen.bin; ROM/WORD.BIN and ROM/BASIC.BIN are bundled machine assets",
+          "naming": "Binary ROM assets are named by role; the readme says loading another OS ROM is not working",
+          "status": "unresolved",
+          "evidence": [
+            "artifact:https://www.vincenzoscarpa.it/emuwiki/pmwiki/myscripts/downloademulwin.php?fn=729 sha256=b3171b5cf2020884c66cf5f3dee6481d230737492d914cc3797e6733e2b6c693 (OSROM and ROM directories, docs/readme.txt)"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "naming": "No external cryptographic or decryption-key file is consumed by the documented emulator contract",
+          "status": "not_required",
+          "evidence": [
+            "artifact:https://www.vincenzoscarpa.it/emuwiki/pmwiki/myscripts/downloademulwin.php?fn=729 sha256=b3171b5cf2020884c66cf5f3dee6481d230737492d914cc3797e6733e2b6c693 (complete archive listing)"
+          ]
+        }
+      ],
+      "notes": "The bundled readme targets Windows 95/98 and DirectX, calls this a very preliminary version, and reports that many peripherals and memory features do not work. Runtime launch and effective input were not verified."
+    }
+  },
+  "platform_gaps": {
+    "linux": {
+      "status": "unsupported",
+      "reason": "The preserved distribution targets Windows 95/98 and DirectX and publishes no native Linux executable or source-backed Linux persistence contract.",
+      "evidence": ["artifact:https://www.vincenzoscarpa.it/emuwiki/pmwiki/myscripts/downloademulwin.php?fn=729 sha256=b3171b5cf2020884c66cf5f3dee6481d230737492d914cc3797e6733e2b6c693 (docs/readme.txt system requirements)"]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "No Windows Sorcerer Flatpak package or manifest is published by the upstream or preserved distribution.",
+      "evidence": ["official:http://www.geocities.ws/emucompboy/", "artifact:https://www.vincenzoscarpa.it/emuwiki/pmwiki/myscripts/downloademulwin.php?fn=729"]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "The preserved distribution targets Windows 95/98 and DirectX and publishes no native macOS executable or source-backed macOS persistence contract.",
+      "evidence": ["artifact:https://www.vincenzoscarpa.it/emuwiki/pmwiki/myscripts/downloademulwin.php?fn=729 sha256=b3171b5cf2020884c66cf5f3dee6481d230737492d914cc3797e6733e2b6c693 (docs/readme.txt system requirements)"]
+    }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not invent a Windows Sorcerer controller writer: the pinned artifact documents a DirectX joystick with no configuration and a keyboard configuration that does not work; no verified profile serializer exists."
+  },
+  "notes": "The artifact was downloaded and SHA-256 verified. This record captures published paths and limitations, not runtime compatibility or gameplay parity."
+}

@@ -39,7 +39,8 @@
           "path": "No external firmware required: SameBoy ships open-source boot ROM resources. Optional custom folder is selected by the prefs.bin bootrom_path field",
           "naming": "Optional folder filenames are dmg0_boot.bin, dmg_boot.bin, mgb_boot.bin, sgb_boot.bin, sgb2_boot.bin, cgb0_boot.bin, cgb_boot.bin, cgbE_boot.bin, agb0_boot.bin, agb_boot.bin; there is no canonical external checksum for these user-selected files, and built-in SameBoy boot ROMs are source-built",
           "evidence": ["source:SDL/main.c load_boot_rom names[] and bootrom_path lookup @208ba4af", "source:README.md features list says SameBoy includes open-source DMG/CGB boot ROMs @208ba4af", "source:Makefile bootroms target and BootROMs/*.asm build the bundled images @208ba4af"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "SameBoy does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:SameBoy SDL/Cocoa source tree @208ba4af"] }
       ]
     },
     "linux-flatpak": {
@@ -73,7 +74,8 @@
           "path": "No external firmware required; optional custom boot-ROM folder in prefs.bin. Flatpak manifest ships SameBoy resources under /app/share/sameboy",
           "naming": "Optional names: dmg0_boot.bin, dmg_boot.bin, mgb_boot.bin, sgb_boot.bin, sgb2_boot.bin, cgb0_boot.bin, cgb_boot.bin, cgbE_boot.bin, agb0_boot.bin, agb_boot.bin; no canonical external checksum",
           "evidence": ["packaging:io.github.sameboy.SameBoy.yml DATA_DIR=/app/share/sameboy and SameBoy source @f8fce276", "source:SDL/main.c names[] and built-in resource_path fallback @208ba4af"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "SameBoy does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:SameBoy SDL source @208ba4af"] }
       ]
     },
     "macos": {
@@ -107,7 +109,8 @@
           "path": "No external firmware required: Cocoa bundles SameBoy boot ROMs in SameBoy.app/Contents/Resources. Preferences may select a custom folder with GBBootROMsFolder",
           "naming": "Optional custom folder uses the same exact names: dmg0_boot.bin, dmg_boot.bin, mgb_boot.bin, sgb_boot.bin, sgb2_boot.bin, cgb0_boot.bin, cgb_boot.bin, cgbE_boot.bin, agb0_boot.bin, agb_boot.bin; no canonical external checksum",
           "evidence": ["source:Makefile Cocoa app resource copy of *.bin @208ba4af", "source:Cocoa/GBPreferencesWindow.m GBBootROMsFolder preference @208ba4af", "source:Cocoa/Document.m boot-ROM selection is user folder or bundled resources @208ba4af"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "SameBoy does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:SameBoy Cocoa source tree @208ba4af"] }
       ]
     },
     "windows": {
@@ -141,7 +144,8 @@
           "path": "No external firmware required: SDL Windows builds ship SameBoy boot-ROM resources beside the executable. Optional custom bootrom_path selects a folder",
           "naming": "Optional exact names: dmg0_boot.bin, dmg_boot.bin, mgb_boot.bin, sgb_boot.bin, sgb2_boot.bin, cgb0_boot.bin, cgb_boot.bin, cgbE_boot.bin, agb0_boot.bin, agb_boot.bin; no canonical external checksum",
           "evidence": ["source:Makefile Windows resource/install rules and BootROMs target @208ba4af", "source:SDL/main.c load_boot_rom names[] and resource_path fallback @208ba4af"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "SameBoy does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:SameBoy SDL Windows source tree @208ba4af"] }
       ]
     }
   },

@@ -31,8 +31,9 @@
           "path": "bios/ in the user directory by default (configurable via [BIOS] SearchDirectory); DuckStation's fast-boot/HLE options do not make a dumped BIOS universally unnecessary for all software",
           "naming": "Canonical names in the source BIOS database include ps-10j.bin, ps-22a.bin, ps-22e.bin, ps-30a.bin, ps-30e.bin, ps-30j.bin, ps-41a.bin, ps-41e.bin, psone-44a.bin, psone-44e.bin and many PS2 BIOS names. Example authoritative MD5 values: ps-22a.bin 924e392ed05558ffdb115408c263dccf; ps-30a.bin 490f666e1afb15b7362b406ed1cea246; ps-30e.bin 32736f17079d0b2b7024407c39bd3050; ps-30j.bin 8dd7d5296a650fac7319bce665a6a53c. The database contains more regional/version-specific names and hashes; no single BIOS filename is valid for every region.",
           "evidence": ["source:src/core/bios.cpp BIOS::ImageInfo database and hash values", "source:src/core/settings.cpp EmuFolders::Bios", "docs:README.md User Directories"]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:stenzek/duckstation@ed6720bbf59011b276faafb098ecc1c2407e74a3 (primary source cited by this record; input capture remains unresolved for linux)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:stenzek/duckstation@ed6720bbf59011b276faafb098ecc1c2407e74a3 (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "Lunchbox launches with a private data root; native saves stay in their configured locations."
     },
     "macos": {
@@ -59,8 +60,9 @@
           "path": "~/Library/Application Support/DuckStation/bios/ by default; [BIOS] SearchDirectory can override it",
           "naming": "Use source database names such as ps-22a.bin, ps-30a.bin, ps-30e.bin and ps-30j.bin; source records MD5 hashes, including ps-30a 490f666e1afb15b7362b406ed1cea246, ps-30e 32736f17079d0b2b7024407c39bd3050 and ps-30j 8dd7d5296a650fac7319bce665a6a53c. No one filename suits all regions.",
           "evidence": ["source:src/core/bios.cpp", "source:src/core/settings.cpp", "docs:README.md"]
-        }
-      ]
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:stenzek/duckstation@ed6720bbf59011b276faafb098ecc1c2407e74a3 (primary source cited by this record; input capture remains unresolved for macos)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:stenzek/duckstation@ed6720bbf59011b276faafb098ecc1c2407e74a3 (primary source cited by this record; keys capture remains unresolved for macos)"]}]
     },
     "windows": {
       "paths": [
@@ -86,8 +88,9 @@
           "path": "%LOCALAPPDATA%\\DuckStation\\bios\\ by default; [BIOS] SearchDirectory can override it",
           "naming": "Use source database names such as ps-22a.bin, ps-30a.bin, ps-30e.bin and ps-30j.bin; source records MD5 hashes, including ps-30a 490f666e1afb15b7362b406ed1cea246, ps-30e 32736f17079d0b2b7024407c39bd3050 and ps-30j 8dd7d5296a650fac7319bce665a6a53c. No one filename suits all regions.",
           "evidence": ["source:src/core/bios.cpp", "source:src/core/settings.cpp", "docs:README.md"]
-        }
-      ]
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:stenzek/duckstation@ed6720bbf59011b276faafb098ecc1c2407e74a3 (primary source cited by this record; input capture remains unresolved for windows)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:stenzek/duckstation@ed6720bbf59011b276faafb098ecc1c2407e74a3 (primary source cited by this record; keys capture remains unresolved for windows)"]}]
     }
   },
   "platform_gaps": {

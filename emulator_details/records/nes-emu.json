@@ -1,1 +1,18 @@
-{"schema_version":1,"slug":"nes-emu","emulator":"NES.emu","sources":[{"kind":"source","repo":"https://github.com/Rakashazi/emu-ex-plus-alpha","url":"https://github.com/Rakashazi/emu-ex-plus-alpha","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://github.com/Rakashazi/emu-ex-plus-alpha","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Android-only native app; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/Rakashazi/emu-ex-plus-alpha"]},"linux-flatpak":{"status":"unresolved","reason":"Android-only native app; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/Rakashazi/emu-ex-plus-alpha"]},"windows":{"status":"unresolved","reason":"Android-only native app; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/Rakashazi/emu-ex-plus-alpha"]},"macos":{"status":"unresolved","reason":"Android-only native app; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/Rakashazi/emu-ex-plus-alpha"]}}}
+{
+  "schema_version": 1,
+  "slug": "nes-emu",
+  "emulator": "NES.emu",
+  "sources": [
+    {"kind":"source","repo":"Rakashazi/emu-ex-plus-alpha","commit":"1c12fac5ce49badaadff2e2f210dcc30b89f4943","url":"https://github.com/Rakashazi/emu-ex-plus-alpha/tree/1c12fac5ce49badaadff2e2f210dcc30b89f4943","role":"pinned upstream source"},
+    {"kind":"docs","url":"https://github.com/Rakashazi/emu-ex-plus-alpha","role":"upstream Android build/distribution documentation"}
+  ],
+  "platforms": {},
+  "platform_gaps": {
+    "linux":{"status":"unresolved","reason":"Pinned upstream README names Android and Linux builds, but no local Linux package/runtime or verified controller-profile path is available for this catalog entry.","evidence":["source:README.md lines 3-12 @1c12fac5ce49badaadff2e2f210dcc30b89f4943","source:NES.emu/src/main/AppMeta.cc lines 27,105-145 @1c12fac5ce49badaadff2e2f210dcc30b89f4943","source:NES.emu/src/main/options.cc lines 58-140 @1c12fac5ce49badaadff2e2f210dcc30b89f4943"]},
+    "linux-flatpak":{"status":"unsupported","reason":"No official Linux/Flatpak package; Android storage and input APIs cannot be mapped safely to a desktop writer.","evidence":["source:Rakashazi/emu-ex-plus-alpha@1c12fac5ce49badaadff2e2f210dcc30b89f4943"]},
+    "windows":{"status":"unsupported","reason":"No official Windows package or source-backed Windows controller-profile format.","evidence":["source:Rakashazi/emu-ex-plus-alpha@1c12fac5ce49badaadff2e2f210dcc30b89f4943"]},
+    "macos":{"status":"unsupported","reason":"No official macOS package or source-backed macOS controller-profile format.","evidence":["source:Rakashazi/emu-ex-plus-alpha@1c12fac5ce49badaadff2e2f210dcc30b89f4943"]}
+  },
+  "android_boundary":{"native_writer":"not_implemented","reason":"Android preference/storage and Java input-device integration are outside this desktop adapter boundary.","saves":"Catalog lists /storage/emulated/0/Android/data/com.explusalpha.NesEmu/files; runtime verification is still required."},
+  "notes":"Fail closed on all four desktop host variants. The pinned source is evidence of upstream identity only; it is not proof of a desktop build, Android runtime behavior, or persistent profile syntax."
+}

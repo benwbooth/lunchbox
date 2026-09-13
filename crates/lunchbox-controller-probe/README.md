@@ -65,8 +65,11 @@ or use the `lunchbox-controller-probe` Nix flake package/app. The binary accepts
 
 The JSON includes the library hash/version, optional mapping-database hash,
 requested/effective hints, and device paths, GUIDs, raw SDL mapping strings, and
-reported player-index hints. A negative player index is unavailable, not player
-zero. An environment override of the selected mapping database is an error;
+reported player-index hints. Each current gamepad also carries `gamepad_index`,
+its zero-based position in that exact snapshot's `SDL_GetGamepads` result; this
+is distinct from joystick enumeration order and the optional player-index hint.
+A negative player index is unavailable, not player zero. An environment override
+of the selected mapping database is an error;
 other overridden hints are reported. A snapshot is not proof of the emulator's
 effective configuration: mirror its custom hints and DB selection explicitly.
 Keep snapshots private; they can include device names and local paths.

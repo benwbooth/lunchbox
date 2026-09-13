@@ -40,6 +40,14 @@
           "path": "no user BIOS file: PS3 firmware PS3UPDAT.PUP is chosen from any location and installed (GUI \"Install firmware\" dialog, or --installfw <path> on the command line) into dev_flash/ (plus dev_flash2/ and dev_flash3/) under the configuration root",
           "naming": "Input package is PS3UPDAT.PUP; RPCS3 extracts it into dev_flash/, dev_flash2/ and dev_flash3/. No canonical firmware checksum is declared by the pinned source; installed firmware is a runtime-specific manifest/tree",
           "evidence": ["source:rpcs3/rpcs3qt/main_window.cpp InstallPup and missing-firmware dialog (pinned 54014a7d)", "source:rpcs3/rpcs3.cpp arg_installfw \"--installfw\" (pinned 54014a7d)", "source:rpcs3/Emu/vfs_config.h dev_flash default $(EmulatorDir)dev_flash/ (pinned 54014a7d)", "docs:https://rpcs3.net/quickstart (linked from the missing-firmware dialog)"]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:RPCS3/rpcs3@54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Lunchbox's pinned contract (crates/lunchbox-app/src/controller_rpcs3.rs at 54014a7d) resolves the same portable/XDG/.config precedence, writes profiles into input_configs/global, and launches with --no-gui --input-config."
@@ -75,6 +83,14 @@
           "path": "no user BIOS file: PS3UPDAT.PUP from any location is installed via the GUI or --installfw into ~/.var/app/net.rpcs3.RPCS3/config/rpcs3/dev_flash/ (plus dev_flash2/, dev_flash3/)",
           "naming": "Input package must be named PS3UPDAT.PUP when selected; RPCS3 extracts it into dev_flash/, dev_flash2/ and dev_flash3/. The pinned source defines no canonical firmware checksum; installed firmware is runtime-specific",
           "evidence": ["source:rpcs3/rpcs3qt/main_window.cpp InstallPup (pinned 54014a7d)", "source:rpcs3/rpcs3.cpp arg_installfw (pinned 54014a7d)", "source:rpcs3/Emu/vfs_config.h dev_flash default (pinned 54014a7d)"]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:RPCS3/rpcs3@54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Community-maintained unofficial package; the correct id is net.rpcs3.RPCS3 (net.rpcs3.RPCSX3 does not exist: RPCSX is a different emulator project)."
@@ -110,6 +126,14 @@
           "path": "no user BIOS file: PS3UPDAT.PUP from any location is installed via the GUI \"Install firmware\" dialog or --installfw <path> into <root>\\dev_flash\\ (plus dev_flash2\\, dev_flash3\\)",
           "naming": "Input package is PS3UPDAT.PUP; installation extracts dev_flash\\, dev_flash2\\ and dev_flash3\\. No canonical firmware checksum is declared by the pinned source; installed firmware is runtime-specific",
           "evidence": ["source:rpcs3/rpcs3qt/main_window.cpp InstallPup and missing-firmware dialog (pinned 54014a7d)", "source:rpcs3/rpcs3.cpp arg_installfw (pinned 54014a7d)", "source:rpcs3/Emu/vfs_config.h dev_flash default (pinned 54014a7d)"]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:RPCS3/rpcs3@54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "At the pinned commit Utilities/File.cpp no longer references %APPDATA%\\RPCS3: the Windows default is the executable directory with RPCS3_CONFIG_DIR as the override and automatic migration of the deprecated root-level config.yml; older documentation still describing %APPDATA%\\RPCS3 is outdated for this revision."
@@ -145,6 +169,14 @@
           "path": "no user BIOS file: PS3UPDAT.PUP from any location is installed via the GUI \"Install firmware\" dialog or --installfw <path> into ~/Library/Application Support/rpcs3/dev_flash/ (plus dev_flash2/, dev_flash3/)",
           "naming": "Input package is PS3UPDAT.PUP; installation extracts dev_flash/, dev_flash2/ and dev_flash3/. No canonical firmware checksum is declared by the pinned source; installed firmware is runtime-specific",
           "evidence": ["source:rpcs3/rpcs3qt/main_window.cpp InstallPup and missing-firmware dialog (pinned 54014a7d)", "source:rpcs3/rpcs3.cpp arg_installfw (pinned 54014a7d)", "source:rpcs3/Emu/vfs_config.h dev_flash default (pinned 54014a7d)"]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:RPCS3/rpcs3@54014a7de4b2ccec98c9c0cb7dbebec0606c5cd6 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "macOS builds resolve the root from $HOME per Utilities/File.cpp at the pinned commit; no first-party macOS binary is offered, but the path logic is platform source, not documentation."

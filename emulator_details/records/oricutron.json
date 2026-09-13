@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "oricutron",
   "emulator": "Oricutron",
-  "sources": [{ "kind": "source", "repo": "https://github.com/pete-gordon/oricutron", "url": "https://github.com/pete-gordon/oricutron", "role": "official upstream project identity" }],
+  "sources": [{ "kind": "source", "repo": "https://github.com/pete-gordon/oricutron", "url": "https://github.com/pete-gordon/oricutron/commit/002279fce9fa756d1d63cdc40ae97939eb7de7ed", "commit": "002279fce9fa756d1d63cdc40ae97939eb7de7ed", "role": "main.c config parser and joystick.c SDL runtime-index selection and fixed input interpretation" }],
   "platform_gaps": {
     "linux": { "status": "unresolved", "reason": "The official Oricutron source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/pete-gordon/oricutron", "host capture withheld until all six purposes are source-backed"] },
     "linux-flatpak": { "status": "unresolved", "reason": "The official Oricutron source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/pete-gordon/oricutron", "host capture withheld until all six purposes are source-backed"] },

@@ -54,9 +54,10 @@
             "source:src/device/pif/rom.rs pub const NTSC_PIF_ROM / PAL_PIF_ROM [u8; 1984] @0bb9fbba6",
             "db:firmware_rules has no rows for any N64 emulator; gopher64 correctly needs none (gap note: none to add for carts)"
           ]
-        }
-      ],
-      "notes": "Flatpak io.github.gopher64.gopher64 redirects these directories into ~/.var/app/io.github.gopher64.gopher64/ and needs --filesystem=host:ro to open ROMs outside the sandbox (README). Lunchbox launches with a private data root; native saves/states stay in the directories above unless portable mode is used."
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:gopher64/gopher64@0bb9fbba6 (primary source cited by this record; input capture remains unresolved for linux)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:gopher64/gopher64@0bb9fbba6 (primary source cited by this record; keys capture remains unresolved for linux)"]}],
+      "notes": "Flatpak io.github.gopher64.gopher64 redirects these directories into ~/.var/app/io.github.gopher64.gopher64/ and needs --filesystem=host:ro to open ROMs outside the sandbox (README). The native Linux controller adapter uses a private XDG_CONFIG_HOME but deliberately leaves XDG_DATA_HOME untouched, so native saves/states stay in the directories above. Portable mode overrides XDG roots and is explicitly rejected by the adapter."
     },
     "linux-flatpak": {
       "paths": [
@@ -103,8 +104,8 @@
           "evidence": [
             "source:src/device/pif.rs selects PAL_PIF_ROM/NTSC_PIF_ROM; src/device/pif/rom.rs constants @0bb9fbba6"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:gopher64/gopher64@0bb9fbba6 (primary source cited by this record; keys capture remains unresolved for linux-flatpak)"]}],
       "notes": "Official Flathub app io.github.gopher64.gopher64 is the supported Flatpak distribution; its sandbox redirects XDG config/data roots under ~/.var/app/io.github.gopher64.gopher64/ and host ROM access requires the manifest's filesystem permission."
     },
     "windows": {
@@ -149,8 +150,8 @@
           "evidence": [
             "source:src/device/pif.rs + src/device/pif/rom.rs @0bb9fbba6"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:gopher64/gopher64@0bb9fbba6 (primary source cited by this record; keys capture remains unresolved for windows)"]}],
       "notes": "Upstream ships a standalone exe (itch.io / GitHub latest release asset gopher64-windows-x86_64.exe); portable.txt is the supported way to keep data beside it."
     },
     "macos": {
@@ -194,8 +195,8 @@
           "evidence": [
             "source:src/device/pif.rs + src/device/pif/rom.rs @0bb9fbba6"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:gopher64/gopher64@0bb9fbba6 (primary source cited by this record; keys capture remains unresolved for macos)"]}],
       "notes": "Official macOS builds are aarch64-only app bundles (plus brew install --cask gopher64); the Lunchbox DB row for Gopher64 lists only 'Windows;Linux' and should gain macOS."
     }
   }

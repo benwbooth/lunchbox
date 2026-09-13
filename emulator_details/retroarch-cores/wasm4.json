@@ -24,13 +24,11 @@
   },
   "saves": {
     "status": "supported",
-    "extensions": [
-      ".srm"
-    ],
-    "naming": "WASM-4 persistent cartridge storage follows the RetroArch content basename.",
-    "notes": "WASM-4 cartridges can expose persistent disk/storage through the libretro save API.",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=true but does not declare a persistent-save filename extension.",
+    "notes": "Persistent save support is declared by the pinned core-info metadata; filename and content semantics are not specified there.",
     "evidence": [
-      "WASM-4 libretro save implementation"
+      "wasm4_libretro.info libretro_saves=true"
     ]
   },
   "states": {

@@ -1,1 +1,100 @@
-{"schema_version":1,"slug":"emu5-common-source-code-project","emulator":"Emu5 (Common Source Code Project)","sources":[{"kind":"source","repo":"http://takeda-toshiya.my.coocan.jp/common/index.html","url":"http://takeda-toshiya.my.coocan.jp/common/index.html","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"http://takeda-toshiya.my.coocan.jp/common/index.html","role":"official documentation/platform evidence"}],"platform_gaps":{"linux":{"status":"no_verified_package","reason":"The official emu5-common-source-code-project distribution does not publish a package for linux.","evidence":["official:http://takeda-toshiya.my.coocan.jp/common/index.html"]},"linux-flatpak":{"status":"no_verified_package","reason":"The official emu5-common-source-code-project distribution does not publish a package for linux-flatpak.","evidence":["official:http://takeda-toshiya.my.coocan.jp/common/index.html"]},"windows":{"status":"unresolved","reason":"No source-backed exact config/input/firmware/save/state contract was established for windows.","evidence":["official:http://takeda-toshiya.my.coocan.jp/common/index.html"]},"macos":{"status":"no_verified_package","reason":"The official emu5-common-source-code-project distribution does not publish a package for macos.","evidence":["official:http://takeda-toshiya.my.coocan.jp/common/index.html"]}}}
+{
+  "schema_version": 1,
+  "slug": "emu5-common-source-code-project",
+  "emulator": "Emu5 (Common Source Code Project)",
+  "sources": [
+    {
+      "kind": "source",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/source.7z",
+      "sha256": "63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399",
+      "role": "official source archive; src/vm/m5/m5.h, m5.cpp, config.cpp, win32/winmain.cpp and win32/osd_input.cpp"
+    },
+    {
+      "kind": "binary",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/binary.7z",
+      "sha256": "9c0ecebc187d25b7c841f222b2057625ff6286abaf954adc85fe15cd8f778ff5",
+      "artifact": "binary/binary_x64/m5.exe",
+      "artifact_sha256": "b8c005d5196f3b7a186fce0e796af8779a25c861dc92dc453fee71579fddfda9",
+      "role": "official Windows x64 executable and distribution evidence"
+    },
+    {
+      "kind": "docs",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/index.html",
+      "role": "official project and distribution page"
+    },
+    {
+      "kind": "docs",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/binary.7z",
+      "artifact": "binary/m5.txt",
+      "role": "official Emu5 Win32 readme and key/ROM map"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<directory containing m5.exe>\\m5.ini",
+          "naming": "Win32 load_config/save_config call create_local_path(\"m5.ini\"). The INI has [RecentFiles], [Screen], [Sound] and [Input]; [Input] persists JoyButtonsEx1_1..JoyButtonsEx8_16, UseJoyToKey, JoyToKeyType, JoyToKeyNumPad5 and JoyToKeyButtons1..16.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/m5/m5.h CONFIG_NAME=\\\"m5\\\"; src/win32/winmain.cpp load/save)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/config.cpp save_config)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "<directory containing m5.exe>\\m5.ini and optional keycode.cfg",
+          "naming": "The native WinMM joystick backend enumerates joystick IDs 0..3 at runtime. JoyButtonsEx values encode (joystick_index << 5) | one of 32 direction/button/axis/POV bits; negative values in JoyToKeyButtons encode a Windows virtual key. keycode.cfg is an optional 256-byte VK-to-DIK conversion table, not a controller identity database. The official m5.txt map is FUNC=Tab, RESET=Backspace, joystick directions=Cursor, and triggers 1/5 (joystick 1) and 2/6 (joystick 2).",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/osd_input.cpp joystick enumeration/status and keycode.cfg)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/winmain.cpp JoyWndProc/JoyToKeyWndProc)",
+            "docs:http://takeda-toshiya.my.coocan.jp/common/binary.7z artifact=binary/m5.txt"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "The user-selected cartridge and tape files; no Emu5 battery-save sidecar is written by the reviewed m5 VM.",
+          "naming": "Cartridge ROM is read into the emulated $2000-$6FFF region. Tape playback/recording uses the path selected by the Win32 file dialog, so guest persistence is media-defined.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/m5/m5.cpp open_cart/play_tape/rec_tape)",
+            "docs:http://takeda-toshiya.my.coocan.jp/common/binary.7z artifact=binary/m5.txt"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<directory containing m5.exe>\\m5.sta0 through m5.sta9",
+          "naming": "Ten Win32 menu slots call state_file_path(n), which formats <CONFIG_NAME>.sta<n>. The file is a Common Source Code Project FILEIO stream (outer state version 3, config-state version 8, m5 VM state version 4; gzip is used when built with zlib), so it is version/build-bound rather than a portable interchange format.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/emu.cpp state_file_path/save_state and src/vm/m5/m5.cpp process_state)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/winmain.cpp ID_SAVE_STATE0..9/ID_LOAD_STATE0..9)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<directory containing m5.exe>\\IPL.ROM",
+          "naming": "The m5 VM reads IPL.ROM as its 8 KiB internal ROM at $0000-$1FFF. The official source does not publish a canonical checksum for this user-supplied ROM.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/m5/m5.cpp read_bios)",
+            "docs:http://takeda-toshiya.my.coocan.jp/common/binary.7z artifact=binary/m5.txt"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "status": "not_required",
+          "path": "No cryptographic or firmware-key file is used by Emu5.",
+          "naming": "keycode.cfg is an input scan-code conversion table and is documented under input, not a decryption key.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/osd_input.cpp keycode.cfg read)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (no cryptographic key handling in the m5 target)"
+          ]
+        }
+      ],
+      "notes": "The official x64 artifact is a PE32+ Windows executable. Lunchbox has no verified native controller writer for this Windows-only target; it must not modify a user's m5.ini or keycode.cfg."
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "no_verified_package", "reason": "The official Common Source Code Project distribution provides Windows Win32/x64 artifacts and source with a Win32 frontend, but no verified native Linux Emu5 package.", "evidence": ["docs:http://takeda-toshiya.my.coocan.jp/common/index.html", "binary:http://takeda-toshiya.my.coocan.jp/common/binary.7z"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No official Emu5 Flatpak package or manifest is published by the Common Source Code Project.", "evidence": ["docs:http://takeda-toshiya.my.coocan.jp/common/index.html"] },
+    "macos": { "status": "no_verified_package", "reason": "The official Common Source Code Project distribution provides Windows Win32/x64 artifacts and no verified native macOS Emu5 package.", "evidence": ["docs:http://takeda-toshiya.my.coocan.jp/common/index.html", "binary:http://takeda-toshiya.my.coocan.jp/common/binary.7z"] }
+  }
+}

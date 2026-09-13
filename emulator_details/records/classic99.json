@@ -56,8 +56,8 @@
             "docs:http://harmlesslion.com/software/classic99/",
             "source:http://harmlesslion.com/software/classic99/ official project documentation"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["docs:http://harmlesslion.com/software/classic99/ (primary source cited by this record; keys capture remains unresolved for windows)"]}],
       "notes": "Windows-only TI-99/4A emulator; Linux/macOS use through Wine is not treated as native availability."
     }
   },

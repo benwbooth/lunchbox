@@ -4,6 +4,12 @@
   "emulator": "Steem SSE",
   "sources": [
     {
+      "kind": "source",
+      "repo": "https://sourceforge.net/p/steemsse/code/1501/tree/",
+      "commit": "d2c604006c94686ba98faff252d25586089fd099",
+      "role": "native ConfigStoreFile and joystick DirID serialization"
+    },
+    {
       "kind": "docs",
       "url": "https://sourceforge.net/projects/steemsse/",
       "role": "official project/platform and runtime documentation"
@@ -14,18 +20,18 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "~/Documents/steem",
-          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "path": "<writable-root>/steem.ini (native source uses RunDir when writable; Windows fallback %APPDATA%\\Steem)",
+          "naming": "ConfigStoreFile writes the native INI; an explicit command-line INI path may override the default.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem/code/dataloadsave.cpp ConfigStoreFile @ d2c60400"
           ]
         },
         {
           "purpose": "input",
-          "path": "~/Documents/steem",
-          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "path": "<writable-root>/steem.ini",
+          "naming": "[Joystick 1..8] DirID0..5 records use measured runtime joystick slots; no stable physical identity is persisted.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem/code/dataloadsave.cpp and dir_id.cpp joystick sections/DirID @ d2c60400"
           ]
         },
         {
@@ -33,7 +39,7 @@
           "path": "Disk image selected by frontend",
           "naming": "Persistent data uses the documented media filename or content basename.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem/code/dataloadsave.cpp media/state persistence @ d2c60400"
           ]
         },
         {
@@ -41,7 +47,7 @@
           "path": "<content-basename>.sts",
           "naming": "State output uses the documented frontend-selected path or extension.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem/code/dataloadsave.cpp state paths @ d2c60400"
           ]
         },
         {
@@ -49,7 +55,7 @@
           "path": "TOS ROM selected through Steem SSE",
           "naming": "Explicit firmware disposition from the upstream project.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem/code/dataloadsave.cpp TOS/EmuTOS selection @ d2c60400"
           ]
         },
         {
@@ -57,7 +63,7 @@
           "path": "No external encryption-key file.",
           "naming": "Explicit key-material disposition from the upstream project.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem source tree key-material inventory @ d2c60400"
           ]
         }
       ]
@@ -66,18 +72,18 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "%APPDATA%\\\\steem",
-          "naming": "INI or frontend configuration; controller mappings are stored in the documented input configuration.",
+          "path": "<writable-root>\\steem.ini (native source uses RunDir when writable; fallback %APPDATA%\\Steem)",
+          "naming": "ConfigStoreFile writes the native INI; an explicit command-line INI path may override the default.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem/code/dataloadsave.cpp ConfigStoreFile @ d2c60400"
           ]
         },
         {
           "purpose": "input",
-          "path": "%APPDATA%\\\\steem",
-          "naming": "Named controller actions and keyboard/joystick bindings are stored in the documented input configuration.",
+          "path": "<writable-root>\\steem.ini",
+          "naming": "[Joystick 1..8] DirID0..5 records use measured runtime joystick slots; no stable physical identity is persisted.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem/code/dataloadsave.cpp and dir_id.cpp joystick sections/DirID @ d2c60400"
           ]
         },
         {
@@ -85,7 +91,7 @@
           "path": "Disk image selected by frontend",
           "naming": "Persistent data uses the documented media filename or content basename.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem/code/dataloadsave.cpp media/state persistence @ d2c60400"
           ]
         },
         {
@@ -93,7 +99,7 @@
           "path": "<content-basename>.sts",
           "naming": "State output uses the documented frontend-selected path or extension.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem/code/dataloadsave.cpp state paths @ d2c60400"
           ]
         },
         {
@@ -101,7 +107,7 @@
           "path": "TOS ROM selected through Steem SSE",
           "naming": "Explicit firmware disposition from the upstream project.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem/code/dataloadsave.cpp TOS/EmuTOS selection @ d2c60400"
           ]
         },
         {
@@ -109,7 +115,7 @@
           "path": "No external encryption-key file.",
           "naming": "Explicit key-material disposition from the upstream project.",
           "evidence": [
-            "https://sourceforge.net/projects/steemsse/"
+            "source:steem source tree key-material inventory @ d2c60400"
           ]
         }
       ]

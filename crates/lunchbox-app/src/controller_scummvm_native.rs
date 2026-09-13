@@ -124,9 +124,7 @@ pub(crate) fn parse_mapping(mapping: &str) -> Result<std::collections::BTreeMap<
         };
         if let Some(raw) = Raw::parse(spec) {
             ensure!(
-                result
-                    .insert(standard.to_owned(), raw)
-                    .is_none_or(|previous| previous == result[standard] || true),
+                result.insert(standard.to_owned(), raw).is_none(),
                 "Duplicate mapping field {standard}"
             );
         }
@@ -239,5 +237,10 @@ dpleft:h0.8,dpright:h0.2,leftx:a0,lefty:a1,";
     #[test]
     fn app_section_selects_the_first_device() {
         assert_eq!(app_section(), "[scummvm]\njoystick_num=0\n");
+    }
+
+    #[test]
+    fn mapping_parser_rejects_duplicate_standard_fields() {
+        assert!(parse_mapping("guid,name,a:b0,a:b1").is_err());
     }
 }

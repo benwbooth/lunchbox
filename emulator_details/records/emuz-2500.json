@@ -1,1 +1,99 @@
-{"schema_version":1,"slug":"emuz-2500","emulator":"EmuZ-2500","sources":[{"kind":"source","repo":"http://takeda-toshiya.my.coocan.jp/common/index.html","url":"http://takeda-toshiya.my.coocan.jp/common/index.html","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"http://takeda-toshiya.my.coocan.jp/common/index.html","role":"official documentation/platform evidence"}],"platform_gaps":{"linux":{"status":"no_verified_package","reason":"The official emuz-2500 distribution does not publish a package for linux.","evidence":["official:http://takeda-toshiya.my.coocan.jp/common/index.html"]},"linux-flatpak":{"status":"no_verified_package","reason":"The official emuz-2500 distribution does not publish a package for linux-flatpak.","evidence":["official:http://takeda-toshiya.my.coocan.jp/common/index.html"]},"windows":{"status":"unresolved","reason":"No source-backed exact config/input/firmware/save/state contract was established for windows.","evidence":["official:http://takeda-toshiya.my.coocan.jp/common/index.html"]},"macos":{"status":"no_verified_package","reason":"The official emuz-2500 distribution does not publish a package for macos.","evidence":["official:http://takeda-toshiya.my.coocan.jp/common/index.html"]}}}
+{
+  "schema_version": 1,
+  "slug": "emuz-2500",
+  "emulator": "EmuZ-2500",
+  "sources": [
+    {
+      "kind": "source",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/source.7z",
+      "sha256": "63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399",
+      "role": "official source archive; src/vm/mz2500, config.cpp, win32/winmain.cpp and win32/osd_input.cpp"
+    },
+    {
+      "kind": "binary",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/binary.7z",
+      "sha256": "9c0ecebc187d25b7c841f222b2057625ff6286abaf954adc85fe15cd8f778ff5",
+      "artifact": "binary/binary_x64/mz2500.exe",
+      "artifact_sha256": "beafae5921c8e3ec7d9b8987ccb8979c5840e4dcbb71e6a3b1989f29d7b9ebb8",
+      "role": "official Windows x64 executable and distribution evidence"
+    },
+    {
+      "kind": "docs",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/index.html",
+      "role": "official project and distribution page"
+    },
+    {
+      "kind": "docs",
+      "url": "http://takeda-toshiya.my.coocan.jp/common/binary.7z",
+      "artifact": "binary/mz2500.txt",
+      "role": "official EmuZ-2500 Win32 readme and ROM/key map"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<directory containing mz2500.exe>\\mz2500.ini",
+          "naming": "Win32 load_config/save_config call create_local_path(\"mz2500.ini\"). [Control] persists BootMode, OptionSwitch, MonitorType, CorrectDiskTiming/IgnoreDiskCRC and tape settings; [RecentFiles] persists floppy, hard-disk and tape paths; [Input] persists JoyButtonsEx1_1..JoyButtonsEx8_16 and JoyToKey settings.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/mz2500/mz2500.h CONFIG_NAME=\\\"mz2500\\\"; src/win32/winmain.cpp load/save)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/config.cpp save_config)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "<directory containing mz2500.exe>\\mz2500.ini and optional keycode.cfg",
+          "naming": "The WinMM backend enumerates joystick IDs 0..3 at runtime and uses JoyButtonsEx values encoded as (joystick_index << 5) | direction/button/axis/POV bit. JoyToKeyButtons negative values encode Windows virtual keys; UseJoyToKey, JoyToKeyType and JoyToKeyNumPad5 are persisted in [Input]. The MZ-2500 VM consumes joystick 0/1 for its two joystick ports and also has a serial mouse device. keycode.cfg is an optional 256-byte VK-to-DIK table, not a stable controller identity.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/osd_input.cpp joystick/keycode backend)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/winmain.cpp JoyWndProc/JoyToKeyWndProc and src/vm/mz2500/joystick.cpp)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<directory containing mz2500.exe>\\MZ-1R12.BIN for the optional MZ-1R12 32 KiB SRAM; attached floppy/hard-disk/tape media remain at their user-selected paths. If no hard-disk path exists, the VM defaults to <directory containing mz2500.exe>\\SASI0.DAT and SASI1.DAT.",
+          "naming": "MZ-1R12.BIN is read at startup and written on VM release only when SRAM changed. Floppy images and SASI hard-disk images are guest filesystems, not Lunchbox sidecars; [RecentFiles] stores the selected paths.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/mz2500/mz1r12.cpp read/write MZ-1R12.BIN)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/mz2500/mz2500.cpp SASI0.DAT/SASI1.DAT default paths and media APIs)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<directory containing mz2500.exe>\\mz2500.sta0 through mz2500.sta9",
+          "naming": "Ten Win32 menu slots call state_file_path(n), formatting <CONFIG_NAME>.sta<n>. The stream includes the common outer/config state and the complete MZ-2500 device graph; it is version/build-bound (outer state version 3, config-state version 8) rather than a portable interchange format.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/emu.cpp state_file_path/save_state and src/vm/mz2500/mz2500.cpp process_state)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/winmain.cpp ID_SAVE_STATE0..9/ID_LOAD_STATE0..9)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<directory containing mz2500.exe>\\IPL.ROM and KANJI.ROM (required baseline); optional device ROMs include KANJI2.ROM, DICT.ROM, PHONE.ROM, MZ1E18.ROM/MZ-1E18.ROM, MZ1E30.ROM/MZ-1E30.ROM/SASI.ROM/FILE.ROM, MZ1E32.ROM/MZ-1E32.ROM and the MZ-1R13 dictionary variants.",
+          "naming": "The official EmuZ-2500 readme states IPL.ROM and KANJI.ROM are required. Source loads those plus optional device files from the executable directory; option switches select MZ-1E26, MZ-1E30, MZ-1E32, MZ-1R12, MZ-1R13, MZ-1R37 and W3100A emulation. No canonical checksums are published for the user-supplied ROMs.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/vm/mz2500/memory.cpp and optional MZ-1E30/MZ-1E32/MZ-1R12/MZ-1R13 loaders)",
+            "docs:http://takeda-toshiya.my.coocan.jp/common/binary.7z artifact=binary/mz2500.txt"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "status": "not_required",
+          "path": "No cryptographic or firmware-key file is used by EmuZ-2500.",
+          "naming": "keycode.cfg is an input scan-code conversion table and belongs to the input disposition; ROMs are firmware assets, not decryption keys.",
+          "evidence": [
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (src/win32/osd_input.cpp keycode.cfg read)",
+            "source:http://takeda-toshiya.my.coocan.jp/common/source.7z sha256=63d598a29cabf2d9212bd8a1699d8bcddf2416e711c20581a0d665c96f2399 (MZ-2500 target has no cryptographic key handling)"
+          ]
+        }
+      ],
+      "notes": "The official x64 artifact is a PE32+ Windows executable. Lunchbox has no verified native controller writer for this Windows-only target; it must not modify a user's mz2500.ini or keycode.cfg."
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "no_verified_package", "reason": "The official Common Source Code Project distribution provides Windows Win32/x64 artifacts and source with a Win32 frontend, but no verified native Linux EmuZ-2500 package.", "evidence": ["docs:http://takeda-toshiya.my.coocan.jp/common/index.html", "binary:http://takeda-toshiya.my.coocan.jp/common/binary.7z"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No official EmuZ-2500 Flatpak package or manifest is published by the Common Source Code Project.", "evidence": ["docs:http://takeda-toshiya.my.coocan.jp/common/index.html"] },
+    "macos": { "status": "no_verified_package", "reason": "The official Common Source Code Project distribution provides Windows Win32/x64 artifacts and no verified native macOS EmuZ-2500 package.", "evidence": ["docs:http://takeda-toshiya.my.coocan.jp/common/index.html", "binary:http://takeda-toshiya.my.coocan.jp/common/binary.7z"] }
+  }
+}

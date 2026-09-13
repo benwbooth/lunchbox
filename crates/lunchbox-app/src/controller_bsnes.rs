@@ -57,7 +57,7 @@ pub(crate) fn device_id(index: u32) -> u64 {
 }
 
 /// One native assignment. Hat inputs carry the full `2*hat + component` index.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) enum Binding {
     Button(u32),
     AxisLo(u32),
@@ -95,7 +95,12 @@ impl Gamepad {
         );
         let id = device_id(index);
         let mut assignments = BTreeMap::new();
+        let mut physical_inputs = std::collections::BTreeSet::new();
         for (control, node) in CONTROLS {
+            ensure!(
+                physical_inputs.insert(controls[control]),
+                "bsnes physical input has multiple gameplay owners"
+            );
             assignments.insert(node, controls[control].assignment(id));
         }
         Ok(Self { assignments })
@@ -182,6 +187,13 @@ mod tests {
     fn partial_control_sets_are_rejected() {
         let mut controls = snes_controls();
         controls.remove("start");
+        assert!(Gamepad::build(0, &controls).is_err());
+    }
+
+    #[test]
+    fn shared_physical_inputs_are_rejected() {
+        let mut controls = snes_controls();
+        controls.insert("start", controls["b"]);
         assert!(Gamepad::build(0, &controls).is_err());
     }
 }

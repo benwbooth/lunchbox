@@ -3,6 +3,7 @@
   "slug": "bgb",
   "emulator": "BGB",
   "sources": [
+    { "kind": "artifact", "url": "https://bgb.bircd.org/bgbw64.zip", "version": "1.6.6", "sha256": "38b97e4496ad85106f59c87a6b0386b7405fbebb3bccc90650279762bd10478c", "role": "official x64 Windows archive and generated bgb.ini inspection" },
     { "kind": "docs", "url": "https://bgb.bircd.org/manual.html", "role": "official manual for paths, input, saves, states and command line" },
     { "kind": "docs", "url": "https://bgb.bircd.org/", "role": "official Windows download and supported-platform statement" }
   ],

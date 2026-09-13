@@ -65,8 +65,9 @@
             "docs:https://github.com/TheArcadeStriker/flycast-wiki/wiki/Getting-started-with-Flycast (dc_boot.bin naming and BIOS zip table, Dreamcast BIOS optional / NAOMI+Atomiswave required)",
             "repo:crates/lunchbox-app/src/firmware.rs (flycast firmware_rules entries for linux and linux-flatpak)"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; input capture remains unresolved for linux)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "Lunchbox launches Flycast with a private XDG_CONFIG_HOME pointing at a session-owned flycast/emu.cfg (docs/FLYCAST_STANDALONE_PROGRESS.md 'Native Linux config selection' + 'Private config preparation'); user config is never overwritten and private writes stay session-local. Native VMU/nvmem/savestate files keep their data-dir locations."
     },
     "linux-flatpak": {
@@ -109,8 +110,9 @@
             "source:flathub/org.flycast.Flycast org.flycast.Flycast.yml (--filesystem=host:ro)",
             "repo:crates/lunchbox-app/src/firmware.rs (flatpak flycast bios root)"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; input capture remains unresolved for linux-flatpak)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; keys capture remains unresolved for linux-flatpak)"]}],
       "notes": "Flathub ships Flycast v2.7 as org.flycast.Flycast; inside the sandbox both XDG vars point under ~/.var/app/org.flycast.Flycast/, reproducing the native layout one level deeper."
     },
     "windows": {
@@ -154,8 +156,9 @@
             "docs:https://github.com/TheArcadeStriker/flycast-wiki/wiki/Getting-started-with-Flycast (data folder layout)",
             "source:core/windows/winmain.cpp (Windows data root is <exe dir>\\data\\)"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; input capture remains unresolved for windows)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; keys capture remains unresolved for windows)"]}],
       "notes": "The pinned source keeps all Windows data portable next to the executable (exe dir + data\\); there is no roaming/local AppData path in core/windows/winmain.cpp."
     },
     "macos": {
@@ -199,8 +202,9 @@
             "docs:https://github.com/TheArcadeStriker/flycast-wiki/wiki/Getting-started-with-Flycast",
             "repo:crates/lunchbox-app/src/firmware.rs (macOS flycast bios root)"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; input capture remains unresolved for macos)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; keys capture remains unresolved for macos)"]}],
       "notes": "The source and Lunchbox firmware adapter use the capitalized macOS data root ~/Library/Application Support/Flycast; legacy ~/.flycast remains an upstream compatibility path."
     }
   }

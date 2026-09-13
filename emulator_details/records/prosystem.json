@@ -1,1 +1,27 @@
-{"schema_version":1,"slug":"prosystem","emulator":"ProSystem","sources":[{"kind":"source","repo":"https://github.com/gstanton/ProSystem1_3","url":"https://github.com/gstanton/ProSystem1_3","role":"official upstream project identity"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official ProSystem source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/gstanton/ProSystem1_3","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"linux-flatpak":{"status":"unresolved","reason":"The official ProSystem source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/gstanton/ProSystem1_3","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"macos":{"status":"unresolved","reason":"The official ProSystem source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/gstanton/ProSystem1_3","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"windows":{"status":"unresolved","reason":"The official ProSystem source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/gstanton/ProSystem1_3","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]}}}
+{
+  "schema_version": 1,
+  "slug": "prosystem",
+  "emulator": "ProSystem",
+  "sources": [
+    { "kind": "source", "repo": "https://github.com/gstanton/ProSystem1_3", "commit": "3040295934c68024ecf89b45b50107ea1c271e66", "role": "Windows standalone implementation, DirectInput mapping, INI configuration, BIOS and save-state code" },
+    { "kind": "docs", "url": "https://github.com/gstanton/ProSystem1_3", "role": "official upstream README and HTML help" },
+    { "kind": "contract", "path": "docs/PROSYSTEM_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "<directory-containing-ProSystem.exe>/ProSystem.ini", "naming": "WinAPI private-profile INI sections [Console], [Display], [Sound], [Emulation], [Input], [Recent]; controller entries are Input Key0..Key11 and Device0..Device11", "evidence": ["source:Win/Main.cpp derives common_defaultPath from executable path @3040295934c68024ecf89b45b50107ea1c271e66", "source:Win/Console.cpp loads/saves common_defaultPath + ProSystem.ini", "source:Win/Configuration.cpp section/key reads and writes"] },
+        { "purpose": "input", "path": "[Input] in ProSystem.ini", "naming": "Key0..Key11/Device0..Device11 map controller 1 and 2 right,left,down,up,button1,button2; Key12..Key16/Device12..Device16 map reset,select,pause,right-difficulty,left-difficulty. Device 0 is Keyboard; nonzero values are DirectInput enumeration values. Key values are DirectInput scan codes or Win/Input.h e_joy_value values.", "evidence": ["source:Win/Configuration.cpp loops 17 input entries @3040295934c68024ecf89b45b50107ea1c271e66", "source:Win/Input.cpp input_keys/input_devices defaults and dialog ordering", "source:Win/Input.h e_joy_value enum"] },
+        { "purpose": "saves", "path": "No universal emulator-managed save directory; cartridge data is loaded from explicit .a78/raw/ZIP media", "naming": "Cartridge/media filename is caller-selected", "evidence": ["source:Help/File.htm supported cartridge formats and open dialog @3040295934c68024ecf89b45b50107ea1c271e66", "source:Core/Cartridge.cpp cartridge loading"] },
+        { "purpose": "states", "path": "User-selected destination from Ctrl+S/File Save; [Console] Save.Path stores the last dialog path", "naming": "Uncompressed user-selected .sav or ZIP containing Save.sav; load requires the embedded cartridge digest to match", "evidence": ["source:Help/File.htm save/load behavior @3040295934c68024ecf89b45b50107ea1c271e66", "source:Core/ProSystem.cpp prosystem_Save/prosystem_Load and archive member Save.sav", "source:Win/Configuration.cpp Console Save.Path"] },
+        { "purpose": "bios", "path": "Optional caller-selected BIOS path in [Emulation] Bios.Filename; raw files and archives are accepted", "naming": "No canonical BIOS filename or checksum is published; BIOS is not required to run", "evidence": ["source:Win/Configuration.cpp Emulation Bios.Enabled/Bios.Filename @3040295934c68024ecf89b45b50107ea1c271e66", "source:Core/Bios.cpp raw/archive loading", "source:Help/Emulation.htm BIOS optional"] },
+        { "purpose": "keys", "path": "No separate key file; keyboard and DirectInput values are stored in [Input] of ProSystem.ini", "naming": "KeyN/DeviceN byte values; user menu values remain User_KeyN/User_DeviceN/User_ModifierN", "evidence": ["source:Win/Configuration.cpp @3040295934c68024ecf89b45b50107ea1c271e66", "source:Win/Input.cpp"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "unsupported", "reason": "The official source is Windows API/DirectX only; no native Linux runtime contract is established.", "evidence": ["official:https://github.com/gstanton/ProSystem1_3 README.md"] },
+    "linux-flatpak": { "status": "unsupported", "reason": "No Linux runtime or official Flatpak package is established by the upstream source.", "evidence": ["official:https://github.com/gstanton/ProSystem1_3 README.md"] },
+    "macos": { "status": "unsupported", "reason": "The official source is Windows API/DirectX only; no native macOS runtime contract is established.", "evidence": ["official:https://github.com/gstanton/ProSystem1_3 README.md"] }
+  }
+}

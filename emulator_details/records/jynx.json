@@ -1,52 +1,30 @@
 {
-  "schema_version": 1,
-  "slug": "jynx",
-  "emulator": "Jynx",
-  "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/jonathan-markland/Jynx",
-      "url": "https://github.com/jonathan-markland/Jynx",
-      "role": "official upstream project identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/jonathan-markland/Jynx",
-      "role": "official distribution or project documentation"
-    }
+  "schema_version":1,
+  "slug":"jynx",
+  "emulator":"Jynx",
+  "sources":[
+    {"kind":"source","repo":"https://github.com/jonathan-markland/Jynx","commit":"a02560be8a9b6a13b3a5a33de7e032d8f86dc658","role":"Pinned source: Linux/Windows frontends, settings, keyboard matrices, ROMs, TAP and snapshot serializer."},
+    {"kind":"docs","url":"https://github.com/jonathan-markland/Jynx/blob/a02560be8a9b6a13b3a5a33de7e032d8f86dc658/README.md","role":"Build/release boundary: Linux v1.0.9, Windows v1.0.8; master Windows caveat."},
+    {"kind":"docs","url":"https://github.com/jonathan-markland/Jynx/blob/a02560be8a9b6a13b3a5a33de7e032d8f86dc658/readme.htm","role":"Settings, TAP/snapshot behavior and command-line paths."}
   ],
-  "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official Jynx source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/jonathan-markland/Jynx",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official Jynx source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/jonathan-markland/Jynx",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official Jynx source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/jonathan-markland/Jynx",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official Jynx source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/jonathan-markland/Jynx",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    }
-  }
+  "platforms":{
+    "linux":{"paths":[
+      {"purpose":"config","path":"$HOME/.jynx_emulator/JynxEmulatorSettings.config; `--settings <path>` overrides it. UserSettingsSerialiser writes version-5 line-oriented text.","naming":"FileVersion, MachineType, RenderStyle, SoundEnable, FullScreenEnable, SpeedPercentage, TapeSounds, RemExtensions, MaxSpeedCassette, MaxSpeedConsole, MaxSpeedAlways, ColourSet; booleans 0/1.","evidence":["source:ForLinux/Linux_MainForm.cpp GetJynxAppDataPath/GetUserSettingsFileOpener @a02560be8a9b6a13b3a5a33de7e032d8f86dc658","source:Portable/UserSettingsSerialiser.cpp version 5 @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]},
+      {"purpose":"input","path":"No persisted controller map. Linux_MainForm maps GDK hardware keycodes through a fixed 8x11 matrix; no joystick backend.","naming":"Source-defined arrows, Shift/Ctrl, letters, punctuation, Return, Backspace; HOME/END alias UP/DOWN.","evidence":["source:ForLinux/Linux_MainForm.cpp GdkHardwareKeyCodeToLynxKeyIndex/matrix @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]},
+      {"purpose":"saves","path":"User-selected writable/readable Lynx TAP cassette media, not battery/NVRAM.","naming":"`.tap`; `--run <path>` loads startup tape; new output tape is saved to selected path.","evidence":["source:Portable/UIStrings.cpp/TapFileWriter.cpp @a02560be8a9b6a13b3a5a33de7e032d8f86dc658","docs:readme.htm TAP behavior @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]},
+      {"purpose":"states","path":"User-selected `.lynxsnapshot` or `--snapshot <path>`. Text snapshot excludes cassette state/media.","naming":"`<camputers_lynx>` version 1; machine 48/96/960, Z80, video/bank, ROM/RAM and four screen-RAM blocks; ROMs are included.","evidence":["source:Portable/LynxEmulatorGuest.cpp SerialiseFields @a02560be8a9b6a13b3a5a33de7e032d8f86dc658","docs:readme.htm snapshot cassette exclusion @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]},
+      {"purpose":"bios","path":"ROM files loaded from executable/resource directory; no BIOS directory setting.","naming":"lynx48-1.rom, lynx48-2.rom, lynx96-1.rom, lynx96-2.rom, lynx96-3.rom, lynx96-3-scorpion.rom; 8192 bytes each.","evidence":["source:Portable/UIStrings.cpp/LynxRoms.h @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]},
+      {"purpose":"keys","path":"No external cryptographic/key-material file.","naming":"not applicable","status":"not_required","evidence":["source:Jynx tree has no key loader @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]}
+    ],"notes":"README identifies v1.0.9 as tested/released Linux; master Windows changes are not regression-tested."},
+    "windows":{"paths":[
+      {"purpose":"config","path":"%LOCALAPPDATA%\\JynxEmulator\\JynxEmulatorSettings.config; `--settings <path>` overrides it. UserSettingsSerialiser writes version-5 text.","naming":"FileVersion, MachineType, RenderStyle, SoundEnable, FullScreenEnable, SpeedPercentage, TapeSounds, RemExtensions, MaxSpeedCassette, MaxSpeedConsole, MaxSpeedAlways, ColourSet; booleans 0/1.","evidence":["source:ForWindows/MainForm.cpp GetJynxAppDataPath/GetUserSettingsFileOpener @a02560be8a9b6a13b3a5a33de7e032d8f86dc658","source:Portable/UserSettingsSerialiser.cpp @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]},
+      {"purpose":"input","path":"No persisted controller map. ForWindows/MainForm.cpp maps Win32 virtual-key codes through a fixed 8x11 matrix; no joystick backend.","naming":"Source-defined arrows, Shift/Ctrl, letters, punctuation, Return, Backspace; HOME/END alias UP/DOWN.","evidence":["source:ForWindows/MainForm.cpp key matrix/normalization @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]},
+      {"purpose":"saves","path":"User-selected writable/readable Lynx TAP media; no battery/NVRAM sidecar.","naming":"`.tap`; `--run <path>` loads at startup; output tapes use selected path.","evidence":["source:Portable/UIStrings.cpp/TapFileWriter.cpp @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]},
+      {"purpose":"states","path":"User-selected `.lynxsnapshot` or `--snapshot <path>`; text version 1, excludes cassette state/media.","naming":"`<camputers_lynx>` with machine 48/96/960, Z80, ROM/RAM and screen-RAM blocks.","evidence":["source:Portable/LynxEmulatorGuest.cpp/JynxParsedParameters.h @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]},
+      {"purpose":"bios","path":"ROM files beside executable/resource directory, selected by machine type.","naming":"lynx48-1.rom, lynx48-2.rom, lynx96-1.rom, lynx96-2.rom, lynx96-3.rom, lynx96-3-scorpion.rom; 8192 bytes each.","evidence":["source:Portable/UIStrings.cpp/LynxRoms.h @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]},
+      {"purpose":"keys","path":"No external cryptographic/key-material file.","naming":"not applicable","status":"not_required","evidence":["source:Jynx tree has no key loader @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]}
+    ],"notes":"README states v1.0.8 is tested/released Windows; master builds but post-v1.0.8 changes are not regression-tested."}
+  },
+  "platform_gaps":{"linux-flatpak":{"status":"no_verified_package","reason":"No Flatpak manifest or app ID.","evidence":["docs:README Linux build @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]},"macos":{"status":"unsupported","reason":"ForMacOS contains only a placeholder; no macOS frontend/build or runtime contract.","evidence":["source:ForMacOS/This is where the MAC OS code would go.txt @a02560be8a9b6a13b3a5a33de7e032d8f86dc658","docs:README build instructions @a02560be8a9b6a13b3a5a33de7e032d8f86dc658"]}},
+  "controller_boundary":{"native_writer":"not_implemented","refusal":"Do not invent a Jynx controller file. Linux/Windows consume fixed source-defined keyboard matrices; settings.config stores display/emulation options, not host key bindings."}
 }

@@ -141,6 +141,56 @@ ColumnLayout {
         }
     }
     Button {
+        text: "b2 BBC Micro setups…"
+        onClicked: {
+            duckstationSetups.adapter = "b2-native"
+            duckstationEditor.text = setup.settingsModel.b2_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch patches a copied b2.json under a private XDG_CONFIG_HOME; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "Hypseus Singe setups…"
+        onClicked: {
+            duckstationSetups.adapter = "hypseus-native"
+            duckstationEditor.text = setup.settingsModel.hypseus_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch stages an exact SDL3 Gamepad order and private keymap/home while retaining a separate NVRAM directory; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "Gopher64 N64 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "gopher64-native"
+            duckstationEditor.text = setup.settingsModel.gopher64_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch patches a copied config.json under a private XDG_CONFIG_HOME; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "RMG N64 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "rmg-native"
+            duckstationEditor.text = setup.settingsModel.rmg_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch patches copied RMG input-plugin profiles under a private XDG_CONFIG_HOME; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "simple64 N64 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "simple64-native"
+            duckstationEditor.text = setup.settingsModel.simple64_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch stages a private simple64 configuration while preserving the native save root; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
         text: "ScummVM setups…"
         onClicked: {
             duckstationSetups.adapter = "scummvm-native"
@@ -269,6 +319,11 @@ ColumnLayout {
         readonly property bool openmsxNative: adapter === "openmsx-native"
         readonly property bool scummvmNative: adapter === "scummvm-native"
         readonly property bool jgenesisNative: adapter === "jgenesis-native"
+        readonly property bool gopher64Native: adapter === "gopher64-native"
+        readonly property bool b2Native: adapter === "b2-native"
+        readonly property bool hypseusNative: adapter === "hypseus-native"
+        readonly property bool rmgNative: adapter === "rmg-native"
+        readonly property bool simple64Native: adapter === "simple64-native"
         readonly property bool hatariNative: adapter === "hatari-native"
         readonly property bool mednafen: adapter === "mednafen"
         readonly property bool flycastNative: adapter === "flycast-native"
@@ -276,7 +331,7 @@ ColumnLayout {
         readonly property bool rpcs3: adapter === "rpcs3"
         readonly property bool pcsx2: adapter === "pcsx2"
         readonly property var catalog: JSON.parse(setup.settingsModel.controller_catalog_json())
-        title: melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
+        title: melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
         width: Math.min(900, setup.width)
         height: 640
         modal: true
@@ -297,6 +352,16 @@ ColumnLayout {
                     ? "Mednafen: edit a JSON list with emulator_id, content, base_directory, bubblewrap_program, executable_sha256, gamepad (game-boy, game-boy-advance, lynx, neo-geo-pocket, wonder-swan, virtual-boy, game-gear, master-system, pce-two, pce-six, pce-fast-two, pce-fast-six, nes-two, nes-four-score, nes-famicom-four, snes, snes-faust, md-three, md-six, saturn-digital play-station-digital or play-station-dual-analog), and players containing player and controller_id (handhelds: player 1; Master System: ports 1–2; PC Engine: ports 1–5; NES: 1–2 or 1–4 according to adapter; SNES/SNES Faust: 1–8, with 3–5 on the port-two tap and 6–8 on the port-one tap). Each player may optionally specify gamepad: pce-two or pce-six (or pce-fast-two/pce-fast-six for the fast module) to override the default within the same native module. Genesis: md_tap is none (default), port-one, port-two, dual or four-way; player ports are sequential native virtual ports, up to 2/5/5/8/4 respectively. Per-player md-three/md-six overrides allow mixed pads. Saturn: saturn_multitaps is [port1-enabled, port2-enabled], default [false, false], with 2/7/12 sequential virtual slots. PlayStation: psx_multitaps is [port1-enabled, port2-enabled], default [false, false], with 2/5/8 sequential virtual slots. Per-player play-station-digital/play-station-dual-analog overrides permit mixed pads. Dual Analog uses four centered proportional axes, no rumble or mode switch. PlayStation, Saturn and PC Engine accept .ccd and UTF-8 .cue discs with companion-file tracking. Native CD firmware is required. TOC/M3U and firmware identity remain incomplete. Paths must be absolute. Native GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine joydev launch dispatch is connected. Child internal IDs and other native input drivers remain unverified. NES currently accepts raw iNES .nes and conventional UNIF .unf/.unif content and rejects ROM-device conflicts. Review opens no devices."
                     : duckstationSetups.jgenesisNative
                     ? "jgenesis: edit a JSON list with emulator_id, content (absolute ROM path), controller_id, probe_program, sdl_library (the SDL library the jgenesis build links), and executable_sha256. Paths must be absolute. Launch writes a private jgenesis-config.toml using raw SDL joystick indices; the SDL2 probe captures the same kernel-order mapping. Custom keymaps are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.gopher64Native
+                    ? "Gopher64: edit a JSON list with emulator_id, content (absolute ROM path), config_path (the existing absolute config.json), probe_program, sdl_library (the SDL3 library the Gopher64 build links), executable_sha256, and players. Each player has player (1–4) and controller_id. Launch copies config.json plus cheats/RetroAchievements companions under a private XDG_CONFIG_HOME, patches only profiles/assignments, and leaves XDG_DATA_HOME untouched so saves and states remain in the native data root. Measured Linux controls are translated through the target SDL3 mapping with SDL_JOYSTICK_LINUX_CLASSIC=1. Portable mode, VRU authoring and Transfer Pak authoring are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.b2Native
+                    ? "b2: edit a JSON list with emulator_id, content (absolute launched disk/content path), config_path (the existing absolute b2.json), probe_program, sdl_library (the SDL2 library the b2 build links), executable_sha256, swap_joysticks_when_shared, and slots. Each slot has slot 0 (analogue 0), 1 (analogue 1), or 2 (digital) plus controller_id. One controller may intentionally occupy both analogue slots; two distinct attached controllers with the same SDL name are rejected. Launch writes only a private XDG_CONFIG_HOME/b2/b2.json. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.hypseusNative
+                    ? "Hypseus Singe: edit a JSON list with emulator_id, content (absolute framefile), config_path (complete hypinput_gamepad.ini), ram_directory, probe_program, sdl_library, mapping_database, optional runtime_libraries, executable_sha256, players, and mappings. Player slots are zero and optionally one with distinct controller_id values. Each mapping names a source KEY_* switch and its pad0/pad1 SDL3 button and axis macros; zero disables a column. Direction, primary button, start, and coin mappings are required. Launch uses a private home/keymap and exact eight-entry SDL Gamepad reorder while preserving the selected NVRAM directory. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.rmgNative
+                    ? "RMG: edit a JSON list with emulator_id, content (absolute ROM path), config_path (the existing absolute RMG settings file), probe_program, sdl_library (the SDL3 library the RMG build links), executable_sha256, and players. Each player has player (1–4) and controller_id. Launch copies and patches only the four base RMG input-plugin profiles under a private XDG_CONFIG_HOME, removes game overrides that could replace the measured mapping, and leaves XDG_DATA_HOME untouched so saves and states remain in the native data root. Portable mode, pak authoring and virtual controllers are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.simple64Native
+                    ? "simple64: edit a JSON list with emulator_id, content (absolute ROM path), config_dir (the existing absolute Mupen64Plus config directory), probe_program, sdl_library (the SDL2 library the simple64 build links), executable_sha256, and players. Each player has player (1–4) and controller_id. Launch stages the executable and private input-profiles.ini/input-settings.ini plus a private GUI configDirPath while leaving XDG_DATA_HOME/mupen64plus/save untouched. Keyboard, raw joystick, VRU and Transfer Pak behavior are not covered. The runtime is record-only until a canonical catalog identity exists, and runtime testing remains deferred; review opens no devices."
                     : duckstationSetups.scummvmNative
                     ? "ScummVM: edit a JSON list with emulator_id, content (absolute game directory), controller_id, probe_program, sdl_library (the SDL library the ScummVM build links), and executable_sha256. Paths must be absolute. Launch isolates XDG_CONFIG_HOME and writes a private ini whose target carries the game path and the engine-default keymap actions; the selected controller must be SDL device zero. Engines with custom keymaps and the GUI/global keymaps are not remapped. Runtime testing remains deferred; review opens no devices."
                     : duckstationSetups.openmsxNative
@@ -381,6 +446,16 @@ ColumnLayout {
                             ? setup.settingsModel.review_mednafen_setups(duckstationEditor.text)
                             : duckstationSetups.jgenesisNative
                             ? setup.settingsModel.review_jgenesis_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gopher64Native
+                            ? setup.settingsModel.review_gopher64_native_setups(duckstationEditor.text)
+                            : duckstationSetups.b2Native
+                            ? setup.settingsModel.review_b2_native_setups(duckstationEditor.text)
+                            : duckstationSetups.hypseusNative
+                            ? setup.settingsModel.review_hypseus_native_setups(duckstationEditor.text)
+                            : duckstationSetups.rmgNative
+                            ? setup.settingsModel.review_rmg_native_setups(duckstationEditor.text)
+                            : duckstationSetups.simple64Native
+                            ? setup.settingsModel.review_simple64_native_setups(duckstationEditor.text)
                             : duckstationSetups.scummvmNative
                             ? setup.settingsModel.review_scummvm_native_setups(duckstationEditor.text)
                             : duckstationSetups.openmsxNative
@@ -437,6 +512,16 @@ ColumnLayout {
                             ? setup.settingsModel.stage_mednafen_setups(duckstationEditor.text)
                             : duckstationSetups.jgenesisNative
                             ? setup.settingsModel.stage_jgenesis_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gopher64Native
+                            ? setup.settingsModel.stage_gopher64_native_setups(duckstationEditor.text)
+                            : duckstationSetups.b2Native
+                            ? setup.settingsModel.stage_b2_native_setups(duckstationEditor.text)
+                            : duckstationSetups.hypseusNative
+                            ? setup.settingsModel.stage_hypseus_native_setups(duckstationEditor.text)
+                            : duckstationSetups.rmgNative
+                            ? setup.settingsModel.stage_rmg_native_setups(duckstationEditor.text)
+                            : duckstationSetups.simple64Native
+                            ? setup.settingsModel.stage_simple64_native_setups(duckstationEditor.text)
                             : duckstationSetups.scummvmNative
                             ? setup.settingsModel.stage_scummvm_native_setups(duckstationEditor.text)
                             : duckstationSetups.openmsxNative
@@ -482,6 +567,16 @@ ColumnLayout {
                             ? "Staged. Save settings in the main page. Mednafen GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine native dispatch is partial and untested; no devices were opened."
                             : duckstationSetups.jgenesisNative
                             ? "Staged. Save settings in the main page. jgenesis native dispatch writes a private config at launch; no devices were opened."
+                            : duckstationSetups.gopher64Native
+                            ? "Staged. Save settings in the main page. Gopher64 native dispatch writes a private config while preserving its normal save/state data root; no devices were opened."
+                            : duckstationSetups.b2Native
+                            ? "Staged. Save settings in the main page. b2 native dispatch writes a private b2.json while leaving disk images in place; no devices were opened."
+                            : duckstationSetups.hypseusNative
+                            ? "Staged. Save settings in the main page. Hypseus native dispatch writes a private keymap/home, fixes SDL3 Gamepad order, and preserves the selected NVRAM directory; no devices were opened."
+                            : duckstationSetups.rmgNative
+                            ? "Staged. Save settings in the main page. RMG native dispatch writes private base input-plugin profiles while preserving native save/state roots; no devices were opened."
+                            : duckstationSetups.simple64Native
+                            ? "Staged. Save settings in the main page. simple64 native dispatch stages private input profiles and settings while preserving its native save root; no devices were opened."
                             : duckstationSetups.scummvmNative
                             ? "Staged. Save settings in the main page. ScummVM native dispatch writes a private ini target at launch; no devices were opened."
                             : duckstationSetups.openmsxNative

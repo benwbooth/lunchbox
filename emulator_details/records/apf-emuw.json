@@ -3,50 +3,25 @@
   "slug": "apf-emuw",
   "emulator": "APF_EMUW",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://orphanedgames.com/APF/apf_emulation/apf_emulation.html",
-      "url": "https://orphanedgames.com/APF/apf_emulation/apf_emulation.html",
-      "role": "official upstream identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://orphanedgames.com/APF/apf_emulation/apf_emulation.html",
-      "role": "official distribution/documentation evidence"
-    }
+    { "kind": "release", "url": "https://orphanedgames.com/APF/apf_emulation/apf_emuw.zip", "version": "2.0.1", "sha256": "adb6c061094478d8b2b44d51b8ee08858f60e61e786daba89721266ec6b41629", "role": "official Windows archive containing Apf_emuw.exe and manuals" },
+    { "kind": "docs", "url": "https://orphanedgames.com/APF/apf_emulation/apf_emuw.zip", "role": "APFEMU-Eng.txt documents configuration, keyboard overrides, media and controls" },
+    { "kind": "contract", "path": "docs/APF_EMUW_STANDALONE_CONTROLLER_CONTRACT.md", "role": "standalone controller contract" }
   ],
-  "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official source identifies APF_EMUW but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://orphanedgames.com/APF/apf_emulation/apf_emulation.html",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official source identifies APF_EMUW but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://orphanedgames.com/APF/apf_emulation/apf_emulation.html",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official source identifies APF_EMUW but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://orphanedgames.com/APF/apf_emulation/apf_emulation.html",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
+  "platforms": {
     "windows": {
-      "status": "unresolved",
-      "reason": "The official source identifies APF_EMUW but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://orphanedgames.com/APF/apf_emulation/apf_emulation.html",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "%WINDIR%\\apf_emuw.ini", "naming": "The official APFEMU-Eng.txt says the program stores configuration in apf_emuw.ini in the Windows directory; no schema or portable relocation is documented.", "status": "captured", "evidence": ["docs:APFEMU-Eng.txt Configuration section @adb6c061"] },
+        { "purpose": "input", "path": "<APF_EMUW program directory>\\APF_EMU.KYS", "naming": "Plain text lines with two numbers: the Windows key value followed by the corresponding APF key value. The bundled TECLADO file illustrates the default keyboard/joystick layout. Physical joystick identity and the Windows key layout are runtime-owned.", "status": "captured", "evidence": ["docs:APFEMU-Eng.txt keyboard and joystick mapping/KYS format @adb6c061", "artifact:TECLADO in the official archive @adb6c061"] },
+        { "purpose": "saves", "path": "User-selected APF media files (cassette .APT and disk/cartridge media); no universal emulator save sidecar is documented.", "naming": "APF BASIC software uses its own CSAVE/CLOAD and SAVE/RUN disk commands; media filenames are selected by the emulator UI.", "status": "unresolved", "evidence": ["docs:APF-Eng.txt CSAVE/CLOAD/SAVE/RUN @adb6c061", "docs:APFEMU-Eng.txt media selection @adb6c061"] },
+        { "purpose": "states", "path": "No emulator save-state file or slot mechanism is documented.", "naming": "APF media/program SAVE commands are guest data, not emulator states.", "status": "unresolved", "evidence": ["docs:APFEMU-Eng.txt menu and configuration sections @adb6c061"] },
+        { "purpose": "bios", "path": "No external BIOS filename or checksum is documented; APF machine behavior is supplied by the standalone executable and selected media.", "naming": "No separate firmware asset is identified in the official archive documentation.", "status": "not_required", "evidence": ["docs:APFEMU-Eng.txt archive/resource and configuration sections @adb6c061"] },
+        { "purpose": "keys", "path": "No cryptographic key file is documented.", "naming": "not applicable", "status": "not_required", "evidence": ["docs:APFEMU-Eng.txt @adb6c061"] }
       ]
     }
+  },
+  "platform_gaps": {
+    "linux": { "status": "no_verified_package", "reason": "The official artifact is a Windows executable and its configuration uses the Windows directory; no Linux native build is provided.", "evidence": ["official:https://orphanedgames.com/APF/apf_emulation/apf_emuw.zip"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No authoritative APF_EMUW Flatpak package or sandbox persistence contract was found.", "evidence": ["official:https://orphanedgames.com/APF/apf_emulation/apf_emuw.zip"] },
+    "macos": { "status": "no_verified_package", "reason": "The official artifact is a Windows executable; no macOS native package is provided.", "evidence": ["official:https://orphanedgames.com/APF/apf_emulation/apf_emuw.zip"] }
   }
 }

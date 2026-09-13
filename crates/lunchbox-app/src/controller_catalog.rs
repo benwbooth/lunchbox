@@ -1371,6 +1371,9 @@ impl Catalog {
                             | "xemu-native-settings"
                             | "scummvm-native-settings"
                             | "jgenesis-native-settings"
+                            | "gopher64-native-settings"
+                            | "rmg-native-settings"
+                            | "simple64-native-settings"
                             | "bizhawk-native-settings"
                             | "yaba-sanshiro-native-settings"
                     ),
@@ -1633,6 +1636,9 @@ impl Catalog {
                         | "xemu-native-settings"
                         | "scummvm-native-settings"
                         | "jgenesis-native-settings"
+                        | "gopher64-native-settings"
+                        | "rmg-native-settings"
+                        | "simple64-native-settings"
                         | "yaba-sanshiro-native-settings" => {
                             crate::controller_native_targets::valid_output(profile, target, output)
                         }

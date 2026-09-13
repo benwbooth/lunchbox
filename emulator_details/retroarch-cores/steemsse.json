@@ -38,13 +38,12 @@
   },
   "saves": {
     "status": "supported",
-    "extensions": [
-      ".srm"
-    ],
-    "naming": "RetroArch persistent memory uses <content-basename>.srm in the configured save directory.",
-    "notes": "The pinned official Steem64 core-info declares libretro_saves=true; runtime persistence and restore still require matrix testing.",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=true but does not declare a persistent-save filename extension.",
+    "notes": "Persistent save support is declared by the pinned core-info metadata; filename and content semantics are not specified there.",
     "evidence": [
-      "sources/steemsse-libretro.json core_info_file: libretro_saves=true"
+      "sources/steemsse-libretro.json core_info_file libretro_saves=true",
+      "pinned libretro-core-info revision 2e8b29be1683344e7a69b3dc4af1c0da88415def contains no steemsse_libretro.info"
     ]
   },
   "states": {

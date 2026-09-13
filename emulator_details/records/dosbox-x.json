@@ -3,7 +3,7 @@
   "slug": "dosbox-x",
   "emulator": "DOSBox-X",
   "sources": [
-    { "kind": "source", "repo": "joncampbell123/dosbox-x", "role": "configuration reference, mapper and state implementation" },
+    { "kind": "source", "repo": "joncampbell123/dosbox-x", "commit": "532909c4e84160a5ac2185fbf9c4c97dbe07f85d", "role": "configuration reference, mapper EVENT/BIND implementation and state implementation" },
     { "kind": "docs", "url": "https://github.com/joncampbell123/dosbox-x/wiki", "role": "per-platform config paths, mapper and save-state behavior" },
     { "kind": "source", "repo": "flathub/com.dosbox_x.DOSBox-X", "role": "Flatpak app id and sandbox config path" }
   ],

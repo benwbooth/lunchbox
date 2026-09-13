@@ -19,7 +19,7 @@
     "files": [
       {
         "path": "BS-X.bin",
-        "description": "BS-X Satellaview BIOS",
+        "description": "BS-X.bin (BS-X - Sore wa Namae o Nusumareta Machi no Monogatari (Japan) (Rev 1))",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -35,7 +35,7 @@
       },
       {
         "path": "STBIOS.bin",
-        "description": "Sufami Turbo BIOS",
+        "description": "STBIOS.bin (Sufami Turbo (Japan))",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -57,14 +57,11 @@
   },
   "saves": {
     "status": "supported",
-    "extensions": [
-      ".srm",
-      ".rtc"
-    ],
-    "naming": "RetroArch uses <content-basename>.srm for SRAM and <content-basename>.rtc for RTC data.",
-    "notes": "Persistent memory is cartridge-dependent.",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=true but does not declare a persistent-save filename extension.",
+    "notes": "Persistent save support is declared by the pinned core-info metadata; filename and content semantics are not specified there.",
     "evidence": [
-      "Snes9x libretro save implementation"
+      "snes9x_libretro.info libretro_saves=true"
     ]
   },
   "states": {

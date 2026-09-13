@@ -3,50 +3,43 @@
   "slug": "hypseus-singe",
   "emulator": "Hypseus Singe",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/DirtBagXon/hypseus-singe",
-      "url": "https://github.com/DirtBagXon/hypseus-singe",
-      "role": "official upstream project identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/DirtBagXon/hypseus-singe",
-      "role": "official distribution or project documentation"
-    }
+    { "kind": "source", "repo": "https://github.com/DirtBagXon/hypseus-singe", "commit": "a16e2521ee3233ef20c44e562008c47f4b4293df", "role": "official upstream implementation and SDL3 input/config/path semantics" },
+    { "kind": "docs", "url": "https://github.com/DirtBagXon/hypseus-singe/blob/a16e2521ee3233ef20c44e562008c47f4b4293df/README.md", "role": "official platform, home-directory, input, and game-data documentation" },
+    { "kind": "docs", "url": "https://github.com/DirtBagXon/hypseus-singe/blob/a16e2521ee3233ef20c44e562008c47f4b4293df/doc/hypinput_gamepad.ini", "role": "official SDL_Gamepad INI schema and macros" }
   ],
+  "platforms": {
+    "linux": { "notes": "Native Linux runtime probe on 2026-09-12: pinned v3.0.2 accepted the isolated -homedir/-ramdir/-keymapfile and complete -gamepad_reorder overlay, applied GAMEPAD=TRUE, loaded the selected gamecontrollerdb.txt, enumerated three SDL gamepads, and continued to the expected missing-ROM boundary. This proves parser/input initialization only; gameplay button behavior and NVRAM persistence remain unverified.", "paths": [
+      { "purpose": "config", "path": "~/.hypseus/hypinput.ini (or hypinput_gamepad.ini with -gamepad; -keymapfile/-config selects another .ini)", "naming": "UNIX defaults to $HOME/.hypseus; input.cpp searches the home directory then application directory and creates the default INI.", "evidence": ["source:src/io/cmdline.cpp parse_homedir", "source:src/io/input.cpp CFG_System/CFG_Keys", "source:doc/CmdLine.md -keymapfile"] },
+      { "purpose": "input", "path": "<hypseus-home>/hypinput_gamepad.ini [KEYBOARD]", "naming": "With -gamepad or GLOBAL GAMEPAD=TRUE, lines are `KEY = key1 key2 pad0-button pad0-axis pad1-button pad1-axis`; values use source SDL_Gamepad macros or numeric values.", "evidence": ["source:doc/hypinput_gamepad.ini", "source:src/io/input.cpp CFG_Keys", "source:src/io/keycodes.cpp sdl3_controller_button/sdl3_controller_axis"] },
+      { "purpose": "saves", "path": "<hypseus-home>/ram/<short-game-name>.gz", "naming": "Games with NVRAM load/save compressed RAM under homedir/ram; short names are defined by each game driver.", "evidence": ["source:src/game/game.cpp pre_init/save_sram", "source:src/io/sram.cpp", "source:src/io/homedir.cpp get_ramfile"] },
+      { "purpose": "states", "path": "No general native savestate path established", "naming": "The pinned source exposes NVRAM/SRAM persistence but no general user savestate command/file contract in the reviewed command-line and game paths.", "evidence": ["source:doc/CmdLine.md", "source:src/io/cmdline.cpp", "source:src/game/game.cpp"] },
+      { "purpose": "bios", "path": "<hypseus-home>/roms and <hypseus-home>/vldp (game/laserdisc data; no universal BIOS file)", "naming": "README requires pics, fonts, ram, roms, midi, sound and vldp; drivers declare their own ROM files and CRCs.", "evidence": ["source:README.md Install and Run", "source:src/game/game.h rom_def", "source:src/game/* driver ROM definitions"] },
+      { "purpose": "keys", "path": "No external key-material path; SDL3 key names are tokens in hypinput*.ini", "naming": "sdl3_keycode maps SDLK_* names at runtime. gamecontrollerdb.txt is an SDL controller mapping database, not key material.", "evidence": ["source:src/io/keycodes.cpp", "source:src/io/input.cpp gamecontrollerdb.txt"] }
+    ] },
+    "windows": { "paths": [
+      { "purpose": "config", "path": "<working-directory>/hypinput.ini or hypinput_gamepad.ini", "naming": "WIN32 defaults homedir to `.`; the same INI lookup and -keymapfile override apply.", "evidence": ["source:src/io/cmdline.cpp parse_homedir", "source:src/io/input.cpp CFG_System"] },
+      { "purpose": "input", "path": "<working-directory>/hypinput_gamepad.ini [KEYBOARD]", "naming": "Source SDL_Gamepad six-column schema; physical identity is SDL runtime enumeration plus optional gamecontrollerdb.txt.", "evidence": ["source:doc/hypinput_gamepad.ini", "source:src/io/input.cpp CFG_Keys"] },
+      { "purpose": "saves", "path": "<working-directory>/ram/<short-game-name>.gz", "naming": "Compressed NVRAM uses the Win32 current-directory home and game-driver short name.", "evidence": ["source:src/io/cmdline.cpp parse_homedir", "source:src/io/sram.cpp"] },
+      { "purpose": "states", "path": "No general native savestate path established", "naming": "No general savestate file contract was found in the pinned command-line/game implementation.", "evidence": ["source:doc/CmdLine.md", "source:src/game/game.cpp"] },
+      { "purpose": "bios", "path": "<working-directory>/roms and vldp game data; no universal BIOS file", "naming": "Per-driver ROM definitions and README data folders are the source-backed firmware/data boundary.", "evidence": ["source:README.md", "source:src/game/game.h"] },
+      { "purpose": "keys", "path": "No external key-material path; SDL3 SDLK_* tokens in INI", "naming": "Keyboard macro lookup is compiled into keycodes.cpp.", "evidence": ["source:src/io/keycodes.cpp"] }
+    ] },
+    "macos": { "paths": [
+      { "purpose": "config", "path": "<explicit -homedir>/hypinput.ini or application-directory fallback", "naming": "UNIX logic uses $HOME/.hypseus unless -homedir supplies a writable home; no separate macOS preference path is documented.", "evidence": ["source:src/io/cmdline.cpp parse_homedir", "source:src/io/input.cpp CFG_System", "source:README.md MacOS X Ports"] },
+      { "purpose": "input", "path": "<hypseus-home>/hypinput_gamepad.ini [KEYBOARD]", "naming": "The same SDL_Gamepad schema and runtime gamecontrollerdb.txt lookup apply on macOS.", "evidence": ["source:doc/hypinput_gamepad.ini", "source:src/io/input.cpp"] },
+      { "purpose": "saves", "path": "<hypseus-home>/ram/<short-game-name>.gz", "naming": "Compressed NVRAM resolves through homedir/ram.", "evidence": ["source:src/io/sram.cpp", "source:src/io/homedir.cpp"] },
+      { "purpose": "states", "path": "No general native savestate path established", "naming": "No source-backed general savestate file contract was established.", "evidence": ["source:doc/CmdLine.md", "source:src/game/game.cpp"] },
+      { "purpose": "bios", "path": "<hypseus-home>/roms and vldp game data; no universal BIOS file", "naming": "Game-specific ROM definitions and required data directories are used.", "evidence": ["source:README.md", "source:src/game/game.h"] },
+      { "purpose": "keys", "path": "No external key-material path; SDL3 SDLK_* tokens in INI", "naming": "SDL3 key macro lookup is compiled into the executable.", "evidence": ["source:src/io/keycodes.cpp"] }
+    ] }
+  },
+  "controller_boundary": {
+    "native_writer": "implemented_partial_linux",
+    "profile_id": "hypseus-singe:sdl-gamepad-ini-v1",
+    "writer": "crates/lunchbox-app/src/controller_hypseus_singe_native.rs",
+    "refusal": "The adapter requires an exact saved framefile/runtime declaration, hashes every executable input, resolves physical devices through the target SDL3 build, writes only source-defined uppercase Gamepad macros into a private home, preserves NVRAM through an explicit external ram directory, and rejects custom environments, conflicting launch overrides, changed topology, or any command token beyond the source parser's 80-byte limit. The pinned native executable has accepted the generated parser/input overlay through SDL gamepad enumeration; gameplay button behavior and NVRAM persistence remain unverified."
+  },
   "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official Hypseus Singe source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/DirtBagXon/hypseus-singe",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official Hypseus Singe source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/DirtBagXon/hypseus-singe",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official Hypseus Singe source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/DirtBagXon/hypseus-singe",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official Hypseus Singe source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/DirtBagXon/hypseus-singe",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    }
+    "linux-flatpak": { "status": "no_verified_package", "reason": "Upstream documents source builds and native Linux/Mac/Windows ports but publishes no first-party Flatpak artifact; a separately verified package and sandbox paths are required.", "evidence": ["official:https://github.com/DirtBagXon/hypseus-singe/blob/a16e2521ee3233ef20c44e562008c47f4b4293df/README.md"] }
   }
 }

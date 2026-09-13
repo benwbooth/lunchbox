@@ -120,13 +120,13 @@ fn platform_records_are_complete_and_evidenced() {
                     });
                 }
             }
-            assert!(
-                purposes.contains("saves")
-                    || purposes.contains("states")
-                    || purposes.contains("config"),
-                "{}: {platform} captures neither saves, states nor config",
-                path.display()
-            );
+            for purpose in PURPOSES {
+                assert!(
+                    purposes.contains(purpose),
+                    "{}: {platform} lacks an explicit {purpose} disposition",
+                    path.display()
+                );
+            }
         }
         let gaps = record
             .get("platform_gaps")

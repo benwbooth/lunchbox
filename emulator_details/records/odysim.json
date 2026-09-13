@@ -1,1 +1,29 @@
-{"schema_version":1,"slug":"odysim","emulator":"OdySim","sources":[{"kind":"source","repo":"https://archive.org/details/OdySim","url":"https://archive.org/details/OdySim","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://archive.org/details/OdySim","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows/Linux/macOS via LÖVE; inactive; the requested purpose families were not all source-established for this host.","evidence":["official:https://archive.org/details/OdySim"]},"linux-flatpak":{"status":"unresolved","reason":"Windows/Linux/macOS via LÖVE; inactive; the requested purpose families were not all source-established for this host.","evidence":["official:https://archive.org/details/OdySim"]},"windows":{"status":"unresolved","reason":"Windows/Linux/macOS via LÖVE; inactive; the requested purpose families were not all source-established for this host.","evidence":["official:https://archive.org/details/OdySim"]},"macos":{"status":"unresolved","reason":"Windows/Linux/macOS via LÖVE; inactive; the requested purpose families were not all source-established for this host.","evidence":["official:https://archive.org/details/OdySim"]}}}
+{
+  "schema_version": 1,
+  "slug": "odysim",
+  "emulator": "OdySim",
+  "sources": [
+    { "kind": "artifact", "url": "https://archive.org/details/OdySim", "role": "preserved OdySim distribution and item metadata" },
+    { "kind": "artifact", "url": "https://archive.org/download/OdySim/OdySim-Dodgeball0-10-1.zip", "version": "0.10.1", "sha256": "af5a2ebc90bd0843c345433098baa2223d4646c87b83a81ab31b43129ff35643", "role": "representative Windows game archive; bundled executable, DLLs and readme" },
+    { "kind": "contract", "path": "docs/ODYSIM_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller boundary" }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "No persistent configuration feature; the embedded main.lua initializes display, audio, AI, overlay and scorecard settings in love.load on every launch.", "naming": "Not applicable; the complete embedded Lua program contains no filesystem/config read or write.", "status": "not_supported", "evidence": ["artifact:https://archive.org/download/OdySim/OdySim-Dodgeball0-10-1.zip (OdySim-Dodgeball.exe embedded main.lua and archive listing)"] },
+        { "purpose": "input", "path": "Runtime keyboard input handled by the bundled LÖVE game.", "naming": "The Dodgeball readme documents W/A/S/D, R/T and V for player 1; arrow keys, U/I and M for player 2; no remapping file is documented.", "status": "captured", "evidence": ["artifact:https://archive.org/download/OdySim/OdySim-Dodgeball0-10-1.zip (OdySim-Dodgeball-ReadMe.txt)"] },
+        { "purpose": "saves", "path": "No guest save-data or cartridge-save persistence; this fixed Dodgeball simulator resets all scores and game variables in love.load.", "naming": "Not applicable; the embedded main.lua contains no filesystem or serialization calls.", "status": "not_supported", "evidence": ["artifact:https://archive.org/download/OdySim/OdySim-Dodgeball0-10-1.zip (OdySim-Dodgeball.exe embedded main.lua)"] },
+        { "purpose": "states", "path": "No emulator save-state feature; pause is an in-memory play/pause flag only.", "naming": "Not applicable; the embedded main.lua has no state serializer, state filename, or slot mechanism.", "status": "not_supported", "evidence": ["artifact:https://archive.org/download/OdySim/OdySim-Dodgeball0-10-1.zip (OdySim-Dodgeball.exe embedded main.lua love.load/love.keypressed)"] },
+        { "purpose": "bios", "path": "No separate BIOS or firmware asset identified; the archive is a self-contained game distribution.", "naming": "No external BIOS filename or checksum is documented.", "status": "not_required", "evidence": ["artifact:https://archive.org/download/OdySim/OdySim-Dodgeball0-10-1.zip (archive listing)"] },
+        { "purpose": "keys", "path": "No cryptographic or decryption-key file identified.", "naming": "Not applicable.", "status": "not_required", "evidence": ["artifact:https://archive.org/details/OdySim (published archive set)"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "unsupported", "reason": "The preserved catalog provides Windows game archives, but no native Linux executable, source tree, or Linux persistence contract.", "evidence": ["artifact:https://archive.org/details/OdySim"] },
+    "linux-flatpak": { "status": "unsupported", "reason": "No OdySim Flatpak package or manifest is published.", "evidence": ["artifact:https://archive.org/details/OdySim"] },
+    "macos": { "status": "unsupported", "reason": "The preserved catalog provides Windows game archives, but no native macOS executable, source tree, or macOS persistence contract.", "evidence": ["artifact:https://archive.org/details/OdySim"] }
+  },
+  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not invent an OdySim controller file: the preserved LÖVE/Windows artifacts document fixed runtime keyboard controls but publish no persistent mapping grammar." },
+  "notes": "The archive item is an artifact preservation source, not a source release. Runtime launch and gameplay input remain unverified."
+}

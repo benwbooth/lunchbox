@@ -104,6 +104,26 @@ pub(crate) fn config_toml(
         !ports.is_empty() && ports.len() <= 4,
         "xemu binds up to four ports"
     );
+    let mut used_ports = std::collections::BTreeSet::new();
+    let mut used_guids = std::collections::BTreeSet::new();
+    for (port, guid, _) in ports {
+        ensure!(
+            (1..=4).contains(port),
+            "xemu port is outside the native range"
+        );
+        ensure!(
+            used_ports.insert(*port),
+            "xemu port is assigned more than once"
+        );
+        ensure!(
+            !guid.is_empty() && !guid.chars().any(char::is_whitespace),
+            "xemu requires a non-empty SDL GUID"
+        );
+        ensure!(
+            used_guids.insert(*guid),
+            "xemu SDL GUID is assigned to multiple ports"
+        );
+    }
     let mut out = String::new();
     writeln!(out, "[sys.files]").expect("in-memory write");
     writeln!(
@@ -239,6 +259,31 @@ mod tests {
         assert!(
             config_toml(
                 &none,
+                std::path::Path::new("/g"),
+                std::path::Path::new("/m"),
+                std::path::Path::new("/f")
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn ports_require_unique_native_slots_and_guids() {
+        let map = mapping();
+        let duplicate_port = [(1, "0300abcd", &map), (1, "0300efgh", &map)];
+        assert!(
+            config_toml(
+                &duplicate_port,
+                std::path::Path::new("/g"),
+                std::path::Path::new("/m"),
+                std::path::Path::new("/f")
+            )
+            .is_err()
+        );
+        let duplicate_guid = [(1, "0300abcd", &map), (2, "0300abcd", &map)];
+        assert!(
+            config_toml(
+                &duplicate_guid,
                 std::path::Path::new("/g"),
                 std::path::Path::new("/m"),
                 std::path::Path::new("/f")

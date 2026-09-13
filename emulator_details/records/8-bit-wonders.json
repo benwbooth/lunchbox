@@ -3,50 +3,13 @@
   "slug": "8-bit-wonders",
   "emulator": "8-Bit Wonders",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://eightbitwonders.gitlab.io/",
-      "url": "https://eightbitwonders.gitlab.io/",
-      "role": "official upstream identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://eightbitwonders.gitlab.io/",
-      "role": "official distribution/documentation evidence"
-    }
+    { "kind": "source", "repo": "https://gitlab.com/eightbitwonders/app", "url": "https://gitlab.com/eightbitwonders/app", "commit": "3b72d139099a513eb2d3fe5fe9b775fd11aeb06f", "role": "official Android application source" },
+    { "kind": "docs", "url": "https://gitlab.com/eightbitwonders/app/-/blob/3b72d139099a513eb2d3fe5fe9b775fd11aeb06f/README.md", "role": "official README, supported-device and Android build evidence" }
   ],
   "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official source identifies 8-Bit Wonders but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://eightbitwonders.gitlab.io/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official source identifies 8-Bit Wonders but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://eightbitwonders.gitlab.io/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official source identifies 8-Bit Wonders but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://eightbitwonders.gitlab.io/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official source identifies 8-Bit Wonders but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://eightbitwonders.gitlab.io/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    }
+    "linux": { "status": "no_verified_package", "reason": "The pinned README describes an Android app built with Android Studio/Android SDK; no native Linux desktop package or desktop controller grammar is published.", "evidence": ["source:3b72d139099a513eb2d3fe5fe9b775fd11aeb06f README.md"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No Flatpak manifest or package is published by the pinned Android-only project.", "evidence": ["source:3b72d139099a513eb2d3fe5fe9b775fd11aeb06f README.md"] },
+    "macos": { "status": "no_verified_package", "reason": "The pinned project publishes Android sources and stores settings through the Android frontend; no native macOS package is published.", "evidence": ["source:3b72d139099a513eb2d3fe5fe9b775fd11aeb06f README.md"] },
+    "windows": { "status": "no_verified_package", "reason": "The pinned project publishes Android sources and stores settings through the Android frontend; no native Windows package is published.", "evidence": ["source:3b72d139099a513eb2d3fe5fe9b775fd11aeb06f README.md"] }
   }
 }

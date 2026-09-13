@@ -1,1 +1,39 @@
-{"schema_version":1,"slug":"odyssey-now-hal","emulator":"Odyssey Now: HAL","sources":[{"kind":"source","repo":"https://pathealy.itch.io/odyssey-now-hal","url":"https://pathealy.itch.io/odyssey-now-hal","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://pathealy.itch.io/odyssey-now-hal","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows/macOS in development; the requested purpose families were not all source-established for this host.","evidence":["official:https://pathealy.itch.io/odyssey-now-hal"]},"linux-flatpak":{"status":"unresolved","reason":"Windows/macOS in development; the requested purpose families were not all source-established for this host.","evidence":["official:https://pathealy.itch.io/odyssey-now-hal"]},"windows":{"status":"unresolved","reason":"Windows/macOS in development; the requested purpose families were not all source-established for this host.","evidence":["official:https://pathealy.itch.io/odyssey-now-hal"]},"macos":{"status":"unresolved","reason":"Windows/macOS in development; the requested purpose families were not all source-established for this host.","evidence":["official:https://pathealy.itch.io/odyssey-now-hal"]}}}
+{
+  "schema_version": 1,
+  "slug": "odyssey-now-hal",
+  "emulator": "Odyssey Now: HAL",
+  "sources": [
+    { "kind": "source", "repo": "https://github.com/Vibrant-Media-Lab/OdysseyNowHAL", "url": "https://github.com/Vibrant-Media-Lab/OdysseyNowHAL", "commit": "7eb0c1da4f46728dd22eab189840f8f51f03118b", "role": "official Unity project, keyboard/gamepad/Arduino input and PlayerPrefs paths" },
+    { "kind": "docs", "url": "https://github.com/Vibrant-Media-Lab/OdysseyNowHAL/blob/7eb0c1da4f46728dd22eab189840f8f51f03118b/README.md", "role": "official controls and Windows/macOS build documentation" },
+    { "kind": "artifact", "url": "https://pathealy.itch.io/odyssey-now-hal", "role": "official playable build listing for Windows and macOS" },
+    { "kind": "contract", "path": "docs/ODYSSEY_NOW_HAL_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller boundary" }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "Unity PlayerPrefs (platform-specific application storage).", "naming": "Source writes P1Input, P2Input, ai1 and ai2; no portable file path or schema is supplied by the project.", "status": "captured", "evidence": ["source:OdysseyNow/Assets/Scripts/CardDirection/LocalInputManager.cs @7eb0c1d", "source:OdysseyNow/Assets/Scripts/Calibration/GameCalibration.cs @7eb0c1d"] },
+        { "purpose": "input", "path": "Unity InputManager.asset plus runtime InControl ActiveDevices and Ardity serial port.", "naming": "Keyboard KeyCode fields, Traditional uses ActiveDevices[(player - 1) % 2], and OriginalConsole uses Arduino serial JSON; device/port identity is runtime-owned.", "status": "captured", "evidence": ["source:OdysseyNow/ProjectSettings/InputManager.asset @7eb0c1d", "source:OdysseyNow/Assets/Scripts/Actors/PlayerTargetController.cs @7eb0c1d", "source:OdysseyNow/Assets/Scripts/HardwareInterface/ConsoleMirror.cs @7eb0c1d"] },
+        { "purpose": "saves", "path": "No guest save-data or cartridge-save sidecar is implemented by the project.", "naming": "PlayerPrefs selections are application settings, not game save data.", "status": "not_supported", "evidence": ["source:OdysseyNow/Assets/Scripts/CardDirection/LocalInputManager.cs @7eb0c1d"] },
+        { "purpose": "states", "path": "No emulator save-state file or slot mechanism is implemented by the project.", "naming": "No state filename grammar.", "status": "not_supported", "evidence": ["source:OdysseyNow source tree @7eb0c1d"] },
+        { "purpose": "bios", "path": "No external BIOS or firmware file is loaded by the Unity project.", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:OdysseyNow source tree @7eb0c1d"] },
+        { "purpose": "keys", "path": "No cryptographic or decryption-key file is documented.", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:OdysseyNow source tree @7eb0c1d"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "Unity PlayerPrefs (platform-specific application storage).", "naming": "Source writes P1Input, P2Input, ai1 and ai2; no portable file path or schema is supplied by the project.", "status": "captured", "evidence": ["source:OdysseyNow/Assets/Scripts/CardDirection/LocalInputManager.cs @7eb0c1d", "source:OdysseyNow/Assets/Scripts/Calibration/GameCalibration.cs @7eb0c1d"] },
+        { "purpose": "input", "path": "Unity InputManager.asset plus runtime InControl ActiveDevices and Ardity serial port.", "naming": "Keyboard KeyCode fields, Traditional uses ActiveDevices[(player - 1) % 2], and OriginalConsole uses Arduino serial JSON; device/port identity is runtime-owned.", "status": "captured", "evidence": ["source:OdysseyNow/ProjectSettings/InputManager.asset @7eb0c1d", "source:OdysseyNow/Assets/Scripts/Actors/PlayerTargetController.cs @7eb0c1d", "source:OdysseyNow/Assets/Scripts/HardwareInterface/ConsoleMirror.cs @7eb0c1d"] },
+        { "purpose": "saves", "path": "No guest save-data or cartridge-save sidecar is implemented by the project.", "naming": "PlayerPrefs selections are application settings, not game save data.", "status": "not_supported", "evidence": ["source:OdysseyNow/Assets/Scripts/CardDirection/LocalInputManager.cs @7eb0c1d"] },
+        { "purpose": "states", "path": "No emulator save-state file or slot mechanism is implemented by the project.", "naming": "No state filename grammar.", "status": "not_supported", "evidence": ["source:OdysseyNow source tree @7eb0c1d"] },
+        { "purpose": "bios", "path": "No external BIOS or firmware file is loaded by the Unity project.", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:OdysseyNow source tree @7eb0c1d"] },
+        { "purpose": "keys", "path": "No cryptographic or decryption-key file is documented.", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:OdysseyNow source tree @7eb0c1d"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "unsupported", "reason": "The official project README and build listing identify Windows and macOS, not a Linux desktop build.", "evidence": ["docs:https://github.com/Vibrant-Media-Lab/OdysseyNowHAL/blob/7eb0c1da4f46728dd22eab189840f8f51f03118b/README.md", "artifact:https://pathealy.itch.io/odyssey-now-hal"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No Odyssey Now: HAL Flatpak package or manifest is published.", "evidence": ["artifact:https://pathealy.itch.io/odyssey-now-hal"] }
+  },
+  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not invent an Odyssey Now: HAL controller profile: Unity PlayerPrefs, runtime InControl ordering, and Arduino serial-port selection are not a stable portable identity/serialization contract." },
+  "notes": "Source inspection establishes the input and settings APIs only; no Unity build, serial hardware session, or effective gameplay input was runtime-verified."
+}

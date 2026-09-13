@@ -10,7 +10,8 @@
     { "kind": "source", "repo": "Calindro/emulicious", "commit": "(empty repository, default branch main, pushed 2021-04-30)", "role": "upstream GitHub repo exists but contains no source code - issue tracker only; Emulicious is closed-source, all facts below cite shipped documentation, committed ini files, and packaging recipes" },
     { "kind": "docs", "url": "https://raw.githubusercontent.com/SegerEnd/homebrew-tap/master/Formula/emulicious.rb", "role": "Homebrew formula (2026-03-27 zip): 'Emulicious writes Emulicious.ini and savestates next to its jar'; license :cannot_represent" },
     { "kind": "docs", "url": "https://raw.githubusercontent.com/gbdev/GBEmulatorShootout/master/emulators/emulicious.py", "role": "harness: writes Emulicious.ini beside Emulicious.jar, drops dmg_boot.bin/cgb_boot.bin into the emulator folder" },
-    { "kind": "docs", "url": "https://raw.githubusercontent.com/aoineko-fr/MSXgl/main/engine/script/js/setup_emulator.js", "role": "MSXgl launcher: 'See ReadMe.txt and Emulicious.ini', -set System=MSX and other -set overrides" }
+    { "kind": "docs", "url": "https://raw.githubusercontent.com/aoineko-fr/MSXgl/main/engine/script/js/setup_emulator.js", "role": "MSXgl launcher: 'See ReadMe.txt and Emulicious.ini', -set System=MSX and other -set overrides" },
+    { "kind": "release", "url": "https://emulicious.net/download/emulicious/?wpdmdl=205", "version": "official archive downloaded 2026-09-12; Emulicious.jar build timestamp 2026-03-27", "sha256": "6e1c6d511014033bbc2668360a0194389a5bad2bf6c5ffd0fe093b84da33c0fc", "role": "official release archive; bytecode audit of platform.Emulicious$243/$50 establishes the Java-properties selector, keyboard, threshold, and Gamepad<N>Key<Action>/_1 grammar" }
   ],
   "platforms": {
     "linux": {
@@ -28,7 +29,7 @@
         },
         {
           "purpose": "input",
-          "path": "Controller/input configuration lives in Emulicious.ini beside the exe (Setup Keys / Configure Input dialogs write it; 'Restructured setup input dialog' WhatsNew 2019-02-16, 'Added Game Pad support' same release; key presets ship in the install dir under KeyPresets/bgb.ini and KeyPresets/VSCode.ini). Observed key syntax in committed ini files: emulator hotkeys Keys<Something>=<binding> with binding '<modifier> pressed <KEY>' or <unassigned> (e.g. KeysReset=ctrl pressed BACK_SPACE, KeysReloadRom=shift ctrl pressed BACK_SPACE, KeysIncreaseFrameskip=alt pressed PAGE_UP, DebuggerKeysResume=pressed F8); gamepad bindings per device as Gamepad0Key<buttonIndex>=<keycode> plus system-specific device selection GBGamepad=-1, SMSGamepadA=-1, SMSGamepadB=-1, SMSbuttonsGamepad=-1, keyboard-while-gamepad flag GBGamepadKeyboard=true, and signed axis thresholds GBGamepadThreshold=50 / SMSGamepadAThreshold=50 / SMSGamepadBThreshold=50. KeyPresets ini files use the same Keys* entries.",
+          "path": "Controller/input configuration lives in Emulicious.ini beside the exe (Setup Keys / Configure Input dialogs write it; 'Restructured setup input dialog' WhatsNew 2019-02-16, 'Added Game Pad support' same release; key presets ship in the install dir under KeyPresets/bgb.ini and KeyPresets/VSCode.ini). The pinned official archive bytecode establishes Java-properties keys: selectors GBGamepad, SMSGamepadA/B, SMSbuttonsGamepad, MSXGamepadA/B; corresponding <selector>Keyboard and <selector>Threshold flags; and Gamepad<N>Key<Action> plus Gamepad<N>Key<Action>_1 (or keyboard Key<Action>/Key<Action>_1). JInput event IDs are component-index*4 with axis/POV direction offsets, -1 means unassigned, and the release allocates action IDs 0..267. KeyPresets ini files use the same Keys* entries.",
           "evidence": [
             "docs:xfixium/SMS-Ms-Pac-Man Emulicious/Emulicious.ini (committed ini from an SMS project): KeysReset=ctrl pressed BACK_SPACE, Gamepad device/threshold keys, DebuggerKeys* bindings",
             "docs:Karamu98/GBTemplate deps/Emulicious-with-Java/Emulicious.ini (default dist ini): GBGamepad=-1, GBGamepadKeyboard=true, GBGamepadThreshold=50, Gamepad0Key0..Gamepad0Key37=<keycode>",
@@ -64,8 +65,8 @@
             "docs:gbdev/GBEmulatorShootout emulators/emulicious.dmg.ini (GameBoyBootROM=dmg_boot.bin, GameBoyColorBootROM=cgb_boot.bin) and emulicious.py downloading both boot ROMs into emu/emulicious/",
             "docs:Karamu98/GBTemplate deps/Emulicious-with-Java/MSX/ tree: cbios_msx1.rom, cbios_msx2.rom, cbios_sub.rom, cbios.txt (C-BIOS 0.29)"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["docs:https://emulicious.net/ (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "Java application (bundled JRE on Windows; system Java elsewhere) with one fully portable install directory: ini, sstates/, sav/, KeyPresets/, MSX/ CBIOS all live beside Emulicious.jar. The flatpak packaging (flathub net.emulicious.Emulicious, community) exists but is out of scope for this record."
     },
     "windows": {
@@ -113,8 +114,8 @@
             "docs:gbdev/GBEmulatorShootout ini + boot ROM download into the emulator folder",
             "docs:Karamu98/GBTemplate MSX\\ C-BIOS files"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["docs:https://emulicious.net/ (primary source cited by this record; keys capture remains unresolved for windows)"]}],
       "notes": "Windows builds ship a bundled JRE and Emulicious.exe/-icl launchers; WhatsNew notes W11 driver-related perf issues and the high-DPI compatibility workaround in ReadMe.txt troubleshooting."
     },
     "macos": {
@@ -160,8 +161,8 @@
             "docs:lronaldo/gbtelera WhatsNew.txt 2017-02-27 / 2019-02-16",
             "docs:gbdev/GBEmulatorShootout ini keys; Karamu98/GBTemplate MSX/ C-BIOS"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["docs:https://emulicious.net/ (primary source cited by this record; keys capture remains unresolved for macos)"]}],
       "notes": "macOS runs the same jar via system or bundled Java; no ~/Library paths are used - everything stays inside the (portable) Emulicious folder."
     }
   },

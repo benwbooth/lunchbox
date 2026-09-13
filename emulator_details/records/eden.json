@@ -57,8 +57,8 @@
             "source:src/core/file_sys/bis_factory.cpp — GetOrCreateDirectoryRelative(nand_root, \"/system/Contents/registered\") and \"/user/Contents/registered\"",
             "db:sources/firmware-rules.json — eden:Eden:Nintendo Switch:firmware rule (\"installs it into Eden's active NAND profile\") and eden:Eden:Nintendo Switch:keys rule (prod.keys + optional title.keys)"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:git.eden-emu.dev/eden-emu/eden@c95ad020fb (primary source cited by this record; input capture remains unresolved for linux)"]}],
       "notes": "No save-state feature: fs_paths.h defines no states directory and src/core has no savestate module at commit c95ad020fb (purpose 'states' therefore omitted). Eden defines legacy EmuPath roots for citron/sudachi/yuzu/suyu (XDG data dirs) and Ryujinx (config dir on UNIX) for cross-emulator migration, but Eden's own layout is plain ~/.local/share/eden, ~/.config/eden, ~/.cache/eden. The Lunchbox AppImage source (eden-linux clang pgo asset) runs Eden with HOME/XDG pointing at the Lunchbox data root."
     },
     "linux-flatpak": {
@@ -94,8 +94,8 @@
           "path": "Installed Switch firmware NCA content under ~/.var/app/dev.eden_emu.eden/data/eden/nand/system/Contents/registered/ (and nand/user/Contents/registered). The sandbox must be allowed to read any source firmware dump.",
           "naming": "Installed NCA content is selected by the NAND firmware layout rather than a single BIOS filename; the source does not publish a canonical checksum for the installed firmware set.",
           "evidence": ["package:github.com/flathub/dev.eden_emu.eden", "source:src/core/file_sys/bis_factory.cpp"]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:git.eden-emu.dev/eden-emu/eden@c95ad020fb (primary source cited by this record; input capture remains unresolved for linux-flatpak)"]}],
       "notes": "Community Flathub package; sandbox XDG roots and filesystem permissions are package-dependent. Eden has no save-state module at the pinned source commit, so no states path is listed."
     },
     "macos": {
@@ -142,8 +142,8 @@
           "evidence": [
             "source:src/core/file_sys/bis_factory.cpp — nand \"/system/Contents/registered\""
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:git.eden-emu.dev/eden-emu/eden@c95ad020fb (primary source cited by this record; input capture remains unresolved for macos)"]}],
       "notes": "macOS builds ship as aarch64 dmg assets on git.eden-emu.dev releases (Lunchbox install source); paths are the plain XDG defaults because the code has no macOS-specific data root."
     },
     "windows": {
@@ -189,8 +189,8 @@
           "evidence": [
             "source:src/core/file_sys/bis_factory.cpp — nand \"/system/Contents/registered\""
           ]
-        }
-      ]
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:git.eden-emu.dev/eden-emu/eden@c95ad020fb (primary source cited by this record; input capture remains unresolved for windows)"]}]
     }
   }
 }

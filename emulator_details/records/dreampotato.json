@@ -3,219 +3,35 @@
   "slug": "dreampotato",
   "emulator": "DreamPotato",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/RikkiGibson/DreamPotato",
-      "url": "https://github.com/RikkiGibson/DreamPotato",
-      "role": "official upstream identity/distribution evidence"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/RikkiGibson/DreamPotato",
-      "role": "official documentation/platform evidence"
-    }
+    {"kind":"source","repo":"https://github.com/RikkiGibson/DreamPotato","url":"https://github.com/RikkiGibson/DreamPotato/tree/ba03ef47622ee105f127d47bc359f9c47bb431c2","role":"pinned upstream source"},
+    {"kind":"source","repo":"https://github.com/MonoGame/MonoGame","url":"https://github.com/MonoGame/MonoGame/tree/f34200720b558125964273fd3e7ab44cde0b0429","role":"pinned MonoGame 3.8.4 enum and DesktopGL SDL slot semantics"},
+    {"kind":"docs","url":"https://github.com/RikkiGibson/DreamPotato#configuration","role":"upstream configuration documentation"}
   ],
   "platforms": {
-    "linux": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "No exact configuration path published in the reviewed official source.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "saves",
-          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "states",
-          "path": "No verified state filename or slot grammar is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "No canonical BIOS/firmware filename or checksum is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        }
-      ]
-    },
-    "windows": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "No exact configuration path published in the reviewed official source.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "saves",
-          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "states",
-          "path": "No verified state filename or slot grammar is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "No canonical BIOS/firmware filename or checksum is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        }
-      ]
-    },
-    "macos": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "No exact configuration path published in the reviewed official source.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "saves",
-          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "states",
-          "path": "No verified state filename or slot grammar is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "No canonical BIOS/firmware filename or checksum is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/RikkiGibson/DreamPotato",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        }
-      ]
-    }
+    "linux": {"paths": [
+      {"purpose":"config","path":"<DreamPotato install>/Data/configuration.json; Linux AppImage uses $XDG_DATA_HOME/DreamPotato/configuration.json.","naming":"System.Text.Json object with PrimaryInput and SecondaryInput; each has KeyMappings, ButtonMappings, GamePadIndex.","status":"captured","evidence":["source:src/DreamPotato.MonoGame/Configuration.cs @ba03ef4","source:src/DreamPotato.Core/Vmu.cs UserDataFolder @ba03ef4"]},
+      {"purpose":"input","path":"Same configuration.json.","naming":"SourceKey/SourceButton and TargetButton are case-sensitive MonoGame enum names. GamePadIndex is GamePad.GetState's runtime DesktopGL/SDL enumeration slot (-1 or 0..15).","status":"captured","evidence":["source:src/DreamPotato.MonoGame/Configuration.cs InputMappings/VmuButton @ba03ef4","source:src/DreamPotato.MonoGame/VmuPresenter.cs @ba03ef4","source:MonoGame/MonoGame@f34200720b558125964273fd3e7ab44cde0b0429 MonoGame.Framework/Platform/Input/GamePad.SDL.cs"]},
+      {"purpose":"saves","path":"VMU save files are user-selected; no universal save directory is imposed.","naming":"VMI/VMS pairs retain on-VMU filenames; fs_root.bin stores VMU filesystem metadata.","status":"captured","evidence":["docs:README.md save-as-folder/fs_root.bin notes @ba03ef4"]},
+      {"purpose":"states","path":"<DreamPotato data root>/SaveStates/","naming":"<loaded file stem>_<id>.dpstate (versioned ZIP container).","status":"captured","evidence":["source:src/DreamPotato.Core/Vmu.cs GetSaveStatePath @ba03ef4"]},
+      {"purpose":"bios","path":"<DreamPotato install>/Data/american_v1.05.bin","naming":"Embedded VMU ROM filename; no checksum asserted.","status":"captured","evidence":["source:src/DreamPotato.Core/Vmu.cs RomFileName @ba03ef4"]},
+      {"purpose":"keys","path":"not applicable","naming":"No cryptographic key file is used.","status":"not_required","evidence":["source:src/DreamPotato.MonoGame/Configuration.cs @ba03ef4"]}
+    ]},
+    "windows": {"paths": [
+      {"purpose":"config","path":"<DreamPotato install>\\Data\\configuration.json","naming":"System.Text.Json object with PrimaryInput and SecondaryInput; default UserDataFolder is the executable's Data directory.","status":"captured","evidence":["source:src/DreamPotato.MonoGame/Configuration.cs @ba03ef4","source:src/DreamPotato.Core/Vmu.cs @ba03ef4"]},
+      {"purpose":"input","path":"Same configuration.json.","naming":"KeyMappings/ButtonMappings use case-sensitive MonoGame enum names; GamePadIndex is a runtime DesktopGL/SDL enumeration slot (-1 or 0..15).","status":"captured","evidence":["source:src/DreamPotato.MonoGame/Configuration.cs @ba03ef4","source:src/DreamPotato.MonoGame/VmuPresenter.cs @ba03ef4","source:MonoGame/MonoGame@f34200720b558125964273fd3e7ab44cde0b0429 MonoGame.Framework/Platform/Input/GamePad.SDL.cs"]},
+      {"purpose":"saves","path":"VMU save files are user-selected; no universal save directory is imposed.","naming":"VMI/VMS pairs retain on-VMU filenames; fs_root.bin stores filesystem metadata.","status":"captured","evidence":["docs:README.md @ba03ef4"]},
+      {"purpose":"states","path":"<DreamPotato install>\\Data\\SaveStates\\","naming":"<loaded file stem>_<id>.dpstate.","status":"captured","evidence":["source:src/DreamPotato.Core/Vmu.cs @ba03ef4"]},
+      {"purpose":"bios","path":"<DreamPotato install>\\Data\\american_v1.05.bin","naming":"Embedded VMU ROM filename; no checksum asserted.","status":"captured","evidence":["source:src/DreamPotato.Core/Vmu.cs @ba03ef4"]},
+      {"purpose":"keys","path":"not applicable","naming":"No cryptographic key file is used.","status":"not_required","evidence":["source:src/DreamPotato.MonoGame/Configuration.cs @ba03ef4"]}
+    ]},
+    "macos": {"paths": [
+      {"purpose":"config","path":"~/Library/Application Support/DreamPotato/configuration.json for a macOS app bundle; embedded Data for non-bundle builds.","naming":"System.Text.Json object with PrimaryInput and SecondaryInput.","status":"captured","evidence":["source:src/DreamPotato.Core/Vmu.cs IsMacAppBundle/UserDataFolder @ba03ef4","source:src/DreamPotato.MonoGame/Configuration.cs @ba03ef4"]},
+      {"purpose":"input","path":"Same configuration.json.","naming":"KeyMappings/ButtonMappings use case-sensitive MonoGame enum names; GamePadIndex is a runtime DesktopGL/SDL enumeration slot (-1 or 0..15).","status":"captured","evidence":["source:src/DreamPotato.MonoGame/Configuration.cs @ba03ef4","source:src/DreamPotato.MonoGame/VmuPresenter.cs @ba03ef4","source:MonoGame/MonoGame@f34200720b558125964273fd3e7ab44cde0b0429 MonoGame.Framework/Platform/Input/GamePad.SDL.cs"]},
+      {"purpose":"saves","path":"VMU save files are user-selected; no universal save directory is imposed.","naming":"VMI/VMS pairs retain on-VMU filenames; fs_root.bin stores filesystem metadata.","status":"captured","evidence":["docs:README.md @ba03ef4"]},
+      {"purpose":"states","path":"~/Library/Application Support/DreamPotato/SaveStates/","naming":"<loaded file stem>_<id>.dpstate.","status":"captured","evidence":["source:src/DreamPotato.Core/Vmu.cs @ba03ef4"]},
+      {"purpose":"bios","path":"<DreamPotato app bundle>/Contents/Resources/Data/american_v1.05.bin","naming":"Embedded VMU ROM filename; no checksum asserted.","status":"captured","evidence":["source:src/DreamPotato.Core/Vmu.cs EmbeddedDataFolder/RomFileName @ba03ef4"]},
+      {"purpose":"keys","path":"not applicable","naming":"No cryptographic key file is used.","status":"not_required","evidence":["source:src/DreamPotato.MonoGame/Configuration.cs @ba03ef4"]}
+    ]}
   },
-  "platform_gaps": {
-    "linux-flatpak": {
-      "status": "no_verified_package",
-      "reason": "The official project publishes native Linux, macOS, and Windows releases, but no verified Flatpak package or manifest was found.",
-      "evidence": [
-        "official:https://github.com/RikkiGibson/DreamPotato/releases"
-      ]
-    }
-  }
+  "platform_gaps": {"linux-flatpak":{"status":"no_verified_package","reason":"No verified Flatpak package or manifest was found.","evidence":["official:https://github.com/RikkiGibson/DreamPotato/releases"]}}
 }

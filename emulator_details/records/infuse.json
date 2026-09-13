@@ -3,50 +3,13 @@
   "slug": "infuse",
   "emulator": "Infuse",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/Tuxality/Infuse",
-      "url": "https://github.com/Tuxality/Infuse",
-      "role": "official upstream project identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/Tuxality/Infuse",
-      "role": "official distribution or project documentation"
-    }
+    { "kind": "source", "repo": "https://github.com/Tuxality/Infuse", "commit": "c29fb7dce336259b3453a8c1ac03e86be8a2361f", "role": "authoritative upstream repository; pinned tree contains only README, license, and ignore file" },
+    { "kind": "docs", "url": "https://github.com/Tuxality/Infuse/blob/c29fb7dce336259b3453a8c1ac03e86be8a2361f/README.md", "role": "upstream project description and claimed multiplatform Qualcomm BREW/Zeebo HLE scope" }
   ],
   "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official Infuse source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/Tuxality/Infuse",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official Infuse source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/Tuxality/Infuse",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official Infuse source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/Tuxality/Infuse",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official Infuse source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/Tuxality/Infuse",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    }
+    "linux": { "status": "unresolved", "reason": "The pinned upstream tree contains no executable, build system, emulator source, configuration parser, input backend, save/state implementation, firmware loader, or key path. No controller writer is therefore authorized.", "evidence": ["source:https://github.com/Tuxality/Infuse@c29fb7dce336259b3453a8c1ac03e86be8a2361f tree inventory"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No upstream Flatpak or runnable artifact is published in the pinned repository, and no source-backed config/input/firmware/save/state contract exists.", "evidence": ["source:https://github.com/Tuxality/Infuse@c29fb7dce336259b3453a8c1ac03e86be8a2361f"] },
+    "windows": { "status": "unresolved", "reason": "The README claims a multiplatform emulator, but the pinned repository has no implementation or exact Windows artifact from which firmware/BIOS, keys, controller input, saves, or states can be derived.", "evidence": ["source:https://github.com/Tuxality/Infuse@c29fb7dce336259b3453a8c1ac03e86be8a2361f", "docs:https://github.com/Tuxality/Infuse/blob/c29fb7dce336259b3453a8c1ac03e86be8a2361f/README.md"] },
+    "macos": { "status": "unresolved", "reason": "The README claims multiplatform scope, but no macOS executable, source, configuration, input, firmware, save, or state semantics are present in the pinned tree.", "evidence": ["source:https://github.com/Tuxality/Infuse@c29fb7dce336259b3453a8c1ac03e86be8a2361f"] }
   }
 }

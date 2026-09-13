@@ -7,6 +7,7 @@
       "kind": "source",
       "repo": "https://github.com/charlierobson/EightyOne",
       "url": "https://github.com/charlierobson/EightyOne",
+      "commit": "4de3cdb8cff0060ad03e43ae2681b0628a9c5f5d",
       "role": "official upstream identity/distribution evidence"
     },
     {
@@ -20,23 +21,21 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "No exact configuration path published in the reviewed official source.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "%APPDATA%\\EightyOne\\<executable-basename>.ini; executable directory fallback when CSIDL_APPDATA is unavailable; an explicit .INI command-line argument overrides both",
+          "naming": "Windows TIniFile INI sections; the writer preserves the existing file and patches only the six [MAIN] physical-controller keys.",
           "evidence": [
             "official:https://github.com/charlierobson/EightyOne",
-            "Windows native; Wine is not native support"
-          ],
-          "status": "unresolved"
+            "source:charlierobson/EightyOne@4de3cdb8cff0060ad03e43ae2681b0628a9c5f5d Source/main_.cpp config path/INI selection"
+          ]
         },
         {
           "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "The native INI [MAIN] physical-controller keys plus WinMM joystick runtime",
+          "naming": "ConnectJoystick1/2, EnableJoystick1/2AutoFire and Joystick1/2Controller are authorable; controller values are measured WinMM indices 0..15 and require a same-launch identity recheck. [HARDWARE] programmable guest keys remain preserved baseline state.",
           "evidence": [
             "official:https://github.com/charlierobson/EightyOne",
-            "Windows native; Wine is not native support"
-          ],
-          "status": "unresolved"
+            "source:charlierobson/EightyOne@4de3cdb8cff0060ad03e43ae2681b0628a9c5f5d Source/main_.cpp and Source/Joystick/Joystick.cpp"
+          ]
         },
         {
           "purpose": "saves",
@@ -44,7 +43,7 @@
           "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
           "evidence": [
             "official:https://github.com/charlierobson/EightyOne",
-            "Windows native; Wine is not native support"
+            "source:charlierobson/EightyOne@4de3cdb8cff0060ad03e43ae2681b0628a9c5f5d Source/main_.cpp file-format inventory"
           ],
           "status": "unresolved"
         },
@@ -54,7 +53,7 @@
           "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
           "evidence": [
             "official:https://github.com/charlierobson/EightyOne",
-            "Windows native; Wine is not native support"
+            "source:charlierobson/EightyOne@4de3cdb8cff0060ad03e43ae2681b0628a9c5f5d Source/main_.cpp snapshot dialogs"
           ],
           "status": "unresolved"
         },
@@ -64,7 +63,7 @@
           "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
           "evidence": [
             "official:https://github.com/charlierobson/EightyOne",
-            "Windows native; Wine is not native support"
+            "source:charlierobson/EightyOne@4de3cdb8cff0060ad03e43ae2681b0628a9c5f5d Source/main_.cpp and release resources"
           ],
           "status": "unresolved"
         },
@@ -74,7 +73,7 @@
           "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
           "evidence": [
             "official:https://github.com/charlierobson/EightyOne",
-            "Windows native; Wine is not native support"
+            "source:charlierobson/EightyOne@4de3cdb8cff0060ad03e43ae2681b0628a9c5f5d source inventory; no key-store interface"
           ],
           "status": "unresolved"
         }

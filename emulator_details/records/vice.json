@@ -41,7 +41,8 @@
           "path": "System ROMs are searched on the Directory path list $XDG_DATA_HOME/vice/<EMU>:$prefix/share/vice/<EMU>:<BOOTPATH>/<EMU> with EMU one of C64, C64DTV, C128, PET, PLUS4, CBM-II, SCPU64, VIC20 (drive ROMs under EMU=DRIVES); gap: the lunchbox DB has no VICE firmware_rules rows",
           "naming": "C64/C128/VIC20: kernal, basic, chargen (C128 basic is 32 KiB Basic+Editor); PET uses versioned names (kernal-1/2/4..., basic-1/2/4..., edit-*, characters-1/2...); Plus4 adds c1lo/c1hi/c2lo/c2hi function ROMs; drive DOS ROMs like dos1541-325302-01+901229-05.bin. No canonical checksum is declared for this ROM set by the cited VICE documentation/source",
           "evidence": ["docs:vice_3 section 3 (Directory default) and 3.1 ROM files list", "source:src/sysfile.c sysfile_open() appends the EMU subpath to each Directory entry", "source:src/plus4/plus4rom.c c1loName/c1hiName/c2loName/c2hiName resources", "db:no firmware_rules rows exist for vice"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "VICE does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:VICE source tree @d322f7a8d6c269b97162c74e73214c58eaad9a71"] }
       ],
       "notes": "Lunchbox stages a private -config/-joymap pair (contract session), so the user's own vicerc is never written; native game saves stay in the attached disk/tape images."
     },
@@ -75,7 +76,8 @@
           "path": "System ROMs inside the sandbox: ~/.var/app/net.sf.VICE/.local/share/vice/<EMU> first (XDG data home under the sandbox HOME), then the installed prefix; gap: the lunchbox DB has no VICE firmware_rules rows",
           "naming": "Same per-machine ROM names as native Linux (kernal/basic/chargen etc.); no canonical checksum is declared for this ROM set by the cited VICE documentation/source",
           "evidence": ["docs:vice_3 section 3 Directory search path", "source:src/arch/shared/archdep_default_sysfile_pathlist.c XDG data home first entry", "db:no firmware_rules rows exist for vice"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "VICE does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:VICE Flatpak build and source tree @d322f7a8d6c269b97162c74e73214c58eaad9a71"] }
       ],
       "notes": "Flathub build exists (net.sf.VICE); Lunchbox's native VICE integration requires native Linux, not Flatpak."
     },
@@ -109,7 +111,8 @@
           "path": "System ROMs are searched on the Directory list with the user config dir first (%APPDATA%\\vice\\) and the executable's directory, each tried with the EMU subpath (C64, C128, ..., DRIVES for drive ROMs); gap: the lunchbox DB has no VICE firmware_rules rows",
           "naming": "Same per-machine ROM names as Linux (kernal/basic/chargen; PET versioned names; dos*.bin drive ROMs); no canonical checksum is declared for this ROM set by the cited VICE documentation/source",
           "evidence": ["docs:vice_3 section 3/3.1", "source:src/arch/shared/archdep_default_sysfile_pathlist.c non-UNIX branch uses archdep_user_config_path() then boot path", "db:no firmware_rules rows exist for vice"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "VICE does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:VICE Windows source tree @d322f7a8d6c269b97162c74e73214c58eaad9a71"] }
       ]
     },
     "macos": {
@@ -142,7 +145,8 @@
           "path": "System ROMs on the Directory list starting at $XDG_DATA_HOME/vice/<EMU> (~/.local/share/vice/<EMU>), then the prefix, per-EMU subpaths plus DRIVES for drive ROMs; gap: the lunchbox DB has no VICE firmware_rules rows",
           "naming": "Same per-machine ROM names as Linux (kernal/basic/chargen; PET versioned names; dos*.bin drive ROMs); no canonical checksum is declared for this ROM set by the cited VICE documentation/source",
           "evidence": ["docs:vice_3 section 3/3.1", "source:src/arch/shared/archdep_default_sysfile_pathlist.c UNIX_COMPILE XDG data home entry", "db:no firmware_rules rows exist for vice"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "VICE does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:VICE macOS source tree @d322f7a8d6c269b97162c74e73214c58eaad9a71"] }
       ]
     }
   }

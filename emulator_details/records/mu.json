@@ -1,1 +1,150 @@
-{"schema_version":1,"slug":"mu","emulator":"Mu","sources":[{"kind":"source","repo":"https://github.com/meepingsnesroms/Mu","url":"https://github.com/meepingsnesroms/Mu","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://github.com/meepingsnesroms/Mu","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Libretro core plus Qt standalone build; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/meepingsnesroms/Mu"]},"linux-flatpak":{"status":"unresolved","reason":"Libretro core plus Qt standalone build; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/meepingsnesroms/Mu"]},"windows":{"status":"unresolved","reason":"Libretro core plus Qt standalone build; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/meepingsnesroms/Mu"]},"macos":{"status":"unresolved","reason":"Libretro core plus Qt standalone build; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/meepingsnesroms/Mu"]}}}
+{
+  "schema_version": 1,
+  "slug": "mu",
+  "emulator": "Mu",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/meepingsnesroms/Mu",
+      "commit": "4ac406874ccdc33ca3282299fda412f15ec544ad",
+      "url": "https://github.com/meepingsnesroms/Mu/tree/4ac406874ccdc33ca3282299fda412f15ec544ad",
+      "role": "Qt/libretro source"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/MuCfg.txt (Qt QSettings IniFormat).",
+          "naming": "palmButton0Key through palmButton10Key store host Qt keycodes.",
+          "status": "captured",
+          "evidence": [
+            "source:qtBuildSystem/Mu/mainwindow.cpp @4ac4068",
+            "source:qtBuildSystem/Mu/settingsmanager.cpp @4ac4068"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Eleven Palm hardware buttons are keyboard-key bindings; no native gamepad profile.",
+          "naming": "palmButtonNKey integer Qt key codes.",
+          "status": "captured",
+          "evidence": [
+            "source:qtBuildSystem/Mu/emuwrapper.h @4ac4068",
+            "source:qtBuildSystem/Mu/settingsmanager.cpp @4ac4068"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<ROM basename>.<OS>.ram and <ROM basename>.<OS>.sd.img for native app RAM/SD persistence.",
+          "naming": "<ROM basename>.<OS>.ram and <ROM basename>.<OS>.sd.img.",
+          "status": "captured",
+          "evidence": [
+            "source:qtBuildSystem/Mu/emuwrapper.cpp @4ac4068"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<ROM basename>.<OS>.states/<name>.state; state manager also writes a PNG preview.",
+          "naming": "<ROM basename>.<OS>.states/<name>.state with a PNG preview.",
+          "status": "captured",
+          "evidence": [
+            "source:qtBuildSystem/Mu/emuwrapper.cpp @4ac4068",
+            "source:qtBuildSystem/Mu/statemanager.cpp @4ac4068"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<resourceDirectory>/palmos40-en-m500.rom, palmos41-en-m515.rom, or palmos52-en-t3.rom according to the selected device/OS. Palm m500/m515 may additionally use <resourceDirectory>/bootloader-dbvz.rom; Tungsten T3 does not load that bootloader.",
+          "naming": "resourceDirectory is the MuCfg.txt setting passed as assetPath; the Palm ROM filename is selected from the exact emuOsName table in EmuWrapper::init.",
+          "status": "captured",
+          "evidence": [
+            "source:qtBuildSystem/Mu/mainwindow.cpp resourceDirectory/emu.init @4ac4068",
+            "source:qtBuildSystem/Mu/emuwrapper.cpp emuOsName and romFile/bootloaderFile @4ac4068"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "status": "not_required",
+          "evidence": [
+            "source:qtBuildSystem/Mu/settingsmanager.cpp @4ac4068"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "MuCfg.txt under the process user's home path via QDir::homePath().",
+          "status": "captured",
+          "evidence": [
+            "source:qtBuildSystem/Mu/mainwindow.cpp @4ac4068"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "palmButton0Key..10Key Qt keycode bindings.",
+          "status": "captured",
+          "evidence": [
+            "source:qtBuildSystem/Mu/settingsmanager.cpp @4ac4068"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "ROM-basename/OS RAM and SD sidecars.",
+          "naming": "<ROM basename>.<OS>.ram and <ROM basename>.<OS>.sd.img.",
+          "status": "captured",
+          "evidence": [
+            "source:qtBuildSystem/Mu/emuwrapper.cpp @4ac4068"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "ROM-basename/OS .states/<name>.state.",
+          "naming": "<ROM basename>.<OS>.states/<name>.state with a PNG preview.",
+          "status": "captured",
+          "evidence": [
+            "source:qtBuildSystem/Mu/emuwrapper.cpp @4ac4068"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<resourceDirectory>\\palmos40-en-m500.rom, palmos41-en-m515.rom, or palmos52-en-t3.rom according to the selected device/OS. Palm m500/m515 may additionally use <resourceDirectory>\\bootloader-dbvz.rom; Tungsten T3 does not load that bootloader.",
+          "naming": "resourceDirectory is read from MuCfg.txt and passed as assetPath; EmuWrapper::init selects the exact ROM name.",
+          "status": "captured",
+          "evidence": [
+            "source:qtBuildSystem/Mu/mainwindow.cpp resourceDirectory/emu.init @4ac4068",
+            "source:qtBuildSystem/Mu/emuwrapper.cpp emuOsName and romFile/bootloaderFile @4ac4068"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "status": "not_required",
+          "evidence": [
+            "source:qtBuildSystem/Mu/settingsmanager.cpp @4ac4068"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "unresolved",
+      "reason": "No official Flatpak package verified; QSettings home path would be sandbox-dependent.",
+      "evidence": [
+        "source:qtBuildSystem/Mu/mainwindow.cpp @4ac4068"
+      ]
+    },
+    "macos": {
+      "status": "unresolved",
+      "reason": "Qt source has platform builds but no verified release/path capture in this audit.",
+      "evidence": [
+        "source:qtBuildSystem/Mu/mainwindow.cpp @4ac4068"
+      ]
+    }
+  },
+  "notes": "Native key-binding writer is source-backed but runtime activation and exact ROM/bootloader requirements remain unverified."
+}

@@ -219,6 +219,39 @@ pub struct RouteRoot {
     pub create_if_missing: bool,
 }
 
+/// Validate the local filesystem roots before any inventory or mutation.
+///
+/// Route IDs keep cloud artifacts distinct, but they do not make overlapping
+/// local paths independent. Equal or nested roots could otherwise scan and
+/// later mutate the same physical file through two different artifact keys.
+pub fn validate_route_roots(roots: &[RouteRoot]) -> Result<()> {
+    let mut routes = BTreeSet::new();
+    for root in roots {
+        ensure!(root.path.is_absolute(), "save root must be absolute");
+        ensure!(
+            !root
+                .path
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir)),
+            "save root may not contain parent-directory components: {}",
+            root.path.display()
+        );
+        ensure!(routes.insert(root.route), "duplicate save route");
+    }
+
+    for (index, left) in roots.iter().enumerate() {
+        for right in &roots[index + 1..] {
+            ensure!(
+                !left.path.starts_with(&right.path) && !right.path.starts_with(&left.path),
+                "save route roots overlap: {} and {}",
+                left.path.display(),
+                right.path.display()
+            );
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SaveManifest {
@@ -495,12 +528,10 @@ pub fn merged_files(
 
 pub fn scan_local(scope: SyncScope, roots: &[RouteRoot]) -> Result<LocalInventory> {
     scope.validate()?;
-    let mut declared_routes = BTreeSet::new();
+    validate_route_roots(roots)?;
     let mut routes = BTreeSet::new();
     let mut files = BTreeMap::new();
     for root in roots {
-        ensure!(root.path.is_absolute(), "save root must be absolute");
-        ensure!(declared_routes.insert(root.route), "duplicate save route");
         ensure_existing_ancestors_without_symlink(&root.path)?;
         routes.insert(root.route);
         let metadata = match std::fs::symlink_metadata(&root.path) {
@@ -1024,6 +1055,86 @@ mod tests {
                 .is_err()
             );
         }
+    }
+
+    #[test]
+    fn scanner_rejects_equal_ancestor_and_descendant_route_roots() {
+        let directory = tempfile::tempdir().unwrap();
+        let parent = directory.path().join("saves");
+        let child = parent.join("states");
+        std::fs::create_dir_all(&child).unwrap();
+        let saves = SaveRoute {
+            purpose: SavePurpose::Saves,
+            root_index: 0,
+        };
+        let states = SaveRoute {
+            purpose: SavePurpose::States,
+            root_index: 0,
+        };
+
+        for (label, left, right) in [
+            ("equal", parent.clone(), parent.clone()),
+            ("ancestor", parent.clone(), child.clone()),
+            ("descendant", child.clone(), parent.clone()),
+        ] {
+            let error = scan_local(
+                scope(),
+                &[
+                    RouteRoot {
+                        route: saves,
+                        path: left,
+                        create_if_missing: true,
+                    },
+                    RouteRoot {
+                        route: states,
+                        path: right,
+                        create_if_missing: true,
+                    },
+                ],
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(
+                error.contains("save route roots overlap"),
+                "{label}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn scanner_accepts_disjoint_sibling_route_roots() {
+        let directory = tempfile::tempdir().unwrap();
+        let saves = directory.path().join("saves");
+        let states = directory.path().join("states");
+        std::fs::create_dir_all(&saves).unwrap();
+        std::fs::create_dir_all(&states).unwrap();
+        std::fs::write(saves.join("game.sav"), b"save").unwrap();
+        std::fs::write(states.join("game.state"), b"state").unwrap();
+
+        let inventory = scan_local(
+            scope(),
+            &[
+                RouteRoot {
+                    route: SaveRoute {
+                        purpose: SavePurpose::Saves,
+                        root_index: 0,
+                    },
+                    path: saves,
+                    create_if_missing: true,
+                },
+                RouteRoot {
+                    route: SaveRoute {
+                        purpose: SavePurpose::States,
+                        root_index: 0,
+                    },
+                    path: states,
+                    create_if_missing: true,
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(inventory.files.len(), 2);
     }
 
     #[cfg(unix)]

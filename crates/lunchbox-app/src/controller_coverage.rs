@@ -37,6 +37,10 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "xemu",
     "ScummVM",
     "jgenesis",
+    "Gopher64",
+    "RMG",
+    "b2",
+    "Hypseus Singe",
     "kronos",
     "Yaba Sanshiro 2",
 ];
@@ -296,6 +300,9 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
         .count();
     for (name, platforms) in standalone.values() {
         for platform in platforms {
+            let native_adapter = NATIVE_ADAPTERS
+                .iter()
+                .any(|adapter| name.eq_ignore_ascii_case(adapter));
             let bizhawk = name.eq_ignore_ascii_case("BizHawk");
             let duckstation = name.eq_ignore_ascii_case("DuckStation");
             let ppsspp = name.eq_ignore_ascii_case("PPSSPP");
@@ -311,9 +318,12 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let rpcs3_native = name.eq_ignore_ascii_case("RPCS3");
             let melonds_native = name.eq_ignore_ascii_case("melonDS");
             let ares = name.eq_ignore_ascii_case("ares");
+            let hypseus = name.eq_ignore_ascii_case("Hypseus Singe");
             rows.push(json!({"name":name,"platform":platform,"kind":"Standalone / non-core catalog entry",
-                "status":if NATIVE_ADAPTERS.iter().any(|adapter| name.eq_ignore_ascii_case(adapter)) { "partial" } else { "missing" },"profiles":[],"choices":[],"selected":null,
-                "detail":if ares {
+                "status":if native_adapter { "partial" } else { "missing" },"profiles":[],"choices":[],"selected":null,
+                "detail":if hypseus {
+                    "Native Linux Hypseus Singe dispatch is connected for explicit laserdisc framefile setups: exact SDL3 Gamepad order, source-defined keymap columns, a private configuration home, and a separate writable NVRAM directory. Other content modes, other hosts, and runtime input/save behavior remain unverified."
+                } else if ares {
                     "Native ares 148+ guided player/target mapping with private settings. Default gamepad modes and ordinary six/eight-button arcade panels are implemented. Alternate attachments, target-runtime device availability and cross-platform runtime verification remain incomplete."
                 } else if melonds_native {
                     "Native Linux melonDS standard-button dispatch is connected with a private TOML mount and SDL2 physical capture. Touch, microphone, other hosts and native input behavior remain unverified or incomplete."
@@ -343,6 +353,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Dolphin 2606 GameCube ISO/GCM dispatch is implemented for explicitly saved evdev setups, with private settings and child mount/device checks. System-data path is user-declared; runtime verification, compressed media, Wii, other backends and host variants remain incomplete."
                 } else if mgba {
                     "Native Linux mGBA SDL 0.10.5 guided player/target mapping now discovers runtime paths at launch and uses a private config.ini. Requires an existing native config and physical calibration. Qt, Wine/Flatpak, identical-GUID ambiguity and runtime verification remain incomplete."
+                } else if native_adapter {
+                    "A registered partial standalone controller dispatch consumes guided choices for its source-reviewed host and mode boundary. Other hosts, modes, devices, content variants, and runtime behavior are not implied by registration."
                 } else {
                     "Standalone candidate: no calibrated native launch dispatch is implemented for this emulator. A RetroArch alternative does not configure the standalone executable. Catalog presence does not establish installation, supported launch media or host compatibility."
                 }}));

@@ -25,14 +25,12 @@
     ]
   },
   "saves": {
-    "status": "content_dependent",
-    "extensions": [
-      ".srm"
-    ],
-    "naming": "EEPROM-backed cartridges use the RetroArch content-basename save artifact.",
-    "notes": "Most Atari 2600 cartridges have no persistent RAM; SaveKey/AtariVox EEPROM support is content-dependent.",
+    "status": "not_supported",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=false; no standalone RetroArch persistent save artifact is claimed.",
+    "notes": "No libretro persistent-save interface is declared by the pinned core-info metadata.",
     "evidence": [
-      "Stella libretro EEPROM/save implementation"
+      "stella_libretro.info libretro_saves=false"
     ]
   },
   "states": {

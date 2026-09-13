@@ -594,3 +594,48 @@ pub(crate) fn prepare_configuration(
     configuration.verify_originals_unchanged()?;
     Ok(configuration)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup() -> SavedSetup {
+        SavedSetup {
+            apply_selected_ports: false,
+            runtime: None,
+            emulator_id: "duckstation".to_owned(),
+            content: "/games/SLUS-00001.bin".into(),
+            data_root: "/var/lib/lunchbox/duckstation".into(),
+            serial: "SLUS-00001".to_owned(),
+            first_disc_serial: None,
+            players: vec![SavedPlayer {
+                pad: 1,
+                controller_id: "pad-a".to_owned(),
+                controller_type: "AnalogController".to_owned(),
+            }],
+        }
+    }
+
+    #[test]
+    fn saved_setup_requires_safe_identity_and_unique_player_slots() {
+        assert!(setup().validate().is_ok());
+        let mut bad = setup();
+        bad.serial = "../title".to_owned();
+        assert!(bad.validate().is_err());
+        let mut duplicate = setup();
+        duplicate.players.push(SavedPlayer {
+            pad: 1,
+            controller_id: "pad-b".to_owned(),
+            controller_type: "DigitalController".to_owned(),
+        });
+        assert!(duplicate.validate().is_err());
+    }
+
+    #[test]
+    fn omitted_disc_identity_is_not_treated_as_single_disc() {
+        let json = r#"{"emulator_id":"duckstation","content":"/g","data_root":"/d","serial":"S","players":[{"pad":1,"controller_id":"p","controller_type":"DigitalController"}]}"#;
+        assert!(serde_json::from_str::<SavedSetup>(json).is_err());
+        let explicit = r#"{"emulator_id":"duckstation","content":"/g","data_root":"/d","serial":"S","first_disc_serial":null,"players":[{"pad":1,"controller_id":"p","controller_type":"DigitalController"}]}"#;
+        assert!(serde_json::from_str::<SavedSetup>(&explicit).is_ok());
+    }
+}

@@ -1,1 +1,27 @@
-{"schema_version":1,"slug":"wataroo","emulator":"Wataroo","sources":[{"kind":"source","repo":"http://tailchao.com/Wataroo/","url":"http://tailchao.com/Wataroo/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"http://tailchao.com/Wataroo/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows-only closed-source emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://tailchao.com/Wataroo/"]},"linux-flatpak":{"status":"unresolved","reason":"Windows-only closed-source emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://tailchao.com/Wataroo/"]},"windows":{"status":"unresolved","reason":"Windows-only closed-source emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://tailchao.com/Wataroo/"]},"macos":{"status":"unresolved","reason":"Windows-only closed-source emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:http://tailchao.com/Wataroo/"]}}}
+{
+  "schema_version": 1,
+  "slug": "wataroo",
+  "emulator": "Wataroo",
+  "sources": [
+    { "kind": "distribution", "url": "http://tailchao.com/Wataroo/", "role": "official Windows-only identity and distribution evidence" },
+    { "kind": "artifact", "url": "http://tailchao.com/Wataroo/Wataroo_v0-8-0-0.zip", "sha256": "f00e32eaa5af0535190cef6f27c209f25c43dae47a5ab4d317df03ff4ab329e0", "role": "reviewed Wataroo 0.8.0.0 archive containing executable, help and joystick profile" },
+    { "kind": "contract", "path": "docs/WATAROO_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller ownership boundary" }
+  ],
+  "platforms": {
+    "windows": { "paths": [
+      { "purpose": "config", "path": "Wataroo.ini adjacent to Wataroo.exe", "naming": "INI [general] autoload/autosave/save and [input] xclusion/key_source settings; paths may be absolute or relative.", "status": "captured", "evidence": ["artifact:Wataroo_v0-8-0-0.zip Wataroo.chm g_advanced.htm", "artifact:Wataroo_v0-8-0-0.zip Wataroo.exe strings"] },
+      { "purpose": "input", "path": "Wataroo.joy adjacent to Wataroo.exe", "naming": "Text profile grammar uses .NAME, .KSIZE, .KEYS, .GSIZE, .GROUP and .JOY sections, including device-specific profiles.", "status": "captured", "evidence": ["artifact:Wataroo_v0-8-0-0.zip Wataroo.joy", "artifact:Wataroo_v0-8-0-0.zip Wataroo.chm"] },
+      { "purpose": "saves", "path": "User-selected save path from Wataroo.ini or the save dialog", "naming": "Autosave/save settings and `*.sav` snapshots; `.cdf` and `.bin` are content/binary artifacts.", "status": "captured", "evidence": ["artifact:Wataroo_v0-8-0-0.zip Wataroo.chm g_save.htm and o_advanced.htm", "artifact:Wataroo_v0-8-0-0.zip Wataroo.exe strings"] },
+      { "purpose": "states", "path": "User-selected `.sav` file; autosave may write the configured `save=` path", "naming": "Snapshots include memory/registers/graphics/sound; Ctrl+S/Ctrl+L are documented save/load actions.", "status": "captured", "evidence": ["artifact:Wataroo_v0-8-0-0.zip Wataroo.chm g_save.htm", "artifact:Wataroo_v0-8-0-0.zip Wataroo.chm o_advanced.htm"] },
+      { "purpose": "bios", "path": "No external BIOS file required by reviewed artifact", "naming": "Not applicable.", "status": "not_required", "evidence": ["artifact:Wataroo_v0-8-0-0.zip"] },
+      { "purpose": "keys", "path": "No cryptographic key file required", "naming": "Not applicable.", "status": "not_required", "evidence": ["artifact:Wataroo_v0-8-0-0.zip"] }
+    ] }
+  },
+  "platform_gaps": {
+    "linux": { "status": "unsupported", "reason": "Official Wataroo distribution is Windows-only.", "evidence": ["official:http://tailchao.com/Wataroo/"] },
+    "linux-flatpak": { "status": "unsupported", "reason": "Official Wataroo distribution is Windows-only; no Flatpak runtime exists.", "evidence": ["official:http://tailchao.com/Wataroo/"] },
+    "macos": { "status": "unsupported", "reason": "Official Wataroo distribution is Windows-only.", "evidence": ["official:http://tailchao.com/Wataroo/"] }
+  },
+  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not synthesize Wataroo.joy mappings: closed-runtime DirectInput/XInput device identity and device-specific profile semantics require runtime resolution.", "contract": "docs/WATAROO_CONTROLLER_BOUNDARY.md" },
+  "notes": "Wataroo 0.8.0.0 is a closed Windows-only artifact. The adjacent INI, JOY and SAV contracts are captured for inventory; controller writing remains fail-closed."
+}

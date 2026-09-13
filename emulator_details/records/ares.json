@@ -33,8 +33,9 @@
           "path": "Optional external firmware is selected in Settings > Firmware and scanned from the configured Firmware path, otherwise the packaged Firmware/ resource directory. Files have no canonical user-visible filename: ares matches firmware by SHA-256 and stores the selected path in settings.bml.",
           "naming": "Authoritative source hashes (SHA-256; source provides type/region but no required filename): Famicom Disk System BIOS Japan fdc1a76e654feea993fcb38366e05ee5f4eb641f86fe6bebaeefd412e112dd72; MSX BIOS Japan 413a2b601a94b3792e054be2439cc77a1819cceadbfa9542f88d51c7480f2ef0; MSX2 MAIN Japan 0c672d86ead61a97f49a583b88b7c1905da120645cd44f0c9f2baf4f4631e0b1 and SUB Japan 6c6f421a10c428d960b7ecc990f99af1c638147f747bddca7b0bf0e2ab738300; GBA BIOS World fd2547724b505f487e6dcb29ec2ecff3af35a841a77ab2e85fd87350abd36570; PlayStation US 11052b6499e466bbf0a709b1f9cb6834a9418e66680387912451e971cf8a1fef, Japan 9c0421858e217805f4abe18698afea8d5aa36ff0727eb8484944e00eb5e7eadb, Europe 1faaa18fa820a0225e488d9f086296b8e6c46df739666093987ff7d8fd352c09; Mega CD US fb477cdbf94c84424c2feca4fe40656d85393fe7b7b401911b45ad2eb991258c, Japan 7133fc2dd2fe5b7d0acd53a5f10f3d00b5d31270239ad20d74ef32393e24af88, Europe fe608a2a07676a23ab5fd5eee2f53c9e2526d69a28aa16ccd85c0ec42e6933cb. Other source entries without a hash have no canonical checksum in ares.",
           "evidence": ["source:desktop-ui/settings/firmware.cpp findFirmware hashes candidate files with SHA-256", "source:desktop-ui/emulator/*.cpp Firmware type/region/hash declarations", "source:desktop-ui/desktop-ui.cpp locate(\"Firmware/\")"]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:ares-emulator/ares@af4cbb04f067682a8a3cf42695ff78bed634b38d (primary source cited by this record; input capture remains unresolved for linux)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:ares-emulator/ares@af4cbb04f067682a8a3cf42695ff78bed634b38d (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "Native desktop Linux build. The source's platform path code uses XDG_DATA_HOME for settings and the default ares user-data root; Flatpak is recorded separately because its sandbox changes those XDG roots."
     },
     "linux-flatpak": {
@@ -61,8 +62,9 @@
           "path": "Configured Firmware directory or the packaged Firmware/ directory inside the Flatpak; ares identifies external firmware by SHA-256, not a required filename. The sandbox must grant access to user BIOS files.",
           "naming": "Same authoritative hashes and no-canonical-filename limitation as native Linux (see source firmware declarations; no firmware is distributed in the record).",
           "evidence": ["source:desktop-ui/settings/firmware.cpp", "source:desktop-ui/emulator/*.cpp", "package:github.com/flathub/dev.ares.ares"]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:ares-emulator/ares@af4cbb04f067682a8a3cf42695ff78bed634b38d (primary source cited by this record; input capture remains unresolved for linux-flatpak)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:ares-emulator/ares@af4cbb04f067682a8a3cf42695ff78bed634b38d (primary source cited by this record; keys capture remains unresolved for linux-flatpak)"]}],
       "notes": "Community-provided Flathub package, not maintained by the ares team; the package page currently lists x86_64 and aarch64. Paths are conditional on standard Flatpak XDG sandbox roots and manifest permissions."
     },
     "macos": {
@@ -89,8 +91,9 @@
           "path": "Settings > Firmware's configured directory or the app's Firmware/ resource directory; external firmware has no required filename and is matched by SHA-256.",
           "naming": "Source-declared type/region SHA-256 values are authoritative where present; source firmware entries without hashes have no canonical checksum. No external firmware is bundled by this record.",
           "evidence": ["source:desktop-ui/settings/firmware.cpp", "source:desktop-ui/emulator/*.cpp firmware declarations", "source:nall/nall/path.hpp macOS data paths"]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:ares-emulator/ares@af4cbb04f067682a8a3cf42695ff78bed634b38d (primary source cited by this record; input capture remains unresolved for macos)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:ares-emulator/ares@af4cbb04f067682a8a3cf42695ff78bed634b38d (primary source cited by this record; keys capture remains unresolved for macos)"]}],
       "notes": "Native macOS desktop target. Path::userData uses ~/Library/Application Support rather than XDG paths."
     },
     "windows": {
@@ -117,8 +120,9 @@
           "path": "Settings > Firmware's configured directory or the executable/package Firmware/ directory; ares matches external firmware by SHA-256 and does not require a canonical filename.",
           "naming": "Use source-declared type/region SHA-256 values where present; entries without hashes explicitly have no canonical checksum. No external firmware is distributed by this record.",
           "evidence": ["source:desktop-ui/settings/firmware.cpp", "source:desktop-ui/emulator/*.cpp firmware declarations", "source:nall/nall/path.hpp Windows data paths"]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:ares-emulator/ares@af4cbb04f067682a8a3cf42695ff78bed634b38d (primary source cited by this record; input capture remains unresolved for windows)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:ares-emulator/ares@af4cbb04f067682a8a3cf42695ff78bed634b38d (primary source cited by this record; keys capture remains unresolved for windows)"]}],
       "notes": "Native Windows target; source uses %LOCALAPPDATA% for user data and settings."
     }
   }

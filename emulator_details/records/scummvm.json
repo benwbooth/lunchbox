@@ -40,7 +40,8 @@
           "path": "No BIOS required; a few engines want extra data files (extras) reachable via the extrapath setting / Paths tab in addition to the game data",
           "naming": "No external BIOS filename or canonical checksum: optional engine data is an extrapath directory, whose exact files are engine/game-specific",
           "evidence": ["docs:configuration_file paths table (extrapath: \"Extra path for additional game data\")", "contract:docs/SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "ScummVM does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:ScummVM source tree @3f6428df202e2c044ef53208acba0f665ea92096"] }
       ],
       "notes": "Lunchbox launches with -c <ini> and a private XDG_CONFIG_HOME so the ini and keymap domains stay in the session while savepath continues to point at the user's save directory."
     },
@@ -74,7 +75,8 @@
           "path": "No BIOS required; engine extras (extrapath) may be needed inside the sandbox",
           "naming": "No external BIOS filename or canonical checksum; optional engine-specific data is supplied through the extrapath directory",
           "evidence": ["docs:configuration_file paths table", "flathub:org.scummvm.ScummVM"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "ScummVM does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:ScummVM source tree @3f6428df202e2c044ef53208acba0f665ea92096"] }
       ]
     },
     "windows": {
@@ -107,7 +109,8 @@
           "path": "No BIOS required; engine extras (extrapath) sometimes needed",
           "naming": "No external BIOS filename or canonical checksum; optional engine-specific data is supplied through extrapath",
           "evidence": ["docs:configuration_file paths table"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "ScummVM does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:ScummVM source tree @3f6428df202e2c044ef53208acba0f665ea92096"] }
       ]
     },
     "macos": {
@@ -140,7 +143,8 @@
           "path": "No BIOS required; engine extras (extrapath) sometimes needed",
           "naming": "No external BIOS filename or canonical checksum; optional engine-specific data is supplied through extrapath",
           "evidence": ["docs:configuration_file paths table"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "ScummVM does not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:ScummVM source tree @3f6428df202e2c044ef53208acba0f665ea92096"] }
       ]
     }
   }

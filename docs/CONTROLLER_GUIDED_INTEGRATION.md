@@ -11,11 +11,13 @@ Formatting/source inspection is not runtime verification.
 The read-only local database has 249 standalone candidates and 94 non-BizHawk
 RetroArch core names after the eight explicit Beetle/Mednafen aliases.
 
-- RetroArch source contracts: **93/94 (98.9%)**.
-- Standalone partial source dispatch: **28/249 (11.2%)**; the current registered
+- RetroArch source contracts: **94/94 (100.0%)**.
+- Standalone partial source dispatch: **32/249 (12.9%)**; the current registered
   list is maintained by `controller_coverage.rs::NATIVE_ADAPTERS`.
-- Combined source entry presence: **121/343 (35.3%)**.
-- Existing native adapters consuming guided choices: **28/28 (100.0%)**.
+- Combined catalog source entry presence: **126/343 (36.7%)**.
+- Existing catalog-native adapters consuming guided choices: **32/32 (100.0%)**.
+- Additional record-only adapter: **simple64**, source-backed and guided but
+  absent from the canonical 249-runtime catalog.
 - Overall finished/verified coverage: **not established**.
 
 The cross-platform configuration/firmware/save checklist is
@@ -261,6 +263,42 @@ its SDL standard field through the device's own gamecontroller mapping
 string. Single device zero. See
 [SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md](SCUMMVM_NATIVE_CONTROLLER_CONTRACT.md).
 Parsing and rendering are unit-tested; runtime behavior is unverified.
+
+## Step 21 — Gopher64 standalone N64 pads
+
+`controller_gopher64_native` adds a native Linux adapter for Gopher64. It
+copies the declared JSON configuration under a private `XDG_CONFIG_HOME`,
+patches four path-assigned SDL3 gamepad profiles, and leaves `XDG_DATA_HOME`
+untouched so Gopher64's native saves and states remain persistent and visible
+to save synchronization. Measured physical controls are composed through the
+trusted target SDL3 runtime's classic map and resolved gamepad bindings; stick
+directions require two valid proportional axis pairs. See
+[GOPHER64_NATIVE_CONTROLLER_CONTRACT.md](GOPHER64_NATIVE_CONTROLLER_CONTRACT.md).
+JSON preservation, exact profile ordering, and rejection gates are unit-tested;
+runtime behavior is unverified.
+
+## Step 22 — RMG standalone N64 pads
+
+`controller_rmg_native` adds a native Linux adapter for RMG. It copies the
+declared settings file under a private `XDG_CONFIG_HOME`, replaces the four
+base input-plugin profiles with measured SDL3 raw-joystick bindings, removes
+game overrides that could silently supersede them, and leaves RMG's independent
+save/state data roots untouched. See
+[RMG_NATIVE_CONTROLLER_CONTRACT.md](RMG_NATIVE_CONTROLLER_CONTRACT.md).
+Profile preservation, device identity, mapping, and rejection gates are
+source-tested; runtime behavior is unverified.
+
+## Step 23 — simple64 standalone N64 pads (record-only)
+
+`controller_simple64_native` adds a native Linux adapter for simple64. It stages
+the executable beside private `input-profiles.ini`, `input-settings.ini`, and a
+GUI configuration that selects a private Mupen64Plus config root while leaving
+the normal data/save root untouched. Measured controls are translated through
+the target SDL2 GameController mapping. See
+[SIMPLE64_NATIVE_CONTROLLER_CONTRACT.md](SIMPLE64_NATIVE_CONTROLLER_CONTRACT.md).
+The adapter is source-backed and guided, but cannot be selected from the
+canonical emulator catalog until simple64 gains an identity there. Runtime
+behavior is unverified.
 
 ## Platform capture records
 

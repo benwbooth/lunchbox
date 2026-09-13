@@ -1,1 +1,18 @@
-{"schema_version":1,"slug":"odyweb","emulator":"OdyWeb","sources":[{"kind":"source","repo":"https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/","url":"https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Browser HTML/JavaScript simulator; the requested purpose families were not all source-established for this host.","evidence":["official:https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/"]},"linux-flatpak":{"status":"unresolved","reason":"Browser HTML/JavaScript simulator; the requested purpose families were not all source-established for this host.","evidence":["official:https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/"]},"windows":{"status":"unresolved","reason":"Browser HTML/JavaScript simulator; the requested purpose families were not all source-established for this host.","evidence":["official:https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/"]},"macos":{"status":"unresolved","reason":"Browser HTML/JavaScript simulator; the requested purpose families were not all source-established for this host.","evidence":["official:https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/"]}}}
+{
+  "schema_version": 1,
+  "slug": "odyweb",
+  "emulator": "OdyWeb",
+  "sources": [
+    { "kind": "artifact", "url": "https://prehistoricgaming.com/wp-content/uploads/2025/05/OdyWeb_1.0.zip", "version": "1.0", "sha256": "f1951bbe832c88938e4855f2282833ecdbafcfab98fa83b8a7ff3b045a82fc65", "role": "official self-contained HTML distribution" },
+    { "kind": "docs", "url": "https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/", "role": "official project description and download page" },
+    { "kind": "contract", "path": "docs/ODYWEB_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller boundary" }
+  ],
+  "platform_gaps": {
+    "linux": { "status": "unresolved", "reason": "OdyWeb is a browser HTML/JavaScript artifact, not a native Linux package; no persistent host-controller or desktop integration contract is published.", "evidence": ["artifact:https://prehistoricgaming.com/wp-content/uploads/2025/05/OdyWeb_1.0.zip", "docs:https://prehistoricgaming.com/en/odyweb-the-html-magnavox-odyssey-simulator/"] },
+    "linux-flatpak": { "status": "unresolved", "reason": "No OdyWeb Flatpak package or manifest is published; browser sandbox persistence is outside the artifact contract.", "evidence": ["artifact:https://prehistoricgaming.com/wp-content/uploads/2025/05/OdyWeb_1.0.zip"] },
+    "windows": { "status": "unresolved", "reason": "OdyWeb is a browser HTML/JavaScript artifact, not a native Windows package; no persistent host-controller or desktop integration contract is published.", "evidence": ["artifact:https://prehistoricgaming.com/wp-content/uploads/2025/05/OdyWeb_1.0.zip"] },
+    "macos": { "status": "unresolved", "reason": "OdyWeb is a browser HTML/JavaScript artifact, not a native macOS package; no persistent host-controller or desktop integration contract is published.", "evidence": ["artifact:https://prehistoricgaming.com/wp-content/uploads/2025/05/OdyWeb_1.0.zip"] }
+  },
+  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not invent an OdyWeb controller file: the self-contained HTML artifact keeps keyboard state in memory and supplies no persistent host-controller grammar." },
+  "notes": "The archive contains only OdyWeb.html and Odyweblogo.png. JavaScript page state and FileReader overlay selection are runtime behavior; browser launch and effective gameplay input were not verified."
+}

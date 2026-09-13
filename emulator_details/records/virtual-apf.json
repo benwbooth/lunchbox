@@ -1,1 +1,34 @@
-{"schema_version":1,"slug":"virtual-apf","emulator":"Virtual APF","sources":[{"kind":"source","repo":"https://orphanedgames.com/APF/apf_emulation/apf_emulation.html","url":"https://orphanedgames.com/APF/apf_emulation/apf_emulation.html","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://orphanedgames.com/APF/apf_emulation/apf_emulation.html","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows-only inactive emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://orphanedgames.com/APF/apf_emulation/apf_emulation.html"]},"linux-flatpak":{"status":"unresolved","reason":"Windows-only inactive emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://orphanedgames.com/APF/apf_emulation/apf_emulation.html"]},"windows":{"status":"unresolved","reason":"Windows-only inactive emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://orphanedgames.com/APF/apf_emulation/apf_emulation.html"]},"macos":{"status":"unresolved","reason":"Windows-only inactive emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://orphanedgames.com/APF/apf_emulation/apf_emulation.html"]}}}
+{
+  "schema_version": 1,
+  "slug": "virtual-apf",
+  "emulator": "Virtual APF",
+  "sources": [
+    { "kind": "release", "url": "https://orphanedgames.com/APF/apf_emulation/apf_emulation.html", "role": "official Virtual APF distribution page" },
+    { "kind": "release", "url": "https://orphanedgames.com/APF/apf_emulation/VAPF_20100509.zip", "version": "0.40", "sha256": "a2a4b5a2781e3858251deb0aea6d6d07b48099b61870a405539d8a590bd933ee", "role": "official Windows archive" },
+    { "kind": "docs", "url": "https://orphanedgames.com/APF/apf_emulation/apf_emulation.html", "role": "official readme and archive documentation" },
+    { "kind": "contract", "path": "docs/VIRTUAL_APF_CONTROLLER_BOUNDARY.md", "role": "standalone controller refusal" }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "<Virtual APF program directory>\\default.ini", "naming": "Legacy INI sections include MEMORY, VIDEO, SPEED, SOUND, LOADBINARY, FILES, EMUKEYBOARD and KEYBOARD; bundled defaults contain historical absolute Windows paths.", "evidence": ["artifact:default.ini in VAPF_20100509.zip @a2a4b5a2", "artifact:VAPF.exe strings expose GetPrivateProfileStringA/WritePrivateProfileStringA"] },
+        { "purpose": "input", "path": "Virtual APF Configure Emulated Keyboard / Joystick dialogs and default.ini EMUKEYBOARD/KEYBOARD sections", "naming": "The archive publishes no stable portable keyboard/joystick mapping grammar; dialog state is runtime-owned.", "evidence": ["artifact:VAPF.exe menu strings @a2a4b5a2", "artifact:default.ini @a2a4b5a2"] },
+        { "purpose": "saves", "path": "User-selected cassette/program media (.cpf/.cas/.c10/.k7) and CSAVEM output", "naming": "CPF/CAS/C10 are guest cassette/program data, not emulator save states.", "evidence": ["docs:readme.txt in VAPF_20100509.zip @a2a4b5a2", "artifact:VAPF.exe strings expose CSAVEM and cassette extensions"] },
+        { "purpose": "states", "path": "No documented emulator save-state or slot file", "naming": "Virtual APF's Save Ram/CSAVEM menu saves guest RAM/media, not a complete machine state.", "status": "unresolved", "evidence": ["artifact:VAPF.exe menu strings @a2a4b5a2", "docs:readme.txt @a2a4b5a2"] },
+        { "purpose": "bios", "path": "<Virtual APF program directory>\\ROM_OS\\APF_Mod_Bios.bin or TRASH-II.BIN; ROM_BASIC\\APF_EBASIC.bin and ROM_GAMECARTS\\*.bin are selectable resources", "naming": "The archive supplies OS, built-in BASIC and game-cartridge ROM resources; no canonical firmware checksum contract is published.", "evidence": ["artifact:ROM_OS, ROM_BASIC and ROM_GAMECARTS in VAPF_20100509.zip @a2a4b5a2", "docs:readme.txt @a2a4b5a2"] },
+        { "purpose": "keys", "path": "not applicable", "naming": "No external cryptographic key file.", "status": "not_required", "evidence": ["artifact:VAPF.exe @a2a4b5a2"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "no_verified_package", "reason": "The official artifact is a Windows PE32 executable; no native Linux package or source-backed port was found.", "evidence": ["official:https://orphanedgames.com/APF/apf_emulation/apf_emulation.html"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No authoritative Virtual APF Flatpak package or sandbox persistence contract was found.", "evidence": ["official:https://orphanedgames.com/APF/apf_emulation/apf_emulation.html"] },
+    "macos": { "status": "no_verified_package", "reason": "The official artifact is a Windows PE32 executable; no native macOS package or source-backed port was found.", "evidence": ["official:https://orphanedgames.com/APF/apf_emulation/apf_emulation.html"] }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not synthesize Virtual APF keyboard or joystick mappings: the standalone binary's dialog-owned state and opaque legacy INI format have no portable source-backed serializer.",
+    "contract": "docs/VIRTUAL_APF_CONTROLLER_BOUNDARY.md"
+  },
+  "notes": "Windows archive and guest-media behavior are captured; runtime launch and effective controller input remain unverified."
+}

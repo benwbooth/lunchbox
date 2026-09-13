@@ -6,7 +6,8 @@
     {
       "kind": "source",
       "repo": "86Box/86Box",
-      "role": "machine configuration, input mapping and path resolution"
+      "commit": "189d9d003ad9670853cec6edac8db7d6ff63550f",
+      "role": "machine configuration, Input devices joystick mapping and path resolution"
     },
     {
       "kind": "docs",
@@ -38,8 +39,8 @@
         },
         {
           "purpose": "input",
-          "path": "The machine 86box.cfg INI sections [Input] and [Joystick *] store keyboard scan-code mappings plus joystick_*_axis_*, joystick_*_button_* and joystick_*_pov_* integer mappings; configure through Settings > Input devices.",
-          "naming": "INI keys include scancode_* and joystick_<n>_axis_<n>, joystick_<n>_button_<n>, joystick_<n>_pov_<n>; POV values are 'x, y'.",
+          "path": "The machine 86box.cfg INI [Input devices] section stores keyboard scan-code mappings plus joystick_type, joystick_<n>_nr, joystick_<n>_axis_*, joystick_<n>_button_* and joystick_<n>_pov_* integer mappings; configure through Settings > Input devices.",
+          "naming": "INI keys include scancode_*, joystick_type, joystick_<n>_nr, joystick_<n>_axis_<n>, joystick_<n>_button_<n>, joystick_<n>_pov_<n>; POV values are 'x, y'.",
           "evidence": [
             "source:86Box/86Box src/config.c (load_input: scancode_config_map and joystick mapping keys)",
             "docs:86box.readthedocs.io settings (Input devices page)"
@@ -100,7 +101,7 @@
         },
         {
           "purpose": "input",
-          "path": "Machine 86box.cfg [Input]/[Joystick *] INI keys: scancode_* and joystick_<n>_axis_<n>/button_<n>/pov_<n>; Flatpak receives the same device mapping from the desktop input stack.",
+          "path": "Machine 86box.cfg [Input devices] INI keys: scancode_*, joystick_type, joystick_<n>_nr, joystick_<n>_axis_<n>/button_<n>/pov_<n>; Flatpak receives the same device mapping from the desktop input stack.",
           "naming": "Same 86Box INI mapping grammar; POV values are 'x, y'.",
           "evidence": [
             "source:86Box/86Box src/config.c",
@@ -158,7 +159,7 @@
         },
         {
           "purpose": "input",
-          "path": "86box.cfg [Input]/[Joystick *] sections; scancode_* and joystick_<n>_axis_<n>/button_<n>/pov_<n> integer mappings are written by Settings > Input devices.",
+          "path": "86box.cfg [Input devices] section; scancode_* and joystick_type/joystick_<n>_nr/axis_<n>/button_<n>/pov_<n> integer mappings are written by Settings > Input devices.",
           "naming": "INI mapping keys as documented/source-defined; POV 'x, y'.",
           "evidence": [
             "source:86Box/86Box src/config.c",
@@ -215,7 +216,7 @@
         },
         {
           "purpose": "input",
-          "path": "Machine 86box.cfg [Input]/[Joystick *] sections use scancode_* and joystick axis/button/POV integer keys.",
+          "path": "Machine 86box.cfg [Input devices] section uses scancode_* and joystick_type/joystick_<n>_nr/axis/button/POV integer keys.",
           "naming": "Same source-defined INI mapping grammar; POV 'x, y'.",
           "evidence": [
             "source:86Box/86Box src/config.c",

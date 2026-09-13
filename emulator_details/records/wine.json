@@ -1,1 +1,165 @@
-{"schema_version":1,"slug":"wine","emulator":"Wine","sources":[{"kind":"source","repo":"https://www.winehq.org/","url":"https://www.winehq.org/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://www.winehq.org/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Compatibility layer, not an emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.winehq.org/"]},"linux-flatpak":{"status":"unresolved","reason":"Compatibility layer, not an emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.winehq.org/"]},"windows":{"status":"unresolved","reason":"Compatibility layer, not an emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.winehq.org/"]},"macos":{"status":"unresolved","reason":"Compatibility layer, not an emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.winehq.org/"]}}}
+{
+  "schema_version": 1,
+  "slug": "wine",
+  "emulator": "Wine",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://gitlab.winehq.org/wine/wine",
+      "commit": "788d90c4e1d628fab6672623f0c8094b984ea2fa",
+      "url": "https://gitlab.winehq.org/wine/wine/-/tree/788d90c4e1d628fab6672623f0c8094b984ea2fa",
+      "role": "Pinned Wine source; WINEPREFIX, registry, DOS-device and DirectInput implementation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://gitlab.winehq.org/wine/wine/-/blob/788d90c4e1d628fab6672623f0c8094b984ea2fa/README.md",
+      "role": "Official source README describing Wine as a Unix Windows-application compatibility layer and the ~/.wine/drive_c layout"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/WINE_CONTROLLER_BOUNDARY.md",
+      "role": "Fail-closed compatibility-layer controller boundary"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "$WINEPREFIX (default ~/.wine), especially user.reg, system.reg, and dosdevices/",
+          "naming": "Wine-prefix registry files and DOS-device links; WINEPREFIX may select any absolute prefix",
+          "evidence": [
+            "source:server/request.c WINEPREFIX selection @788d90c4e1d628fab6672623f0c8094b984ea2fa",
+            "source:server/registry.c loads system.reg and user.reg @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Runtime host devices exposed through Wine's Windows input APIs; DirectInput settings live in prefix registry state",
+          "naming": "Device identity and application/action mappings are under Wine DirectInput registry keys; no universal title-independent profile",
+          "status": "unresolved",
+          "evidence": [
+            "source:dlls/dinput/device.c DirectInput registry and Joysticks/Mappings keys @788d90c4e1d628fab6672623f0c8094b984ea2fa",
+            "source:dlls/dinput/device.c runtime device enumeration @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "$WINEPREFIX/drive_c and application-selected Unix paths",
+          "naming": "Windows application save data is title- and prefix-owned; Wine publishes no universal save sidecar naming convention",
+          "status": "unresolved",
+          "evidence": [
+            "source:README.md wine ~/.wine/drive_c/windows/notepad.exe example @788d90c4e1d628fab6672623f0c8094b984ea2fa",
+            "source:server/request.c WINEPREFIX selection @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "not applicable to Wine itself; any save-state or snapshot is owned by the Windows application/frontend",
+          "naming": "No Wine-wide save-state slot or file grammar is defined",
+          "status": "not_supported",
+          "evidence": [
+            "source:README.md Wine loads Windows executables and documents prefix/application paths, not emulator save states @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "not applicable",
+          "naming": "Wine is a compatibility layer and does not require a console BIOS or firmware image",
+          "status": "not_required",
+          "evidence": [
+            "source:README.md Wine loads Windows executables through Unix libraries rather than emulating a console firmware contract @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "naming": "No external cryptographic or decryption-key file is consumed by Wine's host contract",
+          "status": "not_required",
+          "evidence": [
+            "source:Wine source tree and README @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        }
+      ],
+      "notes": "Wine is a compatibility layer, not a console emulator. Prefix creation and application runtime were not verified here."
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "$WINEPREFIX (default ~/.wine), especially user.reg, system.reg, and dosdevices/",
+          "naming": "Wine-prefix registry files and DOS-device links; WINEPREFIX may select any absolute prefix",
+          "evidence": [
+            "source:server/request.c WINEPREFIX selection @788d90c4e1d628fab6672623f0c8094b984ea2fa",
+            "source:server/registry.c loads system.reg and user.reg @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Runtime host devices exposed through Wine's Windows input APIs; application mappings remain prefix- and title-specific",
+          "naming": "No universal Wine controller profile; macOS host/device behavior requires runtime probing",
+          "status": "unresolved",
+          "evidence": [
+            "source:dlls/dinput/device.c DirectInput registry and runtime device paths @788d90c4e1d628fab6672623f0c8094b984ea2fa",
+            "source:dlls/winemac.drv macOS Wine driver @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "$WINEPREFIX/drive_c and application-selected Unix paths",
+          "naming": "Windows application save data is title- and prefix-owned; Wine publishes no universal save sidecar naming convention",
+          "status": "unresolved",
+          "evidence": [
+            "source:README.md wine ~/.wine/drive_c/windows/notepad.exe example @788d90c4e1d628fab6672623f0c8094b984ea2fa",
+            "source:server/request.c WINEPREFIX selection @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "not applicable to Wine itself; any save-state or snapshot is owned by the Windows application/frontend",
+          "naming": "No Wine-wide save-state slot or file grammar is defined",
+          "status": "not_supported",
+          "evidence": [
+            "source:README.md Wine application/prefix scope @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "not applicable",
+          "naming": "Wine does not require a console BIOS or firmware image",
+          "status": "not_required",
+          "evidence": [
+            "source:README.md Wine compatibility-layer scope @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "naming": "No external cryptographic or decryption-key file is consumed by Wine",
+          "status": "not_required",
+          "evidence": [
+            "source:Wine source tree @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+          ]
+        }
+      ],
+      "notes": "The source contains a macOS Wine driver, but this record does not claim a locally installed or runtime-verified macOS build."
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The pinned upstream source provides Unix build instructions but no Wine Flatpak manifest or universal sandbox persistence contract.",
+      "evidence": ["source:README.md build/install instructions @788d90c4e1d628fab6672623f0c8094b984ea2fa"]
+    },
+    "windows": {
+      "status": "unsupported",
+      "reason": "Wine's upstream project is a Unix compatibility layer for loading Windows applications; it does not publish a native Windows host target.",
+      "evidence": ["source:README.md Wine loads Windows executables on Unix @788d90c4e1d628fab6672623f0c8094b984ea2fa"]
+    }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not invent a Wine-wide controller writer: DirectInput device identity, application action mappings, registry state, and title persistence are runtime- and prefix-specific; Wine has no stable universal profile serializer."
+  },
+  "notes": "The source was shallow-cloned at the pinned commit and inspected. Wine prefix state, application launch, and effective controller behavior remain runtime-specific and unverified."
+}

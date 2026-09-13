@@ -149,3 +149,32 @@ impl Bindings {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn controls() -> BTreeMap<String, u32> {
+        CONTROLS
+            .iter()
+            .enumerate()
+            .map(|(index, name)| ((*name).to_owned(), index as u32))
+            .collect()
+    }
+
+    #[test]
+    fn button_arrays_use_reserved_disabled_byte_and_unique_inputs() {
+        let bindings = Bindings::buttons(&controls(), 8, 0).unwrap();
+        assert_eq!(&bindings.buttons[..8], &[0, 1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(bindings.buttons[8], 255);
+        let mut duplicate = controls();
+        duplicate.insert("start".to_owned(), 0);
+        assert!(Bindings::buttons(&duplicate, 8, 0).is_err());
+    }
+
+    #[test]
+    fn button_and_axis_counts_must_leave_disabled_sentinel_available() {
+        assert!(Bindings::buttons(&controls(), 256, 0).is_err());
+        assert!(Bindings::buttons(&controls(), 8, 256).is_err());
+    }
+}

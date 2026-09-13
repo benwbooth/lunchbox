@@ -4,49 +4,61 @@
   "emulator": "Magnavox Odyssey DS",
   "sources": [
     {
-      "kind": "source",
-      "repo": "https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
+      "kind": "docs",
       "url": "https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
-      "role": "official upstream project identity and implementation"
+      "role": "preservation page for the Nintendo DS homebrew identity, controls and platform"
+    },
+    {
+      "kind": "artifact",
+      "url": "https://dlhb.gamebrew.org/dshomebrew2/magnavoxodysseyds.rar",
+      "version": "2010",
+      "role": "linked Nintendo DS homebrew archive; no desktop executable or source is published"
     },
     {
       "kind": "docs",
-      "url": "https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
-      "role": "official distribution or project documentation"
+      "url": "http://bobbyloujo.blogspot.com/2010/09/magnavox-odyssey-ds.html",
+      "role": "linked author page (currently unavailable)"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/MAGNAVOX_ODYSSEY_DS_CONTROLLER_BOUNDARY.md",
+      "role": "Nintendo DS-only controller and persistence boundary"
     }
   ],
   "platform_gaps": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official Magnavox Odyssey DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "status": "unsupported",
+      "reason": "The preserved artifact is Nintendo DS homebrew and publishes no Linux executable, source, or desktop persistence contract.",
       "evidence": [
-        "official:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
-        "host capture intentionally withheld until all six purposes are source-backed"
+        "docs:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS (Type=Console; DS homebrew categories)",
+        "artifact:https://dlhb.gamebrew.org/dshomebrew2/magnavoxodysseyds.rar"
       ]
     },
     "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official Magnavox Odyssey DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "status": "unsupported",
+      "reason": "The project targets Nintendo DS hardware; no Linux or Flatpak package/manifest is published.",
       "evidence": [
-        "official:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official Magnavox Odyssey DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
-        "host capture intentionally withheld until all six purposes are source-backed"
+        "docs:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
+        "artifact:https://dlhb.gamebrew.org/dshomebrew2/magnavoxodysseyds.rar"
       ]
     },
     "windows": {
-      "status": "unresolved",
-      "reason": "The official Magnavox Odyssey DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "status": "unsupported",
+      "reason": "The preserved artifact is a Nintendo DS binary, not a Windows executable, and no Windows config/input/save/state or BIOS/key contract is available.",
       "evidence": [
-        "official:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
-        "host capture intentionally withheld until all six purposes are source-backed"
+        "docs:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS (Nintendo DS homebrew listing)",
+        "artifact:https://dlhb.gamebrew.org/dshomebrew2/magnavoxodysseyds.rar"
+      ]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "The preserved artifact is a Nintendo DS binary and the linked author page does not publish a macOS build or desktop persistence contract.",
+      "evidence": [
+        "docs:https://www.gamebrew.org/wiki/Magnavox_Odyssey_DS",
+        "artifact:https://dlhb.gamebrew.org/dshomebrew2/magnavoxodysseyds.rar",
+        "docs:http://bobbyloujo.blogspot.com/2010/09/magnavox-odyssey-ds.html"
       ]
     }
-  }
+  },
+  "notes": "GameBrew documents Nintendo DS controls only: R/L changes the player under control and A resets the ball; chips 1-4 provide the listed mini-games. No host config, controller serialization, save-game or save-state path, BIOS/firmware path, or cryptographic-key contract can be derived for Lunchbox's four desktop hosts. The linked archive was not treated as a desktop artifact."
 }

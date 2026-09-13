@@ -1,1 +1,59 @@
-{"schema_version":1,"slug":"px68k","emulator":"PX68k","sources":[{"kind":"source","repo":"https://github.com/libretro/px68k-libretro","url":"https://github.com/libretro/px68k-libretro","role":"official upstream project identity"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official PX68k source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/libretro/px68k-libretro","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"linux-flatpak":{"status":"unresolved","reason":"The official PX68k source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/libretro/px68k-libretro","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"macos":{"status":"unresolved","reason":"The official PX68k source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/libretro/px68k-libretro","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"windows":{"status":"unresolved","reason":"The official PX68k source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/libretro/px68k-libretro","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]}}}
+{
+  "schema_version": 1,
+  "slug": "px68k",
+  "emulator": "PX68k",
+  "sources": [
+    { "kind": "source", "repo": "https://github.com/libretro/px68k-libretro", "url": "https://github.com/libretro/px68k-libretro/tree/0ad84d7058a12b7db4f7f7a906e87fad4e2f26f6", "commit": "0ad84d7058a12b7db4f7f7a906e87fad4e2f26f6", "role": "libretro core paths, controller callbacks, options, SRAM and serialization source" },
+    { "kind": "docs", "url": "https://docs.libretro.com/library/px68k/", "role": "official PX68k BIOS, directories, features and controller documentation" },
+    { "kind": "source", "repo": "https://github.com/libretro/RetroArch", "commit": "0dc3b26c7c560f0e48a7b15002997a8c0676105f", "role": "RetroArch host config, input, save/state and system-directory defaults" },
+    { "kind": "contract", "path": "docs/PX68K_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller ownership boundary" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "~/.config/retroarch/system/keropi/config (or configured RetroArch system_directory)", "naming": "INI-like [WinX68k] file; PX68k reads/writes StartDir and optional FDD0/FDD1 and HDD0..HDD15 paths. Controller layout is selected by core options, not this file.", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c retro_system_conf; libretro/prop.c LoadConfig/SaveConfig", "docs:https://docs.libretro.com/library/px68k/#directories"] },
+        { "purpose": "input", "path": "~/.config/retroarch/retroarch.cfg plus autoconfig/<input-driver>/ profiles", "naming": "RetroArch frontend-owned bindings feed RETRO_DEVICE_JOYPAD, KEYBOARD, MOUSE and analog callbacks; px68k_joytype1/2 select emulated layouts.", "evidence": ["source:px68k-libretro@0ad84d7 libretro/joystick.c and libretro.c input descriptors", "source:px68k-libretro@0ad84d7 libretro_core_options.h", "source:RetroArch@0dc3b26c input configuration"] },
+        { "purpose": "saves", "path": "~/.config/retroarch/system/keropi/sram.dat plus loaded disk image files", "naming": "Fixed 16 KiB SRAM sram.dat; official docs warn that game saves are written directly to disk images. No generic .srm sidecar.", "evidence": ["source:px68k-libretro@0ad84d7 x68k/sram.c", "docs:https://docs.libretro.com/library/px68k/#extensions", "docs:https://docs.libretro.com/library/px68k/#directories"] },
+        { "purpose": "states", "path": "Unsupported filesystem feature; no supported PX68k state filename/directory", "naming": "The source exposes an in-memory serialization API, but the official feature table marks States unsupported.", "status": "not_supported", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c StateAction/retro_serialize", "docs:https://docs.libretro.com/library/px68k/#features"] },
+        { "purpose": "bios", "path": "~/.config/retroarch/system/keropi/ (or configured system_directory/keropi)", "naming": "Required iplrom.dat (MD5 7fd4caabac1d9169e289f0f7bbf71d8e) and cgrom.dat (MD5 cb0a5cfcf7247a7eab74bb2716260269); optional iplrom30.dat, iplromco.dat and iplromxv.dat.", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c WinX68k_LoadROMs", "docs:https://docs.libretro.com/library/px68k/#bios"] },
+        { "purpose": "keys", "path": "No external cryptographic key file", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:px68k-libretro@0ad84d7"] }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        { "purpose": "config", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/system/keropi/config", "naming": "Same [WinX68k] media/browser persistence under Flatpak's RetroArch system directory; not a controller profile.", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c and prop.c", "docs:https://docs.flatpak.org/en/latest/conventions.html", "docs:https://docs.libretro.com/library/px68k/#directories"] },
+        { "purpose": "input", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg plus autoconfig/<input-driver>/", "naming": "RetroArch Flatpak frontend owns RetroPad/keyboard/mouse bindings; PX68k core options select layouts.", "evidence": ["source:px68k-libretro@0ad84d7 libretro/joystick.c", "source:RetroArch@0dc3b26c input configuration", "docs:https://docs.flatpak.org/en/latest/conventions.html"] },
+        { "purpose": "saves", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/system/keropi/sram.dat plus loaded disk images", "naming": "16 KiB sram.dat and direct disk-image writes; no generic .srm sidecar.", "evidence": ["source:px68k-libretro@0ad84d7 x68k/sram.c", "docs:https://docs.libretro.com/library/px68k/#directories"] },
+        { "purpose": "states", "path": "Unsupported filesystem feature; no supported PX68k state filename/directory", "naming": "Official PX68k feature table marks States unsupported.", "status": "not_supported", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c retro_serialize", "docs:https://docs.libretro.com/library/px68k/#features"] },
+        { "purpose": "bios", "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/system/keropi/", "naming": "Required iplrom.dat and cgrom.dat with documented MD5 values; alternate IPL ROMs optional.", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c WinX68k_LoadROMs", "docs:https://docs.libretro.com/library/px68k/#bios", "docs:https://docs.flatpak.org/en/latest/conventions.html"] },
+        { "purpose": "keys", "path": "No external cryptographic key file", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:px68k-libretro@0ad84d7"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "<RetroArch application directory>\\system\\keropi\\config", "naming": "INI-like [WinX68k] StartDir/FDD/HDD persistence; not a controller profile.", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c and prop.c", "source:RetroArch@0dc3b26c Windows system-directory defaults"] },
+        { "purpose": "input", "path": "<RetroArch application directory>\\retroarch.cfg plus autoconfig\\<input-driver>\\", "naming": "RetroArch frontend-owned input_playerN/autoconfig bindings feed PX68k callbacks and core options.", "evidence": ["source:px68k-libretro@0ad84d7 libretro/joystick.c", "source:RetroArch@0dc3b26c Windows input configuration"] },
+        { "purpose": "saves", "path": "<RetroArch application directory>\\system\\keropi\\sram.dat plus loaded disk image files", "naming": "16 KiB sram.dat and direct disk-image writes; no generic .srm sidecar.", "evidence": ["source:px68k-libretro@0ad84d7 x68k/sram.c", "docs:https://docs.libretro.com/library/px68k/#extensions"] },
+        { "purpose": "states", "path": "Unsupported filesystem feature; no supported PX68k state filename/directory", "naming": "Official PX68k feature table marks States unsupported.", "status": "not_supported", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c retro_serialize", "docs:https://docs.libretro.com/library/px68k/#features"] },
+        { "purpose": "bios", "path": "<RetroArch application directory>\\system\\keropi\\", "naming": "Required iplrom.dat and cgrom.dat with documented MD5 values; alternate IPL ROMs optional.", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c WinX68k_LoadROMs", "source:RetroArch@0dc3b26c Windows system-directory defaults", "docs:https://docs.libretro.com/library/px68k/#bios"] },
+        { "purpose": "keys", "path": "No external cryptographic key file", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:px68k-libretro@0ad84d7"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "~/Documents/RetroArch/system/keropi/config (or configured RetroArch system_directory)", "naming": "INI-like [WinX68k] StartDir/FDD/HDD persistence; not a controller profile.", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c and prop.c", "source:RetroArch@0dc3b26c macOS system-directory defaults"] },
+        { "purpose": "input", "path": "~/Library/Application Support/RetroArch/config/retroarch.cfg plus autoconfig/<input-driver>/", "naming": "RetroArch frontend-owned input profiles feed PX68k libretro callbacks and core options.", "evidence": ["source:px68k-libretro@0ad84d7 libretro/joystick.c", "source:RetroArch@0dc3b26c macOS input configuration"] },
+        { "purpose": "saves", "path": "~/Documents/RetroArch/system/keropi/sram.dat plus loaded disk image files", "naming": "16 KiB sram.dat and direct disk-image writes; no generic .srm sidecar.", "evidence": ["source:px68k-libretro@0ad84d7 x68k/sram.c", "docs:https://docs.libretro.com/library/px68k/#extensions"] },
+        { "purpose": "states", "path": "Unsupported filesystem feature; no supported PX68k state filename/directory", "naming": "Official PX68k feature table marks States unsupported.", "status": "not_supported", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c retro_serialize", "docs:https://docs.libretro.com/library/px68k/#features"] },
+        { "purpose": "bios", "path": "~/Documents/RetroArch/system/keropi/ (or configured system_directory/keropi)", "naming": "Required iplrom.dat and cgrom.dat with documented MD5 values; alternate IPL ROMs optional.", "evidence": ["source:px68k-libretro@0ad84d7 libretro.c WinX68k_LoadROMs", "source:RetroArch@0dc3b26c macOS system-directory defaults", "docs:https://docs.libretro.com/library/px68k/#bios"] },
+        { "purpose": "keys", "path": "No external cryptographic key file", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:px68k-libretro@0ad84d7"] }
+      ]
+    }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not write PX68k system/keropi/config or RetroArch input profiles: the core file is media/browser persistence and controller mapping is frontend/core-option owned.",
+    "contract": "docs/PX68K_CONTROLLER_BOUNDARY.md"
+  },
+  "notes": "PX68k is a libretro core. Direct disk/SRAM persistence and the unsupported filesystem state feature are recorded independently of controller ownership."
+}

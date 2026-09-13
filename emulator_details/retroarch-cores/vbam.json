@@ -21,7 +21,7 @@
     "files": [
       {
         "path": "gba_bios.bin",
-        "description": "Game Boy Advance BIOS",
+        "description": "gba_bios.bin (Game Boy Advance BIOS)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -37,7 +37,7 @@
       },
       {
         "path": "gb_bios.bin",
-        "description": "Game Boy BIOS",
+        "description": "gb_bios.bin (Game Boy BIOS)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -53,7 +53,7 @@
       },
       {
         "path": "gbc_bios.bin",
-        "description": "Game Boy Color BIOS",
+        "description": "gbc_bios.bin (Game Boy Color BIOS)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -75,13 +75,11 @@
   },
   "saves": {
     "status": "supported",
-    "extensions": [
-      ".sav"
-    ],
-    "naming": "RetroArch uses <content-basename>.sav for VBA-M battery-backed cartridge RAM.",
-    "notes": "Battery/RTC persistence varies by loaded cartridge.",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=true but does not declare a persistent-save filename extension.",
+    "notes": "Persistent save support is declared by the pinned core-info metadata; filename and content semantics are not specified there.",
     "evidence": [
-      "VBA-M libretro save implementation"
+      "vbam_libretro.info libretro_saves=true"
     ]
   },
   "states": {

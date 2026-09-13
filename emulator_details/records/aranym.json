@@ -5,6 +5,13 @@
   "sources": [
     {
       "kind": "source",
+      "repo": "https://github.com/aranym/aranym",
+      "url": "https://github.com/aranym/aranym/commit/5f4ebed6b039ddf42eef1122a315ad9608d20f6e",
+      "commit": "5f4ebed6b039ddf42eef1122a315ad9608d20f6e",
+      "role": "pinned [JOYSTICKS] parser, SDL device-selection implementation, and 17-entry Joypad A/B button permutation grammar"
+    },
+    {
+      "kind": "source",
       "repo": "https://aranym.github.io/",
       "url": "https://aranym.github.io/",
       "role": "official upstream identity and implementation"
@@ -29,11 +36,11 @@
         },
         {
           "purpose": "input",
-          "path": "SDL keyboard/joystick settings in ARAnyM configuration; exact release-defined keys",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "path": "[JOYSTICKS] in the ARAnyM configuration: Ikbd0, Ikbd1, JoypadA, JoypadB and JoypadAButtons/JoypadBButtons",
+          "naming": "Device selectors are same-launch SDL_JoystickOpen enumeration indices (-1 disables); each Joypad buttons value is a whitespace-separated permutation of 0..16",
           "evidence": [
-            "official:https://aranym.github.io/",
-            "source evidence is incomplete where explicitly stated"
+            "source:aranym/aranym@5f4ebed6b039ddf42eef1122a315ad9608d20f6e src/parameters.cpp, src/input.cpp and src/joypads.cpp",
+            "source:crates/lunchbox-app/src/controller_aranym_native.rs preserving same-launch writer"
           ]
         },
         {
@@ -87,11 +94,11 @@
         },
         {
           "purpose": "input",
-          "path": "SDL keyboard/joystick settings in ARAnyM configuration; exact release-defined keys",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "path": "[JOYSTICKS] in the ARAnyM configuration: Ikbd0, Ikbd1, JoypadA, JoypadB and JoypadAButtons/JoypadBButtons",
+          "naming": "Device selectors are same-launch SDL_JoystickOpen enumeration indices (-1 disables); each Joypad buttons value is a whitespace-separated permutation of 0..16",
           "evidence": [
-            "official:https://aranym.github.io/",
-            "source evidence is incomplete where explicitly stated"
+            "source:aranym/aranym@5f4ebed6b039ddf42eef1122a315ad9608d20f6e src/parameters.cpp, src/input.cpp and src/joypads.cpp",
+            "source:crates/lunchbox-app/src/controller_aranym_native.rs preserving same-launch writer"
           ]
         },
         {
@@ -145,11 +152,11 @@
         },
         {
           "purpose": "input",
-          "path": "SDL keyboard/joystick settings in ARAnyM configuration; exact release-defined keys",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "path": "[JOYSTICKS] in the ARAnyM configuration: Ikbd0, Ikbd1, JoypadA, JoypadB and JoypadAButtons/JoypadBButtons",
+          "naming": "Device selectors are same-launch SDL_JoystickOpen enumeration indices (-1 disables); each Joypad buttons value is a whitespace-separated permutation of 0..16",
           "evidence": [
-            "official:https://aranym.github.io/",
-            "source evidence is incomplete where explicitly stated"
+            "source:aranym/aranym@5f4ebed6b039ddf42eef1122a315ad9608d20f6e src/parameters.cpp, src/input.cpp and src/joypads.cpp",
+            "source:crates/lunchbox-app/src/controller_aranym_native.rs preserving same-launch writer"
           ]
         },
         {
@@ -203,11 +210,11 @@
         },
         {
           "purpose": "input",
-          "path": "SDL keyboard/joystick settings in ARAnyM configuration; exact release-defined keys",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
+          "path": "[JOYSTICKS] in the ARAnyM configuration: Ikbd0, Ikbd1, JoypadA, JoypadB and JoypadAButtons/JoypadBButtons",
+          "naming": "Device selectors are same-launch SDL_JoystickOpen enumeration indices (-1 disables); each Joypad buttons value is a whitespace-separated permutation of 0..16",
           "evidence": [
-            "official:https://aranym.github.io/",
-            "source evidence is incomplete where explicitly stated"
+            "source:aranym/aranym@5f4ebed6b039ddf42eef1122a315ad9608d20f6e src/parameters.cpp, src/input.cpp and src/joypads.cpp",
+            "source:crates/lunchbox-app/src/controller_aranym_native.rs preserving same-launch writer"
           ]
         },
         {

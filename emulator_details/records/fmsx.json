@@ -3,177 +3,43 @@
   "slug": "fmsx",
   "emulator": "fMSX",
   "sources": [
-    {
-      "kind": "docs",
-      "url": "https://fms.komkon.org/fMSX/",
-      "role": "official project/platform and runtime documentation"
-    }
+    { "kind": "source", "repo": "lvitals/fMSX", "commit": "fd5fac3cc4d8b95a9c9ec22fddc18fc326f71b01", "role": "standalone options, SDL runtime input, ROM/CMOS/SRAM and state paths" },
+    { "kind": "docs", "url": "https://fms.komkon.org/fMSX/", "role": "official project and distribution documentation" }
   ],
   "platforms": {
     "linux": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "~/.config/fMSX/fmsx.ini",
-          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "~/.config/fMSX/fmsx.ini",
-          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "~/.config/fMSX/saves",
-          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "~/.config/fMSX/states",
-          "naming": "The upstream frontend selects the state filename/path.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "No BIOS required by the standalone fMSX documentation",
-          "naming": "Explicit firmware disposition from the upstream project.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No external key files are used.",
-          "naming": "Explicit key-material disposition from the upstream project.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        }
+        { "purpose": "config", "path": "None: command-line options only; the standalone source does not load fmsx.ini", "naming": "No persistent native configuration file is established.", "evidence": ["source:fMSX/fMSX.c Options[] and main parser @ fd5fac3"] },
+        { "purpose": "input", "path": "Runtime SDL controllers; no persisted native profile", "naming": "-joy <type>: 0 none, 1 normal joystick, 2 mouse joystick, 3 mouse real mode; Unix SDL opens the first two controllers.", "evidence": ["source:fMSX/fMSX.c -joy parser @ fd5fac3", "source:EMULib/Unix/LibSDL2.c SDL controller enumeration and mapping @ fd5fac3"] },
+        { "purpose": "saves", "path": "<cartridge path with extension replaced by .sav>", "naming": "SRAM files are generated beside cartridges when the mapper exposes SRAM.", "evidence": ["source:fMSX/MSX.c SRAMName construction @ fd5fac3"] },
+        { "purpose": "states", "path": "-state <filename>, default DEFAULT.STA in the program working directory", "naming": "The explicit state filename controls .STA load/save.", "evidence": ["source:fMSX/fMSX.c -state parser and MSX.c STAName default @ fd5fac3"] },
+        { "purpose": "bios", "path": "-home <dirname>; files are searched in <home> and <home>/BIOS", "naming": "System resources include MSX.ROM, MSX2.ROM, MSX2EXT.ROM, MSX2P.ROM, MSX2PEXT.ROM, FMPAC.ROM, DISK.ROM, MSXDOS2.ROM, PAINTER.ROM and KANJI.ROM; CMOS.ROM is writable nonvolatile state.", "evidence": ["source:fMSX/Help.h -home documentation @ fd5fac3", "source:fMSX/MSX.c LoadROM and CMOS.ROM save path @ fd5fac3"] },
+        { "purpose": "keys", "path": "No external key-material path established", "naming": "No key file or checksum is claimed.", "evidence": ["source:fMSX source option/resource inventory @ fd5fac3"] }
+      ],
+      "notes": "Linux is the source-backed SDL2 runtime; physical controller identity is runtime-only."
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "None: command-line options only; no fmsx.ini parser", "naming": "No persistent native configuration file is established.", "evidence": ["source:fMSX/fMSX.c option table and parser @ fd5fac3"] },
+        { "purpose": "input", "path": "Runtime host input; no persisted native controller profile", "naming": "-joy selects emulated device type, not a physical controller identity.", "evidence": ["source:fMSX/fMSX.c -joy parser @ fd5fac3"] },
+        { "purpose": "saves", "path": "<cartridge path with extension replaced by .sav>", "naming": "SRAM files are generated beside cartridges when supported.", "evidence": ["source:fMSX/MSX.c SRAMName construction @ fd5fac3"] },
+        { "purpose": "states", "path": "-state <filename>, default DEFAULT.STA after changing to the program directory", "naming": "Explicit -state filename controls the .STA file.", "evidence": ["source:fMSX/fMSX.c -state and MSX.c ProgDir behavior @ fd5fac3"] },
+        { "purpose": "bios", "path": "-home <dirname> and its BIOS subdirectory", "naming": "The same MSX ROM resource names are searched under the selected home root.", "evidence": ["source:fMSX/Help.h and MSX.c LoadROM @ fd5fac3"] },
+        { "purpose": "keys", "path": "No external key-material path established", "naming": "No key file or checksum is claimed.", "evidence": ["source:fMSX source option/resource inventory @ fd5fac3"] }
       ]
     },
     "macos": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "~/Library/Application Support/fMSX/fmsx.ini",
-          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "~/Library/Application Support/fMSX/fmsx.ini",
-          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "~/Library/Application Support/fMSX/saves",
-          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "~/Library/Application Support/fMSX/states",
-          "naming": "The upstream frontend selects the state filename/path.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "No BIOS required by the standalone fMSX documentation",
-          "naming": "Explicit firmware disposition from the upstream project.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No external key files are used.",
-          "naming": "Explicit key-material disposition from the upstream project.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        }
-      ]
-    },
-    "windows": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "%APPDATA%/fMSX/fmsx.ini",
-          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "%APPDATA%/fMSX/fmsx.ini",
-          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "%APPDATA%/fMSX/saves",
-          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "%APPDATA%/fMSX/states",
-          "naming": "The upstream frontend selects the state filename/path.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "No BIOS required by the standalone fMSX documentation",
-          "naming": "Explicit firmware disposition from the upstream project.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No external key files are used.",
-          "naming": "Explicit key-material disposition from the upstream project.",
-          "evidence": [
-            "https://fms.komkon.org/fMSX/"
-          ]
-        }
+        { "purpose": "config", "path": "None: command-line options only; no fmsx.ini parser", "naming": "No persistent native configuration file is established.", "evidence": ["source:fMSX/fMSX.c option table and parser @ fd5fac3"] },
+        { "purpose": "input", "path": "Runtime host input; no persisted native controller profile", "naming": "-joy selects emulated device type, not a physical controller identity.", "evidence": ["source:fMSX/fMSX.c -joy parser @ fd5fac3"] },
+        { "purpose": "saves", "path": "<cartridge path with extension replaced by .sav>", "naming": "SRAM files are generated beside cartridges when supported.", "evidence": ["source:fMSX/MSX.c SRAMName construction @ fd5fac3"] },
+        { "purpose": "states", "path": "-state <filename>, default DEFAULT.STA in the program working directory", "naming": "Explicit -state filename controls the .STA file.", "evidence": ["source:fMSX/fMSX.c -state parser @ fd5fac3"] },
+        { "purpose": "bios", "path": "-home <dirname> and its BIOS subdirectory", "naming": "The same MSX ROM resource names are searched under the selected home root.", "evidence": ["source:fMSX/Help.h and MSX.c LoadROM @ fd5fac3"] },
+        { "purpose": "keys", "path": "No external key-material path established", "naming": "No key file or checksum is claimed.", "evidence": ["source:fMSX source option/resource inventory @ fd5fac3"] }
       ]
     }
   },
   "platform_gaps": {
-    "linux-flatpak": {
-      "status": "no_verified_package",
-      "reason": "No official Flatpak package is documented by the upstream project.",
-      "evidence": [
-        "https://fms.komkon.org/fMSX/"
-      ]
-    }
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The official project documents source/binaries but no first-party Flatpak package.", "evidence": ["docs:https://fms.komkon.org/fMSX/"] }
   }
 }

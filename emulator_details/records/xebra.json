@@ -1,1 +1,107 @@
-{"schema_version":1,"slug":"xebra","emulator":"XEBRA","sources":[{"kind":"source","repo":"https://play.google.com/store/apps/details?id=com.dokutajigokusai.xebra","url":"https://play.google.com/store/apps/details?id=com.dokutajigokusai.xebra","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://play.google.com/store/apps/details?id=com.dokutajigokusai.xebra","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows/Android listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://play.google.com/store/apps/details?id=com.dokutajigokusai.xebra"]},"linux-flatpak":{"status":"unresolved","reason":"Windows/Android listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://play.google.com/store/apps/details?id=com.dokutajigokusai.xebra"]},"windows":{"status":"unresolved","reason":"Windows/Android listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://play.google.com/store/apps/details?id=com.dokutajigokusai.xebra"]},"macos":{"status":"unresolved","reason":"Windows/Android listed; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://play.google.com/store/apps/details?id=com.dokutajigokusai.xebra"]}}}
+{
+  "schema_version": 1,
+  "slug": "xebra",
+  "emulator": "XEBRA",
+  "sources": [
+    {
+      "kind": "artifact",
+      "url": "https://drhell.web.fc2.com/ps1/xebra221106.zip",
+      "version": "221106",
+      "sha256": "5f522e51a0cad7395bdcb070e7c6955327f4bd3449a9c04dc7ed35c6693c1bd2",
+      "role": "Official Windows XEBRA distribution; executable, simulation image and documentation"
+    },
+    {
+      "kind": "docs",
+      "url": "https://drhell.web.fc2.com/ps1/xebra/index2.html",
+      "role": "Official XEBRA for PC instructions covering OSROM, controller setup, per-game INI files and image formats"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/XEBRA_CONTROLLER_BOUNDARY.md",
+      "role": "Fail-closed runtime-axis/controller boundary"
+    }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "XEBRA.ini beside the CD-ROM image for per-game initial settings; XEBRA's working directory for shared runtime assets",
+          "naming": "For an image named <game>.img, the official PC instructions specify <game>.ini; the bundled XEBRA.TXT documents XEBRA.AR and simulation images",
+          "evidence": [
+            "docs:https://drhell.web.fc2.com/ps1/xebra/index2.html (INDIVIDUAL INITIAL SETTINGS)",
+            "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip sha256=5f522e51a0cad7395bdcb070e7c6955327f4bd3449a9c04dc7ed35c6693c1bd2 (XEBRA.TXT)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "View / Controller... interactive dialog in XEBRA.EXE; PC pad buttons and X/Y/Z/R/U/V axes are sampled at startup/dialog time",
+          "naming": "Associations are selected interactively by PS1 port, controller type, PC button and axis; no verified portable mapping-file grammar",
+          "status": "unresolved",
+          "evidence": [
+            "docs:https://drhell.web.fc2.com/ps1/xebra/index2.html (CONTROLLER SETTINGS)",
+            "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip sha256=5f522e51a0cad7395bdcb070e7c6955327f4bd3449a9c04dc7ed35c6693c1bd2 (XEBRA.TXT controller section)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "XEBRA's Memory Card 1 and Memory Card 2 images selected through File / Memory Card...",
+          "naming": "The documented memory-card images are commonly named BU00 and BU10",
+          "evidence": [
+            "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip sha256=5f522e51a0cad7395bdcb070e7c6955327f4bd3449a9c04dc7ed35c6693c1bd2 (XEBRA.EXE image menu strings and XEBRA.TXT)",
+            "docs:https://drhell.web.fc2.com/ps1/xebra/index2.html (PC image workflow)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "XEBRA.RUN, <product-id>.RI0, and <product-id>.RI1 in the XEBRA working directory",
+          "naming": "F1/F7 use XEBRA.RUN; F2/F8 use <product-id>.RI0; F3/F9 use <product-id>.RI1",
+          "evidence": [
+            "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip sha256=5f522e51a0cad7395bdcb070e7c6955327f4bd3449a9c04dc7ed35c6693c1bd2 (XEBRA.TXT function-key running-image section)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "OSROM (no extension) beside XEBRA.EXE, or the compatible OS ROM bundled by XEBRA",
+          "naming": "The official PC instructions require an official PS1 OS ROM to be renamed OSROM with no extension",
+          "evidence": [
+            "docs:https://drhell.web.fc2.com/ps1/xebra/index2.html (OS ROM)",
+            "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip sha256=5f522e51a0cad7395bdcb070e7c6955327f4bd3449a9c04dc7ed35c6693c1bd2 (XEBRA.EXE and XEBRA.TXT)"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "naming": "No external cryptographic or decryption-key file is consumed by the documented XEBRA PC contract",
+          "status": "not_required",
+          "evidence": [
+            "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip sha256=5f522e51a0cad7395bdcb070e7c6955327f4bd3449a9c04dc7ed35c6693c1bd2 (complete archive listing)"
+          ]
+        }
+      ],
+      "notes": "The official PC page documents a Windows XEBRA.EXE workflow. XEBRA also has an Android identity on the official page, but Android is outside this four-host catalog."
+    }
+  },
+  "platform_gaps": {
+    "linux": {
+      "status": "unsupported",
+      "reason": "The official distribution is a Windows XEBRA.EXE archive and no native Linux build or source-backed Linux persistence contract is published.",
+      "evidence": ["docs:https://drhell.web.fc2.com/ps1/xebra/index2.html", "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip"]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "No XEBRA Flatpak package or manifest is published by the official distribution page.",
+      "evidence": ["docs:https://drhell.web.fc2.com/ps1/", "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip"]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "The official PC distribution is Windows-only and publishes no native macOS build or source-backed macOS persistence contract.",
+      "evidence": ["docs:https://drhell.web.fc2.com/ps1/xebra/index2.html", "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip"]
+    }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not invent a XEBRA controller writer: the official PC instructions require runtime host-pad/button and axis probing plus interactive association, while no verified persistent mapping grammar or device identity contract is available."
+  },
+  "notes": "The official XEBRA archive was downloaded and SHA-256 verified. State and memory-card filenames are documented, but Windows launch and effective controller input were not runtime verified."
+}

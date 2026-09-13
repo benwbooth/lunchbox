@@ -3,251 +3,43 @@
   "slug": "a7800",
   "emulator": "A7800",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/7800-devtools/a7800",
-      "url": "https://github.com/7800-devtools/a7800",
-      "role": "official upstream identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/7800-devtools/a7800",
-      "role": "official distribution/documentation evidence"
-    }
+    { "kind": "source", "repo": "https://github.com/7800-devtools/a7800", "commit": "7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8", "role": "standalone A7800/MAME-derived target, input devices, optional BIOS and save support" },
+    { "kind": "docs", "url": "https://github.com/7800-devtools/a7800", "role": "official upstream README and source distribution" },
+    { "kind": "contract", "path": "docs/A7800_NATIVE_CONTROLLER_CONTRACT.md", "role": "standalone native controller contract" }
   ],
   "platforms": {
     "linux": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "~/.a7800/",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "A7800 keyboard/joystick bindings configured by its UI; no stable text grammar published.",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": ".sta emulator saves / Atari 7800 cartridge media",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "User-selected .sta snapshots; slot grammar unverified",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "No external BIOS requirement established; no canonical checksum",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
-      ]
-    },
-    "linux-flatpak": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "~/.a7800/",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "A7800 keyboard/joystick bindings configured by its UI; no stable text grammar published.",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": ".sta emulator saves / Atari 7800 cartridge media",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "User-selected .sta snapshots; slot grammar unverified",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "No external BIOS requirement established; no canonical checksum",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
+        { "purpose": "config", "path": "cfg/default.cfg and cfg/a7800.cfg beside the executable by default; -cfg_directory relocates this directory; -ctrlrpath/-ctrlr select controller XML profiles", "naming": "MAME configuration XML version 10; input entries use P1_/P2_ JOYSTICK_* and BUTTON1/2 plus resolved JOYCODE_*/KEYCODE_* sequences", "evidence": ["source:src/mame/mame.cpp application identity a7800 @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8", "source:src/emu/config.cpp loads default.cfg and basename().cfg from cfg_directory", "source:src/emu/emuopts.cpp cfg/ctrlr defaults"] },
+        { "purpose": "input", "path": "The same MAME v10 XML config/controller profile files", "naming": "vcs_joystick provides four IPT_JOYSTICK directions and IPT_BUTTON1; proline_joystick provides the same directions plus IPT_BUTTON1/2. Native tokens must be resolved by the selected MAME input provider.", "evidence": ["source:src/devices/bus/a7800_ctrl/joystick.cpp and joyproline.cpp input ports @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8", "source:src/mame/drivers/a7800.cpp two slotted controller ports"] },
+        { "purpose": "saves", "path": "nvram/ by default for device-managed nonvolatile data; the driver does not establish a universal per-ROM sidecar save directory", "naming": "MAME device-managed files only; media write-back remains in the mounted cartridge/media implementation", "evidence": ["source:src/emu/emuopts.cpp nvram default", "source:src/emu/machine.cpp NVRAM directory handling"] },
+        { "purpose": "states", "path": "sta/ by default (-state_directory); default -statename %g produces sta/<machine-short-name>/<slot>.sta", "naming": "MAME .sta files; -state <slot> loads a slot and -autosave uses the auto slot", "evidence": ["source:src/emu/emuopts.cpp state default sta and statename %g", "source:src/emu/machine.cpp compose_saveload_filename appends .sta", "source:src/mame/drivers/a7800.cpp MACHINE_SUPPORTS_SAVE declarations"] },
+        { "purpose": "bios", "path": "roms/ and bios/ media roots; BIOS files are optional in the A7800 source", "naming": "NTSC optional 7800.u7 (SHA-1 d9d134bb6b36907c615a594cc7688f7bfcef5b43) or c300558-001a.u7 (SHA-1 14584b1eafe9721804782d4b1ac3a4a7313e455f); PAL optional 7800pal.rom (SHA-1 5a140136a16d1d83e4ff32a19409ca376a8df874)", "evidence": ["source:src/mame/drivers/a7800.cpp ROM definitions @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8", "source:src/emu/emuopts.cpp rompath default roms and mediapath bios;roms"] },
+        { "purpose": "keys", "path": "No separate key file; keyboard bindings are MAME input tokens in cfg XML", "naming": "KEYCODE_* values in the same MAME XML config/profile", "evidence": ["source:src/emu/config.cpp XML config manager @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8", "source:src/devices/bus/a7800_ctrl/joystick.cpp"] }
       ]
     },
     "windows": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "~/.a7800/",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "A7800 keyboard/joystick bindings configured by its UI; no stable text grammar published.",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": ".sta emulator saves / Atari 7800 cartridge media",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "User-selected .sta snapshots; slot grammar unverified",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "No external BIOS requirement established; no canonical checksum",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
+        { "purpose": "config", "path": "cfg/default.cfg and cfg/a7800.cfg beside the executable by default; -cfg_directory and -ctrlrpath/-ctrlr relocate/select XML files", "naming": "MAME version-10 XML with resolved JOYCODE_*/KEYCODE_* sequences", "evidence": ["source:src/mame/mame.cpp @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8", "source:src/emu/config.cpp", "source:src/emu/emuopts.cpp"] },
+        { "purpose": "input", "path": "The selected MAME XML config/controller profile", "naming": "Explicit vcs_joystick or proline_joystick controls only; no device layout is inferred", "evidence": ["source:src/devices/bus/a7800_ctrl/joystick.cpp and joyproline.cpp @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8"] },
+        { "purpose": "saves", "path": "nvram/ by default for device-managed nonvolatile data; no universal per-game sidecar save path", "naming": "MAME-managed device files", "evidence": ["source:src/emu/emuopts.cpp and machine.cpp @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8"] },
+        { "purpose": "states", "path": "sta/<machine-short-name>/<slot>.sta by default", "naming": "MAME .sta files; -state and -autosave semantics are source-backed", "evidence": ["source:src/emu/machine.cpp @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8", "source:src/mame/drivers/a7800.cpp MACHINE_SUPPORTS_SAVE"] },
+        { "purpose": "bios", "path": "roms/ and bios/ roots; optional NTSC/PAL ROM names and hashes are declared by the driver", "naming": "7800.u7, c300558-001a.u7 and 7800pal.rom with the hashes documented for Linux", "evidence": ["source:src/mame/drivers/a7800.cpp ROM definitions @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8"] },
+        { "purpose": "keys", "path": "No separate key file; keyboard bindings remain MAME KEYCODE_* XML entries", "naming": "MAME v10 XML", "evidence": ["source:src/emu/config.cpp @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8"] }
       ]
     },
     "macos": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "~/.a7800/",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "A7800 keyboard/joystick bindings configured by its UI; no stable text grammar published.",
-          "naming": "Upstream/UI-defined bindings; exact syntax is stated in the path when verified.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": ".sta emulator saves / Atari 7800 cartridge media",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "User-selected .sta snapshots; slot grammar unverified",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "No external BIOS requirement established; no canonical checksum",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No key file",
-          "naming": "No naming beyond the upstream evidence is asserted.",
-          "evidence": [
-            "official:https://github.com/7800-devtools/a7800",
-            "source evidence is incomplete where explicitly stated"
-          ]
-        }
+        { "purpose": "config", "path": "cfg/default.cfg and cfg/a7800.cfg beside the executable by default; -cfg_directory relocates the config root", "naming": "MAME version-10 XML; controller profiles use ctrlrpath/ctrlr", "evidence": ["source:src/mame/mame.cpp and src/emu/config.cpp @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8"] },
+        { "purpose": "input", "path": "MAME v10 XML config/controller profile", "naming": "Explicit provider-resolved JOYCODE_*/KEYCODE_* tokens for source-defined joystick controls", "evidence": ["source:src/devices/bus/a7800_ctrl/joystick.cpp and joyproline.cpp @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8"] },
+        { "purpose": "saves", "path": "nvram/ by default for device-managed nonvolatile data; no universal per-ROM sidecar", "naming": "MAME-managed device files", "evidence": ["source:src/emu/emuopts.cpp and machine.cpp @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8"] },
+        { "purpose": "states", "path": "sta/<machine-short-name>/<slot>.sta by default", "naming": "MAME .sta files", "evidence": ["source:src/emu/machine.cpp @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8"] },
+        { "purpose": "bios", "path": "roms/ and bios/ roots; optional driver-declared NTSC/PAL ROMs", "naming": "7800.u7, c300558-001a.u7 and 7800pal.rom with driver SHA-1 values", "evidence": ["source:src/mame/drivers/a7800.cpp @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8"] },
+        { "purpose": "keys", "path": "No separate key file; MAME XML KEYCODE_* entries", "naming": "MAME v10 XML", "evidence": ["source:src/emu/config.cpp @7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8"] }
       ]
     }
   },
-  "platform_gaps": {}
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The pinned A7800 repository provides source/build targets but no official Flatpak application identity or sandbox persistence contract.", "evidence": ["official:https://github.com/7800-devtools/a7800"] }
+  }
 }

@@ -1,1 +1,18 @@
-{"schema_version":1,"slug":"puae-retroarch","emulator":"PUAE (RetroArch)","sources":[{"kind":"docs","url":"https://docs.libretro.com/library/puae/","role":"official RetroArch core documentation and identity"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official PUAE (RetroArch) documentation does not establish an exact six-purpose host contract.","evidence":["official:https://docs.libretro.com/library/puae/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"linux-flatpak":{"status":"unresolved","reason":"The official PUAE (RetroArch) documentation does not establish an exact six-purpose host contract.","evidence":["official:https://docs.libretro.com/library/puae/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"macos":{"status":"unresolved","reason":"The official PUAE (RetroArch) documentation does not establish an exact six-purpose host contract.","evidence":["official:https://docs.libretro.com/library/puae/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"windows":{"status":"unresolved","reason":"The official PUAE (RetroArch) documentation does not establish an exact six-purpose host contract.","evidence":["official:https://docs.libretro.com/library/puae/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]}}}
+{
+  "schema_version": 1,
+  "slug": "puae-retroarch",
+  "emulator": "PUAE (RetroArch)",
+  "sources": [
+    { "kind": "docs", "url": "https://docs.libretro.com/library/puae/", "role": "official RetroArch PUAE core documentation" },
+    { "kind": "source", "repo": "https://github.com/libretro/libretro-uae", "url": "https://github.com/libretro/libretro-uae", "commit": "6536174a80d74e6c325aaa5390ff091fac8761d0", "role": "same upstream PUAE core mapper and firmware source" },
+    { "kind": "contract", "path": "docs/PUAE_CONTROLLER_CONTRACT.md", "role": "shared PUAE boundary; no duplicate writer" }
+  ],
+  "platform_gaps": {
+    "linux": { "status": "unresolved", "reason": "This documentation-oriented RetroArch catalog entry delegates host paths and controller persistence to RetroArch; use the native puae record for Lunchbox's guarded launch integration.", "evidence": ["docs:https://docs.libretro.com/library/puae/", "contract:docs/PUAE_CONTROLLER_CONTRACT.md"] },
+    "linux-flatpak": { "status": "unresolved", "reason": "RetroArch Flatpak namespace and package availability require a separate frontend verification; this entry has no duplicate writer.", "evidence": ["docs:https://docs.libretro.com/library/puae/"] },
+    "windows": { "status": "unresolved", "reason": "RetroArch host config, input, save/state and system paths are frontend-owned; use the native puae record for the guarded integration boundary.", "evidence": ["docs:https://docs.libretro.com/library/puae/", "source:https://github.com/libretro/libretro-uae@6536174a80d74e6c325aaa5390ff091fac8761d0"] },
+    "macos": { "status": "unresolved", "reason": "RetroArch host config, input, save/state and system paths are frontend-owned; use the native puae record for the guarded integration boundary.", "evidence": ["docs:https://docs.libretro.com/library/puae/", "source:https://github.com/libretro/libretro-uae@6536174a80d74e6c325aaa5390ff091fac8761d0"] }
+  },
+  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not add a second PUAE writer for this RetroArch documentation entry; the guarded native launch implementation is shared by the puae catalog record." },
+  "notes": "This is the separate PUAE (RetroArch) catalog identity. It shares upstream core semantics but is intentionally not a second native controller integration."
+}

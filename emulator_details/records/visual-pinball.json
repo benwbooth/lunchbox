@@ -1,1 +1,46 @@
-{"schema_version":1,"slug":"visual-pinball","emulator":"Visual Pinball","sources":[{"kind":"source","repo":"https://www.vpforums.org/","url":"https://www.vpforums.org/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://www.vpforums.org/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows-first pinball engine; other platform packaging complex; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.vpforums.org/"]},"linux-flatpak":{"status":"unresolved","reason":"Windows-first pinball engine; other platform packaging complex; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.vpforums.org/"]},"windows":{"status":"unresolved","reason":"Windows-first pinball engine; other platform packaging complex; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.vpforums.org/"]},"macos":{"status":"unresolved","reason":"Windows-first pinball engine; other platform packaging complex; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.vpforums.org/"]}}}
+{
+  "schema_version": 1,
+  "slug": "visual-pinball",
+  "emulator": "Visual Pinball",
+  "sources": [
+    { "kind": "source", "repo": "https://github.com/vpinball/vpinball", "url": "https://github.com/vpinball/vpinball", "commit": "93d93d9653d7fdc295967cb5f30fff33b734e1fa", "role": "standalone source for platform, paths, input mapping, table persistence and NVRAM" },
+    { "kind": "contract", "path": "docs/VISUAL_PINBALL_CONTROLLER_BOUNDARY.md", "role": "fail-closed controller ownership boundary" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "~/.local/share/VPinballX/10.8/VPinballX.ini (SDL_GetPrefPath-derived)", "naming": "INI settings; device sections are [Input] Devices and Device.<id>.Name/Type/ElementN.", "status": "captured", "evidence": ["source:vpinball@93d93d9 FileLocator.cpp", "source:vpinball@93d93d9 InputManager.cpp"] },
+        { "purpose": "input", "path": "VPinballX.ini [Input] and runtime SDL device enumeration", "naming": "InputAction mapping grammar is deviceId;axisOrButtonId[;x|o;threshold], with | OR and & AND; table actions remain table-specific.", "status": "captured", "evidence": ["source:vpinball@93d93d9 InputAction.cpp", "source:vpinball@93d93d9 InputManager.cpp"] },
+        { "purpose": "saves", "path": "~/.local/share/VPinballX/10.8/ plus table and pinmame subdirectories", "naming": "Per-table <table>.ini, VPReg.stg, and pinmame/nvram/<rom>.nv; these are table/ROM persistence, not generic machine states.", "status": "captured", "evidence": ["source:vpinball@93d93d9 FileLayout.md", "source:vpinball@93d93d9 FileLocator.cpp"] },
+        { "purpose": "states", "path": "No deterministic filesystem savestate API established for standalone VP", "naming": "Table INI, VPReg.stg and NVRAM are not machine snapshots.", "status": "not_supported", "evidence": ["source:vpinball@93d93d9 source tree and FileLayout.md"] },
+        { "purpose": "bios", "path": "No external BIOS file required by the reviewed standalone contract", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:vpinball@93d93d9"] },
+        { "purpose": "keys", "path": "No cryptographic key file required", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:vpinball@93d93d9"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "%APPDATA%/VPinballX/10.8/VPinballX.ini (SDL_GetPrefPath-derived)", "naming": "INI settings; device sections are [Input] Devices and Device.<id>.Name/Type/ElementN.", "status": "captured", "evidence": ["source:vpinball@93d93d9 FileLocator.cpp", "source:vpinball@93d93d9 InputManager.cpp"] },
+        { "purpose": "input", "path": "VPinballX.ini [Input] and runtime SDL device enumeration", "naming": "InputAction mapping grammar is deviceId;axisOrButtonId[;x|o;threshold], with | OR and & AND; table actions remain table-specific.", "status": "captured", "evidence": ["source:vpinball@93d93d9 InputAction.cpp", "source:vpinball@93d93d9 InputManager.cpp"] },
+        { "purpose": "saves", "path": "%APPDATA%/VPinballX/10.8/ plus table and pinmame subdirectories", "naming": "Per-table <table>.ini, VPReg.stg, and pinmame/nvram/<rom>.nv; these are table/ROM persistence, not generic machine states.", "status": "captured", "evidence": ["source:vpinball@93d93d9 FileLayout.md", "source:vpinball@93d93d9 FileLocator.cpp"] },
+        { "purpose": "states", "path": "No deterministic filesystem savestate API established for standalone VP", "naming": "Table INI, VPReg.stg and NVRAM are not machine snapshots.", "status": "not_supported", "evidence": ["source:vpinball@93d93d9 source tree and FileLayout.md"] },
+        { "purpose": "bios", "path": "No external BIOS file required by the reviewed standalone contract", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:vpinball@93d93d9"] },
+        { "purpose": "keys", "path": "No cryptographic key file required", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:vpinball@93d93d9"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "~/Library/Application Support/VPinballX/10.8/VPinballX.ini (SDL_GetPrefPath-derived)", "naming": "INI settings; device sections are [Input] Devices and Device.<id>.Name/Type/ElementN.", "status": "captured", "evidence": ["source:vpinball@93d93d9 FileLocator.cpp", "source:vpinball@93d93d9 InputManager.cpp"] },
+        { "purpose": "input", "path": "VPinballX.ini [Input] and runtime SDL device enumeration", "naming": "InputAction mapping grammar is deviceId;axisOrButtonId[;x|o;threshold], with | OR and & AND; table actions remain table-specific.", "status": "captured", "evidence": ["source:vpinball@93d93d9 InputAction.cpp", "source:vpinball@93d93d9 InputManager.cpp"] },
+        { "purpose": "saves", "path": "~/Library/Application Support/VPinballX/10.8/ plus table and pinmame subdirectories", "naming": "Per-table <table>.ini, VPReg.stg, and pinmame/nvram/<rom>.nv; these are table/ROM persistence, not generic machine states.", "status": "captured", "evidence": ["source:vpinball@93d93d9 FileLayout.md", "source:vpinball@93d93d9 FileLocator.cpp"] },
+        { "purpose": "states", "path": "No deterministic filesystem savestate API established for standalone VP", "naming": "Table INI, VPReg.stg and NVRAM are not machine snapshots.", "status": "not_supported", "evidence": ["source:vpinball@93d93d9 source tree and FileLayout.md"] },
+        { "purpose": "bios", "path": "No external BIOS file required by the reviewed standalone contract", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:vpinball@93d93d9"] },
+        { "purpose": "keys", "path": "No cryptographic key file required", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:vpinball@93d93d9"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "unresolved", "reason": "No verified Visual Pinball Flatpak package or sandbox runtime.", "evidence": ["source:vpinball@93d93d9"] }
+  },
+  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not synthesize Visual Pinball mappings: runtime SDL device identity, compound InputAction expressions, and table-specific actions require frontend resolution.", "contract": "docs/VISUAL_PINBALL_CONTROLLER_BOUNDARY.md" },
+  "notes": "Source-backed path and persistence capture is complete for standalone Linux, Windows and macOS. The Flatpak package/runtime is not verified; controller writing remains fail-closed."
+}

@@ -20,7 +20,7 @@
     "files": [
       {
         "path": "saturn_bios.bin",
-        "description": "Saturn BIOS",
+        "description": "saturn_bios.bin (Saturn BIOS)",
         "required": true,
         "checksum_status": "published",
         "checksums": [
@@ -42,13 +42,11 @@
   },
   "saves": {
     "status": "supported",
-    "extensions": [
-      ".bin"
-    ],
-    "naming": "YabaSanshiro stores Saturn backup RAM in the fixed bkram.bin image.",
-    "notes": "Per-game backup entries live inside the backup-RAM image; this is not a per-game sidecar extension.",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=true but does not declare a persistent-save filename extension.",
+    "notes": "Persistent save support is declared by the pinned core-info metadata; filename and content semantics are not specified there.",
     "evidence": [
-      "Yaba Sanshiro backup manager/source contract"
+      "yabasanshiro_libretro.info libretro_saves=true"
     ]
   },
   "states": {

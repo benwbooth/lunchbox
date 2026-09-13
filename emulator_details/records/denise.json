@@ -5,6 +5,13 @@
   "sources": [
     {
       "kind": "source",
+      "repo": "https://github.com/piciji/denise",
+      "url": "https://github.com/piciji/denise/commit/1cb7d45117893c76025d32260edb6008001344f9",
+      "commit": "1cb7d45117893c76025d32260edb6008001344f9",
+      "role": "pinned settings.ini and input-mapping implementation"
+    },
+    {
+      "kind": "source",
       "repo": "https://sourceforge.net/projects/deniseemu/",
       "url": "https://sourceforge.net/projects/deniseemu/",
       "role": "official upstream identity/distribution evidence"

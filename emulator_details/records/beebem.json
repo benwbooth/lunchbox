@@ -3,87 +3,23 @@
   "slug": "beebem",
   "emulator": "BeebEm",
   "sources": [
-    {
-      "kind": "docs",
-      "url": "https://github.com/stardot/beebem-windows",
-      "role": "official project/platform and runtime documentation"
-    }
+    { "kind": "source", "repo": "stardot/beebem-windows", "commit": "a982ba6a74af09e801c296b29d514dbd4da09b94", "role": "pinned Windows source for Preferences.cfg, input, state and resource paths" },
+    { "kind": "docs", "url": "https://github.com/stardot/beebem-windows/tree/a982ba6a74af09e801c296b29d514dbd4da09b94", "role": "official project documentation" }
   ],
   "platforms": {
     "windows": {
       "paths": [
-        {
-          "purpose": "config",
-          "path": "~/Documents/BeebEm/Preferences.cfg",
-          "naming": "Documented frontend configuration; controller mappings are stored in the same configuration.",
-          "evidence": [
-            "https://github.com/stardot/beebem-windows"
-          ]
-        },
-        {
-          "purpose": "input",
-          "path": "~/Documents/BeebEm/Preferences.cfg",
-          "naming": "Controller bindings are named frontend actions stored in the documented input configuration.",
-          "evidence": [
-            "https://github.com/stardot/beebem-windows"
-          ]
-        },
-        {
-          "purpose": "saves",
-          "path": "~/Documents/BeebEm/BeebState/",
-          "naming": "Persistent data uses the content basename or emulator-selected media filename.",
-          "evidence": [
-            "https://github.com/stardot/beebem-windows"
-          ]
-        },
-        {
-          "purpose": "states",
-          "path": "~/Documents/BeebEm/BeebState/",
-          "naming": "The upstream frontend selects the state filename/path.",
-          "evidence": [
-            "https://github.com/stardot/beebem-windows"
-          ]
-        },
-        {
-          "purpose": "bios",
-          "path": "Application ROM directory alongside the BeebEm installation",
-          "naming": "Explicit firmware disposition from the upstream project.",
-          "evidence": [
-            "https://github.com/stardot/beebem-windows"
-          ]
-        },
-        {
-          "purpose": "keys",
-          "path": "No external encryption-key file is used.",
-          "naming": "Explicit key-material disposition from the upstream project.",
-          "evidence": [
-            "https://github.com/stardot/beebem-windows"
-          ]
-        }
-      ]
+        { "purpose": "config", "path": "%USERPROFILE%\\Documents\\BeebEm\\Preferences.cfg by default (UserDataFolder/ -Data / -CustomData can override the root)", "naming": "Custom token/key=value text format; CMOSRam and CMOSRamMasterET are stored in Preferences.cfg", "evidence": ["source:stardot/beebem-windows@a982ba6a74af09e801c296b29d514dbd4da09b94 Src/BeebWin.cpp, Src/Preferences.cpp"] },
+        { "purpose": "input", "path": "Preferences.cfg plus optional user key-map files selected by UserKeyMapFile", "naming": "Sticks=Disabled|Joystick|AnalogueMouseStick|DigitalMouseStick is persisted; WinMM JOYSTICKID1 is runtime-only and no physical device id is saved", "evidence": ["source:stardot/beebem-windows@a982ba6a74af09e801c296b29d514dbd4da09b94 Src/BeebWin.cpp, Src/Preferences.cpp, Src/Joystick.cpp"] },
+        { "purpose": "saves", "path": "Default data root contains DiscIms/ for bundled or user-selected .ssd/.dsd/.adl/.img media; guest saves are written into attached images", "naming": "Guest filing-system names; host image names are user-selected", "evidence": ["source:stardot/beebem-windows@a982ba6a74af09e801c296b29d514dbd4da09b94 Src/BeebWin.cpp, Src/Disc.cpp"] },
+        { "purpose": "states", "path": "Default data root BeebState\\quicksave.uefstate; numbered quick saves use quicksaveN.uefstate; user state paths are selected by the frontend", "naming": ".uefstate BeebState format; quicksave and quicksaveN are the built-in slot names", "evidence": ["source:stardot/beebem-windows@a982ba6a74af09e801c296b29d514dbd4da09b94 Src/BeebState.cpp, Src/BeebWin.cpp"] },
+        { "purpose": "bios", "path": "Default data root BeebFile\\ (model-specific ROM tree), with ROM selection persisted in Roms.cfg", "naming": "Model/subsystem filenames are source resource names; no universal checksum asserted", "evidence": ["source:stardot/beebem-windows@a982ba6a74af09e801c296b29d514dbd4da09b94 Src/BeebWin.cpp, Src/RomConfigDialog.cpp, UserData/BeebFile tree"] },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:stardot/beebem-windows@a982ba6a74af09e801c296b29d514dbd4da09b94 (primary source cited by this record; keys capture remains unresolved for windows)"]}]
     }
   },
   "platform_gaps": {
-    "linux": {
-      "status": "no_verified_package",
-      "reason": "The upstream project does not document a package for this host.",
-      "evidence": [
-        "https://github.com/stardot/beebem-windows"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "no_verified_package",
-      "reason": "The upstream project does not document a package for this host.",
-      "evidence": [
-        "https://github.com/stardot/beebem-windows"
-      ]
-    },
-    "macos": {
-      "status": "no_verified_package",
-      "reason": "The upstream project does not document a package for this host.",
-      "evidence": [
-        "https://github.com/stardot/beebem-windows"
-      ]
-    }
+    "linux": { "status": "unsupported", "reason": "Pinned project is the Windows BeebEm port", "evidence": ["source:stardot/beebem-windows@a982ba6a74af09e801c296b29d514dbd4da09b94"] },
+    "linux-flatpak": { "status": "unsupported", "reason": "No verified Linux/Flatpak target in the pinned Windows project", "evidence": ["source:stardot/beebem-windows@a982ba6a74af09e801c296b29d514dbd4da09b94"] },
+    "macos": { "status": "unsupported", "reason": "No verified macOS target in the pinned Windows project", "evidence": ["source:stardot/beebem-windows@a982ba6a74af09e801c296b29d514dbd4da09b94"] }
   }
 }

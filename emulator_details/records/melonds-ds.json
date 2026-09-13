@@ -6,47 +6,100 @@
     {
       "kind": "source",
       "repo": "https://github.com/JesseTG/melonds-ds",
-      "url": "https://github.com/JesseTG/melonds-ds",
-      "role": "official upstream project identity and implementation"
+      "commit": "bc4e4b67d2d470d7c682810a1e892cafd6f9082b",
+      "url": "https://github.com/JesseTG/melonds-ds/tree/bc4e4b67d2d470d7c682810a1e892cafd6f9082b",
+      "role": "pinned libretro core source"
     },
     {
       "kind": "docs",
-      "url": "https://github.com/JesseTG/melonds-ds",
-      "role": "official distribution or project documentation"
+      "url": "https://github.com/JesseTG/melonds-ds/blob/bc4e4b67d2d470d7c682810a1e892cafd6f9082b/README.md",
+      "role": "core installation, BIOS, saves and state documentation"
     }
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official melonDS DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/JesseTG/melonds-ds",
-        "host capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "RetroArch's retroarch.cfg and core options; melonDS DS has no native config file.",
+          "naming": "Libretro frontend configuration, not a standalone melonDS DS profile.",
+          "status": "captured",
+          "evidence": [
+            "source:src/libretro @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "RetroArch port 1 RETRO_DEVICE_JOYPAD plus pointer/mouse/analog APIs; host mapping is RetroArch-owned.",
+          "naming": "Nintendo DS core port; no standalone SDL device selector.",
+          "status": "captured",
+          "evidence": [
+            "source:src/libretro/info.cpp @bc4e4b6",
+            "source:src/libretro/input/input.cpp @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "RetroArch save directory, normally <content basename>.srm/.sav according to core info and subsystem metadata.",
+          "naming": "Frontend-owned content-basename naming; the pinned core metadata/source exposes .srm/.sav save data.",
+          "status": "captured",
+          "evidence": [
+            "source:melondsds_libretro.info @bc4e4b6",
+            "source:src/libretro/sram.cpp @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "RetroArch serialized state directory using frontend-generated .state naming; homebrew and DSi limitations apply.",
+          "naming": "Core advertises savestate support; README says homebrew savestates are unsupported/limited and DSi mode does not support them.",
+          "status": "captured",
+          "evidence": [
+            "source:melondsds_libretro.info @bc4e4b6",
+            "docs:README.md @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "RetroArch system/melonDS DS/: bios7.bin, bios9.bin, dsi_bios7.bin, dsi_bios9.bin; firmware/NAND filenames are core-option selected. Built-in replacements cover many games.",
+          "naming": "DS ARM7/ARM9 BIOS names are fixed; firmware and NAND are user-selected images.",
+          "status": "captured",
+          "evidence": [
+            "docs:README.md @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "status": "not_required",
+          "evidence": [
+            "docs:README.md @bc4e4b6"
+          ]
+        }
       ]
-    },
+    }
+  },
+  "platform_gaps": {
     "linux-flatpak": {
       "status": "unresolved",
-      "reason": "The official melonDS DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "reason": "melonDS DS is a libretro core; Flatpak behavior is determined by the chosen RetroArch package and its sandbox paths, so no standalone host contract is captured.",
       "evidence": [
-        "official:https://github.com/JesseTG/melonds-ds",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official melonDS DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/JesseTG/melonds-ds",
-        "host capture intentionally withheld until all six purposes are source-backed"
+        "source:README.md @bc4e4b6"
       ]
     },
     "windows": {
       "status": "unresolved",
-      "reason": "The official melonDS DS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
+      "reason": "The core is distributed as a libretro DLL; RetroArch owns config, input, save and state roots, so no standalone host contract is captured.",
       "evidence": [
-        "official:https://github.com/JesseTG/melonds-ds",
-        "host capture intentionally withheld until all six purposes are source-backed"
+        "docs:README.md @bc4e4b6"
+      ]
+    },
+    "macos": {
+      "status": "unresolved",
+      "reason": "The core is distributed as a libretro dylib; RetroArch owns config, input, save and state roots, so no standalone host contract is captured.",
+      "evidence": [
+        "docs:README.md @bc4e4b6"
       ]
     }
-  }
+  },
+  "notes": "No native standalone adapter is implemented. Use the existing RetroArch/libretro controller path; runtime core/frontend activation remains unverified."
 }

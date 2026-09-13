@@ -1,1 +1,78 @@
-{"schema_version":1,"slug":"retro-virtual-machine","emulator":"Retro Virtual Machine","sources":[{"kind":"source","url":"https://www.retrovirtualmachine.org/","role":"official project identity"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official Retro Virtual Machine source does not establish an exact six-purpose host contract.","evidence":["official:https://www.retrovirtualmachine.org/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"linux-flatpak":{"status":"unresolved","reason":"The official Retro Virtual Machine source does not establish an exact six-purpose host contract.","evidence":["official:https://www.retrovirtualmachine.org/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"macos":{"status":"unresolved","reason":"The official Retro Virtual Machine source does not establish an exact six-purpose host contract.","evidence":["official:https://www.retrovirtualmachine.org/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"windows":{"status":"unresolved","reason":"The official Retro Virtual Machine source does not establish an exact six-purpose host contract.","evidence":["official:https://www.retrovirtualmachine.org/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]}}}
+{
+  "schema_version": 1,
+  "slug": "retro-virtual-machine",
+  "emulator": "Retro Virtual Machine",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/jcgamestoy/retrovm1",
+      "commit": "e2b3cbeda8f96d92947a1a1d004e2548da95db33",
+      "url": "https://github.com/jcgamestoy/retrovm1/tree/e2b3cbeda8f96d92947a1a1d004e2548da95db33",
+      "role": "last public Retro Virtual Machine 1.1.x source; v2 is not source-published"
+    },
+    {
+      "kind": "docs",
+      "url": "https://retrovirtualmachine.org/",
+      "role": "official current product identity and supported host scope"
+    },
+    {
+      "kind": "artifact",
+      "url": "https://static.retrovm.org/release/2.1.20/RetroVirtualMachine.2.1.20.dmg",
+      "version": "2.1.20",
+      "sha256": "01d3d60e419c1dcbaf7185aa465ea60dd072c0d3205792f0ea6adb97d4d78301",
+      "role": "current macOS release artifact metadata cross-checked by Homebrew cask"
+    },
+    {
+      "kind": "docs",
+      "url": "https://retrovirtualmachine.org/doc/",
+      "role": "official documentation status; page states documentation is still being developed"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/RETRO_VIRTUAL_MACHINE_CONTROLLER_BOUNDARY.md",
+      "role": "fail-closed current-release controller boundary"
+    }
+  ],
+  "platform_gaps": {
+    "linux": {
+      "status": "unresolved",
+      "reason": "The official site publishes Linux x64 packages, but the current v2 binary is not source-published and the available v1 source does not establish the v2 Linux config, input, save, state, firmware, and key paths as one compatible contract.",
+      "evidence": [
+        "official:https://retrovirtualmachine.org/download/ lists v2.1.20 Linux x64 .deb and .zip artifacts",
+        "source:README.md says v2.0.7 and later multi-host implementation is not open source @e2b3cbeda8f9",
+        "official:https://retrovirtualmachine.org/doc/ states the documentation section is still being developed"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The official download page lists Linux archives and a .deb but no Flatpak package or manifest.",
+      "evidence": [
+        "official:https://retrovirtualmachine.org/download/ current release list",
+        "official:https://retrovirtualmachine.org/"
+      ]
+    },
+    "windows": {
+      "status": "unresolved",
+      "reason": "The official site publishes a Windows x64 binary, but current v2 persistence and controller paths are not source-published; the pinned v1 source is macOS-only and cannot safely describe v2 Windows behavior.",
+      "evidence": [
+        "official:https://retrovirtualmachine.org/ lists Windows among supported hosts",
+        "official:https://retrovirtualmachine.org/download/ lists the v2.1.20 Windows x64 artifact",
+        "source:README.md limits the public source branch to macOS and says current multi-host v2 is not open source @e2b3cbeda8f9"
+      ]
+    },
+    "macos": {
+      "status": "unresolved",
+      "reason": "The official site publishes a macOS v2 artifact and the v1 source exposes a macOS .rvm document and gamepads.json implementation, but no source-backed proof shows those v1 formats remain compatible with the current v2 release.",
+      "evidence": [
+        "official:https://retrovirtualmachine.org/download/ lists v2.1.20 MacOs artifact",
+        "source:Architectures/rvmArchitecture.m and Input/rvmInputManager.m establish v1 .rvm/gzip-JSON and gamepads.json paths @e2b3cbeda8f9",
+        "artifact:https://static.retrovm.org/release/2.1.20/RetroVirtualMachine.2.1.20.dmg sha256=01d3d60e"
+      ]
+    }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not invent a Retro Virtual Machine controller writer: the current v2 desktop release is not source-published, and the pinned v1 HID mapping bytes are not a verified cross-version contract."
+  },
+  "notes": "Retro Virtual Machine v2.1.20 is distributed for Windows, macOS and Linux; no official Flatpak is listed. The last public source is v1.1.x for macOS, so current runtime launch, persistence and effective controller input remain unverified."
+}

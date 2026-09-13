@@ -3,14 +3,14 @@
   "slug": "cxbx-reloaded",
   "emulator": "Cxbx-Reloaded",
   "sources": [
-    { "kind": "source", "repo": "Cxbx-Reloaded/Cxbx-Reloaded", "role": "official Windows/Wine distribution, path and input implementation" },
+    { "kind": "source", "repo": "Cxbx-Reloaded/Cxbx-Reloaded", "commit": "585c49a50af1255ab155099e06f24505f9c5a800", "role": "official Windows/Wine distribution, settings and input implementation" },
     { "kind": "docs", "url": "https://cxbx-reloaded.co.uk/", "role": "official downloads and supported host statement" }
   ],
   "platforms": {
     "windows": {
       "paths": [
         { "purpose": "config", "path": "%APPDATA%\\Cxbx-Reloaded\\ (the emulator's user-data root; GUI settings and profiles are stored here).", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded path code", "docs:cxbx-reloaded.co.uk downloads/wiki"] },
-        { "purpose": "input", "path": "Controller configuration is written by the Cxbx-Reloaded GUI into its user-data/configuration files; XInput/DirectInput gamepad bindings are selected through the controller settings UI.", "naming": "No stable public controller-profile text grammar is documented; preserve the release-generated settings rather than guessing names.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded GUI/input code", "docs:Cxbx-Reloaded wiki controller setup"] },
+        { "purpose": "input", "path": "settings.ini stores input-port-0..3 sections with Type, DeviceName, ProfileName, TopSlot, and BottomSlot, plus input-profile-N sections with Type, quoted ProfileName, DeviceName, and source-defined control-name keys.", "naming": "InputManager qualifies runtime host devices as API/id/name (for example XInput/0/Gamepad) and binds the exact string to an Xbox port. Profile controls are caller-supplied because Duke/S, arcade, lightgun, and Steel Battalion topologies differ.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded@585c49a Settings.cpp", "source:Cxbx-Reloaded/Cxbx-Reloaded@585c49a InputManager.cpp and InputDevice.cpp", "source:Cxbx-Reloaded/Cxbx-Reloaded@585c49a XInputPad.cpp, SdlJoystick.cpp, DInputKeyboardMouse.cpp"] },
         { "purpose": "saves", "path": "%APPDATA%\\Cxbx-Reloaded\\EmuDisk\\Partition1\\UDATA\\<title-id>\\<save-id>\\ (emulated Xbox user-data partition).", "naming": "Xbox title/save identifiers are directory names below Partition1/UDATA; files use the original Xbox save-container layout.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded EmuDisk/FilePaths code", "docs:Cxbx-Reloaded wiki"] },
         { "purpose": "states", "path": "No documented general-purpose Cxbx-Reloaded save-state facility or state-slot directory.", "naming": "Not applicable.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded frontend code", "docs:cxbx-reloaded.co.uk/wiki"] },
         { "purpose": "bios", "path": "Cxbx-Reloaded uses HLE Xbox kernel/firmware components; it does not require a retail BIOS ROM file for ordinary XBE launches.", "naming": "No universal external BIOS filename/checksum is published; EEPROM/HDD images are separate emulated storage, not BIOS.", "evidence": ["source:Cxbx-Reloaded/Cxbx-Reloaded kernel/HLE source", "docs:Cxbx-Reloaded README (HLE emulator) "] },

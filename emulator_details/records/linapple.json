@@ -3,50 +3,18 @@
   "slug": "linapple",
   "emulator": "LinApple",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/linappleii/linapple",
-      "url": "https://github.com/linappleii/linapple",
-      "role": "official upstream project identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/linappleii/linapple",
-      "role": "official distribution or project documentation"
-    }
+    {"kind":"source","repo":"https://github.com/linappleii/linapple","commit":"fa31e11b579edec32dd431c8b400a04e60a21dab","url":"https://github.com/linappleii/linapple/tree/fa31e11b579edec32dd431c8b400a04e60a21dab","role":"pinned upstream source"},
+    {"kind":"docs","url":"https://github.com/linappleii/linapple/blob/fa31e11b579edec32dd431c8b400a04e60a21dab/BUILD.md","role":"upstream build, XDG, and platform documentation"}
   ],
-  "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official LinApple source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/linappleii/linapple",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official LinApple source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/linappleii/linapple",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official LinApple source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/linappleii/linapple",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official LinApple source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/linappleii/linapple",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    }
-  }
+  "platforms": {
+    "linux": {"paths": [
+      {"purpose":"config","path":"~/.config/linapple/linapple.conf after user-local install; use a private copied file for an adapter launch.","naming":"Registry INI sections and key=value lines; source defaults to res/linapple.conf when installed.","status":"captured","evidence":["source:src/core/Registry.cpp @fa31e11","docs:BUILD.md XDG install paths @fa31e11"]},
+      {"purpose":"input","path":"linapple.conf keys Joystick 0/1, Joystick 0/1 Index, Button 1/2, Axis 0/1, and Joystick Exit Enable/Button 0/1; SDL joystick values use runtime enumeration indices.","naming":"joyinfo modes 0=none, 1=SDL joystick, 2/3=keyboard, 4=mouse; no persistent GUID/name selector.","status":"captured","evidence":["source:src/frontends/common/sdl/JoystickFrontend.cpp @fa31e11","source:res/linapple.conf @fa31e11"]},
+      {"purpose":"saves","path":"Guest saves are written inside attached Apple II disk images (.dsk/.do/.po/.2mg/.hdv) selected by the launch arguments.","naming":"Guest/emulated-OS-defined filenames inside user-owned media; no universal LinApple game-save sidecar.","status":"captured","evidence":["docs:README.md disk-image formats @fa31e11"]},
+      {"purpose":"states","path":"SaveState.aws by default; quick slots use SaveStateN.aws in the current working directory unless an explicit snapshot filename is supplied.","naming":"AppleWinSnapshot binary with source tag/version checks; .aws extension.","status":"captured","evidence":["source:src/frontends/common/SaveStateManager.cpp @fa31e11"]},
+      {"purpose":"bios","path":"Built-in Apple II system/peripheral ROMs are compiled into the selected build; -R/--rom accepts a custom system ROM file.","naming":"Custom ROM must be at least APPLE2_ROM_SIZE and no more than 65536 bytes; no universal external BIOS filename/checksum.","status":"captured","evidence":["source:src/frontends/common/AppArgs.cpp @fa31e11","source:src/frontends/common/AppController.cpp @fa31e11"]},
+      {"purpose":"keys","path":"not applicable","naming":"No external cryptographic key file is documented.","status":"not_required","evidence":["source:README.md @fa31e11"]}
+    ]}
+  },
+  "platform_gaps":{"linux-flatpak":{"status":"no_verified_package","reason":"No official Flatpak manifest or package was found for the pinned upstream project.","evidence":["official:https://github.com/linappleii/linapple"]},"windows":{"status":"unsupported","reason":"Pinned BUILD.md documents Linux/POSIX builds and no verified native Windows package.","evidence":["source:BUILD.md @fa31e11"]},"macos":{"status":"unsupported","reason":"No verified native macOS package or platform path contract is published by the pinned source.","evidence":["source:BUILD.md @fa31e11"]}}
 }

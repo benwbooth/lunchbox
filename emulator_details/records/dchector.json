@@ -1,1 +1,22 @@
-{"schema_version":1,"slug":"dchector","emulator":"DCHector","sources":[{"kind":"source","repo":"http://dchector.free.fr/","url":"http://dchector.free.fr/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"http://dchector.free.fr/","role":"official documentation/platform evidence"}],"platform_gaps":{"linux":{"status":"no_verified_package","reason":"The official dchector distribution does not publish a package for linux.","evidence":["official:http://dchector.free.fr/"]},"linux-flatpak":{"status":"no_verified_package","reason":"The official dchector distribution does not publish a package for linux-flatpak.","evidence":["official:http://dchector.free.fr/"]},"windows":{"status":"unresolved","reason":"No source-backed exact config/input/firmware/save/state contract was established for windows.","evidence":["official:http://dchector.free.fr/"]},"macos":{"status":"no_verified_package","reason":"The official dchector distribution does not publish a package for macos.","evidence":["official:http://dchector.free.fr/"]}}}
+{
+  "schema_version": 1,
+  "slug": "dchector",
+  "emulator": "DCHector",
+  "sources": [
+    { "kind": "docs", "url": "http://dchector.free.fr/", "role": "official upstream identity (site is currently challenge-protected)" },
+    { "kind": "artifact", "url": "https://www.emu-france.com/?wpfb_dl=2342", "version": "DCHector v0.1 (2005-11-10)", "sha256": "eb4c69ff01e033523d11113b64cef38a78b804c56abe71cb2788129737b28c1d", "role": "byte-pinned Windows executable archive; third-party preservation mirror" }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "No external config file or registry location is exposed by the pinned 74 KiB artifact", "naming": "Static artifact inspection exposes the Options UI but no authorable serialized config grammar", "status": "unresolved", "evidence": ["artifact:https://www.emu-france.com/?wpfb_dl=2342 sha256 eb4c69ff01e033523d11113b64cef38a78b804c56abe71cb2788129737b28c1d", "artifact:DCHector-v0.1.txt"] },
+      { "purpose": "input", "path": "Options > Keyboard/joystick is configured in the Windows UI; physical identity and persisted mapping format are not exposed", "naming": "No source-backed controller writer boundary", "status": "unresolved", "evidence": ["artifact:https://www.emu-france.com/?wpfb_dl=2342 sha256 eb4c69ff01e033523d11113b64cef38a78b804c56abe71cb2788129737b28c1d", "docs:https://hyperspin-fe.com/forums/topic/4106-question-for-expert-module-ahk-writers/ (UI behavior only; not authoritative source)"] },
+        { "purpose": "saves", "path": "User-selected Hector cassette/disk media; the artifact changelog documents HRX cassette read/write, but no host save directory", "naming": "Guest media naming is user-selected; printer output is dchector.prn beside the executable", "status": "unresolved", "evidence": ["artifact:DCHector-v0.1.txt", "artifact:https://www.emu-france.com/?wpfb_dl=2342 sha256 eb4c69ff01e033523d11113b64cef38a78b804c56abe71cb2788129737b28c1d"] },
+        { "purpose": "states", "path": "No save-state file or slot grammar is exposed by the pinned artifact", "naming": "Unresolved; do not infer a state format from UI strings", "status": "unresolved", "evidence": ["artifact:https://www.emu-france.com/?wpfb_dl=2342 sha256 eb4c69ff01e033523d11113b64cef38a78b804c56abe71cb2788129737b28c1d"] },
+        { "purpose": "bios", "path": "Firmware/ROM appears bundled or internal to dchector.exe; no external filename or checksum is documented", "naming": "No verified BIOS import path", "status": "unresolved", "evidence": ["artifact:https://www.emu-france.com/?wpfb_dl=2342 sha256 eb4c69ff01e033523d11113b64cef38a78b804c56abe71cb2788129737b28c1d", "artifact:DCHector-v0.1.txt"] },
+        { "purpose": "keys", "path": "No external encryption-key file", "naming": "Not applicable", "status": "not_required", "evidence": ["artifact:https://www.emu-france.com/?wpfb_dl=2342 sha256 eb4c69ff01e033523d11113b64cef38a78b804c56abe71cb2788129737b28c1d"] }
+      ]
+    }
+  },
+  "platform_gaps": { "linux": { "status": "no_verified_package", "reason": "The pinned artifact is a Windows executable and no Linux package is published", "evidence": ["artifact:DCHector v0.1 archive"] }, "linux-flatpak": { "status": "no_verified_package", "reason": "No Linux/Flatpak package is published", "evidence": ["artifact:DCHector v0.1 archive"] }, "macos": { "status": "no_verified_package", "reason": "No macOS package is published", "evidence": ["artifact:DCHector v0.1 archive"] } }
+}

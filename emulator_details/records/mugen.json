@@ -1,1 +1,14 @@
-{"schema_version":1,"slug":"mugen","emulator":"MUGEN","sources":[{"kind":"source","repo":"https://www.elecbyte.com/mugendocs-11b1/mugen.html","url":"https://www.elecbyte.com/mugendocs-11b1/mugen.html","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://www.elecbyte.com/mugendocs-11b1/mugen.html","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows/Linux/macOS; official project inactive; the requested purpose families were not all source-established for this host.","evidence":["official:https://www.elecbyte.com/mugendocs-11b1/mugen.html"]},"linux-flatpak":{"status":"unresolved","reason":"Windows/Linux/macOS; official project inactive; the requested purpose families were not all source-established for this host.","evidence":["official:https://www.elecbyte.com/mugendocs-11b1/mugen.html"]},"windows":{"status":"unresolved","reason":"Windows/Linux/macOS; official project inactive; the requested purpose families were not all source-established for this host.","evidence":["official:https://www.elecbyte.com/mugendocs-11b1/mugen.html"]},"macos":{"status":"unresolved","reason":"Windows/Linux/macOS; official project inactive; the requested purpose families were not all source-established for this host.","evidence":["official:https://www.elecbyte.com/mugendocs-11b1/mugen.html"]}}}
+{
+  "schema_version": 1,
+  "slug": "mugen",
+  "emulator": "MUGEN",
+  "sources": [{"kind":"docs","url":"https://www.elecbyte.com/mugendocs-11b1/mugen.html","role":"Elecbyte official MUGEN 1.1 documentation; no source repository or current binary pin is published"}],
+  "platforms": {},
+  "platform_gaps": {
+    "linux":{"status":"unsupported","reason":"No source-backed Linux distribution or persistent controller-profile format is available from the inactive Elecbyte project.","evidence":["official:https://www.elecbyte.com/mugendocs-11b1/mugen.html"]},
+    "linux-flatpak":{"status":"unsupported","reason":"No official Flatpak package or source-backed controller-profile format.","evidence":["official:https://www.elecbyte.com/mugendocs-11b1/mugen.html"]},
+    "windows":{"status":"unsupported","reason":"Official documentation exists, but no current source/distribution pin and no safe profile-writer contract were found.","evidence":["official:https://www.elecbyte.com/mugendocs-11b1/mugen.html"]},
+    "macos":{"status":"unsupported","reason":"No official macOS distribution or source-backed controller-profile format.","evidence":["official:https://www.elecbyte.com/mugendocs-11b1/mugen.html"]}
+  },
+  "notes":"Fail closed: do not confuse MUGEN's game-specific system.def/input documentation with a stable host controller-profile writer. Ikemen GO is a separate engine and is not substituted for exact MUGEN. Runtime, binary version, save/state paths, and controller persistence remain unverified."
+}

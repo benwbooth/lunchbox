@@ -23,6 +23,16 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/melonDS/melonDS.toml (or $XDG_CONFIG_HOME/melonDS/, with portable/ beside the executable taking precedence); DS mappings are Instance0.Joystick.<Btn>, Instance0.JoystickID, and Joystick.HK_*",
+          "naming": "TOML values encode the twelve DS buttons (A, B, Select, Start, Right, Left, Up, Down, R, L, X, Y), SDL joystick device index, and hotkey bindings; the physical device is selected through the SDL runtime",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/Config.cpp Joy_A..Joy_Y, JoystickID, HKJoy_* keys @906e9eb",
+            "source:melonDS src/frontend/qt_sdl/main.cpp pathInit config and portable-directory selection @906e9eb",
+            "repo:docs/MELONDS_STANDALONE_PROGRESS.md (pinned controller contract)"
+          ]
+        },
+        {
           "purpose": "saves",
           "path": "Alongside the ROM by default: <ROM basename>.sav (DS and GBA-slot saves); the SaveFilePath key in melonDS.toml redirects all saves to one directory; secondary instances append an instance suffix to the filename",
           "naming": "<ROM basename>.sav next to the ROM (or <SaveFilePath>/<ROM basename>.sav); .dsv is the pre-0.9.3 legacy extension and only appears in the import dialog filter (*.sav *.bin *.dsv), not in current saves",
@@ -53,6 +63,13 @@
             "source:melonDS src/frontend/qt_sdl/EmuInstance.cpp kWifiSettingsPath=\"wfcsettings.bin\" @906e9eb",
             "docs:melonDS FAQ (bios9.bin 4KB, bios7.bin 16KB, firmware.bin 128/256/512KB; DSi dumps)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:melonDS @906e9eb (DS BIOS/firmware paths are ordinary dumps; no cryptographic-key file is defined)"]
         }
       ],
       "notes": "Configuration, wfcsettings.bin and any redirected saves/states all share the single melonDS directory (Platform::GetLocalFilePath resolves relative paths against it)."
@@ -67,6 +84,15 @@
             "docs:Flathub appstream net.kuribo64.melonDS (verified via flathub.org API)",
             "source:flathub/net.kuribo64.melonDS net.kuribo64.melonDS.yml app-id + command melonDS",
             "source:melonDS main.cpp pathInit (config dir = ConfigLocation + \"melonDS\") @906e9eb"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.var/app/net.kuribo64.melonDS/config/melonDS/melonDS.toml; the same Instance0.Joystick.<Btn>, Instance0.JoystickID, and Joystick.HK_* TOML bindings apply inside the Flatpak",
+          "naming": "Same melonDS TOML button, SDL joystick-index, and hotkey grammar as native Linux",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/Config.cpp Joy_A..Joy_Y, JoystickID, HKJoy_* @906e9eb",
+            "source:flathub/net.kuribo64.melonDS net.kuribo64.melonDS.yml app-id and XDG config root"
           ]
         },
         {
@@ -94,6 +120,13 @@
             "source:melonDS src/frontend/qt_sdl/Config.cpp BIOS path keys @906e9eb",
             "docs:melonDS FAQ (required dump names/sizes)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:melonDS @906e9eb (DS BIOS/firmware paths are ordinary dumps; no cryptographic-key file is defined)"]
         }
       ],
       "notes": "Flatpak ships the Qt frontend; controller contract keys (Instance0.Joystick*, JoystickID) apply unchanged inside the sandbox."
@@ -109,6 +142,15 @@
             "source:melonDS src/frontend/qt_sdl/main.cpp pathInit WIN32_PORTABLE branch @906e9eb",
             "source:Qt qstandardpaths_win.cpp maps ConfigLocation to FOLDERID_LocalAppData",
             "docs:melonDS GitHub issue #950 and kuribo64 board reports (config written beside melonDS.exe)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Next to melonDS.exe in portable official builds (or %LOCALAPPDATA%\\melonDS\\melonDS.toml in non-portable builds); mappings are Instance0.Joystick.<Btn>, Instance0.JoystickID, and Joystick.HK_*",
+          "naming": "Same melonDS TOML button, SDL joystick-index, and hotkey grammar as Linux",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/CMakeLists.txt PORTABLE default and main.cpp pathInit @906e9eb",
+            "source:melonDS src/frontend/qt_sdl/Config.cpp Joy_A..Joy_Y, JoystickID, HKJoy_* @906e9eb"
           ]
         },
         {
@@ -135,6 +177,13 @@
             "source:melonDS src/frontend/qt_sdl/Config.cpp BIOS keys @906e9eb",
             "docs:melonDS FAQ (file names and sizes)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:melonDS @906e9eb (DS BIOS/firmware paths are ordinary dumps; no cryptographic-key file is defined)"]
         }
       ],
       "notes": "Lunchbox should not assume %APPDATA%: the portable-next-to-exe behavior is the shipped default on Windows."
@@ -149,6 +198,15 @@
             "source:melonDS src/frontend/qt_sdl/main.cpp pathInit (ConfigLocation + mkdir \"melonDS\"; .app-bundle portable check) @906e9eb",
             "source:Qt documentation QStandardPaths::ConfigLocation = ~/Library/Preferences on macOS",
             "docs:melonDS board reports ~/Library/Preferences/melonDS/melonDS.ini and .../melonDS.toml (kuribo64 threads 5282, 8167)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Preferences/melonDS/melonDS.toml (or portable/ beside melonDS.app); mappings are Instance0.Joystick.<Btn>, Instance0.JoystickID, and Joystick.HK_*",
+          "naming": "Same melonDS TOML button, SDL joystick-index, and hotkey grammar as Linux",
+          "evidence": [
+            "source:melonDS src/frontend/qt_sdl/main.cpp pathInit macOS ConfigLocation and portable bundle check @906e9eb",
+            "source:melonDS src/frontend/qt_sdl/Config.cpp Joy_A..Joy_Y, JoystickID, HKJoy_* @906e9eb"
           ]
         },
         {
@@ -175,6 +233,13 @@
             "source:melonDS src/frontend/qt_sdl/Config.cpp BIOS keys + FreeBIOS.cpp @906e9eb",
             "docs:melonDS FAQ (dump requirements)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:melonDS @906e9eb (DS BIOS/firmware paths are ordinary dumps; no cryptographic-key file is defined)"]
         }
       ],
       "notes": "The macOS release is an .app bundle (melonDS-1.1-macOS-universal.zip)."

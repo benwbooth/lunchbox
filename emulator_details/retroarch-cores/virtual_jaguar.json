@@ -44,14 +44,12 @@
     ]
   },
   "saves": {
-    "status": "content_dependent",
-    "extensions": [
-      ".srm"
-    ],
-    "naming": "Jaguar EEPROM persistence, when supported, uses the RetroArch content basename.",
-    "notes": "Virtual Jaguar save support is cartridge-dependent.",
+    "status": "supported",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=true but does not declare a persistent-save filename extension.",
+    "notes": "Persistent save support is declared by the pinned core-info metadata; filename and content semantics are not specified there.",
     "evidence": [
-      "Virtual Jaguar libretro save implementation"
+      "virtualjaguar_libretro.info libretro_saves=true"
     ]
   },
   "states": {

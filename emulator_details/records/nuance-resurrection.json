@@ -1,1 +1,144 @@
-{"schema_version":1,"slug":"nuance-resurrection","emulator":"Nuance Resurrection","sources":[{"kind":"source","repo":"https://github.com/andkrau/NuanceResurrection","url":"https://github.com/andkrau/NuanceResurrection","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://github.com/andkrau/NuanceResurrection","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows/Linux listed; release binary currently Windows-only; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/andkrau/NuanceResurrection"]},"linux-flatpak":{"status":"unresolved","reason":"Windows/Linux listed; release binary currently Windows-only; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/andkrau/NuanceResurrection"]},"windows":{"status":"unresolved","reason":"Windows/Linux listed; release binary currently Windows-only; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/andkrau/NuanceResurrection"]},"macos":{"status":"unresolved","reason":"Windows/Linux listed; release binary currently Windows-only; the requested purpose families were not all source-established for this host.","evidence":["official:https://github.com/andkrau/NuanceResurrection"]}}}
+{
+  "schema_version": 1,
+  "slug": "nuance-resurrection",
+  "emulator": "Nuance Resurrection",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/andkrau/NuanceResurrection",
+      "commit": "700d28553f3a06b16385ed9e48f194377e131b03",
+      "url": "https://github.com/andkrau/NuanceResurrection/tree/700d28553f3a06b16385ed9e48f194377e131b03",
+      "role": "pinned source"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "nuance.cfg beside executable or explicit config path.",
+          "status": "captured",
+          "evidence": [
+            "source:nuance.cfg @700d285"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "[Controller1Mappings] actions CPAD/DPAD/A/B/L/R/NUON/START with KEY_, JOYBUT_, JOYAXIS_, JOYPOV_ values.",
+          "status": "captured",
+          "evidence": [
+            "source:nuance.cfg @700d285",
+            "source:README.md joystick support @700d285"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "FlashEEPROM.bin for emulated flash persistence; game-media saves remain inside ISO/CHD/ZIP content.",
+          "naming": "FlashEEPROM.bin plus guest-managed data inside the selected media container; no separate per-game sidecar is asserted.",
+          "status": "captured",
+          "evidence": [
+            "source:README.md @700d285"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No emulator save-state feature. The Linux UI exposes game loading, reset/reload, configuration saving and debug snapshots, but no machine-state serializer or state command.",
+          "naming": "Not applicable; no state file, extension, or slot is implemented.",
+          "status": "not_supported",
+          "evidence": [
+            "source:src/NuanceUI.cpp menus and reset/reload actions @700d285",
+            "source:src/NuanceMain.cpp load/reset/config actions @700d285"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "bios.cof, minibios.cof and minibiosX.cof shipped beside executable.",
+          "status": "captured",
+          "evidence": [
+            "source:README.md @700d285"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "status": "not_required",
+          "evidence": [
+            "source:nuance.cfg @700d285"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "nuance.cfg beside executable or explicit config path.",
+          "status": "captured",
+          "evidence": [
+            "source:nuance.cfg @700d285"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Same [Controller1Mappings] grammar; Windows DirectInput JOY bindings are source-defined.",
+          "status": "captured",
+          "evidence": [
+            "source:README.md @700d285"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "FlashEEPROM.bin and game-media saves.",
+          "naming": "FlashEEPROM.bin plus guest-managed data inside the selected media container; no separate per-game sidecar is asserted.",
+          "status": "captured",
+          "evidence": [
+            "source:README.md @700d285"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No emulator save-state feature. The Windows shell exposes game loading, reset/reload and configuration saving, but no machine-state serializer or state command.",
+          "naming": "Not applicable; no state file, extension, or slot is implemented.",
+          "status": "not_supported",
+          "evidence": [
+            "source:src/NuanceMain.cpp dialog commands and Load/reset/config actions @700d285",
+            "source:src/NuonEnvironment.cpp config persistence surface @700d285"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "bios.cof/minibios*.cof beside executable.",
+          "status": "captured",
+          "evidence": [
+            "source:README.md @700d285"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "status": "not_required",
+          "evidence": [
+            "source:nuance.cfg @700d285"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "unsupported",
+      "reason": "No official Flatpak package verified.",
+      "evidence": [
+        "source:README.md @700d285"
+      ]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "No verified native macOS build in pinned source.",
+      "evidence": [
+        "source:CMakeLists.txt @700d285"
+      ]
+    }
+  },
+  "notes": "Writer patches only source-defined controller actions in an isolated copied config. Runtime device identity and gameplay remain unverified."
+}

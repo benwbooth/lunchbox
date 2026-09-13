@@ -3,50 +3,18 @@
   "slug": "loopymse",
   "emulator": "LoopyMSE",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/PSI-Rockin/LoopyMSE",
-      "url": "https://github.com/PSI-Rockin/LoopyMSE",
-      "role": "official upstream project identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/PSI-Rockin/LoopyMSE",
-      "role": "official distribution or project documentation"
-    }
+    {"kind":"source","repo":"https://github.com/PSI-Rockin/LoopyMSE","commit":"f6ad0bb9e40eafb0907bcd74223ad5b17c7f66cd","url":"https://github.com/PSI-Rockin/LoopyMSE/tree/f6ad0bb9e40eafb0907bcd74223ad5b17c7f66cd","role":"pinned upstream source"},
+    {"kind":"docs","url":"https://github.com/PSI-Rockin/LoopyMSE/blob/f6ad0bb9e40eafb0907bcd74223ad5b17c7f66cd/README.md","role":"upstream usage and platform documentation"}
   ],
-  "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official LoopyMSE source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/PSI-Rockin/LoopyMSE",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official LoopyMSE source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/PSI-Rockin/LoopyMSE",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official LoopyMSE source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/PSI-Rockin/LoopyMSE",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official LoopyMSE source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/PSI-Rockin/LoopyMSE",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    }
-  }
+  "platforms": {
+    "linux": {"paths": [
+      {"purpose":"config","path":"No persistent emulator configuration file is defined by the reviewed source.","naming":"Command-line launch only: <game ROM> <BIOS> [sound BIOS].","status":"captured","evidence":["source:src/sdl/main.cpp @f6ad0bb","docs:README.md @f6ad0bb"]},
+      {"purpose":"input","path":"No persistent controller path; src/sdl/main.cpp translates fixed keyboard keys Z/X/A/S/Q/W, arrows, and Enter.","naming":"No gamepad map, joystick slot, or physical-device selector.","status":"captured","evidence":["source:src/sdl/main.cpp @f6ad0bb","source:src/input/input.cpp @f6ad0bb"]},
+      {"purpose":"saves","path":"<game ROM directory>/<game ROM basename>.sav.","naming":"README documents a .sav sidecar beside the ROM.","status":"captured","evidence":["docs:README.md @f6ad0bb"]},
+      {"purpose":"states","path":"No emulator save-state feature. The complete SDL event loop exposes only fixed keyboard input/window events, and the only persisted emulation data is cartridge SRAM.","naming":"Not applicable; no state serializer, state hotkey, path, extension, or slot exists.","status":"not_supported","evidence":["source:src/sdl/main.cpp event loop and shutdown @f6ad0bb","source:src/core/cart.cpp SRAM-only persistence @f6ad0bb","docs:README.md usage and controls @f6ad0bb"]},
+      {"purpose":"bios","path":"BIOS is the required second command-line argument; sound BIOS is an optional third argument.","naming":"User-supplied filenames; no canonical checksum published.","status":"captured","evidence":["docs:README.md @f6ad0bb","source:src/sdl/main.cpp @f6ad0bb"]},
+      {"purpose":"keys","path":"not applicable","naming":"No cryptographic key file is documented.","status":"not_required","evidence":["docs:README.md @f6ad0bb"]}
+    ]}
+  },
+  "platform_gaps":{"linux-flatpak":{"status":"no_verified_package","reason":"No official Flatpak manifest or package was found for the pinned upstream project.","evidence":["official:https://github.com/PSI-Rockin/LoopyMSE"]},"windows":{"status":"unsupported","reason":"No verified native Windows package or persistence contract was found in the pinned source.","evidence":["source:README.md @f6ad0bb"]},"macos":{"status":"unsupported","reason":"No verified native macOS package or persistence contract was found in the pinned source.","evidence":["source:README.md @f6ad0bb"]}}
 }

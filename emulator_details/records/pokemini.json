@@ -1,1 +1,171 @@
-{"schema_version":1,"slug":"pokemini","emulator":"PokeMini","sources":[{"kind":"source","url":"https://sourceforge.net/projects/pokemini/","role":"official project identity"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official PokeMini source does not establish an exact six-purpose host contract.","evidence":["official:https://sourceforge.net/projects/pokemini/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"linux-flatpak":{"status":"unresolved","reason":"The official PokeMini source does not establish an exact six-purpose host contract.","evidence":["official:https://sourceforge.net/projects/pokemini/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"macos":{"status":"unresolved","reason":"The official PokeMini source does not establish an exact six-purpose host contract.","evidence":["official:https://sourceforge.net/projects/pokemini/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"windows":{"status":"unresolved","reason":"The official PokeMini source does not establish an exact six-purpose host contract.","evidence":["official:https://sourceforge.net/projects/pokemini/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]}}}
+{
+  "schema_version": 1,
+  "slug": "pokemini",
+  "emulator": "PokeMini",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://git.code.sf.net/p/pokemini/code",
+      "commit": "15cc97ff70d6d9d749287ac55cb68198708564f3",
+      "url": "https://sourceforge.net/p/pokemini/code/ci/15cc97ff70d6d9d749287ac55cb68198708564f3/tree/",
+      "role": "official standalone source: SDL/Win32 configuration loading, saving and mapping grammar"
+    },
+    {
+      "kind": "artifact",
+      "url": "https://sourceforge.net/projects/pokemini/files/0.60/pokemini_060_linux32sdl1.zip/download",
+      "sha256": "19de65332abe6d203c7065a70764202f28c974fa851b67cf0fe689a5d5c1f17e",
+      "role": "official Linux SDL artifact v0.60"
+    },
+    {
+      "kind": "artifact",
+      "url": "https://sourceforge.net/projects/pokemini/files/0.60/pokemini_060_win32.zip/download",
+      "sha256": "c3f8a64caa53d460ea691a6d2e5e0177ba5025af262ea9066a0f7677b500af91",
+      "role": "official Windows artifact v0.60"
+    },
+    {
+      "kind": "docs",
+      "url": "https://sourceforge.net/projects/pokemini/",
+      "role": "official project page; v0.60 release, supported OS and GPLv3 evidence"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "pokemini.cfg and pokemini_sdl.cfg beside the emulator executable.",
+          "naming": "Line-oriented key=value files. pokemini.cfg stores BIOS, EEPROM, state, ROM directory, RTC, audio/video, joystick and keyboard mappings; pokemini_sdl.cfg stores SDL display settings. Command-line options override saved values.",
+          "status": "captured",
+          "evidence": [
+            "source:source/CommandLine.c CommandLineConfFile/CommandLineConfSave @15cc97f",
+            "source:platform/sdl/PokeMini_SDL.c CommandLineConfFile @15cc97f"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "pokemini.cfg beside the executable: joyenabled, joyid, joyaxis_dpad, joyhats_dpad, joyplatform, joybutton_menu/a/b/c/up/down/left/right/power/shock, plus primary and alternate keyb_* mappings.",
+          "status": "captured",
+          "naming": "Joystick ID 0-15; button values -1 through 32; keyboard mappings are PokeMini key-table integers. Defaults remain arrows, X/Z/S-or-C, E, A and Esc.",
+          "evidence": [
+            "source:source/CommandLine.c config decode/save mapping fields @15cc97f",
+            "source:platform/sdl/PokeMini_SDL.c config initialization @15cc97f",
+            "artifact:readme.txt Keys & Information from v0.60 Linux artifact"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "pokemini.eep (shared EEPROM default) or -eeprom <file>",
+          "status": "captured",
+          "naming": "EEPROM data is raw `.eep`; -noeepromshare enables per-ROM behavior.",
+          "evidence": [
+            "artifact:readme.txt lines Command-Line -eeprom/-eepromshare from v0.60 Linux artifact"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "pokemini.sta or -state <file>",
+          "status": "captured",
+          "naming": "Savestate is explicitly selected by -state; -nostate is default.",
+          "evidence": [
+            "artifact:readme.txt Command-Line -nostate/-state from v0.60 Linux artifact"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "bios.min beside the emulator; -bios <file> overrides; FreeBIOS fallback",
+          "status": "captured",
+          "naming": "Real BIOS is optional; FreeBIOS is used when absent.",
+          "evidence": [
+            "artifact:readme.txt Keys & Information and Command-Line sections from v0.60 Linux artifact"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic or decryption-key file.",
+          "naming": "Not applicable; keyboard/controller bindings are configuration, not cryptographic key material.",
+          "status": "not_required",
+          "evidence": [
+            "source:official PokeMini standalone tree has BIOS, EEPROM and state loaders but no cryptographic-key loader @15cc97f"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "pokemini.cfg and pokemini_win32.cfg beside the emulator executable.",
+          "naming": "Line-oriented key=value files. pokemini.cfg stores BIOS, EEPROM, state, ROM directory, RTC, audio/video, joystick and keyboard mappings; pokemini_win32.cfg stores Win32 renderer/window settings. Command-line options override saved values.",
+          "status": "captured",
+          "evidence": [
+            "source:source/CommandLine.c CommandLineConfFile/CommandLineConfSave @15cc97f",
+            "source:platform/win32/PokeMini_Win32.c CommandLineConfFile @15cc97f"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "pokemini.cfg beside the executable: joyenabled, joyid, joyaxis_dpad, joyhats_dpad, joyplatform, joybutton_menu/a/b/c/up/down/left/right/power/shock, plus primary and alternate keyb_* mappings.",
+          "status": "captured",
+          "naming": "Joystick ID 0-15; button values -1 through 32; keyboard mappings are PokeMini key-table integers.",
+          "evidence": [
+            "source:source/CommandLine.c config decode/save mapping fields @15cc97f",
+            "source:platform/win32/PokeMini_Win32.c config initialization @15cc97f",
+            "artifact:readme.txt Keys & Information from v0.60 Windows artifact"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "pokemini.eep (shared EEPROM default) or -eeprom <file>",
+          "status": "captured",
+          "naming": "EEPROM data is raw .eep; -noeepromshare enables per-ROM behavior.",
+          "evidence": [
+            "artifact:readme.txt -eeprom/-eepromshare from v0.60 Windows artifact"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "pokemini.sta or -state <file>",
+          "status": "captured",
+          "naming": "Savestate is explicitly selected by -state; -nostate is default.",
+          "evidence": [
+            "artifact:readme.txt -nostate/-state from v0.60 Windows artifact"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "bios.min beside emulator or -bios <file>; FreeBIOS fallback",
+          "status": "captured",
+          "evidence": [
+            "artifact:readme.txt BIOS and -bios sections from v0.60 Windows artifact"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic or decryption-key file.",
+          "naming": "Not applicable; keyboard/controller bindings are configuration, not cryptographic key material.",
+          "status": "not_required",
+          "evidence": [
+            "source:official PokeMini standalone tree has BIOS, EEPROM and state loaders but no cryptographic-key loader @15cc97f"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "unsupported",
+      "reason": "No official Flatpak package.",
+      "evidence": [
+        "official:SourceForge PokeMini files v0.60"
+      ]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "No official macOS artifact in the v0.60 release set.",
+      "evidence": [
+        "official:SourceForge PokeMini files v0.60"
+      ]
+    }
+  },
+  "notes": "Fail closed for controller serialization: the artifact exposes fixed keyboard defaults and launch-time joystick enable/device-id options, but no persistent host profile grammar. EEPROM/state/BIOS paths are recorded from the artifact README; runtime behavior remains unverified."
+}

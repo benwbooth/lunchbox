@@ -1,1 +1,155 @@
-{"schema_version":1,"slug":"memu","emulator":"MEMU","sources":[{"kind":"source","repo":"https://memotech-bill.github.io/MEMU/","url":"https://memotech-bill.github.io/MEMU/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://memotech-bill.github.io/MEMU/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows/Linux native; no verified macOS/Flatpak package; the requested purpose families were not all source-established for this host.","evidence":["official:https://memotech-bill.github.io/MEMU/"]},"linux-flatpak":{"status":"unresolved","reason":"Windows/Linux native; no verified macOS/Flatpak package; the requested purpose families were not all source-established for this host.","evidence":["official:https://memotech-bill.github.io/MEMU/"]},"windows":{"status":"unresolved","reason":"Windows/Linux native; no verified macOS/Flatpak package; the requested purpose families were not all source-established for this host.","evidence":["official:https://memotech-bill.github.io/MEMU/"]},"macos":{"status":"unresolved","reason":"Windows/Linux native; no verified macOS/Flatpak package; the requested purpose families were not all source-established for this host.","evidence":["official:https://memotech-bill.github.io/MEMU/"]}}}
+{
+  "schema_version": 1,
+  "slug": "memu",
+  "emulator": "MEMU",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/Memotech-Bill/MEMU",
+      "commit": "86eb58dfaae32ab73d36297e24daf2b8929567c4",
+      "url": "https://github.com/Memotech-Bill/MEMU/tree/86eb58dfaae32ab73d36297e24daf2b8929567c4",
+      "role": "pinned source"
+    },
+    {
+      "kind": "docs",
+      "url": "https://memotech-bill.github.io/MEMU/",
+      "role": "official build, config, input and media documentation"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "memu.cfg or memu0.cfg beside the executable; a config is a line-oriented command file.",
+          "naming": "Options such as -disk-dir, -tape-dir, -rom and -kbd-remap are persisted.",
+          "status": "captured",
+          "evidence": [
+            "source:src/memu/memu.c @86eb58d",
+            "source:run_time/memu.cfg @86eb58d"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "-joy enables Linux /dev/input/js0 or SDL joystick support; -joy-buttons accepts a key-matrix mapping and -joy-central sets dead-zone percentage.",
+          "naming": "Joystick config-save code is disabled under #if 0 in config.c; no persistent controller profile.",
+          "status": "captured",
+          "evidence": [
+            "source:src/memu/joy_lin.c @86eb58d",
+            "source:src/memu/joy_sdl.c @86eb58d",
+            "source:src/memu/config.c @86eb58d"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest files inside configured disk/tape/silicon-disk images; MEMU has no universal game-save sidecar.",
+          "naming": "Guest filesystem naming inside the selected media image; no universal host-side save filename.",
+          "status": "captured",
+          "evidence": [
+            "docs:docs/index.html disk/tape sections @86eb58d"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "memu.sna in the process working directory by default, or the path passed to -sna-file <file>. F9+s saves and F9+l loads the snapshot.",
+          "naming": "48K ZX Spectrum .sna format, exactly 49179 bytes (27-byte header plus 49152-byte RAM dump); available only when Spectrum support is compiled and IOBYTE is 0x80.",
+          "status": "captured",
+          "evidence": [
+            "source:src/memu/memu.c sna_fn/sna_save/sna_load and -sna-file @86eb58d",
+            "docs:docs/index.html -sna-file and F9+l/F9+s @86eb58d"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "ROM files are explicit -romN paths, commonly under the configured roms directory (e.g. boot-type07.rom and sdx-type07.rom).",
+          "status": "captured",
+          "evidence": [
+            "source:run_time/memu.cfg @86eb58d",
+            "docs:docs/index.html @86eb58d"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "status": "not_required",
+          "evidence": [
+            "docs:docs/index.html @86eb58d"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "memu.cfg or memu0.cfg beside the executable.",
+          "status": "captured",
+          "evidence": [
+            "source:src/memu/memu.c @86eb58d"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "-joy uses DirectInput; -joy-buttons is launch-only because config persistence is disabled.",
+          "status": "captured",
+          "evidence": [
+            "source:src/memu/joy_w32.c @86eb58d",
+            "source:src/memu/config.c @86eb58d"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Guest files inside configured disk/tape images.",
+          "naming": "Guest filesystem naming inside the selected media image; no universal host-side save filename.",
+          "status": "captured",
+          "evidence": [
+            "docs:docs/index.html @86eb58d"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "memu.sna in the process working directory by default, or the path passed to -sna-file <file>. F9+s saves and F9+l loads the snapshot.",
+          "naming": "48K ZX Spectrum .sna format, exactly 49179 bytes (27-byte header plus 49152-byte RAM dump); available only when Spectrum support is compiled and IOBYTE is 0x80.",
+          "status": "captured",
+          "evidence": [
+            "source:src/memu/memu.c sna_fn/sna_save/sna_load and -sna-file @86eb58d",
+            "docs:docs/index.html -sna-file and F9+l/F9+s @86eb58d"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Configured -romN files; no universal BIOS checksum.",
+          "status": "captured",
+          "evidence": [
+            "source:run_time/memu.cfg @86eb58d"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "status": "not_required",
+          "evidence": [
+            "docs:docs/index.html @86eb58d"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "unsupported",
+      "reason": "No official Flatpak package or manifest.",
+      "evidence": [
+        "official:https://memotech-bill.github.io/MEMU/"
+      ]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "Official documentation names Linux and Windows builds; no macOS build was verified.",
+      "evidence": [
+        "docs:https://memotech-bill.github.io/MEMU/"
+      ]
+    }
+  },
+  "notes": "No native controller writer is implemented because MEMU's own config saver excludes joystick options. Runtime and host-device identity remain unverified."
+}

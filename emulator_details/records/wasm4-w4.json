@@ -1,1 +1,47 @@
-{"schema_version":1,"slug":"wasm4-w4","emulator":"WASM-4 (w4)","sources":[{"kind":"source","repo":"https://wasm4.org/","url":"https://wasm4.org/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://wasm4.org/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows/Linux/macOS runtime; no complete local path contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://wasm4.org/"]},"linux-flatpak":{"status":"unresolved","reason":"Windows/Linux/macOS runtime; no complete local path contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://wasm4.org/"]},"windows":{"status":"unresolved","reason":"Windows/Linux/macOS runtime; no complete local path contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://wasm4.org/"]},"macos":{"status":"unresolved","reason":"Windows/Linux/macOS runtime; no complete local path contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://wasm4.org/"]}}}
+{
+  "schema_version": 1,
+  "slug": "wasm4-w4",
+  "emulator": "WASM-4 (w4)",
+  "sources": [
+    { "kind": "source", "repo": "https://github.com/aduros/wasm4", "url": "https://github.com/aduros/wasm4", "commit": "9d6c962785cfe3719d0245fd279ecbe98a4dbb63", "role": "native runtime keyboard, disk persistence and libretro backend source" },
+    { "kind": "docs", "url": "https://wasm4.org/docs/guides/saving-data/", "role": "official native/web save-data contract" },
+    { "kind": "contract", "path": "docs/WASM4_CONTROLLER_BOUNDARY.md", "role": "fail-closed native controller ownership boundary" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "No native WASM-4 controller/config profile file", "naming": "Native command is `wasm4 <cart>`; runtime options are command-line/runtime-owned.", "status": "not_supported", "evidence": ["source:wasm4@9d6c962 native backend"] },
+        { "purpose": "input", "path": "Native runtime keyboard backend", "naming": "Fixed P1/P2 keyboard bindings; no profile grammar. Gamepad input is runtime bitfield-owned.", "status": "captured", "evidence": ["source:wasm4@9d6c962 runtimes/native/src/backend/window_minifb.c", "source:wasm4@9d6c962 runtimes/native/src/backend/window_glfw.c"] },
+        { "purpose": "saves", "path": "Adjacent to the cartridge", "naming": "`<cart-basename>.disk`, native persistent disk data (maximum 1024 bytes).", "status": "captured", "evidence": ["source:wasm4@9d6c962 runtimes/native/src/backend/main.c", "docs:https://wasm4.org/docs/guides/saving-data/"] },
+        { "purpose": "states", "path": "No native filesystem savestate file", "naming": "The libretro backend exposes frontend serialization, but native WASM-4 does not define a state-slot path.", "status": "not_supported", "evidence": ["source:wasm4@9d6c962 runtimes/native/src/backend/main.c", "source:wasm4@9d6c962 runtimes/native/src/backend/main_libretro.c"] },
+        { "purpose": "bios", "path": "No BIOS file required", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:wasm4@9d6c962 native runtime"] },
+        { "purpose": "keys", "path": "No cryptographic key file required", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:wasm4@9d6c962 native runtime"] }
+      ]
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "No native WASM-4 controller/config profile file", "naming": "Native command is `wasm4 <cart>`; runtime options are command-line/runtime-owned.", "status": "not_supported", "evidence": ["source:wasm4@9d6c962 native backend"] },
+        { "purpose": "input", "path": "Native runtime keyboard backend", "naming": "Fixed P1/P2 keyboard bindings; no profile grammar. Gamepad input is runtime bitfield-owned.", "status": "captured", "evidence": ["source:wasm4@9d6c962 runtimes/native/src/backend/window_minifb.c", "source:wasm4@9d6c962 runtimes/native/src/backend/window_glfw.c"] },
+        { "purpose": "saves", "path": "Adjacent to the cartridge", "naming": "`<cart-basename>.disk`, native persistent disk data (maximum 1024 bytes).", "status": "captured", "evidence": ["source:wasm4@9d6c962 runtimes/native/src/backend/main.c", "docs:https://wasm4.org/docs/guides/saving-data/"] },
+        { "purpose": "states", "path": "No native filesystem savestate file", "naming": "The libretro backend exposes frontend serialization, but native WASM-4 does not define a state-slot path.", "status": "not_supported", "evidence": ["source:wasm4@9d6c962 runtimes/native/src/backend/main.c", "source:wasm4@9d6c962 runtimes/native/src/backend/main_libretro.c"] },
+        { "purpose": "bios", "path": "No BIOS file required", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:wasm4@9d6c962 native runtime"] },
+        { "purpose": "keys", "path": "No cryptographic key file required", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:wasm4@9d6c962 native runtime"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "No native WASM-4 controller/config profile file", "naming": "Native command is `wasm4 <cart>`; runtime options are command-line/runtime-owned.", "status": "not_supported", "evidence": ["source:wasm4@9d6c962 native backend"] },
+        { "purpose": "input", "path": "Native GLFW keyboard backend", "naming": "Fixed P1 keyboard bindings and Escape exit; no profile grammar.", "status": "captured", "evidence": ["source:wasm4@9d6c962 runtimes/native/src/backend/window_glfw.c"] },
+        { "purpose": "saves", "path": "Adjacent to the cartridge", "naming": "`<cart-basename>.disk`, native persistent disk data (maximum 1024 bytes).", "status": "captured", "evidence": ["source:wasm4@9d6c962 runtimes/native/src/backend/main.c", "docs:https://wasm4.org/docs/guides/saving-data/"] },
+        { "purpose": "states", "path": "No native filesystem savestate file", "naming": "No native state-slot path.", "status": "not_supported", "evidence": ["source:wasm4@9d6c962 runtimes/native/src/backend/main.c"] },
+        { "purpose": "bios", "path": "No BIOS file required", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:wasm4@9d6c962 native runtime"] },
+        { "purpose": "keys", "path": "No cryptographic key file required", "naming": "Not applicable.", "status": "not_required", "evidence": ["source:wasm4@9d6c962 native runtime"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "unresolved", "reason": "No verified WASM-4 Flatpak package or sandbox runtime.", "evidence": ["source:wasm4@9d6c962"] }
+  },
+  "controller_boundary": { "native_writer": "not_implemented", "refusal": "Do not synthesize a native WASM-4 profile: fixed keyboard backends and libretro/frontend-owned callbacks do not define a portable host mapping file.", "contract": "docs/WASM4_CONTROLLER_BOUNDARY.md" },
+  "notes": "Native Linux, Windows and macOS disk/input boundaries are captured. Web localStorage and libretro serialization are separate runtime contracts; no verified Linux Flatpak package is recorded."
+}

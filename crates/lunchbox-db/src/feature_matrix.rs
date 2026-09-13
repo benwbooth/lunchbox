@@ -250,6 +250,7 @@ struct FeatureMatrixRow {
     controller_test_status: String,
     firmware_test_status: String,
     save_test_status: String,
+    state_test_status: String,
     test_notes: String,
 }
 
@@ -261,7 +262,15 @@ struct PriorTestRow {
     controller_test_status: String,
     firmware_test_status: String,
     save_test_status: String,
+    #[serde(default = "default_test_status")]
+    state_test_status: String,
     test_notes: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeclaredTestResults {
+    schema_version: u32,
+    results: Vec<PriorTestRow>,
 }
 
 #[derive(Clone, Debug)]
@@ -269,7 +278,12 @@ struct TestStatus {
     controller: String,
     firmware: String,
     save: String,
+    state: String,
     notes: String,
+}
+
+fn default_test_status() -> String {
+    "not_tested".to_owned()
 }
 
 #[derive(Debug, Serialize)]
@@ -303,6 +317,7 @@ pub fn generate(
     retroarch_core_records_dir: &Path,
     controller_catalog_path: &Path,
     firmware_rules_path: &Path,
+    test_results_path: Option<&Path>,
     output: &Path,
 ) -> Result<FeatureMatrixStats> {
     let connection = database::open_read_only(database_path)?;
@@ -362,8 +377,17 @@ pub fn generate(
         .filter(|runtime| runtime.kind == "retroarch")
         .count();
     let expected_rows = runtimes.len() * HOSTS.len();
-    let prior_tests = load_prior_tests(output)?;
+    let mut prior_tests = load_prior_tests(output)?;
+    let declared_test_keys = if let Some(path) = test_results_path {
+        let declared = load_declared_tests(path)?;
+        let keys = declared.keys().cloned().collect::<BTreeSet<_>>();
+        prior_tests.extend(declared);
+        keys
+    } else {
+        BTreeSet::new()
+    };
     let mut rows = Vec::with_capacity(expected_rows);
+    let mut generated_keys = BTreeSet::new();
     for runtime in &runtimes {
         let record = if runtime.kind == "retroarch" {
             records.get("retroarch")
@@ -374,6 +398,7 @@ pub fn generate(
         };
         for host in HOSTS {
             let key = (runtime.kind.to_owned(), runtime.id.clone(), host.to_owned());
+            generated_keys.insert(key.clone());
             let core_record = (runtime.kind == "retroarch")
                 .then(|| retroarch_core_records.get(runtime.name.as_str()))
                 .flatten();
@@ -394,6 +419,14 @@ pub fn generate(
     ensure!(
         rows.len() == expected_rows,
         "feature matrix row count drifted"
+    );
+    let unknown_declared = declared_test_keys
+        .difference(&generated_keys)
+        .cloned()
+        .collect::<Vec<_>>();
+    ensure!(
+        unknown_declared.is_empty(),
+        "declared runtime test results contain unknown runtime/host keys: {unknown_declared:?}"
     );
 
     if let Some(parent) = output.parent() {
@@ -507,6 +540,7 @@ fn load_prior_tests(output: &Path) -> Result<BTreeMap<(String, String, String), 
             ("controller", row.controller_test_status.as_str()),
             ("firmware", row.firmware_test_status.as_str()),
             ("save", row.save_test_status.as_str()),
+            ("state", row.state_test_status.as_str()),
         ] {
             ensure!(
                 TEST_STATUSES.contains(&status),
@@ -522,11 +556,66 @@ fn load_prior_tests(output: &Path) -> Result<BTreeMap<(String, String, String), 
                         controller: row.controller_test_status,
                         firmware: row.firmware_test_status,
                         save: row.save_test_status,
+                        state: row.state_test_status,
                         notes: row.test_notes,
                     },
                 )
                 .is_none(),
             "prior feature matrix contains a duplicate runtime/host row"
+        );
+    }
+    Ok(statuses)
+}
+
+fn load_declared_tests(path: &Path) -> Result<BTreeMap<(String, String, String), TestStatus>> {
+    let declared: DeclaredTestResults = serde_json::from_slice(
+        &fs::read(path).with_context(|| format!("reading {}", path.display()))?,
+    )
+    .with_context(|| format!("parsing {}", path.display()))?;
+    ensure!(
+        declared.schema_version == 1,
+        "{} has unsupported schema_version {}",
+        path.display(),
+        declared.schema_version
+    );
+
+    let mut statuses = BTreeMap::new();
+    for row in declared.results {
+        ensure!(
+            HOSTS.contains(&row.host_os.as_str()),
+            "declared runtime test result has unknown host {}",
+            row.host_os
+        );
+        for (feature, status) in [
+            ("controller", row.controller_test_status.as_str()),
+            ("firmware", row.firmware_test_status.as_str()),
+            ("save", row.save_test_status.as_str()),
+            ("state", row.state_test_status.as_str()),
+        ] {
+            ensure!(
+                TEST_STATUSES.contains(&status),
+                "declared runtime test result has unknown {feature} test status {status}"
+            );
+        }
+        ensure!(
+            !row.test_notes.trim().is_empty(),
+            "declared runtime test result must include evidence-bearing test_notes"
+        );
+        let key = (row.runtime_kind, row.runtime_id, row.host_os);
+        ensure!(
+            statuses
+                .insert(
+                    key,
+                    TestStatus {
+                        controller: row.controller_test_status,
+                        firmware: row.firmware_test_status,
+                        save: row.save_test_status,
+                        state: row.state_test_status,
+                        notes: row.test_notes,
+                    }
+                )
+                .is_none(),
+            "declared runtime test results contain a duplicate runtime/host key"
         );
     }
     Ok(statuses)
@@ -608,18 +697,11 @@ fn load_records(directory: &Path) -> Result<BTreeMap<String, PlatformRecord>> {
                     captured.purpose
                 );
             }
-            for (feature, alternatives) in [
-                ("controller configuration", &["config", "input"][..]),
-                ("firmware/keys", &["bios", "keys"][..]),
-                ("persistent saves", &["saves"][..]),
-                ("save states", &["states"][..]),
-            ] {
+            for purpose in PURPOSES {
                 ensure!(
-                    alternatives
-                        .iter()
-                        .any(|purpose| purposes.contains(purpose)),
-                    "{} has no {feature} disposition for captured host {host}",
-                    path.display()
+                    purposes.contains(purpose),
+                    "{} has no explicit {purpose} disposition for captured host {host}",
+                    path.display(),
                 );
             }
         }
@@ -906,40 +988,7 @@ fn validate_core_firmware(record: &RetroarchCoreRecord, path: &Path) -> Result<(
 }
 
 fn validate_core_features(record: &RetroarchCoreRecord, path: &Path) -> Result<()> {
-    ensure!(
-        CORE_FEATURE_STATUSES.contains(&record.saves.status.as_str())
-            && !record.saves.naming.trim().is_empty()
-            && !record.saves.notes.trim().is_empty()
-            && !record.saves.evidence.is_empty(),
-        "{} has incomplete save semantics",
-        path.display()
-    );
-    ensure!(
-        record
-            .saves
-            .extensions
-            .iter()
-            .collect::<BTreeSet<_>>()
-            .len()
-            == record.saves.extensions.len(),
-        "{} duplicates a save extension",
-        path.display()
-    );
-    if record.saves.status == "supported" {
-        ensure!(
-            !record.saves.extensions.is_empty(),
-            "{} marks persistent saves supported without an artifact extension",
-            path.display()
-        );
-    }
-    if matches!(record.saves.status.as_str(), "not_supported" | "unknown") {
-        ensure!(
-            record.saves.extensions.is_empty(),
-            "{} lists save extensions despite {} save status",
-            path.display(),
-            record.saves.status
-        );
-    }
+    validate_core_save_feature(&record.saves, path)?;
     ensure!(
         CORE_STATE_STATUSES.contains(&record.states.status.as_str())
             && !record.states.serialization.trim().is_empty()
@@ -949,6 +998,48 @@ fn validate_core_features(record: &RetroarchCoreRecord, path: &Path) -> Result<(
         "{} has incomplete state semantics",
         path.display()
     );
+    Ok(())
+}
+
+fn validate_core_save_feature(saves: &CoreSaveFeature, path: &Path) -> Result<()> {
+    ensure!(
+        CORE_FEATURE_STATUSES.contains(&saves.status.as_str())
+            && !saves.naming.trim().is_empty()
+            && !saves.notes.trim().is_empty()
+            && !saves.evidence.is_empty(),
+        "{} has incomplete save semantics",
+        path.display()
+    );
+    ensure!(
+        saves.extensions.iter().collect::<BTreeSet<_>>().len() == saves.extensions.len(),
+        "{} duplicates a save extension",
+        path.display()
+    );
+    for extension in &saves.extensions {
+        let Some(suffix) = extension.strip_prefix('.') else {
+            bail!(
+                "{} has non-dot-prefixed save extension {extension:?}",
+                path.display()
+            );
+        };
+        ensure!(
+            !suffix.is_empty()
+                && suffix
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric()
+                        || matches!(character, '-' | '_')),
+            "{} has invalid save extension {extension:?}",
+            path.display()
+        );
+    }
+    if matches!(saves.status.as_str(), "not_supported" | "unknown") {
+        ensure!(
+            saves.extensions.is_empty(),
+            "{} lists save extensions despite {} save status",
+            path.display(),
+            saves.status
+        );
+    }
     Ok(())
 }
 
@@ -1224,6 +1315,9 @@ fn matrix_row(
         save_test_status: prior_test
             .map(|status| status.save.clone())
             .unwrap_or_else(|| "not_tested".to_owned()),
+        state_test_status: prior_test
+            .map(|status| status.state.clone())
+            .unwrap_or_else(|| "not_tested".to_owned()),
         test_notes: prior_test
             .map(|status| status.notes.clone())
             .unwrap_or_default(),
@@ -1399,5 +1493,139 @@ fn canonical_core(core: &str) -> &str {
         "beetle_psx_hw" => "mednafen_psx_hw",
         "beetle_vb" => "mednafen_vb",
         _ => core,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn save_feature(status: &str, extensions: &[&str]) -> CoreSaveFeature {
+        CoreSaveFeature {
+            status: status.to_owned(),
+            extensions: extensions
+                .iter()
+                .map(|extension| (*extension).to_owned())
+                .collect(),
+            naming: "Pinned source does not declare a filename extension.".to_owned(),
+            notes: "Persistent-save support follows pinned source metadata.".to_owned(),
+            evidence: vec!["pinned source metadata".to_owned()],
+        }
+    }
+
+    #[test]
+    fn supported_save_feature_allows_empty_or_valid_declared_extensions() {
+        let empty = save_feature("supported", &[]);
+        validate_core_save_feature(&empty, Path::new("supported-empty.json")).unwrap();
+
+        let declared = save_feature("supported", &[".srm"]);
+        validate_core_save_feature(&declared, Path::new("supported-declared.json")).unwrap();
+    }
+
+    #[test]
+    fn save_feature_rejects_invalid_and_duplicate_extensions() {
+        for invalid in ["srm", ".", ".save file", ".sav/backup"] {
+            let saves = save_feature("supported", &[invalid]);
+            assert!(
+                validate_core_save_feature(&saves, Path::new("invalid-extension.json"))
+                    .unwrap_err()
+                    .to_string()
+                    .contains("save extension"),
+                "{invalid:?} should be rejected"
+            );
+        }
+
+        let duplicate = save_feature("supported", &[".srm", ".srm"]);
+        assert!(
+            validate_core_save_feature(&duplicate, Path::new("duplicate-extension.json"))
+                .unwrap_err()
+                .to_string()
+                .contains("duplicates a save extension")
+        );
+    }
+
+    #[test]
+    fn unsupported_and_unknown_save_features_reject_extensions() {
+        for status in ["not_supported", "unknown"] {
+            let saves = save_feature(status, &[".srm"]);
+            assert!(
+                validate_core_save_feature(&saves, Path::new("contradictory-extension.json"))
+                    .unwrap_err()
+                    .to_string()
+                    .contains(&format!("despite {status} save status"))
+            );
+        }
+    }
+
+    #[test]
+    fn prior_matrix_without_state_status_defaults_to_not_tested() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            "runtime_kind,runtime_id,host_os,controller_test_status,firmware_test_status,save_test_status,test_notes"
+        )
+        .unwrap();
+        writeln!(
+            file,
+            "retroarch,retroarch:nestopia,linux-flatpak,not_tested,not_tested,not_tested,legacy row"
+        )
+        .unwrap();
+
+        let rows = load_prior_tests(file.path()).unwrap();
+        let row = rows
+            .get(&(
+                "retroarch".to_owned(),
+                "retroarch:nestopia".to_owned(),
+                "linux-flatpak".to_owned(),
+            ))
+            .unwrap();
+        assert_eq!(row.state, "not_tested");
+        assert_eq!(row.notes, "legacy row");
+    }
+
+    #[test]
+    fn prior_matrix_preserves_and_validates_state_status() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            "runtime_kind,runtime_id,host_os,controller_test_status,firmware_test_status,save_test_status,state_test_status,test_notes"
+        )
+        .unwrap();
+        writeln!(
+            file,
+            "retroarch,retroarch:nestopia,linux-flatpak,not_tested,not_tested,not_tested,pass,state round-trip"
+        )
+        .unwrap();
+
+        let rows = load_prior_tests(file.path()).unwrap();
+        assert_eq!(
+            rows.get(&(
+                "retroarch".to_owned(),
+                "retroarch:nestopia".to_owned(),
+                "linux-flatpak".to_owned(),
+            ))
+            .unwrap()
+            .state,
+            "pass"
+        );
+
+        let mut invalid = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            invalid,
+            "runtime_kind,runtime_id,host_os,controller_test_status,firmware_test_status,save_test_status,state_test_status,test_notes"
+        )
+        .unwrap();
+        writeln!(
+            invalid,
+            "retroarch,retroarch:nestopia,linux-flatpak,not_tested,not_tested,not_tested,partial,bad"
+        )
+        .unwrap();
+        assert!(
+            load_prior_tests(invalid.path())
+                .unwrap_err()
+                .to_string()
+                .contains("unknown state test status partial")
+        );
     }
 }

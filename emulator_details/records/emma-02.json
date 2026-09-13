@@ -3,219 +3,34 @@
   "slug": "emma-02",
   "emulator": "Emma 02",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://www.emma02.hobby-site.com/",
-      "url": "https://www.emma02.hobby-site.com/",
-      "role": "official upstream identity/distribution evidence"
-    },
-    {
-      "kind": "docs",
-      "url": "https://www.emma02.hobby-site.com/",
-      "role": "official documentation/platform evidence"
-    }
+    {"kind":"source","repo":"https://github.com/etxmato/emma_02","url":"https://github.com/etxmato/emma_02/tree/6cef5f299a32206d939afaaabb56d4c5efc6c4fa","role":"pinned upstream source"},
+    {"kind":"docs","url":"https://www.emma02.hobby-site.com/","role":"official platform/distribution documentation"}
   ],
   "platforms": {
-    "linux": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "No exact configuration path published in the reviewed official source.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "saves",
-          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "states",
-          "path": "No verified state filename or slot grammar is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "No canonical BIOS/firmware filename or checksum is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        }
-      ]
-    },
-    "windows": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "No exact configuration path published in the reviewed official source.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "saves",
-          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "states",
-          "path": "No verified state filename or slot grammar is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "No canonical BIOS/firmware filename or checksum is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        }
-      ]
-    },
-    "macos": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "No exact configuration path published in the reviewed official source.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "saves",
-          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "states",
-          "path": "No verified state filename or slot grammar is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "No canonical BIOS/firmware filename or checksum is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://www.emma02.hobby-site.com/",
-            "Windows/Linux/macOS listed"
-          ],
-          "status": "unresolved"
-        }
-      ]
-    }
+    "linux": {"paths": [
+      {"purpose":"config","path":"~/.emma_02/emma_02.ini; portable mode uses <Emma 02 executable directory>/emma_02.ini.","naming":"wxFileConfig INI. Main hotkey values include /Main/Exit_Key, /Main/Help_Key, /Main/Start_Reset_Key, and /Main/Ctrlv_Key.","status":"captured","evidence":["source:src/main.cpp Linux iniDirectory_ and wxFileConfig @6cef5f2","source:src/main.cpp readConfig/saveConfig /Main key paths @6cef5f2"]},
+      {"purpose":"input","path":"No generic controller profile. Keyboard-layout files are <Emma 02 data directory>/{us,dutch,german,french,swedish,user_defined}.ini.","naming":"Layout INI defines machine-specific hex/arcade keypad entries (pad a1/a2/b1/b2 and game keys). SDL/gamepad mapping is not exposed by this source.","status":"captured","evidence":["source:src/main.cpp keyboard layout selection @6cef5f2","docs:Helpfiles/MainKeyMappingDefault.htm @6cef5f2"]},
+      {"purpose":"saves","path":"No universal save sidecar or directory is established by the reviewed source.","naming":"Guest/media-defined; machine configuration determines storage.","status":"unresolved","evidence":["source:src/main.cpp @6cef5f2"]},
+      {"purpose":"states","path":"No universal state filename or slot grammar is established by the reviewed source.","naming":"Unknown; keyfile is a byte-stream keyboard playback file, not a state file.","status":"unresolved","evidence":["source:src/keybmatrix.cpp startKeyFile @6cef5f2","source:src/keyboard.cpp startElfKeyFile @6cef5f2"]},
+      {"purpose":"bios","path":"No canonical BIOS/firmware filename or checksum is published for the multi-system emulator.","naming":"Machine-specific ROM/configuration files vary.","status":"unresolved","evidence":["official:https://www.emma02.hobby-site.com/","source:src/xmlparser.cpp @6cef5f2"]},
+      {"purpose":"keys","path":"not applicable","naming":"No cryptographic key file is documented.","status":"not_required","evidence":["source:src/main.cpp @6cef5f2"]}
+    ]},
+    "windows": {"paths": [
+      {"purpose":"config","path":"%LOCALAPPDATA%\\Emma 02 Config\\emma_02.ini; portable mode uses <Emma 02 executable directory>\\emma_02.ini.","naming":"wxFileConfig INI with numeric wx keycodes under /Main (Exit_Key, Help_Key, Start_Reset_Key, Ctrlv_Key).","status":"captured","evidence":["source:src/main.cpp Windows iniDirectory_ and wxFileConfig @6cef5f2","source:src/main.cpp readConfig/saveConfig @6cef5f2"]},
+      {"purpose":"input","path":"No generic controller profile. Keyboard-layout files are <Emma 02 data directory>\\{us,dutch,german,french,swedish,user_defined}.ini.","naming":"Machine-specific keypad layout entries; no stable host-device selector or gamepad mapping is exposed.","status":"captured","evidence":["source:src/main.cpp @6cef5f2","docs:Helpfiles/MainKeyMappingDefault.htm @6cef5f2"]},
+      {"purpose":"saves","path":"No universal save sidecar or directory is established.","naming":"Guest/media-defined.","status":"unresolved","evidence":["source:src/main.cpp @6cef5f2"]},
+      {"purpose":"states","path":"No universal state filename or slot grammar is established.","naming":"Keyfile playback is not a state format.","status":"unresolved","evidence":["source:src/keybmatrix.cpp @6cef5f2"]},
+      {"purpose":"bios","path":"No canonical BIOS/firmware filename or checksum is published.","naming":"Machine-specific ROM/configuration files vary.","status":"unresolved","evidence":["official:https://www.emma02.hobby-site.com/","source:src/xmlparser.cpp @6cef5f2"]},
+      {"purpose":"keys","path":"not applicable","naming":"No cryptographic key file is documented.","status":"not_required","evidence":["source:src/main.cpp @6cef5f2"]}
+    ]},
+    "macos": {"paths": [
+      {"purpose":"config","path":"~/Library/Application Support/Emma 02/emma_02.ini; portable mode uses <Emma 02 executable directory>/emma_02.ini.","naming":"wxFileConfig INI with numeric wx keycodes under /Main.","status":"captured","evidence":["source:src/main.cpp macOS iniDirectory_ and wxFileConfig @6cef5f2","source:src/main.cpp readConfig/saveConfig @6cef5f2"]},
+      {"purpose":"input","path":"No generic controller profile. Keyboard-layout files are <Emma 02 data directory>/{us,dutch,german,french,swedish,user_defined}.ini.","naming":"Machine-specific keypad layout entries; no stable host-device selector or gamepad mapping is exposed.","status":"captured","evidence":["source:src/main.cpp @6cef5f2","docs:Helpfiles/MainKeyMappingDefault.htm @6cef5f2"]},
+      {"purpose":"saves","path":"No universal save sidecar or directory is established.","naming":"Guest/media-defined.","status":"unresolved","evidence":["source:src/main.cpp @6cef5f2"]},
+      {"purpose":"states","path":"No universal state filename or slot grammar is established.","naming":"Keyfile playback is not a state format.","status":"unresolved","evidence":["source:src/keybmatrix.cpp @6cef5f2"]},
+      {"purpose":"bios","path":"No canonical BIOS/firmware filename or checksum is published.","naming":"Machine-specific ROM/configuration files vary.","status":"unresolved","evidence":["official:https://www.emma02.hobby-site.com/","source:src/xmlparser.cpp @6cef5f2"]},
+      {"purpose":"keys","path":"not applicable","naming":"No cryptographic key file is documented.","status":"not_required","evidence":["source:src/main.cpp @6cef5f2"]}
+    ]}
   },
-  "platform_gaps": {
-    "linux-flatpak": {
-      "status": "no_verified_package",
-      "reason": "The official project lists native Linux, macOS, and Windows support, but no verified Flatpak package or manifest was found.",
-      "evidence": [
-        "official:https://www.emma02.hobby-site.com/"
-      ]
-    }
-  }
+  "platform_gaps": {"linux-flatpak":{"status":"no_verified_package","reason":"No verified Flatpak package or manifest was found.","evidence":["official:https://www.emma02.hobby-site.com/"]}}
 }

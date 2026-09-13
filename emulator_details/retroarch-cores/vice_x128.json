@@ -20,7 +20,7 @@
     "files": [
       {
         "path": "vice/JiffyDOS_C128.bin",
-        "description": "JiffyDOS C128 Kernal",
+        "description": "vice/JiffyDOS_C128.bin (JiffyDOS C128 Kernal)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -36,7 +36,7 @@
       },
       {
         "path": "vice/JiffyDOS_C64.bin",
-        "description": "JiffyDOS C64 Kernal",
+        "description": "vice/JiffyDOS_C64.bin (JiffyDOS C64 Kernal)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -52,7 +52,7 @@
       },
       {
         "path": "vice/JiffyDOS_1541-II.bin",
-        "description": "JiffyDOS 1541 drive BIOS",
+        "description": "vice/JiffyDOS_1541-II.bin (JiffyDOS 1541 drive BIOS)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -68,7 +68,7 @@
       },
       {
         "path": "vice/JiffyDOS_1571_repl310654.bin",
-        "description": "JiffyDOS 1571 drive BIOS",
+        "description": "vice/JiffyDOS_1571_repl310654.bin (JiffyDOS 1571 drive BIOS)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -84,7 +84,7 @@
       },
       {
         "path": "vice/JiffyDOS_1581.bin",
-        "description": "JiffyDOS 1581 drive BIOS",
+        "description": "vice/JiffyDOS_1581.bin (JiffyDOS 1581 drive BIOS)",
         "required": false,
         "checksum_status": "published",
         "checksums": [
@@ -105,18 +105,12 @@
     ]
   },
   "saves": {
-    "status": "content_dependent",
-    "extensions": [
-      ".d64",
-      ".d71",
-      ".d81",
-      ".g64",
-      ".t64"
-    ],
-    "naming": "Program saves are written into writable attached disk/tape images; no generic sidecar save file is claimed.",
-    "notes": "Persistence depends on media and filesystem-device configuration.",
+    "status": "supported",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=true but does not declare a persistent-save filename extension.",
+    "notes": "Persistent save support is declared by the pinned core-info metadata; filename and content semantics are not specified there.",
     "evidence": [
-      "VICE libretro media-save behavior"
+      "vice_x128_libretro.info libretro_saves=true"
     ]
   },
   "states": {

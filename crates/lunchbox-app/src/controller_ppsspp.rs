@@ -207,3 +207,64 @@ pub(crate) fn render_controls(
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn complete_controls() -> BTreeMap<String, SdlInput> {
+        let mut controls = BTreeMap::new();
+        for (index, key) in GAMEPLAY_KEYS[..12].iter().enumerate() {
+            controls.insert((*key).to_owned(), SdlInput::Button(index as u8));
+        }
+        controls.insert(
+            "An.Left".to_owned(),
+            SdlInput::Axis {
+                index: 0,
+                direction: -1,
+            },
+        );
+        controls.insert(
+            "An.Right".to_owned(),
+            SdlInput::Axis {
+                index: 0,
+                direction: 1,
+            },
+        );
+        controls.insert(
+            "An.Up".to_owned(),
+            SdlInput::Axis {
+                index: 1,
+                direction: -1,
+            },
+        );
+        controls.insert(
+            "An.Down".to_owned(),
+            SdlInput::Axis {
+                index: 1,
+                direction: 1,
+            },
+        );
+        controls
+    }
+
+    #[test]
+    fn native_device_ids_are_ten_based_and_axis_pairs_are_bipolar() {
+        let bindings = native_bindings(0, &complete_controls()).unwrap();
+        assert_eq!(bindings["Up"], "10-189");
+        assert_eq!(bindings["Cross"], "10-196");
+        assert_eq!(bindings["An.Left"], "10-4001");
+        assert_eq!(bindings["An.Right"], "10-4000");
+        assert!(native_bindings(10, &complete_controls()).is_err());
+    }
+
+    #[test]
+    fn controls_overlay_replaces_only_gameplay_keys() {
+        let original = "[ControlMapping]\nCross = 1-2\nCustom = 7-8\n[Other]\nKeep = yes\n";
+        let rendered = render_controls(original, 0, &complete_controls()).unwrap();
+        assert!(!rendered.contains("Cross = 1-2"));
+        assert!(rendered.contains("Cross = 10-196"));
+        assert!(rendered.contains("Custom = 7-8"));
+        assert!(rendered.contains("[Other]\nKeep = yes"));
+    }
+}

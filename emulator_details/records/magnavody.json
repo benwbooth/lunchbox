@@ -5,48 +5,234 @@
   "sources": [
     {
       "kind": "source",
-      "repo": "https://classyk.itch.io/magnavody",
-      "url": "https://classyk.itch.io/magnavody",
-      "role": "official upstream project identity and implementation"
+      "repo": "https://gitlab.com/dodgyville/magnavody",
+      "url": "https://gitlab.com/dodgyville/magnavody",
+      "commit": "b07ecc571f26ba6c934a7b9cc05557e396284984",
+      "role": "official Godot source for project input actions, user data, homebrew installation and remapping"
     },
     {
       "kind": "docs",
+      "url": "https://gitlab.com/dodgyville/magnavody/-/blob/b07ecc571f26ba6c934a7b9cc05557e396284984/README.md",
+      "role": "official README and desktop distribution documentation"
+    },
+    {
+      "kind": "artifact",
       "url": "https://classyk.itch.io/magnavody",
-      "role": "official distribution or project documentation"
+      "version": "0.8.5",
+      "role": "official paid Linux, macOS and Windows distribution listing"
+    },
+    {
+      "kind": "docs",
+      "url": "https://docs.godotengine.org/en/latest/tutorials/io/data_paths.html",
+      "role": "Godot user:// desktop path resolution"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/MAGNAVODY_STANDALONE_CONTROLLER_CONTRACT.md",
+      "role": "standalone native controller boundary"
     }
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official Magnavody source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://classyk.itch.io/magnavody",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official Magnavody source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://classyk.itch.io/magnavody",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official Magnavody source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://classyk.itch.io/magnavody",
-        "host capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.local/share/godot/app_userdata/magnavody/settings.json (Godot user://; XDG_DATA_HOME changes the base)",
+          "naming": "One JSON line written by Globals.save_settings(); the active schema contains settings_version, fullscreen and hide_ui_all. The source also contains an unused Settings Resource class with user://settings.tres, but the running scene calls Globals.save_settings() and does not use that class.",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/globals.gd (settings_json/save_settings)",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/project.godot (config/name=magnavody; no use_custom_user_dir)",
+            "docs:https://docs.godotengine.org/en/latest/tutorials/io/data_paths.html"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.local/share/godot/app_userdata/magnavody/luke_input_remapper_overrides.tres (optional; Godot user://), with default actions in res://project.godot",
+          "naming": "Godot InputMap actions use InputEventKey and InputEventJoypad events. The default keyboard controls are P1 A/D, W/S, Q/E and R; P2 J/L, I/K, U/O and P. P1 gamepad dial actions use device 0 axes 0, 3 and 1 (with source-defined signs), reset button 3; P2 uses device 1. The optional remapper Resource stores InputRemap objects keyed by action/schema and is written with ResourceSaver. Device selection is a runtime Godot index: auto-detect chooses the first connected joypad for P1 and the second for P2, and no stable physical identity is persisted.",
+          "status": "captured",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/project.godot [input]",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/Components/control_unit.gd (device auto-detection and runtime indices)",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/addons/luke-input-remapper/input_remapper.gd (override path and ResourceSaver format)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "No guest save-game or cartridge-save sidecar is implemented. User-installed homebrew game bundles are extracted below ~/.local/share/godot/app_userdata/magnavody/Games/.",
+          "naming": "Games/<bundle contents>, including a required game.json for an installed ZIP; this is content installation, not a save-data format.",
+          "status": "not_supported",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/globals.gd (populate_games and install_game_from_zip)",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/README.md (homebrew bundle requirements)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No persistent emulator save-state file or slot directory is implemented by the pinned source.",
+          "naming": "No state-file naming grammar; reset and quick-load are gameplay/menu operations rather than serialized emulator states.",
+          "status": "not_supported",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody source tree (no save-state writer)",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/globals.gd (settings and reset only)"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS or firmware file is loaded; Magnavody models the Odyssey circuits and ships cards/game resources under res://.",
+          "naming": "No user-supplied BIOS filename or checksum.",
+          "status": "not_required",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/README.md (circuit simulation and bundled cards/games)",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/project.godot (resource-based Godot project)"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic or decryption-key file is used.",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody source tree"
+          ]
+        }
       ]
     },
     "windows": {
-      "status": "unresolved",
-      "reason": "The official Magnavody source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://classyk.itch.io/magnavody",
-        "host capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\Godot\\app_userdata\\magnavody\\settings.json (Godot user://)",
+          "naming": "One JSON line written by Globals.save_settings(); the active schema contains settings_version, fullscreen and hide_ui_all. The source also contains an unused Settings Resource class with user://settings.tres, but the running scene calls Globals.save_settings() and does not use that class.",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/globals.gd (settings_json/save_settings)",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/project.godot (config/name=magnavody; no use_custom_user_dir)",
+            "docs:https://docs.godotengine.org/en/latest/tutorials/io/data_paths.html"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\Godot\\app_userdata\\magnavody\\luke_input_remapper_overrides.tres (optional; Godot user://), with default actions in res://project.godot",
+          "naming": "Same InputMap and ResourceSaver contract as Linux. Runtime joypad selection is by Godot device index (first connected joypad for P1, second for P2), not a stable physical identity.",
+          "status": "captured",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/project.godot [input]",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/Components/control_unit.gd",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/addons/luke-input-remapper/input_remapper.gd"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "No guest save-game or cartridge-save sidecar is implemented. User-installed homebrew game bundles are extracted below %APPDATA%\\Godot\\app_userdata\\magnavody\\Games\\.",
+          "naming": "Games/<bundle contents>, including a required game.json for an installed ZIP; content installation is not save data.",
+          "status": "not_supported",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/globals.gd",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/README.md"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No persistent emulator save-state file or slot directory is implemented by the pinned source.",
+          "naming": "No state-file naming grammar.",
+          "status": "not_supported",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody source tree"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS or firmware file is loaded; circuit/card resources are packaged with the Godot application.",
+          "naming": "No user-supplied BIOS filename or checksum.",
+          "status": "not_required",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/README.md",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/project.godot"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic or decryption-key file is used.",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody source tree"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/Godot/app_userdata/magnavody/settings.json (Godot user://)",
+          "naming": "One JSON line written by Globals.save_settings(); the active schema contains settings_version, fullscreen and hide_ui_all. The source also contains an unused Settings Resource class with user://settings.tres, but the running scene calls Globals.save_settings() and does not use that class.",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/globals.gd (settings_json/save_settings)",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/project.godot (config/name=magnavody; no use_custom_user_dir)",
+            "docs:https://docs.godotengine.org/en/latest/tutorials/io/data_paths.html"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/Godot/app_userdata/magnavody/luke_input_remapper_overrides.tres (optional; Godot user://), with default actions in res://project.godot",
+          "naming": "Same InputMap and ResourceSaver contract as Linux. Runtime joypad selection is by Godot device index (first connected joypad for P1, second for P2), not a stable physical identity.",
+          "status": "captured",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/project.godot [input]",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/Components/control_unit.gd",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/addons/luke-input-remapper/input_remapper.gd"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "No guest save-game or cartridge-save sidecar is implemented. User-installed homebrew game bundles are extracted below ~/Library/Application Support/Godot/app_userdata/magnavody/Games/.",
+          "naming": "Games/<bundle contents>, including a required game.json for an installed ZIP; content installation is not save data.",
+          "status": "not_supported",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/globals.gd",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/README.md"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No persistent emulator save-state file or slot directory is implemented by the pinned source.",
+          "naming": "No state-file naming grammar.",
+          "status": "not_supported",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody source tree"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No external BIOS or firmware file is loaded; circuit/card resources are packaged with the Godot application.",
+          "naming": "No user-supplied BIOS filename or checksum.",
+          "status": "not_required",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/README.md",
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody/project.godot"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic or decryption-key file is used.",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": [
+            "source:dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 magnavody source tree"
+          ]
+        }
       ]
     }
-  }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "The official distribution lists a Linux ZIP but publishes no verified Flatpak package or manifest for Magnavody.",
+      "evidence": [
+        "artifact:https://classyk.itch.io/magnavody (Linux ZIP v0.8.5; no Flatpak)",
+        "source:https://gitlab.com/dodgyville/magnavody@b07ecc571f26ba6c934a7b9cc05557e396284984 (Godot project; no Flatpak manifest)"
+      ]
+    }
+  },
+  "notes": "The source has an exact Godot user:// path and InputMap/ResourceSaver boundary on all three published desktop targets, but it does not provide a portable controller identity. The controller module therefore refuses to synthesize a .tres override from a caller's device: Godot joypad IDs are runtime indices, and the current frontend's remapper registration is not a complete stable profile format. No save-state or external BIOS/key contract is claimed."
 }

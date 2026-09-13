@@ -1,1 +1,298 @@
-{"schema_version":1,"slug":"quasi88","emulator":"QUASI88","sources":[{"kind":"source","url":"https://www.eonet.ne.jp/~showtime/quasi88/","role":"official project identity"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official QUASI88 source does not establish an exact six-purpose host contract.","evidence":["official:https://www.eonet.ne.jp/~showtime/quasi88/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"linux-flatpak":{"status":"unresolved","reason":"The official QUASI88 source does not establish an exact six-purpose host contract.","evidence":["official:https://www.eonet.ne.jp/~showtime/quasi88/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"macos":{"status":"unresolved","reason":"The official QUASI88 source does not establish an exact six-purpose host contract.","evidence":["official:https://www.eonet.ne.jp/~showtime/quasi88/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"windows":{"status":"unresolved","reason":"The official QUASI88 source does not establish an exact six-purpose host contract.","evidence":["official:https://www.eonet.ne.jp/~showtime/quasi88/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]}}}
+{
+  "schema_version": 1,
+  "slug": "quasi88",
+  "emulator": "QUASI88",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/libretro/quasi88-libretro",
+      "url": "https://github.com/libretro/quasi88-libretro/tree/459bbc6e90caa3dc392ae8e64a9b0881b1e5ef77",
+      "commit": "459bbc6e90caa3dc392ae8e64a9b0881b1e5ef77",
+      "role": "libretro core input descriptors, options, BIOS search, differential save and state source"
+    },
+    {
+      "kind": "docs",
+      "url": "https://docs.libretro.com/library/quasi88/",
+      "role": "official QUASI88 BIOS, directories, features, core options and controller documentation"
+    },
+    {
+      "kind": "source",
+      "repo": "https://github.com/libretro/RetroArch",
+      "commit": "0dc3b26c7c560f0e48a7b15002997a8c0676105f",
+      "role": "RetroArch host config, input, save/state and system-directory defaults"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/QUASI88_CONTROLLER_BOUNDARY.md",
+      "role": "fail-closed controller ownership boundary"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/retroarch/retroarch.cfg plus RetroArch core-options storage",
+          "naming": "RetroArch key = value configuration and frontend-owned q88_* core options; QUASI88's libretro config-file initializer is stubbed.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "source:RetroArch@0dc3b26c config paths"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.config/retroarch/retroarch.cfg plus autoconfig/<input-driver>/ profiles",
+          "naming": "RetroArch frontend-owned RetroPad/RetroKeyboard bindings feed QUASI88 callbacks; player 1 maps keypad 4/8/2/6, X/Z/Shift/Space/Return/I and player 2 maps D/R/F/G/Tab/Q.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#joypad",
+            "source:RetroArch@0dc3b26c input configuration"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.config/retroarch/saves/<content-basename>.srm (or configured savefile_directory)",
+          "naming": "By default disk rewrites are a differential .srm; q88_save_to_disk_image enabled writes directly to the loaded disk image.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#directories"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.config/retroarch/states/<content-basename>.state and .stateN (or configured savestate_directory)",
+          "naming": "RetroArch supplies .state/.stateN filenames around QUASI88's 0x70000-byte serialized state buffer.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "source:RetroArch@0dc3b26c state path construction",
+            "docs:https://docs.libretro.com/library/quasi88/#directories"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.config/retroarch/system/ or system/quasi88/ (or configured system_directory)",
+          "naming": "Required real BIOS: n88.rom (MD5 4f984e04a99d56c4cfe36115415d6eb8), n88_0.rom (d675a2ca186c6efcd6277b835de4c7e5), n88knj1.rom (d81c6d5d7ad1a4bbbd6ae22a01257603), disk.rom (793f86784e5608352a5d7f03f03e0858); n88n.rom is required for N-BASIC, n88_1/2/3 and font.rom/font2.rom/font3.rom are optional. Pseudo BIOS is a fallback.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#bios"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6"
+          ]
+        }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg plus RetroArch core-options storage",
+          "naming": "RetroArch key = value configuration and frontend-owned q88_* core options; QUASI88's libretro config-file initializer is stubbed.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "source:RetroArch@0dc3b26c config paths"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg plus autoconfig/<input-driver>/",
+          "naming": "RetroArch frontend-owned RetroPad/RetroKeyboard bindings feed QUASI88 callbacks; player 1 maps keypad 4/8/2/6, X/Z/Shift/Space/Return/I and player 2 maps D/R/F/G/Tab/Q.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#joypad",
+            "source:RetroArch@0dc3b26c input configuration"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/saves/<content-basename>.srm (or configured savefile_directory)",
+          "naming": "By default disk rewrites are a differential .srm; q88_save_to_disk_image enabled writes directly to the loaded disk image.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#directories"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/states/<content-basename>.state and .stateN",
+          "naming": "RetroArch supplies .state/.stateN filenames around QUASI88's 0x70000-byte serialized state buffer.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "source:RetroArch@0dc3b26c state path construction",
+            "docs:https://docs.libretro.com/library/quasi88/#directories"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.var/app/org.libretro.RetroArch/config/retroarch/system/ or system/quasi88/",
+          "naming": "Required real BIOS: n88.rom (MD5 4f984e04a99d56c4cfe36115415d6eb8), n88_0.rom (d675a2ca186c6efcd6277b835de4c7e5), n88knj1.rom (d81c6d5d7ad1a4bbbd6ae22a01257603), disk.rom (793f86784e5608352a5d7f03f03e0858); n88n.rom is required for N-BASIC, n88_1/2/3 and font.rom/font2.rom/font3.rom are optional. Pseudo BIOS is a fallback.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#bios"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<RetroArch application directory>\\retroarch.cfg plus RetroArch core-options storage",
+          "naming": "RetroArch key = value configuration and frontend-owned q88_* core options; QUASI88's libretro config-file initializer is stubbed.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "source:RetroArch@0dc3b26c config paths"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "<RetroArch application directory>\\retroarch.cfg plus autoconfig\\<input-driver>\\",
+          "naming": "RetroArch frontend-owned RetroPad/RetroKeyboard bindings feed QUASI88 callbacks; player 1 maps keypad 4/8/2/6, X/Z/Shift/Space/Return/I and player 2 maps D/R/F/G/Tab/Q.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#joypad",
+            "source:RetroArch@0dc3b26c input configuration"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<RetroArch application directory>\\saves\\<content-basename>.srm (or configured savefile_directory)",
+          "naming": "By default disk rewrites are a differential .srm; q88_save_to_disk_image enabled writes directly to the loaded disk image.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#directories"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<RetroArch application directory>\\states\\<content-basename>.state and .stateN",
+          "naming": "RetroArch supplies .state/.stateN filenames around QUASI88's 0x70000-byte serialized state buffer.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "source:RetroArch@0dc3b26c state path construction",
+            "docs:https://docs.libretro.com/library/quasi88/#directories"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<RetroArch application directory>\\system\\ or system\\quasi88\\",
+          "naming": "Required real BIOS: n88.rom (MD5 4f984e04a99d56c4cfe36115415d6eb8), n88_0.rom (d675a2ca186c6efcd6277b835de4c7e5), n88knj1.rom (d81c6d5d7ad1a4bbbd6ae22a01257603), disk.rom (793f86784e5608352a5d7f03f03e0858); n88n.rom is required for N-BASIC, n88_1/2/3 and font.rom/font2.rom/font3.rom are optional. Pseudo BIOS is a fallback.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#bios"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/RetroArch/config/retroarch.cfg plus RetroArch core-options storage",
+          "naming": "RetroArch key = value configuration and frontend-owned q88_* core options; QUASI88's libretro config-file initializer is stubbed.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "source:RetroArch@0dc3b26c config paths"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/RetroArch/config/retroarch.cfg plus autoconfig/<input-driver>/",
+          "naming": "RetroArch frontend-owned RetroPad/RetroKeyboard bindings feed QUASI88 callbacks; player 1 maps keypad 4/8/2/6, X/Z/Shift/Space/Return/I and player 2 maps D/R/F/G/Tab/Q.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#joypad",
+            "source:RetroArch@0dc3b26c input configuration"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Documents/RetroArch/saves/<content-basename>.srm (or configured savefile_directory)",
+          "naming": "By default disk rewrites are a differential .srm; q88_save_to_disk_image enabled writes directly to the loaded disk image.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#directories"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Documents/RetroArch/states/<content-basename>.state and .stateN",
+          "naming": "RetroArch supplies .state/.stateN filenames around QUASI88's 0x70000-byte serialized state buffer.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "source:RetroArch@0dc3b26c state path construction",
+            "docs:https://docs.libretro.com/library/quasi88/#directories"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/Documents/RetroArch/system/ or system/quasi88/",
+          "naming": "Required real BIOS: n88.rom (MD5 4f984e04a99d56c4cfe36115415d6eb8), n88_0.rom (d675a2ca186c6efcd6277b835de4c7e5), n88knj1.rom (d81c6d5d7ad1a4bbbd6ae22a01257603), disk.rom (793f86784e5608352a5d7f03f03e0858); n88n.rom is required for N-BASIC, n88_1/2/3 and font.rom/font2.rom/font3.rom are optional. Pseudo BIOS is a fallback.",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/libretro.c",
+            "source:quasi88-libretro@459bbc6 src/LIBRETRO/file-op.c",
+            "docs:https://docs.libretro.com/library/quasi88/#bios"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": [
+            "source:quasi88-libretro@459bbc6"
+          ]
+        }
+      ]
+    }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not invent a QUASI88 native controller file or mutate RetroArch profiles: the libretro frontend owns physical-device mapping and the core's config-file initializer is stubbed.",
+    "contract": "docs/QUASI88_CONTROLLER_BOUNDARY.md"
+  },
+  "notes": "QUASI88 is a libretro core with documented real/pseudo BIOS behavior, frontend-owned controller persistence, .srm differential saves and serialized states."
+}

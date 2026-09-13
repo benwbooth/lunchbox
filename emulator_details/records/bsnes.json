@@ -33,8 +33,9 @@
           "path": "Firmware files are looked up under the application Firmware/ resource directory (or its user-data override) by manifest identifier. bsnes has no one universal BIOS file; ordinary SNES games need none, while optional co-processor/boot ROMs are manifest-declared.",
           "naming": "Exact source-derived names are <lowercase manifest identifier>.program.rom, <lowercase manifest identifier>.data.rom, or <lowercase manifest identifier>.boot.rom (architectures ARM6, HG51BS169, uPD7725, uPD96050, LR35902). No canonical checksum is published by this target source for these external files; built-in firmware blobs are accepted for recognized sizes. Do not infer a BIOS filename when a manifest identifier is absent.",
           "evidence": ["source:bsnes/target-bsnes/program/game-rom.cpp locate({\"Firmware/\", identifier, extension})", "source:bsnes/target-bsnes/program/game-rom.cpp built-in firmware size handling", "source:bsnes/target-bsnes/program/game.cpp manifest loading"]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:bsnes-emu/bsnes@7d5aa1e656b9171524d01b1b22917197d8121cb4 (primary source cited by this record; input capture remains unresolved for linux)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:bsnes-emu/bsnes@7d5aa1e656b9171524d01b1b22917197d8121cb4 (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "Native Linux desktop target. bsnes stores settings under userSettings (~/.config) but game saves/states default beside ROM files unless Paths overrides are set."
     },
     "linux-flatpak": {
@@ -61,8 +62,9 @@
           "path": "Firmware/ resource directory or user override in the sandbox; manifest identifiers determine names and external firmware is not assigned a universal checksum by bsnes.",
           "naming": "<lowercase manifest identifier>.program.rom/.data.rom/.boot.rom for optional co-processor/boot firmware; ordinary SNES software needs no BIOS.",
           "evidence": ["source:target-bsnes/program/game-rom.cpp", "package:github.com/flathub/dev.bsnes.bsnes"]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:bsnes-emu/bsnes@7d5aa1e656b9171524d01b1b22917197d8121cb4 (primary source cited by this record; input capture remains unresolved for linux-flatpak)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:bsnes-emu/bsnes@7d5aa1e656b9171524d01b1b22917197d8121cb4 (primary source cited by this record; keys capture remains unresolved for linux-flatpak)"]}],
       "notes": "Community Flatpak provenance; package identity and sandbox roots are recorded, but the package is not an upstream bsnes distribution."
     },
     "macos": {
@@ -89,8 +91,9 @@
           "path": "Firmware/ resource directory or user override. Ordinary SNES games require no BIOS; optional manifest-declared co-processor and boot ROMs use generated names.",
           "naming": "<lowercase manifest identifier>.program.rom/.data.rom/.boot.rom; no canonical external checksum is declared by this source target.",
           "evidence": ["source:target-bsnes/program/game-rom.cpp", "source:nall/path.hpp macOS path roots"]
-        }
-      ]
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:bsnes-emu/bsnes@7d5aa1e656b9171524d01b1b22917197d8121cb4 (primary source cited by this record; input capture remains unresolved for macos)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:bsnes-emu/bsnes@7d5aa1e656b9171524d01b1b22917197d8121cb4 (primary source cited by this record; keys capture remains unresolved for macos)"]}]
     },
     "windows": {
       "paths": [
@@ -116,8 +119,9 @@
           "path": "Firmware/ resource directory or user override; ordinary SNES games need no BIOS, and optional firmware is resolved from manifest identifiers.",
           "naming": "<lowercase manifest identifier>.program.rom/.data.rom/.boot.rom; no canonical checksum for external firmware is declared by this source.",
           "evidence": ["source:target-bsnes/program/game-rom.cpp", "source:nall/path.hpp Windows path roots"]
-        }
-      ]
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:bsnes-emu/bsnes@7d5aa1e656b9171524d01b1b22917197d8121cb4 (primary source cited by this record; input capture remains unresolved for windows)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:bsnes-emu/bsnes@7d5aa1e656b9171524d01b1b22917197d8121cb4 (primary source cited by this record; keys capture remains unresolved for windows)"]}]
     }
   }
 }

@@ -1,1 +1,200 @@
-{"schema_version":1,"slug":"pico-8","emulator":"PICO-8","sources":[{"kind":"source","url":"https://www.lexaloffle.com/pico-8.php","role":"official product and project identity"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official PICO-8 source does not establish an exact six-purpose host contract.","evidence":["official:https://www.lexaloffle.com/pico-8.php","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"linux-flatpak":{"status":"unresolved","reason":"The official PICO-8 source does not establish an exact six-purpose host contract.","evidence":["official:https://www.lexaloffle.com/pico-8.php","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"macos":{"status":"unresolved","reason":"The official PICO-8 source does not establish an exact six-purpose host contract.","evidence":["official:https://www.lexaloffle.com/pico-8.php","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"windows":{"status":"unresolved","reason":"The official PICO-8 source does not establish an exact six-purpose host contract.","evidence":["official:https://www.lexaloffle.com/pico-8.php","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]}}}
+{
+  "schema_version": 1,
+  "slug": "pico-8",
+  "emulator": "PICO-8",
+  "sources": [
+    {
+      "kind": "docs",
+      "url": "https://www.lexaloffle.com/dl/docs/pico-8_manual.txt",
+      "role": "official manual; proprietary product has no public source commit"
+    },
+    {
+      "kind": "docs",
+      "url": "https://www.lexaloffle.com/pico-8.php",
+      "role": "official product/platform page"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.lexaloffle/pico-8/config.txt",
+          "status": "captured",
+          "naming": "PICO-8 reads config.txt at session start and saves it on exit; -home overrides the root.",
+          "evidence": [
+            "manual:Configuration lines 247-259"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.lexaloffle/pico-8/sdl_controllers.txt",
+          "status": "captured",
+          "naming": "SDL2 controller configuration scheme; one mapping per line.",
+          "evidence": [
+            "manual:Input lines 296-311"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.lexaloffle/pico-8/cdata/",
+          "status": "captured",
+          "naming": "CARTDATA(<id>) persists 256 bytes as <id>.p8d.txt; IDs are up to 64 lowercase alphanumeric/underscore characters. -home/cdata_path overrides may relocate this directory. Editor SAVE/EXPORT cartridges and automatic backups are separate from game progress.",
+          "evidence": [
+            "manual:Cartridge Data lines 2310-2348 and Configuration -home behavior",
+            "official-bbs:https://www.lexaloffle.com/bbs/?tid=42684 (.p8d.txt in pico-8/cdata)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "not applicable",
+          "naming": "No machine-state filename is documented.",
+          "status": "not_required",
+          "evidence": [
+            "manual: PICO-8 is a fantasy console, not an emulator state-slot runtime"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "not applicable",
+          "status": "not_required",
+          "evidence": [
+            "product:https://www.lexaloffle.com/pico-8.php"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "~/.lexaloffle/pico-8/config.txt",
+          "status": "captured",
+          "naming": "KEYCONFIG changes default keyboard keys; serialized syntax is proprietary/manual-driven.",
+          "evidence": [
+            "manual:Controls lines 58-67",
+            "manual:Configuration lines 247-259"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "C:/Users/Yourname/AppData/Roaming/pico-8/config.txt",
+          "status": "captured",
+          "evidence": [
+            "manual:Configuration lines 247-259"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "C:/Users/Yourname/AppData/Roaming/pico-8/sdl_controllers.txt",
+          "status": "captured",
+          "evidence": [
+            "manual:Input lines 296-311"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "%APPDATA%\\pico-8\\cdata\\",
+          "naming": "CARTDATA(<id>) persists 256 bytes as <id>.p8d.txt; -home/cdata_path overrides may relocate this directory. Editor cartridges/backups are separate from game progress.",
+          "status": "captured",
+          "evidence": [
+            "manual:Cartridge Data lines 2310-2348 and Windows appdata/Configuration paths",
+            "official-bbs:https://www.lexaloffle.com/bbs/?tid=42684 (.p8d.txt in pico-8/cdata)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "not applicable",
+          "naming": "No machine-state filename is documented.",
+          "status": "not_required",
+          "evidence": [
+            "manual: PICO-8 fantasy-console runtime"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "not applicable",
+          "status": "not_required",
+          "evidence": [
+            "product:https://www.lexaloffle.com/pico-8.php"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "C:/Users/Yourname/AppData/Roaming/pico-8/config.txt",
+          "status": "captured",
+          "evidence": [
+            "manual:Controls lines 58-67",
+            "manual:Configuration lines 247-259"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "/Users/Yourname/Library/Application Support/pico-8/config.txt",
+          "status": "captured",
+          "evidence": [
+            "manual:Configuration lines 247-259"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "/Users/Yourname/Library/Application Support/pico-8/sdl_controllers.txt",
+          "status": "captured",
+          "evidence": [
+            "manual:Input lines 296-311"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Library/Application Support/pico-8/cdata/",
+          "naming": "CARTDATA(<id>) persists 256 bytes as <id>.p8d.txt; -home/cdata_path overrides may relocate this directory. Editor cartridges/backups are separate from game progress.",
+          "status": "captured",
+          "evidence": [
+            "manual:Cartridge Data lines 2310-2348 and macOS appdata/Configuration paths",
+            "official-bbs:https://www.lexaloffle.com/bbs/?tid=42684 (.p8d.txt in pico-8/cdata)"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "not applicable",
+          "naming": "No machine-state filename is documented.",
+          "status": "not_required",
+          "evidence": [
+            "manual: PICO-8 fantasy-console runtime"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "not applicable",
+          "status": "not_required",
+          "evidence": [
+            "product:https://www.lexaloffle.com/pico-8.php"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "/Users/Yourname/Library/Application Support/pico-8/config.txt",
+          "status": "captured",
+          "evidence": [
+            "manual:Controls lines 58-67",
+            "manual:Configuration lines 247-259"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "unsupported",
+      "reason": "Official product page documents Linux builds but no official Flatpak package or sandbox path.",
+      "evidence": [
+        "docs:https://www.lexaloffle.com/pico-8.php (official product page; Linux builds listed, no Flatpak artifact)"
+      ]
+    }
+  },
+  "notes": "The manual documents locations and SDL2/KEYCONFIG concepts, but not a complete stable line grammar for safely patching controller mappings. The adapter therefore records paths but refuses to synthesize config text; runtime, exact version, and package behavior remain unverified."
+}

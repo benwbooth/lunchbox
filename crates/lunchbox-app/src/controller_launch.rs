@@ -33,6 +33,56 @@ impl PreparedBizhawkLaunch {
     }
 }
 
+#[cfg(target_os = "linux")]
+enum PreparedJsonNativeLaunch {
+    B2(crate::controller_b2_native::native_command::NativeSession),
+    Hypseus(crate::controller_hypseus_singe_native::native_command::NativeSession),
+    Jgenesis(crate::controller_jgenesis_native::native_command::NativeSession),
+    Gopher64(crate::controller_gopher64_native::native_command::NativeSession),
+    Rmg(crate::controller_rmg_native::native_command::NativeSession),
+    Simple64(crate::controller_simple64_native::native_command::NativeSession),
+}
+
+#[cfg(target_os = "linux")]
+impl PreparedJsonNativeLaunch {
+    fn spawn(
+        &mut self,
+        plan: &LaunchPlan,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<std::process::Child> {
+        match self {
+            Self::B2(session) => session.spawn(plan, cancel),
+            Self::Hypseus(session) => session.spawn(plan, cancel),
+            Self::Jgenesis(session) => session.spawn(plan, cancel),
+            Self::Gopher64(session) => session.spawn(plan, cancel),
+            Self::Rmg(session) => session.spawn(plan, cancel),
+            Self::Simple64(session) => session.spawn(plan, cancel),
+        }
+    }
+
+    fn verify(&self, cancel: &std::sync::atomic::AtomicBool) -> Result<()> {
+        match self {
+            Self::B2(session) => session.verify(cancel),
+            Self::Hypseus(session) => session.verify(cancel),
+            Self::Jgenesis(session) => session.verify(cancel),
+            Self::Gopher64(session) => session.verify(cancel),
+            Self::Rmg(session) => session.verify(cancel),
+            Self::Simple64(session) => session.verify(cancel),
+        }
+    }
+
+    fn check_health(&self) -> Result<()> {
+        match self {
+            Self::B2(session) => session.check_health(),
+            Self::Hypseus(session) => session.check_health(),
+            Self::Jgenesis(session) => session.check_health(),
+            Self::Gopher64(session) => session.check_health(),
+            Self::Rmg(session) => session.check_health(),
+            Self::Simple64(session) => session.check_health(),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct CalibratedLaunch {
     #[cfg(target_os = "linux")]
@@ -62,7 +112,8 @@ pub struct CalibratedLaunch {
     #[cfg(target_os = "linux")]
     scummvm_native: Option<crate::controller_scummvm_native::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
-    jgenesis_native: Option<crate::controller_jgenesis_native::native_command::NativeSession>,
+    /// One launch-scoped standalone JSON/TOML configuration session.
+    jgenesis_native: Option<PreparedJsonNativeLaunch>,
     #[cfg(target_os = "linux")]
     mednafen_native: Option<crate::controller_mednafen::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
@@ -7029,6 +7080,123 @@ pub fn prepare_with_cancellation(
 
     #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Hypseus Singe")
+    {
+        let matches: Vec<_> = mapping
+            .hypseus_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|argument| argument == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Hypseus saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_hypseus_singe_native::native_command::prepare(
+                setup, &inventory, option, plan, cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Hypseus(native)),
+                description: "Hypseus Singe: exact native SDL3 Gamepad ordering with a private keymap/home and separate writable NVRAM directory; partial Linux support; runtime unverified"
+                    .into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("b2")
+    {
+        let matches: Vec<_> = mapping
+            .b2_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous b2 saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_b2_native::native_command::prepare(
+                setup, &inventory, option, plan, cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                mgba: None,
+                #[cfg(target_os = "linux")]
+                dolphin_native: None,
+                snes9x_native: None,
+                fceux_native: None,
+                sameboy_native: None,
+                #[cfg(target_os = "linux")]
+                bsnes_native: None,
+                #[cfg(target_os = "linux")]
+                stella_native: None,
+                #[cfg(target_os = "linux")]
+                vice_native: None,
+                #[cfg(target_os = "linux")]
+                hatari_native: None,
+                #[cfg(target_os = "linux")]
+                desmume_native: None,
+                #[cfg(target_os = "linux")]
+                openmsx_native: None,
+                #[cfg(target_os = "linux")]
+                mesen2_native: None,
+                #[cfg(target_os = "linux")]
+                blastem_native: None,
+                #[cfg(target_os = "linux")]
+                xemu_native: None,
+                #[cfg(target_os = "linux")]
+                scummvm_native: None,
+                #[cfg(target_os = "linux")]
+                jgenesis_native: Some(PreparedJsonNativeLaunch::B2(native)),
+                #[cfg(target_os = "linux")]
+                mednafen_native: None,
+                #[cfg(target_os = "linux")]
+                mame_native: None,
+                #[cfg(target_os = "linux")]
+                flycast_native: None,
+                #[cfg(target_os = "linux")]
+                pcsx2_native: None,
+                #[cfg(target_os = "linux")]
+                rpcs3_native: None,
+                #[cfg(target_os = "linux")]
+                melonds_native: None,
+                ppsspp: None,
+                duckstation: None,
+                _directory: None,
+                bizhawk: None,
+                #[cfg(target_os = "linux")]
+                bizhawk_topology: None,
+                transports: Vec::new(),
+                crocods: None,
+                ep128emu: None,
+                hatari: None,
+                simcp: None,
+                steemsse: None,
+                scummvm: None,
+                dolphin: None,
+                same_cdi: None,
+                fbneo: None,
+                mame: None,
+                puae: None,
+                stella: None,
+                description: "b2: selected native SDL2 GameControllers through a copied b2.json under a private XDG_CONFIG_HOME; source-fixed analogue/digital controls; partial Linux support; runtime unverified"
+                    .into(),
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("jgenesis")
     {
         let matches: Vec<_> = mapping
@@ -7081,7 +7249,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
-                jgenesis_native: Some(native),
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Jgenesis(native)),
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 #[cfg(target_os = "linux")]
@@ -7115,6 +7283,168 @@ pub fn prepare_with_cancellation(
                 stella: None,
                 description: "jgenesis: calibrated Genesis controls through a private jgenesis-config.toml using raw SDL joystick indices; partial Linux support; custom keymaps not covered"
                     .into(),
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Gopher64")
+    {
+        let matches: Vec<_> = mapping
+            .gopher64_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Gopher64 saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_gopher64_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                mgba: None,
+                #[cfg(target_os = "linux")]
+                dolphin_native: None,
+                snes9x_native: None,
+                fceux_native: None,
+                sameboy_native: None,
+                #[cfg(target_os = "linux")]
+                bsnes_native: None,
+                #[cfg(target_os = "linux")]
+                stella_native: None,
+                #[cfg(target_os = "linux")]
+                vice_native: None,
+                #[cfg(target_os = "linux")]
+                hatari_native: None,
+                #[cfg(target_os = "linux")]
+                desmume_native: None,
+                #[cfg(target_os = "linux")]
+                openmsx_native: None,
+                #[cfg(target_os = "linux")]
+                mesen2_native: None,
+                #[cfg(target_os = "linux")]
+                blastem_native: None,
+                #[cfg(target_os = "linux")]
+                xemu_native: None,
+                #[cfg(target_os = "linux")]
+                scummvm_native: None,
+                #[cfg(target_os = "linux")]
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Gopher64(native)),
+                #[cfg(target_os = "linux")]
+                mednafen_native: None,
+                #[cfg(target_os = "linux")]
+                mame_native: None,
+                #[cfg(target_os = "linux")]
+                flycast_native: None,
+                #[cfg(target_os = "linux")]
+                pcsx2_native: None,
+                #[cfg(target_os = "linux")]
+                rpcs3_native: None,
+                #[cfg(target_os = "linux")]
+                melonds_native: None,
+                ppsspp: None,
+                duckstation: None,
+                _directory: None,
+                bizhawk: None,
+                #[cfg(target_os = "linux")]
+                bizhawk_topology: None,
+                transports: Vec::new(),
+                crocods: None,
+                ep128emu: None,
+                hatari: None,
+                simcp: None,
+                steemsse: None,
+                scummvm: None,
+                dolphin: None,
+                same_cdi: None,
+                fbneo: None,
+                mame: None,
+                puae: None,
+                stella: None,
+                description: "Gopher64: calibrated N64 controls through a copied config.json under private XDG_CONFIG_HOME with measured SDL3 routing; native save/state data root preserved; partial Linux support; portable mode, VRU and Transfer Pak authoring not covered"
+                    .into(),
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("RMG")
+    {
+        let matches: Vec<_> = mapping
+            .rmg_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous RMG saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_rmg_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Rmg(native)),
+                description: "RMG: calibrated N64 controls through copied base input-plugin profiles under a private XDG_CONFIG_HOME with measured SDL3 raw joystick routing; native save/state data roots preserved; partial Linux support; game overrides, pak authoring and virtual controllers not covered"
+                    .into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("simple64")
+    {
+        let matches: Vec<_> = mapping
+            .simple64_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous simple64 saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_simple64_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Simple64(native)),
+                description: "simple64: calibrated N64 controls through private SDL2 GameController profiles and assignments beside a staged executable, with a private core config root and native save root preserved; partial Linux support; keyboard, raw joystick, VRU and Transfer Pak behavior not covered"
+                    .into(),
+                ..Default::default()
             }));
         }
     }

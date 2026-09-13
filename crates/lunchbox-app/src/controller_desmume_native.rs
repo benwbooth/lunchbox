@@ -93,6 +93,19 @@ fn ensure_device(device: u32) -> Result<()> {
 /// Render the complete private keyfile: the twelve mapped controls plus
 /// explicit disabled (0xFFFF) entries for Debug, Boost and Lid.
 pub(crate) fn config(device: u32, bindings: &[(String, Binding)]) -> Result<String> {
+    let mut names = std::collections::BTreeSet::new();
+    let mut inputs = std::collections::BTreeSet::new();
+    for (name, binding) in bindings {
+        ensure!(
+            KEYS.iter().any(|(_, output)| *output == name),
+            "DeSmuME binding names must match native JOYKEYS controls"
+        );
+        ensure!(names.insert(name), "Duplicate DeSmuME JOYKEYS control");
+        ensure!(
+            inputs.insert(binding.code(device)?),
+            "Shared DeSmuME physical input"
+        );
+    }
     let mut result = String::from("[JOYKEYS]\n");
     for (_, output) in KEYS {
         let binding = bindings
@@ -205,5 +218,16 @@ mod tests {
         assert!(text.contains("Debug=65535\n"));
         assert!(text.contains("Lid=65535\n"));
         assert_eq!(text.lines().count(), 1 + KEYS.len() + 3);
+    }
+
+    #[test]
+    fn config_rejects_unknown_or_shared_controls() {
+        let unknown = vec![("NoSuchKey".to_string(), Binding::Button(0))];
+        assert!(config(0, &unknown).is_err());
+        let shared = vec![
+            ("A".to_string(), Binding::Button(0)),
+            ("B".to_string(), Binding::Button(0)),
+        ];
+        assert!(config(0, &shared).is_err());
     }
 }

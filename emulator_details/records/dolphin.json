@@ -58,8 +58,8 @@
           "evidence": [
             "source:Core/IOS/IOSC.cpp constexpr ROOT_PUBLIC_KEY/DEFAULT_PRIVATE_KEY key material @6094cfcf"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:dolphin-emu/dolphin@6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4 (primary source cited by this record; input capture remains unresolved for linux)"]}],
       "notes": "Lunchbox firmware adapter roots at ~/.local/share/dolphin-emu with the ~/.dolphin-emu legacy fallback (crates/lunchbox-app/src/firmware.rs)."
     },
     "linux-flatpak": {
@@ -108,8 +108,8 @@
           "evidence": [
             "source:Core/IOS/IOSC.cpp constexpr key material @6094cfcf"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:dolphin-emu/dolphin@6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4 (primary source cited by this record; input capture remains unresolved for linux-flatpak)"]}],
       "notes": "Flatpak sets XDG_DATA_HOME/XDG_CONFIG_HOME to the ~/.var/app/org.DolphinEmu.dolphin-emu sandbox, which the pinned XDG code path consumes directly."
     },
     "windows": {
@@ -161,8 +161,8 @@
           "evidence": [
             "source:Core/IOS/IOSC.cpp constexpr ROOT_PUBLIC_KEY/DEFAULT_PRIVATE_KEY @6094cfcf"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:dolphin-emu/dolphin@6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4 (primary source cited by this record; input capture remains unresolved for windows)"]}],
       "notes": "The pinned Windows source resolves the normal user directory under Documents/Dolphin Emulator; portable.txt, LocalUserConfig and UserConfigPath remain higher-priority overrides."
     },
     "macos": {
@@ -213,8 +213,8 @@
           "evidence": [
             "source:Core/IOS/IOSC.cpp constexpr key material @6094cfcf"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:dolphin-emu/dolphin@6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4 (primary source cited by this record; input capture remains unresolved for macos)"]}],
       "notes": "No XDG split on macOS: one user root under ~/Library/Application Support/Dolphin carries Config, GC, Wii and StateSaves."
     }
   }

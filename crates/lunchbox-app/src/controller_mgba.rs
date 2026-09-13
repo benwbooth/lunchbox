@@ -354,3 +354,44 @@ fn replace_fields(
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_config_writes_guid_profile_and_clears_inherited_inputs() {
+        let controls = KEYS
+            .iter()
+            .enumerate()
+            .map(|(index, key)| ((*key).to_owned(), JoystickInput::Button(index as u32)))
+            .collect();
+        let output = render_config(
+            "[gba.input.SDLB]\nkeyA=99\nhat0Up=99\n",
+            "0123456789abcdef0123456789abcdef",
+            &ControlCounts {
+                buttons: 10,
+                axes: 0,
+                hats: 0,
+            },
+            true,
+            &controls,
+        )
+        .unwrap();
+        assert!(output.contains("device0=0123456789abcdef0123456789abcdef"));
+        assert!(output.contains("keyA=0"));
+        assert!(output.contains("hat0Up=-1"));
+        assert!(output.contains("[gba.input-profile.0123456789abcdef0123456789abcdef]"));
+    }
+
+    #[test]
+    fn render_config_rejects_non_hex_or_incomplete_guid_inputs() {
+        let controls = BTreeMap::new();
+        let counts = ControlCounts {
+            buttons: 0,
+            axes: 0,
+            hats: 0,
+        };
+        assert!(render_config("", "not-a-guid", &counts, false, &controls).is_err());
+    }
+}

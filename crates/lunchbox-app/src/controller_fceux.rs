@@ -76,3 +76,68 @@ impl Input {
         Ok(Self::Axis { index, positive })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_profile_spellings_preserve_axis_and_hat_flags() {
+        assert_eq!(Input::Button(7).packed().unwrap(), 7);
+        assert_eq!(Input::Button(7).as_setting().unwrap(), "b7");
+        assert_eq!(
+            Input::Axis {
+                index: 2,
+                positive: true
+            }
+            .packed()
+            .unwrap(),
+            0x8002
+        );
+        assert_eq!(
+            Input::Axis {
+                index: 2,
+                positive: false
+            }
+            .as_setting()
+            .unwrap(),
+            "-a2"
+        );
+        assert_eq!(
+            Input::Hat {
+                index: 1,
+                direction: 8
+            }
+            .as_setting()
+            .unwrap(),
+            "h1.8"
+        );
+        assert!(
+            Input::Hat {
+                index: 10,
+                direction: 1
+            }
+            .packed()
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn measured_axis_requires_crossing_the_pinned_fixed_threshold() {
+        assert_eq!(
+            Input::measured_axis(0, 0, 16363).unwrap(),
+            Input::Axis {
+                index: 0,
+                positive: true
+            }
+        );
+        assert_eq!(
+            Input::measured_axis(1, 0, -16383).unwrap(),
+            Input::Axis {
+                index: 1,
+                positive: false
+            }
+        );
+        assert!(Input::measured_axis(0, 16363, 17000).is_err());
+    }
+}

@@ -23,14 +23,12 @@
     ]
   },
   "saves": {
-    "status": "content_dependent",
-    "extensions": [
-      ".srm"
-    ],
-    "naming": "Persistent cartridge data, if provided by a title, follows the RetroArch content basename.",
-    "notes": "Vectrex cartridge persistence is title-dependent.",
+    "status": "supported",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=true but does not declare a persistent-save filename extension.",
+    "notes": "Persistent save support is declared by the pinned core-info metadata; filename and content semantics are not specified there.",
     "evidence": [
-      "vecx libretro save implementation"
+      "vecx_libretro.info libretro_saves=true"
     ]
   },
   "states": {

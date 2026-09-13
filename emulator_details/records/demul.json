@@ -1,1 +1,23 @@
-{"schema_version":1,"slug":"demul","emulator":"DEmul","sources":[{"kind":"source","repo":"http://demul.emulation64.com/","url":"http://demul.emulation64.com/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"http://demul.emulation64.com/","role":"official documentation/platform evidence"}],"platform_gaps":{"linux":{"status":"no_verified_package","reason":"The official demul distribution does not publish a package for linux.","evidence":["official:http://demul.emulation64.com/"]},"linux-flatpak":{"status":"no_verified_package","reason":"The official demul distribution does not publish a package for linux-flatpak.","evidence":["official:http://demul.emulation64.com/"]},"windows":{"status":"unresolved","reason":"No source-backed exact config/input/firmware/save/state contract was established for windows.","evidence":["official:http://demul.emulation64.com/"]},"macos":{"status":"no_verified_package","reason":"The official demul distribution does not publish a package for macos.","evidence":["official:http://demul.emulation64.com/"]}}}
+{
+  "schema_version": 1,
+  "slug": "demul",
+  "emulator": "DEmul",
+  "sources": [
+    { "kind": "docs", "url": "http://demul.emulation64.com/", "role": "official upstream Windows identity and release notes" },
+    { "kind": "artifact", "url": "https://archive.org/details/demul07_2017", "version": "DEmul 0.7a build 280418", "sha256": "ae3f11ed5d36c4f327b3428b8947181284a7f9ae302d811852d4d7a4e9af9148", "role": "byte-pinned preserved Windows release; plugin INI and directory evidence" }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "DEmul executable directory: gpuDX11.ini, gdrCHD.ini, gdrImage.ini, netDemul.ini, spuDemul.ini and plugin padDemul.ini", "naming": "UTF-16 BOM-compatible INI sections with key = value; plugin-owned files are separate", "evidence": ["artifact:DEmul 0.7a build 280418 archive sha256 ae3f11ed5d36c4f327b3428b8947181284a7f9ae302d811852d4d7a4e9af9148 (observed files)"] },
+        { "purpose": "input", "path": "<DEmul directory>\\padDemul.ini", "naming": "Sections JOY0_0/JAMMA0_0/GLOBAL0 etc.; numeric button/axis values and DEVICE_API. The artifact has no authoritative parser or stable physical-id contract, so no writer is added", "status": "unresolved", "evidence": ["artifact:padDemul.ini in pinned DEmul 0.7a archive", "docs:http://demul.emulation64.com/"] },
+        { "purpose": "saves", "path": "<DEmul directory>\\nvram\\ (observed NVRAM files) and VMU data path where selected by the plugin", "naming": "Observed .g2exp NVRAM files; community catalog also identifies VMU vms00.bin, but plugin parser is not authoritative", "status": "unresolved", "evidence": ["artifact:nvram/ in pinned DEmul archive", "artifact:DEmul 0.7a executable strings and archive sha256 ae3f11ed5d36c4f327b3428b8947181284a7f9ae302d811852d4d7a4e9af9148"] },
+        { "purpose": "states", "path": "No verified state-file directory or naming grammar in the pinned artifact; padDemul.ini only exposes GLOBAL0 SAVESTATE/LOADSTATE hotkey slots", "naming": "Unresolved; hotkey fields are not evidence of a file format", "status": "unresolved", "evidence": ["artifact:padDemul.ini GLOBAL0 in pinned archive", "artifact:DEmul 0.7a executable sha256 ae3f11ed5d36c4f327b3428b8947181284a7f9ae302d811852d4d7a4e9af9148"] },
+        { "purpose": "bios", "path": "User-supplied BIOS files are selected by the arcade plugins; no single system directory is established by the artifact", "naming": "Arcade platform BIOS naming is plugin/game-specific (NAOMI, Atomiswave, Hikaru); no universal checksum asserted", "status": "unresolved", "evidence": ["docs:http://demul.emulation64.com/", "artifact:DEmul 0.7a archive sha256 ae3f11ed5d36c4f327b3428b8947181284a7f9ae302d811852d4d7a4e9af9148"] },
+        { "purpose": "keys", "path": "No external encryption-key file established", "naming": "Not applicable", "status": "not_required", "evidence": ["artifact:DEmul 0.7a archive sha256 ae3f11ed5d36c4f327b3428b8947181284a7f9ae302d811852d4d7a4e9af9148"] }
+      ]
+    }
+  },
+  "platform_gaps": { "linux": { "status": "no_verified_package", "reason": "Official DEmul release is Windows-only", "evidence": ["docs:http://demul.emulation64.com/"] }, "linux-flatpak": { "status": "no_verified_package", "reason": "No Linux or Flatpak package is published", "evidence": ["docs:http://demul.emulation64.com/"] }, "macos": { "status": "no_verified_package", "reason": "No macOS package is published", "evidence": ["docs:http://demul.emulation64.com/"] } },
+  "notes": "padDemul.ini is a real persistent artifact grammar, but numeric values are plugin-specific and the closed binary exposes no stable device identity or authoritative field semantics. Preserve the refusal boundary until a source or same-launch measured mapping is available."
+}

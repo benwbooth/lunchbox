@@ -34,8 +34,9 @@
           "path": "TOS ROM image, by default <prefix>/share/hatari/tos.img, or any file passed via --tos / set in the [ROM] szTosImageFileName setting; EmuTOS is shipped with official releases as the free alternative",
           "naming": "TOS ROM convention is tos.img; --tos or [ROM] szTosImageFileName may select another filename, including an EmuTOS image; no canonical checksum is declared",
           "evidence": ["docs:manual Installation of a TOS ROM (rename to tos.img or use --tos)", "source:src/configuration.c [ROM] szTosImageFileName", "contract:docs/HATARI_NATIVE_CONTROLLER_CONTRACT.md (TOS selection, existence-checked at launch)"]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:hatari/hatari@11964da62914bf232ca84eacf0cedf1d25223e08 (primary source cited by this record; input capture remains unresolved for linux)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:hatari/hatari@11964da62914bf232ca84eacf0cedf1d25223e08 (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "The Hatari home resolves from $HOME (not XDG variables), so Lunchbox's private HOME plus -c isolates reads and writes while native saves stay in the session directory."
     },
     "linux-flatpak": {
@@ -63,8 +64,9 @@
           "path": "TOS image inside the sandbox (user-selected via --tos/[ROM] szTosImageFileName, e.g. tos.img or the bundled EmuTOS)",
           "naming": "TOS ROM convention is tos.img; --tos or [ROM] szTosImageFileName may select another filename, including EmuTOS; no canonical checksum is declared",
           "evidence": ["docs:manual Installation of a TOS ROM", "source:src/configuration.c [ROM] szTosImageFileName"]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:hatari/hatari@11964da62914bf232ca84eacf0cedf1d25223e08 (primary source cited by this record; input capture remains unresolved for linux-flatpak)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:hatari/hatari@11964da62914bf232ca84eacf0cedf1d25223e08 (primary source cited by this record; keys capture remains unresolved for linux-flatpak)"]}],
       "notes": "Flathub build exists (org.tuxfamily.hatari); Lunchbox's native Hatari integration requires native Linux, not Flatpak."
     },
     "windows": {
@@ -92,8 +94,9 @@
           "path": "TOS ROM image selected via --tos or [ROM] szTosImageFileName (tos.img convention; EmuTOS alternative)",
           "naming": "TOS ROM convention is tos.img; --tos or [ROM] szTosImageFileName may select another filename, including EmuTOS; no canonical checksum is declared",
           "evidence": ["docs:manual Installation of a TOS ROM", "source:src/configuration.c [ROM] szTosImageFileName"]
-        }
-      ]
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:hatari/hatari@11964da62914bf232ca84eacf0cedf1d25223e08 (primary source cited by this record; input capture remains unresolved for windows)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:hatari/hatari@11964da62914bf232ca84eacf0cedf1d25223e08 (primary source cited by this record; keys capture remains unresolved for windows)"]}]
     },
     "macos": {
       "paths": [
@@ -120,8 +123,9 @@
           "path": "TOS ROM image selected via --tos or [ROM] szTosImageFileName (tos.img convention; EmuTOS alternative)",
           "naming": "TOS ROM convention is tos.img; --tos or [ROM] szTosImageFileName may select another filename, including EmuTOS; no canonical checksum is declared",
           "evidence": ["docs:manual Installation of a TOS ROM", "source:src/configuration.c [ROM] szTosImageFileName"]
-        }
-      ]
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:hatari/hatari@11964da62914bf232ca84eacf0cedf1d25223e08 (primary source cited by this record; input capture remains unresolved for macos)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:hatari/hatari@11964da62914bf232ca84eacf0cedf1d25223e08 (primary source cited by this record; keys capture remains unresolved for macos)"]}]
     }
   }
 }

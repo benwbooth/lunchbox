@@ -1,1 +1,26 @@
-{"schema_version":1,"slug":"escv","emulator":"eSCV","sources":[{"kind":"source","repo":"http://takeda-toshiya.my.coocan.jp/scv/index.html","url":"http://takeda-toshiya.my.coocan.jp/scv/index.html","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"http://takeda-toshiya.my.coocan.jp/scv/index.html","role":"official documentation/platform evidence"}],"platform_gaps":{"linux":{"status":"no_verified_package","reason":"The official escv distribution does not publish a package for linux.","evidence":["official:http://takeda-toshiya.my.coocan.jp/scv/index.html"]},"linux-flatpak":{"status":"no_verified_package","reason":"The official escv distribution does not publish a package for linux-flatpak.","evidence":["official:http://takeda-toshiya.my.coocan.jp/scv/index.html"]},"windows":{"status":"unresolved","reason":"No source-backed exact config/input/firmware/save/state contract was established for windows.","evidence":["official:http://takeda-toshiya.my.coocan.jp/scv/index.html"]},"macos":{"status":"no_verified_package","reason":"The official escv distribution does not publish a package for macos.","evidence":["official:http://takeda-toshiya.my.coocan.jp/scv/index.html"]}}}
+{
+  "schema_version": 1,
+  "slug": "escv",
+  "emulator": "eSCV",
+  "sources": [
+    { "kind": "docs", "url": "http://takeda-toshiya.my.coocan.jp/scv/index.html", "role": "official eSCV identity, Windows 10/11 requirement, distribution page, and state-support history" },
+    { "kind": "source_archive", "url": "http://takeda-toshiya.my.coocan.jp/common/source.7z", "sha256": "63d598a29cabf2d9212bd8a1699d8bcdddfc2416e711c20581a0d665c96f2399", "role": "official Common Source Code Project implementation archive" }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "<working-directory>/scv.ini", "naming": "Win32 winmain loads and saves %s.ini with CONFIG_NAME=scv through create_local_path.", "evidence": ["source:source.7z/src/win32/winmain.cpp load_config/save_config", "source:source.7z/src/vm/scv/scv.h CONFIG_NAME=\"scv\"", "source archive sha256:63d598a29cabf2d9212bd8a1699d8bcdddfc2416e711c20581a0d665c96f2399"] },
+        { "purpose": "input", "path": "<working-directory>/scv.ini [Input] JoyButtonsEx1_1..JoyButtonsEx8_16", "naming": "The source persists signed integer joystick assignments. Negative values are Win32 virtual-key codes; nonnegative values encode joystick index in bits 5+ and one of 32 button/axis/HAT positions. eSCV's runtime consumes joystick indices 0..3.", "evidence": ["source:source.7z/src/config.cpp load_config/save_config JoyButtonsEx", "source:source.7z/src/emu.cpp update_joystick", "source:source.7z/src/win32/winmain.cpp joystick dialog"] },
+        { "purpose": "saves", "path": "<cartridge-path with extension replaced by .SAV>", "naming": "For battery-backed cartridge type 1 (except Shogi Nyumon), MEMORY derives the save path from the selected cartridge and reads/writes 0x2000 bytes.", "evidence": ["source:source.7z/src/vm/scv/memory.cpp open_cart/close_cart save_path"] },
+        { "purpose": "states", "path": "<working-directory>/scv.sta0 .. scv.sta9 (gzip by default)", "naming": "The Win32 state menu calls EMU::state_file_path, which formats CONFIG_NAME.sta<slot>; save_state writes compressed state when compress_state is enabled by default, and serializes VM/config state.", "evidence": ["source:source.7z/src/emu.cpp EMU::state_file_path/save_state", "source:source.7z/src/win32/winmain.cpp save/load state commands", "official:http://takeda-toshiya.my.coocan.jp/scv/index.html state-support history"] },
+        { "purpose": "bios", "path": "<working-directory>/BIOS.ROM", "naming": "SCV MEMORY initializes its 0x1000-byte BIOS buffer and loads BIOS.ROM through create_local_path; absence leaves the initialized 0xff buffer.", "evidence": ["source:source.7z/src/vm/scv/memory.cpp BIOS.ROM load"] },
+        { "purpose": "keys", "path": "No separate key file; keyboard events are Win32 virtual-key codes in the process and optionally negative values in JoyButtonsEx/JoyToKeyButtons.", "naming": "The Win32 joystick dialog stores -(LOBYTE(WM_KEYDOWN wParam)); no external key-material or key database is loaded by eSCV.", "evidence": ["source:source.7z/src/win32/winmain.cpp vk_names/JoySubProc", "source:source.7z/src/win32/osd_input.cpp keyboard input"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "no_verified_package", "reason": "The official eSCV page says the emulator is for Win32 and requires Windows 10/11; no native Linux artifact or source build target was established.", "evidence": ["official:http://takeda-toshiya.my.coocan.jp/scv/index.html"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "No first-party Flatpak or Linux artifact is published by the official eSCV distribution.", "evidence": ["official:http://takeda-toshiya.my.coocan.jp/scv/index.html"] },
+    "macos": { "status": "no_verified_package", "reason": "The official eSCV page identifies a Win32-only build requiring Windows 10/11; no macOS artifact was established.", "evidence": ["official:http://takeda-toshiya.my.coocan.jp/scv/index.html"] }
+  }
+}

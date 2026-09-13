@@ -14,8 +14,8 @@ It contains one row for every host/runtime pair in the canonical database:
 
 The source set now contains 250 standalone platform records: every one of the
 249 catalog identities plus the separately researched `simple64` record. Their
-1,000 record/host cells are all explicitly dispositioned: 432 fully captured,
-27 partially captured, 177 without a verified package, 20 unsupported, and 344
+1,000 record/host cells are all explicitly dispositioned: 419 fully captured,
+157 partially captured, 223 without a verified package, 122 unsupported, and 79
 unresolved. There are no `missing_record` rows.
 
 The 94 canonical RetroArch cores also have one structured record apiece. Every
@@ -27,8 +27,8 @@ Windows SteemSSE core artifact is source-verified as available, while the other
 from the RetroArch frontend.
 
 Because the shared RetroArch frontend record supplies the platform paths for
-all 94 core rows, the generated matrix contains 808 captured rows, 27 partial
-rows, and 541 explicit host-gap rows.
+all 94 core rows, the generated matrix contains 795 captured rows, 157 partial
+rows, and 424 explicit host-gap rows.
 
 Generate or refresh it with:
 
@@ -39,14 +39,24 @@ cargo run -p lunchbox-db -- feature-matrix \
   --retroarch-cores emulator_details/retroarch-cores \
   --controller-catalog crates/lunchbox-app/data/controllers/catalog.json \
   --firmware-rules sources/firmware-rules.json \
+  --test-results emulator_details/runtime-test-results.json \
   --output emulator_details/emulator-feature-matrix.csv
 ```
 
-The generator preserves the four manually maintained test columns from an
+The generator preserves the five manually maintained feature-result columns and
+the notes column from an
 existing matrix, keyed by `runtime_kind`, `runtime_id`, and `host_os`:
 `controller_test_status`, `firmware_test_status`, `save_test_status`, and
-`test_notes`. Regeneration refreshes the research-derived fields without
+`state_test_status`, plus `test_notes`. Older matrices without the state column
+load it as `not_tested`. Regeneration refreshes the research-derived fields without
 discarding test results.
+
+Reviewed results in `emulator_details/runtime-test-results.json` override the
+same keyed cells from a prior CSV. The generator rejects duplicate results,
+unknown statuses, unknown runtime/host keys, missing evidence notes, and schema
+versions it does not understand. This ledger is the durable source for runtime
+evidence; preserved CSV-only values remain supported for in-progress manual
+testing.
 
 Controller configuration is assembled from both `config` and `input` record
 entries. `input` means controller-binding syntax; `keys` is reserved for actual
@@ -77,8 +87,10 @@ The controller, firmware, save, and state status columns describe research
 capture only. The per-core columns are structured source metadata, not runtime
 results. Neither form implies that a feature works, a firmware asset is
 accepted, or that the new provider-neutral save-sync engine has been exercised
-with this exact runtime, host, and real cloud account. Only that live evidence
-may promote `save_test_status` from `not_tested`.
+with this exact runtime, host, and real cloud account. Only live evidence may
+promote a feature test status from `not_tested`. Saves and save states have
+separate result columns so a state round-trip cannot be misreported as a
+persistent-save pass.
 
 ## Status vocabulary
 
@@ -106,10 +118,14 @@ exact file names, sizes and canonical hashes when available, import/install
 method, and a boot or runtime diagnostic proving the asset was accepted. Never
 copy proprietary firmware into the repository.
 
-For saves and states, create a deterministic in-game save and state, identify
-the exact written files or whole image, record names and hashes, relaunch and
-load both, then exercise export/restore without losing a newer version. Whole
-images require an atomic snapshot/copy while the emulator is stopped.
+For saves, create a deterministic in-game save, identify the exact written files
+or whole image, record names and hashes, relaunch and load it, then exercise
+export/restore without losing a newer version. Whole images require an atomic
+snapshot/copy while the emulator is stopped.
+
+For states, create a deterministic state, identify its exact filename and hash,
+mutate emulated state, load the saved state, and verify the earlier state was
+restored. Exercise export/restore separately before promoting synchronization.
 
 The matrix is evidence tracking, not an assertion that every runtime is
 installable on every host. Unsupported cells remain explicit rows and become

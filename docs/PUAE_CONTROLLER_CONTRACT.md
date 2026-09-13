@@ -6,6 +6,12 @@ Source: libretro/libretro-uae revision
 RetroArch save-directory routing was inspected at revision
 `9a4726b05089ea339a53a313ece920bd8748d006`, `runloop.c`.
 
+This contract belongs to the catalog's native RetroArch launch path for the
+PUAE core (`puae`). It does not describe a separate standalone PUAE binary.
+The `puae-retroarch` catalog entry is the documentation-oriented RetroArch
+variant and shares the core's upstream mapper and firmware rules; it is not a
+second native controller writer or a different emulator implementation.
+
 PUAE appends three custom configuration layers: the selected model's
 `puae_libretro_MODEL.uae`, `puae_libretro_global.uae`, and the content basename
 with its extension replaced by `.uae`. All are read from the effective core

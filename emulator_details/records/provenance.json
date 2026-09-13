@@ -1,1 +1,67 @@
-{"schema_version":1,"slug":"provenance","emulator":"Provenance","sources":[{"kind":"source","url":"https://provenance-emu.com/","role":"official project identity"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official Provenance source does not establish an exact six-purpose host contract.","evidence":["official:https://provenance-emu.com/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"linux-flatpak":{"status":"unresolved","reason":"The official Provenance source does not establish an exact six-purpose host contract.","evidence":["official:https://provenance-emu.com/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"macos":{"status":"unresolved","reason":"The official Provenance source does not establish an exact six-purpose host contract.","evidence":["official:https://provenance-emu.com/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"windows":{"status":"unresolved","reason":"The official Provenance source does not establish an exact six-purpose host contract.","evidence":["official:https://provenance-emu.com/","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]}}}
+{
+  "schema_version": 1,
+  "slug": "provenance",
+  "emulator": "Provenance",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/Provenance-Emu/Provenance",
+      "commit": "93f49b4079df204fcd77f29883d00bb5bde629d4",
+      "url": "https://github.com/Provenance-Emu/Provenance/tree/93f49b4079df204fcd77f29883d00bb5bde629d4",
+      "role": "pinned Provenance source and Apple-platform application scope"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/Provenance-Emu/Provenance/blob/93f49b4079df204fcd77f29883d00bb5bde629d4/README.md",
+      "role": "official supported-platform, iCloud, save-state, BIOS and controller feature description"
+    },
+    {
+      "kind": "docs",
+      "url": "https://provenance-emu.com/",
+      "role": "official project identity and distribution site"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/PROVENANCE_CONTROLLER_BOUNDARY.md",
+      "role": "fail-closed desktop controller boundary"
+    }
+  ],
+  "platform_gaps": {
+    "linux": {
+      "status": "unsupported",
+      "reason": "The pinned Provenance application is an Apple-platform Swift project; its official README does not publish a Linux application or Linux persistence/controller contract.",
+      "evidence": [
+        "source:README.md platform badges and project description identify iOS, tvOS and macOS targets, not Linux @93f49b4",
+        "official:https://provenance-emu.com/ distribution is Apple-platform focused"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unsupported",
+      "reason": "No Provenance Flatpak manifest, package, or Linux sandbox persistence contract is published by the pinned project.",
+      "evidence": [
+        "source:Provenance source tree and README contain no Flatpak target @93f49b4",
+        "official:https://provenance-emu.com/ official distribution links are Apple-platform artifacts"
+      ]
+    },
+    "windows": {
+      "status": "unsupported",
+      "reason": "The pinned Provenance project does not publish a native Windows application or a Windows controller/configuration, save/state, firmware, or key contract.",
+      "evidence": [
+        "source:README.md supported-platform badges identify Apple targets and omit Windows @93f49b4"
+      ]
+    },
+    "macos": {
+      "status": "unresolved",
+      "reason": "The pinned project advertises a macOS target, but this catalog has no verified desktop build or source-backed six-purpose macOS persistence/controller path contract that Lunchbox can safely write.",
+      "evidence": [
+        "source:README.md macOS 13+ target badge @93f49b4",
+        "source:README.md documents app-level save states, BIOS and controller features but not a stable Lunchbox desktop path grammar @93f49b4"
+      ]
+    }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not invent a Provenance desktop controller file: the pinned Apple-platform project does not establish a stable desktop persistence and mapping grammar for Lunchbox. Apple runtime input, app container paths, and per-core save/state behavior require platform-specific inspection."
+  },
+  "notes": "Provenance is cataloged as an Apple-platform emulator frontend. The source advertises iCloud synchronization and app-level save states, but neither establishes one cross-host desktop controller/configuration namespace. Runtime Apple build and effective controller input were not verified."
+}

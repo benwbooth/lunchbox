@@ -183,6 +183,27 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/jsgroth/jgenesis/blob/cbe7f129e3f5c805a2a2e4318981834192116e90/frontend/jgenesis-native-config/src/input/mappings.rs",
         ),
         (
+            "gopher64",
+            "n64",
+            4,
+            vec!["Nintendo 64"],
+            "https://github.com/gopher64/gopher64/blob/0bb9fbba638f5cebe3b8a3c1c245abcfec8b0132/src/ui/input.rs",
+        ),
+        (
+            "rmg",
+            "n64",
+            4,
+            vec!["Nintendo 64", "Nintendo 64DD"],
+            "https://github.com/Rosalie241/RMG/blob/3e8b366be91ea96329db0567b038a31785f33468/Source/RMG-Input/main.cpp",
+        ),
+        (
+            "simple64",
+            "n64",
+            4,
+            vec!["Nintendo 64"],
+            "https://github.com/simple64/simple64/blob/d8c969c7b932e3d76e6a25549d76348839dbaefd/simple64-input-qt/main.cpp",
+        ),
+        (
             "xemu",
             "xbox",
             4,
@@ -441,6 +462,35 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
                         output,
                     )
                 })
+                .collect(),
+        );
+    }
+    if (core, layout) == ("gopher64", "n64") {
+        return Some(
+            crate::controller_gopher64_native::CONTROLS
+                .iter()
+                .map(|(target, index)| {
+                    (
+                        (*target).to_owned(),
+                        format!("input_profiles[].inputs[{index}]"),
+                    )
+                })
+                .collect(),
+        );
+    }
+    if (core, layout) == ("rmg", "n64") {
+        return Some(
+            crate::controller_rmg_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("simple64", "n64") {
+        return Some(
+            crate::controller_simple64_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
                 .collect(),
         );
     }

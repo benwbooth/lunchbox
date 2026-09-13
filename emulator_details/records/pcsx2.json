@@ -60,6 +60,14 @@
             "source:pcsx2/Docs/Configuration_Guide/Configuration_Guide.md first-time wizard BIOS folder step",
             "repo:crates/lunchbox-app/src/firmware.rs (pcsx2 linux bios root ~/.config/PCSX2/bios)"
           ]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:PCSX2/pcsx2@98697735f1bb1a1452d975251269abd1019876d1 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "AppImage builds place the data root next to the AppImage when no other root applies. Lunchbox launches PCSX2 with -datapath into a private tree (fresh inis/PCSX2.ini plus inputprofiles/) and rejects portable markers because the native source gives them priority; native memcards/sstates/bios keep their configured locations."
@@ -109,6 +117,14 @@
             "docs:https://pcsx2.net/docs/setup/bios",
             "repo:crates/lunchbox-app/src/firmware.rs (flatpak pcsx2 bios root)"
           ]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:PCSX2/pcsx2@98697735f1bb1a1452d975251269abd1019876d1 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Flatpak id net.pcsx2.PCSX2 from Flathub; inside the sandbox XDG_CONFIG_HOME is ~/.var/app/net.pcsx2.PCSX2/config, which PCSX2's own $XDG_CONFIG_HOME handling then joins with PCSX2/."
@@ -159,6 +175,14 @@
             "source:pcsx2/Pcsx2Config.cpp EmuFolders::SetDataDirectory Windows data root; Folders Bios=bios",
             "source:pcsx2/Docs/Configuration_Guide/Configuration_Guide.md"
           ]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:PCSX2/pcsx2@98697735f1bb1a1452d975251269abd1019876d1 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "The pinned source puts the Windows data root in Documents\\PCSX2 (FOLDERID_Documents), not AppData. Lunchbox's firmware adapter follows that Documents root for new installs."
@@ -209,6 +233,14 @@
             "source:pcsx2/Pcsx2Config.cpp macOS data root and Folders Bios=bios",
             "repo:crates/lunchbox-app/src/firmware.rs (pcsx2 macOS bios root ~/Library/Application Support/PCSX2/bios)"
           ]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:PCSX2/pcsx2@98697735f1bb1a1452d975251269abd1019876d1 (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Data root follows the macOS convention via MAC_DATA_DIR; portable markers next to the binary still take priority per EmuFolders::SetDataDirectory."

@@ -65,7 +65,8 @@
             "source:yabause/src/qt/ui/UISettings.cpp cbEnableBiosEmulation <-> General/EnableEmulatedBios",
             "repo:crates/lunchbox-app/src/firmware.rs (no yabasanshiro firmware_rules entries)"
           ]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "Yaba Sanshiro does not consume an external cryptographic key file for Saturn media or BIOS loading.", "status": "not_required", "evidence": ["source:yabause/src/yabause.c and source:yabause/src/qt/YabauseThread.cpp @1.20.37"] }
       ],
       "notes": "No official Linux binaries: yabasanshiro.com/download ships only Android/iOS/Windows plus the GPL source; on Linux the emulator arrives via the 'yabasanshiro' snap (v2.12.0, publisher devMiyax) or a source build. There is no official flatpak - org.yabause.yabasanshiro could not be verified on Flathub (appstream 404 + empty search, 2026-09-11) - and there is no macOS packaging, so no linux-flatpak/macos entries are captured. all_emulators.csv's save dir ~/.local/share/yabause is not source-accurate: the default data root is ~/.config/YabaSanshiro (AppConfigLocation). The GitHub repo devmiyax/yabause 404'd at capture time; facts were pinned to the official v1.20.37 GPL source tarball instead."
     },
@@ -116,7 +117,8 @@
             "source:yabause/src/yabause.c YabauseInit emulatebios branch",
             "repo:crates/lunchbox-app/src/firmware.rs (no yabasanshiro entries)"
           ]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "Yaba Sanshiro does not consume an external cryptographic key file for Saturn media or BIOS loading.", "status": "not_required", "evidence": ["source:yabause/src/yabause.c and source:yabause/src/qt/YabauseThread.cpp @1.20.37"] }
       ],
       "notes": "Windows is the primary desktop target: yabasanshiro.com/download ships an installer (.msi) and a standalone zip ('The third target for this project which has cloud sync function with Android version'), both v1.20.37 at capture. Portable installs (yabause.ini next to the exe) are honored, but the default data root without a portable ini is %APPDATA%\\YabaSanshiro."
     }

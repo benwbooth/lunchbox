@@ -3,10 +3,12 @@
 Latest source checkpoint: [guided integration](CONTROLLER_GUIDED_INTEGRATION.md).
 The cross-platform controller/firmware/save matrix is the
 [emulator platform integration checklist](EMULATOR_PLATFORM_INTEGRATION_CHECKLIST.md).
-It supersedes historical counts below: 93/94 RetroArch core contracts and
-28/249 partial standalone dispatches, or 121/343 source entries (35.3%), not
-overall completion. All 28 registered native adapters consume guided choices,
-with runtime setup/backend restrictions. Testing is deferred again by request.
+It supersedes historical counts below: 94/94 RetroArch core contracts and
+32/249 partial standalone dispatches, or 126/343 catalog source entries (36.7%),
+not overall completion. All 32 catalog-native adapters consume guided choices,
+with runtime setup/backend restrictions. simple64 has the same source-backed
+guided path but is record-only until it gains a canonical catalog identity.
+Focused source tests do not establish runtime compatibility.
 
 ## Current scope override — 2026-09-08
 
@@ -22,10 +24,11 @@ retain precedence. MAME's disabled default still preserves native configuration.
 FBNeo selects its six-button-panel device; Flycast retains its native routing
 (Atomiswave ignores buttons beyond five). Extra controls need not exist in a game.
 
-Source implementation inventory: 93/94 RetroArch core names have launch profiles
-(98.9%), up from 91/94. This is profile presence, not tested compatibility or
-all-mode completion. Steem SSE remains a Windows-runtime exception, not a reason
-to delay standalone work. No tests, builds or native probes have been run.
+Source implementation inventory: all 94 RetroArch core names have launch
+profiles. This is profile presence, not tested compatibility or all-mode
+completion. Steem SSE remains a Windows-runtime exception, not a reason to
+delay standalone work. Historical checkpoint notes below retain their then-current
+counts.
 
 The standalone pass has started: coverage now inventories native candidates even
 when they also advertise libretro cores. Existing BizHawk native dispatch is

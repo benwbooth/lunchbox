@@ -4,49 +4,82 @@
   "emulator": "JConfig",
   "sources": [
     {
-      "kind": "source",
-      "repo": "https://jconfig-universe.fandom.com/wiki/JVS/NESiCA_Config_(or_JConfig)",
-      "url": "https://jconfig-universe.fandom.com/wiki/JVS/NESiCA_Config_(or_JConfig)",
-      "role": "official upstream project identity and implementation"
-    },
-    {
       "kind": "docs",
       "url": "https://jconfig-universe.fandom.com/wiki/JVS/NESiCA_Config_(or_JConfig)",
-      "role": "official distribution or project documentation"
+      "role": "Community-maintained operational documentation: Windows configurator identity, joystick modes, key commands, registry behavior, Save Patch, and *.key handling. It is not an upstream source repository."
+    },
+    {
+      "kind": "artifact",
+      "url": "https://hybrid-analysis.com/sample/3c475df3211bde59acd3bcfec30845e17829b50d16d6ced564bab83f95d75805/66e86d131f18c42b9408ac53",
+      "version": "JConfig.exe sample; PE32 GUI Intel 80386",
+      "sha256": "3c475df3211bde59acd3bcfec30845e17829b50d16d6ced564bab83f95d75805",
+      "role": "Byte-pinned independent artifact report confirming a Windows PE executable. The report marks the sample unavailable and provenance is not an official JConfig distribution, so it is not used to infer undocumented fields."
     }
   ],
-  "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "The official JConfig source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://jconfig-universe.fandom.com/wiki/JVS/NESiCA_Config_(or_JConfig)",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official JConfig source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://jconfig-universe.fandom.com/wiki/JVS/NESiCA_Config_(or_JConfig)",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official JConfig source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://jconfig-universe.fandom.com/wiki/JVS/NESiCA_Config_(or_JConfig)",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
+  "platforms": {
     "windows": {
-      "status": "unresolved",
-      "reason": "The official JConfig source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://jconfig-universe.fandom.com/wiki/JVS/NESiCA_Config_(or_JConfig)",
-        "host capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "Unresolved: variant/game-specific JConfig settings plus Windows registry values when Individual Game Settings is disabled.",
+          "naming": "JConfig is bundled in multiple interface-emulator and game-specific variants. The documentation describes individual overrides and Load Regedit/Save Regedit, but publishes no stable settings filename, registry key, section grammar, encoding, or complete field schema; the byte-pinned independent sample is unavailable for extraction.",
+          "status": "unresolved",
+          "evidence": ["docs:JConfig Universe wiki, Individual Game Settings and Load/Save Regedit", "artifact:JConfig.exe PE32 independent sample"]
+        },
+        {
+          "purpose": "input",
+          "path": "Unresolved: variant/game-specific JConfig joystick configuration and game-facing JVS/Fast IO input.",
+          "naming": "The documentation lists DInput, XInput, Winmm and GetAsyncKeyState modes, joystick reversal/thread options, POV/analog/deadzone options, and P1/P2 key commands. It does not publish the persisted binding representation or a stable physical-device identity, and there is no upstream source or extractable authoritative artifact from which to recover it.",
+          "status": "unresolved",
+          "evidence": ["docs:JConfig Universe wiki, Joystick Type and Commands for GetAsyncKeyState", "artifact:JConfig.exe PE32 independent sample"]
+        },
+        {
+          "purpose": "saves",
+          "path": "<game-directory>\\SV\\ when Save Patch is enabled",
+          "naming": "Save Patch attempts to redirect title-owned save data into the SV directory. This is a route-capable directory contract, but filenames remain game-owned and the documentation lists three titles for which the patch is known not to work.",
+          "status": "captured",
+          "evidence": ["docs:JConfig Universe wiki, Save Patch"]
+        },
+        {
+          "purpose": "states",
+          "path": "No JConfig emulator snapshot or save-state facility.",
+          "naming": "Not applicable. JConfig is a configurator/interface wrapper; its documented persistence feature is game save-data redirection, not machine-state serialization, and the documented controls expose no state command or slot grammar.",
+          "status": "not_supported",
+          "evidence": ["docs:JConfig Universe wiki, Settings Window and Save Patch"]
+        },
+        {
+          "purpose": "bios",
+          "path": "No JConfig-owned external BIOS or firmware file is required.",
+          "naming": "Not applicable. JConfig is a configurator/interface wrapper; game executables and interface-emulator DLLs are runtime components, not a JConfig BIOS set.",
+          "status": "not_required",
+          "evidence": ["docs:JConfig Universe wiki, About and Additional Notes"]
+        },
+        {
+          "purpose": "keys",
+          "path": "<game-directory>\\*.key for CryptServer emulation when a title requires it",
+          "naming": "A title-specific .key file is consumed when that game requires CryptServer emulation. There is intentionally no universal filename or checksum because the key is selected by the game; it may remain in the game directory for JConfig's integrated emulation or be passed to cryptserver.exe.",
+          "status": "captured",
+          "evidence": ["docs:JConfig Universe wiki, CryptServer Emulation and Cryptserver.exe"]
+        }
       ]
     }
-  }
+  },
+  "platform_gaps": {
+    "linux": {
+      "status": "unsupported",
+      "reason": "The pinned JConfig artifact is a Windows PE32 configurator and the documentation describes Windows registry, DirectX, DirectInput/XInput/Winmm, and Windows helper executables; no Linux build is published.",
+      "evidence": ["artifact:JConfig.exe PE32 independent sample", "docs:JConfig Universe wiki"]
+    },
+    "linux-flatpak": {
+      "status": "unsupported",
+      "reason": "No Linux or Flatpak JConfig package, runtime, or sandbox contract is published.",
+      "evidence": ["artifact:JConfig.exe PE32 independent sample", "docs:JConfig Universe wiki"]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "The available JConfig artifact is Windows PE32 and the documented dependencies are Windows-specific; no macOS executable is published.",
+      "evidence": ["artifact:JConfig.exe PE32 independent sample", "docs:JConfig Universe wiki"]
+    }
+  },
+  "notes": "No controller writer is added. JConfig's documented controls are runtime wrapper settings and game/interface-specific mappings; without an authoritative source or measured same-launch consumed-file/device oracle, rewriting guessed files or registry values would not establish effective gameplay input. Preserve the game tree, registry, *.key material, and SV data while refusing unsupported host launches."
 }

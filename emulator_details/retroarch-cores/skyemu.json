@@ -20,7 +20,7 @@
     "files": [
       {
         "path": "cgb_boot.bin",
-        "description": "GBC BIOS",
+        "description": "cgb_boot.bin (GBC BIOS)",
         "required": false,
         "checksum_status": "not_published",
         "checksums": [],
@@ -30,7 +30,7 @@
       },
       {
         "path": "gbc_bios.bin",
-        "description": "GBC BIOS",
+        "description": "gbc_bios.bin (GBC BIOS)",
         "required": false,
         "checksum_status": "not_published",
         "checksums": [],
@@ -40,7 +40,7 @@
       },
       {
         "path": "cgb0_boot.bin",
-        "description": "GBC BIOS",
+        "description": "cgb0_boot.bin (GBC BIOS)",
         "required": false,
         "checksum_status": "not_published",
         "checksums": [],
@@ -50,7 +50,7 @@
       },
       {
         "path": "cgb_agb_boot.bin",
-        "description": "GBC BIOS",
+        "description": "cgb_agb_boot.bin (GBC BIOS)",
         "required": false,
         "checksum_status": "not_published",
         "checksums": [],
@@ -60,7 +60,7 @@
       },
       {
         "path": "dmg_rom.bin",
-        "description": "DMG BIOS",
+        "description": "dmg_rom.bin (DMG BIOS)",
         "required": false,
         "checksum_status": "not_published",
         "checksums": [],
@@ -70,7 +70,7 @@
       },
       {
         "path": "dmg0_rom.bin",
-        "description": "DMG BIOS",
+        "description": "dmg0_rom.bin (DMG BIOS)",
         "required": false,
         "checksum_status": "not_published",
         "checksums": [],
@@ -80,7 +80,7 @@
       },
       {
         "path": "gba_bios.bin",
-        "description": "GBA BIOS",
+        "description": "gba_bios.bin (GBA BIOS)",
         "required": false,
         "checksum_status": "not_published",
         "checksums": [],
@@ -90,7 +90,7 @@
       },
       {
         "path": "nds7.bin",
-        "description": "NDS ARM7 BIOS",
+        "description": "nds7.bin (NDS ARM7 BIOS)",
         "required": false,
         "checksum_status": "not_published",
         "checksums": [],
@@ -100,7 +100,7 @@
       },
       {
         "path": "nds9.bin",
-        "description": "NDS ARM9 BIOS",
+        "description": "nds9.bin (NDS ARM9 BIOS)",
         "required": false,
         "checksum_status": "not_published",
         "checksums": [],
@@ -110,7 +110,7 @@
       },
       {
         "path": "firmware.bin",
-        "description": "NDS firmware",
+        "description": "firmware.bin (NDS FIRMWARE)",
         "required": false,
         "checksum_status": "not_published",
         "checksums": [],
@@ -126,13 +126,11 @@
   },
   "saves": {
     "status": "supported",
-    "extensions": [
-      ".sav"
-    ],
-    "naming": "RetroArch uses <content-basename>.sav for SkyEmu persistent cartridge saves.",
-    "notes": "SkyEmu supports persistent saves across its GB/GBA/NDS systems.",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=true but does not declare a persistent-save filename extension.",
+    "notes": "Persistent save support is declared by the pinned core-info metadata; filename and content semantics are not specified there.",
     "evidence": [
-      "SkyEmu libretro save implementation"
+      "skyemu_libretro.info libretro_saves=true"
     ]
   },
   "states": {

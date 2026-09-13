@@ -53,8 +53,9 @@
             "docs:tasvideos.org/Bizhawk/Firmwares",
             "docs:tasvideos.org/Bizhawk/FAQ"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; input capture remains unresolved for windows)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; keys capture remains unresolved for windows)"]}],
       "notes": "Primary platform: EmuHawk.exe from GitHub releases (README requires at least Win10 22H2 or Win11 21H2; a 1.13.2 backport exists for XP/7/8.1). Lunchbox launches with a private --config copy and leaves PathEntries-directed save/state locations untouched."
     },
     "linux": {
@@ -98,8 +99,9 @@
             "source:src/BizHawk.Client.Common/fwmanager/FirmwareManager.cs DoScanAndResolve",
             "docs:tasvideos.org/Bizhawk/Firmwares"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; input capture remains unresolved for linux)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "Supported: bizhawk-monort release started with EmuHawkMono.sh (runtime deps glibc, Mono complete, OpenAL, Lua 5.4); README calls the port about at parity with Mupen64Plus (N64) the notable omission, in a Windows-centric project. Lunchbox's direct-Mono launch supplies BIZHAWK_HOME/BIZHAWK_DATA_HOME explicitly and passes a private --config copy (docs/BIZHAWK_DEFINITION_CAPTURE.md)."
     },
     "macos": {
@@ -139,8 +141,9 @@
             "source:src/BizHawk.Client.Common/config/PathEntryCollection.cs Defaults (Firmware = ./Firmware)",
             "docs:tasvideos.org/Bizhawk/Firmwares"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; input capture remains unresolved for macos)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; keys capture remains unresolved for macos)"]}],
       "notes": "macOS support level: none for current releases. The README section macOS (legacy BizHawk) lists the options: use Windows/Linux or an x86_64 VM, run Sappharad's older 1.x port via Rosetta, or build his old 2.x source fork; Apple silicon would need x86_64 plus Rosetta. Paths above follow the pinned source's platform-independent exe-relative layout and apply to those legacy builds."
     }
   },

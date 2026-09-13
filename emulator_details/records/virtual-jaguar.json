@@ -1,1 +1,24 @@
-{"schema_version":1,"slug":"virtual-jaguar","emulator":"Virtual Jaguar","sources":[{"kind":"source","repo":"https://icculus.org/virtualjaguar/","url":"https://icculus.org/virtualjaguar/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://icculus.org/virtualjaguar/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows/Linux/macOS listed; standalone development inactive; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://icculus.org/virtualjaguar/"]},"linux-flatpak":{"status":"unresolved","reason":"Windows/Linux/macOS listed; standalone development inactive; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://icculus.org/virtualjaguar/"]},"windows":{"status":"unresolved","reason":"Windows/Linux/macOS listed; standalone development inactive; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://icculus.org/virtualjaguar/"]},"macos":{"status":"unresolved","reason":"Windows/Linux/macOS listed; standalone development inactive; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://icculus.org/virtualjaguar/"]}}}
+{
+  "schema_version": 1,
+  "slug": "virtual-jaguar",
+  "emulator": "Virtual Jaguar",
+  "sources": [
+    { "kind": "source", "repo": "https://github.com/libretro/virtualjaguar-libretro", "commit": "f9a3c89f58836cb2c45a42ad4edfac047050f30a", "url": "https://github.com/libretro/virtualjaguar-libretro/tree/f9a3c89f58836cb2c45a42ad4edfac047050f30a", "role": "maintained Virtual Jaguar implementation; libretro core" },
+    { "kind": "metadata", "url": "https://github.com/libretro/virtualjaguar-libretro/blob/f9a3c89f58836cb2c45a42ad4edfac047050f30a/dist/info/virtualjaguar_libretro.info", "role": "core extensions, firmware and savestate declarations" },
+    { "kind": "contract", "path": "docs/VIRTUAL_JAGUAR_CONTROLLER_BOUNDARY.md", "role": "standalone versus RetroArch-hosted boundary" }
+  ],
+  "platforms": {},
+  "platform_gaps": {
+    "linux": { "status": "no_verified_package", "reason": "Virtual Jaguar is distributed here as a libretro core, not a standalone native executable; use the separate RetroArch core record for the host package and controller contract.", "evidence": ["source:virtualjaguar-libretro README @f9a3c89f", "record:emulator_details/retroarch-cores/virtual_jaguar.json"] },
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The standalone identity has no package; Flatpak availability and sandbox paths belong to the selected RetroArch frontend.", "evidence": ["source:virtualjaguar-libretro README @f9a3c89f", "record:emulator_details/retroarch-cores/virtual_jaguar.json"] },
+    "windows": { "status": "no_verified_package", "reason": "The maintained implementation is a libretro core; RetroArch owns Windows installation, remapping, saves and states.", "evidence": ["source:virtualjaguar-libretro README @f9a3c89f", "metadata:virtualjaguar_libretro.info @f9a3c89f"] },
+    "macos": { "status": "no_verified_package", "reason": "The maintained implementation is a libretro core; RetroArch owns macOS installation, remapping, saves and states.", "evidence": ["source:virtualjaguar-libretro README @f9a3c89f", "metadata:virtualjaguar_libretro.info @f9a3c89f"] }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not synthesize a standalone Virtual Jaguar controller writer: the maintained implementation is a libretro core and RetroArch owns its controller mapping and configuration.",
+    "shared_integration": "emulator_details/retroarch-cores/virtual_jaguar.json",
+    "contract": "docs/VIRTUAL_JAGUAR_CONTROLLER_BOUNDARY.md"
+  },
+  "notes": "This standalone identity intentionally does not duplicate the RetroArch-hosted Virtual Jaguar core's keypad/stick profile, optional CD BIOS, saves or states."
+}

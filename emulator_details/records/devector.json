@@ -3,162 +3,29 @@
   "slug": "devector",
   "emulator": "Devector",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://github.com/parallelno/Devector",
-      "url": "https://github.com/parallelno/Devector",
-      "role": "official upstream identity/distribution evidence"
-    },
-    {
-      "kind": "docs",
-      "url": "https://github.com/parallelno/Devector",
-      "role": "official documentation/platform evidence"
-    }
+    {"kind":"source","repo":"https://github.com/parallelno/Devector","url":"https://github.com/parallelno/Devector/tree/ba0790a4a4a2b7300d6eb4869d11caf2b7047122","role":"pinned upstream source"},
+    {"kind":"docs","url":"https://github.com/parallelno/Devector/blob/ba0790a4a4a2b7300d6eb4869d11caf2b7047122/README.md","role":"upstream usage/platform documentation"}
   ],
   "platforms": {
-    "linux": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "No exact configuration path published in the reviewed official source.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "saves",
-          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "states",
-          "path": "No verified state filename or slot grammar is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "No canonical BIOS/firmware filename or checksum is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        }
-      ]
-    },
-    "windows": {
-      "paths": [
-        {
-          "purpose": "config",
-          "path": "No exact configuration path published in the reviewed official source.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "saves",
-          "path": "Saves are guest/media-defined; no universal sidecar is asserted.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "states",
-          "path": "No verified state filename or slot grammar is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "bios",
-          "path": "No canonical BIOS/firmware filename or checksum is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        },
-        {
-          "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
-          "evidence": [
-            "official:https://github.com/parallelno/Devector",
-            "Windows/Linux listed"
-          ],
-          "status": "unresolved"
-        }
-      ]
-    }
+    "linux": {"paths": [
+      {"purpose":"config","path":"<Devector executable directory>/settings.json by default; -settingsPath selects another JSON file.","naming":"JSON settings contain UI/boot/RAM-disk/recent-file fields; no controller profile schema.","status":"captured","evidence":["source:main.cpp settingsPath/default settings.json @ba0790a","source:resources/settings.json @ba0790a"]},
+      {"purpose":"input","path":"No persistent controller path; keyboard input is handled by a hard-coded SDL scancode table.","naming":"SDL gamepad initialization is for ImGui navigation only; no host joystick mapping or stable device selector exists.","status":"captured","evidence":["source:core/keyboard.cpp @ba0790a","source:main.cpp SDL_INIT_GAMEPAD @ba0790a"]},
+      {"purpose":"saves","path":"No verified save sidecar or universal save directory in the reviewed source.","naming":"Guest/media-defined only.","status":"unresolved","evidence":["source:resources/settings.json @ba0790a"]},
+      {"purpose":"states","path":"No verified state filename or slot grammar in the reviewed source.","naming":"Unknown; REC files are recordings, not emulator states.","status":"unresolved","evidence":["source:main.cpp REC file dialog/recorder @ba0790a"]},
+      {"purpose":"bios","path":"No canonical BIOS/firmware filename or checksum is published.","naming":"Unknown.","status":"unresolved","evidence":["source:README.md @ba0790a"]},
+      {"purpose":"keys","path":"not applicable","naming":"No cryptographic key file is documented.","status":"not_required","evidence":["source:resources/settings.json @ba0790a"]}
+    ]},
+    "windows": {"paths": [
+      {"purpose":"config","path":"<Devector executable directory>\\settings.json by default; -settingsPath selects another JSON file.","naming":"JSON settings contain UI/boot/RAM-disk/recent-file fields; no controller profile schema.","status":"captured","evidence":["source:main.cpp @ba0790a"]},
+      {"purpose":"input","path":"No persistent controller path; keyboard input is handled by a hard-coded SDL scancode table.","naming":"SDL gamepad initialization is for ImGui navigation only; no host joystick mapping or stable device selector exists.","status":"captured","evidence":["source:core/keyboard.cpp @ba0790a","source:main.cpp @ba0790a"]},
+      {"purpose":"saves","path":"No verified save sidecar or universal save directory.","naming":"Guest/media-defined only.","status":"unresolved","evidence":["source:resources/settings.json @ba0790a"]},
+      {"purpose":"states","path":"No verified state filename or slot grammar; REC is a recording format.","naming":"Unknown.","status":"unresolved","evidence":["source:main.cpp @ba0790a"]},
+      {"purpose":"bios","path":"No canonical BIOS/firmware filename or checksum is published.","naming":"Unknown.","status":"unresolved","evidence":["source:README.md @ba0790a"]},
+      {"purpose":"keys","path":"not applicable","naming":"No cryptographic key file is documented.","status":"not_required","evidence":["source:resources/settings.json @ba0790a"]}
+    ]}
   },
   "platform_gaps": {
-    "linux-flatpak": {
-      "status": "no_verified_package",
-      "reason": "The official project documents native Linux and Windows builds, but no verified Flatpak package or manifest was found.",
-      "evidence": [
-        "official:https://github.com/parallelno/Devector"
-      ]
-    },
-    "macos": {
-      "status": "no_verified_package",
-      "reason": "The official project documents native Linux and Windows builds; no verified native macOS package was found.",
-      "evidence": [
-        "official:https://github.com/parallelno/Devector"
-      ]
-    }
+    "linux-flatpak":{"status":"no_verified_package","reason":"No verified Flatpak package or manifest was found.","evidence":["official:https://github.com/parallelno/Devector"]},
+    "macos":{"status":"no_verified_package","reason":"The pinned README documents Windows/Linux native builds; no verified native macOS package was found.","evidence":["official:https://github.com/parallelno/Devector"]}
   }
 }

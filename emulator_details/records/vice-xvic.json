@@ -1,1 +1,61 @@
-{"schema_version":1,"slug":"vice-xvic","emulator":"VICE (xvic)","sources":[{"kind":"source","repo":"https://vice-emu.sourceforge.io/","url":"https://vice-emu.sourceforge.io/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://vice-emu.sourceforge.io/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"VICE suite variant; no standalone host contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://vice-emu.sourceforge.io/"]},"linux-flatpak":{"status":"unresolved","reason":"VICE suite variant; no standalone host contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://vice-emu.sourceforge.io/"]},"windows":{"status":"unresolved","reason":"VICE suite variant; no standalone host contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://vice-emu.sourceforge.io/"]},"macos":{"status":"unresolved","reason":"VICE suite variant; no standalone host contract captured; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://vice-emu.sourceforge.io/"]}}}
+{
+  "schema_version": 1,
+  "slug": "vice-xvic",
+  "emulator": "VICE (xvic)",
+  "sources": [
+    { "kind": "source", "repo": "https://github.com/VICE-Team/svn-mirror", "commit": "d322f7a8d6c269b97162c74e73214c58eaad9a71", "url": "https://github.com/VICE-Team/svn-mirror/tree/d322f7a8d6c269b97162c74e73214c58eaad9a71", "role": "pinned VICE source mirror; VIC-20 machine, SDL UI, snapshots and ROM paths" },
+    { "kind": "docs", "url": "https://vice-emu.sourceforge.io/vice_6.html", "role": "VICE resource-file and media-save documentation" },
+    { "kind": "docs", "url": "https://vice-emu.sourceforge.io/vice_9.html", "role": "VICE snapshot and .vsf documentation" },
+    { "kind": "docs", "url": "https://vice-emu.sourceforge.io/vice_3.html", "role": "VICE ROM search path and filenames" },
+    { "kind": "contract", "path": "docs/VICE_XVIC_CONTROLLER_CONTRACT.md", "role": "xvic one-port native VICE controller contract" }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        { "purpose": "config", "path": "~/.config/vice/sdl-vicerc (or private file selected with -config)", "naming": "VICE resource lines use ResourceName=ResourceValue; SDL xvic defaults to sdl-vicerc.", "evidence": ["source:src/arch/shared/archdep_user_config_path.c and archdep_defs.h @d322f7a8", "docs:vice_6.html"] },
+        { "purpose": "input", "path": "~/.config/vice/sdl-joymap-xvic.vjm (or private file selected with -joymap)", "naming": "!CLEAR followed by <device> <inputtype> <inputindex> <action> <params>; JoyDevice1=4+SDL host-device-index. xvic exposes one native joystick port; the SDL virtual keyboard remains VICE-owned.", "evidence": ["source:src/arch/sdl/xvic_ui.c uijoyport_menu_create(1,0,1,1,1,0) @d322f7a8", "source:src/joyport/joystick.c and src/arch/shared/archdep_default_joymap_file_name.c @d322f7a8", "contract:docs/VICE_XVIC_CONTROLLER_CONTRACT.md"] },
+        { "purpose": "saves", "path": "Attached VIC-20 disk/tape images or FS-device directories", "naming": "Guest program saves retain the attached image or FS-device filename; VICE writes no generic per-game sidecar.", "evidence": ["docs:vice_4.html", "docs:vice_6.html"] },
+        { "purpose": "states", "path": "~/.config/vice/VIC20.vsf quick snapshot or a user-selected .vsf path", "naming": "VICE .vsf snapshot tagged VIC20 and bound to the snapshot module version.", "evidence": ["source:src/vic20/vic20-snapshot.c machine_name=VIC20 @d322f7a8", "docs:vice_9.html"] },
+        { "purpose": "bios", "path": "$XDG_DATA_HOME/vice/VIC20 (normally ~/.local/share/vice/VIC20), then installed VICE data paths", "naming": "VIC-20 ROM resources include basic-901486-01.bin, kernal.901486-02.bin/kernal.901486-06.bin/kernal.901486-07.bin, and chargen-901460-03.bin (Japanese chargen-901460-02.bin also exists); no canonical checksum is declared by VICE.", "evidence": ["source:src/vic20/vic20rom.h and arch/shared/archdep_default_sysfile_pathlist.c @d322f7a8", "docs:vice_3.html"] },
+        { "purpose": "keys", "path": "not applicable", "naming": "No external cryptographic key file is consumed by native xvic.", "status": "not_required", "evidence": ["source:VICE VIC-20 source tree @d322f7a8"] }
+      ]
+    },
+    "linux-flatpak": {
+      "paths": [
+        { "purpose": "config", "path": "~/.var/app/net.sf.VICE/.config/vice/sdl-vicerc", "naming": "Same VICE resource syntax under the Flatpak XDG config home.", "evidence": ["flatpak:net.sf.VICE", "source:src/arch/shared/archdep_user_config_path.c @d322f7a8"] },
+        { "purpose": "input", "path": "Flatpak VICE xvic .vjm map and virtual keyboard; host-device access is package-dependent", "naming": "Same one-port .vjm and JoyDevice1 contract as native SDL VICE.", "evidence": ["flatpak:net.sf.VICE", "contract:docs/VICE_XVIC_CONTROLLER_CONTRACT.md"] },
+        { "purpose": "saves", "path": "Attached media or sandbox-visible FS-device directories", "naming": "Guest saves retain the attached media/FS-device naming.", "evidence": ["flatpak:net.sf.VICE", "docs:vice_6.html"] },
+        { "purpose": "states", "path": "~/.var/app/net.sf.VICE/.config/vice/VIC20.vsf or a user-selected .vsf path", "naming": "VIC20-tagged VICE snapshot.", "evidence": ["flatpak:net.sf.VICE", "source:src/vic20/vic20-snapshot.c @d322f7a8"] },
+        { "purpose": "bios", "path": "Sandbox XDG data path ~/.var/app/net.sf.VICE/.local/share/vice/VIC20, then installed VICE data", "naming": "Same VIC-20 ROM filenames as native Linux; no canonical checksum declared.", "evidence": ["flatpak:net.sf.VICE", "source:src/arch/shared/archdep_default_sysfile_pathlist.c @d322f7a8"] },
+        { "purpose": "keys", "path": "not applicable", "naming": "No external cryptographic key file.", "status": "not_required", "evidence": ["source:VICE VIC-20 source tree @d322f7a8"] }
+      ],
+      "notes": "The Flathub package is identified, but effective sandbox launch and device access were not runtime verified."
+    },
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "%APPDATA%\\vice\\sdl-vice.ini (or private file selected with -config)", "naming": "VICE resource lines use ResourceName=ResourceValue; SDL xvic defaults to sdl-vice.ini.", "evidence": ["source:src/arch/shared/archdep_user_config_path.c and archdep_defs.h @d322f7a8", "docs:vice_6.html"] },
+        { "purpose": "input", "path": "<VICE boot directory>\\sdl-joymap-xvic.vjm (or private file selected with -joymap)", "naming": "Same one-port .vjm grammar and JoyDevice1 binding as native SDL VICE; unlike the Windows resource file, the default joymap uses the executable boot path.", "evidence": ["source:src/arch/shared/archdep_default_joymap_file_name.c and archdep_boot_path.h @d322f7a8", "source:src/arch/sdl/xvic_ui.c and joyport/joystick.c @d322f7a8", "contract:docs/VICE_XVIC_CONTROLLER_CONTRACT.md"] },
+        { "purpose": "saves", "path": "Attached VIC-20 disk/tape images or FS-device directories", "naming": "Guest saves retain attached media names; no generic sidecar.", "evidence": ["docs:vice_4.html", "docs:vice_6.html"] },
+        { "purpose": "states", "path": "%APPDATA%\\vice\\VIC20.vsf quick snapshot or a user-selected .vsf path", "naming": "VIC20-tagged VICE snapshot.", "evidence": ["source:src/vic20/vic20-snapshot.c @d322f7a8", "docs:vice_9.html"] },
+        { "purpose": "bios", "path": "VICE Directory search path with VIC20 subdirectory", "naming": "Same VIC-20 ROM filenames; no canonical checksum declared.", "evidence": ["source:src/arch/shared/archdep_default_sysfile_pathlist.c and src/vic20/vic20rom.h @d322f7a8", "docs:vice_3.html"] },
+        { "purpose": "keys", "path": "not applicable", "naming": "No external cryptographic key file.", "status": "not_required", "evidence": ["source:VICE VIC-20 source tree @d322f7a8"] }
+      ]
+    },
+    "macos": {
+      "paths": [
+        { "purpose": "config", "path": "~/.config/vice/sdl-vicerc (or private file selected with -config)", "naming": "macOS SDL builds use the UNIX VICE XDG config branch.", "evidence": ["source:src/arch/shared/archdep_user_config_path.c and configure.ac @d322f7a8", "docs:vice_6.html"] },
+        { "purpose": "input", "path": "~/.config/vice/sdl-joymap-xvic.vjm (or private file selected with -joymap)", "naming": "Same one-port .vjm grammar and JoyDevice1 binding as native SDL VICE.", "evidence": ["source:src/arch/sdl/xvic_ui.c and joyport/joystick.c @d322f7a8", "contract:docs/VICE_XVIC_CONTROLLER_CONTRACT.md"] },
+        { "purpose": "saves", "path": "Attached VIC-20 disk/tape images or FS-device directories", "naming": "Guest saves retain attached media names; no generic sidecar.", "evidence": ["docs:vice_4.html", "docs:vice_6.html"] },
+        { "purpose": "states", "path": "~/.config/vice/VIC20.vsf quick snapshot or a user-selected .vsf path", "naming": "VIC20-tagged VICE snapshot.", "evidence": ["source:src/vic20/vic20-snapshot.c @d322f7a8", "docs:vice_9.html"] },
+        { "purpose": "bios", "path": "$XDG_DATA_HOME/vice/VIC20 (normally ~/.local/share/vice/VIC20), then installed VICE data", "naming": "Same VIC-20 ROM filenames; no canonical checksum declared.", "evidence": ["source:src/arch/shared/archdep_default_sysfile_pathlist.c and src/vic20/vic20rom.h @d322f7a8", "docs:vice_3.html"] },
+        { "purpose": "keys", "path": "not applicable", "naming": "No external cryptographic key file.", "status": "not_required", "evidence": ["source:VICE VIC-20 source tree @d322f7a8"] }
+      ]
+    }
+  },
+  "controller_boundary": {
+    "native_writer": "shared_vice_native_vjm",
+    "refusal": "Use only the shared native VICE .vjm writer, constrained to xvic's one joystick port; do not use the PET keyboard boundary of xpet or the libretro vice_xvic identity.",
+    "contract": "docs/VICE_XVIC_CONTROLLER_CONTRACT.md"
+  },
+  "notes": "xvic is the native VIC-20 binary and is distinct from xpet and from the vice_xvic libretro core. Runtime launch and effective device input remain unverified."
+}

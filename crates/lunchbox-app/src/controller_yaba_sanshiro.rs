@@ -150,7 +150,11 @@ pub(crate) fn binding_line(port: u32, id: u32, pad_key: u8, code: u32) -> Result
 /// `yabause.ini` so the user's own config is never touched.
 pub(crate) fn ini_body(port: u32, id: u32, bindings: &[(u8, u32)]) -> Result<String, ()> {
     let mut body = String::from("[0.9.11]\n");
+    let mut keys = std::collections::BTreeSet::new();
     for (pad_key, code) in bindings {
+        if !keys.insert(*pad_key) {
+            return Err(());
+        }
         body.push_str(&binding_line(port, id, *pad_key, *code)?);
         body.push('\n');
     }
@@ -383,5 +387,6 @@ mod tests {
             binding_line(1, 2, 6, 99).unwrap(),
             "Input/Port/1/Id/2/Controller/2/Key/6=99"
         );
+        assert!(ini_body(0, 0, &[(7, 1), (7, 2)]).is_err());
     }
 }

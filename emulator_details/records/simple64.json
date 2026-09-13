@@ -58,8 +58,10 @@
             "source:build.sh cp mupen64plus-core/data/pif* into the install dir; data/ contains pif.ntsc.rom, pif.pal.rom @d8c969c7b",
             "source:mupen64plus-core/src/main/main.c DD IPL ROM comes from g_media_loader.get_dd_rom (GUI), failure just 'Disabling 64DD' @d8c969c7b",
             "db:firmware_rules has no N64 rows at all (gap: 64DD IPL is the only firmware a Lunchbox rule could target; none needed for cart games)"
-          ]
-        }
+          ],
+          "status": "captured"
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "simple64 and its Mupen64Plus core do not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:simple64 and mupen64plus-core source tree @d8c969c7b"] }
       ],
       "notes": "simple64 is archived upstream (README points to gopher64 as successor); captured at the final main HEAD. Flatpak io.github.simple64.simple64 relocates everything under ~/.var/app/io.github.simple64.simple64/. macOS is NOT supported ('No releases currently'), so no macos platform is captured."
     },
@@ -94,7 +96,8 @@
           "path": "No external BIOS required: bundled shared-data pif.ntsc.rom and pif.pal.rom are installed with the Flatpak. Optional 64DD IPL is supplied through the GUI media loader",
           "naming": "pif.ntsc.rom and pif.pal.rom are bundled and MD5-validated by the core; 64DD IPL has no fixed filename in the GUI contract and no Lunchbox mandatory firmware checksum rule",
           "evidence": ["source:build.sh pif*.rom shared-data install and mupen64plus-core open_pif MD5 whitelist @d8c969c7b", "docs:https://flathub.org/apps/details/io.github.simple64.simple64 Flatpak app id"]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "simple64 and its Mupen64Plus core do not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:simple64 and mupen64plus-core source tree @d8c969c7b"] }
       ],
       "notes": "simple64's Flathub package is the genuinely supported Flatpak cell. It is archived and points users to gopher64, but the package remains available; macOS is intentionally omitted per upstream README."
     },
@@ -141,7 +144,8 @@
             "source:mupen64plus-core/src/main/main.c open_pif + shared-data PIF lookup; DD IPL via media loader @d8c969c7b",
             "source:build.sh installs data/pif* beside the exe @d8c969c7b"
           ]
-        }
+        },
+        { "purpose": "keys", "path": "not applicable", "naming": "simple64 and its Mupen64Plus core do not consume an external cryptographic key file.", "status": "not_required", "evidence": ["source:simple64 and mupen64plus-core source tree @d8c969c7b"] }
       ],
       "notes": "If simple64-gui.ini is placed somewhere read-only, QSettings(\"simple64\", \"gui\") falls back to the Windows registry (HKCU\\Software\\simple64\\gui) for GUI keys only; core/config-dir resolution is unchanged."
     }

@@ -117,3 +117,57 @@ pub(crate) fn prepare(save_directory: &Path, content: &Path, model: &str) -> Res
     }
     Ok(InputSnapshot { files })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshots_exact_model_global_and_content_layers() {
+        let directory = tempfile::tempdir().unwrap();
+        let content = directory.path().join("Zelda.adf");
+        let snapshot = prepare(directory.path(), &content, "A500").unwrap();
+        let paths: Vec<_> = snapshot
+            .files
+            .iter()
+            .map(|(path, _)| path.file_name().unwrap().to_str().unwrap())
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                "puae_libretro_A500.uae",
+                "puae_libretro_global.uae",
+                "Zelda.uae"
+            ]
+        );
+    }
+
+    #[test]
+    fn substantive_custom_layer_is_not_silently_overridden() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("puae_libretro_A500.uae"),
+            "joyport0=1\n",
+        )
+        .unwrap();
+        let error = prepare(directory.path(), &directory.path().join("Game.adf"), "A500")
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(error.contains("needs effective input resolution"));
+    }
+
+    #[test]
+    fn unknown_model_and_relative_directory_are_rejected() {
+        let directory = tempfile::tempdir().unwrap();
+        assert!(
+            prepare(
+                directory.path(),
+                &directory.path().join("Game.adf"),
+                "A1000"
+            )
+            .is_err()
+        );
+        assert!(prepare(Path::new("relative"), Path::new("Game.adf"), "A500").is_err());
+    }
+}

@@ -3,50 +3,44 @@
   "slug": "jollycv",
   "emulator": "JollyCV",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://gitlab.com/jgemu/jollycv",
-      "url": "https://gitlab.com/jgemu/jollycv",
-      "role": "official upstream project identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://gitlab.com/jgemu/jollycv",
-      "role": "official distribution or project documentation"
-    }
+    {"kind":"source","repo":"https://gitlab.com/jgemu/jollycv","commit":"7141b3438c9f6d21e619df56cea76a8d998f38c5","role":"Pinned upstream API, settings, BIOS, input, save and state implementation."},
+    {"kind":"docs","url":"https://gitlab.com/jgemu/jollycv/-/blob/7141b3438c9f6d21e619df56cea76a8d998f38c5/README","role":"Supported systems, devices and build targets."}
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official JollyCV source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://gitlab.com/jgemu/jollycv",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
+      "paths": [
+        {"purpose":"config","path":"No JollyCV-owned config file; Jolly Good host supplies input_coleco, mask_overscan, palette_tms9918, rsqual and region through API.","naming":"No persisted config grammar; configuration persistence is frontend-owned.","status":"not_supported","evidence":["source:jg.c settings_jcv/jg_get_settings @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+        {"purpose":"input","path":"Runtime jg_inputstate button[]/rel[] callbacks. Coleco paddle/roller/Super Action/steering wheel; CreatiVision paddles; My Vision system controller.","naming":"Physical keyboard/gamepad mapping belongs to host JG frontend.","evidence":["source:jg.c input callbacks @7141b3438c9f6d21e619df56cea76a8d998f38c5","source:README Input Devices @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+        {"purpose":"saves","path":"Host pathinfo.save directory.","naming":"<gameinfo.name>.srm raw ColecoVision SRAM/EEPROM sidecar; no CreatiVision/My Vision sidecar in jg.c.","evidence":["source:jg.c savename and jcv_savedata_load/save @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+        {"purpose":"states","path":"User-selected host filename; JollyCV chooses no directory or extension.","naming":"Raw binary JCV state: ColecoVision JCV1/50392 bytes plus active save block; CreatiVision JCV0/17501; My Vision JCV0/18558.","evidence":["source:jg.c and src/jcv_* state_version/size @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+        {"purpose":"bios","path":"Host pathinfo.bios (callback data takes precedence). coleco.rom for ColecoVision; bioscv.rom for CreatiVision; none for My Vision.","naming":"coleco.rom 8192 bytes MD5 2c66f5911e5b42b8ebe113403548eee7; bioscv.rom 8192 bytes MD5 3b1ef759d8e3fb4071582efd33dd05f9.","evidence":["source:jg.c bioslist/fallback path @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+        {"purpose":"keys","path":"No external cryptographic/key-material file.","naming":"not applicable","status":"not_required","evidence":["source:JollyCV pinned tree has no key loader @7141b3438c9f6d21e619df56cea76a8d998f38c5"]}
+      ],
+      "notes":"README documents a Linux build, but JollyCV is a Jolly Good module, not a standalone UI."
     },
+    "macos": {"notes":"Same Jolly Good module contract as Linux; no JollyCV-owned config or controller mapping file.","paths":[
+      {"purpose":"config","path":"No JollyCV-owned persisted config; settings are Jolly Good API values.","naming":"No config grammar; configuration persistence is frontend-owned.","status":"not_supported","evidence":["source:jg.c settings @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+      {"purpose":"input","path":"Runtime jg_inputstate callbacks; physical mapping is host-owned.","naming":"No input-map file.","evidence":["source:jg.c callbacks @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+      {"purpose":"saves","path":"Host pathinfo.save.","naming":"<gameinfo.name>.srm for ColecoVision SRAM/EEPROM.","evidence":["source:jg.c savename @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+      {"purpose":"states","path":"User-selected host state filename.","naming":"Raw JCV state; ColecoVision JCV1, CreatiVision/My Vision JCV0.","evidence":["source:src/jcv_* state serialization @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+      {"purpose":"bios","path":"Host pathinfo.bios: coleco.rom or bioscv.rom; none for My Vision.","naming":"Both are 8192 bytes; MD5 2c66f5911e5b42b8ebe113403548eee7 / 3b1ef759d8e3fb4071582efd33dd05f9.","evidence":["source:jg.c bioslist @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+      {"purpose":"keys","path":"No external key-material file.","naming":"not applicable","status":"not_required","evidence":["source:JollyCV pinned tree @7141b3438c9f6d21e619df56cea76a8d998f38c5"]}
+    ]},
+    "windows": {"paths":[
+      {"purpose":"config","path":"No JollyCV-owned persisted config; Jolly Good host settings are runtime values.","naming":"No config grammar; configuration persistence is frontend-owned.","status":"not_supported","evidence":["source:jg.c settings @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+      {"purpose":"input","path":"Runtime jg_inputstate callbacks; host owns keyboard/gamepad mapping.","naming":"No input-map file.","evidence":["source:jg.c callbacks @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+      {"purpose":"saves","path":"Host pathinfo.save.","naming":"<gameinfo.name>.srm for ColecoVision SRAM/EEPROM.","evidence":["source:jg.c savename @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+      {"purpose":"states","path":"User-selected host state filename.","naming":"Raw JCV state; ColecoVision JCV1, CreatiVision/My Vision JCV0.","evidence":["source:src/jcv_* state serialization @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+      {"purpose":"bios","path":"Host pathinfo.bios: coleco.rom or bioscv.rom; none for My Vision.","naming":"Both are 8192 bytes; MD5 2c66f5911e5b42b8ebe113403548eee7 / 3b1ef759d8e3fb4071582efd33dd05f9.","evidence":["source:jg.c bioslist @7141b3438c9f6d21e619df56cea76a8d998f38c5"]},
+      {"purpose":"keys","path":"No external key-material file.","naming":"not applicable","status":"not_required","evidence":["source:JollyCV pinned tree @7141b3438c9f6d21e619df56cea76a8d998f38c5"]}
+    ]}
+  },
+  "controller_boundary":{"native_writer":"not_implemented","refusal":"Do not invent a JollyCV config/controller file: the module consumes Jolly Good callbacks and has no mapping serializer."},
+  "platform_gaps": {
     "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official JollyCV source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://gitlab.com/jgemu/jollycv",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official JollyCV source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://gitlab.com/jgemu/jollycv",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The official JollyCV source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://gitlab.com/jgemu/jollycv",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
+      "status": "no_verified_package",
+      "reason": "No official Flatpak manifest or app ID.",
+      "evidence": ["source:JollyCV tree/README @7141b3438c9f6d21e619df56cea76a8d998f38c5"]
     }
   }
 }

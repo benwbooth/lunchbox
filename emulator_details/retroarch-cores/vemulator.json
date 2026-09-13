@@ -23,16 +23,12 @@
     ]
   },
   "saves": {
-    "status": "supported",
-    "extensions": [
-      ".vms",
-      ".dci",
-      ".bin"
-    ],
-    "naming": "VMU save artifacts retain their VMU-compatible .vms, .dci or .bin names.",
-    "notes": "The VMU core exposes memory-card files rather than generic cartridge SRAM.",
+    "status": "not_supported",
+    "extensions": [],
+    "naming": "The pinned core-info metadata declares libretro_saves=false; no standalone RetroArch persistent save artifact is claimed.",
+    "notes": "No libretro persistent-save interface is declared by the pinned core-info metadata.",
     "evidence": [
-      "VeMUlator libretro VMU save implementation"
+      "vemulator_libretro.info libretro_saves=false"
     ]
   },
   "states": {

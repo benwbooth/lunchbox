@@ -3,50 +3,34 @@
   "slug": "adviemulator",
   "emulator": "AdViEmulator",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "https://sourceforge.net/projects/adviemulator/",
-      "url": "https://sourceforge.net/projects/adviemulator/",
-      "role": "official upstream identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "https://sourceforge.net/projects/adviemulator/",
-      "role": "official distribution/documentation evidence"
-    }
+    { "kind": "release", "url": "https://sourceforge.net/projects/adviemulator/files/AdViEmulator%20v1_0%20Linux32.zip/download", "version": "1.0", "sha256": "fd4d515ae78c6cd524f7300958c98c495f43834d1a3a24c5316a4de22dff25ad", "role": "official legacy Linux32 distribution" },
+    { "kind": "release", "url": "https://sourceforge.net/projects/adviemulator/files/AdViEmulator%20v1_0%20Win32.zip/download", "version": "1.0", "sha256": "f6694923cc10358e608e436f6c792d7fc6990e5494fddad5b73acdd79bca38f6", "role": "official legacy Win32 distribution" },
+    { "kind": "docs", "url": "https://sourceforge.net/projects/adviemulator/files/", "role": "official file listing and release evidence" }
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official source identifies AdViEmulator but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://sourceforge.net/projects/adviemulator/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official source identifies AdViEmulator but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://sourceforge.net/projects/adviemulator/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official source identifies AdViEmulator but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://sourceforge.net/projects/adviemulator/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "AdViEmulator.ini in the application working directory (legacy Qt QSettings filename).", "naming": "The archive exposes no stable hand-edited key schema.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Linux32.zip", "binary:adviemulator ELF strings"] },
+        { "purpose": "input", "path": "Qt Options dialog captures four buttons and four stick directions into AdViEmulator.ini.", "naming": "The legacy binary publishes labels and a key-capture UI but no reviewable serialized key names; physical input is runtime Qt/OS state.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Linux32.zip README.md and binary UI strings"] },
+        { "purpose": "saves", "path": "No verified persistent cartridge-save artifact is documented by the v1.0 archive.", "naming": "No save filename/checksum is claimed.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Linux32.zip README.md"] },
+        { "purpose": "states", "path": "No verified portable state filename or slot grammar is documented by the v1.0 archive.", "naming": "No state filename/checksum is claimed.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Linux32.zip README.md"] },
+        { "purpose": "bios", "path": "The binary loads firmware resources named avbios.bin (CPU BIOS) and avsound.bin (APU program) and exposes an optional BIOS path.", "naming": "avbios.bin and avsound.bin are the resource names; no external checksum is published in the archive.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Linux32.zip binary strings"] },
+        { "purpose": "keys", "path": "No external cryptographic key file is documented.", "naming": "No external key filename/checksum.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Linux32.zip README.md"] }
       ]
     },
     "windows": {
-      "status": "unresolved",
-      "reason": "The official source identifies AdViEmulator but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:https://sourceforge.net/projects/adviemulator/",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "AdViEmulator.ini in the application working directory.", "naming": "The archive exposes no stable hand-edited key schema.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Win32.zip", "binary:adviemulator.exe strings"] },
+        { "purpose": "input", "path": "Qt Options dialog captures four buttons and four stick directions into AdViEmulator.ini.", "naming": "The legacy binary publishes labels and a key-capture UI but no reviewable serialized key names; physical input is runtime Qt/OS state.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Win32.zip README.md and binary UI strings"] },
+        { "purpose": "saves", "path": "No verified persistent cartridge-save artifact is documented by the v1.0 archive.", "naming": "No save filename/checksum is claimed.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Win32.zip README.md"] },
+        { "purpose": "states", "path": "No verified portable state filename or slot grammar is documented by the v1.0 archive.", "naming": "No state filename/checksum is claimed.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Win32.zip README.md"] },
+        { "purpose": "bios", "path": "The binary loads firmware resources named avbios.bin and avsound.bin and exposes an optional BIOS path.", "naming": "avbios.bin and avsound.bin are the resource names; no external checksum is published in the archive.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Win32.zip binary strings"] },
+        { "purpose": "keys", "path": "No external cryptographic key file is documented.", "naming": "No external key filename/checksum.", "status": "unresolved", "evidence": ["release:AdViEmulator v1_0 Win32.zip README.md"] }
       ]
     }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The official file listing provides only a legacy Linux32 archive and no Flatpak package or manifest.", "evidence": ["official:https://sourceforge.net/projects/adviemulator/files/"] },
+    "macos": { "status": "no_verified_package", "reason": "The official file listing provides Linux32 and Win32 archives but no native macOS package.", "evidence": ["official:https://sourceforge.net/projects/adviemulator/files/"] }
   }
 }

@@ -6,47 +6,45 @@
     {
       "kind": "source",
       "repo": "https://github.com/nikita36078/J2ME-Loader",
-      "url": "https://github.com/nikita36078/J2ME-Loader",
-      "role": "official upstream project identity and implementation"
+      "commit": "9b0fa48a0a0d1e61376c0b9af28b3d2caec0a4cc",
+      "role": "Pinned upstream Android implementation; Config.java, ProfileModel.java, KeyMapper.java, VirtualKeyboard.java and AndroidRecordStoreManager.java establish the persistent layout and input/data behavior."
     },
     {
       "kind": "docs",
-      "url": "https://github.com/nikita36078/J2ME-Loader",
-      "role": "official distribution or project documentation"
+      "url": "https://github.com/nikita36078/J2ME-Loader/blob/9b0fa48a0a0d1e61376c0b9af28b3d2caec0a4cc/README.md",
+      "role": "Pinned upstream README states J2ME Loader is an Android emulator and requires Android 4.0+."
     }
   ],
   "platform_gaps": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official J2ME Loader source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/nikita36078/J2ME-Loader",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
+      "status": "unsupported",
+      "reason": "J2ME Loader is an Android application, not a Linux desktop executable. Its source is Android-framework code and supplies no Linux runtime, desktop controller backend, or launchable artifact.",
+      "evidence": ["source:nikita36078/J2ME-Loader@9b0fa48a0a0d1e61376c0b9af28b3d2caec0a4cc", "docs:README.md requires Android 4.0+"]
     },
     "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official J2ME Loader source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/nikita36078/J2ME-Loader",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
+      "status": "unsupported",
+      "reason": "The upstream project publishes an Android application only; no Flatpak package or desktop runtime is provided.",
+      "evidence": ["source:nikita36078/J2ME-Loader@9b0fa48a0a0d1e61376c0b9af28b3d2caec0a4cc", "docs:README.md requires Android 4.0+"]
     },
     "macos": {
-      "status": "unresolved",
-      "reason": "The official J2ME Loader source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/nikita36078/J2ME-Loader",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
+      "status": "unsupported",
+      "reason": "J2ME Loader is Android-framework code and has no macOS executable or native input/runtime contract.",
+      "evidence": ["source:nikita36078/J2ME-Loader@9b0fa48a0a0d1e61376c0b9af28b3d2caec0a4cc", "docs:README.md describes Android only"]
     },
     "windows": {
-      "status": "unresolved",
-      "reason": "The official J2ME Loader source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/nikita36078/J2ME-Loader",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
+      "status": "unsupported",
+      "reason": "The pinned upstream source and README provide Android APK code only; a Windows issue requesting a port is not a Windows release or runtime contract.",
+      "evidence": ["source:nikita36078/J2ME-Loader@9b0fa48a0a0d1e61376c0b9af28b3d2caec0a4cc", "docs:README.md describes Android only"]
     }
+  },
+  "android_boundary": {
+    "config": "The Android app derives an emulator directory, then stores per-MIDlet configs at <emulator-dir>/configs/<converted-app-name>/config.json. ProfileModel.java defines JSON fields including Layout, KeyCodeMap and KeyMappings; ProfilesManager.java serializes with Gson.",
+    "input": "KeyMapper.java maps Android KeyEvent codes to MIDP Canvas codes, with default, Siemens, Motorola and custom layouts. KeyMappings is an Android SparseIntArray serialized by SparseIntArrayAdapter; custom virtual-keyboard geometry is a separate binary VirtualKeyboardLayout file with signature/version/block records.",
+    "saves": "MIDlet RMS data is under <emulator-dir>/data/<converted-app-name>/; AndroidRecordStoreManager.java uses <record-store>.rsh headers and <record-store>.<record-id>.rsr records, alongside other app-private files. This is Android app data, not a portable desktop save contract.",
+    "states": "No save-state or snapshot implementation is established by the pinned source; Android Activity savedInstanceState is UI lifecycle state, not an emulator state file.",
+    "bios_firmware": "No external BIOS or firmware file is required by the pinned J2ME Loader source; the implementation supplies the Java ME/MicroEmulator runtime. This does not assert that an arbitrary MIDlet has no game-owned data files.",
+    "keys": "No external encryption-key file or desktop keyfile contract is established. The source's key terminology is input-key mapping, not cryptographic material.",
+    "native_writer": "not_implemented",
+    "refusal": "Do not add a desktop controller writer or claim four-host support: the exact config and input files are Android-specific, the runtime depends on Android classes, and no desktop executable or same-launch controller oracle exists. A future adapter would need a separately supported desktop J2ME runtime and measured effective mapping behavior."
   }
 }

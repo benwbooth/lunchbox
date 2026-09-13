@@ -1,1 +1,66 @@
-{"schema_version":1,"slug":"proton","emulator":"Proton","sources":[{"kind":"source","repo":"https://github.com/ValveSoftware/Proton","url":"https://github.com/ValveSoftware/Proton","role":"official upstream project identity"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official Proton source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/ValveSoftware/Proton","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"linux-flatpak":{"status":"unresolved","reason":"The official Proton source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/ValveSoftware/Proton","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"macos":{"status":"unresolved","reason":"The official Proton source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/ValveSoftware/Proton","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]},"windows":{"status":"unresolved","reason":"The official Proton source does not establish an exact six-purpose host contract.","evidence":["official:https://github.com/ValveSoftware/Proton","host capture withheld until config, input, saves, states, BIOS/firmware, and keys are all source-backed"]}}}
+{
+  "schema_version": 1,
+  "slug": "proton",
+  "emulator": "Proton",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/ValveSoftware/Proton",
+      "commit": "5b89db940e0ebe3a137a6009a3589232fe084c09",
+      "url": "https://github.com/ValveSoftware/Proton/tree/5b89db940e0ebe3a137a6009a3589232fe084c09",
+      "role": "pinned Proton source and Linux/Steam compatibility-layer scope"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/ValveSoftware/Proton/blob/5b89db940e0ebe3a137a6009a3589232fe084c09/README.md",
+      "role": "official description of Proton as a Steam/Linux Wine compatibility tool"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/ValveSoftware/Proton/blob/5b89db940e0ebe3a137a6009a3589232fe084c09/user_settings.sample.py",
+      "role": "Proton-level user-settings hook; game configuration and controller mapping remain title/frontend-owned"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/PROTON_CONTROLLER_BOUNDARY.md",
+      "role": "fail-closed compatibility-layer controller boundary"
+    }
+  ],
+  "platform_gaps": {
+    "linux": {
+      "status": "unresolved",
+      "reason": "Proton runs Windows games through Steam/Wine on Linux, but the pinned source does not define one Proton-owned six-purpose contract for game configuration, controller mappings, saves, states, BIOS/firmware, or keys. Those locations are title, Steam, and Wine-prefix specific.",
+      "evidence": [
+        "source:README.md Proton is a Steam tool for running Windows-exclusive games on Linux via Wine @5b89db9",
+        "source:user_settings.sample.py exposes Proton user settings but no universal game-controller/profile or save/state grammar @5b89db9"
+      ]
+    },
+    "linux-flatpak": {
+      "status": "unresolved",
+      "reason": "A Steam/Proton Flatpak sandbox is frontend- and game-specific; the pinned Proton source provides no Flatpak package manifest or sandbox path contract for the six catalog purposes.",
+      "evidence": [
+        "source:README.md directs users to Proton supplied by the Steam client @5b89db9",
+        "source:Proton source tree has no Flatpak manifest or universal sandbox persistence contract @5b89db9"
+      ]
+    },
+    "windows": {
+      "status": "unsupported",
+      "reason": "The official Proton README defines Proton as a Linux/Steam compatibility tool and does not publish a native Windows host target.",
+      "evidence": [
+        "source:README.md Proton runs Windows-exclusive games on Linux via Wine @5b89db9"
+      ]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "The pinned Proton source documents Linux as its host operating system and does not publish a native macOS host target.",
+      "evidence": [
+        "source:README.md Proton runs Windows-exclusive games on Linux via Wine @5b89db9"
+      ]
+    }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not invent a Proton controller profile: Proton is a compatibility layer and does not own a stable game-specific host-controller mapping, save/state, firmware, or key contract. Inspect the individual game's runtime, Wine prefix, Steam Input configuration, and save/state format separately."
+  },
+  "notes": "Proton is cataloged as a compatibility layer, not as a console emulator with one persistence namespace. Runtime game launch, Steam Input behavior, and title-specific persistence were not verified by this record."
+}

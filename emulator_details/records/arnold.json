@@ -3,50 +3,30 @@
   "slug": "arnold",
   "emulator": "Arnold",
   "sources": [
-    {
-      "kind": "source",
-      "repo": "http://cpctech.cpcwiki.de/download.html",
-      "url": "http://cpctech.cpcwiki.de/download.html",
-      "role": "official upstream identity and implementation"
-    },
-    {
-      "kind": "docs",
-      "url": "http://cpctech.cpcwiki.de/download.html",
-      "role": "official distribution/documentation evidence"
-    }
+    { "kind": "source", "repo": "rofl0r/arnold", "commit": "e5dce08964f94add100f7db992a6d0e49fe74f01", "role": "pinned source for Linux .arnold grammar, Windows registry settings, media and snapshot behavior" },
+    { "kind": "docs", "url": "https://github.com/rofl0r/arnold/blob/e5dce08964f94add100f7db992a6d0e49fe74f01/readme.linux", "role": "official Linux usage and resource documentation" }
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official source identifies Arnold but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:http://cpctech.cpcwiki.de/download.html",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official source identifies Arnold but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:http://cpctech.cpcwiki.de/download.html",
-        "platform capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official source identifies Arnold but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:http://cpctech.cpcwiki.de/download.html",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "$HOME/.arnold (read first; /etc/arnold fallback)", "naming": "Plain key=value lines; supported keys include romdir, diskdir, tapedir, cartdir, snapdir, drivea, driveb, cart, tape, rom0..rom15 and monitor settings", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 src/unix/configfile.c, readme.linux"] },
+        { "purpose": "input", "path": "No persistent joystick/key binding file is implemented by the pinned Unix port; SDL keyboard mapping and joystick enumeration are runtime state", "naming": "No authorable native binding grammar established", "status": "not_required", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 src/unix/keyboard_sdl.c, src/unix/main.c"] },
+        { "purpose": "saves", "path": "User-selected .dsk disk images and .tzx/.cdt tape images; guest files are stored in attached media", "naming": ".dsk (standard/extended CPCEMU), .tzx/.cdt; .cpr CPC+ cartridge", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 readme.linux, readme.txt"] },
+        { "purpose": "states", "path": "User-selected snapshot filename passed to -snapshot or GTK save chooser", "naming": ".sna Amstrad snapshot; version 3 is written by default", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 src/cpc/snapshot.c, src/unix/gtkui.c, readme.txt"] },
+        { "purpose": "bios", "path": "ROMs are linked from the source roms/ tree and the Unix executable expects a roms/ subdirectory beside it; expansion ROMs may be listed as rom0..rom15 in .arnold", "naming": "Built-in model ROMs include CPC464/664/6128 OS+Basic, CPC+ cartridge and KC Compact assets; no universal firmware checksum asserted", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 src/unix/roms.c, readme.linux"] },
+        { "purpose": "keys", "path": "No external encryption-key file", "naming": "Not applicable to this CPC emulator", "status": "not_required", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 source tree and readme"] }
       ]
     },
     "windows": {
-      "status": "unresolved",
-      "reason": "The official source identifies Arnold but does not establish a complete exact config, controller, firmware/keys, save, and state contract for this host.",
-      "evidence": [
-        "official:http://cpctech.cpcwiki.de/download.html",
-        "platform capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        { "purpose": "config", "path": "HKCU\\Software\\Arnold (non-volatile registry key)", "naming": "Registry values include iCRTCType, iRealtime, iWarnReset, iWarnExit, iMonitorType, iMonitorBrightness, iFrameSkip, sCartridgePath, sDiskImagePath, sSnapshotPath, sTapePath, sDriveADiskImage, sDriveBDiskImage, sRomPath and expansion-ROM entries", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 src/win/reg.c, src/win/cpcemu.c"] },
+        { "purpose": "input", "path": "Windows registry settings plus runtime joystick enumeration", "naming": "Pinned source persists emulator settings but does not establish a stable physical controller-id grammar", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 src/win/joy.c, src/win/reg.c"] },
+        { "purpose": "saves", "path": "User-selected .dsk/.tzx/.cdt/.cpr media; guest files remain in attached images", "naming": ".dsk, .tzx/.cdt and .cpr content extensions", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 readme.txt, src/win/ifacegen.c"] },
+        { "purpose": "states", "path": "User-selected snapshot path, with last path persisted as registry value sSnapshotPath", "naming": ".sna snapshot, version 3 default; no numbered slot grammar established", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 src/win/cpcemu.c, src/win/ifacegen.c, readme.txt"] },
+        { "purpose": "bios", "path": "Application ROM/resource tree and user-selected expansion ROM paths in the Arnold registry key", "naming": "Model ROM names are source resource names; no universal checksum asserted", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 src/win/romcfg.c, src/win/cpcemu.c"] },
+        { "purpose": "keys", "path": "No external encryption-key file", "naming": "Not applicable", "status": "not_required", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 source tree"] }
       ]
     }
-  }
+  },
+  "platform_gaps": { "linux-flatpak": { "status": "no_verified_package", "reason": "Pinned upstream provides Unix source but no verified Flatpak app id", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01 readme.linux"] }, "macos": { "status": "no_verified_package", "reason": "Pinned upstream source does not establish a macOS build or package", "evidence": ["source:rofl0r/arnold@e5dce08964f94add100f7db992a6d0e49fe74f01"] } }
 }

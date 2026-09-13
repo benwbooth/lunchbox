@@ -59,6 +59,14 @@
             "source:3rdParty/mupen64plus-core/src/main/main.c open_pif MD5-whitelists old/new NTSC and PAL PIF ROMs @3e8b366be",
             "db:firmware_rules has no N64 rows (gap: an optional manual rule for 64DD IPL is the only candidate; cart games need no firmware)"
           ]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:Rosalie241/RMG@3e8b366be (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Flatpak com.github.Rosalie241.RMG relocates the same tree under ~/.var/app/com.github.Rosalie241.RMG/{config,data,cache}/RMG. Lunchbox launches with a private data root; native saves/states stay in Save/Game and Save/State unless a portable install is used."
@@ -94,6 +102,14 @@
           "path": "None required for ordinary N64 cartridges: PIF/CIC is emulated by default. Optional PIF_NTSC/PIF_PAL and 64DD IPL paths remain config keys in the Flatpak INI",
           "naming": "Optional PIF_NTSC/PIF_PAL files are MD5-whitelisted by mupen64plus-core; optional 64DD_JapaneseIPL/AmericanIPL/DevelopmentIPL paths. No mandatory BIOS or Lunchbox firmware checksum rule exists",
           "evidence": ["source:RMG-Core/Settings.cpp optional PIF/64DD settings and defaults @3e8b366be", "source:3rdParty/mupen64plus-core/src/main/main.c PIF MD5 validation @3e8b366be", "docs:https://flathub.org/apps/details/com.github.Rosalie241.RMG Flatpak app id"]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:Rosalie241/RMG@3e8b366be (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "The Flathub package is the supported Linux Flatpak cell; it relocates native RMG config/data/cache roots below ~/.var/app/com.github.Rosalie241.RMG."
@@ -142,6 +158,14 @@
             "source:RMG-Core/Settings.cpp PIF and 64DD setting defaults @3e8b366be",
             "source:RMG-Core/Emulation.cpp open_pif_rom @3e8b366be"
           ]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:Rosalie241/RMG@3e8b366be (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Upstream ships an installer and portable zip for Windows; RMG has no macOS build (README lists Windows and Linux only), so no macos platform is captured. The Lunchbox DB Gopher64/RMG rows also miss macOS for Gopher64 (RMG correctly Windows;Linux)."

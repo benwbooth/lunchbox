@@ -3,14 +3,14 @@
   "slug": "xenia",
   "emulator": "Xenia",
   "sources": [
-    { "kind": "source", "repo": "xenia-project/xenia", "role": "Windows/Linux config TOML, input options, Xbox 360 content saves and firmware/state feature boundary" },
+    { "kind": "source", "repo": "xenia-project/xenia", "commit": "95a5c3ee250f80c3b9d139658649d9ffb6db3eec", "role": "SDL.mappings_file GameControllerDB input surface, config TOML, Xbox 360 content saves and firmware/state feature boundary" },
     { "kind": "docs", "url": "https://xenia.jp/quickstart/", "role": "official supported platform, configuration and save guidance" },
     { "kind": "docs", "url": "https://xenia.jp/download/", "role": "official release/platform status" }
   ],
   "platforms": {
     "windows": { "paths": [
       { "purpose": "config", "path": "xenia.config.toml in the Xenia executable directory; portable.txt enables portable data/config layout", "naming": "TOML settings use key = value syntax; per-game overrides are config/<title>.config.toml when explicitly selected", "evidence": ["source:xenia config loader and portable.txt handling", "docs:xenia options/quickstart"] },
-      { "purpose": "input", "path": "xenia.config.toml input section and controller setup UI", "naming": "Bindings are TOML input keys such as input.keyboard_keybind and HID/XInput controller mappings; exact key names are source-defined and no separate profile file is required", "evidence": ["source:xenia input/config code", "docs:xenia controller configuration"] },
+      { "purpose": "input", "path": "SDL GameControllerDB file supplied through SDL.mappings_file (default gamecontrollerdb.txt); optional Xenia keyboard bindings remain source-defined", "naming": "Each mapping is the exact SDL CSV grammar GUID,name,field:value,...; GUID is measured from the same SDL runtime and matching entries replace by GUID.", "evidence": ["source:src/xenia/hid/sdl/sdl_input_driver.cc DEFINE_path(mappings_file) and SDL_GameControllerAddMappingsFromRW @ 95a5c3e", "source:src/xenia/hid/sdl/sdl_input_driver.cc SDL controller event path @ 95a5c3e"] },
       { "purpose": "bios", "path": "No user BIOS/cryptographic firmware image is required by Xenia; Xbox 360 system software is emulated/loaded from the title/content environment", "naming": "No external BIOS filename or canonical checksum is published by the cited Xenia sources", "evidence": ["source:xenia kernel/system emulation", "docs:xenia quickstart"] },
       { "purpose": "keys", "path": "No cryptographic firmware-key file is used by the documented Xenia desktop runtime", "naming": "No key filename or canonical checksum is published", "evidence": ["source:xenia security/system emulation"] },
       { "purpose": "saves", "path": "Documents\\xenia\\content\\<ProfileXUID>\\<TitleID>\\<ContentType>\\", "naming": "Xbox 360 STFS/CON content containers and title-specific directories; files do not use a universal emulator save extension", "evidence": ["source:xenia content filesystem/profile path code", "docs:xenia save/content layout"] },

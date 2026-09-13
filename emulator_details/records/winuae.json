@@ -1,1 +1,27 @@
-{"schema_version":1,"slug":"winuae","emulator":"WinUAE","sources":[{"kind":"source","repo":"https://www.winuae.net/","url":"https://www.winuae.net/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://www.winuae.net/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Windows-only Amiga emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.winuae.net/"]},"linux-flatpak":{"status":"unresolved","reason":"Windows-only Amiga emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.winuae.net/"]},"windows":{"status":"unresolved","reason":"Windows-only Amiga emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.winuae.net/"]},"macos":{"status":"unresolved","reason":"Windows-only Amiga emulator; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://www.winuae.net/"]}}}
+{
+  "schema_version": 1,
+  "slug": "winuae",
+  "emulator": "WinUAE",
+  "sources": [
+    { "kind": "source", "repo": "tonioni/WinUAE", "commit": "d9a702b536283ea968c0de7c1991b44181120575", "role": "Windows native configuration, input, save-state, Kickstart ROM and encrypted-ROM-key contracts" },
+    { "kind": "source", "repo": "https://github.com/tonioni/WinUAE", "url": "https://github.com/tonioni/WinUAE", "role": "official source identity and Windows runtime" },
+    { "kind": "docs", "url": "https://www.winuae.net/", "role": "official documentation/platform evidence" }
+  ],
+  "platforms": {
+    "windows": {
+      "paths": [
+        { "purpose": "config", "path": "WinUAE .uae configuration file selected by the official Windows executable", "naming": "input.1.joystick.N.name/friendlyname, axis.N, button.N and joyportN=joyM/joyportNmode=gamepad; exact path is user-selected", "evidence": ["source:inputdevice.cpp/cfgfile.cpp @d9a702b536283ea968c0de7c1991b44181120575"] },
+        { "purpose": "input", "path": "The same .uae configuration plus WinUAE's native Windows input backend", "naming": "Measured zero-based joystick device N and source event names JOY1/JOY2_*; matching can require unique and friendly names", "evidence": ["source:inputdevice.cpp/inputevents.def @d9a702b536283ea968c0de7c1991b44181120575"] },
+        { "purpose": "saves", "path": "Inside attached Amiga floppy, hard-disk or CD media; WinUAE does not define a universal host-side per-game save-RAM sidecar", "naming": "Save files are created by the guest application inside its writable Amiga media and retain guest-defined names", "evidence": ["source:filesys.cpp/hardfile.cpp media write paths @d9a702b536283ea968c0de7c1991b44181120575"] },
+        { "purpose": "states", "path": "Global Save States directory selected in WinUAE's Paths configuration; manual state files may be placed at an explicitly selected path", "naming": "WinUAE emulator snapshots use the .uss AmigaStateFile format; quick-save slots use the configured state name with numbered suffixes such as _1.uss", "evidence": ["source:savestate.cpp statefile writer and .uss format @d9a702b536283ea968c0de7c1991b44181120575", "source:cfgfile.cpp path expansion and state-related configuration handling @d9a702b536283ea968c0de7c1991b44181120575"] },
+        { "purpose": "bios", "path": "Kickstart/system ROM file selected by the WinUAE ROM/Paths configuration (kickstart_rom_file); no single fixed host directory is required", "naming": "User-selected Kickstart ROM image for the emulated Amiga model; ROM revisions and filenames are ROM-set-specific", "evidence": ["source:cfgfile.cpp kickstart_rom_file option @d9a702b536283ea968c0de7c1991b44181120575", "source:rommgr.cpp Kickstart ROM scan and identification @d9a702b536283ea968c0de7c1991b44181120575"] },
+        { "purpose": "keys", "path": "Optional rom.key file selected by kickstart_key_file for Cloanto-encrypted Kickstart ROM images", "naming": "Exact configured key filename is user-selected (commonly rom.key); ordinary unencrypted Kickstart ROMs do not use this file", "evidence": ["source:cfgfile.cpp kickstart_key_file option @d9a702b536283ea968c0de7c1991b44181120575", "source:rommgr.cpp Cloanto ROM key handling @d9a702b536283ea968c0de7c1991b44181120575"] }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux": { "status": "unsupported", "reason": "WinUAE is a Windows runtime; Wine is not native Linux compatibility.", "evidence": ["official:https://www.winuae.net/"] },
+    "linux-flatpak": { "status": "unsupported", "reason": "No native Linux or Flatpak WinUAE runtime.", "evidence": ["official:https://www.winuae.net/"] },
+    "macos": { "status": "unsupported", "reason": "No native macOS WinUAE runtime.", "evidence": ["official:https://www.winuae.net/"] }
+  }
+}

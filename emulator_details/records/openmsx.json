@@ -58,6 +58,14 @@
             "db:firmware_rules openmsx:* entries (sources/firmware-rules.json): optional MSX/MSX2/MSX2+ real-machine ROM pools (minerva:retroarch-system-files, runtime_dir, supports_hle_fallback=true — 'C-BIOS remains the default fallback') and a required Spectravideo SVI pool (supports_hle_fallback=false)",
             "app:crates/lunchbox-app/src/firmware.rs:520 linux openmsx root ~/.openMSX/share/systemroms, :1897-1901 openmsx merge_tree skips ini/xml/txt from the blueMSX pack"
           ]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:openMSX/openMSX@25179d6b8d5ec69ad68252f3854721c9a02594eb (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Lunchbox's openmsx native launch isolates everything with OPENMSX_HOME plus a private -setting file and a -command TCL snippet (docs/OPENMSX_NATIVE_CONTROLLER_CONTRACT.md), which relocates settings, persistent saves and savestates together."
@@ -106,6 +114,14 @@
             "flathub:org.openmsx.openMSX manifest (openMSX installed under /app/share/<FLATPAK_ID>, C-BIOS included)",
             "db:firmware_rules openmsx:* entries (sources/firmware-rules.json) — C-BIOS fallback flagged supports_hle_fallback"
           ]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:openMSX/openMSX@25179d6b8d5ec69ad68252f3854721c9a02594eb (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Capture note: the task premise 'openMSX has no official flatpak' was re-verified in 2026-09 — openmsx.org still does not reference Flathub (only GitHub releases), but the Flathub listing org.openmsx.openMSX does exist and tracks releases; treat it as community packaging until openmsx.org links it."
@@ -155,6 +171,14 @@
             "app:crates/lunchbox-app/src/firmware.rs:521-524 windows openmsx root = Documents/openMSX/share/systemroms (matches upstream)",
             "db:firmware_rules openmsx:* entries (sources/firmware-rules.json)"
           ]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:openMSX/openMSX@25179d6b8d5ec69ad68252f3854721c9a02594eb (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "The Windows installer/zips are the project's primary distribution (openmsx.org download page); the user dir roots at the Documents folder, not %APPDATA%."
@@ -204,6 +228,14 @@
             "app:crates/lunchbox-app/src/firmware.rs macOS root = ~/.openMSX/share/systemroms",
             "db:firmware_rules openmsx:* entries (sources/firmware-rules.json) — Spectravideo ROMs required, MSX/MSX2/MSX2+ optional with C-BIOS fallback"
           ]
+        },
+
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:openMSX/openMSX@25179d6b8d5ec69ad68252f3854721c9a02594eb (no external cryptographic-key file identified in the pinned source)"]
         }
       ],
       "notes": "Official macOS dmg builds exist for Intel and Apple silicon (openmsx.org 21.0); the firmware adapter follows the upstream ~/.openMSX user-data root."

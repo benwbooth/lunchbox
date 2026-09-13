@@ -21,6 +21,16 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "~/.config/jgenesis/jgenesis-config.toml [input.<console>] (or $XDG_CONFIG_HOME/jgenesis/jgenesis-config.toml; portable.txt beside the AppImage relocates it): mappings contain p1/p2 and turbo button tables with Keyboard, Gamepad, or Mouse tagged inputs",
+          "naming": "GenericInput TOML inline tables: { type = \"Keyboard\", key = \"X\" }, { type = \"Gamepad\", gamepad_idx = N, action = \"Button N\" | \"Axis N positive|negative\" | \"Hat N up|down|left|right\" }, or { type = \"Mouse\", button = \"Left\" }; hotkeys are in [input.hotkeys]",
+          "evidence": [
+            "source:jgenesis frontend/jgenesis-native-config/src/input.rs and src/input/serialize.rs GenericInput/InputAppConfig TOML serialization @cbe7f12",
+            "source:jgenesis frontend/jgenesis-native-config/src/input/mappings.rs GenesisInputMapping p1/p2/turbo fields and hotkey defaults @cbe7f12",
+            "source:jgenesis frontend/jgenesis-native-driver/src/input.rs SDL gamepad_idx and raw button/axis/hat enumeration semantics @cbe7f12"
+          ]
+        },
+        {
           "purpose": "saves",
           "path": "Default common.save_path = RomFolder: the SRAM file sits next to the ROM. common.save_path in jgenesis-config.toml redirects: EmulatorFolder -> <directory containing the AppImage>/saves/<rom extension> (the AppImage path comes from the $APPIMAGE env var on AppImage builds); Custom -> <common.custom_save_path>/<rom extension>, and custom_save_path defaults to ~/.local/share/jgenesis/saves. The <rom extension> subdirectory mirrors the ROM's own extension (game.gen -> saves/gen, game.md -> saves/md, game.smc -> saves/smc)",
           "naming": "<ROM file name with its extension replaced by .sav> in the chosen location, e.g. Sonic.sfc -> Sonic.sav; multi-disc ' (Disc N)' suffixes are stripped; zip/7z inputs keep the archive's basename (game.zip -> game.sav). All cartridge cores persist SRAM through the SaveWriter \"sav\" extension; Sega CD backup RAM also lands in .sav and the 32X RAM cartridge uses .ramc",
@@ -53,6 +63,13 @@
             "source:jgenesis frontend/jgenesis-native-config/src/snes.rs and nes.rs define no BIOS/boot-ROM fields @cbe7f12",
             "docs:README.md console feature list (no Colecovision; SG-1000/SMS/Game Gear/Genesis/Sega CD/32X/NES/SNES/GB/GBC/GBA/PCE) @cbe7f12"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:jgenesis @cbe7f12 (cartridge/BIOS configuration contains no cryptographic-key input)"]
         }
       ],
       "notes": "Lunchbox installs the official v0.14.1 AppImage (sources/emulator-install-sources.json); ROM-folder saves/states stay next to the ROMs, and 'Emulator Folder' means the AppImage's parent directory. macOS is not captured: README lists Linux/Windows/web as officially supported, the v0.14.1 release ships only an AppImage and a Windows zip, CI (.github/workflows/rust.yml) has no macOS job, and the Lunchbox sources file has no macOS entry."
@@ -65,6 +82,15 @@
           "evidence": [
             "source:jgenesis frontend/jgenesis-native-config/src/paths.rs determine_user_profile_dir config_local_dir()/jgenesis (comment: '%userprofile\\AppData\\Local\\jgenesis\\' on Windows), portable.txt handling @cbe7f12",
             "source:jgenesis frontend/jgenesis-native-config/src/lib.rs AppConfig TOML sections and Cargo.lock directories 6.0.0 @cbe7f12"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%USERPROFILE%\\AppData\\Local\\jgenesis\\jgenesis-config.toml [input.<console>] (portable.txt beside jgenesis.exe relocates it): mappings contain p1/p2 and turbo button tables with Keyboard, Gamepad, or Mouse tagged inputs",
+          "naming": "Same GenericInput TOML grammar as Linux: Keyboard key names, Gamepad gamepad_idx plus Button/Axis/Hat actions, Mouse buttons, and [input.hotkeys]",
+          "evidence": [
+            "source:jgenesis frontend/jgenesis-native-config/src/paths.rs Windows config_local_dir and portable.txt handling @cbe7f12",
+            "source:jgenesis frontend/jgenesis-native-config/src/input/serialize.rs and input/mappings.rs GenericInput TOML and controller fields @cbe7f12"
           ]
         },
         {
@@ -94,6 +120,13 @@
             "source:jgenesis frontend/jgenesis-native-config/src/smsgg.rs and gb.rs boot-ROM fields defaulting false/None @cbe7f12",
             "source:jgenesis frontend/jgenesis-native-driver/src/mainloop/genesis.rs SegaCD BIOS requirement only under has_sega_cd() @cbe7f12"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:jgenesis @cbe7f12 (cartridge/BIOS configuration contains no cryptographic-key input)"]
         }
       ],
       "notes": "Lunchbox installs the official v0.14.1 windows-x86_64 zip (sources/emulator-install-sources.json). macOS is not captured: no official macOS builds exist upstream and no Lunchbox macOS installable is declared."

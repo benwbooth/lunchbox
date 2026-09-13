@@ -3,7 +3,7 @@
   "slug": "dosbox-staging",
   "emulator": "DOSBox Staging",
   "sources": [
-    { "kind": "source", "repo": "dosbox-staging/dosbox-staging", "commit": "d9135010ea (default branch main, 2026-09-06; release v0.83.0 published 2026-08-27)", "role": "source of truth for docs, mapper implementation (src/gui/mapper.cpp), config resolution (src/config/config.cpp)" },
+    { "kind": "source", "repo": "dosbox-staging/dosbox-staging", "commit": "d9135010ea56c2faa0bb8062aaf30a8541bf22f3", "role": "source of truth for mapper implementation (src/gui/mapper.cpp), config resolution (src/config/config.cpp) and docs" },
     { "kind": "docs", "url": "https://raw.githubusercontent.com/dosbox-staging/dosbox-staging/d9135010ea/website/docs/0.83/manual/using-dosbox-staging/configuration.md", "role": "primary config paths per platform, local dosbox.conf, --printconf/--eraseconf" },
     { "kind": "docs", "url": "https://raw.githubusercontent.com/dosbox-staging/dosbox-staging/d9135010ea/website/docs/0.83/manual/input/keymapper.md", "role": "mapper file name/location, [sdl] mapperfile setting, mapper file text format, --erasemapper" },
     { "kind": "docs", "url": "https://raw.githubusercontent.com/dosbox-staging/dosbox-staging/d9135010ea/website/docs/0.83/manual/using-dosbox-staging/capture.md", "role": "capture flows (Ctrl+F5/F6/F7) and [capture] folder default" },
@@ -57,8 +57,8 @@
             "docs:flathub.org/apps/io.github.dosbox-staging description 'emulates an Intel x86 PC running MS-DOS'",
             "docs:website/docs/0.83/manual/using-dosbox-staging/configuration.md @d9135010ea (full config schema contains no firmware/BIOS file settings)"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:dosbox-staging/dosbox-staging@d9135010ea56c2faa0bb8062aaf30a8541bf22f3 (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "Lunchbox can treat ~/.config/dosbox/ as the settings root; per-game dosbox.conf files next to game folders are the intended per-title override point."
     },
     "linux-flatpak": {
@@ -105,8 +105,8 @@
           "evidence": [
             "docs:flathub.org/apps/io.github.dosbox-staging description; configuration.md schema has no firmware settings"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:dosbox-staging/dosbox-staging@d9135010ea56c2faa0bb8062aaf30a8541bf22f3 (primary source cited by this record; keys capture remains unresolved for linux-flatpak)"]}],
       "notes": "The Flatpak command is 'dosbox'; the desktop/icon entries are renamed from org.dosbox_staging.dosbox_staging but the app-id remains io.github.dosbox-staging."
     },
     "windows": {
@@ -151,8 +151,8 @@
           "evidence": [
             "docs:website/docs/0.83/manual/using-dosbox-staging/configuration.md @d9135010ea (no firmware settings in the config schema)"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:dosbox-staging/dosbox-staging@d9135010ea56c2faa0bb8062aaf30a8541bf22f3 (primary source cited by this record; keys capture remains unresolved for windows)"]}],
       "notes": "Windows installs (installer/portable zip) both resolve %LOCALAPPDATA%\\DOSBox unless portable mode is triggered."
     },
     "macos": {
@@ -198,8 +198,8 @@
           "evidence": [
             "docs:website/docs/0.83/manual/using-dosbox-staging/configuration.md @d9135010ea (no firmware settings)"
           ]
-        }
-      ],
+        },
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:dosbox-staging/dosbox-staging@d9135010ea56c2faa0bb8062aaf30a8541bf22f3 (primary source cited by this record; keys capture remains unresolved for macos)"]}],
       "notes": "macOS is the one platform where Staging uses ~/Library/Preferences instead of an XDG-style dir."
     }
   }

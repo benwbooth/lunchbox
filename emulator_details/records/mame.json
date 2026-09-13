@@ -30,6 +30,16 @@
           ]
         },
         {
+          "purpose": "input",
+          "path": "cfg/default.cfg and cfg/<shortname>.cfg under MAME's cfg_directory (default cfg), plus optional ctrlr/<name>.cfg selected by -ctrlr",
+          "naming": "MAME controller XML v10: mapper-written KEYCODE_*/JOYCODE_* sequences in <mameconfig version=\"10\"> files; optional <mapdevice device=\"<stable-id>\" controller=\"JOYCODE_N\"/> entries bind stable physical IDs",
+          "evidence": [
+            "docs:ctrlr_config (v10 XML, -ctrlr profiles and mapdevice)",
+            "docs:devicemap (stable controller IDs)",
+            "source:mamedev/mame src/emu/config.cpp default.cfg/system cfg and ctrlr profile load order @ec9abd86c6"
+          ]
+        },
+        {
           "purpose": "saves",
           "path": "nvram/ (nvram_directory default \"nvram\"), inp/ recordings and snap/ snapshots (plus diff/ for disk images)",
           "naming": "Per-game NVRAM .nv files named by machine short name in nvram/ (non-default BIOS adds _N; device NVRAM lands in <set>/<software>/<device_tag> subpaths with ':' replaced by '_'); input recordings via -record/-playback open files in inp/ (docs: keep .cfg/.nv and memory-card files identical or delete them to avoid desync); snapshots use snapname default %g/%i, i.e. snap/<shortname>/NNNN.png per system",
@@ -59,6 +69,13 @@
             "lunchbox:crates/lunchbox-app/src/firmware.rs (mame runtime root ~/.mame/roms; '@hash' installs to sibling hash/ of the rompath root)",
             "lunchbox:crates/lunchbox-app/src/emulator.rs (native launch appends ~/.mame/roms to -rompath)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:mamedev/mame @ec9abd86c6 (MAME ROM/device metadata and controller XML expose no external cryptographic-key file)"]
         }
       ],
       "notes": "Lunchbox standalone-MAME launch uses explicit -cfg_directory/-ctrlrpath routing with private default.cfg, <shortname>.cfg and controller-profile copies; originals are never written and runtime cfg changes stay session-local (docs/MAME_STANDALONE_PROGRESS.md). The libretro-core contract (docs/MAME_CONTROLLER_CONTRACT.md) instead routes cfg, ctrlr, ROMs, NVRAM, diff, states, snapshots and input recordings into a private tree and disables INI loading/writing."
@@ -75,6 +92,16 @@
             "flathub:org.mamedev.MAME README.md (--persist=.mame is the writable location for cfg, diff, nvram, etc.)",
             "docs:configuringmame (-createconfig)",
             "docs:ctrlr_config (ctrlr file selection via -ctrlr)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "$HOME/.mame/cfg/default.cfg and cfg/<shortname>.cfg inside the persisted org.mamedev.MAME Flatpak tree; optional ctrlr/<name>.cfg",
+          "naming": "Same MAME v10 XML grammar as native: KEYCODE_*/JOYCODE_* sequences and optional <mapdevice> stable-ID bindings",
+          "evidence": [
+            "flathub:org.mamedev.MAME mame.ini (cfg_directory $HOME/.mame/cfg and persisted .mame tree)",
+            "docs:ctrlr_config (v10 XML and -ctrlr profiles)",
+            "source:mamedev/mame src/emu/config.cpp @ec9abd86c6"
           ]
         },
         {
@@ -108,6 +135,13 @@
             "lunchbox:crates/lunchbox-app/src/firmware.rs (flatpak mame roms root ~/.var/app/org.mamedev.MAME/data/mame/roms)",
             "lunchbox:crates/lunchbox-app/src/emulator.rs (mame_runtime_roms_directory appends the flatpak roms dir to -rompath)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:mamedev/mame @ec9abd86c6 (MAME ROM/device metadata and controller XML expose no external cryptographic-key file)"]
         }
       ],
       "notes": "The Flatpak keeps every writable MAME folder inside the persisted $HOME/.mame sandbox tree; the lunchbox probes have launched this Flatpak with an exact collection/runtime -rompath list (docs/FRONTEND_ARCHITECTURE.md arcade-launch-probe)."
@@ -124,6 +158,16 @@
             "docs:multiconfig (ini layering order)",
             "source:mamedev/mame src/emu/config.cpp (default.cfg / basename().cfg / <ctrlr>.cfg)",
             "contract: docs/MAME_STANDALONE_PROGRESS.md (private default.cfg and machine-basename cfg copies)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "cfg/default.cfg and cfg/<shortname>.cfg under the MAME installation folder's cfg_directory; optional ctrlr/<name>.cfg",
+          "naming": "Same MAME v10 controller XML grammar: KEYCODE_*/JOYCODE_* sequences and optional <mapdevice> stable-ID bindings",
+          "evidence": [
+            "docs:commandline-all (cfg_directory and ctrlrpath defaults)",
+            "docs:ctrlr_config and docs:devicemap (v10 XML and stable IDs)",
+            "source:mamedev/mame src/emu/config.cpp @ec9abd86c6"
           ]
         },
         {
@@ -155,6 +199,13 @@
             "lunchbox:crates/lunchbox-app/src/firmware.rs (windows mame root data_local_dir()/mame/roms)",
             "lunchbox:crates/lunchbox-app/src/emulator.rs (native windows roms dir appended to -rompath)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:mamedev/mame @ec9abd86c6 (MAME ROM/device metadata and controller XML expose no external cryptographic-key file)"]
         }
       ],
       "notes": "Windows MAME keeps its entire state in the folder the ZIP was extracted to; a fresh install needs `mame -createconfig` before mame.ini exists."
@@ -171,6 +222,16 @@
             "docs:multiconfig (ini layering, saves to first inipath entry)",
             "source:mamedev/mame src/emu/config.cpp (default.cfg / basename().cfg / <ctrlr>.cfg)",
             "contract: docs/MAME_STANDALONE_PROGRESS.md (private cfg copies and controller profile)"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "cfg/default.cfg and cfg/<shortname>.cfg under the MAME folder's cfg_directory; optional ctrlr/<name>.cfg, with INI search beginning in $HOME/Library/Application Support/mame",
+          "naming": "Same MAME v10 controller XML grammar: KEYCODE_*/JOYCODE_* sequences and optional <mapdevice> stable-ID bindings",
+          "evidence": [
+            "docs:commandline-all (macOS inipath, cfg_directory and ctrlrpath defaults)",
+            "docs:ctrlr_config and docs:devicemap (v10 XML and stable IDs)",
+            "source:mamedev/mame src/emu/config.cpp @ec9abd86c6"
           ]
         },
         {
@@ -201,6 +262,13 @@
             "db:firmware_rules mame entries (mame_rompath + @hash rules)",
             "lunchbox:crates/lunchbox-app/src/firmware.rs (non-flatpak non-windows mame root ~/.mame/roms)"
           ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key file",
+          "naming": "Not applicable.",
+          "status": "not_required",
+          "evidence": ["source:mamedev/mame @ec9abd86c6 (MAME ROM/device metadata and controller XML expose no external cryptographic-key file)"]
         }
       ],
       "notes": "macOS adds $HOME/Library/Application Support/mame to inipath, the only host-specific default; all cfg/nvram/sta/inp/roms folders otherwise resolve relative to the MAME working folder."

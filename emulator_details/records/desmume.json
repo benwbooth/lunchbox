@@ -52,8 +52,9 @@
             "source:commandline.cpp:463 -fw-path sets UseExtFirmware/ExtFirmwarePath @b3915949",
             "source: no bios7/bios9/nds BIOS-dump loading anywhere in src (grep over the pinned tree)"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/desmume@b3915949700be824253a35affa7f7b8248e84e46 (primary source cited by this record; input capture remains unresolved for linux)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/desmume@b3915949700be824253a35affa7f7b8248e84e46 (primary source cited by this record; keys capture remains unresolved for linux)"]}],
       "notes": "Lunchbox's desmume native launch pins the controller contract and isolates the whole config dir through a private XDG_CONFIG_HOME (docs/DESMUME_NATIVE_CONTROLLER_CONTRACT.md), which also relocates the default battery/state-slot directory."
     },
     "linux-flatpak": {
@@ -94,8 +95,9 @@
             "source:NDSSystem.cpp:3373-3375 optional firmware default, BootFromFirmware=false @b3915949",
             "flathub:org.desmume.DeSmuME (no firmware shipped)"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/desmume@b3915949700be824253a35affa7f7b8248e84e46 (primary source cited by this record; input capture remains unresolved for linux-flatpak)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/desmume@b3915949700be824253a35affa7f7b8248e84e46 (primary source cited by this record; keys capture remains unresolved for linux-flatpak)"]}],
       "notes": "The flatpak id org.desmume.DeSmuME is verified present on Flathub, but the listing is stale in its advertised version (0.9.11 appstream vs 2024 master-commit manifest); desmume.org's own download page only offers Windows builds and does not reference the Flatpak."
     },
     "windows": {
@@ -137,8 +139,9 @@
             "source:frontend/windows/main.cpp:2439-2440 GetPrivateProfileString(\"Firmware\", \"FirmwareFile\", \"firmware.bin\", ...) and GetPrivateProfileBool(\"Firmware\", \"BootFromFirmware\", false, IniName), :5965-5966 written back @b3915949",
             "source:NDSSystem.cpp:3373-3375 ExtFirmwarePath/BootFromFirmware defaults @b3915949"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/desmume@b3915949700be824253a35affa7f7b8248e84e46 (primary source cited by this record; input capture remains unresolved for windows)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/desmume@b3915949700be824253a35affa7f7b8248e84e46 (primary source cited by this record; keys capture remains unresolved for windows)"]}],
       "notes": "Windows is the only frontend using the Battery/States/StateSlots/Firmware subfolder layout, and only because its defaults are cwd-relative; desmume.org/download distributes 0.9.13 and nightly x64 builds."
     },
     "macos": {
@@ -180,8 +183,9 @@
             "source:frontend/cocoa/FileTypeInfo.plist 0.9.8-0.9.14 'Firmware Configuration' = ${APPSUPPORT}, DirectoryNames = Battery @b3915949",
             "source:NDSSystem.cpp:3373-3375 optional firmware defaults @b3915949"
           ]
-        }
-      ],
+        },
+        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/desmume@b3915949700be824253a35affa7f7b8248e84e46 (primary source cited by this record; input capture remains unresolved for macos)"]},
+        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/desmume@b3915949700be824253a35affa7f7b8248e84e46 (primary source cited by this record; keys capture remains unresolved for macos)"]}],
       "notes": "The Cocoa frontend versions its data tree per CFBundleVersion (e.g. 0.9.13), so upgrades create a fresh Battery/States set; desmume.org's download page no longer hosts macOS builds ('You will have to ask the Internet for it, since the developer's website has vanished')."
     }
   }

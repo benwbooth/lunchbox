@@ -1375,6 +1375,26 @@ fn has_cli_flag(flag: &str) -> bool {
     std::env::args_os().any(|argument| argument == flag)
 }
 
+fn save_sync_scope_slug(
+    records: &[crate::platform_locations::Record],
+    emulator_name: &str,
+    runtime_kind: crate::emulator::EmulatorRuntimeKind,
+    core_name: &str,
+) -> anyhow::Result<String> {
+    if runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch {
+        let core_name = crate::emulator::canonical_retroarch_core_name(core_name);
+        anyhow::ensure!(
+            !core_name.is_empty(),
+            "RetroArch save sync requires an exact core"
+        );
+        // Remote manifests must never combine unrelated cores merely because
+        // they share the RetroArch frontend directories on disk.
+        Ok(format!("retroarch-core-{core_name}"))
+    } else {
+        crate::platform_locations::slug_for_emulator_name(records, emulator_name)
+    }
+}
+
 fn is_local_launch_probe() -> bool {
     has_cli_flag("--rom-launch-probe")
         || has_cli_flag("--arcade-launch-probe")
@@ -5362,11 +5382,12 @@ impl qobject::GameDetailsModel {
     pub fn save_sync_target_json(&self) -> QString {
         let target = (|| -> anyhow::Result<serde_json::Value> {
             let records = crate::platform_locations::load_records()?;
-            let (emulator_name, runtime_kind, executable) =
+            let (emulator_name, runtime_kind, core_name, executable) =
                 if let Some(emulator) = self.rust().prepared_emulator.as_ref() {
                     (
                         emulator.name.as_str(),
                         crate::emulator::EmulatorRuntimeKind::Standalone,
+                        "",
                         &emulator.executable,
                     )
                 } else {
@@ -5380,14 +5401,12 @@ impl qobject::GameDetailsModel {
                     (
                         option.emulator_name.as_str(),
                         option.runtime_kind,
+                        option.core_name.as_str(),
                         &option.executable,
                     )
                 };
-            let emulator_slug = if runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch {
-                "retroarch".to_owned()
-            } else {
-                crate::platform_locations::slug_for_emulator_name(&records, emulator_name)?
-            };
+            let emulator_slug =
+                save_sync_scope_slug(&records, emulator_name, runtime_kind, core_name)?;
             let runtime_platform = match executable {
                 crate::emulator::EmulatorExecutable::Flatpak { .. } => "linux-flatpak",
                 crate::emulator::EmulatorExecutable::Wine { .. } => "windows",
@@ -5414,6 +5433,15 @@ impl qobject::GameDetailsModel {
                     }
                 }
             };
+            // A distinct remote namespace is insufficient unless the selected
+            // runtime also has a matching, non-overlapping physical route.
+            // Validate that route before advertising the target to QML.
+            crate::platform_locations::save_route_roots_for_platform(
+                &records,
+                &emulator_slug,
+                runtime_platform,
+                &crate::platform_locations::LocationBases::detect(),
+            )?;
             Ok(serde_json::json!({
                 "available": true,
                 "emulator_slug": emulator_slug,
@@ -6837,7 +6865,8 @@ mod tests {
         download_source_location, effective_download_settings, format_last_played,
         format_play_time, format_release_date, format_session_duration, metadata_save_messages,
         preferred_loaded_group_index, preview_for_launch_profile_target, ranked_source_indices,
-        session_outcome_label, steam_store_url_string, validate_launch_profile_template,
+        save_sync_scope_slug, session_outcome_label, steam_store_url_string,
+        validate_launch_profile_template,
     };
     use crate::emulator::effective_launch_preview_values;
     use crate::game_details::{BundleMatchKind, MinervaBundle, TorrentFileCandidate};
@@ -7011,6 +7040,40 @@ mod tests {
         let effective = effective_launch_preview_values("", "-L %{core} %f", "--inherited", "%f");
         assert_eq!(effective.0, "--inherited");
         assert_eq!(effective.1, "-L %{core} %f");
+    }
+
+    #[test]
+    fn save_sync_scope_keeps_retroarch_cores_in_distinct_namespaces() {
+        let records = Vec::new();
+        assert_eq!(
+            save_sync_scope_slug(
+                &records,
+                "RetroArch",
+                crate::emulator::EmulatorRuntimeKind::RetroArch,
+                "fceumm",
+            )
+            .unwrap(),
+            "retroarch-core-fceumm"
+        );
+        assert_eq!(
+            save_sync_scope_slug(
+                &records,
+                "RetroArch",
+                crate::emulator::EmulatorRuntimeKind::RetroArch,
+                "beetle_psx",
+            )
+            .unwrap(),
+            "retroarch-core-mednafen_psx"
+        );
+        assert!(
+            save_sync_scope_slug(
+                &records,
+                "RetroArch",
+                crate::emulator::EmulatorRuntimeKind::RetroArch,
+                "",
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -1,1 +1,90 @@
-{"schema_version":1,"slug":"waydroid","emulator":"Waydroid","sources":[{"kind":"source","repo":"https://waydro.id/","url":"https://waydro.id/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://waydro.id/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Linux-only Android container; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://waydro.id/"]},"linux-flatpak":{"status":"unresolved","reason":"Linux-only Android container; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://waydro.id/"]},"windows":{"status":"unresolved","reason":"Linux-only Android container; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://waydro.id/"]},"macos":{"status":"unresolved","reason":"Linux-only Android container; no complete source-backed config/input/firmware/save/state contract was established for this host.","evidence":["official:https://waydro.id/"]}}}
+{
+  "schema_version": 1,
+  "slug": "waydroid",
+  "emulator": "Waydroid",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/waydroid/waydroid",
+      "commit": "5a51271131bfca8b7ee75ed067d09b26460f3a7b",
+      "url": "https://github.com/waydroid/waydroid/tree/5a51271131bfca8b7ee75ed067d09b26460f3a7b",
+      "role": "pinned Waydroid source; configuration, image, Android-property and container paths"
+    },
+    {
+      "kind": "docs",
+      "url": "https://docs.waydro.id/",
+      "role": "official Waydroid Linux installation and CLI documentation"
+    },
+    {
+      "kind": "contract",
+      "path": "docs/WAYDROID_CONTROLLER_BOUNDARY.md",
+      "role": "fail-closed Android-container input boundary"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "/var/lib/waydroid/waydroid.cfg (args.work + /waydroid.cfg; work defaults to /var/lib/waydroid)",
+          "naming": "INI file with [waydroid] initialization keys such as arch, images_path, vendor_type and [properties] Android-property overrides",
+          "evidence": [
+            "source:tools/__init__.py args.config=args.work+/waydroid.cfg @5a51271131bfca8b7ee75ed067d09b26460f3a7b",
+            "source:tools/config/__init__.py work=/var/lib/waydroid and config_keys @5a51271131bfca8b7ee75ed067d09b26460f3a7b",
+            "source:tools/config/load.py ConfigParser sections [waydroid] and [properties] @5a51271131bfca8b7ee75ed067d09b26460f3a7b"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Runtime Android input devices inside the Waydroid container/session; no host-side profile file is defined by Waydroid",
+          "naming": "Waydroid starts/stops a Linux container and Android session; app/controller semantics belong to Android and the compositor/frontend rather than a Waydroid physical-device profile",
+          "evidence": [
+            "source:tools/helpers/arguments.py session/container controllers @5a51271131bfca8b7ee75ed067d09b26460f3a7b",
+            "source:tools/actions/session_manager.py Android session service boundary @5a51271131bfca8b7ee75ed067d09b26460f3a7b"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "/var/lib/waydroid/data plus the per-user XDG data path ~/.local/share/waydroid/data",
+          "naming": "Android app/user data is container- and app-owned; no universal Waydroid game-save sidecar naming convention",
+          "evidence": ["source:tools/config/__init__.py defaults[data] and session_defaults[waydroid_data] @5a51271131bfca8b7ee75ed067d09b26460f3a7b"]
+        },
+        {
+          "purpose": "states",
+          "path": "not applicable",
+          "naming": "Waydroid exposes container/session lifecycle controls, not emulator save-state slots",
+          "status": "not_supported",
+          "evidence": ["source:tools/helpers/arguments.py session/container actions contain no save-state action @5a51271131bfca8b7ee75ed067d09b26460f3a7b"]
+        },
+        {
+          "purpose": "bios",
+          "path": "/var/lib/waydroid/images (or --images_path override), containing system.img/vendor.img and Android image assets",
+          "naming": "Android system/vendor images are installation/runtime assets, not a console BIOS; OTA/image provenance is channel- and device-specific",
+          "status": "not_required",
+          "evidence": [
+            "source:tools/config/__init__.py defaults[images_path]=/var/lib/waydroid/images @5a51271131bfca8b7ee75ed067d09b26460f3a7b",
+            "source:tools/helpers/arguments.py init --images_path and tools/actions/initializer.py cfg[waydroid][images_path] @5a51271131bfca8b7ee75ed067d09b26460f3a7b"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "not applicable",
+          "naming": "No external cryptographic key file is consumed by the Waydroid host tool contract",
+          "status": "not_required",
+          "evidence": ["source:Waydroid configuration and container tool tree @5a51271131bfca8b7ee75ed067d09b26460f3a7b"]
+        }
+      ],
+      "notes": "Waydroid is a Linux container for Android (the upstream project documents LineageOS-based Android), not a console emulator."
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": { "status": "no_verified_package", "reason": "The pinned upstream source and official documentation provide Linux packages/configuration but no Waydroid Flatpak manifest or sandbox persistence contract.", "evidence": ["source:Waydroid repository @5a51271131bfca8b7ee75ed067d09b26460f3a7b", "docs:https://docs.waydro.id/"] },
+    "windows": { "status": "unsupported", "reason": "Waydroid's source and official docs target a Linux container/session host; no native Windows host target is published.", "evidence": ["source:Waydroid container/systemd integration @5a51271131bfca8b7ee75ed067d09b26460f3a7b"] },
+    "macos": { "status": "unsupported", "reason": "Waydroid's source and official docs target a Linux container/session host; no native macOS host target is published.", "evidence": ["source:Waydroid container/systemd integration @5a51271131bfca8b7ee75ed067d09b26460f3a7b"] }
+  },
+  "controller_boundary": {
+    "native_writer": "not_implemented",
+    "refusal": "Do not invent a Waydroid controller profile writer: Android app input and compositor/container forwarding are runtime- and frontend-owned, while waydroid.cfg configures images and properties rather than physical controller bindings."
+  },
+  "notes": "Runtime container launch and effective Android gamepad input were not verified. Waydroid's image and property files are not a portable game-emulator persistence contract."
+}
