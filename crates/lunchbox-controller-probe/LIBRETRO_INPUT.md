@@ -7,7 +7,9 @@ emulated GBA KEYINPUT register to EWRAM alongside an execution marker. The Game
 Gear backend runs an original Z80 program in Genesis Plus GX. The NES backend
 runs an original mapper-0 program in FCEUmm or Mesen. The SNES backend runs an
 original 65C816 LoROM program in bsnes, Snes9x, or Mesen-S. Those four backends
-need no BIOS. The PlayStation backend runs an original MIPS diagnostic through
+need no BIOS. The Game Boy backend runs an original LR35902 cartridge across
+Gambatte, mGBA, SameBoy, SkyEmu, and VBA-M without optional boot ROMs. The
+PlayStation backend runs an original MIPS diagnostic through
 user-supplied firmware. No commercial game or firmware bytes are included or
 downloaded by this helper.
 
@@ -241,9 +243,9 @@ rules or of physical-controller discovery and launch-time configuration. The
 application's prepared-disc compatibility checks and RetroArch launch oracle
 cover different boundaries; see [the launch oracle](../../docs/CONTROLLER_RETROARCH_ORACLE.md).
 
-## Game Boy / SameBoy
+## Game Boy / Gambatte, mGBA, SameBoy, SkyEmu, and VBA-M
 
-Select `--system gameboy` with a trusted SameBoy core and its expected SHA256.
+Select `--system gameboy` with an exact-hash core from the supported family.
 The original 32 KiB LR35902 program samples both active-low halves of the Game
 Boy's JOYP register into WRAM, along with an execution marker. Buttons occupy
 the low byte's low nibble; directions occupy the high byte's low nibble. The
@@ -251,37 +253,55 @@ comparison mask is `0x0f0f`. The hardware expectation comes from
 [Pan Docs' JOYP definition](https://gbdev.io/pandocs/Joypad_Input.html), independently
 of the application's generated mappings.
 
-The helper selects ordinary Game Boy hardware in its private diagnostic options.
-It allows up to 240 frames for SameBoy's built-in open-source boot ROM to finish,
-without modifying CPU state or supplying manufactured readback. The diagnostic
-cartridge has a blank logo area: no Nintendo logo, commercial game, or external
-firmware is included. A warning about absent `dmg_boot.bin` is expected before
-the core falls back to its built-in boot ROM.
+The cartridge contains an original program plus the 48-byte platform-required
+cartridge-logo signature; it contains no commercial program or boot firmware.
+The helper selects ordinary Game Boy hardware, disables optional boot ROMs, and
+allows up to 240 frames for a core's internal boot path to finish without
+modifying CPU state or manufacturing readback. Its real C-ABI log callback keeps
+core diagnostics on stderr instead of requiring every core to tolerate a missing
+frontend logger.
 
 Each run checks all eight controls, releases, A+B, A+Right, and unassigned
-shoulders twice: once with device 1, then with advertised joypad subclass 257.
-The observation names record the selected device; there are 48 observations.
-Run both callback modes:
+shoulders. Standard-device cores produce 24 observations. SameBoy additionally
+exercises its advertised Game Boy subclass 257, producing 48 observations.
+Run both callback modes except for SkyEmu, whose pinned adapter always issues
+individual callbacks and is rejected explicitly when `--bitmask` is requested:
 
 ```console
-nix develop -c cargo run -p lunchbox-controller-probe --bin lunchbox-libretro-input -- --system gameboy --core /absolute/trusted/sameboy_libretro.so --sha256 EXPECTED_SHA256
-nix develop -c cargo run -p lunchbox-controller-probe --bin lunchbox-libretro-input -- --system gameboy --core /absolute/trusted/sameboy_libretro.so --sha256 EXPECTED_SHA256 --bitmask
+nix develop -c cargo run -p lunchbox-controller-probe --bin lunchbox-libretro-input -- --system gameboy --core /absolute/trusted/CORE_libretro.so --sha256 EXPECTED_SHA256 --output /new/individual.json
+nix develop -c cargo run -p lunchbox-controller-probe --bin lunchbox-libretro-input -- --system gameboy --core /absolute/trusted/CORE_libretro.so --sha256 EXPECTED_SHA256 --bitmask --output /new/bitmask.json
 ```
 
-On 2026-09-06 the official Libretro Linux x86_64 nightly core reported
-`1.0.3 8230189`, SHA256
-`26b3de38033e14cb2185f47811d38340bd47f56d55dd82cb14cdbd39a88a8208`.
-Both callback modes passed all 48 observations and exposed 8192 bytes of WRAM.
-The individual run made 4432 individual input requests and zero mask requests;
-the bitmask run made 277 mask requests and zero individual requests.
-The pinned [upstream frontend](https://github.com/LIJI32/SameBoy/blob/8230189896a8bb6598574d302ba0ad3658f98ab4/libretro/libretro.c)
-matches the reported abbreviated source revision. The binary hash identifies the
-actual runtime artifact; the report's source fields identify the expected contract.
+On 2026-09-12 official Libretro buildbot artifacts passed on native Linux x86_64
+and macOS 26.5.1 arm64:
+
+| Core | Linux SHA-256 | macOS arm64 SHA-256 | Verified modes |
+| --- | --- | --- | --- |
+| Gambatte `v0.5.0-netlink d9d6cd0` | `b8fba61ecbb840723a7c64d771196b37931c50ba4d98874cccedfd69a8aa27a6` | `19f088f910a89ffef80a26766f682dd01aa5ae81c95adca6926a3d9c10733a50` | 24/24 individual and 24/24 bitmask on each host |
+| mGBA `0.11-219-e31759b` | `768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4` | `085350861044d9d2ef37634a7c201f57b4816fd343bdf29cdcd09bfb754b9218` | 24/24 individual and 24/24 bitmask on each host |
+| SameBoy `1.0.3 8230189` | `26b3de38033e14cb2185f47811d38340bd47f56d55dd82cb14cdbd39a88a8208` | `581f35441d3263f53769d1a542cb3904656eff7ec2121fce3a17cacb8a282cb3` | 48/48 individual and 48/48 bitmask on each host |
+| SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c` | `bd5bf1f727d14e274a7f71b29e541d4d9188797c781a1557236aa94d54ed7c85` | `64778cf538f741dc5a55de2130390c196083fdb5346bec916b83d32accb9a24c` | 24/24 individual on each host; bitmask unsupported |
+| VBA-M `2.1.3 115defb` on Linux, version suffix `115defb` on macOS | `156dee1827dee4c36b8f88ab9ef6a9918b1e4e89a62195a4228fe0b1b982e31c` | `880d40f6338a7c60544b9c4662f8a950ea457bcd337dbc17240a03078328087f` | 24/24 individual and 24/24 bitmask on each host |
+
+SkyEmu exposes a 98,304-byte composite memory structure through the standard
+system-memory ID; its pinned memory map places the diagnostic's C000 bytes at
+offset `0xc000`, which the oracle checks explicitly. The Linux buildbot binary
+also omits a `DT_NEEDED` entry for `libm` while importing `pow`; the run supplied
+the host's exact `libm.so.6` (SHA-256
+`95aafdf744c5bd6df251264d6a0b864159ba6f77c1f21997dd79dfb8ecc2e2bf`)
+globally and retains that dependency as part of the evidence. The other reported
+system-memory sizes were 8,192 bytes for Gambatte, SameBoy, and VBA-M, and
+32,768 bytes for mGBA.
+
+The binary hashes identify the runtime artifacts that executed. Each report's
+pinned source field defines the expected frontend contract and does not assert
+that arbitrary binaries came from that source revision.
 
 This checks ordinary Game Boy emulated input, not SGB multiplayer, Game Boy Link,
 all model variants, RetroArch's generated configuration processing, physical
-controller calibration, or the desktop launch action. The application has
-separate [option-dependent topology tests](../../docs/SAMEBOY_CONTROLLERS.md).
+controller calibration, or the desktop launch action. Save RAM, states, optional
+boot-ROM acceptance, and synchronization remain separate tests. The application
+has separate [SameBoy option-dependent topology tests](../../docs/SAMEBOY_CONTROLLERS.md).
 
 Reports additionally include the latest `input_descriptors` notification from
 the core: port, device, index, id and copied UTF-8 description. Capture requires

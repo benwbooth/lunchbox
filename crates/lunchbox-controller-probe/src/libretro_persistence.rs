@@ -384,6 +384,7 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             unsafe { data.cast::<u64>().write(1 << 1) };
             true
         }
+        27 => unsafe { lunchbox_controller_probe::libretro_log::install(data) },
         39 => {
             unsafe { data.cast::<u32>().write(0) };
             true

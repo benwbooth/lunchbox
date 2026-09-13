@@ -144,11 +144,13 @@
   },
   "hosts": {
     "linux": {
-      "status": "unverified",
-      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "status": "available",
+      "reason": "The official Libretro Linux x86_64 buildbot artifact was downloaded and executed through the exact-core Game Boy input oracle; its undeclared libm dependency was supplied explicitly and recorded.",
       "evidence": [
-        "records/retroarch.json host paths",
-        "official per-core distribution not separately verified"
+        "buildbot:https://buildbot.libretro.com/nightly/linux/x86_64/latest/skyemu_libretro.so.zip @2026-09-12",
+        "runtime:Linux x86_64; SkyEmu adacd0788964ed89f5c43dcbc1f3cc26deec996c; sha256 bd5bf1f727d14e274a7f71b29e541d4d9188797c781a1557236aa94d54ed7c85",
+        "runtime-dependency:libm.so.6 sha256 95aafdf744c5bd6df251264d6a0b864159ba6f77c1f21997dd79dfb8ecc2e2bf",
+        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md"
       ]
     },
     "linux-flatpak": {
@@ -160,11 +162,12 @@
       ]
     },
     "macos": {
-      "status": "unverified",
-      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "status": "available",
+      "reason": "The official Libretro macOS arm64 buildbot artifact was downloaded and executed through the exact-core Game Boy input oracle on an Apple Silicon host.",
       "evidence": [
-        "records/retroarch.json host paths",
-        "official per-core distribution not separately verified"
+        "buildbot:https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/skyemu_libretro.dylib.zip @2026-09-12",
+        "runtime:macOS 26.5.1 arm64; SkyEmu adacd0788964ed89f5c43dcbc1f3cc26deec996c; sha256 64778cf538f741dc5a55de2130390c196083fdb5346bec916b83d32accb9a24c",
+        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md"
       ]
     },
     "windows": {

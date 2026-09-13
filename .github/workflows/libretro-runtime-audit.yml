@@ -19,6 +19,7 @@ jobs:
         include:
           - core: mgba
             system: gba
+            secondary_system: gameboy
             persistence_system: gba
             persistence_expect: pass
             expected_version: '0.11-219-e31759b'
@@ -55,6 +56,28 @@ jobs:
             expected_state_bytes: 823407
           - core: sameboy
             system: gameboy
+            secondary_system: ''
+            persistence_system: ''
+            persistence_expect: pass
+            expected_version: ''
+            expected_state_bytes: ''
+          - core: gambatte
+            system: gameboy
+            secondary_system: ''
+            persistence_system: ''
+            persistence_expect: pass
+            expected_version: ''
+            expected_state_bytes: ''
+          - core: skyemu
+            system: gameboy
+            secondary_system: ''
+            persistence_system: ''
+            persistence_expect: pass
+            expected_version: ''
+            expected_state_bytes: ''
+          - core: vbam
+            system: gameboy
+            secondary_system: ''
             persistence_system: ''
             persistence_expect: pass
             expected_version: ''
@@ -71,6 +94,7 @@ jobs:
         env:
           CORE: ${{ matrix.core }}
           SYSTEM: ${{ matrix.system }}
+          SECONDARY_SYSTEM: ${{ matrix.secondary_system }}
           PERSISTENCE_SYSTEM: ${{ matrix.persistence_system }}
           PERSISTENCE_EXPECT: ${{ matrix.persistence_expect }}
           EXPECTED_VERSION: ${{ matrix.expected_version }}
@@ -115,7 +139,9 @@ jobs:
           case "$SYSTEM" in
             gba|gamegear|gameboy)
               run_oracle individual
-              run_oracle bitmask --bitmask
+              if [[ "$CORE" != skyemu ]]; then
+                run_oracle bitmask --bitmask
+              fi
               ;;
             nes)
               run_oracle two-player-individual --nes-topology two-player
@@ -136,6 +162,12 @@ jobs:
               exit 2
               ;;
           esac
+
+          if [[ -n "$SECONDARY_SYSTEM" ]]; then
+            SYSTEM="$SECONDARY_SYSTEM"
+            run_oracle gameboy-individual
+            run_oracle gameboy-bitmask --bitmask
+          fi
 
           if [[ -n "$PERSISTENCE_SYSTEM" ]]; then
             persistence="$workspace/target/release/lunchbox-libretro-persistence.exe"

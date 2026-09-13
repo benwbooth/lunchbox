@@ -333,6 +333,10 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
                 b"genesis_plus_gx_bios" => c"disabled".as_ptr(),
                 b"sameboy_model" => c"Game Boy".as_ptr(),
                 b"mesen_shift_buttons_clockwise" => c"disabled".as_ptr(),
+                b"system_core_override" => c"Automatic".as_ptr(),
+                b"system_gb_bios_enable"
+                | b"system_gba_bios_enable"
+                | b"system_nds_bios_enable" => c"OFF".as_ptr(),
                 _ => std::ptr::null(),
             };
             !variable.value.is_null()
@@ -349,6 +353,7 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             }
             true
         }
+        27 => unsafe { crate::libretro_log::install(data) },
         39 | 52 => {
             unsafe {
                 data.cast::<u32>().write(0);
@@ -722,11 +727,19 @@ pub fn gamegear_diagnostic_rom() -> Vec<u8> {
 }
 
 /// Original LR35902 loop. Sample the two active-low JOYP nibbles separately:
-/// buttons at C000 and directions at C001. SameBoy's built-in open boot ROM
-/// accepts our blank logo area; no Nintendo logo or firmware is embedded.
+/// buttons at C000 and directions at C001. The 48-byte cartridge-format logo
+/// signature is required by several independent cores; no boot firmware or
+/// game program is embedded.
 pub fn gameboy_diagnostic_rom() -> Vec<u8> {
+    const CARTRIDGE_LOGO: [u8; 48] = [
+        0xce, 0xed, 0x66, 0x66, 0xcc, 0x0d, 0x00, 0x0b, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0c, 0x00,
+        0x0d, 0x00, 0x08, 0x11, 0x1f, 0x88, 0x89, 0x00, 0x0e, 0xdc, 0xcc, 0x6e, 0xe6, 0xdd, 0xdd,
+        0xd9, 0x99, 0xbb, 0xbb, 0x67, 0x63, 0x6e, 0x0e, 0xec, 0xcc, 0xdd, 0xdc, 0x99, 0x9f, 0xbb,
+        0xb9, 0x33, 0x3e,
+    ];
     let mut rom = vec![0; 0x8000];
     rom[0x100..0x104].copy_from_slice(&[0x00, 0xc3, 0x50, 0x01]); // nop; jp 0150
+    rom[0x104..0x134].copy_from_slice(&CARTRIDGE_LOGO);
     rom[0x134..0x141].copy_from_slice(b"LUNCHBOXINPUT");
     let program = [
         0xf3, // di
@@ -894,7 +907,13 @@ impl Diagnostic {
         match self {
             Self::Gba => ("mGBA", "input.gba", 1, 0x3ff),
             Self::Gamegear => ("Genesis Plus GX", "input.gg", 769, 0x803f),
-            Self::Gameboy => ("SameBoy", "input.gb", 257, 0x0f0f),
+            // The exact device is selected from the loaded core's contract.
+            Self::Gameboy => (
+                "Gambatte, mGBA, SameBoy, SkyEmu, or VBA-M",
+                "input.gb",
+                1,
+                0x0f0f,
+            ),
             // NES supports two exact core identities whose advertised explicit
             // standard-controller subclasses differ. Select that device only
             // after querying the loaded core identity.
@@ -1093,6 +1112,63 @@ struct NesCoreContract {
     controller_label: &'static str,
     source_revision: &'static str,
     source_url: &'static str,
+}
+
+#[derive(Clone, Copy)]
+struct GameboyCoreContract {
+    device_modes: &'static [u32],
+    supports_bitmask: bool,
+    system_ram_offset: usize,
+    source_revision: &'static str,
+    source_url: &'static str,
+}
+
+fn gameboy_core_contract(core_name: &str) -> Result<GameboyCoreContract> {
+    match core_name {
+        "Gambatte" => Ok(GameboyCoreContract {
+            device_modes: &[1],
+            supports_bitmask: true,
+            system_ram_offset: 0,
+            source_revision: "d9d6cd06382d1ced30de34d56d3609452323dab1",
+            source_url: "https://github.com/libretro/gambatte-libretro/tree/d9d6cd06382d1ced30de34d56d3609452323dab1",
+        }),
+        "mGBA" => Ok(GameboyCoreContract {
+            device_modes: &[1],
+            supports_bitmask: true,
+            system_ram_offset: 0,
+            source_revision: "e31759b24e7a4e3899285ff720d7b573ac328ae7",
+            source_url: "https://github.com/libretro/mgba/blob/e31759b24e7a4e3899285ff720d7b573ac328ae7/src/platform/libretro/libretro.c",
+        }),
+        "SameBoy" => Ok(GameboyCoreContract {
+            // SameBoy advertises subclass 257 but deliberately accepts and
+            // polls the base joypad device as well. Exercise both contracts.
+            device_modes: &[1, 257],
+            supports_bitmask: true,
+            system_ram_offset: 0,
+            source_revision: "8230189896a8bb6598574d302ba0ad3658f98ab4",
+            source_url: "https://github.com/LIJI32/SameBoy/blob/8230189896a8bb6598574d302ba0ad3658f98ab4/libretro/libretro.c",
+        }),
+        "SkyEmu" => Ok(GameboyCoreContract {
+            device_modes: &[1],
+            supports_bitmask: false,
+            // SkyEmu exposes its complete 64 KiB address-space image before
+            // banked WRAM through RETRO_MEMORY_SYSTEM_RAM. The diagnostic's
+            // C000 bytes therefore begin at this documented offset.
+            system_ram_offset: 0xc000,
+            source_revision: "adacd0788964ed89f5c43dcbc1f3cc26deec996c",
+            source_url: "https://github.com/skylersaleh/SkyEmu/blob/adacd0788964ed89f5c43dcbc1f3cc26deec996c/src/libretro.c",
+        }),
+        "VBA-M" => Ok(GameboyCoreContract {
+            device_modes: &[1],
+            supports_bitmask: true,
+            system_ram_offset: 0,
+            source_revision: "115defb3a318258ab84746d45258a1aec19d0b4b",
+            source_url: "https://github.com/libretro/vbam-libretro/blob/115defb3a318258ab84746d45258a1aec19d0b4b/src/libretro/libretro.cpp",
+        }),
+        _ => anyhow::bail!(
+            "Game Boy diagnostic supports only exact Gambatte, mGBA, SameBoy, SkyEmu, or VBA-M identities"
+        ),
+    }
 }
 
 fn nes_core_contract(core_name: &str) -> Result<NesCoreContract> {
@@ -1810,12 +1886,27 @@ pub fn inspect_with_options(
         let name = CStr::from_ptr(info.name).to_str()?.to_owned();
         let revision = CStr::from_ptr(info.version).to_str()?.to_owned();
         let core_name_matches = match diagnostic {
+            Diagnostic::Gameboy => {
+                matches!(
+                    name.as_str(),
+                    "Gambatte" | "mGBA" | "SameBoy" | "SkyEmu" | "VBA-M"
+                )
+            }
             Diagnostic::Nes => matches!(name.as_str(), "FCEUmm" | "Mesen"),
             Diagnostic::Snes => matches!(name.as_str(), "bsnes" | "Snes9x" | "Mesen-S"),
             Diagnostic::Psx => name == expected_core || name == "Beetle PSX HW",
             _ => name == expected_core,
         };
         ensure!(core_name_matches, "Expected {expected_core}, got {name}");
+        let gameboy_contract = matches!(diagnostic, Diagnostic::Gameboy)
+            .then(|| gameboy_core_contract(&name))
+            .transpose()?;
+        if let Some(contract) = gameboy_contract {
+            ensure!(
+                !bitmask || contract.supports_bitmask,
+                "The {name} core does not negotiate libretro joypad bitmask input; rerun without --bitmask"
+            );
+        }
         let nes_contract = matches!(diagnostic, Diagnostic::Nes)
             .then(|| nes_core_contract(&name))
             .transpose()?;
@@ -1866,7 +1957,10 @@ pub fn inspect_with_options(
         callback!(b"retro_set_audio_sample_batch\0", AudioBatch, audio_batch);
         callback!(b"retro_set_input_poll\0", Poll, poll);
         callback!(b"retro_set_input_state\0", Input, input);
-        if !matches!(diagnostic, Diagnostic::Nes | Diagnostic::Snes) {
+        if !matches!(
+            diagnostic,
+            Diagnostic::Gameboy | Diagnostic::Nes | Diagnostic::Snes
+        ) {
             set_device(0, device);
         }
         ensure!(
@@ -1883,7 +1977,9 @@ pub fn inspect_with_options(
             "Core rejected original diagnostic ROM"
         );
         core.loaded = true;
-        if let Some(contract) = nes_contract {
+        if let Some(contract) = gameboy_contract {
+            set_device(0, contract.device_modes[0]);
+        } else if let Some(contract) = nes_contract {
             for port in 0..5 {
                 set_device(
                     port,
@@ -2102,18 +2198,19 @@ pub fn inspect_with_options(
             });
         }
         if matches!(diagnostic, Diagnostic::Gameboy) {
+            let contract = gameboy_contract.context("Missing Game Boy core contract")?;
             // Allow the real built-in open boot ROM to finish. Do not patch
             // CPU state or substitute memory for an executed diagnostic.
             let mut booted = false;
             for _ in 0..240 {
                 (core.run)();
                 ensure!(
-                    (core.memory_size)(2) >= 8,
+                    (core.memory_size)(2) >= contract.system_ram_offset + 8,
                     "Game Boy RAM unavailable during boot"
                 );
                 let memory = (core.memory)(2).cast::<u8>();
                 ensure!(!memory.is_null(), "Game Boy RAM pointer unavailable");
-                let bytes = std::slice::from_raw_parts(memory, 8);
+                let bytes = std::slice::from_raw_parts(memory.add(contract.system_ram_offset), 8);
                 if u32::from_le_bytes(bytes[4..8].try_into().unwrap()) == 0x4c42494e {
                     booted = true;
                     break;
@@ -2125,12 +2222,10 @@ pub fn inspect_with_options(
             );
         }
         let mut observations = Vec::new();
-        let device_modes = if matches!(diagnostic, Diagnostic::Gameboy) {
-            vec![1, 257]
-        } else {
-            vec![device]
-        };
-        for test_device in device_modes {
+        let device_modes = gameboy_contract
+            .map(|contract| contract.device_modes)
+            .unwrap_or(std::slice::from_ref(&device));
+        for &test_device in device_modes {
             if matches!(diagnostic, Diagnostic::Gameboy) {
                 set_device(0, test_device);
             }
@@ -2144,13 +2239,16 @@ pub fn inspect_with_options(
                     for _ in 0..4 {
                         (core.run)();
                     }
+                    let memory_offset = gameboy_contract
+                        .map(|contract| contract.system_ram_offset)
+                        .unwrap_or(0);
                     ensure!(
-                        (core.memory_size)(2) >= 8,
+                        (core.memory_size)(2) >= memory_offset + 8,
                         "Diagnostic memory became unavailable"
                     );
                     let memory = (core.memory)(2).cast::<u8>();
                     ensure!(!memory.is_null(), "No system RAM exposed by core");
-                    let bytes = std::slice::from_raw_parts(memory, 8);
+                    let bytes = std::slice::from_raw_parts(memory.add(memory_offset), 8);
                     ensure!(
                         u32::from_le_bytes(bytes[4..8].try_into().unwrap()) == 0x4c42494e,
                         "Diagnostic program did not execute"
@@ -2189,7 +2287,7 @@ pub fn inspect_with_options(
         );
         let (input_descriptor_updates, input_descriptors) = input_descriptor_snapshot()?;
         Ok(Report {
-            schema_version: 1,
+            schema_version: if gameboy_contract.is_some() { 6 } else { 1 },
             diagnostic: match diagnostic {
                 Diagnostic::Gba => "gba-keyinput",
                 Diagnostic::Gamegear => "gamegear-dc-00",
@@ -2216,8 +2314,8 @@ pub fn inspect_with_options(
             snes_observations: Vec::new(),
             psx_observations: Vec::new(),
             firmware,
-            contract_source_revision: matches!(diagnostic, Diagnostic::Gameboy).then_some("8230189896a8bb6598574d302ba0ad3658f98ab4"),
-            contract_source_url: matches!(diagnostic, Diagnostic::Gameboy).then_some("https://github.com/LIJI32/SameBoy/blob/8230189896a8bb6598574d302ba0ad3658f98ab4/libretro/libretro.c"),
+            contract_source_revision: gameboy_contract.map(|contract| contract.source_revision),
+            contract_source_url: gameboy_contract.map(|contract| contract.source_url),
         })
     }
 }
@@ -2881,7 +2979,10 @@ mod tests {
         let rom = gameboy_diagnostic_rom();
         assert_eq!(rom, gameboy_diagnostic_rom());
         assert_eq!(rom.len(), 32768);
-        assert!(rom[0x104..0x134].iter().all(|b| *b == 0));
+        assert_eq!(
+            &rom[0x104..0x10c],
+            &[0xce, 0xed, 0x66, 0x66, 0xcc, 0x0d, 0x00, 0x0b]
+        );
         assert_eq!(&rom[0x100..0x104], &[0, 0xc3, 0x50, 1]);
         assert_eq!(&rom[0x15f..0x163], &[0x3e, 0x10, 0xe0, 0]);
         assert_eq!(&rom[0x16e..0x172], &[0x3e, 0x20, 0xe0, 0]);
@@ -2902,7 +3003,7 @@ mod tests {
             checksum
         );
         let (_, _, device, mask) = Diagnostic::Gameboy.identity();
-        assert_eq!((device, mask), (257, 0x0f0f));
+        assert_eq!((device, mask), (1, 0x0f0f));
         let singles = &Diagnostic::Gameboy.cases()[1..9];
         assert_eq!(singles.len(), 8);
         let mut hardware_bits = 0;
@@ -2912,6 +3013,28 @@ mod tests {
             hardware_bits |= hardware;
         }
         assert_eq!(hardware_bits, mask);
+    }
+
+    #[test]
+    fn gameboy_contracts_cover_every_catalog_core() {
+        for (name, devices) in [
+            ("Gambatte", &[1][..]),
+            ("mGBA", &[1][..]),
+            ("SameBoy", &[1, 257][..]),
+            ("SkyEmu", &[1][..]),
+            ("VBA-M", &[1][..]),
+        ] {
+            let contract = gameboy_core_contract(name).unwrap();
+            assert_eq!(contract.device_modes, devices);
+            assert_eq!(contract.supports_bitmask, name != "SkyEmu");
+            assert_eq!(
+                contract.system_ram_offset,
+                usize::from(name == "SkyEmu") * 0xc000
+            );
+            assert_eq!(contract.source_revision.len(), 40);
+            assert!(contract.source_url.contains(contract.source_revision));
+        }
+        assert!(gameboy_core_contract("unknown").is_err());
     }
 
     #[test]

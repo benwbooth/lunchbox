@@ -18,6 +18,7 @@ pub mod duckstation_config;
 #[cfg(target_os = "linux")]
 pub mod evdev_catalog;
 pub mod libretro_input;
+pub mod libretro_log;
 pub mod libretro_options;
 pub mod linux_classic;
 pub mod live_sdl3;

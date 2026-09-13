@@ -76,11 +76,12 @@
   },
   "hosts": {
     "linux": {
-      "status": "unverified",
-      "reason": "Exact current RetroArch core package availability on Linux was not separately verified.",
+      "status": "available",
+      "reason": "The official Libretro Linux x86_64 buildbot artifact was downloaded and executed through the exact-core Game Boy input oracle.",
       "evidence": [
-        "records/retroarch.json host paths",
-        "official per-core distribution not separately verified"
+        "buildbot:https://buildbot.libretro.com/nightly/linux/x86_64/latest/sameboy_libretro.so.zip @2026-09-12",
+        "runtime:Linux x86_64; SameBoy 1.0.3 8230189; sha256 26b3de38033e14cb2185f47811d38340bd47f56d55dd82cb14cdbd39a88a8208",
+        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md"
       ]
     },
     "linux-flatpak": {
@@ -92,11 +93,12 @@
       ]
     },
     "macos": {
-      "status": "unverified",
-      "reason": "Exact current RetroArch core package availability on macOS was not separately verified.",
+      "status": "available",
+      "reason": "The official Libretro macOS arm64 buildbot artifact was downloaded and executed through the exact-core Game Boy input oracle on an Apple Silicon host.",
       "evidence": [
-        "records/retroarch.json host paths",
-        "official per-core distribution not separately verified"
+        "buildbot:https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/sameboy_libretro.dylib.zip @2026-09-12",
+        "runtime:macOS 26.5.1 arm64; SameBoy 1.0.3 8230189; sha256 581f35441d3263f53769d1a542cb3904656eff7ec2121fce3a17cacb8a282cb3",
+        "crates/lunchbox-controller-probe/LIBRETRO_INPUT.md"
       ]
     },
     "windows": {

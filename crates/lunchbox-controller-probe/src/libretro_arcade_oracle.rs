@@ -639,6 +639,7 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             valid
         }
         18 => true,
+        27 => unsafe { lunchbox_controller_probe::libretro_log::install(data) },
         32 | 34 | 36 | 37 | 42 => true,
         35 => {
             let result = unsafe { capture_controllers(data.cast()) }.map_err(|e| e.to_string());

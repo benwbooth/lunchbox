@@ -67,7 +67,7 @@ metadata, option-file precedence, private snapshots, both device IDs, Brawler64
 button composition, preference ordering with five candidate controllers,
 disabled-port gaps, and rejection of unsupported/substituted launch arguments.
 
-The [real-core diagnostic](../crates/lunchbox-controller-probe/LIBRETRO_INPUT.md#game-boy--sameboy)
+The [real-core diagnostic](../crates/lunchbox-controller-probe/LIBRETRO_INPUT.md#game-boy--gambatte-mgba-sameboy-skyemu-and-vba-m)
 checks emulated JOYP register reads in ordinary Game Boy mode. It is not evidence
 of physical GUI calibration, RetroArch configuration processing, SGB multiplayer
 protocol behavior, or the complete desktop launch action. Those remain distinct
