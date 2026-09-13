@@ -153,8 +153,8 @@ recorded as `expected_state_bytes` at the top level, as
 `save_state.expected_bytes`, and in every private worker report. This keeps a
 platform- or revision-specific override auditable without allowing arbitrary
 state sizes. For example, the observed arm64 FCEUmm `(SVN) 236ccdf` build uses
-13,758 bytes; that observation still requires confirmation by the complete
-four-worker run with the exact arm64 core SHA-256.
+13,758 bytes; the four-worker arm64 run below enforces that exact size during
+both state creation and fresh-process reload.
 
 Some cores depend on libraries that are absent from the host process, or do not
 declare all symbols that the host must provide. Pass each trusted library with
@@ -308,9 +308,10 @@ The Stella schema-6 report is retained on the M1 under
 `/Users/ben/lunchbox-runtime-audit-20260913-macos-stella/evidence/persistence-final`
 and compactly under
 `target/runtime-evidence/libretro-stella-macos-2026-09-13/persistence`.
-The FCEUmm
-state-size drift from the Linux binary is why the exact
-`--expected-state-bytes 13758` override exists; every worker enforced it. The
+The FCEUmm state-size drift from the Linux binary is why the exact
+`--expected-state-bytes 13758` override exists; a current schema-6 rerun on
+2026-09-13 enforced it in every worker and retained the report under
+`target/runtime-evidence/libretro-fceumm-macos-2026-09-13`. The
 Snes9x and Genesis Plus GX serialized-state hashes changed across hosts or
 reruns even though the behavioral marker restoration passed, so no byte-level
 cross-build state determinism is claimed.
