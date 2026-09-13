@@ -7,6 +7,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use clap::{Parser, ValueEnum};
 use libloading::Library;
+use lunchbox_controller_probe::libretro_memory_map::{ExactMapping, MemoryMapSnapshot};
 use lunchbox_controller_probe::{file_hash, libretro_options::OptionEnvironment};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -17,7 +18,7 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const REPORT_SCHEMA: u32 = 3;
+const REPORT_SCHEMA: u32 = 4;
 const RETRO_MEMORY_SAVE_RAM: u32 = 0;
 const RETRO_MEMORY_SYSTEM_RAM: u32 = 2;
 const MARKER_OFFSET: usize = 0x100;
@@ -32,11 +33,13 @@ const CAPTURE_LIMIT: usize = 1024 * 1024;
 static SYSTEM_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
 static SAVE_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
 static OPTIONS: Mutex<Option<OptionEnvironment>> = Mutex::new(None);
+static MEMORY_MAP: Mutex<Result<Option<MemoryMapSnapshot>, String>> = Mutex::new(Ok(None));
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum PersistenceSystem {
     Gba,
+    GbaSkyemu,
     GbaVbam,
     GameboyGambatte,
     GameboyMgba,
@@ -63,11 +66,31 @@ impl PersistenceSystem {
                 post_save_bytes: 32 * 1024,
                 system_ram_bytes: 32 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 12,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
                 // mGBA's state contracts to the detected 32 KiB SRAM size.
                 state_bytes: Some(430_144),
+            },
+            Self::GbaSkyemu => CoreSpec {
+                name: "SkyEmu",
+                version: "adacd0788964ed89f5c43dcbc1f3cc26deec996c",
+                extension: "gba",
+                need_fullpath: false,
+                pre_save_bytes: 128 * 1024,
+                post_save_bytes: 128 * 1024,
+                system_ram_bytes: 256 * 1024,
+                system_ram_offset: 0,
+                memory_map: Some(ExactMapping {
+                    address: 0x0200_0000,
+                    bytes: 256 * 1024,
+                    select: 0xff00_0000,
+                }),
+                frame_limit: 12,
+                first_observation: FIRST_SAVE_OBSERVATION,
+                second_observation: SECOND_SAVE_OBSERVATION,
+                state_bytes: Some(581_832),
             },
             Self::GbaVbam => CoreSpec {
                 name: "VBA-M",
@@ -78,6 +101,7 @@ impl PersistenceSystem {
                 post_save_bytes: 32 * 1024,
                 system_ram_bytes: 256 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 12,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
@@ -92,6 +116,7 @@ impl PersistenceSystem {
                 post_save_bytes: 32 * 1024,
                 system_ram_bytes: 8 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 240,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
@@ -106,6 +131,7 @@ impl PersistenceSystem {
                 post_save_bytes: 32 * 1024,
                 system_ram_bytes: 32 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 240,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
@@ -120,6 +146,7 @@ impl PersistenceSystem {
                 post_save_bytes: 32 * 1024,
                 system_ram_bytes: 8 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 240,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
@@ -134,6 +161,7 @@ impl PersistenceSystem {
                 post_save_bytes: 128 * 1024,
                 system_ram_bytes: 96 * 1024,
                 system_ram_offset: 0xc000,
+                memory_map: None,
                 frame_limit: 240,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
@@ -148,6 +176,7 @@ impl PersistenceSystem {
                 post_save_bytes: 32 * 1024,
                 system_ram_bytes: 32 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 240,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
@@ -162,6 +191,7 @@ impl PersistenceSystem {
                 post_save_bytes: FIRST_SAVE_OBSERVATION.len(),
                 system_ram_bytes: 8 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 12,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
@@ -176,6 +206,7 @@ impl PersistenceSystem {
                 post_save_bytes: 8 * 1024,
                 system_ram_bytes: 2 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 12,
                 first_observation: FIRST_NES_SAVE_OBSERVATION,
                 second_observation: SECOND_NES_SAVE_OBSERVATION,
@@ -190,6 +221,7 @@ impl PersistenceSystem {
                 post_save_bytes: 8 * 1024,
                 system_ram_bytes: 2 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 12,
                 first_observation: FIRST_NES_SAVE_OBSERVATION,
                 second_observation: SECOND_NES_SAVE_OBSERVATION,
@@ -204,6 +236,7 @@ impl PersistenceSystem {
                 post_save_bytes: 8 * 1024,
                 system_ram_bytes: 128 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 12,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
@@ -218,6 +251,7 @@ impl PersistenceSystem {
                 post_save_bytes: 8 * 1024,
                 system_ram_bytes: 128 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 12,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
@@ -232,6 +266,7 @@ impl PersistenceSystem {
                 post_save_bytes: 8 * 1024,
                 system_ram_bytes: 128 * 1024,
                 system_ram_offset: 0,
+                memory_map: None,
                 frame_limit: 12,
                 first_observation: FIRST_SAVE_OBSERVATION,
                 second_observation: SECOND_SAVE_OBSERVATION,
@@ -243,6 +278,7 @@ impl PersistenceSystem {
     fn slug(self) -> &'static str {
         match self {
             Self::Gba => "gba",
+            Self::GbaSkyemu => "gba-skyemu",
             Self::GbaVbam => "gba-vbam",
             Self::GameboyGambatte => "gameboy-gambatte",
             Self::GameboyMgba => "gameboy-mgba",
@@ -260,7 +296,7 @@ impl PersistenceSystem {
 
     fn diagnostic_rom(self) -> Vec<u8> {
         match self {
-            Self::Gba | Self::GbaVbam => gba_persistence_rom(),
+            Self::Gba | Self::GbaSkyemu | Self::GbaVbam => gba_persistence_rom(),
             Self::GameboyGambatte
             | Self::GameboyMgba
             | Self::GameboySameboy
@@ -283,6 +319,7 @@ struct CoreSpec {
     post_save_bytes: usize,
     system_ram_bytes: usize,
     system_ram_offset: usize,
+    memory_map: Option<ExactMapping>,
     frame_limit: usize,
     first_observation: &'static [u8],
     second_observation: &'static [u8],
@@ -386,6 +423,9 @@ struct WorkerReport {
     diagnostic_rom_sha256: String,
     pre_save_bytes: Option<usize>,
     post_save_bytes: Option<usize>,
+    reported_system_ram_bytes: usize,
+    system_ram_source: String,
+    system_ram_emulated_address: Option<usize>,
     system_ram_bytes: usize,
     system_ram_offset: usize,
     observation_hex: Option<String>,
@@ -407,6 +447,9 @@ struct PersistenceReport {
     runtime_libraries: Vec<RuntimeLibrary>,
     evidence_directory: PathBuf,
     diagnostic_rom: Artifact,
+    reported_system_ram_bytes: usize,
+    system_ram_source: String,
+    system_ram_emulated_address: Option<usize>,
     system_ram_bytes: usize,
     system_ram_offset: usize,
     save_ram: SaveRamReport,
@@ -506,7 +549,18 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             true
         }
         10 => unsafe { *data.cast::<u32>() <= 2 },
-        11 | 35 | 36 | 37 => true,
+        36 => {
+            let captured = unsafe { MemoryMapSnapshot::capture(data.cast_const()) }
+                .map(Some)
+                .map_err(|error| error.to_string());
+            let valid = captured.is_ok();
+            let Ok(mut slot) = MEMORY_MAP.lock() else {
+                return false;
+            };
+            *slot = captured;
+            valid
+        }
+        11 | 35 | 37 => true,
         15 => {
             let variable = unsafe { &mut *data.cast::<Variable>() };
             if variable.key.is_null() {
@@ -587,6 +641,9 @@ impl Drop for Core {
         if let Ok(mut value) = OPTIONS.lock() {
             *value = None;
         }
+        if let Ok(mut value) = MEMORY_MAP.lock() {
+            *value = Ok(None);
+        }
     }
 }
 
@@ -629,6 +686,9 @@ impl Core {
             .lock()
             .map_err(|_| anyhow::anyhow!("Core-option callback lock poisoned"))? =
             Some(OptionEnvironment::new(BTreeMap::new())?);
+        *MEMORY_MAP
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Memory-map capture lock poisoned"))? = Ok(None);
 
         let mut runtime_dependencies = Vec::new();
         for path in runtime_library_paths {
@@ -765,28 +825,71 @@ impl Core {
         Ok(unsafe { std::slice::from_raw_parts_mut(data.cast(), size) })
     }
 
+    unsafe fn observation_memory_slice(&self, spec: CoreSpec) -> Result<&[u8]> {
+        if let Some(expected) = spec.memory_map {
+            ensure!(
+                self.memory_size(RETRO_MEMORY_SYSTEM_RAM) == 0
+                    && unsafe { (self.memory)(RETRO_MEMORY_SYSTEM_RAM) }.is_null(),
+                "Mapped-memory core unexpectedly exposed RETRO_MEMORY_SYSTEM_RAM; re-audit its exact contract"
+            );
+            let snapshot = MEMORY_MAP
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Memory-map capture lock poisoned"))?
+                .clone()
+                .map_err(anyhow::Error::msg)?
+                .context("Core did not publish a memory map")?;
+            let region = snapshot.exact_writable_region(expected)?;
+            Ok(unsafe { std::slice::from_raw_parts(region.pointer(), region.bytes()) })
+        } else {
+            unsafe { self.memory_slice(RETRO_MEMORY_SYSTEM_RAM) }
+        }
+    }
+
+    unsafe fn observation_memory_slice_mut(&mut self, spec: CoreSpec) -> Result<&mut [u8]> {
+        if let Some(expected) = spec.memory_map {
+            ensure!(
+                self.memory_size(RETRO_MEMORY_SYSTEM_RAM) == 0
+                    && unsafe { (self.memory)(RETRO_MEMORY_SYSTEM_RAM) }.is_null(),
+                "Mapped-memory core unexpectedly exposed RETRO_MEMORY_SYSTEM_RAM; re-audit its exact contract"
+            );
+            let snapshot = MEMORY_MAP
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Memory-map capture lock poisoned"))?
+                .clone()
+                .map_err(anyhow::Error::msg)?
+                .context("Core did not publish a memory map")?;
+            let region = snapshot.exact_writable_region(expected)?;
+            Ok(unsafe { std::slice::from_raw_parts_mut(region.pointer(), region.bytes()) })
+        } else {
+            unsafe { self.memory_slice_mut(RETRO_MEMORY_SYSTEM_RAM) }
+        }
+    }
+
     fn run_until_observation(
         &self,
         expected: &[u8],
-        system_ram_offset: usize,
+        spec: CoreSpec,
         frame_limit: usize,
     ) -> Result<Vec<u8>> {
         let mut observed = Vec::new();
         for _ in 0..frame_limit {
             unsafe { (self.run)() };
-            let memory = unsafe { self.memory_slice(RETRO_MEMORY_SYSTEM_RAM)? };
+            let memory = unsafe { self.observation_memory_slice(spec)? };
             ensure!(
-                memory.len() >= system_ram_offset + expected.len(),
-                "System RAM is too small for offset {system_ram_offset}"
+                memory.len() >= spec.system_ram_offset + expected.len(),
+                "Observation RAM is too small for offset {}",
+                spec.system_ram_offset
             );
-            observed = memory[system_ram_offset..system_ram_offset + expected.len()].to_vec();
+            observed =
+                memory[spec.system_ram_offset..spec.system_ram_offset + expected.len()].to_vec();
             if observed == expected {
                 return Ok(observed);
             }
         }
         bail!(
-            "Diagnostic program did not publish {} at system-RAM offset {system_ram_offset} in {frame_limit} frames (observed {})",
+            "Diagnostic program did not publish {} at observation-RAM offset {} in {frame_limit} frames (observed {})",
             bytes_hex(expected),
+            spec.system_ram_offset,
             bytes_hex(&observed)
         )
     }
@@ -936,10 +1039,11 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
             "bsnes 115 deliberately exposes neither save RAM nor system RAM through the libretro memory interface (null pointers and zero sizes); this direct-memory oracle cannot observe save reload or state restoration"
         );
     }
-    let system_ram_bytes = core.memory_size(RETRO_MEMORY_SYSTEM_RAM);
+    let reported_system_ram_bytes = core.memory_size(RETRO_MEMORY_SYSTEM_RAM);
+    let system_ram_bytes = unsafe { core.observation_memory_slice(spec)? }.len();
     ensure!(
         system_ram_bytes == spec.system_ram_bytes,
-        "Expected {} bytes of system RAM, got {system_ram_bytes}",
+        "Expected {} bytes of observation RAM, got {system_ram_bytes}",
         spec.system_ram_bytes
     );
     ensure!(
@@ -957,6 +1061,13 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         diagnostic_rom_sha256: rom_hash,
         pre_save_bytes: None,
         post_save_bytes: None,
+        reported_system_ram_bytes,
+        system_ram_source: if spec.memory_map.is_some() {
+            "retro-environment-memory-map".into()
+        } else {
+            "retro-memory-system-ram".into()
+        },
+        system_ram_emulated_address: spec.memory_map.map(|mapping| mapping.address),
         system_ram_bytes,
         system_ram_offset: spec.system_ram_offset,
         observation_hex: None,
@@ -975,11 +1086,8 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
                 "Expected {} pre-run save bytes, got {pre_size}",
                 spec.pre_save_bytes
             );
-            let observed = core.run_until_observation(
-                spec.first_observation,
-                spec.system_ram_offset,
-                spec.frame_limit,
-            )?;
+            let observed =
+                core.run_until_observation(spec.first_observation, spec, spec.frame_limit)?;
             let post_size = core.memory_size(RETRO_MEMORY_SAVE_RAM);
             ensure!(
                 post_size == spec.post_save_bytes,
@@ -1015,11 +1123,8 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
             let target = unsafe { core.memory_slice_mut(RETRO_MEMORY_SAVE_RAM)? };
             target.fill(0xff);
             target[..save.len()].copy_from_slice(&save);
-            let observed = core.run_until_observation(
-                spec.second_observation,
-                spec.system_ram_offset,
-                spec.frame_limit,
-            )?;
+            let observed =
+                core.run_until_observation(spec.second_observation, spec, spec.frame_limit)?;
             let post_size = core.memory_size(RETRO_MEMORY_SAVE_RAM);
             ensure!(
                 post_size == spec.post_save_bytes,
@@ -1041,12 +1146,8 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         WorkerPhase::StateCreate => {
             let expected_state_bytes = expected_state_bytes
                 .context("No pinned state size; supply --expected-state-bytes for this system")?;
-            core.run_until_observation(
-                spec.first_observation,
-                spec.system_ram_offset,
-                spec.frame_limit,
-            )?;
-            let ram = unsafe { core.memory_slice_mut(RETRO_MEMORY_SYSTEM_RAM)? };
+            core.run_until_observation(spec.first_observation, spec, spec.frame_limit)?;
+            let ram = unsafe { core.observation_memory_slice_mut(spec)? };
             ensure!(
                 ram.len() >= marker_offset + STATE_MARKER.len(),
                 "System RAM is too small"
@@ -1066,14 +1167,14 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
                 unsafe { (core.serialize)(state.as_mut_ptr().cast(), state.len()) },
                 "Core refused state serialization"
             );
-            let ram = unsafe { core.memory_slice_mut(RETRO_MEMORY_SYSTEM_RAM)? };
+            let ram = unsafe { core.observation_memory_slice_mut(spec)? };
             ram[marker_offset..marker_offset + MUTATED_MARKER.len()]
                 .copy_from_slice(MUTATED_MARKER);
             ensure!(
                 unsafe { (core.unserialize)(state.as_ptr().cast(), state.len()) },
                 "Core refused same-process state restoration"
             );
-            let restored = unsafe { core.memory_slice(RETRO_MEMORY_SYSTEM_RAM)? }
+            let restored = unsafe { core.observation_memory_slice(spec)? }
                 [marker_offset..marker_offset + STATE_MARKER.len()]
                 .to_vec();
             ensure!(
@@ -1089,12 +1190,8 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
         WorkerPhase::StateReload => {
             let expected_state_bytes = expected_state_bytes
                 .context("No pinned state size; supply --expected-state-bytes for this system")?;
-            core.run_until_observation(
-                spec.first_observation,
-                spec.system_ram_offset,
-                spec.frame_limit,
-            )?;
-            let before = unsafe { core.memory_slice(RETRO_MEMORY_SYSTEM_RAM)? }
+            core.run_until_observation(spec.first_observation, spec, spec.frame_limit)?;
+            let before = unsafe { core.observation_memory_slice(spec)? }
                 [marker_offset..marker_offset + STATE_MARKER.len()]
                 .to_vec();
             ensure!(
@@ -1117,7 +1214,7 @@ fn worker(args: WorkerArgs) -> Result<WorkerReport> {
                 unsafe { (core.unserialize)(state.as_ptr().cast(), state.len()) },
                 "Fresh core refused persisted state"
             );
-            let restored = unsafe { core.memory_slice(RETRO_MEMORY_SYSTEM_RAM)? }
+            let restored = unsafe { core.observation_memory_slice(spec)? }
                 [marker_offset..marker_offset + STATE_MARKER.len()]
                 .to_vec();
             ensure!(
@@ -1187,6 +1284,7 @@ fn run_worker(
         .arg("--system")
         .arg(match args.system {
             PersistenceSystem::Gba => "gba",
+            PersistenceSystem::GbaSkyemu => "gba-skyemu",
             PersistenceSystem::GbaVbam => "gba-vbam",
             PersistenceSystem::GameboyGambatte => "gameboy-gambatte",
             PersistenceSystem::GameboyMgba => "gameboy-mgba",
@@ -1336,6 +1434,16 @@ fn validate_reports(
     };
     let diagnostic_hash = &reports[0].diagnostic_rom_sha256;
     let runtime_libraries = &reports[0].runtime_libraries;
+    let expected_reported_system_ram_bytes = if spec.memory_map.is_some() {
+        0
+    } else {
+        spec.system_ram_bytes
+    };
+    let expected_system_ram_source = if spec.memory_map.is_some() {
+        "retro-environment-memory-map"
+    } else {
+        "retro-memory-system-ram"
+    };
     for report in reports {
         ensure!(
             report.core == expected_identity,
@@ -1356,6 +1464,13 @@ fn validate_reports(
         ensure!(
             report.system_ram_bytes == spec.system_ram_bytes,
             "System RAM size changed between workers"
+        );
+        ensure!(
+            report.reported_system_ram_bytes == expected_reported_system_ram_bytes
+                && report.system_ram_source == expected_system_ram_source
+                && report.system_ram_emulated_address
+                    == spec.memory_map.map(|mapping| mapping.address),
+            "System RAM source contract changed between workers"
         );
         ensure!(
             report.system_ram_offset == spec.system_ram_offset,
@@ -1474,6 +1589,9 @@ fn supervisor(mut args: SupervisorArgs) -> Result<PersistenceReport> {
             diagnostic_path(&evidence, args.system),
             &reports[0].diagnostic_rom_sha256,
         )?,
+        reported_system_ram_bytes: reports[0].reported_system_ram_bytes,
+        system_ram_source: reports[0].system_ram_source.clone(),
+        system_ram_emulated_address: reports[0].system_ram_emulated_address,
         system_ram_bytes: args.system.spec().system_ram_bytes,
         system_ram_offset: args.system.spec().system_ram_offset,
         save_ram: SaveRamReport {
@@ -2037,6 +2155,29 @@ mod tests {
             (gba.name, gba.pre_save_bytes, gba.post_save_bytes),
             ("mGBA", 131_072, 32_768)
         );
+        let gba_skyemu = PersistenceSystem::GbaSkyemu.spec();
+        assert_eq!(
+            (
+                gba_skyemu.name,
+                gba_skyemu.pre_save_bytes,
+                gba_skyemu.post_save_bytes,
+                gba_skyemu.system_ram_bytes,
+                gba_skyemu.state_bytes,
+                gba_skyemu.memory_map,
+            ),
+            (
+                "SkyEmu",
+                131_072,
+                131_072,
+                262_144,
+                Some(581_832),
+                Some(ExactMapping {
+                    address: 0x0200_0000,
+                    bytes: 262_144,
+                    select: 0xff00_0000,
+                }),
+            )
+        );
         let gba_vbam = PersistenceSystem::GbaVbam.spec();
         assert_eq!(
             (
@@ -2130,6 +2271,7 @@ mod tests {
             assert_eq!(spec.post_save_bytes, post);
             assert_eq!(spec.system_ram_bytes, ram);
             assert_eq!(spec.system_ram_offset, offset);
+            assert_eq!(spec.memory_map, None);
             assert_eq!(spec.frame_limit, 240);
             assert_eq!(spec.first_observation, FIRST_SAVE_OBSERVATION);
             assert_eq!(spec.second_observation, SECOND_SAVE_OBSERVATION);
@@ -2193,6 +2335,9 @@ mod tests {
             diagnostic_rom_sha256: "b".repeat(64),
             pre_save_bytes: None,
             post_save_bytes: None,
+            reported_system_ram_bytes: spec.system_ram_bytes,
+            system_ram_source: "retro-memory-system-ram".into(),
+            system_ram_emulated_address: None,
             system_ram_bytes: spec.system_ram_bytes,
             system_ram_offset: spec.system_ram_offset,
             observation_hex: None,

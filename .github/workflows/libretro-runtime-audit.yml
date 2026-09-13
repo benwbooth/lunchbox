@@ -72,11 +72,13 @@ jobs:
             expected_state_bytes: 59650
           - core: skyemu
             system: gameboy
-            secondary_system: ''
+            secondary_system: gba
             persistence_system: gameboy-skyemu
+            secondary_persistence_system: gba-skyemu
             persistence_expect: pass
             expected_version: 'adacd0788964ed89f5c43dcbc1f3cc26deec996c'
             expected_state_bytes: 246416
+            secondary_expected_state_bytes: 581832
           - core: vbam
             system: gameboy
             secondary_system: gba

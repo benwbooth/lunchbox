@@ -11,11 +11,14 @@ use std::sync::{
     atomic::{AtomicBool, AtomicI16, AtomicU16, AtomicU64, Ordering},
 };
 
+use crate::libretro_memory_map::{ExactMapping, MemoryMapSnapshot};
+
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static SYSTEM_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
 static SAVE_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
 static INSPECTION_OPTIONS: Mutex<Option<crate::libretro_options::OptionEnvironment>> =
     Mutex::new(None);
+static MEMORY_MAP: Mutex<Result<Option<MemoryMapSnapshot>, String>> = Mutex::new(Ok(None));
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InputQuery {
@@ -318,7 +321,18 @@ unsafe extern "C" fn environment(command: u32, data: *mut c_void) -> bool {
             *choices = captured;
             valid
         }
-        16 | 36 | 37 => true, // options/maps/geometry notifications
+        36 => {
+            let captured = unsafe { MemoryMapSnapshot::capture(data.cast_const()) }
+                .map(Some)
+                .map_err(|error| error.to_string());
+            let valid = captured.is_ok();
+            let Ok(mut slot) = MEMORY_MAP.lock() else {
+                return false;
+            };
+            *slot = captured;
+            valid
+        }
+        16 | 37 => true, // options/geometry notifications
         15 => {
             let variable = unsafe { &mut *data.cast::<Variable>() };
             if variable.key.is_null() {
@@ -414,6 +428,9 @@ impl Drop for Lease {
         }
         if let Ok(mut options) = INSPECTION_OPTIONS.lock() {
             *options = None;
+        }
+        if let Ok(mut memory_map) = MEMORY_MAP.lock() {
+            *memory_map = Ok(None);
         }
         ACTIVE.store(false, Ordering::Release);
     }
@@ -1095,6 +1112,10 @@ pub struct Report {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub joypad_requests_by_port: Vec<u64>,
     pub reported_system_ram_bytes: usize,
+    pub observation_memory_source: &'static str,
+    pub observation_memory_bytes: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observation_memory_address: Option<usize>,
     pub observations: Vec<Observation>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub nes_observations: Vec<NesObservation>,
@@ -1135,29 +1156,81 @@ struct GameboyCoreContract {
 #[derive(Clone, Copy)]
 struct GbaCoreContract {
     supports_bitmask: bool,
-    system_ram_bytes: usize,
-    system_ram_offset: usize,
+    observation_memory: GbaObservationMemory,
     source_revision: &'static str,
     source_url: &'static str,
+}
+
+#[derive(Clone, Copy)]
+enum GbaObservationMemory {
+    SystemRam { bytes: usize, offset: usize },
+    MemoryMap(ExactMapping),
 }
 
 fn gba_core_contract(core_name: &str) -> Result<GbaCoreContract> {
     match core_name {
         "mGBA" => Ok(GbaCoreContract {
             supports_bitmask: true,
-            system_ram_bytes: 32 * 1024,
-            system_ram_offset: 0,
+            observation_memory: GbaObservationMemory::SystemRam {
+                bytes: 32 * 1024,
+                offset: 0,
+            },
             source_revision: "e31759b24e7a4e3899285ff720d7b573ac328ae7",
             source_url: "https://github.com/libretro/mgba/blob/e31759b24e7a4e3899285ff720d7b573ac328ae7/src/platform/libretro/libretro.c",
         }),
         "VBA-M" => Ok(GbaCoreContract {
             supports_bitmask: true,
-            system_ram_bytes: 256 * 1024,
-            system_ram_offset: 0,
+            observation_memory: GbaObservationMemory::SystemRam {
+                bytes: 256 * 1024,
+                offset: 0,
+            },
             source_revision: "115defb3a318258ab84746d45258a1aec19d0b4b",
             source_url: "https://github.com/libretro/vbam-libretro/blob/115defb3a318258ab84746d45258a1aec19d0b4b/src/libretro/libretro.cpp",
         }),
-        _ => anyhow::bail!("GBA diagnostic supports only exact mGBA or VBA-M identities"),
+        "SkyEmu" => Ok(GbaCoreContract {
+            supports_bitmask: false,
+            observation_memory: GbaObservationMemory::MemoryMap(ExactMapping {
+                address: 0x0200_0000,
+                bytes: 256 * 1024,
+                select: 0xff00_0000,
+            }),
+            source_revision: "adacd0788964ed89f5c43dcbc1f3cc26deec996c",
+            source_url: "https://github.com/skylersaleh/SkyEmu/blob/adacd0788964ed89f5c43dcbc1f3cc26deec996c/src/libretro.c",
+        }),
+        _ => anyhow::bail!("GBA diagnostic supports only exact mGBA, VBA-M, or SkyEmu identities"),
+    }
+}
+
+unsafe fn gba_observation_memory(core: &Core, contract: GbaCoreContract) -> Result<&[u8]> {
+    match contract.observation_memory {
+        GbaObservationMemory::SystemRam { bytes, offset } => {
+            ensure!(
+                unsafe { (core.memory_size)(2) } == bytes,
+                "Unexpected exposed GBA RAM size: {}",
+                unsafe { (core.memory_size)(2) }
+            );
+            ensure!(
+                offset + 8 <= bytes,
+                "GBA diagnostic window exceeds system RAM"
+            );
+            let pointer = unsafe { (core.memory)(2) }.cast::<u8>();
+            ensure!(!pointer.is_null(), "No system RAM exposed by core");
+            Ok(unsafe { std::slice::from_raw_parts(pointer.add(offset), bytes - offset) })
+        }
+        GbaObservationMemory::MemoryMap(expected) => {
+            ensure!(
+                unsafe { (core.memory_size)(2) } == 0 && unsafe { (core.memory)(2) }.is_null(),
+                "SkyEmu GBA system-memory ABI changed; re-audit its exact contract"
+            );
+            let snapshot = MEMORY_MAP
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Memory-map capture lock poisoned"))?
+                .clone()
+                .map_err(anyhow::Error::msg)?
+                .context("Core did not publish a memory map")?;
+            let region = snapshot.exact_writable_region(expected)?;
+            Ok(unsafe { std::slice::from_raw_parts(region.pointer(), region.bytes()) })
+        }
     }
 }
 
@@ -1939,6 +2012,9 @@ pub fn inspect_with_runtime_options(
         axis.store(0, Ordering::Relaxed);
     }
     POLLS.store(0, Ordering::Relaxed);
+    *MEMORY_MAP
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Memory-map capture lock poisoned"))? = Ok(None);
     *CONTROLLER_CHOICES
         .lock()
         .map_err(|_| anyhow::anyhow!("Controller choice capture lock poisoned"))? = Ok(None);
@@ -1990,7 +2066,7 @@ pub fn inspect_with_runtime_options(
         let name = CStr::from_ptr(info.name).to_str()?.to_owned();
         let revision = CStr::from_ptr(info.version).to_str()?.to_owned();
         let core_name_matches = match diagnostic {
-            Diagnostic::Gba => matches!(name.as_str(), "mGBA" | "VBA-M"),
+            Diagnostic::Gba => matches!(name.as_str(), "mGBA" | "VBA-M" | "SkyEmu"),
             Diagnostic::Gameboy => {
                 matches!(
                     name.as_str(),
@@ -2135,10 +2211,8 @@ pub fn inspect_with_runtime_options(
         // Read only our eight diagnostic bytes, within its reported bounds;
         // never infer that the full 256 KiB hardware RAM is exposed by this API.
         if let Some(contract) = gba_contract {
-            ensure!(
-                reported_system_ram_bytes == contract.system_ram_bytes,
-                "Unexpected exposed GBA RAM size: {reported_system_ram_bytes}"
-            );
+            let memory = gba_observation_memory(&core, contract)?;
+            ensure!(memory.len() >= 8, "GBA diagnostic memory is too small");
         } else if matches!(diagnostic, Diagnostic::Psx) {
             ensure!(
                 reported_system_ram_bytes == 2 * 1024 * 1024,
@@ -2150,6 +2224,18 @@ pub fn inspect_with_runtime_options(
                 "Unexpected exposed system RAM size: {reported_system_ram_bytes}"
             );
         }
+        let (observation_memory_source, observation_memory_bytes, observation_memory_address) =
+            match gba_contract.map(|contract| contract.observation_memory) {
+                Some(GbaObservationMemory::SystemRam { bytes, .. }) => {
+                    ("retro-memory-system-ram", bytes, None)
+                }
+                Some(GbaObservationMemory::MemoryMap(mapping)) => (
+                    "retro-environment-memory-map",
+                    mapping.bytes,
+                    Some(mapping.address),
+                ),
+                None => ("retro-memory-system-ram", reported_system_ram_bytes, None),
+            };
         if matches!(diagnostic, Diagnostic::Psx) {
             let psx_observations = run_psx_observations(&core)?;
             let bitmask_requests = MASK_REQUESTS.load(Ordering::Relaxed);
@@ -2179,6 +2265,9 @@ pub fn inspect_with_runtime_options(
                 analog_requests: ANALOG_REQUESTS.load(Ordering::Relaxed),
                 joypad_requests_by_port: joypad_requests_by_port(),
                 reported_system_ram_bytes,
+                observation_memory_source,
+                observation_memory_bytes,
+                observation_memory_address,
                 observations: Vec::new(),
                 nes_observations: Vec::new(),
                 snes_observations: Vec::new(),
@@ -2237,6 +2326,9 @@ pub fn inspect_with_runtime_options(
                 analog_requests: ANALOG_REQUESTS.load(Ordering::Relaxed),
                 joypad_requests_by_port: requests,
                 reported_system_ram_bytes,
+                observation_memory_source,
+                observation_memory_bytes,
+                observation_memory_address,
                 observations: Vec::new(),
                 nes_observations,
                 snes_observations: Vec::new(),
@@ -2309,6 +2401,9 @@ pub fn inspect_with_runtime_options(
                 analog_requests: ANALOG_REQUESTS.load(Ordering::Relaxed),
                 joypad_requests_by_port: requests,
                 reported_system_ram_bytes,
+                observation_memory_source,
+                observation_memory_bytes,
+                observation_memory_address,
                 observations: Vec::new(),
                 nes_observations: Vec::new(),
                 snes_observations,
@@ -2361,17 +2456,20 @@ pub fn inspect_with_runtime_options(
                     for _ in 0..4 {
                         (core.run)();
                     }
-                    let memory_offset = gameboy_contract
-                        .map(|contract| contract.system_ram_offset)
-                        .or_else(|| gba_contract.map(|contract| contract.system_ram_offset))
-                        .unwrap_or(0);
-                    ensure!(
-                        (core.memory_size)(2) >= memory_offset + 8,
-                        "Diagnostic memory became unavailable"
-                    );
-                    let memory = (core.memory)(2).cast::<u8>();
-                    ensure!(!memory.is_null(), "No system RAM exposed by core");
-                    let bytes = std::slice::from_raw_parts(memory.add(memory_offset), 8);
+                    let bytes = if let Some(contract) = gba_contract {
+                        &gba_observation_memory(&core, contract)?[..8]
+                    } else {
+                        let memory_offset = gameboy_contract
+                            .map(|contract| contract.system_ram_offset)
+                            .unwrap_or(0);
+                        ensure!(
+                            (core.memory_size)(2) >= memory_offset + 8,
+                            "Diagnostic memory became unavailable"
+                        );
+                        let memory = (core.memory)(2).cast::<u8>();
+                        ensure!(!memory.is_null(), "No system RAM exposed by core");
+                        std::slice::from_raw_parts(memory.add(memory_offset), 8)
+                    };
                     ensure!(
                         u32::from_le_bytes(bytes[4..8].try_into().unwrap()) == 0x4c42494e,
                         "Diagnostic program did not execute"
@@ -2411,7 +2509,7 @@ pub fn inspect_with_runtime_options(
         let (input_descriptor_updates, input_descriptors) = input_descriptor_snapshot()?;
         Ok(Report {
             schema_version: if gba_contract.is_some() {
-                7
+                8
             } else if gameboy_contract.is_some() {
                 6
             } else {
@@ -2438,6 +2536,9 @@ pub fn inspect_with_runtime_options(
             analog_requests: ANALOG_REQUESTS.load(Ordering::Relaxed),
             joypad_requests_by_port: joypad_requests_by_port(),
             reported_system_ram_bytes,
+            observation_memory_source,
+            observation_memory_bytes,
+            observation_memory_address,
             observations,
             nes_observations: Vec::new(),
             snes_observations: Vec::new(),
@@ -3173,15 +3274,30 @@ mod tests {
 
     #[test]
     fn gba_contracts_cover_each_supported_core() {
-        for (name, ram_bytes) in [("mGBA", 32 * 1024), ("VBA-M", 256 * 1024)] {
+        for (name, ram_bytes) in [
+            ("mGBA", Some(32 * 1024)),
+            ("VBA-M", Some(256 * 1024)),
+            ("SkyEmu", None),
+        ] {
             let contract = gba_core_contract(name).unwrap();
-            assert!(contract.supports_bitmask);
-            assert_eq!(contract.system_ram_bytes, ram_bytes);
-            assert_eq!(contract.system_ram_offset, 0);
+            assert_eq!(contract.supports_bitmask, name != "SkyEmu");
+            match contract.observation_memory {
+                GbaObservationMemory::SystemRam { bytes, offset } => {
+                    assert_eq!(Some(bytes), ram_bytes);
+                    assert_eq!(offset, 0);
+                }
+                GbaObservationMemory::MemoryMap(mapping) => {
+                    assert_eq!(name, "SkyEmu");
+                    assert_eq!(ram_bytes, None);
+                    assert_eq!(mapping.address, 0x0200_0000);
+                    assert_eq!(mapping.bytes, 256 * 1024);
+                    assert_eq!(mapping.select, 0xff00_0000);
+                }
+            }
             assert_eq!(contract.source_revision.len(), 40);
             assert!(contract.source_url.contains(contract.source_revision));
         }
-        assert!(gba_core_contract("SkyEmu").is_err());
+        assert!(gba_core_contract("unknown").is_err());
     }
 
     #[test]

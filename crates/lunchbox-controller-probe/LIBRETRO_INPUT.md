@@ -2,9 +2,9 @@
 
 `lunchbox-libretro-input` is an opt-in, separate-process test harness. It loads an
 explicitly supplied trusted core, verifies its SHA256, and runs an original
-diagnostic. The GBA backend runs an ARM program from memory in mGBA or VBA-M,
-copying the emulated GBA KEYINPUT register to EWRAM alongside an execution
-marker. The Game Gear backend runs an original Z80 program in Genesis Plus GX. The NES backend
+diagnostic. The GBA backend runs an ARM program from memory in mGBA, VBA-M, or
+SkyEmu, copying the emulated GBA KEYINPUT register to EWRAM alongside an
+execution marker. The Game Gear backend runs an original Z80 program in Genesis Plus GX. The NES backend
 runs an original mapper-0 program in FCEUmm or Mesen. The SNES backend runs an
 original 65C816 LoROM program in bsnes, Snes9x, or Mesen-S. Those four backends
 need no BIOS. The Game Boy backend runs an original LR35902 cartridge across
@@ -21,7 +21,8 @@ configuration was accepted. Run both frontend callback paths:
     nix develop -c cargo run -p lunchbox-controller-probe --bin lunchbox-libretro-input -- --core /absolute/trusted/mgba_libretro.so --sha256 EXPECTED_SHA256 --bitmask
 
 Output records core identity/hash, callback request counts, reported memory size,
-and expected/observed KEYINPUT values. Pass `--output /new/report.json` to write
+the exact standard-memory or memory-map observation source, and
+expected/observed KEYINPUT values. Pass `--output /new/report.json` to write
 the report with create-new semantics while leaving native core stdout separate;
 without it, JSON is printed to stdout for compatibility. For a core with a
 trusted dependency that is not otherwise available to the host process, repeat
@@ -66,6 +67,21 @@ The Linux core was loaded after the exact Nix `libstdc++.so.6.0.34`, SHA-256
 its canonical path and hash are retained in both schema-7 reports. The expected
 VBA-M behavior is defined by the pinned
 [VBA-M libretro frontend](https://github.com/libretro/vbam-libretro/blob/115defb3a318258ab84746d45258a1aec19d0b4b/src/libretro/libretro.cpp).
+
+The official Linux x86-64 SkyEmu core
+`adacd0788964ed89f5c43dcbc1f3cc26deec996c`, SHA-256
+`bd5bf1f727d14e274a7f71b29e541d4d9188797c781a1557236aa94d54ed7c85`,
+passed 26/26 observations in individual-callback mode. It does not negotiate
+the Libretro bitmask callback, so that mode is explicitly inapplicable. SkyEmu
+deliberately reports zero standard system-RAM bytes for GBA; schema 8 captures
+and pins its exact writable 256 KiB memory-map descriptor at emulated address
+`0x02000000` instead. The run used the already recorded exact Linux
+`libm.so.6`, SHA-256
+`95aafdf744c5bd6df251264d6a0b864159ba6f77c1f21997dd79dfb8ecc2e2bf`.
+The retained report is
+`target/runtime-evidence/libretro-input-skyemu-gba-2026-09-13/individual.json`.
+This memory-map contract comes from the pinned
+[SkyEmu Libretro frontend](https://github.com/skylersaleh/SkyEmu/blob/adacd0788964ed89f5c43dcbc1f3cc26deec996c/src/libretro.c).
 
 This verifies the **frontend RetroPad → core → emulated hardware** portion only.
 It does not test physical-device calibration, OS/SDL enumeration, RetroArch's
@@ -183,6 +199,7 @@ test host against official Libretro arm64 buildbot dylibs:
 | System | Exact core | Modes and observations |
 | --- | --- | --- |
 | GBA | mGBA `0.11-219-e31759b`, SHA-256 `085350861044d9d2ef37634a7c201f57b4816fd343bdf29cdcd09bfb754b9218` | 26/26 in individual mode and 26/26 in bitmask mode |
+| GBA | SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c`, SHA-256 `64778cf538f741dc5a55de2130390c196083fdb5346bec916b83d32accb9a24c` | 26/26 in individual mode; bitmask callback not negotiated |
 | GBA | VBA-M version string ` 115defb`, SHA-256 `880d40f6338a7c60544b9c4662f8a950ea457bcd337dbc17240a03078328087f` | 26/26 in individual mode and 26/26 in bitmask mode |
 | Game Gear | Genesis Plus GX `v1.7.4 c2838c7`, SHA-256 `0f4367774eddca7f6eb569648f9adc85cd62662577184634034be326199500d3` | 22/22 in individual mode and 22/22 in bitmask mode |
 | NES | FCEUmm `(SVN) 236ccdf`, SHA-256 `8afebce8967bb81c4c11fc9c930756e304c3ea81db89cc9607d38a2744da861a` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |

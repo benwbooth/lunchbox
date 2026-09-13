@@ -127,7 +127,8 @@ worker independently.
 
 The final JSON is printed and also stored as `results.json`. It records the
 canonical core path, hash and identity; ROM/save/state paths, sizes and hashes;
-the selected expected state size; the initial and fresh-process save
+the selected expected state size; whether behavioral readback used standard
+system RAM or an exact Libretro memory-map descriptor; the initial and fresh-process save
 observations; and the same-process and fresh-process state markers. A top-level
 `"status": "pass"` is emitted only after the driver re-hashes every retained
 artifact.
@@ -140,6 +141,7 @@ The Linux x86-64 `latest` artifacts staged under
 | System | Core identity | Core SHA-256 | Save transition | State bytes |
 | --- | --- | --- | --- | ---: |
 | GBA | mGBA `0.11-219-e31759b` | `768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4` | 128 KiB autodetect capacity to 32 KiB SRAM; `LBSG01` to `LBSG02` in a fresh process | 430,144 |
+| GBA | SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c` | `bd5bf1f727d14e274a7f71b29e541d4d9188797c781a1557236aa94d54ed7c85` | 128 KiB save buffer; `LBSG01` to `LBSG02` in a fresh process | 581,832 |
 | GBA | VBA-M `2.1.3 115defb` | `156dee1827dee4c36b8f88ab9ef6a9918b1e4e89a62195a4228fe0b1b982e31c` | 32 KiB SRAM; `LBSG01` to `LBSG02` in a fresh process | 723,452 |
 | Game Boy | Gambatte `v0.5.0-netlink d9d6cd0` | `b8fba61ecbb840723a7c64d771196b37931c50ba4d98874cccedfd69a8aa27a6` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 59,650 |
 | Game Boy | mGBA `0.11-219-e31759b` | `768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 202,816 |
@@ -150,12 +152,17 @@ The Linux x86-64 `latest` artifacts staged under
 
 The retained GBA and Game Gear reports are in
 `target/runtime-evidence/libretro-persistence-mgba-2026-09-12-final`,
+`target/runtime-evidence/libretro-persistence-gba-skyemu-2026-09-13-v2`,
 `target/runtime-evidence/libretro-persistence-vbam-gba-2026-09-13`, and
 `target/runtime-evidence/libretro-persistence-game-gear-2026-09-12-final`.
 Game Boy reports are under
 `target/runtime-evidence/libretro-persistence-gameboy-CORE-2026-09-12`. SkyEmu
 used host `libm.so.6` SHA-256
 `95aafdf744c5bd6df251264d6a0b864159ba6f77c1f21997dd79dfb8ecc2e2bf`.
+For GBA, SkyEmu publishes no `RETRO_MEMORY_SYSTEM_RAM`; schema 4 therefore
+requires its exact writable 256 KiB memory-map descriptor at emulated address
+`0x02000000`. The four-worker run consumed `LBSG01`, published `LBSG02`, and
+restored `LBSTATE1` through that mapped EWRAM in both restoration processes.
 These ignored local artifacts are evidence, not repository fixtures. Re-run the
 oracle after a core hash or embedded revision changes; the exact identity and
 size contracts intentionally fail closed rather than treating a new build as
@@ -200,6 +207,7 @@ a complete four-worker pass with private system, save, and state roots (schema
 | System | Core identity | Core SHA-256 | Save transition | State bytes |
 | --- | --- | --- | --- | ---: |
 | GBA | mGBA `0.11-219-e31759b` | `085350861044d9d2ef37634a7c201f57b4816fd343bdf29cdcd09bfb754b9218` | 32 KiB; `LBSG01` to `LBSG02` in a fresh process | 430,144 |
+| GBA | SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c` | `64778cf538f741dc5a55de2130390c196083fdb5346bec916b83d32accb9a24c` | 128 KiB save buffer; `LBSG01` to `LBSG02` in a fresh process | 581,832 |
 | GBA | VBA-M version string ` 115defb` | `880d40f6338a7c60544b9c4662f8a950ea457bcd337dbc17240a03078328087f` | 32 KiB; `LBSG01` to `LBSG02` in a fresh process | 723,452 |
 | Game Boy | Gambatte `v0.5.0-netlink d9d6cd0` | `19f088f910a89ffef80a26766f682dd01aa5ae81c95adca6926a3d9c10733a50` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 59,650 |
 | Game Boy | mGBA `0.11-219-e31759b` | `085350861044d9d2ef37634a7c201f57b4816fd343bdf29cdcd09bfb754b9218` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 202,816 |
@@ -215,7 +223,8 @@ The retained earlier reports are under
 `/Users/ben/lunchbox-runtime-audit-20260912/evidence` on that host. Game Boy
 reports are under
 `/Users/ben/lunchbox-runtime-audit-20260913-macos-gameboy/evidence` on that
-host; its `vbam-gba-macos-arm64-v2` directory contains the GBA VBA-M reports.
+host; its `vbam-gba-macos-arm64-v2` directory contains the GBA VBA-M reports,
+and `skyemu-gba-macos-arm64-v2` contains the schema-4 SkyEmu GBA reports.
 The FCEUmm
 state-size drift from the Linux binary is why the exact
 `--expected-state-bytes 13758` override exists; every worker enforced it. The
