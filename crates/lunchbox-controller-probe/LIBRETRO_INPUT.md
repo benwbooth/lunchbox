@@ -294,6 +294,8 @@ plus SkyEmu GBA follow-up
 [`34746239843`](https://github.com/benwbooth/lunchbox/actions/runs/34746239843),
 and Stella follow-up
 [`34750404594`](https://github.com/benwbooth/lunchbox/actions/runs/34750404594),
+and Nestopia follow-up
+[`34751686288`](https://github.com/benwbooth/lunchbox/actions/runs/34751686288),
 executed the original diagnostics on separate Windows Server 2025 VMs
 against official Libretro x86_64 buildbot DLLs. Every retained report is
 machine-parseable JSON under its system-specific schema; native stdout and
@@ -312,6 +314,7 @@ stderr are separate artifacts.
 | Game Gear | Genesis Plus GX `v1.7.4 c2838c7`, SHA-256 `c53e9ef8fcb72f85d574ed2d0a4dc963a425586f1cd0039ee06ad381e6a4afc3` | 22/22 in individual mode and 22/22 in bitmask mode |
 | NES | FCEUmm `(SVN) 236ccdf`, SHA-256 `0fa1061243f0bfdded5a6b50c249dbaab94117cc5ac5285a1e001a20a2da69f4` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
 | NES | Mesen `0.9.9`, SHA-256 `53f3ebc11e4287c37b01cc53d3dc7975116ca5e99e73727425e5762f96353d9f` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes |
+| NES | Nestopia `1.99.0 5265136`, SHA-256 `58445c86e4f1858bbe5a68eb4f7b120419f1418a1a9f7743d81076321fafa296` | 42/42 two-player and 84/84 Four Score observations in each of individual and bitmask modes; Four Score applied `nestopia_select_adapter=ntsc` |
 | SNES | bsnes `115`, SHA-256 `d6a6033215b96834ffbcf8702a1aad43f2358fa980a6af7c029940a94ba3ff89` | 58/58 two-player and 145/145 multitap observations in individual mode; bitmask mode unsupported |
 | SNES | Snes9x `1.63 890b5d4`, SHA-256 `9a7e9401efe087eab04a22c47f0fb71ae9381aabd761db22a5ccb18f42ccdf1e` | 58/58 two-player and 145/145 multitap observations in each of individual and bitmask modes |
 | Atari 2600 | Stella `8.0_pre c65c845`, SHA-256 `84e1f72c92fb15f30a496e4db85bc9fe78e26d885d709df82ff18000bf536527` | 36/36 joystick and console-switch observations in each of individual and bitmask modes |
@@ -327,6 +330,8 @@ reports. SkyEmu intentionally has no bitmask report because the oracle rejects
 that mode after proving the adapter never negotiates it. Its GBA report records
 zero standard system-RAM bytes and the exact writable 262,144-byte memory-map
 descriptor at emulated address `0x02000000` used for the KEYINPUT observation.
+The retained Nestopia evidence is under
+`target/runtime-evidence/libretro-nestopia-windows-2026-09-13-run-34751686288`.
 
 A follow-up run,
 [`34739246329`](https://github.com/benwbooth/lunchbox/actions/runs/34739246329),

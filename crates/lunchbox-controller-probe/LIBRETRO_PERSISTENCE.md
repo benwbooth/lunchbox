@@ -346,8 +346,10 @@ plus SkyEmu GBA follow-up
 [`34746239843`](https://github.com/benwbooth/lunchbox/actions/runs/34746239843),
 and Stella follow-up
 [`34750404594`](https://github.com/benwbooth/lunchbox/actions/runs/34750404594),
+and Nestopia follow-up
+[`34751686288`](https://github.com/benwbooth/lunchbox/actions/runs/34751686288),
 executed the schema-3 four-worker Game Boy oracles, the VBA-M GBA oracle, and
-the schema-4 SkyEmu GBA and schema-6 Stella oracles
+the schema-4 SkyEmu GBA and schema-6 Stella and Nestopia oracles
 against official Libretro Windows x86-64 `latest` artifacts on separate Windows
 Server 2025 VMs. The downloaded evidence archives were then independently
 checked: each core DLL and source ZIP matched `download.json`, and each retained
@@ -362,6 +364,7 @@ ROM, save, and state file matched its report hash.
 | Game Boy | SameBoy `1.0.3 8230189` | `5b184f0bfa4a0bcf614c996cfa12985e60144722df815be2e9c8cd90bc259bfb` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 252,666 |
 | Game Boy | SkyEmu `adacd0788964ed89f5c43dcbc1f3cc26deec996c` | `a9f020507fa90551107a40fb00c05e9d20f9bfb2140319aae9f5a9892c2973bc` | 128 KiB save buffer; `LBSG01` to `LBSG02` in a fresh process | 246,416 |
 | Game Boy | VBA-M `2.1.3 115defb` | `a88130470c10aa4f4e34fd39c07f56630af7b596cc81ebd211796326b8f3af8f` | 32 KiB MBC1 save; `LBSG01` to `LBSG02` in a fresh process | 115,948 |
+| NES | Nestopia `1.99.0 5265136` | `58445c86e4f1858bbe5a68eb4f7b120419f1418a1a9f7743d81076321fafa296` | 8 KiB; `LBSR\x01` to `LBSR\x02` in a fresh process | 21,781 |
 | Atari 2600 | Stella `8.0_pre c65c845` | `84e1f72c92fb15f30a496e4db85bc9fe78e26d885d709df82ff18000bf536527` | not applicable; save RAM was null/zero in both fresh workers | 1,041 |
 
 Every Windows state size exactly matched the pinned Linux and macOS size for
@@ -371,6 +374,14 @@ platform builds. The schema-4 SkyEmu GBA reports also agree on zero standard
 system-RAM bytes and the exact writable 262,144-byte memory-map descriptor at
 emulated address `0x02000000`. Save synchronization remains separately blocked
 until a real provider export and restore is exercised.
+
+The Windows Nestopia gate first rejected the stale Linux runtime identity, then
+rejected the Linux revision's 21,471-byte state size. The current Windows DLL
+matched the M1 build at 21,781 bytes and restored `LBSTATE1` in the same and a
+fresh process. Its state SHA-256 is
+`9c57923f09dd86fc918aa41a0e6335bfaf526ff04a5e23cffc76e74a96ff52e0`;
+the independently re-hashed evidence is under
+`target/runtime-evidence/libretro-nestopia-windows-2026-09-13-run-34751686288`.
 
 The downloaded Windows Stella archive, DLL, generated cartridge, state and all
 four worker reports were independently re-hashed after the hosted run. Its
