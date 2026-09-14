@@ -555,14 +555,24 @@ fn production_fds_install_verify_and_state_runtime_oracle() -> Result<()> {
             .all(|path| !path.try_exists().unwrap_or(false)),
         "unique FDS runtime outputs remained"
     );
-    ensure!(
-        !command_stdout(
+    // The reaped child's sandbox can linger briefly in `flatpak ps`
+    // after a clean exit; poll for teardown instead of asserting once.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let running = command_stdout(
             Command::new(&flatpak).arg("ps"),
-            "listing final Flatpak processes"
+            "listing final Flatpak processes",
         )?
-        .contains(NESTOPIA_UE_FLATPAK_ID),
-        "Nestopia remained running after the FDS oracle"
-    );
+        .contains(NESTOPIA_UE_FLATPAK_ID);
+        if !running {
+            break;
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Nestopia remained running after the FDS oracle"
+        );
+        std::thread::sleep(Duration::from_millis(250));
+    }
 
     let source_zip_sha256 = source_zip
         .as_ref()
