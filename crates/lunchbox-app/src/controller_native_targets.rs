@@ -96,6 +96,41 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
         control.optional = false;
     }
     db.layouts.push(vita3k);
+    let mut gbe_plus = db
+        .layout("gba")
+        .context("Missing Game Boy Advance reference layout")?
+        .clone();
+    gbe_plus.id = "gbe-plus-gamepad".into();
+    gbe_plus.name = "Game Boy Advance — GBE+ gamepad".into();
+    gbe_plus.source =
+        "https://github.com/shonumi/gbe-plus/tree/05a05e931b3993ff3e6316b0d841a1fb4d3ac7a7".into();
+    gbe_plus.notes = "GBE+ twelve-control gamepad. X/Y extend the GBA set; directions may be axes, hats, or buttons.".into();
+    gbe_plus.controls.push(crate::controller_catalog::Control {
+        id: "x".into(),
+        label: "X".into(),
+        x: 66.0,
+        y: 36.0,
+        group: "face".into(),
+        optional: false,
+        analog: false,
+        pressure: false,
+        repeat_of: None,
+    });
+    gbe_plus.controls.push(crate::controller_catalog::Control {
+        id: "y".into(),
+        label: "Y".into(),
+        x: 54.0,
+        y: 48.0,
+        group: "face".into(),
+        optional: false,
+        analog: false,
+        pressure: false,
+        repeat_of: None,
+    });
+    for control in &mut gbe_plus.controls {
+        control.optional = false;
+    }
+    db.layouts.push(gbe_plus);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -1071,6 +1106,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("vita3k", "vita3k-vita") {
         return Some(
             crate::controller_vita3k_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("gbe-plus", "gbe-plus-gamepad") {
+        return Some(
+            crate::controller_gbe_plus_standalone::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

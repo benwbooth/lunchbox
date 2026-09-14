@@ -24,6 +24,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "Fuse",
     "VICE (xvic)",
     "Amiberry",
+    "GBE+",
     "Vita3K",
     "Caprice32",
     "puNES",
@@ -342,6 +343,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let linapple = name.eq_ignore_ascii_case("LinApple");
             let fuse = name.eq_ignore_ascii_case("Fuse");
             let amiberry = name.eq_ignore_ascii_case("Amiberry");
+            let gbe_plus = name.eq_ignore_ascii_case("GBE+");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
             let caprice32 = name.eq_ignore_ascii_case("Caprice32");
@@ -420,6 +422,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Caprice32 dispatch is connected for fixed CPC joystick ports with two menu buttons. It patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if vita3k {
                     "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
+                } else if gbe_plus {
+                    "Native Linux GBE+ dispatch is connected for the single GBA gamepad. It writes a private gbe.ini gamepad section under HOME, proves the pad is SDL index 0, and confirms the child loaded the declared SDL library. Other systems, hosts, packages, and runtime input remain unverified."
                 } else if amiberry {
                     "Native Linux Amiberry dispatch is connected for fixed-dpad Amiga joysticks with raw-button fire. It writes a private gamecontrollerdb_user.txt plus joyport fragment, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if fuse {

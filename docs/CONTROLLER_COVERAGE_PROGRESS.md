@@ -14,6 +14,17 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 623: connected the pinned GBE+ SDL event grammar to a
+single-player native Linux launch adapter. Source review proved the pad codes
+(100+button, 200+axis*2+sign, 300+hat*4+direction with LEFT=0/RIGHT=1/UP=2/
+DOWN=3), the hardcoded joy_id 0, and HOME-relocated gbe.ini. The session
+proves SDL index 0 and translates all twelve controls. Catalog/settings/QML/
+guided/launch dispatch are connected. Focused writer/translation tests and a
+full QML/C++ check passed; no GBE+ executable, ROM, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+57/250 partial standalone dispatches and 151/344 catalog source entries
+(43.9%), not runtime completion.
+
 Step 622: wired VICE (xvic) as a single-port reuse of the VICE .vjm
 adapter. The launch gate accepts the xvic display name with an exactly-one-
 player guard; setups live in the shared VICE launch list and the session,
@@ -83,6 +94,17 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 623: connected the pinned GBE+ SDL event grammar to a
+single-player native Linux launch adapter. Source review proved the pad codes
+(100+button, 200+axis*2+sign, 300+hat*4+direction with LEFT=0/RIGHT=1/UP=2/
+DOWN=3), the hardcoded joy_id 0, and HOME-relocated gbe.ini. The session
+proves SDL index 0 and translates all twelve controls. Catalog/settings/QML/
+guided/launch dispatch are connected. Focused writer/translation tests and a
+full QML/C++ check passed; no GBE+ executable, ROM, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+57/250 partial standalone dispatches and 151/344 catalog source entries
+(43.9%), not runtime completion.
 
 Step 622: wired VICE (xvic) as a single-port reuse of the VICE .vjm
 adapter. The launch gate accepts the xvic display name with an exactly-one-

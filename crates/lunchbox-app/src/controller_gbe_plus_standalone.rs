@@ -5,9 +5,11 @@
 //! `joy_id`; callers must resolve that index at launch.
 
 use anyhow::{Result, ensure};
-use std::collections::BTreeMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const SOURCE_COMMIT: &str = "05a05e931b3993ff3e6316b0d841a1fb4d3ac7a7";
+pub(crate) const PROFILE_ID: &str = "gbe-plus:standalone-gba-gamepad";
 
 pub(crate) const CONTROLS: [&str; 12] = [
     "a", "b", "x", "y", "start", "select", "left", "right", "up", "down", "l", "r",
@@ -57,5 +59,564 @@ mod tests {
             ini,
             "[#gbe_joy_controls:100:101:102:103:107:106:200:201:202:203:204:205]\n"
         );
+    }
+}
+
+/// Layout target ids covered by the native profile.
+pub(crate) const ROUTES: [(&str, &str); 12] = [
+    ("a", "A"),
+    ("b", "B"),
+    ("x", "X"),
+    ("y", "Y"),
+    ("start", "Start"),
+    ("select", "Select"),
+    ("left", "Left"),
+    ("right", "Right"),
+    ("up", "Up"),
+    ("down", "Down"),
+    ("l", "L"),
+    ("r", "R"),
+];
+
+pub(crate) mod settings {
+    use super::*;
+    use crate::controller_catalog::{Calibration, catalog};
+    use anyhow::Context;
+    use serde::{Deserialize, Serialize};
+    use std::{collections::HashMap, path::PathBuf};
+
+    #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub(crate) struct Player {
+        pub player: u8,
+        pub controller_id: String,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub(crate) struct SavedSetup {
+        pub emulator_id: String,
+        pub content: PathBuf,
+        pub probe_program: PathBuf,
+        pub sdl_library: PathBuf,
+        pub executable_sha256: String,
+        pub players: Vec<Player>,
+    }
+
+    impl SavedSetup {
+        pub(crate) fn validate(&self) -> Result<()> {
+            ensure!(
+                !self.emulator_id.trim().is_empty(),
+                "GBE+ setup needs an emulator identity"
+            );
+            for path in [&self.content, &self.probe_program, &self.sdl_library] {
+                ensure!(
+                    path.is_absolute()
+                        && !path
+                            .components()
+                            .any(|part| matches!(part, std::path::Component::ParentDir)),
+                    "GBE+ setup paths must be absolute without parent traversal"
+                );
+            }
+            ensure!(
+                self.executable_sha256.len() == 64
+                    && self
+                        .executable_sha256
+                        .bytes()
+                        .all(|byte| byte.is_ascii_hexdigit()),
+                "GBE+ setup needs a trusted executable SHA-256"
+            );
+            let limit = catalog()
+                .emulator_profiles
+                .iter()
+                .find(|profile| profile.id == PROFILE_ID)
+                .and_then(|profile| profile.native_launch.as_ref())
+                .context("Missing GBE+ native profile")?
+                .max_players;
+            ensure!(
+                self.players.len() == 1 && self.players[0].player == 1,
+                "GBE+ supports exactly player one"
+            );
+            ensure!(
+                self.players.len() <= limit && !self.players[0].controller_id.trim().is_empty(),
+                "GBE+ player needs a saved controller identity"
+            );
+            Ok(())
+        }
+
+        pub(crate) fn review(
+            &self,
+            calibrations: &HashMap<String, Calibration>,
+        ) -> Result<serde_json::Value> {
+            self.validate()?;
+            let profile = catalog()
+                .emulator_profiles
+                .iter()
+                .find(|profile| profile.id == PROFILE_ID)
+                .context("Missing GBE+ native profile")?;
+            let player = &self.players[0];
+            let calibration = calibrations
+                .get(&player.controller_id)
+                .context("GBE+ controller has no saved calibration")?;
+            ensure!(
+                calibration.os == "linux",
+                "GBE+ mapping requires Linux physical calibration"
+            );
+            let mapping = calibration.plan_profile(profile)?;
+            ensure!(
+                mapping.rows.iter().all(|row| row.physical_id.is_some()
+                    && row
+                        .input
+                        .as_ref()
+                        .is_some_and(|input| input.native.is_some())),
+                "GBE+ needs native calibration for every gamepad control"
+            );
+            Ok(serde_json::json!({
+                "profile_id": PROFILE_ID,
+                "player": player.player,
+                "controller_id": player.controller_id,
+                "source_layout": calibration.layout,
+                "target_layout": profile.target_layout,
+                "mapping": mapping,
+                "launch_ready": false,
+                "launch_integration": "partial",
+                "detail": "Native Linux launch writes a private gbe.ini gamepad section, then rechecks the exact SDL routes. Only the single gamepad on SDL index 0 is supported; runtime behavior remains unverified."
+            }))
+        }
+    }
+
+    pub(crate) fn validate_setups(setups: &[SavedSetup]) -> Result<()> {
+        ensure!(setups.len() <= 1024, "Too many GBE+ saved setups");
+        let mut identities = BTreeSet::new();
+        for setup in setups {
+            setup.validate()?;
+            ensure!(
+                identities.insert((&setup.emulator_id, &setup.content)),
+                "Duplicate GBE+ emulator/content setup"
+            );
+        }
+        Ok(())
+    }
+}
+
+/// SDL hat bitmask to the source's hat direction code (LEFT=0, RIGHT=1,
+/// UP=2, DOWN=3, from the JOYHATMOTION handler).
+fn hat_code(direction: u8) -> Result<u32> {
+    Ok(match direction {
+        0x08 => 0,
+        0x02 => 1,
+        0x01 => 2,
+        0x04 => 3,
+        _ => anyhow::bail!("GBE+ hat direction is not cardinal"),
+    })
+}
+
+#[cfg(target_os = "linux")]
+mod session {
+    use super::*;
+    use crate::{
+        controller_bizhawk_guard::InputTopology,
+        controller_catalog::Calibration,
+        controller_native_process::{cancelled, capture},
+        controllers::ControllerDevice,
+    };
+    use anyhow::Context;
+    use lunchbox_controller_probe::{
+        duckstation::DigitalInput,
+        file_hash,
+        linux_classic::AxisEndpoints,
+        sdl2::{Device, Snapshot},
+        sdl2_physical::PhysicalMap,
+    };
+    use std::{
+        collections::{BTreeMap, HashMap},
+        fs,
+        path::PathBuf,
+        process::Command,
+        sync::atomic::AtomicBool,
+    };
+
+    fn observe(
+        setup: &settings::SavedSetup,
+        path: Option<&str>,
+        cancel: &AtomicBool,
+    ) -> Result<Snapshot> {
+        let mut command = Command::new(&setup.probe_program);
+        command
+            .arg("--sdl2-inventory")
+            .arg("--sdl-library")
+            .arg(&setup.sdl_library);
+        if let Some(path) = path {
+            command.arg("--sdl2-controls-for-path").arg(path);
+        }
+        let (output, _) = capture(&mut command, cancel)?;
+        let snapshot: Snapshot =
+            serde_json::from_slice(&output).context("Invalid GBE+ SDL2 capture")?;
+        ensure!(
+            snapshot.version[0] == 2
+                && snapshot.library.canonicalize()? == setup.sdl_library.canonicalize()?
+                && snapshot.library_sha256 == file_hash(&setup.sdl_library)?,
+            "GBE+ helper inspected a different SDL2 runtime"
+        );
+        Ok(snapshot)
+    }
+
+    fn routing(mut snapshot: Snapshot) -> Snapshot {
+        for device in &mut snapshot.devices {
+            device.controls = None;
+            device.linux_classic = None;
+            device.linux_evdev = None;
+            device.sampled_state = None;
+        }
+        snapshot
+    }
+
+    fn event_code(calibration: &Calibration, device: &Device, target: &str) -> Result<u32> {
+        let profile = crate::controller_catalog::catalog()
+            .emulator_profiles
+            .iter()
+            .find(|profile| profile.id == PROFILE_ID)
+            .context("Missing GBE+ native profile")?;
+        let row = calibration
+            .plan_profile(profile)?
+            .rows
+            .into_iter()
+            .find(|row| row.target_id == target)
+            .with_context(|| format!("GBE+ control {target} is not calibrated"))?;
+        let native = row
+            .input
+            .as_ref()
+            .context("GBE+ control is not calibrated")?
+            .native
+            .as_ref()
+            .context("GBE+ requires measured native controls")?;
+        let measured = row
+            .input
+            .as_ref()
+            .context("GBE+ control is not calibrated")?
+            .axis
+            .as_ref()
+            .map(|axis| AxisEndpoints {
+                released: axis.released,
+                pressed: axis.pressed,
+            });
+        let physical = PhysicalMap::from_device(device)?;
+        let state = device
+            .sampled_state
+            .as_ref()
+            .context("GBE+ SDL released state is missing")?;
+        state.validate(
+            device
+                .controls
+                .as_ref()
+                .context("GBE+ SDL control counts are missing")?,
+        )?;
+        let translated = physical.digital_input(native.code, measured)?;
+        let released = match translated {
+            DigitalInput::Button(index) => state.buttons.get(&index) == Some(&false),
+            DigitalInput::Hat { index, direction } => state
+                .hats
+                .get(&index)
+                .is_some_and(|mask| mask & direction == 0),
+            DigitalInput::Axis {
+                index, released, ..
+            } => state.axes.get(&index) == Some(&released),
+        };
+        ensure!(
+            released,
+            "Release the GBE+ controls before launch preparation"
+        );
+        // Source event encodings: 100+button, 200+axis*2+sign,
+        // 300+hat*4+direction.
+        Ok(match translated {
+            DigitalInput::Button(index) => {
+                let index = u32::try_from(index).context("GBE+ button index is too large")?;
+                ensure!(index <= 155, "GBE+ button encoding is out of range");
+                100 + index
+            }
+            DigitalInput::Axis { index, .. } => {
+                let index = u32::try_from(index).context("GBE+ axis index is too large")?;
+                ensure!(index <= 27, "GBE+ axis encoding is out of range");
+                200 + index * 2 + u32::from(native.direction > 0)
+            }
+            DigitalInput::Hat { index, direction } => {
+                let index = u32::try_from(index).context("GBE+ hat index is too large")?;
+                ensure!(index <= 63, "GBE+ hat encoding is out of range");
+                300 + index * 4 + hat_code(direction)?
+            }
+        })
+    }
+
+    pub(crate) struct PreparedSession {
+        directory: tempfile::TempDir,
+        config_home: PathBuf,
+        physical_path: String,
+        topology: InputTopology,
+        initial: Snapshot,
+        setup: settings::SavedSetup,
+        hashes: BTreeMap<PathBuf, String>,
+    }
+
+    impl PreparedSession {
+        pub(crate) fn prepare(
+            setup: &settings::SavedSetup,
+            calibrations: &HashMap<String, Calibration>,
+            inventory: &[ControllerDevice],
+            cancel: &AtomicBool,
+        ) -> Result<Self> {
+            cancelled(cancel)?;
+            setup.review(calibrations)?;
+            ensure!(
+                fs::symlink_metadata(&setup.content)?.file_type().is_file()
+                    && setup.content.canonicalize()? == setup.content,
+                "GBE+ content must be a direct regular file with canonical ancestry"
+            );
+            let player = &setup.players[0];
+            let found = inventory
+                .iter()
+                .filter(|device| device.stable_id == player.controller_id)
+                .collect::<Vec<_>>();
+            ensure!(
+                found.len() == 1 && !found[0].is_virtual,
+                "GBE+ physical controller is missing or ambiguous"
+            );
+            let selected = found[0].device_path.clone();
+            let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
+            let initial = routing(observe(setup, None, cancel)?);
+            let physical_path = topology.resolve_runtime_path(
+                &selected,
+                initial
+                    .devices
+                    .iter()
+                    .filter_map(|device| device.path.as_deref()),
+            )?;
+            let captured = observe(setup, Some(&physical_path), cancel)?;
+            initial.ensure_same_routing(&routing(captured.clone()))?;
+            topology.verify()?;
+            let device = captured.device_at_path(&physical_path)?;
+            // joy_id is hardcoded 0: the pad must be SDL index 0.
+            ensure!(
+                device.device_index == 0,
+                "GBE+ opens SDL joystick 0; selected pad is index {}",
+                device.device_index
+            );
+            let calibration = calibrations
+                .get(&player.controller_id)
+                .context("GBE+ calibration disappeared")?;
+            let mut bindings = BTreeMap::new();
+            for (target, _) in ROUTES {
+                let code = event_code(calibration, device, target)?;
+                ensure!(
+                    bindings.insert((*target).to_owned(), code).is_none(),
+                    "GBE+ control appears twice"
+                );
+            }
+            let directory = tempfile::Builder::new()
+                .prefix("lunchbox-gbe-plus-")
+                .tempdir()?;
+            // HOME override isolates $HOME/.gbe_plus/gbe.ini entirely.
+            let config_path = directory.path().join(".gbe_plus").join("gbe.ini");
+            fs::create_dir_all(config_path.parent().context("GBE+ config has no parent")?)?;
+            fs::write(&config_path, gamepad_controls_ini(&bindings)?)?;
+            let mut hashes = BTreeMap::new();
+            for path in [
+                &setup.content,
+                &setup.probe_program,
+                &setup.sdl_library,
+                &config_path,
+            ] {
+                hashes.insert(path.clone(), file_hash(path)?);
+            }
+            let config_home = directory.path().to_path_buf();
+            let prepared = Self {
+                directory,
+                config_home,
+                physical_path,
+                topology,
+                initial,
+                setup: setup.clone(),
+                hashes,
+            };
+            prepared.verify(cancel)?;
+            Ok(prepared)
+        }
+
+        /// Private root for `HOME`; the source appends `/.gbe_plus`.
+        pub(crate) fn config_home(&self) -> &std::path::Path {
+            &self.config_home
+        }
+
+        pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
+            cancelled(cancel)?;
+            self.topology.verify()?;
+            for (path, hash) in &self.hashes {
+                ensure!(file_hash(path)? == *hash, "GBE+ launch input changed");
+            }
+            let fresh = routing(observe(&self.setup, None, cancel)?);
+            self.initial.ensure_same_routing(&fresh)?;
+            let captured = observe(&self.setup, Some(&self.physical_path), cancel)?;
+            self.initial
+                .ensure_same_routing(&routing(captured.clone()))?;
+            let device = captured.device_at_path(&self.physical_path)?;
+            ensure!(
+                device.device_index == 0,
+                "GBE+ SDL index 0 moved before launch"
+            );
+            self.topology.verify()
+        }
+
+        pub(crate) fn check_health(&self) -> Result<()> {
+            self.topology.verify()
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) mod native_command {
+    use super::*;
+    use crate::{
+        controller_catalog::Calibration,
+        controller_native_process::{cancelled, native_pid},
+        controllers::ControllerDevice,
+        emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption},
+    };
+    use lunchbox_controller_probe::file_hash;
+    use std::{
+        collections::HashMap,
+        path::{Path, PathBuf},
+        sync::atomic::AtomicBool,
+        time::{Duration, Instant},
+    };
+
+    pub(crate) struct NativeSession {
+        inputs: session::PreparedSession,
+        executable: PathBuf,
+        setup: settings::SavedSetup,
+        pub(crate) plan: LaunchPlan,
+    }
+
+    impl NativeSession {
+        pub(crate) fn check_health(&self) -> Result<()> {
+            self.inputs.check_health()
+        }
+
+        pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
+            cancelled(cancel)?;
+            ensure!(
+                file_hash(&self.executable)?.eq_ignore_ascii_case(&self.setup.executable_sha256),
+                "GBE+ executable differs from the saved trusted runtime"
+            );
+            self.inputs.verify(cancel)
+        }
+
+        pub(crate) fn spawn(
+            &mut self,
+            plan: &LaunchPlan,
+            cancel: &AtomicBool,
+        ) -> Result<std::process::Child> {
+            ensure!(
+                plan == &self.plan,
+                "GBE+ launch plan changed after preparation"
+            );
+            self.verify(cancel)?;
+            let mut child = crate::emulator::spawn_launch_plan(plan)?;
+            if let Err(error) = self.confirm(&mut child, cancel) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error);
+            }
+            Ok(child)
+        }
+
+        fn confirm(&self, child: &mut std::process::Child, cancel: &AtomicBool) -> Result<()> {
+            let deadline = Instant::now() + Duration::from_secs(20);
+            loop {
+                cancelled(cancel)?;
+                ensure!(
+                    child.try_wait()?.is_none(),
+                    "GBE+ exited before controller handoff"
+                );
+                if let Some(pid) = native_pid(child.id(), &self.executable)?
+                    && self.ready(pid)?
+                {
+                    self.inputs.check_health()?;
+                    return Ok(());
+                }
+                ensure!(
+                    Instant::now() < deadline,
+                    "GBE+ did not open the selected SDL controller before timeout"
+                );
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        }
+
+        fn ready(&self, pid: u32) -> Result<bool> {
+            let expected_sdl = self.setup.sdl_library.canonicalize()?;
+            let maps = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
+            if !maps.lines().any(|line| {
+                let path = line
+                    .split_whitespace()
+                    .skip(5)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .replace("\\040", " ");
+                Path::new(&path) == expected_sdl
+            }) {
+                return Ok(false);
+            }
+            Ok(true)
+        }
+    }
+
+    pub(crate) fn prepare(
+        setup: &settings::SavedSetup,
+        calibrations: &HashMap<String, Calibration>,
+        inventory: &[ControllerDevice],
+        option: &RomEmulatorOption,
+        original: &LaunchPlan,
+        cancel: &AtomicBool,
+    ) -> Result<NativeSession> {
+        cancelled(cancel)?;
+        setup.validate()?;
+        let EmulatorExecutable::Native(executable) = &option.executable else {
+            anyhow::bail!("GBE+ calibrated launch requires native Linux");
+        };
+        ensure!(
+            option.emulator_name.eq_ignore_ascii_case("GBE+")
+                && setup.emulator_id == option.emulator_id
+                && original.environment.is_empty()
+                && original.retroarch_content.is_none(),
+            "GBE+ identity differs or custom environment needs resolution"
+        );
+        let executable = executable.canonicalize()?;
+        ensure!(
+            executable == original.program.canonicalize()?,
+            "GBE+ launch executable differs from selection"
+        );
+        ensure!(
+            original.arguments.as_slice() == [setup.content.as_os_str()],
+            "GBE+ calibrated launch requires exactly the saved content argument"
+        );
+        ensure!(
+            file_hash(&executable)?.eq_ignore_ascii_case(&setup.executable_sha256),
+            "GBE+ executable differs from the saved trusted runtime"
+        );
+        let inputs = session::PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
+        let mut plan = original.clone();
+        plan.program = executable.clone();
+        // HOME override relocates $HOME/.gbe_plus/gbe.ini; the ROM keeps
+        // its default positional slot.
+        plan.environment.push((
+            std::ffi::OsString::from("HOME"),
+            inputs.config_home().as_os_str().to_owned(),
+        ));
+        let session = NativeSession {
+            inputs,
+            executable,
+            setup: setup.clone(),
+            plan,
+        };
+        session.verify(cancel)?;
+        Ok(session)
     }
 }

@@ -137,6 +137,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "linapple"
                 | "fuse"
                 | "amiberry"
+                | "gbe-plus"
                 | "vita3k"
                 | "caprice32"
                 | "rmg"
@@ -643,6 +644,19 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.players = vec![crate::controller_vita3k_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "gbe-plus" => {
+            for setup in &mut mapping.gbe_plus_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_gbe_plus_standalone::settings::Player {
                     player: 1,
                     controller_id: ids[0].clone(),
                 }];
