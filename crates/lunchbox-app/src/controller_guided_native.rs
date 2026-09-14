@@ -135,6 +135,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "nestopia-ue"
                 | "skyemu"
                 | "linapple"
+                | "fuse"
                 | "caprice32"
                 | "rmg"
                 | "simple64"
@@ -627,6 +628,27 @@ pub(crate) fn settings_for_launch<'a>(
                         |(i, id)| crate::controller_caprice32_standalone::settings::Player {
                             player: (i + 1) as u8,
                             controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "fuse" => {
+            for setup in &mut mapping.fuse_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_fuse_standalone::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                            joystick_type:
+                                crate::controller_fuse_standalone::JoystickType::Kempston,
                         },
                     )
                     .collect();

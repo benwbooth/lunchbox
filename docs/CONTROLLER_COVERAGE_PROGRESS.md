@@ -14,6 +14,17 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 619: connected the pinned Fuse fixed-slot grammar to a
+one/two-player native Linux launch adapter. No --config flag exists, so a
+private XDG_CONFIG_HOME/fuse-emulator/fuserc fully isolates input. The
+session proves the pads hold SDL slots 0/1, maps each fire button to its own
+raw index as JoystickFire, and carries a per-player joystick type for the
+game. Catalog/settings/QML/guided/launch dispatch are connected. Focused
+writer tests and a full QML/C++ check passed; no Fuse executable, tape,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 53/250 partial standalone dispatches and 147/344
+catalog source entries (42.7%), not runtime completion.
+
 Step 618: connected the pinned Caprice32 fixed-instance grammar to a
 one/two-player native Linux launch adapter. The explicit -c flag always wins
 the config search order, so a private cap32.cfg fully isolates joystick
@@ -39,6 +50,17 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 619: connected the pinned Fuse fixed-slot grammar to a
+one/two-player native Linux launch adapter. No --config flag exists, so a
+private XDG_CONFIG_HOME/fuse-emulator/fuserc fully isolates input. The
+session proves the pads hold SDL slots 0/1, maps each fire button to its own
+raw index as JoystickFire, and carries a per-player joystick type for the
+game. Catalog/settings/QML/guided/launch dispatch are connected. Focused
+writer tests and a full QML/C++ check passed; no Fuse executable, tape,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 53/250 partial standalone dispatches and 147/344
+catalog source entries (42.7%), not runtime completion.
 
 Step 618: connected the pinned Caprice32 fixed-instance grammar to a
 one/two-player native Linux launch adapter. The explicit -c flag always wins

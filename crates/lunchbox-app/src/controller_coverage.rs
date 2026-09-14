@@ -21,6 +21,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "Nestopia UE",
     "SkyEmu",
     "LinApple",
+    "Fuse",
     "Caprice32",
     "puNES",
     "FCEUX",
@@ -336,6 +337,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let nestopia_ue = name.eq_ignore_ascii_case("Nestopia UE");
             let skyemu = name.eq_ignore_ascii_case("SkyEmu");
             let linapple = name.eq_ignore_ascii_case("LinApple");
+            let fuse = name.eq_ignore_ascii_case("Fuse");
             let caprice32 = name.eq_ignore_ascii_case("Caprice32");
             let punes = name.eq_ignore_ascii_case("puNES");
             let fceux = name.eq_ignore_ascii_case("FCEUX");
@@ -408,6 +410,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Linux Nestopia UE Flatpak 1.53.2 dispatch is connected for exact two-pad NES setups, with pinned app/runtime identity, private config, target-SDL routing checks, and persistent native data. A 2026-09-13 isolated-X11 production oracle passed two-player input, fresh-process battery reload, and F5/F7 slot-0 restoration. Native Linux dispatch is connected for one/two-pad NES setups through a private nestopia.conf/input.conf pair with exact SDL enumeration-order routing and child ownership checks. Wayland, other packages/hosts/modes, firmware, physical pads, hotplug, and save sync remain unverified."
                 } else if caprice32 {
                     "Native Linux Caprice32 dispatch is connected for fixed CPC joystick ports with two menu buttons. It patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
+                } else if fuse {
+                    "Native Linux Fuse dispatch is connected for fixed-slot Spectrum joysticks with per-game joystick types. It patches a private fuserc under XDG_CONFIG_HOME, proves the pads hold SDL slots 0/1, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if linapple {
                     "Native Linux LinApple dispatch is connected for analog-axis Apple II joysticks on ports one and two. It patches a private linapple.conf passed with --config, rechecks the exact SDL routes, and confirms the child loaded the declared SDL library. Hat directions, other hosts, packages, and runtime input remain unverified."
                 } else if skyemu {

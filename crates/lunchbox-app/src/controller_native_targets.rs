@@ -83,6 +83,40 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(caprice32);
+    let mut fuse = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    fuse.id = "fuse-spectrum".into();
+    fuse.name = "ZX Spectrum — Fuse joystick".into();
+    fuse.family = "two-button".into();
+    fuse.source =
+        "https://github.com/fuse-emulator/fuse/tree/5ba7804a44483466d7403a6e646a228da562ed5d"
+            .into();
+    fuse.notes = "Fuse fixed-slot Spectrum joystick. Directions are source-fixed; fire lands on its own raw button index.".into();
+    fuse.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("fire", "Fire", 70.0, 50.0, "face", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(fuse);
     let mut linapple = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -980,6 +1014,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("caprice32", "caprice32-cpc") {
         return Some(
             crate::controller_caprice32_standalone::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("fuse", "fuse-spectrum") {
+        return Some(
+            crate::controller_fuse_standalone::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),
