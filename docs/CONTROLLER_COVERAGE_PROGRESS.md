@@ -14,6 +14,20 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 635: connected the pinned OpenBOR packed-settings grammar to a
+single-player native Linux launch adapter, replacing the module's refusal
+(the struct layout is pinned: offsets verified against the header, and the
+version stamp guards ABI drift). Source review proved the `JOY_LIST_FIRST +
+lastjoy` persisted encoding, the slot/button/axis/hat formulas,
+`SDL_JoystickOpen(i)` slots, `./Saves/<pak>.cfg` resolution, and positional
+.pak launch. The session replaces player-1 keys with measured slot-0 codes
+using the pad's own counts and clears extra players per `clearbuttons`.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused writer
+tests and a full QML/C++ check passed; no OpenBOR executable, pak,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 69/250 partial standalone dispatches and 163/344
+catalog source entries (47.4%), not runtime completion.
+
 Step 634: connected the pinned Supermodel JOY token grammar to a
 single-player native Linux launch adapter for the P1 fighting deck. Source
 review proved `JOY1_*` 1-based selection, the BUTTON/axis/POV token tables,
@@ -257,6 +271,20 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 635: connected the pinned OpenBOR packed-settings grammar to a
+single-player native Linux launch adapter, replacing the module's refusal
+(the struct layout is pinned: offsets verified against the header, and the
+version stamp guards ABI drift). Source review proved the `JOY_LIST_FIRST +
+lastjoy` persisted encoding, the slot/button/axis/hat formulas,
+`SDL_JoystickOpen(i)` slots, `./Saves/<pak>.cfg` resolution, and positional
+.pak launch. The session replaces player-1 keys with measured slot-0 codes
+using the pad's own counts and clears extra players per `clearbuttons`.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused writer
+tests and a full QML/C++ check passed; no OpenBOR executable, pak,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 69/250 partial standalone dispatches and 163/344
+catalog source entries (47.4%), not runtime completion.
 
 Step 634: connected the pinned Supermodel JOY token grammar to a
 single-player native Linux launch adapter for the P1 fighting deck. Source

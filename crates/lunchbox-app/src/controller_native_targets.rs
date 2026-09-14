@@ -1228,6 +1228,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/trzy/Supermodel/tree/24d2ffcfc7f14229337f05f4920fe26b56633d9d",
         ),
         (
+            "openbor",
+            "arcade-six-button",
+            1,
+            vec!["OpenBOR"],
+            "https://github.com/DCurrent/openbor/tree/9d81480f8481fbb9e76b0b5f2a5dfa408376761a",
+        ),
+        (
             "play",
             "dualshock",
             1,
@@ -1542,6 +1549,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("play", "dualshock") {
         return Some(
             crate::controller_play_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("openbor", "arcade-six-button") {
+        return Some(
+            crate::controller_openbor_standalone::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

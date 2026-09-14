@@ -35,6 +35,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "DreamPotato",
     "Panda3DS",
     "Supermodel",
+    "OpenBOR",
     "Play!",
     "Vita3K",
     "Caprice32",
@@ -365,6 +366,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let dreampotato = name.eq_ignore_ascii_case("DreamPotato");
             let panda3ds = name.eq_ignore_ascii_case("Panda3DS");
             let supermodel = name.eq_ignore_ascii_case("Supermodel");
+            let openbor = name.eq_ignore_ascii_case("OpenBOR");
             let play = name.eq_ignore_ascii_case("Play!");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
@@ -446,6 +448,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if play {
                     "Native Linux Play! dispatch is connected for the single DualShock 2 pad through evdev. It stages a private evdev input profile in a session directory, rechecks the exact evdev routes, and confirms child ownership. Hats and rumble are out of scope; other hosts, packages, and runtime input remain unverified."
+                } else if openbor {
+                    "Native Linux OpenBOR dispatch is connected for the single P1 brawler deck on joystick slot 0. It stages a session Saves/<pak>.cfg with measured joystick codes, rechecks the exact SDL2 routes, and confirms the child loaded the declared SDL library. Other players, hosts, packages, and runtime input remain unverified."
                 } else if supermodel {
                     "Native Linux Supermodel dispatch is connected for the single P1 fighting deck on joystick 1 with the sdlgamepad backend. It stages a session Config/Supermodel.ini, rechecks the exact SDL2 game-controller routes, and confirms the child loaded the declared SDL library. Other games, hosts, packages, and runtime input remain unverified."
                 } else if panda3ds {
