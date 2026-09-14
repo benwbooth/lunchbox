@@ -6704,7 +6704,8 @@ pub fn prepare_with_cancellation(
 
     #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
-        && option.emulator_name.eq_ignore_ascii_case("VICE")
+        && (option.emulator_name.eq_ignore_ascii_case("VICE")
+            || option.emulator_name.eq_ignore_ascii_case("VICE (xvic)"))
     {
         let matches: Vec<_> = mapping
             .vice_native_launches
@@ -6718,6 +6719,12 @@ pub fn prepare_with_cancellation(
             })
             .collect();
         ensure!(matches.len() <= 1, "Ambiguous VICE saved setup");
+        if option.emulator_name.eq_ignore_ascii_case("VICE (xvic)") {
+            ensure!(
+                matches.first().is_none_or(|setup| setup.players.len() == 1),
+                "VICE (xvic) exposes exactly one native joystick port"
+            );
+        }
         if let Some(setup) = matches.first() {
             let native = crate::controller_vice_native::native_command::prepare(
                 setup,

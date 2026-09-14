@@ -22,6 +22,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "SkyEmu",
     "LinApple",
     "Fuse",
+    "VICE (xvic)",
     "Amiberry",
     "Vita3K",
     "Caprice32",
@@ -342,6 +343,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let fuse = name.eq_ignore_ascii_case("Fuse");
             let amiberry = name.eq_ignore_ascii_case("Amiberry");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
+            let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
             let caprice32 = name.eq_ignore_ascii_case("Caprice32");
             let punes = name.eq_ignore_ascii_case("puNES");
             let fceux = name.eq_ignore_ascii_case("FCEUX");
@@ -412,6 +414,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux SDL2 PPSSPP PSP gamepad launch dispatch is implemented for saved setups with a private SYSTEM overlay and child mapping/runtime confirmation. Flatpak/Wine, other frontend variants, unrecognized SDL fallback devices and runtime verification remain incomplete."
                 } else if nestopia_ue {
                     "Linux Nestopia UE Flatpak 1.53.2 dispatch is connected for exact two-pad NES setups, with pinned app/runtime identity, private config, target-SDL routing checks, and persistent native data. A 2026-09-13 isolated-X11 production oracle passed two-player input, fresh-process battery reload, and F5/F7 slot-0 restoration. Native Linux dispatch is connected for one/two-pad NES setups through a private nestopia.conf/input.conf pair with exact SDL enumeration-order routing and child ownership checks. Wayland, other packages/hosts/modes, firmware, physical pads, hotplug, and save sync remain unverified."
+                } else if vice_xvic {
+                    "Native Linux VICE (xvic) dispatch reuses the VICE .vjm joystick contract for the single VIC-20 port. Setups live in the shared VICE launch list with exactly one player; other VICE machines, keysets, paddles, and runtime input remain unverified."
                 } else if caprice32 {
                     "Native Linux Caprice32 dispatch is connected for fixed CPC joystick ports with two menu buttons. It patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if vita3k {

@@ -14,6 +14,12 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 622: wired VICE (xvic) as a single-port reuse of the VICE .vjm
+adapter. The launch gate accepts the xvic display name with an exactly-one-
+player guard; setups live in the shared VICE launch list and the session,
+review, and verification paths are unchanged. No emulator-count change
+beyond the xvic row: this is a second machine on the same contract.
+
 Step 621: connected the pinned Vita3K SDL gamepad grammar to a
 single-player native Linux launch adapter. Source review proved
 controller-binds is indexed by vita_button (reusing SDL enum values), fixed
@@ -77,6 +83,12 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 622: wired VICE (xvic) as a single-port reuse of the VICE .vjm
+adapter. The launch gate accepts the xvic display name with an exactly-one-
+player guard; setups live in the shared VICE launch list and the session,
+review, and verification paths are unchanged. No emulator-count change
+beyond the xvic row: this is a second machine on the same contract.
 
 Step 621: connected the pinned Vita3K SDL gamepad grammar to a
 single-player native Linux launch adapter. Source review proved
