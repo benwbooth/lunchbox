@@ -317,6 +317,19 @@ pub(super) fn reuse(
                 mapping.play_native_launches.push(setup);
             }
         }
+        "panda3ds"
+            if !mapping
+                .panda3ds_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.panda3ds_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.panda3ds_native_launches.push(setup);
+            }
+        }
         "dreampotato"
             if !mapping
                 .dreampotato_native_launches

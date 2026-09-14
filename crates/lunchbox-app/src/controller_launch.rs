@@ -121,6 +121,7 @@ enum PreparedJsonNativeLaunch {
     Shadps4(crate::controller_shadps4_native::native_command::NativeSession),
     Ymir(crate::controller_ymir_native::native_command::NativeSession),
     DreamPotato(crate::controller_dreampotato_standalone::native_command::NativeSession),
+    Panda3ds(crate::controller_panda3ds_native::native_command::NativeSession),
     Play(crate::controller_play_native::native_command::NativeSession),
     Vita3K(crate::controller_vita3k_native::native_command::NativeSession),
     Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
@@ -171,6 +172,7 @@ impl PreparedJsonNativeLaunch {
             Self::Shadps4(session) => session.spawn(plan, cancel),
             Self::Ymir(session) => session.spawn(plan, cancel),
             Self::DreamPotato(session) => session.spawn(plan, cancel),
+            Self::Panda3ds(session) => session.spawn(plan, cancel),
             Self::Play(session) => session.spawn(plan, cancel),
             Self::Vita3K(session) => session.spawn(plan, cancel),
             Self::Caprice32(session) => session.spawn(plan, cancel),
@@ -216,6 +218,7 @@ impl PreparedJsonNativeLaunch {
             Self::Shadps4(session) => session.verify(cancel),
             Self::Ymir(session) => session.verify(cancel),
             Self::DreamPotato(session) => session.verify(cancel),
+            Self::Panda3ds(session) => session.verify(cancel),
             Self::Play(session) => session.verify(cancel),
             Self::Vita3K(session) => session.verify(cancel),
             Self::Caprice32(session) => session.verify(cancel),
@@ -261,6 +264,7 @@ impl PreparedJsonNativeLaunch {
             Self::Shadps4(session) => session.check_health(),
             Self::Ymir(session) => session.check_health(),
             Self::DreamPotato(session) => session.check_health(),
+            Self::Panda3ds(session) => session.check_health(),
             Self::Play(session) => session.check_health(),
             Self::Vita3K(session) => session.check_health(),
             Self::Caprice32(session) => session.check_health(),
@@ -8229,6 +8233,37 @@ pub fn prepare_with_cancellation(
 
     #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Panda3DS")
+    {
+        let matches: Vec<_> = mapping
+            .panda3ds_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Panda3DS native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_panda3ds_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Panda3ds(native)),
+                description: "Panda3DS: calibrated single 3DS pad at SDL index 0 through a session config.toml, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("DreamPotato")
     {
         let matches: Vec<_> = mapping
@@ -9078,6 +9113,37 @@ pub fn prepare_with_cancellation(
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Play(native)),
                 description: "Play!: calibrated single DualShock 2 pad through a private evdev input profile in a session directory, with exact evdev routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Panda3DS")
+    {
+        let matches: Vec<_> = mapping
+            .panda3ds_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Panda3DS native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_panda3ds_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Panda3ds(native)),
+                description: "Panda3DS: calibrated single 3DS pad at SDL index 0 through a session config.toml, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
                 ..Default::default()
             }));
         }

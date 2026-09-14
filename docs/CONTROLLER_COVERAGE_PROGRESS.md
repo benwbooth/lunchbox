@@ -14,6 +14,21 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 633: connected the pinned Panda3DS hard-wired gamepad mapping to a
+single-player native Linux launch adapter, replacing the module's gamepad
+refusal (the SDL frontend does read gamepad 0; only authored mapping tables
+are absent). Source review proved `SDL_GameControllerOpen(0)`, the exact
+button/axis table including swapped face buttons, `./config.toml` search
+priority, and positional ROM launch. The session proves SDL index 0,
+verifies every calibrated control resolves to its hard-wired element, and
+stages a session config. Catalog/settings/QML/guided/launch dispatch are
+connected. This step also refused Tanuki3DS (keyboard scancodes only, no
+gamepad path). Focused writer tests and a full QML/C++ check passed; no
+Panda3DS executable, ROM, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 67/250 partial
+standalone dispatches and 161/344 catalog source entries (46.8%), not
+runtime completion.
+
 Step 632: connected the pinned Play! evdev input-profile grammar to a
 single-player native Linux launch adapter. Source review proved the
 `'evdv'` evdev provider, the uniq/MAC/vendor-product-version device-id
@@ -229,6 +244,21 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 633: connected the pinned Panda3DS hard-wired gamepad mapping to a
+single-player native Linux launch adapter, replacing the module's gamepad
+refusal (the SDL frontend does read gamepad 0; only authored mapping tables
+are absent). Source review proved `SDL_GameControllerOpen(0)`, the exact
+button/axis table including swapped face buttons, `./config.toml` search
+priority, and positional ROM launch. The session proves SDL index 0,
+verifies every calibrated control resolves to its hard-wired element, and
+stages a session config. Catalog/settings/QML/guided/launch dispatch are
+connected. This step also refused Tanuki3DS (keyboard scancodes only, no
+gamepad path). Focused writer tests and a full QML/C++ check passed; no
+Panda3DS executable, ROM, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 67/250 partial
+standalone dispatches and 161/344 catalog source entries (46.8%), not
+runtime completion.
 
 Step 632: connected the pinned Play! evdev input-profile grammar to a
 single-player native Linux launch adapter. Source review proved the

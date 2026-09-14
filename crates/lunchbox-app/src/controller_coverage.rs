@@ -33,6 +33,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "shadPS4",
     "Ymir",
     "DreamPotato",
+    "Panda3DS",
     "Play!",
     "Vita3K",
     "Caprice32",
@@ -361,6 +362,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let shadps4 = name.eq_ignore_ascii_case("shadPS4");
             let ymir = name.eq_ignore_ascii_case("Ymir");
             let dreampotato = name.eq_ignore_ascii_case("DreamPotato");
+            let panda3ds = name.eq_ignore_ascii_case("Panda3DS");
             let play = name.eq_ignore_ascii_case("Play!");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
@@ -442,6 +444,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if play {
                     "Native Linux Play! dispatch is connected for the single DualShock 2 pad through evdev. It stages a private evdev input profile in a session directory, rechecks the exact evdev routes, and confirms child ownership. Hats and rumble are out of scope; other hosts, packages, and runtime input remain unverified."
+                } else if panda3ds {
+                    "Native Linux Panda3DS dispatch is connected for the single 3DS pad at SDL index 0 with the hard-wired standard mapping. It runs in a session directory with a private config.toml, rechecks the exact SDL2 game-controller routes, and confirms the child loaded the declared SDL library. Touchscreen, other hosts, packages, and runtime input remain unverified."
                 } else if dreampotato {
                     "Native Linux DreamPotato dispatch is connected for the single VMU pad in MonoGame slot 0. It patches a private configuration.json PrimaryInput under XDG_DATA_HOME, rechecks the exact SDL2 game-controller routes, and confirms the child loaded the declared SDL library. Menu buttons, other hosts, packages, and runtime input remain unverified."
                 } else if ymir {

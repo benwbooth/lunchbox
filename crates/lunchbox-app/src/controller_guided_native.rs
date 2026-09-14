@@ -146,6 +146,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "shadps4"
                 | "ymir"
                 | "dreampotato"
+                | "panda3ds"
                 | "play"
                 | "vita3k"
                 | "caprice32"
@@ -666,6 +667,19 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.players = vec![crate::controller_play_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "panda3ds" => {
+            for setup in &mut mapping.panda3ds_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_panda3ds_native::settings::Player {
                     player: 1,
                     controller_id: ids[0].clone(),
                 }];
