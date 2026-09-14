@@ -237,6 +237,7 @@ mod region_priority;
 use lunchbox_controller_probe::retroarch_frontend_autoconfig;
 mod retroarch_shaders;
 mod rom_launch_preparation;
+mod runtime_adapter;
 mod save_cloud;
 mod save_sync;
 pub mod save_sync_model;

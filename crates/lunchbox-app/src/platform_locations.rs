@@ -36,6 +36,23 @@ pub struct Record {
     platform_gaps: BTreeMap<String, PlatformGap>,
 }
 
+impl Record {
+    /// Stable record slug; the save-sync namespace.
+    pub fn slug(&self) -> &str {
+        &self.slug
+    }
+
+    /// Display emulator identity.
+    pub fn emulator(&self) -> &str {
+        &self.emulator
+    }
+
+    /// Whether this host variant has a platform entry (vs a gap).
+    pub fn has_platform(&self, platform: &str) -> bool {
+        self.platforms.contains_key(platform)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct PlatformEntry {
     paths: Vec<CapturedPath>,
@@ -390,14 +407,10 @@ pub fn adapter_locations(
 /// is emulator-specific and guessing an XDG directory would make mutating
 /// callers synchronize the wrong files.
 fn resolve_path(captured: &str, bases: &LocationBases, platform: &str) -> Option<PathBuf> {
-    let trimmed = captured.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
     match platform {
         "linux" if cfg!(target_os = "linux") => {}
         "linux-flatpak" if cfg!(target_os = "linux") => {
-            let rest = trimmed.strip_prefix("~/.var/app/")?;
+            let rest = captured.trim().strip_prefix("~/.var/app/")?;
             let (app_id, relative) = rest.split_once('/')?;
             let root = bases.flatpak_root(app_id)?;
             return Some(root.join(sanitize_relative(relative)?));
@@ -405,6 +418,26 @@ fn resolve_path(captured: &str, bases: &LocationBases, platform: &str) -> Option
         "macos" if cfg!(target_os = "macos") => {}
         "windows" if cfg!(target_os = "windows") => {}
         _ => return None,
+    }
+    resolve_path_for_platform(captured, platform, bases)
+}
+
+/// Resolve one captured path for an explicitly named host platform, without
+/// consulting the compile host. Cross-host resolution lets adapter logic,
+/// dry-run UI, and the cross-platform test suite reason about Windows, macOS,
+/// and Flatpak paths from any build. Callers that touch the local filesystem
+/// must still select the compile host's own platform.
+pub fn resolve_path_for_platform(
+    captured: &str,
+    platform: &str,
+    bases: &LocationBases,
+) -> Option<PathBuf> {
+    if !matches!(platform, "linux" | "linux-flatpak" | "macos" | "windows") {
+        return None;
+    }
+    let trimmed = captured.trim();
+    if trimmed.is_empty() {
+        return None;
     }
     let (prefix, rest) = if let Some(rest) = trimmed.strip_prefix("~/") {
         ("home", rest)
@@ -491,6 +524,69 @@ fn sanitize_relative(rest: &str) -> Option<String> {
         return None;
     }
     Some(cleaned)
+}
+
+/// Resolve captured locations for one emulator on one exact host variant,
+/// filtered to the requested purposes. Unlike [`adapter_locations`], this
+/// resolves with the named platform instead of the compile host, so adapter
+/// logic and the cross-platform test suite can reason about Windows, macOS,
+/// and Flatpak rows from any build. Only `captured` dimensions resolve;
+/// other statuses stay documentation-only with `resolved: None`.
+pub fn adapter_locations_for_platform(
+    records: &[Record],
+    emulator_slug: &str,
+    purposes: &[Purpose],
+    platform: &str,
+    bases: &LocationBases,
+) -> Vec<SaveLocation> {
+    let mut result = Vec::new();
+    for record in records {
+        if record.slug != emulator_slug {
+            continue;
+        }
+        for (entry_platform, entry) in &record.platforms {
+            if entry_platform != platform {
+                continue;
+            }
+            for captured in &entry.paths {
+                let Some(purpose) = Purpose::parse(&captured.purpose) else {
+                    continue;
+                };
+                if !purposes.contains(&purpose) {
+                    continue;
+                }
+                let resolved = (captured.status == "captured")
+                    .then(|| resolve_path_for_platform(&captured.path, platform, bases))
+                    .flatten();
+                result.push(SaveLocation {
+                    emulator_slug: record.slug.clone(),
+                    platform: entry_platform.clone(),
+                    purpose,
+                    status: captured.status.clone(),
+                    documented: captured.path.clone(),
+                    resolved,
+                    naming: captured.naming.clone(),
+                    evidence: captured.evidence.clone(),
+                });
+            }
+        }
+    }
+    result
+}
+
+/// Report the platform-gap status and reason for one record slug on one
+/// host, when the host has no platform entry. Returns `None` when the host
+/// has a platform entry or no gap is recorded.
+pub fn platform_gap_status(
+    records: &[Record],
+    emulator_slug: &str,
+    platform: &str,
+) -> Option<(String, String)> {
+    records
+        .iter()
+        .find(|record| record.slug == emulator_slug)
+        .and_then(|record| record.platform_gaps.get(platform))
+        .map(|gap| (gap.status.clone(), gap.reason.clone()))
 }
 
 /// Resolve locations for an emulator addressed by its display name

@@ -700,9 +700,37 @@ fn runtime_root(
         "86box" if cfg!(target_os = "macos") => home.join("Library/Application Support/86Box/roms"),
         "86box" => base.data_local_dir().join("86Box/roms"),
         "pcem" => home.join(".pcem/roms"),
-        kind => bail!("firmware runtime {kind} has no reviewed target adapter"),
+        kind => record_bios_root(kind, option)?,
     };
     Ok(Some(root))
+}
+
+/// Record-driven firmware root for runtimes without a reviewed hardcoded
+/// adapter. Resolves the record's `bios` capture for the current host
+/// (Flatpak executables resolve the sandbox variant) and returns `None`
+/// only through the caller's bail when nothing machine-resolves.
+fn record_bios_root(kind: &str, option: &RomEmulatorOption) -> Result<PathBuf> {
+    let records = crate::platform_locations::load_records()?;
+    let slug = crate::platform_locations::slug_for_emulator_name(&records, kind)
+        .with_context(|| format!("firmware runtime {kind} has no reviewed target adapter"))?;
+    let platform = match (&option.executable, FirmwareHost::current()?) {
+        (EmulatorExecutable::Flatpak { .. }, FirmwareHost::Linux) => "linux-flatpak",
+        (_, FirmwareHost::Windows) => "windows",
+        (_, FirmwareHost::MacOs) => "macos",
+        _ => "linux",
+    };
+    let bases = crate::platform_locations::LocationBases::detect();
+    crate::platform_locations::adapter_locations_for_platform(
+        &records,
+        &slug,
+        &[crate::platform_locations::Purpose::Bios],
+        platform,
+        &bases,
+    )
+    .into_iter()
+    .filter(|location| location.status == "captured")
+    .find_map(|location| location.resolved)
+    .with_context(|| format!("firmware runtime {kind} has no resolved BIOS path for {platform}"))
 }
 
 fn duckstation_flatpak_bios_root(home: &Path, app_id: &str) -> PathBuf {

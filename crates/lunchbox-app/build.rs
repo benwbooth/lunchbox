@@ -52,6 +52,7 @@ fn main() {
     }
     generate_arcade_lookup();
     generate_platform_record_index();
+    generate_retroarch_core_index();
     let platform_resources = generate_platform_resources();
 
     CxxQtBuilder::new_qml_module(
@@ -216,6 +217,43 @@ fn generate_platform_record_index() {
     let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"))
         .join("platform_records.rs");
     fs::write(output, generated).expect("failed to write platform-record index");
+}
+
+/// Embed every RetroArch core record so adapter logic can serve per-core
+/// firmware files/checksums, save/state naming, and controller contracts
+/// without a database round-trip.
+fn generate_retroarch_core_index() {
+    let manifest_directory =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    let cores_directory = manifest_directory.join("../../emulator_details/retroarch-cores");
+    println!("cargo:rerun-if-changed={}", cores_directory.display());
+
+    let mut cores = fs::read_dir(&cores_directory)
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to read RetroArch core records at {}: {error}",
+                cores_directory.display()
+            )
+        })
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .collect::<Vec<_>>();
+    cores.sort();
+
+    let mut generated = String::from("const CORE_RECORDS: &[&str] = &[\n");
+    for path in cores {
+        println!("cargo:rerun-if-changed={}", path.display());
+        writeln!(generated, "    include_str!({:?}),", path).expect("writing retroarch-core index");
+    }
+    generated.push_str("];\n");
+
+    let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"))
+        .join("retroarch_core_records.rs");
+    fs::write(output, generated).expect("failed to write retroarch-core index");
 }
 
 fn generate_platform_resources() -> PathBuf {
