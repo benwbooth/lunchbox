@@ -278,6 +278,19 @@ pub(super) fn reuse(
                 mapping.eighty_six_box_native_launches.push(setup);
             }
         }
+        "linapple"
+            if !mapping
+                .linapple_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.linapple_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.linapple_native_launches.push(setup);
+            }
+        }
         "skyemu"
             if !mapping
                 .skyemu_native_launches

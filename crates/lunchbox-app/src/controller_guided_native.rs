@@ -134,6 +134,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "picodrive"
                 | "nestopia-ue"
                 | "skyemu"
+                | "linapple"
                 | "rmg"
                 | "simple64"
                 | "kronos"
@@ -608,6 +609,25 @@ pub(crate) fn settings_for_launch<'a>(
                         player: (i + 1) as u8,
                         controller_id: id.clone(),
                     })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "linapple" => {
+            for setup in &mut mapping.linapple_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_linapple_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
                     .collect();
                 setup.review(&mapping.calibrations)?;
             }

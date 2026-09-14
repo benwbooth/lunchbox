@@ -46,6 +46,41 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
         control.optional = false;
     }
     db.layouts.push(skyemu);
+    let mut linapple = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    linapple.id = "linapple-joystick".into();
+    linapple.name = "Apple II — LinApple joystick".into();
+    linapple.family = "two-button".into();
+    linapple.source =
+        "https://github.com/linappleii/linapple/tree/fa31e11b579edec32dd431c8b400a04e60a21dab"
+            .into();
+    linapple.notes = "LinApple native SDL joystick. Directions require one shared analog axis per pair with opposite polarity; two raw buttons; hats cannot drive the analog Axis fields.".into();
+    linapple.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("fire", "Button 1", 70.0, 50.0, "face", true),
+        ("fire2", "Button 2", 80.0, 35.0, "face", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(linapple);
     let mut pointer = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -902,6 +937,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             crate::controller_gambatte_standalone::CONTROLS
                 .iter()
                 .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("linapple", "linapple-joystick") {
+        return Some(
+            crate::controller_linapple_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),
         );
     }

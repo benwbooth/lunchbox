@@ -14,6 +14,34 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 617: connected the pinned LinApple SDL joystick grammar to a
+one/two-player native Linux launch adapter. The explicit --config flag always
+wins the config search order, so a private linapple.conf fully isolates input.
+Directions must share one analog axis per pair with opposite polarity (the
+writer's Axis fields accept only analog axes; hats are refused with an
+explanation). Prelaunch guards cover the exact executable, content, helper,
+SDL library, topology, enumeration, raw item translation, released state, and
+private config; startup requires the child to load the declared SDL library.
+The disk image launches with -1. Catalog/settings/QML/guided/launch dispatch
+are connected. Focused writer tests and a full QML/C++ check passed; no
+LinApple executable, disk, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 51/250 partial standalone
+dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 617: connected the pinned LinApple SDL joystick grammar to a
+one/two-player native Linux launch adapter. The explicit --config flag always
+wins the config search order, so a private linapple.conf fully isolates input.
+Directions must share one analog axis per pair with opposite polarity (the
+writer's Axis fields accept only analog axes; hats are refused with an
+explanation). Prelaunch guards cover the exact executable, content, helper,
+SDL library, topology, enumeration, raw item translation, released state, and
+private config; startup requires the child to load the declared SDL library.
+The disk image launches with -1. Catalog/settings/QML/guided/launch dispatch
+are connected. Focused writer tests and a full QML/C++ check passed; no
+LinApple executable, disk, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 51/250 partial standalone
+dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
 Step 616: connected the pinned SkyEmu SDL binding writer to a
 single-player native Linux launch adapter. A session-owned XDG_DATA_HOME holds
 Sky/SkyEmu/<name>-bindings.bin (512-byte little-endian key/analog tables);
