@@ -131,6 +131,45 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
         control.optional = false;
     }
     db.layouts.push(gbe_plus);
+    let mut eka2l1 = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    eka2l1.id = "eka2l1-phone".into();
+    eka2l1.name = "Symbian phone — EKA2L1 gamepad".into();
+    eka2l1.family = "two-button".into();
+    eka2l1.source = "https://github.com/EKA2L1/EKA2L1/tree/8dd86cffc59d12c59661acecdfddfab5ffc810db/src/emu/qt/src/settings_dialog.cpp".into();
+    eka2l1.notes = "EKA2L1 phone gamepad. Directions drive arrows; face buttons drive softkeys, middle select, and call keys.".into();
+    eka2l1.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("a", "Select (middle)", 70.0, 50.0, "face", true),
+        ("b", "Right softkey", 80.0, 35.0, "face", true),
+        ("x", "Left softkey", 60.0, 35.0, "face", true),
+        ("y", "Call (green)", 90.0, 50.0, "face", true),
+        ("l", "Star", 5.0, 35.0, "shoulder", true),
+        ("r", "Hash", 95.0, 35.0, "shoulder", true),
+        ("start", "End (red)", 30.0, 90.0, "menu", true),
+        ("select", "Clear", 70.0, 90.0, "menu", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(eka2l1);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -869,6 +908,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["Uzebox"],
             "https://github.com/Uzebox/uzebox/tree/abf5125847e68a6b7c4432f7849cd5baf717bba5/tools/uzem",
         ),
+        (
+            "eka2l1",
+            "eka2l1-phone",
+            1,
+            vec!["Symbian"],
+            "https://github.com/EKA2L1/EKA2L1/tree/8dd86cffc59d12c59661acecdfddfab5ffc810db",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -1169,6 +1215,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("vita3k", "vita3k-vita") {
         return Some(
             crate::controller_vita3k_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("eka2l1", "eka2l1-phone") {
+        return Some(
+            crate::controller_eka2l1_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

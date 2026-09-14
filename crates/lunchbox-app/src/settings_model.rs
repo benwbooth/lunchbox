@@ -601,6 +601,15 @@ pub mod qobject {
         #[qinvokable]
         fn uzem_native_setups_json(self: &SettingsModel) -> QString;
         #[qinvokable]
+        fn eka2l1_native_setups_json(self: &SettingsModel) -> QString;
+        #[qinvokable]
+        fn review_eka2l1_native_setups(self: &SettingsModel, configuration: QString) -> QString;
+        #[qinvokable]
+        fn stage_eka2l1_native_setups(
+            self: Pin<&mut SettingsModel>,
+            configuration: QString,
+        ) -> QString;
+        #[qinvokable]
         fn review_uzem_native_setups(self: &SettingsModel, configuration: QString) -> QString;
         #[qinvokable]
         fn stage_uzem_native_setups(
@@ -3780,6 +3789,63 @@ impl qobject::SettingsModel {
             serde_json::to_string_pretty(&self.rust().controller_mapping.uzem_native_launches)
                 .expect("Uzem native setups serialize"),
         )
+    }
+
+    pub fn eka2l1_native_setups_json(&self) -> QString {
+        qstring(
+            serde_json::to_string_pretty(&self.rust().controller_mapping.eka2l1_native_launches)
+                .expect("EKA2L1 native setups serialize"),
+        )
+    }
+
+    pub fn review_eka2l1_native_setups(&self, configuration: QString) -> QString {
+        let result = (|| -> anyhow::Result<Vec<serde_json::Value>> {
+            let text = configuration.to_string();
+            anyhow::ensure!(
+                text.len() <= 2 * 1024 * 1024,
+                "EKA2L1 native setup text exceeds size limit"
+            );
+            let setups: Vec<crate::controller_eka2l1_native::settings::SavedSetup> =
+                serde_json::from_str(&text)?;
+            crate::controller_eka2l1_native::settings::validate_setups(&setups)?;
+            setups
+                .iter()
+                .map(|setup| setup.review(&self.rust().controller_mapping.calibrations))
+                .collect()
+        })();
+        qstring(match result {
+            Ok(reviews) => serde_json::json!({"setups": reviews}).to_string(),
+            Err(error) => serde_json::json!({"error": format!("{error:#}")}).to_string(),
+        })
+    }
+
+    pub fn stage_eka2l1_native_setups(mut self: Pin<&mut Self>, configuration: QString) -> QString {
+        let result =
+            (|| -> anyhow::Result<Vec<crate::controller_eka2l1_native::settings::SavedSetup>> {
+                let text = configuration.to_string();
+                anyhow::ensure!(
+                    text.len() <= 2 * 1024 * 1024,
+                    "EKA2L1 native setup text exceeds size limit"
+                );
+                let setups: Vec<crate::controller_eka2l1_native::settings::SavedSetup> =
+                    serde_json::from_str(&text)?;
+                crate::controller_eka2l1_native::settings::validate_setups(&setups)?;
+                for setup in &setups {
+                    setup.review(&self.rust().controller_mapping.calibrations)?;
+                }
+                Ok(setups)
+            })();
+        match result {
+            Ok(setups) => {
+                self.as_mut()
+                    .rust_mut()
+                    .controller_mapping
+                    .eka2l1_native_launches = setups;
+                self.as_mut().controller_settings_changed();
+                qstring("")
+            }
+            Err(error) => qstring(format!("{error:#}")),
+        }
     }
 
     pub fn review_uzem_native_setups(&self, configuration: QString) -> QString {

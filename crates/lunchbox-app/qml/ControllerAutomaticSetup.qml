@@ -585,6 +585,7 @@ ColumnLayout {
         readonly property bool gbePlusNative: adapter === "gbe-plus-native"
         readonly property bool pokeminiNative: adapter === "pokemini-native"
         readonly property bool uzemNative: adapter === "uzem-native"
+        readonly property bool eka2l1Native: adapter === "eka2l1-native"
         readonly property bool vita3kNative: adapter === "vita3k-native"
         readonly property bool caprice32Native: adapter === "caprice32-native"
         readonly property bool b2Native: adapter === "b2-native"
@@ -653,6 +654,8 @@ ColumnLayout {
                     ? "Caprice32: edit a JSON list with emulator_id, content (absolute disk/ROM path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch passes -c with a private cap32.cfg ahead of the content path; the pads must hold SDL instances 0/1 and start/select supply the two one-based menu buttons. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.vita3kNative
                     ? "Vita3K: edit a JSON list with emulator_id, content (absolute installed-app path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes -c with a private config.yml ahead of -r <app> and maps the fifteen buttons plus twin sticks through exact SDL gamepad indices. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.eka2l1Native
+                    ? "EKA2L1: edit a JSON list with emulator_id, content (absolute N-Gage game path), config_source (absolute config.yml), probe_program, sdl_library, executable_sha256, and exactly one player. Launch runs in a session directory with a patched config.yml plus keybind profile ahead of --runng; the pad must be an SDL game controller and only mapped controls translate. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.uzemNative
                     ? "Uzem: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch runs in a session directory holding a private joystick-settings binary ahead of the ROM path; the pads must hold SDL slots 0/1, directions pair into shared axes, and hats need no mapping. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.pokeminiNative
@@ -797,6 +800,8 @@ ColumnLayout {
                             ? setup.settingsModel.review_caprice32_native_setups(duckstationEditor.text)
                             : duckstationSetups.vita3kNative
                             ? setup.settingsModel.review_vita3k_native_setups(duckstationEditor.text)
+                            : duckstationSetups.eka2l1Native
+                            ? setup.settingsModel.review_eka2l1_native_setups(duckstationEditor.text)
                             : duckstationSetups.uzemNative
                             ? setup.settingsModel.review_uzem_native_setups(duckstationEditor.text)
                             : duckstationSetups.pokeminiNative
@@ -917,6 +922,8 @@ ColumnLayout {
                             ? setup.settingsModel.stage_caprice32_native_setups(duckstationEditor.text)
                             : duckstationSetups.vita3kNative
                             ? setup.settingsModel.stage_vita3k_native_setups(duckstationEditor.text)
+                            : duckstationSetups.eka2l1Native
+                            ? setup.settingsModel.stage_eka2l1_native_setups(duckstationEditor.text)
                             : duckstationSetups.uzemNative
                             ? setup.settingsModel.stage_uzem_native_setups(duckstationEditor.text)
                             : duckstationSetups.pokeminiNative
@@ -1026,6 +1033,8 @@ ColumnLayout {
                             ? "Staged. Save settings in the main page. Caprice32 native dispatch patches a private cap32.cfg and rechecks exact SDL instance order at launch; no devices were opened."
                             : duckstationSetups.vita3kNative
                             ? "Staged. Save settings in the main page. Vita3K native dispatch writes a private config.yml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
+                            : duckstationSetups.eka2l1Native
+                            ? "Staged. Save settings in the main page. EKA2L1 native dispatch stages a session config plus keybind profile and rechecks exact SDL2 routes at launch; no devices were opened."
                             : duckstationSetups.uzemNative
                             ? "Staged. Save settings in the main page. Uzem native dispatch runs in a session directory with a private joystick-settings binary and rechecks SDL slot order at launch; no devices were opened."
                             : duckstationSetups.pokeminiNative

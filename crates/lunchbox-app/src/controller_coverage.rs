@@ -347,6 +347,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let gbe_plus = name.eq_ignore_ascii_case("GBE+");
             let pokemini = name.eq_ignore_ascii_case("PokeMini");
             let uzem = name.eq_ignore_ascii_case("Uzem");
+            let eka2l1 = name.eq_ignore_ascii_case("EKA2L1");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
             let caprice32 = name.eq_ignore_ascii_case("Caprice32");
@@ -425,6 +426,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Caprice32 dispatch is connected for fixed CPC joystick ports with two menu buttons. It patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if vita3k {
                     "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
+                } else if eka2l1 {
+                    "Native Linux EKA2L1 dispatch is connected for the single Symbian phone pad. It stages a session config.yml plus keybind profile, rechecks the exact SDL2 routes through the pad game-controller mapping, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if uzem {
                     "Native Linux Uzem dispatch is connected for SNES pads on SDL slots 0/1. It writes a private joystick-settings binary in a session working directory, rechecks the exact SDL routes, and confirms the child loaded the declared SDL library. Hats need no mapping; other hosts, packages, and runtime input remain unverified."
                 } else if pokemini {

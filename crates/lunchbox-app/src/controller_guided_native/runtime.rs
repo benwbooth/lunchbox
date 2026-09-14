@@ -304,6 +304,19 @@ pub(super) fn reuse(
                 mapping.vita3k_native_launches.push(setup);
             }
         }
+        "eka2l1"
+            if !mapping
+                .eka2l1_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.eka2l1_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.eka2l1_native_launches.push(setup);
+            }
+        }
         "uzem"
             if !mapping
                 .uzem_native_launches

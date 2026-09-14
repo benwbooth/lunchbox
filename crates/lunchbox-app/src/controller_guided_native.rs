@@ -651,6 +651,19 @@ pub(crate) fn settings_for_launch<'a>(
                 setup.review(&mapping.calibrations)?;
             }
         }
+        "eka2l1" => {
+            for setup in &mut mapping.eka2l1_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_eka2l1_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
         "uzem" => {
             for setup in &mut mapping.uzem_native_launches {
                 if !matches(&setup.emulator_id, &setup.content) {

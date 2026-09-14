@@ -14,6 +14,20 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 626: connected the pinned EKA2L1 keybind grammar to a
+single-player native Linux launch adapter. Source review proved the
+`(controller_id, button_id)` lookup (SDL joystick index plus frontend
+button codes), the `SDL_TO_FRONTEND_BUTTON_MAP` order, stick/trigger axis
+codes, the `--kbp`/`--runng` launch flags, and cwd-relative config.yml plus
+bindings resolution. The session translates calibrated controls through the
+pad's effective game-controller mapping, stages a patched config plus
+profile, and proves game-controller status. Catalog/settings/QML/guided/
+launch dispatch are connected. Focused writer/translation tests and a full
+QML/C++ check passed; no EKA2L1 executable, game, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+60/250 partial standalone dispatches and 154/344 catalog source entries
+(44.8%), not runtime completion.
+
 Step 625: connected the pinned Uzem joystick-settings binary to a
 one/two-player native Linux launch adapter. Source review proved the
 per-stick `{u8 button, u8 bit}` remap order with SNES bit values, the
@@ -124,6 +138,20 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 626: connected the pinned EKA2L1 keybind grammar to a
+single-player native Linux launch adapter. Source review proved the
+`(controller_id, button_id)` lookup (SDL joystick index plus frontend
+button codes), the `SDL_TO_FRONTEND_BUTTON_MAP` order, stick/trigger axis
+codes, the `--kbp`/`--runng` launch flags, and cwd-relative config.yml plus
+bindings resolution. The session translates calibrated controls through the
+pad's effective game-controller mapping, stages a patched config plus
+profile, and proves game-controller status. Catalog/settings/QML/guided/
+launch dispatch are connected. Focused writer/translation tests and a full
+QML/C++ check passed; no EKA2L1 executable, game, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+60/250 partial standalone dispatches and 154/344 catalog source entries
+(44.8%), not runtime completion.
 
 Step 625: connected the pinned Uzem joystick-settings binary to a
 one/two-player native Linux launch adapter. Source review proved the

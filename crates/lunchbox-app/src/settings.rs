@@ -356,6 +356,8 @@ pub struct ControllerMappingSettings {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) uzem_native_launches: Vec<crate::controller_uzem_standalone::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) eka2l1_native_launches: Vec<crate::controller_eka2l1_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) vita3k_native_launches: Vec<crate::controller_vita3k_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) caprice32_native_launches:
@@ -532,6 +534,7 @@ impl Default for ControllerMappingSettings {
             gbe_plus_native_launches: Vec::new(),
             pokemini_native_launches: Vec::new(),
             uzem_native_launches: Vec::new(),
+            eka2l1_native_launches: Vec::new(),
             vita3k_native_launches: Vec::new(),
             caprice32_native_launches: Vec::new(),
             rmg_native_launches: Vec::new(),
@@ -1551,6 +1554,25 @@ impl ControllerMappingSettings {
             &self.nestopia_ue_native_launches,
         )?;
         crate::controller_skyemu_native::settings::validate_setups(&self.skyemu_native_launches)?;
+        crate::controller_linapple_native::settings::validate_setups(
+            &self.linapple_native_launches,
+        )?;
+        crate::controller_fuse_standalone::settings::validate_setups(&self.fuse_native_launches)?;
+        crate::controller_amiberry_native::settings::validate_setups(
+            &self.amiberry_native_launches,
+        )?;
+        crate::controller_gbe_plus_standalone::settings::validate_setups(
+            &self.gbe_plus_native_launches,
+        )?;
+        crate::controller_pokemini_standalone::settings::validate_setups(
+            &self.pokemini_native_launches,
+        )?;
+        crate::controller_uzem_standalone::settings::validate_setups(&self.uzem_native_launches)?;
+        crate::controller_eka2l1_native::settings::validate_setups(&self.eka2l1_native_launches)?;
+        crate::controller_vita3k_native::settings::validate_setups(&self.vita3k_native_launches)?;
+        crate::controller_caprice32_standalone::settings::validate_setups(
+            &self.caprice32_native_launches,
+        )?;
         crate::controller_rmg_native::settings::validate_setups(&self.rmg_native_launches)?;
         crate::controller_simple64_native::settings::validate_setups(
             &self.simple64_native_launches,
