@@ -139,6 +139,9 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "amiberry"
                 | "gbe-plus"
                 | "pokemini"
+                | "uzem"
+                | "eka2l1"
+                | "cemu"
                 | "vita3k"
                 | "caprice32"
                 | "rmg"
@@ -645,6 +648,19 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.players = vec![crate::controller_vita3k_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "cemu" => {
+            for setup in &mut mapping.cemu_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_cemu_native::settings::Player {
                     player: 1,
                     controller_id: ids[0].clone(),
                 }];

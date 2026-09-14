@@ -170,6 +170,52 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(eka2l1);
+    let mut cemu = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    cemu.id = "cemu-vpad".into();
+    cemu.name = "Wii U GamePad — Cemu VPAD".into();
+    cemu.family = "two-button".into();
+    cemu.source = "https://github.com/cemu-project/Cemu/tree/3310f3b8b184d64a62b89fd59088c799432badf5/src/input".into();
+    cemu.notes =
+        "Cemu Wii U GamePad. Face buttons, triggers, plus/minus, dpad, and the left stick.".into();
+    cemu.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("a", "A", 90.0, 48.0, "face", true),
+        ("b", "B", 78.0, 60.0, "face", true),
+        ("x", "X", 78.0, 36.0, "face", true),
+        ("y", "Y", 66.0, 48.0, "face", true),
+        ("l", "L", 20.0, 12.0, "shoulder", true),
+        ("r", "R", 80.0, 12.0, "shoulder", true),
+        ("zl", "ZL", 20.0, 24.0, "shoulder", true),
+        ("zr", "ZR", 80.0, 24.0, "shoulder", true),
+        ("plus", "Plus", 60.0, 88.0, "menu", true),
+        ("minus", "Minus", 47.0, 88.0, "menu", true),
+        ("stick_up", "Left stick up", 20.0, 70.0, "stick", true),
+        ("stick_down", "Left stick down", 20.0, 90.0, "stick", true),
+        ("stick_left", "Left stick left", 10.0, 80.0, "stick", true),
+        ("stick_right", "Left stick right", 30.0, 80.0, "stick", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(cemu);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -915,6 +961,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["Symbian"],
             "https://github.com/EKA2L1/EKA2L1/tree/8dd86cffc59d12c59661acecdfddfab5ffc810db",
         ),
+        (
+            "cemu",
+            "cemu-vpad",
+            1,
+            vec!["Nintendo Wii U"],
+            "https://github.com/cemu-project/Cemu/tree/3310f3b8b184d64a62b89fd59088c799432badf5",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -1215,6 +1268,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("vita3k", "vita3k-vita") {
         return Some(
             crate::controller_vita3k_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("cemu", "cemu-vpad") {
+        return Some(
+            crate::controller_cemu_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

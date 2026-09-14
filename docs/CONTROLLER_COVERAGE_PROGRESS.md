@@ -14,6 +14,23 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 627: connected the pinned Cemu SDL profile grammar to a
+single-player native Linux launch adapter. Source review proved the
+`{guid_index}_{guid}` uuid matched with `SDL_GetGamepadGUIDForID`, the
+same-GUID occurrence counter, `controllerProfiles/controller0.xml` under the
+XDG config root, and `-g` game launch. The session takes the gamepad GUID
+from the effective SDL mapping string, requires a unique GUID
+(guid_index 0), inverts resolved bindings into gamepad button/axis codes,
+and stages controller0.xml. Catalog/settings/QML/guided/launch dispatch are
+connected. This step also repaired silent wiring misses found by a
+mechanical audit: Uzem/EKA2L1 were absent from NATIVE_ADAPTERS, the guided
+supports list, and QML buttons/titles, and eight recent adapters lacked
+settings-level validation. Focused writer tests and a full QML/C++ check
+passed; no Cemu executable, game, firmware, save, state, or controller
+runtime was exercised. This moves the source-backed inventory to 61/250
+partial standalone dispatches and 155/344 catalog source entries (45.1%),
+not runtime completion.
+
 Step 626: connected the pinned EKA2L1 keybind grammar to a
 single-player native Linux launch adapter. Source review proved the
 `(controller_id, button_id)` lookup (SDL joystick index plus frontend
@@ -138,6 +155,23 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 627: connected the pinned Cemu SDL profile grammar to a
+single-player native Linux launch adapter. Source review proved the
+`{guid_index}_{guid}` uuid matched with `SDL_GetGamepadGUIDForID`, the
+same-GUID occurrence counter, `controllerProfiles/controller0.xml` under the
+XDG config root, and `-g` game launch. The session takes the gamepad GUID
+from the effective SDL mapping string, requires a unique GUID
+(guid_index 0), inverts resolved bindings into gamepad button/axis codes,
+and stages controller0.xml. Catalog/settings/QML/guided/launch dispatch are
+connected. This step also repaired silent wiring misses found by a
+mechanical audit: Uzem/EKA2L1 were absent from NATIVE_ADAPTERS, the guided
+supports list, and QML buttons/titles, and eight recent adapters lacked
+settings-level validation. Focused writer tests and a full QML/C++ check
+passed; no Cemu executable, game, firmware, save, state, or controller
+runtime was exercised. This moves the source-backed inventory to 61/250
+partial standalone dispatches and 155/344 catalog source entries (45.1%),
+not runtime completion.
 
 Step 626: connected the pinned EKA2L1 keybind grammar to a
 single-player native Linux launch adapter. Source review proved the

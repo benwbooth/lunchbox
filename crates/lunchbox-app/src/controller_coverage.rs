@@ -26,6 +26,9 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "Amiberry",
     "GBE+",
     "PokeMini",
+    "Uzem",
+    "EKA2L1",
+    "Cemu",
     "Vita3K",
     "Caprice32",
     "puNES",
@@ -348,6 +351,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let pokemini = name.eq_ignore_ascii_case("PokeMini");
             let uzem = name.eq_ignore_ascii_case("Uzem");
             let eka2l1 = name.eq_ignore_ascii_case("EKA2L1");
+            let cemu = name.eq_ignore_ascii_case("Cemu");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
             let caprice32 = name.eq_ignore_ascii_case("Caprice32");
@@ -426,6 +430,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Caprice32 dispatch is connected for fixed CPC joystick ports with two menu buttons. It patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if vita3k {
                     "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
+                } else if cemu {
+                    "Native Linux Cemu dispatch is connected for the single Wii U GamePad. It writes a private controller0.xml under XDG_CONFIG_HOME, rechecks the exact SDL3 gamepad routes through a unique GUID, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if eka2l1 {
                     "Native Linux EKA2L1 dispatch is connected for the single Symbian phone pad. It stages a session config.yml plus keybind profile, rechecks the exact SDL2 routes through the pad game-controller mapping, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if uzem {

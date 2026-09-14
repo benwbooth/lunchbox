@@ -331,6 +331,36 @@ ColumnLayout {
         }
     }
     Button {
+        text: "Uzem setups…"
+        onClicked: {
+            duckstationSetups.adapter = "uzem-native"
+            duckstationEditor.text = setup.settingsModel.uzem_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch writes a private joystick-settings binary in a session working directory, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "EKA2L1 phone setups…"
+        onClicked: {
+            duckstationSetups.adapter = "eka2l1-native"
+            duckstationEditor.text = setup.settingsModel.eka2l1_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch stages a session config.yml plus keybind profile, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "Cemu Wii U setups…"
+        onClicked: {
+            duckstationSetups.adapter = "cemu-native"
+            duckstationEditor.text = setup.settingsModel.cemu_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch writes a private controller0.xml under XDG_CONFIG_HOME, rechecks the exact SDL3 gamepad routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
         text: "PokeMini setups…"
         onClicked: {
             duckstationSetups.adapter = "pokemini-native"
@@ -586,6 +616,7 @@ ColumnLayout {
         readonly property bool pokeminiNative: adapter === "pokemini-native"
         readonly property bool uzemNative: adapter === "uzem-native"
         readonly property bool eka2l1Native: adapter === "eka2l1-native"
+        readonly property bool cemuNative: adapter === "cemu-native"
         readonly property bool vita3kNative: adapter === "vita3k-native"
         readonly property bool caprice32Native: adapter === "caprice32-native"
         readonly property bool b2Native: adapter === "b2-native"
@@ -599,7 +630,7 @@ ColumnLayout {
         readonly property bool rpcs3: adapter === "rpcs3"
         readonly property bool pcsx2: adapter === "pcsx2"
         readonly property var catalog: JSON.parse(setup.settingsModel.controller_catalog_json())
-        title: punes ? "puNES Flatpak setups — exact Linux deployment" : nestopia ? "Nestopia UE Flatpak setups — exact Linux deployment" : melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : gearNative ? "Gearsystem / Gearcoleco setups — partial native Linux" : xroarNative ? "XRoar setups — partial native Linux" : zesaruxNative ? "ZEsarUX Kempston setups — partial native Linux" : oricutronNative ? "Oricutron joystick setups — partial native Linux" : yabaSanshiroNative ? "Yaba Sanshiro 2 Saturn setups — partial native Linux" : kronosNative ? "Kronos Saturn setups — partial native Linux" : atariPlusPlusNative ? "Atari++ AnalogJoystick setups — partial native Linux" : aranymNative ? "ARAnyM IKBD joystick setups — partial native Linux" : atari800Native ? "Atari800 digital joystick setups — partial native Linux" : nanoboyadvanceNative ? "NanoBoyAdvance GBA controller setups — partial native Linux" : vbaMNative ? "VBA-M GBA controller setups — partial native Linux" : eightySixBoxNative ? "86Box PC gameport setups — partial native Linux" : a7800Native ? "A7800 Pro-Line setups — partial native Linux" : gambatteNative ? "Gambatte Game Boy setups — partial native Linux" : picodriveNative ? "PicoDrive Genesis setups — partial native Linux" : nestopiaUeNative ? "Nestopia UE native setups — partial native Linux" : skyemuNative ? "SkyEmu DS setups — partial native Linux" : linappleNative ? "LinApple Apple II setups — partial native Linux" : caprice32Native ? "Caprice32 CPC setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
+        title: punes ? "puNES Flatpak setups — exact Linux deployment" : nestopia ? "Nestopia UE Flatpak setups — exact Linux deployment" : melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : gearNative ? "Gearsystem / Gearcoleco setups — partial native Linux" : xroarNative ? "XRoar setups — partial native Linux" : zesaruxNative ? "ZEsarUX Kempston setups — partial native Linux" : oricutronNative ? "Oricutron joystick setups — partial native Linux" : yabaSanshiroNative ? "Yaba Sanshiro 2 Saturn setups — partial native Linux" : kronosNative ? "Kronos Saturn setups — partial native Linux" : atariPlusPlusNative ? "Atari++ AnalogJoystick setups — partial native Linux" : aranymNative ? "ARAnyM IKBD joystick setups — partial native Linux" : atari800Native ? "Atari800 digital joystick setups — partial native Linux" : nanoboyadvanceNative ? "NanoBoyAdvance GBA controller setups — partial native Linux" : vbaMNative ? "VBA-M GBA controller setups — partial native Linux" : eightySixBoxNative ? "86Box PC gameport setups — partial native Linux" : a7800Native ? "A7800 Pro-Line setups — partial native Linux" : gambatteNative ? "Gambatte Game Boy setups — partial native Linux" : picodriveNative ? "PicoDrive Genesis setups — partial native Linux" : nestopiaUeNative ? "Nestopia UE native setups — partial native Linux" : skyemuNative ? "SkyEmu DS setups — partial native Linux" : linappleNative ? "LinApple Apple II setups — partial native Linux" : caprice32Native ? "Caprice32 CPC setups — partial native Linux" : fuseNative ? "Fuse Spectrum setups — partial native Linux" : amiberryNative ? "Amiberry Amiga setups — partial native Linux" : gbePlusNative ? "GBE+ GBA setups — partial native Linux" : pokeminiNative ? "PokeMini setups — partial native Linux" : uzemNative ? "Uzem setups — partial native Linux" : eka2l1Native ? "EKA2L1 phone setups — partial native Linux" : vita3kNative ? "Vita3K Vita setups — partial native Linux" : cemuNative ? "Cemu Wii U setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
         width: Math.min(900, setup.width)
         height: 640
         modal: true
@@ -654,6 +685,8 @@ ColumnLayout {
                     ? "Caprice32: edit a JSON list with emulator_id, content (absolute disk/ROM path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch passes -c with a private cap32.cfg ahead of the content path; the pads must hold SDL instances 0/1 and start/select supply the two one-based menu buttons. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.vita3kNative
                     ? "Vita3K: edit a JSON list with emulator_id, content (absolute installed-app path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes -c with a private config.yml ahead of -r <app> and maps the fifteen buttons plus twin sticks through exact SDL gamepad indices. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.cemuNative
+                    ? "Cemu: edit a JSON list with emulator_id, content (absolute game path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes -g with a private controller0.xml under XDG_CONFIG_HOME; the pad must be an SDL gamepad with a unique GUID and only mapped controls translate. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.eka2l1Native
                     ? "EKA2L1: edit a JSON list with emulator_id, content (absolute N-Gage game path), config_source (absolute config.yml), probe_program, sdl_library, executable_sha256, and exactly one player. Launch runs in a session directory with a patched config.yml plus keybind profile ahead of --runng; the pad must be an SDL game controller and only mapped controls translate. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.uzemNative
@@ -800,6 +833,8 @@ ColumnLayout {
                             ? setup.settingsModel.review_caprice32_native_setups(duckstationEditor.text)
                             : duckstationSetups.vita3kNative
                             ? setup.settingsModel.review_vita3k_native_setups(duckstationEditor.text)
+                            : duckstationSetups.cemuNative
+                            ? setup.settingsModel.review_cemu_native_setups(duckstationEditor.text)
                             : duckstationSetups.eka2l1Native
                             ? setup.settingsModel.review_eka2l1_native_setups(duckstationEditor.text)
                             : duckstationSetups.uzemNative
@@ -922,6 +957,8 @@ ColumnLayout {
                             ? setup.settingsModel.stage_caprice32_native_setups(duckstationEditor.text)
                             : duckstationSetups.vita3kNative
                             ? setup.settingsModel.stage_vita3k_native_setups(duckstationEditor.text)
+                            : duckstationSetups.cemuNative
+                            ? setup.settingsModel.stage_cemu_native_setups(duckstationEditor.text)
                             : duckstationSetups.eka2l1Native
                             ? setup.settingsModel.stage_eka2l1_native_setups(duckstationEditor.text)
                             : duckstationSetups.uzemNative
@@ -1033,6 +1070,8 @@ ColumnLayout {
                             ? "Staged. Save settings in the main page. Caprice32 native dispatch patches a private cap32.cfg and rechecks exact SDL instance order at launch; no devices were opened."
                             : duckstationSetups.vita3kNative
                             ? "Staged. Save settings in the main page. Vita3K native dispatch writes a private config.yml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
+                            : duckstationSetups.cemuNative
+                            ? "Staged. Save settings in the main page. Cemu native dispatch writes a private controller0.xml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
                             : duckstationSetups.eka2l1Native
                             ? "Staged. Save settings in the main page. EKA2L1 native dispatch stages a session config plus keybind profile and rechecks exact SDL2 routes at launch; no devices were opened."
                             : duckstationSetups.uzemNative
