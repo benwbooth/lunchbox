@@ -110,6 +110,7 @@ enum PreparedJsonNativeLaunch {
     NestopiaUe(crate::controller_nestopia_ue_native::native_command::NativeSession),
     SkyEmu(crate::controller_skyemu_native::native_command::NativeSession),
     LinApple(crate::controller_linapple_native::native_command::NativeSession),
+    Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
     YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
     Kronos(crate::controller_kronos_native::native_command::NativeSession),
     Rmg(crate::controller_rmg_native::native_command::NativeSession),
@@ -146,6 +147,7 @@ impl PreparedJsonNativeLaunch {
             Self::NestopiaUe(session) => session.spawn(plan, cancel),
             Self::SkyEmu(session) => session.spawn(plan, cancel),
             Self::LinApple(session) => session.spawn(plan, cancel),
+            Self::Caprice32(session) => session.spawn(plan, cancel),
             Self::YabaSanshiro(session) => session.spawn(plan, cancel),
             Self::Kronos(session) => session.spawn(plan, cancel),
             Self::Rmg(session) => session.spawn(plan, cancel),
@@ -177,6 +179,7 @@ impl PreparedJsonNativeLaunch {
             Self::NestopiaUe(session) => session.verify(cancel),
             Self::SkyEmu(session) => session.verify(cancel),
             Self::LinApple(session) => session.verify(cancel),
+            Self::Caprice32(session) => session.verify(cancel),
             Self::YabaSanshiro(session) => session.verify(cancel),
             Self::Kronos(session) => session.verify(cancel),
             Self::Rmg(session) => session.verify(cancel),
@@ -208,6 +211,7 @@ impl PreparedJsonNativeLaunch {
             Self::NestopiaUe(session) => session.check_health(),
             Self::SkyEmu(session) => session.check_health(),
             Self::LinApple(session) => session.check_health(),
+            Self::Caprice32(session) => session.check_health(),
             Self::YabaSanshiro(session) => session.check_health(),
             Self::Kronos(session) => session.check_health(),
             Self::Rmg(session) => session.check_health(),
@@ -8073,6 +8077,37 @@ pub fn prepare_with_cancellation(
 
     #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Caprice32")
+    {
+        let matches: Vec<_> = mapping
+            .caprice32_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Caprice32 native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_caprice32_standalone::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Caprice32(native)),
+                description: "Caprice32: calibrated fixed CPC joystick ports with two menu buttons through a private cap32.cfg passed with -c, with exact SDL instance order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("LinApple")
     {
         let matches: Vec<_> = mapping
@@ -8486,6 +8521,37 @@ pub fn prepare_with_cancellation(
                 stella: None,
                 description: "FCEUX Qt: calibrated native NES controls; partial Linux support; ROM device overrides not resolved"
                     .into(),
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Caprice32")
+    {
+        let matches: Vec<_> = mapping
+            .caprice32_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Caprice32 native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_caprice32_standalone::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Caprice32(native)),
+                description: "Caprice32: calibrated fixed CPC joystick ports with two menu buttons through a private cap32.cfg passed with -c, with exact SDL instance order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
             }));
         }
     }

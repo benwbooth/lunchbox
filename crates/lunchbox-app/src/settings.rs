@@ -342,6 +342,9 @@ pub struct ControllerMappingSettings {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) linapple_native_launches:
         Vec<crate::controller_linapple_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) caprice32_native_launches:
+        Vec<crate::controller_caprice32_standalone::settings::SavedSetup>,
     #[serde(default)]
     pub(crate) rmg_native_launches: Vec<crate::controller_rmg_native::settings::SavedSetup>,
     #[serde(default)]
@@ -509,6 +512,7 @@ impl Default for ControllerMappingSettings {
             nestopia_ue_native_launches: Vec::new(),
             skyemu_native_launches: Vec::new(),
             linapple_native_launches: Vec::new(),
+            caprice32_native_launches: Vec::new(),
             rmg_native_launches: Vec::new(),
             simple64_native_launches: Vec::new(),
             yaba_sanshiro_native_launches: Vec::new(),

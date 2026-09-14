@@ -14,6 +14,18 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 618: connected the pinned Caprice32 fixed-instance grammar to a
+one/two-player native Linux launch adapter. The explicit -c flag always wins
+the config search order, so a private cap32.cfg fully isolates joystick
+settings. The pinned mapper only recognizes SDL instances 0/1, so the session
+proves the selected pads hold those slots via the probe instance IDs and
+rechecks order before launch; player one's start/select supply the two
+one-based global menu buttons. Catalog/settings/QML/guided/launch dispatch
+are connected. Focused writer tests and a full QML/C++ check passed; no
+Caprice32 executable, disk, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 52/250 partial standalone
+dispatches and 146/344 catalog source entries (42.4%), not runtime completion.
+
 Step 617: connected the pinned LinApple SDL joystick grammar to a
 one/two-player native Linux launch adapter. The explicit --config flag always
 wins the config search order, so a private linapple.conf fully isolates input.
@@ -27,6 +39,18 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 618: connected the pinned Caprice32 fixed-instance grammar to a
+one/two-player native Linux launch adapter. The explicit -c flag always wins
+the config search order, so a private cap32.cfg fully isolates joystick
+settings. The pinned mapper only recognizes SDL instances 0/1, so the session
+proves the selected pads hold those slots via the probe instance IDs and
+rechecks order before launch; player one's start/select supply the two
+one-based global menu buttons. Catalog/settings/QML/guided/launch dispatch
+are connected. Focused writer tests and a full QML/C++ check passed; no
+Caprice32 executable, disk, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 52/250 partial standalone
+dispatches and 146/344 catalog source entries (42.4%), not runtime completion.
 
 Step 617: connected the pinned LinApple SDL joystick grammar to a
 one/two-player native Linux launch adapter. The explicit --config flag always

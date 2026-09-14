@@ -135,6 +135,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "nestopia-ue"
                 | "skyemu"
                 | "linapple"
+                | "caprice32"
                 | "rmg"
                 | "simple64"
                 | "kronos"
@@ -609,6 +610,25 @@ pub(crate) fn settings_for_launch<'a>(
                         player: (i + 1) as u8,
                         controller_id: id.clone(),
                     })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "caprice32" => {
+            for setup in &mut mapping.caprice32_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_caprice32_standalone::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
                     .collect();
                 setup.review(&mapping.calibrations)?;
             }

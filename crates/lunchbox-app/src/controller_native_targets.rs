@@ -46,6 +46,43 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
         control.optional = false;
     }
     db.layouts.push(skyemu);
+    let mut caprice32 = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    caprice32.id = "caprice32-cpc".into();
+    caprice32.name = "Amstrad CPC — Caprice32 joystick".into();
+    caprice32.family = "two-button".into();
+    caprice32.source =
+        "https://github.com/ColinPitrat/caprice32/tree/6c12c4c92360065cdc229ac9ada7551f941436b8"
+            .into();
+    caprice32.notes = "Caprice32 fixed CPC joystick ports. Directions and fire buttons are source-fixed; start/select supply the two global menu buttons.".into();
+    caprice32.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("a", "Fire 1", 70.0, 50.0, "face", true),
+        ("b", "Fire 2", 80.0, 35.0, "face", true),
+        ("start", "Menu", 30.0, 90.0, "menu", true),
+        ("select", "Virtual keyboard", 70.0, 90.0, "menu", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(caprice32);
     let mut linapple = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -937,6 +974,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             crate::controller_gambatte_standalone::CONTROLS
                 .iter()
                 .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("caprice32", "caprice32-cpc") {
+        return Some(
+            crate::controller_caprice32_standalone::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),
         );
     }
