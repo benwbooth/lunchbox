@@ -216,6 +216,81 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(cemu);
+    let mut azahar = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    azahar.id = "azahar-3ds".into();
+    azahar.name = "Nintendo 3DS — Azahar gamepad".into();
+    azahar.family = "diamond".into();
+    azahar.source = "https://github.com/azahar-emu/azahar/tree/ec8201d42cd3d8e2ec1d69d5832be0389490ea47/src/common/settings.h".into();
+    azahar.notes =
+        "Azahar 3DS gamepad with triggers, console buttons, and both analog pads.".into();
+    azahar.controls = [
+        ("up", "Up", 20.0, 36.0, "dpad", true),
+        ("down", "Down", 20.0, 60.0, "dpad", true),
+        ("left", "Left", 8.0, 48.0, "dpad", true),
+        ("right", "Right", 32.0, 48.0, "dpad", true),
+        ("a", "A", 90.0, 48.0, "face", true),
+        ("b", "B", 78.0, 60.0, "face", true),
+        ("x", "X", 78.0, 36.0, "face", true),
+        ("y", "Y", 66.0, 48.0, "face", true),
+        ("l", "L", 20.0, 12.0, "shoulder", true),
+        ("r", "R", 80.0, 12.0, "shoulder", true),
+        ("zl", "ZL", 8.0, 12.0, "shoulder", true),
+        ("zr", "ZR", 92.0, 12.0, "shoulder", true),
+        ("start", "Start", 60.0, 88.0, "menu", true),
+        ("select", "Select", 47.0, 88.0, "menu", true),
+        ("home", "Home", 60.0, 70.0, "menu", true),
+        ("power", "Power", 47.0, 70.0, "menu", true),
+        ("debug", "Debug", 5.0, 88.0, "auxiliary", true),
+        ("gpio14", "GPIO14", 95.0, 88.0, "auxiliary", true),
+        ("stick_up", "Circle pad up", 20.0, 70.0, "stick", true),
+        ("stick_down", "Circle pad down", 20.0, 90.0, "stick", true),
+        ("stick_left", "Circle pad left", 10.0, 80.0, "stick", true),
+        ("stick_right", "Circle pad right", 30.0, 80.0, "stick", true),
+        ("right_stick_up", "C-stick up", 80.0, 70.0, "stick", true),
+        (
+            "right_stick_down",
+            "C-stick down",
+            80.0,
+            90.0,
+            "stick",
+            true,
+        ),
+        (
+            "right_stick_left",
+            "C-stick left",
+            70.0,
+            80.0,
+            "stick",
+            true,
+        ),
+        (
+            "right_stick_right",
+            "C-stick right",
+            90.0,
+            80.0,
+            "stick",
+            true,
+        ),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(azahar);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -968,6 +1043,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["Nintendo Wii U"],
             "https://github.com/cemu-project/Cemu/tree/3310f3b8b184d64a62b89fd59088c799432badf5",
         ),
+        (
+            "azahar",
+            "azahar-3ds",
+            1,
+            vec!["Nintendo 3DS"],
+            "https://github.com/azahar-emu/azahar/tree/ec8201d42cd3d8e2ec1d69d5832be0389490ea47",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -1268,6 +1350,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("vita3k", "vita3k-vita") {
         return Some(
             crate::controller_vita3k_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("azahar", "azahar-3ds") {
+        return Some(
+            crate::controller_azahar_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

@@ -142,6 +142,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "uzem"
                 | "eka2l1"
                 | "cemu"
+                | "azahar"
                 | "vita3k"
                 | "caprice32"
                 | "rmg"
@@ -648,6 +649,19 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.players = vec![crate::controller_vita3k_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "azahar" => {
+            for setup in &mut mapping.azahar_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_azahar_native::settings::Player {
                     player: 1,
                     controller_id: ids[0].clone(),
                 }];

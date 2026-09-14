@@ -14,6 +14,21 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 628: connected the pinned Azahar SDL ParamPackage grammar to a
+single-player native Linux launch adapter. Source review proved the
+`guid/port` joystick matching, the `api:controller` gamepad indices,
+trigger/analog encodings, empty-means-keyboard-default fallback (so all 20
+buttons must be mapped), the `<cwd>/user` directory resolution, and the
+QSettings `Controls/profiles` array. The session translates calibrated
+controls through the pad's SDL2 game-controller mapping, requires distinct
+gamepad elements and paired stick axes, and stages a session user tree with
+a private qt-config.ini while NAND/SDMC survive through symlinks.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused writer
+tests and a full QML/C++ check passed; no Azahar executable, game,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 62/250 partial standalone dispatches and 156/344
+catalog source entries (45.3%), not runtime completion.
+
 Step 627: connected the pinned Cemu SDL profile grammar to a
 single-player native Linux launch adapter. Source review proved the
 `{guid_index}_{guid}` uuid matched with `SDL_GetGamepadGUIDForID`, the
@@ -155,6 +170,21 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 628: connected the pinned Azahar SDL ParamPackage grammar to a
+single-player native Linux launch adapter. Source review proved the
+`guid/port` joystick matching, the `api:controller` gamepad indices,
+trigger/analog encodings, empty-means-keyboard-default fallback (so all 20
+buttons must be mapped), the `<cwd>/user` directory resolution, and the
+QSettings `Controls/profiles` array. The session translates calibrated
+controls through the pad's SDL2 game-controller mapping, requires distinct
+gamepad elements and paired stick axes, and stages a session user tree with
+a private qt-config.ini while NAND/SDMC survive through symlinks.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused writer
+tests and a full QML/C++ check passed; no Azahar executable, game,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 62/250 partial standalone dispatches and 156/344
+catalog source entries (45.3%), not runtime completion.
 
 Step 627: connected the pinned Cemu SDL profile grammar to a
 single-player native Linux launch adapter. Source review proved the
