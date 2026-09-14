@@ -14,6 +14,19 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 638: connected the pinned PCem gameport grammar to a
+single-player native Linux launch adapter. Source review proved the
+1-based `plat_joystick_nr` selection, the `[Joysticks]` key names, raw SDL
+indices in axis/button/POV mappings, `SDL_JoystickOpen(c)` slots, the
+`--config` machine-config flag, and INI `key = value` persistence. The
+session proves SDL slot 0, pairs axis halves, refuses POV hats (no gameport
+slot), and stages a private machine config. Catalog/settings/QML/guided/
+launch dispatch are connected. Focused writer tests and a full QML/C++
+check passed; no PCem executable, machine, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+72/250 partial standalone dispatches and 166/344 catalog source entries
+(48.3%), not runtime completion.
+
 Step 637: connected the pinned Tsugaru game-port flags to a
 single-player native Linux launch adapter. Source review proved the
 PHYS/ANA/KEY/NONE token grammar, `-GAMEPORT0 PHYS0` joydev slot selection,
@@ -296,6 +309,19 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 638: connected the pinned PCem gameport grammar to a
+single-player native Linux launch adapter. Source review proved the
+1-based `plat_joystick_nr` selection, the `[Joysticks]` key names, raw SDL
+indices in axis/button/POV mappings, `SDL_JoystickOpen(c)` slots, the
+`--config` machine-config flag, and INI `key = value` persistence. The
+session proves SDL slot 0, pairs axis halves, refuses POV hats (no gameport
+slot), and stages a private machine config. Catalog/settings/QML/guided/
+launch dispatch are connected. Focused writer tests and a full QML/C++
+check passed; no PCem executable, machine, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+72/250 partial standalone dispatches and 166/344 catalog source entries
+(48.3%), not runtime completion.
 
 Step 637: connected the pinned Tsugaru game-port flags to a
 single-player native Linux launch adapter. Source review proved the

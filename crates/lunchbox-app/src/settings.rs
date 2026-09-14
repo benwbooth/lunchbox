@@ -362,6 +362,8 @@ pub struct ControllerMappingSettings {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) play_native_launches: Vec<crate::controller_play_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) pcem_native_launches: Vec<crate::controller_pcem_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) tsugaru_native_launches: Vec<crate::controller_tsugaru_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) touchhle_native_launches:
@@ -564,6 +566,7 @@ impl Default for ControllerMappingSettings {
             eka2l1_native_launches: Vec::new(),
             cemu_native_launches: Vec::new(),
             play_native_launches: Vec::new(),
+            pcem_native_launches: Vec::new(),
             tsugaru_native_launches: Vec::new(),
             touchhle_native_launches: Vec::new(),
             openbor_native_launches: Vec::new(),
@@ -1609,6 +1612,7 @@ impl ControllerMappingSettings {
         crate::controller_eka2l1_native::settings::validate_setups(&self.eka2l1_native_launches)?;
         crate::controller_cemu_native::settings::validate_setups(&self.cemu_native_launches)?;
         crate::controller_play_native::settings::validate_setups(&self.play_native_launches)?;
+        crate::controller_pcem_native::settings::validate_setups(&self.pcem_native_launches)?;
         crate::controller_tsugaru_native::settings::validate_setups(&self.tsugaru_native_launches)?;
         crate::controller_touchhle_native::settings::validate_setups(
             &self.touchhle_native_launches,

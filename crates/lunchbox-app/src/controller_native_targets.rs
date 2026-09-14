@@ -503,6 +503,39 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(tsugaru);
+    let mut pcem = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    pcem.id = "pcem-gameport".into();
+    pcem.name = "PC gameport — PCem joystick".into();
+    pcem.family = "two-button".into();
+    pcem.source = "https://github.com/sarah-walker-pcem/pcem/tree/a5a54ab5981902fc227b0afd1756ebe4660178d0/src/joystick".into();
+    pcem.notes = "PCem standard 2-button gameport joystick. Two axes and two buttons; POV hats have no gameport slot.".into();
+    pcem.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("a", "Button 1", 70.0, 50.0, "face", true),
+        ("b", "Button 2", 80.0, 35.0, "face", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(pcem);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -1319,6 +1352,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/captainys/TOWNSEMU/tree/e27adde120fe06150f3d57a6dc7cba66b5f43a32",
         ),
         (
+            "pcem",
+            "pcem-gameport",
+            1,
+            vec!["DOS", "Windows 3.X", "Windows 95"],
+            "https://github.com/sarah-walker-pcem/pcem/tree/a5a54ab5981902fc227b0afd1756ebe4660178d0",
+        ),
+        (
             "play",
             "dualshock",
             1,
@@ -1633,6 +1673,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("play", "dualshock") {
         return Some(
             crate::controller_play_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("pcem", "pcem-gameport") {
+        return Some(
+            crate::controller_pcem_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

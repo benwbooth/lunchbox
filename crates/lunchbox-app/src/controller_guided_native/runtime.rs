@@ -317,6 +317,19 @@ pub(super) fn reuse(
                 mapping.play_native_launches.push(setup);
             }
         }
+        "pcem"
+            if !mapping
+                .pcem_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.pcem_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.pcem_native_launches.push(setup);
+            }
+        }
         "tsugaru"
             if !mapping
                 .tsugaru_native_launches

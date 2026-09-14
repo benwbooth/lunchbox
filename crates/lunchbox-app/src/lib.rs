@@ -124,6 +124,7 @@ mod controller_oricutron_native;
 mod controller_osx_kvm_standalone;
 mod controller_ovcc_standalone;
 mod controller_panda3ds_native;
+mod controller_pcem_native;
 mod controller_pcsx2;
 mod controller_pcsx_rearmed_standalone;
 mod controller_phem_standalone;
