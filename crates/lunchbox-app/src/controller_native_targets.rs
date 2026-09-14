@@ -16,6 +16,36 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     ds.controls
         .retain(|control| routes.contains_key(control.id.as_str()));
     db.layouts.push(ds);
+    let mut skyemu = db
+        .layout("nds-stylus-controls")
+        .context("Missing DS geometry")?
+        .clone();
+    skyemu.id = "skyemu-ds-buttons".into();
+    skyemu.name = "Nintendo DS — buttons (SkyEmu native)".into();
+    skyemu.source =
+        "https://github.com/skylersaleh/SkyEmu/tree/01516d6798e3652b583e6a366085bb51c43b528d"
+            .into();
+    skyemu.notes = "Native SkyEmu button controls. Touchscreen, microphone and lid are not mapped by this contract.".into();
+    skyemu.controls.retain(|control| {
+        matches!(
+            control.id.as_str(),
+            "a" | "b"
+                | "x"
+                | "y"
+                | "up"
+                | "down"
+                | "left"
+                | "right"
+                | "l"
+                | "r"
+                | "start"
+                | "select"
+        )
+    });
+    for control in &mut skyemu.controls {
+        control.optional = false;
+    }
+    db.layouts.push(skyemu);
     let mut pointer = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -872,6 +902,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             crate::controller_gambatte_standalone::CONTROLS
                 .iter()
                 .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("skyemu", "skyemu-ds-buttons") {
+        return Some(
+            crate::controller_skyemu_native::PROFILE_CONTROLS
+                .iter()
+                .map(|target| ((*target).to_owned(), (*target).to_owned()))
                 .collect(),
         );
     }

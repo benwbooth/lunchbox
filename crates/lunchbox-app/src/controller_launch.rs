@@ -108,6 +108,7 @@ enum PreparedJsonNativeLaunch {
     Gambatte(crate::controller_gambatte_standalone::native_command::NativeSession),
     PicoDrive(crate::controller_picodrive_native::native_command::NativeSession),
     NestopiaUe(crate::controller_nestopia_ue_native::native_command::NativeSession),
+    SkyEmu(crate::controller_skyemu_native::native_command::NativeSession),
     YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
     Kronos(crate::controller_kronos_native::native_command::NativeSession),
     Rmg(crate::controller_rmg_native::native_command::NativeSession),
@@ -142,6 +143,7 @@ impl PreparedJsonNativeLaunch {
             Self::Gambatte(session) => session.spawn(plan, cancel),
             Self::PicoDrive(session) => session.spawn(plan, cancel),
             Self::NestopiaUe(session) => session.spawn(plan, cancel),
+            Self::SkyEmu(session) => session.spawn(plan, cancel),
             Self::YabaSanshiro(session) => session.spawn(plan, cancel),
             Self::Kronos(session) => session.spawn(plan, cancel),
             Self::Rmg(session) => session.spawn(plan, cancel),
@@ -171,6 +173,7 @@ impl PreparedJsonNativeLaunch {
             Self::Gambatte(session) => session.verify(cancel),
             Self::PicoDrive(session) => session.verify(cancel),
             Self::NestopiaUe(session) => session.verify(cancel),
+            Self::SkyEmu(session) => session.verify(cancel),
             Self::YabaSanshiro(session) => session.verify(cancel),
             Self::Kronos(session) => session.verify(cancel),
             Self::Rmg(session) => session.verify(cancel),
@@ -200,6 +203,7 @@ impl PreparedJsonNativeLaunch {
             Self::Gambatte(session) => session.check_health(),
             Self::PicoDrive(session) => session.check_health(),
             Self::NestopiaUe(session) => session.check_health(),
+            Self::SkyEmu(session) => session.check_health(),
             Self::YabaSanshiro(session) => session.check_health(),
             Self::Kronos(session) => session.check_health(),
             Self::Rmg(session) => session.check_health(),
@@ -8065,6 +8069,37 @@ pub fn prepare_with_cancellation(
 
     #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("SkyEmu")
+    {
+        let matches: Vec<_> = mapping
+            .skyemu_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous SkyEmu native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_skyemu_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::SkyEmu(native)),
+                description: "SkyEmu: calibrated single DS pad through a private <name>-bindings.bin, with exact SDL device order, raw-control, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Nestopia UE")
     {
         let matches: Vec<_> = mapping
@@ -8416,6 +8451,37 @@ pub fn prepare_with_cancellation(
                 stella: None,
                 description: "FCEUX Qt: calibrated native NES controls; partial Linux support; ROM device overrides not resolved"
                     .into(),
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("SkyEmu")
+    {
+        let matches: Vec<_> = mapping
+            .skyemu_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous SkyEmu native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_skyemu_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::SkyEmu(native)),
+                description: "SkyEmu: calibrated single DS pad through a private <name>-bindings.bin, with exact SDL device order, raw-control, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
             }));
         }
     }

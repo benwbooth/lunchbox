@@ -19,6 +19,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "Dolphin",
     "Snes9x",
     "Nestopia UE",
+    "SkyEmu",
     "puNES",
     "FCEUX",
     "SameBoy",
@@ -331,6 +332,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let dolphin = name.eq_ignore_ascii_case("Dolphin");
             let snes9x = name.eq_ignore_ascii_case("Snes9x");
             let nestopia_ue = name.eq_ignore_ascii_case("Nestopia UE");
+            let skyemu = name.eq_ignore_ascii_case("SkyEmu");
             let punes = name.eq_ignore_ascii_case("puNES");
             let fceux = name.eq_ignore_ascii_case("FCEUX");
             let sameboy = name.eq_ignore_ascii_case("SameBoy");
@@ -400,6 +402,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux SDL2 PPSSPP PSP gamepad launch dispatch is implemented for saved setups with a private SYSTEM overlay and child mapping/runtime confirmation. Flatpak/Wine, other frontend variants, unrecognized SDL fallback devices and runtime verification remain incomplete."
                 } else if nestopia_ue {
                     "Linux Nestopia UE Flatpak 1.53.2 dispatch is connected for exact two-pad NES setups, with pinned app/runtime identity, private config, target-SDL routing checks, and persistent native data. A 2026-09-13 isolated-X11 production oracle passed two-player input, fresh-process battery reload, and F5/F7 slot-0 restoration. Native Linux dispatch is connected for one/two-pad NES setups through a private nestopia.conf/input.conf pair with exact SDL enumeration-order routing and child ownership checks. Wayland, other packages/hosts/modes, firmware, physical pads, hotplug, and save sync remain unverified."
+                } else if skyemu {
+                    "Native Linux SkyEmu dispatch is connected for the single DS pad. It writes a private <name>-bindings.bin under XDG_DATA_HOME, rechecks the exact SDL2 device order and raw controls, and confirms the child loaded the declared SDL library. Other systems, hosts, packages, and runtime input remain unverified."
                 } else if punes {
                     "Linux puNES Flatpak 0.111 dispatch is connected for one/two-pad NES cartridge setups, with pinned app/runtime identity, private config, fixed target evdev routing, and persistent native data. A 2026-09-13 isolated-X11 production oracle passed two-player input, fresh-process battery reload, and exact State-menu slot-0 restoration. Physical pads, axes/hats, hotplug, one-player runtime behavior, Wayland, FDS/other special modes, other packages/hosts, and save sync remain unverified."
                 } else if snes9x {

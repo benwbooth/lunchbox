@@ -14,6 +14,22 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 616: connected the pinned SkyEmu SDL binding writer to a
+single-player native Linux launch adapter. A session-owned XDG_DATA_HOME holds
+Sky/SkyEmu/<name>-bindings.bin (512-byte little-endian key/analog tables);
+buttons encode raw, axes only 0/1 as arrows, hats as SDL_HAT_* — stick-axis
+halves and higher axes have no polarity encoding and are refused with a
+redirect to buttons/hats. The filename is the file identity (SDL GUID is
+runtime-only), so duplicate names are refused. Prelaunch guards cover the
+exact executable, content, helper, SDL library, topology, enumeration, raw
+item translation, released state, and private file; startup requires the child
+to load the declared SDL library. Catalog/settings/QML/guided/launch dispatch
+are connected. Focused writer/translation tests and a full QML/C++ check
+passed; no SkyEmu executable, game, firmware, save, state, or controller
+runtime was exercised. This moves the source-backed inventory to 49/250
+partial standalone dispatches and 143/344 catalog source entries (41.6%), not
+runtime completion.
+
 Step 614: connected the pinned Nestopia UE 1.53.2 fltkui input grammar to a
 one/two-player native Linux launch adapter alongside the existing Flatpak
 dispatch. Source review proved partial configs are safe (absent keys keep

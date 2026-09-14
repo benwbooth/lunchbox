@@ -133,6 +133,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "gambatte"
                 | "picodrive"
                 | "nestopia-ue"
+                | "skyemu"
                 | "rmg"
                 | "simple64"
                 | "kronos"
@@ -608,6 +609,19 @@ pub(crate) fn settings_for_launch<'a>(
                         controller_id: id.clone(),
                     })
                     .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "skyemu" => {
+            for setup in &mut mapping.skyemu_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_skyemu_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
                 setup.review(&mapping.calibrations)?;
             }
         }
