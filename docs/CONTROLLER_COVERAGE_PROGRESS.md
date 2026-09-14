@@ -14,6 +14,18 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 637: connected the pinned Tsugaru game-port flags to a
+single-player native Linux launch adapter. Source review proved the
+PHYS/ANA/KEY/NONE token grammar, `-GAMEPORT0 PHYS0` joydev slot selection,
+`/dev/input/jsN` Linux backend with buttons 0/1 plus hats, positional ROM
+directory launch, and `-CMOS`/`-CD` flags. The session proves SDL index 0,
+refuses analog axes (last-two-axes rule), and stages explicit launch flags.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused writer
+tests and a full QML/C++ check passed; no Tsugaru executable, disc,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 71/250 partial standalone dispatches and 165/344
+catalog source entries (48.0%), not runtime completion.
+
 Step 636: connected the pinned touchHLE simulated-touch options to a
 single-player native Linux launch adapter. Source review proved the fixed
 SDL2 button table, the `--button-to-touch`/`--dpad-to-touch`/
@@ -284,6 +296,18 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 637: connected the pinned Tsugaru game-port flags to a
+single-player native Linux launch adapter. Source review proved the
+PHYS/ANA/KEY/NONE token grammar, `-GAMEPORT0 PHYS0` joydev slot selection,
+`/dev/input/jsN` Linux backend with buttons 0/1 plus hats, positional ROM
+directory launch, and `-CMOS`/`-CD` flags. The session proves SDL index 0,
+refuses analog axes (last-two-axes rule), and stages explicit launch flags.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused writer
+tests and a full QML/C++ check passed; no Tsugaru executable, disc,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 71/250 partial standalone dispatches and 165/344
+catalog source entries (48.0%), not runtime completion.
 
 Step 636: connected the pinned touchHLE simulated-touch options to a
 single-player native Linux launch adapter. Source review proved the fixed

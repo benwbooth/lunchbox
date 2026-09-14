@@ -470,6 +470,39 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(touchhle);
+    let mut tsugaru = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    tsugaru.id = "tsugaru-towns".into();
+    tsugaru.name = "FM Towns pad — Tsugaru game port".into();
+    tsugaru.family = "two-button".into();
+    tsugaru.source = "https://github.com/captainys/TOWNSEMU/tree/e27adde120fe06150f3d57a6dc7cba66b5f43a32/src/externals/connect_fssimplewindow/fssimplewindow_connection.cpp".into();
+    tsugaru.notes = "Tsugaru FM Towns game port. Two run buttons and four directions; no start/select exists on the guest port.".into();
+    tsugaru.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("a", "Run A", 70.0, 50.0, "face", true),
+        ("b", "Run B", 80.0, 35.0, "face", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(tsugaru);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -1279,6 +1312,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/touchHLE/touchHLE/tree/9052ea399c63e733be41262309ace2ff6dcc7f94",
         ),
         (
+            "tsugaru",
+            "tsugaru-towns",
+            1,
+            vec!["FM Towns"],
+            "https://github.com/captainys/TOWNSEMU/tree/e27adde120fe06150f3d57a6dc7cba66b5f43a32",
+        ),
+        (
             "play",
             "dualshock",
             1,
@@ -1593,6 +1633,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("play", "dualshock") {
         return Some(
             crate::controller_play_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("tsugaru", "tsugaru-towns") {
+        return Some(
+            crate::controller_tsugaru_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

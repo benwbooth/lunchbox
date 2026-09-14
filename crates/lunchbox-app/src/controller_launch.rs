@@ -125,6 +125,7 @@ enum PreparedJsonNativeLaunch {
     Supermodel(crate::controller_supermodel_native::native_command::NativeSession),
     Openbor(crate::controller_openbor_standalone::native_command::NativeSession),
     Touchhle(crate::controller_touchhle_native::native_command::NativeSession),
+    Tsugaru(crate::controller_tsugaru_native::native_command::NativeSession),
     Play(crate::controller_play_native::native_command::NativeSession),
     Vita3K(crate::controller_vita3k_native::native_command::NativeSession),
     Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
@@ -179,6 +180,7 @@ impl PreparedJsonNativeLaunch {
             Self::Supermodel(session) => session.spawn(plan, cancel),
             Self::Openbor(session) => session.spawn(plan, cancel),
             Self::Touchhle(session) => session.spawn(plan, cancel),
+            Self::Tsugaru(session) => session.spawn(plan, cancel),
             Self::Play(session) => session.spawn(plan, cancel),
             Self::Vita3K(session) => session.spawn(plan, cancel),
             Self::Caprice32(session) => session.spawn(plan, cancel),
@@ -228,6 +230,7 @@ impl PreparedJsonNativeLaunch {
             Self::Supermodel(session) => session.verify(cancel),
             Self::Openbor(session) => session.verify(cancel),
             Self::Touchhle(session) => session.verify(cancel),
+            Self::Tsugaru(session) => session.verify(cancel),
             Self::Play(session) => session.verify(cancel),
             Self::Vita3K(session) => session.verify(cancel),
             Self::Caprice32(session) => session.verify(cancel),
@@ -277,6 +280,7 @@ impl PreparedJsonNativeLaunch {
             Self::Supermodel(session) => session.check_health(),
             Self::Openbor(session) => session.check_health(),
             Self::Touchhle(session) => session.check_health(),
+            Self::Tsugaru(session) => session.check_health(),
             Self::Play(session) => session.check_health(),
             Self::Vita3K(session) => session.check_health(),
             Self::Caprice32(session) => session.check_health(),
@@ -8245,6 +8249,37 @@ pub fn prepare_with_cancellation(
 
     #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Tsugaru")
+    {
+        let matches: Vec<_> = mapping
+            .tsugaru_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Tsugaru native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_tsugaru_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Tsugaru(native)),
+                description: "Tsugaru: calibrated single FM Towns pad on PHYS0 through explicit ROM/CMOS/CD/game-port flags, with exact joydev routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("touchHLE")
     {
         let matches: Vec<_> = mapping
@@ -9221,6 +9256,37 @@ pub fn prepare_with_cancellation(
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Play(native)),
                 description: "Play!: calibrated single DualShock 2 pad through a private evdev input profile in a session directory, with exact evdev routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Tsugaru")
+    {
+        let matches: Vec<_> = mapping
+            .tsugaru_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Tsugaru native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_tsugaru_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Tsugaru(native)),
+                description: "Tsugaru: calibrated single FM Towns pad on PHYS0 through explicit ROM/CMOS/CD/game-port flags, with exact joydev routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
                 ..Default::default()
             }));
         }

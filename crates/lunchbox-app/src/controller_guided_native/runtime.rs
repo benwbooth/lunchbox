@@ -317,6 +317,19 @@ pub(super) fn reuse(
                 mapping.play_native_launches.push(setup);
             }
         }
+        "tsugaru"
+            if !mapping
+                .tsugaru_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.tsugaru_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.tsugaru_native_launches.push(setup);
+            }
+        }
         "touchhle"
             if !mapping
                 .touchhle_native_launches

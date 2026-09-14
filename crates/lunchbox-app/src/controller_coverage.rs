@@ -37,6 +37,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "Supermodel",
     "OpenBOR",
     "touchHLE",
+    "Tsugaru",
     "Play!",
     "Vita3K",
     "Caprice32",
@@ -369,6 +370,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let supermodel = name.eq_ignore_ascii_case("Supermodel");
             let openbor = name.eq_ignore_ascii_case("OpenBOR");
             let touchhle = name.eq_ignore_ascii_case("touchHLE");
+            let tsugaru = name.eq_ignore_ascii_case("Tsugaru");
             let play = name.eq_ignore_ascii_case("Play!");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
@@ -450,6 +452,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if play {
                     "Native Linux Play! dispatch is connected for the single DualShock 2 pad through evdev. It stages a private evdev input profile in a session directory, rechecks the exact evdev routes, and confirms child ownership. Hats and rumble are out of scope; other hosts, packages, and runtime input remain unverified."
+                } else if tsugaru {
+                    "Native Linux Tsugaru dispatch is connected for the single FM Towns pad on PHYS0. It passes explicit ROM/CMOS/CD/game-port flags, rechecks the exact joydev routes, and confirms the child loaded the declared SDL library. Analog sticks, other hosts, packages, and runtime input remain unverified."
                 } else if touchhle {
                     "Native Linux touchHLE dispatch is connected for the single gamepad driving staged touch points. It passes --button-to-touch options over the fixed SDL2 buttons, rechecks the exact SDL2 routes, and confirms the child loaded the declared SDL library. Sticks, other hosts, packages, and runtime input remain unverified."
                 } else if openbor {
