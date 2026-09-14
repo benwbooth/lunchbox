@@ -433,6 +433,43 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(supermodel);
+    let mut touchhle = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    touchhle.id = "touchhle-touch".into();
+    touchhle.name = "iPhone touch — touchHLE gamepad".into();
+    touchhle.family = "diamond".into();
+    touchhle.source = "https://github.com/touchHLE/touchHLE/tree/9052ea399c63e733be41262309ace2ff6dcc7f94/src/window.rs".into();
+    touchhle.notes = "touchHLE simulated-touch gamepad. Fixed SDL2 buttons drive staged touch points; sticks have no touch mapping.".into();
+    touchhle.controls = [
+        ("left", "D-Pad Left", 8.0, 48.0, "dpad", true),
+        ("up", "D-Pad Up", 20.0, 36.0, "dpad", true),
+        ("right", "Right", 32.0, 48.0, "dpad", true),
+        ("down", "Down", 20.0, 60.0, "dpad", true),
+        ("start", "Start", 60.0, 88.0, "menu", true),
+        ("a", "A", 90.0, 48.0, "face", true),
+        ("b", "B", 78.0, 60.0, "face", true),
+        ("x", "X", 78.0, 36.0, "face", true),
+        ("y", "Y", 66.0, 48.0, "face", true),
+        ("l", "Left Shoulder", 20.0, 12.0, "shoulder", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(touchhle);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -1235,6 +1272,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/DCurrent/openbor/tree/9d81480f8481fbb9e76b0b5f2a5dfa408376761a",
         ),
         (
+            "touchhle",
+            "touchhle-touch",
+            1,
+            vec!["iPhone"],
+            "https://github.com/touchHLE/touchHLE/tree/9052ea399c63e733be41262309ace2ff6dcc7f94",
+        ),
+        (
             "play",
             "dualshock",
             1,
@@ -1549,6 +1593,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("play", "dualshock") {
         return Some(
             crate::controller_play_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("touchhle", "touchhle-touch") {
+        return Some(
+            crate::controller_touchhle_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

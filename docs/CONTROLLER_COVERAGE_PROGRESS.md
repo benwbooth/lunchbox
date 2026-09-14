@@ -14,6 +14,19 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 636: connected the pinned touchHLE simulated-touch options to a
+single-player native Linux launch adapter. Source review proved the fixed
+SDL2 button table, the `--button-to-touch`/`--dpad-to-touch`/
+`--stick-to-touch` grammar, CLI-over-file precedence, positional bundle
+launch, and cwd-relative options/sandbox resolution. The session verifies
+every calibrated control resolves to its fixed SDL2 button and stages the
+touch points as CLI arguments. Catalog/settings/QML/guided/launch dispatch
+are connected. Focused writer tests and a full QML/C++ check passed; no
+touchHLE executable, app, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 70/250 partial
+standalone dispatches and 164/344 catalog source entries (47.7%), not
+runtime completion.
+
 Step 635: connected the pinned OpenBOR packed-settings grammar to a
 single-player native Linux launch adapter, replacing the module's refusal
 (the struct layout is pinned: offsets verified against the header, and the
@@ -271,6 +284,19 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 636: connected the pinned touchHLE simulated-touch options to a
+single-player native Linux launch adapter. Source review proved the fixed
+SDL2 button table, the `--button-to-touch`/`--dpad-to-touch`/
+`--stick-to-touch` grammar, CLI-over-file precedence, positional bundle
+launch, and cwd-relative options/sandbox resolution. The session verifies
+every calibrated control resolves to its fixed SDL2 button and stages the
+touch points as CLI arguments. Catalog/settings/QML/guided/launch dispatch
+are connected. Focused writer tests and a full QML/C++ check passed; no
+touchHLE executable, app, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 70/250 partial
+standalone dispatches and 164/344 catalog source entries (47.7%), not
+runtime completion.
 
 Step 635: connected the pinned OpenBOR packed-settings grammar to a
 single-player native Linux launch adapter, replacing the module's refusal

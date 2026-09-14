@@ -164,6 +164,7 @@ mod controller_stella_native;
 mod controller_supermodel_native;
 mod controller_tanuki3ds_standalone;
 mod controller_target;
+mod controller_touchhle_native;
 mod controller_uzem_standalone;
 mod controller_vba_m_native;
 mod controller_vice_native;

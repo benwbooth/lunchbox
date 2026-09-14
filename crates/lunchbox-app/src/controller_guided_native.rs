@@ -149,6 +149,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "panda3ds"
                 | "supermodel"
                 | "openbor"
+                | "touchhle"
                 | "play"
                 | "vita3k"
                 | "caprice32"
@@ -669,6 +670,19 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.players = vec![crate::controller_play_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "touchhle" => {
+            for setup in &mut mapping.touchhle_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_touchhle_native::settings::Player {
                     player: 1,
                     controller_id: ids[0].clone(),
                 }];

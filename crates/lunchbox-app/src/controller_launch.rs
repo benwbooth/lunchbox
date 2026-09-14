@@ -124,6 +124,7 @@ enum PreparedJsonNativeLaunch {
     Panda3ds(crate::controller_panda3ds_native::native_command::NativeSession),
     Supermodel(crate::controller_supermodel_native::native_command::NativeSession),
     Openbor(crate::controller_openbor_standalone::native_command::NativeSession),
+    Touchhle(crate::controller_touchhle_native::native_command::NativeSession),
     Play(crate::controller_play_native::native_command::NativeSession),
     Vita3K(crate::controller_vita3k_native::native_command::NativeSession),
     Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
@@ -177,6 +178,7 @@ impl PreparedJsonNativeLaunch {
             Self::Panda3ds(session) => session.spawn(plan, cancel),
             Self::Supermodel(session) => session.spawn(plan, cancel),
             Self::Openbor(session) => session.spawn(plan, cancel),
+            Self::Touchhle(session) => session.spawn(plan, cancel),
             Self::Play(session) => session.spawn(plan, cancel),
             Self::Vita3K(session) => session.spawn(plan, cancel),
             Self::Caprice32(session) => session.spawn(plan, cancel),
@@ -225,6 +227,7 @@ impl PreparedJsonNativeLaunch {
             Self::Panda3ds(session) => session.verify(cancel),
             Self::Supermodel(session) => session.verify(cancel),
             Self::Openbor(session) => session.verify(cancel),
+            Self::Touchhle(session) => session.verify(cancel),
             Self::Play(session) => session.verify(cancel),
             Self::Vita3K(session) => session.verify(cancel),
             Self::Caprice32(session) => session.verify(cancel),
@@ -273,6 +276,7 @@ impl PreparedJsonNativeLaunch {
             Self::Panda3ds(session) => session.check_health(),
             Self::Supermodel(session) => session.check_health(),
             Self::Openbor(session) => session.check_health(),
+            Self::Touchhle(session) => session.check_health(),
             Self::Play(session) => session.check_health(),
             Self::Vita3K(session) => session.check_health(),
             Self::Caprice32(session) => session.check_health(),
@@ -8241,6 +8245,37 @@ pub fn prepare_with_cancellation(
 
     #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("touchHLE")
+    {
+        let matches: Vec<_> = mapping
+            .touchhle_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous touchHLE native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_touchhle_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Touchhle(native)),
+                description: "touchHLE: calibrated single gamepad driving staged touch points through CLI options, with exact SDL2 button routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("OpenBOR")
     {
         let matches: Vec<_> = mapping
@@ -9186,6 +9221,37 @@ pub fn prepare_with_cancellation(
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Play(native)),
                 description: "Play!: calibrated single DualShock 2 pad through a private evdev input profile in a session directory, with exact evdev routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("touchHLE")
+    {
+        let matches: Vec<_> = mapping
+            .touchhle_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous touchHLE native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_touchhle_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Touchhle(native)),
+                description: "touchHLE: calibrated single gamepad driving staged touch points through CLI options, with exact SDL2 button routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
                 ..Default::default()
             }));
         }
