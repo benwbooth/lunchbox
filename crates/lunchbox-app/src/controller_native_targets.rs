@@ -1057,6 +1057,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["PlayStation 4"],
             "https://github.com/shadps4-emu/shadPS4/tree/678705df8dead58799a3d9a9db38f8fb0c3dbefe",
         ),
+        (
+            "ymir",
+            "saturn-digital",
+            1,
+            vec!["Sega Saturn"],
+            "https://github.com/ymir-emu/Ymir/tree/8a8e8402dff5abcfaa3794ba0ae756c416650f52",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -1357,6 +1364,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("vita3k", "vita3k-vita") {
         return Some(
             crate::controller_vita3k_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("ymir", "saturn-digital") {
+        return Some(
+            crate::controller_ymir_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

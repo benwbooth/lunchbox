@@ -31,6 +31,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "Cemu",
     "Azahar",
     "shadPS4",
+    "Ymir",
     "Vita3K",
     "Caprice32",
     "puNES",
@@ -356,6 +357,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let cemu = name.eq_ignore_ascii_case("Cemu");
             let azahar = name.eq_ignore_ascii_case("Azahar");
             let shadps4 = name.eq_ignore_ascii_case("shadPS4");
+            let ymir = name.eq_ignore_ascii_case("Ymir");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
             let caprice32 = name.eq_ignore_ascii_case("Caprice32");
@@ -434,6 +436,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Caprice32 dispatch is connected for fixed CPC joystick ports with two menu buttons. It patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if vita3k {
                     "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
+                } else if ymir {
+                    "Native Linux Ymir dispatch is connected for the single Saturn Control Pad. It stages a session profile with a patched Ymir.toml, rechecks the exact SDL3 gamepad routes, and confirms the child loaded the declared SDL library. Other peripherals, hosts, packages, and runtime input remain unverified."
                 } else if shadps4 {
                     "Native Linux shadPS4 dispatch is connected for the single DualShock pad as gamepad 1. It stages default.ini plus the per-game input file under XDG_DATA_HOME, rechecks the exact SDL3 gamepad routes, and confirms the child loaded the declared SDL library. Touchpad, other hosts, packages, and runtime input remain unverified."
                 } else if azahar {

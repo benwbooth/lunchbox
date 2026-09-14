@@ -144,6 +144,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "cemu"
                 | "azahar"
                 | "shadps4"
+                | "ymir"
                 | "vita3k"
                 | "caprice32"
                 | "rmg"
@@ -650,6 +651,19 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.players = vec![crate::controller_vita3k_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "ymir" => {
+            for setup in &mut mapping.ymir_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_ymir_native::settings::Player {
                     player: 1,
                     controller_id: ids[0].clone(),
                 }];

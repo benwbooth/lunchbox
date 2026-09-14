@@ -14,6 +14,20 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 630: connected the pinned Ymir TOML bind grammar to a
+single-player native Linux launch adapter. Source review proved the
+`{Name}@{id}` element strings with SDL gamepad indices, the port 1 Control
+Pad defaults, the TOML `[Input.Port1.ControlPad]` table, layered
+gamecontrollerdb.txt loading, and `-p`/`-d` launch flags. The session
+inverts resolved bindings into element names, patches a copied Ymir.toml
+with `toml_edit`, mirrors the profile tree through symlinks for saves, and
+requires a dpad for the 2D action. Catalog/settings/QML/guided/launch
+dispatch are connected. Focused writer/translation tests and a full QML/C++
+check passed; no Ymir executable, disc, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+64/250 partial standalone dispatches and 158/344 catalog source entries
+(45.9%), not runtime completion.
+
 Step 629: connected the pinned shadPS4 per-game INI grammar to a
 single-player native Linux launch adapter. Source review proved the
 `output:ID=input:ID` grammar, the 1-based gamepad IDs with 4-controller
@@ -185,6 +199,20 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 630: connected the pinned Ymir TOML bind grammar to a
+single-player native Linux launch adapter. Source review proved the
+`{Name}@{id}` element strings with SDL gamepad indices, the port 1 Control
+Pad defaults, the TOML `[Input.Port1.ControlPad]` table, layered
+gamecontrollerdb.txt loading, and `-p`/`-d` launch flags. The session
+inverts resolved bindings into element names, patches a copied Ymir.toml
+with `toml_edit`, mirrors the profile tree through symlinks for saves, and
+requires a dpad for the 2D action. Catalog/settings/QML/guided/launch
+dispatch are connected. Focused writer/translation tests and a full QML/C++
+check passed; no Ymir executable, disc, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+64/250 partial standalone dispatches and 158/344 catalog source entries
+(45.9%), not runtime completion.
 
 Step 629: connected the pinned shadPS4 per-game INI grammar to a
 single-player native Linux launch adapter. Source review proved the

@@ -188,6 +188,7 @@ mod controller_xm8_standalone;
 mod controller_xroar_native;
 mod controller_yaba_sanshiro;
 mod controller_yaba_sanshiro_native;
+mod controller_ymir_native;
 mod controller_zesarux_native;
 mod controllers;
 mod couch_theme;
