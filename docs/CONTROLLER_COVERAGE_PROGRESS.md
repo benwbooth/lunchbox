@@ -14,6 +14,23 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 613: connected the pinned PicoDrive bind grammar to a
+one/two-player native Linux launch adapter. The generic one-ROM plan is
+rewritten to `-config <private> <rom>` because the option parser stops at the
+first readable file argument. A session-owned private config carries one
+binddev section per selected joystick (exact `sdl:<name>` identity, duplicates
+refused) with player1/2 Genesis binds. Host keys follow the pinned libpicofe
+SDL driver: buttons encode as `\x80+N` world keysyms (round-trip verified
+against `parse_key`), axes 0/1 as arrow keys; higher axes, hats, and balls
+have no source handler and are refused. Prelaunch guards cover the exact
+executable, content, helper, SDL library, topology, enumeration, raw item
+translation, released state, and private config; startup requires the child to
+load the declared SDL library. Catalog/settings/QML/guided/launch dispatch are
+connected. Focused writer/translation tests and a full QML/C++ check passed; no
+PicoDrive executable, game, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 48/250 partial standalone
+dispatches and 142/344 catalog source entries (41.3%), not runtime completion.
+
 Step 612: connected the pinned Gambatte Qt input grammar to a
 single-player native Linux launch adapter. The generic one-ROM plan keeps its
 bare content argument; a session-owned XDG_CONFIG_HOME holds a
@@ -27,7 +44,7 @@ declared SDL library. Catalog/settings/QML/guided/launch dispatch are
 connected. Focused writer tests and a full QML/C++ check passed; no Gambatte
 executable, game, firmware, save, state, or controller runtime was exercised.
 This moves the source-backed inventory to 47/250 partial standalone dispatches
-and 141/344 catalog source entries (41.0%), not runtime completion.
+and 141/344 catalog source entries (41.0%), not runtime completion. [SUPERSEDED BY STEP 613]
 
 Step 611: connected the pinned A7800 5.2 raw-SDL2 controller grammar to a
 one/two-player native Linux launch adapter. The generic one-ROM plan is

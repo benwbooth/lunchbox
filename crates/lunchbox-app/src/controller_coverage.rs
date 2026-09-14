@@ -53,6 +53,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "86Box",
     "A7800",
     "Gambatte",
+    "PicoDrive",
     "RMG",
     "b2",
     "Hypseus Singe",
@@ -354,6 +355,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let eighty_six_box = name.eq_ignore_ascii_case("86Box");
             let a7800 = name.eq_ignore_ascii_case("A7800");
             let gambatte = name.eq_ignore_ascii_case("Gambatte");
+            let picodrive = name.eq_ignore_ascii_case("PicoDrive");
             rows.push(json!({"name":name,"platform":platform,"kind":"Standalone / non-core catalog entry",
                 "status":if native_adapter { "partial" } else { "missing" },"profiles":[],"choices":[],"selected":null,
                 "detail":if gear {
@@ -376,6 +378,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux VBA-M Qt/wx dispatch is connected through an explicit private configuration. It disables logical GameController translation, rechecks exact SDL2/SDL3 joystick order and raw controls, and guards the configured battery/state roots plus any active 16 KiB GBA BIOS. Other systems, hosts, packages, and runtime behavior remain unverified."
                 } else if eighty_six_box {
                     "Native Linux 86Box dispatch is connected for an exact machine 86box.cfg and the source-defined two-axis/two-button gameport topology. The config is overlaid at its original path while SDL2 order and raw controls are rechecked; guest disk saves and ROM paths stay native. Other joystick types, SDL3 builds, Flatpak, other hosts, guest behavior, and runtime input remain unverified."
+                } else if picodrive {
+                    "Native Linux PicoDrive dispatch is connected for Genesis six-button pads on ports one and two. It writes a private config with binddev/bind lines, rechecks the exact SDL device order and raw controls, and confirms the child loaded the declared SDL library. Other systems, hosts, packages, and runtime input remain unverified."
                 } else if gambatte {
                     "Native Linux Gambatte dispatch is connected for the single Game Boy pad. It writes a private gambatte_qt.conf [input] group, rechecks the exact SDL2 device order and raw controls, and confirms the child loaded the declared SDL library. Other systems, hosts, packages, and runtime input remain unverified."
                 } else if a7800 {

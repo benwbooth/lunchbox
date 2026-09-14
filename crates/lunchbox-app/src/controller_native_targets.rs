@@ -563,6 +563,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/7800-devtools/a7800/tree/7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8",
         ),
         (
+            "picodrive",
+            "genesis-6",
+            2,
+            vec!["Sega Genesis", "Sega CD", "Sega 32X"],
+            "https://github.com/notaz/picodrive/tree/26ecb2b6358fefba24e3d68b9eb2efba7f10d5ee",
+        ),
+        (
             "gambatte",
             "gameboy",
             1,
@@ -855,6 +862,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             crate::controller_gambatte_standalone::CONTROLS
                 .iter()
                 .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("picodrive", "genesis-6") {
+        return Some(
+            crate::controller_picodrive_native::ROUTES
+                .iter()
+                .map(|(target, action)| ((*target).to_owned(), (*action).to_owned()))
                 .collect(),
         );
     }
