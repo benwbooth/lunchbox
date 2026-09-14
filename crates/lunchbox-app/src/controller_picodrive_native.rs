@@ -9,7 +9,7 @@ use anyhow::{Result, ensure};
 use std::collections::BTreeSet;
 
 pub(crate) const SOURCE_COMMIT: &str = "26ecb2b6358fefba24e3d68b9eb2efba7f10d5ee";
-pub(crate) const PROFILE_ID: &str = "picodrive:native-bind-v1";
+pub(crate) const PROFILE_ID: &str = "picodrive:standalone-genesis-6";
 pub(crate) const PLAYER_ACTIONS: [&str; 15] = [
     "UP", "DOWN", "LEFT", "RIGHT", "A", "B", "C", "START", "MODE", "X", "Y", "Z", "A turbo",
     "B turbo", "C turbo",

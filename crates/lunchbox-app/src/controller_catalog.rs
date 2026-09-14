@@ -1395,6 +1395,7 @@ impl Catalog {
                             | "amiberry-native-settings"
                             | "gbe-plus-native-settings"
                             | "pokemini-native-settings"
+                            | "uzem-native-settings"
                             | "vita3k-native-settings"
                             | "caprice32-native-settings"
                             | "rmg-native-settings"
@@ -1700,6 +1701,7 @@ impl Catalog {
                         | "amiberry-native-settings"
                         | "gbe-plus-native-settings"
                         | "pokemini-native-settings"
+                        | "uzem-native-settings"
                         | "vita3k-native-settings"
                         | "caprice32-native-settings"
                         | "rmg-native-settings"
@@ -2467,7 +2469,12 @@ mod tests {
                 }
                 3 => topology.option = "bad=key".into(),
                 4 => {
-                    topology.values.insert("bad\nvalue".into(), 1);
+                    topology.values.insert(
+                        "bad
+value"
+                            .into(),
+                        1,
+                    );
                 }
                 5 => topology.values.values_mut().for_each(|ports| *ports = 1),
                 6 => profile.retroarch_library = None,

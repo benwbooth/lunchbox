@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const SOURCE_COMMIT: &str = "06ff25093b620deef734a395189a1c564ed8beac";
-pub(crate) const PROFILE_ID: &str = "amiberry:standalone-amiga-joystick";
+pub(crate) const PROFILE_ID: &str = "amiberry:standalone-amiberry-amiga";
 
 /// The classic Amiga joystick controls represented by Amiberry's normal
 /// `gamepad` port mode.  Fire, second-fire and third-fire are SDL south, east

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 pub(crate) const SOURCE_COMMIT: &str = "84184a363aa99c7f331a7e75bdd75f43ff63db08";
-pub(crate) const PROFILE_ID: &str = "vita3k:standalone-vita";
+pub(crate) const PROFILE_ID: &str = "vita3k:standalone-vita3k-vita";
 
 /// `controller-binds` index order: the GUI tab order in
 /// `ControlsDialog` (`vita_button` values), where each position holds the

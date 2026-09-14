@@ -1,230 +1,100 @@
-//! Nestopia UE standalone FLTK/SDL2 controller mappings.
+//! Uzem standalone-native joystick-settings writer.
 //!
-//! Functional contract pinned to 0ldsk00l/nestopia tag 1.53.2 (commit
-//! 4470a2e99199d8010322eef4bf680fb3760f6eda):
-//! - `source/fltkui/inputmanager.cpp` stores joystick bindings in a sibling
-//!   `<device>j` INI section as `j<player>b<N>`, `j<player>h<N>`, or
-//!   `j<player>a<N>`; axes encode each half as `axis * 2 + polarity`.
-//! - `source/fltkui/jg/jg_nes.h` names the standard controller sections
-//!   `nespad1` through `nespad4` and the controls Up, Down, Left, Right,
-//!   Select, Start, A, B, TurboA and TurboB.
-//! - `source/fltkui/jg.cpp` selects standard controllers with `port1` through
-//!   `port4 = 1` in the `[nestopia]` section.
-//!
-//! The writer emits only these exact fragments.  SDL player indices are
-//! assigned dynamically by hotplug/order (`SDL_JoystickSetPlayerIndex`), so
-//! callers must verify the selected physical device immediately before
-//! launch; this module does not claim persistent device identity.
+//! Pinned source: Uzebox/uzebox commit
+//! `abf5125847e68a6b7c4432f7849cd5baf717bba5`, `tools/uzem/avr8.h` and
+//! `avr8.cpp`. The `joystick-settings` file beside the working directory
+//! holds per stick (two max, opened as SDL indices 0/1) eight
+//! `{u8 button, u8 bit}` pairs in remap order
+//! [START, SELECT, A, B, X, Y, LSh, RSh] with SNES bit values, followed by
+//! eight `{i32 axis, u8 bits}` records where axes 0/1 carry the direction
+//! pair (even index = left/right, odd = up/down) and the rest are
+//! `JOY_AXIS_UNUSED` (-1). Hats need no mapping. `init_joysticks` opens
+//! `SDL_JoystickOpen(i)`, so callers must prove the pads hold SDL slots 0
+//! and 1 for the exact child immediately before launch.
 
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(crate) const SOURCE_COMMIT: &str = "4470a2e99199d8010322eef4bf680fb3760f6eda";
-pub(crate) const PROFILE_ID: &str = "nestopia-ue:standalone-nes";
+pub(crate) const SOURCE_COMMIT: &str = "abf5125847e68a6b7c4432f7849cd5baf717bba5";
+pub(crate) const PROFILE_ID: &str = "uzem:standalone-snes";
+pub(crate) const SETTINGS_FILE: &str = "joystick-settings";
 
-/// Standard NES controller fields in the `jg_nes.h` order.
-pub(crate) const CONTROLS: [(&str, &str); 10] = [
+/// Remap order with SNES bit values from `avr8.h`.
+pub(crate) const BUTTON_SLOTS: [(u8, &str); 8] = [
+    (3, "start"),
+    (2, "select"),
+    (8, "a"),
+    (0, "b"),
+    (9, "x"),
+    (1, "y"),
+    (10, "l"),
+    (11, "r"),
+];
+
+/// Layout target ids covered by the native profile.
+pub(crate) const ROUTES: [(&str, &str); 12] = [
+    ("b", "B"),
+    ("a", "A"),
+    ("y", "Y"),
+    ("x", "X"),
+    ("l", "L"),
+    ("r", "R"),
+    ("select", "Select"),
+    ("start", "Start"),
     ("up", "Up"),
     ("down", "Down"),
     ("left", "Left"),
     ("right", "Right"),
-    ("select", "Select"),
-    ("start", "Start"),
-    ("a", "A"),
-    ("b", "B"),
-    ("turbo_a", "TurboA"),
-    ("turbo_b", "TurboB"),
 ];
 
-/// Native SDL joystick input code used by `InputManager::remap_js`.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) enum Binding {
-    Button(u8),
-    Axis { index: u8, positive: bool },
-    Hat { index: u8, direction: u8 },
+/// One stick's mapping: eight raw SDL button indices in remap order plus
+/// the shared direction-axis pair (even = left/right, odd = up/down).
+#[derive(Clone, Copy)]
+pub(crate) struct StickMapping {
+    pub buttons: [u8; 8],
+    pub axis_x: u8,
+    pub axis_y: u8,
 }
 
-impl Binding {
-    fn code(self, player: u8) -> Result<String> {
+/// Render the exact binary `joystick-settings` file: per stick, eight
+/// `{button, bit}` byte pairs then eight little-endian `{i32 axis, u8
+/// bits}` records with three padding bytes each (matching the source
+/// struct layout on little-endian hosts). Unused axes are -1.
+pub(crate) fn joystick_settings(sticks: &[StickMapping]) -> Result<Vec<u8>> {
+    ensure!(
+        !sticks.is_empty() && sticks.len() <= 2,
+        "Uzem supports one or two joystick sticks"
+    );
+    let mut out = Vec::with_capacity(160);
+    for stick in sticks {
         ensure!(
-            player <= 9,
-            "Nestopia SDL player index must fit j[0-9] grammar"
+            stick.buttons.len() == BUTTON_SLOTS.len(),
+            "Uzem stick needs every remap-order button"
         );
-        match self {
-            Self::Button(index) => {
-                ensure!(index < 64, "Nestopia SDL button index is out of range");
-                Ok(format!("j{player}b{index}"))
-            }
-            Self::Axis { index, positive } => {
-                ensure!(index < 16, "Nestopia SDL axis index is out of range");
-                let half = u16::from(index) * 2 + u16::from(positive);
-                Ok(format!("j{player}a{half}"))
-            }
-            Self::Hat { index, direction } => {
-                ensure!(index < 4, "Nestopia SDL hat index is out of range");
-                ensure!(direction < 4, "Nestopia hat direction must be cardinal");
-                // Nestopia fltkui maps SDL_HAT_UP/DOWN/LEFT/RIGHT to 0/1/2/3.
-                Ok(format!(
-                    "j{player}h{}",
-                    u16::from(index) * 4 + direction as u16
-                ))
-            }
+        for (index, button) in stick.buttons.iter().enumerate() {
+            out.push(*button);
+            out.push(BUTTON_SLOTS[index].0);
+        }
+        for (position, axis) in [stick.axis_x, stick.axis_y].into_iter().enumerate() {
+            out.extend_from_slice(&(axis as i32).to_le_bytes());
+            out.push(0);
+            out.extend_from_slice(&[0, 0, 0]);
+            let _ = position;
+        }
+        for _ in 2..8 {
+            out.extend_from_slice(&(-1i32).to_le_bytes());
+            out.push(0);
+            out.extend_from_slice(&[0, 0, 0]);
         }
     }
+    ensure!(out.len() == sticks.len() * 80, "Uzem record size differs");
+    Ok(out)
 }
-
-/// Render the `[nespadN j]` section fragment for one emulated port.  The
-/// eight standard controls are required; TurboA/TurboB are optional and are
-/// left to the existing baseline when omitted.
-pub(crate) fn input_fragment(
-    emulated_port: u8,
-    host_player: u8,
-    mappings: &BTreeMap<String, Binding>,
-) -> Result<String> {
-    ensure!(
-        (1..=4).contains(&emulated_port),
-        "Nestopia supports four NES ports"
-    );
-    let required = ["up", "down", "left", "right", "select", "start", "a", "b"];
-    ensure!(
-        required
-            .iter()
-            .all(|control| mappings.contains_key(*control)),
-        "Nestopia needs every standard NES control"
-    );
-    let mut used = BTreeSet::new();
-    let mut result = format!("[nespad{emulated_port}j]\n");
-    for (control, key) in CONTROLS {
-        let Some(binding) = mappings.get(control) else {
-            continue;
-        };
-        ensure!(used.insert(*binding), "Nestopia reuses one physical input");
-        result.push_str(key);
-        result.push_str(" = ");
-        result.push_str(&binding.code(host_player)?);
-        result.push('\n');
-    }
-    Ok(result)
-}
-
-/// Render a `[nestopia]` fragment selecting standard controller hardware for
-/// the listed emulated ports.  Other ports and settings remain in the
-/// caller's copied baseline.
-pub(crate) fn controller_fragment(ports: &[u8]) -> Result<String> {
-    ensure!(
-        !ports.is_empty() && ports.len() <= 4,
-        "Nestopia has four NES ports"
-    );
-    let mut used = BTreeSet::new();
-    let mut result = String::from("[nestopia]\n");
-    for &port in ports {
-        ensure!(
-            (1..=4).contains(&port),
-            "Nestopia port must be one through four"
-        );
-        ensure!(used.insert(port), "Nestopia port is duplicated");
-        result.push_str(&format!("port{port} = 1\n"));
-    }
-    Ok(result)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn mappings() -> BTreeMap<String, Binding> {
-        [
-            (
-                "up",
-                Binding::Axis {
-                    index: 1,
-                    positive: false,
-                },
-            ),
-            (
-                "down",
-                Binding::Axis {
-                    index: 1,
-                    positive: true,
-                },
-            ),
-            (
-                "left",
-                Binding::Axis {
-                    index: 0,
-                    positive: false,
-                },
-            ),
-            (
-                "right",
-                Binding::Axis {
-                    index: 0,
-                    positive: true,
-                },
-            ),
-            ("select", Binding::Button(2)),
-            ("start", Binding::Button(3)),
-            ("a", Binding::Button(0)),
-            ("b", Binding::Button(1)),
-        ]
-        .into_iter()
-        .map(|(name, binding)| (name.to_owned(), binding))
-        .collect()
-    }
-
-    #[test]
-    fn input_fragment_uses_pinned_j_codes() {
-        let text = input_fragment(1, 0, &mappings()).unwrap();
-        assert!(text.starts_with("[nespad1j]\nUp = j0a2\nDown = j0a3\n"));
-        assert!(text.contains("A = j0b0\n"));
-        assert!(text.ends_with("B = j0b1\n"));
-    }
-
-    #[test]
-    fn controller_fragment_selects_standard_ports() {
-        assert_eq!(
-            controller_fragment(&[1, 3]).unwrap(),
-            "[nestopia]\nport1 = 1\nport3 = 1\n"
-        );
-        assert!(controller_fragment(&[1, 1]).is_err());
-        assert!(controller_fragment(&[5]).is_err());
-    }
-
-    #[test]
-    fn standard_controls_cover_the_native_profile() {
-        assert_eq!(STANDARD_CONTROLS.len(), 8);
-        for target in STANDARD_CONTROLS {
-            assert!(CONTROLS.iter().any(|(id, _)| *id == target));
-        }
-    }
-
-    #[test]
-    fn malformed_or_ambiguous_mappings_fail_closed() {
-        assert!(input_fragment(1, 10, &mappings()).is_err());
-        let mut duplicate = mappings();
-        duplicate.insert("turbo_a".into(), Binding::Button(0));
-        assert!(input_fragment(1, 0, &duplicate).is_err());
-        assert!(
-            Binding::Hat {
-                index: 0,
-                direction: 4
-            }
-            .code(0)
-            .is_err()
-        );
-    }
-}
-
-/// Standard NES controls covered by the native profile. TurboA/TurboB are
-/// writer-supported but outside the profile; the session maps only these.
-pub(crate) const STANDARD_CONTROLS: [&str; 8] =
-    ["up", "down", "left", "right", "select", "start", "a", "b"];
 
 pub(crate) mod settings {
     use super::*;
     use crate::controller_catalog::{Calibration, catalog};
-    use anyhow::Context;
-    use serde::{Deserialize, Serialize};
     use std::{collections::HashMap, path::PathBuf};
 
     #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -249,7 +119,7 @@ pub(crate) mod settings {
         pub(crate) fn validate(&self) -> Result<()> {
             ensure!(
                 !self.emulator_id.trim().is_empty(),
-                "Nestopia setup needs an emulator identity"
+                "Uzem setup needs an emulator identity"
             );
             for path in [&self.content, &self.probe_program, &self.sdl_library] {
                 ensure!(
@@ -257,7 +127,7 @@ pub(crate) mod settings {
                         && !path
                             .components()
                             .any(|part| matches!(part, std::path::Component::ParentDir)),
-                    "Nestopia setup paths must be absolute without parent traversal"
+                    "Uzem setup paths must be absolute without parent traversal"
                 );
             }
             ensure!(
@@ -266,18 +136,18 @@ pub(crate) mod settings {
                         .executable_sha256
                         .bytes()
                         .all(|byte| byte.is_ascii_hexdigit()),
-                "Nestopia setup needs a trusted executable SHA-256"
+                "Uzem setup needs a trusted executable SHA-256"
             );
             let limit = catalog()
                 .emulator_profiles
                 .iter()
                 .find(|profile| profile.id == PROFILE_ID)
                 .and_then(|profile| profile.native_launch.as_ref())
-                .context("Missing Nestopia native profile")?
+                .context("Missing Uzem native profile")?
                 .max_players;
             ensure!(
                 !self.players.is_empty() && self.players.len() <= limit,
-                "Nestopia setup needs one or two players"
+                "Uzem setup needs one or two players"
             );
             let mut controllers = BTreeSet::new();
             for (index, player) in self.players.iter().enumerate() {
@@ -285,7 +155,7 @@ pub(crate) mod settings {
                     usize::from(player.player) == index + 1
                         && !player.controller_id.trim().is_empty()
                         && controllers.insert(&player.controller_id),
-                    "Nestopia players must be distinct, contiguous, and start at player one"
+                    "Uzem players must be distinct, contiguous, and start at player one"
                 );
             }
             Ok(())
@@ -300,15 +170,15 @@ pub(crate) mod settings {
                 .emulator_profiles
                 .iter()
                 .find(|profile| profile.id == PROFILE_ID)
-                .context("Missing Nestopia native profile")?;
+                .context("Missing Uzem native profile")?;
             let mut players = Vec::new();
             for player in &self.players {
                 let calibration = calibrations
                     .get(&player.controller_id)
-                    .context("Nestopia controller has no saved calibration")?;
+                    .context("Uzem controller has no saved calibration")?;
                 ensure!(
                     calibration.os == "linux",
-                    "Nestopia mapping requires Linux physical calibration"
+                    "Uzem mapping requires Linux physical calibration"
                 );
                 let mapping = calibration.plan_profile(profile)?;
                 ensure!(
@@ -317,7 +187,7 @@ pub(crate) mod settings {
                             .input
                             .as_ref()
                             .is_some_and(|input| input.native.is_some())),
-                    "Nestopia needs native calibration for every NES control"
+                    "Uzem needs native calibration for every SNES control"
                 );
                 players.push(serde_json::json!({
                     "player": player.player,
@@ -332,22 +202,54 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch writes a private nestopia.conf/input.conf pair, then rechecks the exact SDL2 routes. Only standard NES pads on ports one/two are supported; runtime behavior remains unverified."
+                "detail": "Native Linux launch writes a private joystick-settings binary, then rechecks the exact SDL routes. Only SNES pads on SDL slots 0/1 are supported; runtime behavior remains unverified."
             }))
         }
     }
 
     pub(crate) fn validate_setups(setups: &[SavedSetup]) -> Result<()> {
-        ensure!(setups.len() <= 1024, "Too many Nestopia saved setups");
+        ensure!(setups.len() <= 1024, "Too many Uzem saved setups");
         let mut identities = BTreeSet::new();
         for setup in setups {
             setup.validate()?;
             ensure!(
                 identities.insert((&setup.emulator_id, &setup.content)),
-                "Duplicate Nestopia emulator/content setup"
+                "Duplicate Uzem emulator/content setup"
             );
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn binary_layout_matches_source_structs() {
+        let bytes = joystick_settings(&[StickMapping {
+            buttons: [0, 1, 2, 3, 4, 5, 6, 7],
+            axis_x: 0,
+            axis_y: 1,
+        }])
+        .unwrap();
+        assert_eq!(bytes.len(), 80);
+        assert_eq!(&bytes[0..4], &[0, 3, 1, 2]);
+        assert_eq!(&bytes[14..16], &[7, 11]);
+        assert_eq!(&bytes[16..20], &[0, 0, 0, 0]);
+        assert_eq!(&bytes[24..32], &[1, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(&bytes[32..40], &[255, 255, 255, 255, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn rejects_bad_stick_counts() {
+        let stick = StickMapping {
+            buttons: [0; 8],
+            axis_x: 0,
+            axis_y: 1,
+        };
+        assert!(joystick_settings(&[]).is_err());
+        assert!(joystick_settings(&[stick, stick, stick]).is_err());
     }
 }
 
@@ -360,7 +262,6 @@ mod session {
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
     };
-    use anyhow::Context;
     use lunchbox_controller_probe::{
         duckstation::DigitalInput,
         file_hash,
@@ -391,12 +292,12 @@ mod session {
         }
         let (output, _) = capture(&mut command, cancel)?;
         let snapshot: Snapshot =
-            serde_json::from_slice(&output).context("Invalid Nestopia SDL2 capture")?;
+            serde_json::from_slice(&output).context("Invalid Uzem SDL2 capture")?;
         ensure!(
             snapshot.version[0] == 2
                 && snapshot.library.canonicalize()? == setup.sdl_library.canonicalize()?
                 && snapshot.library_sha256 == file_hash(&setup.sdl_library)?,
-            "Nestopia helper inspected a different SDL2 runtime"
+            "Uzem helper inspected a different SDL2 runtime"
         );
         Ok(snapshot)
     }
@@ -411,52 +312,39 @@ mod session {
         snapshot
     }
 
-    /// SDL hat bitmask to the fltkui 0-3 hat code (`set_inputdef` order:
-    /// UP/DOWN/LEFT/RIGHT).
-    pub(crate) fn hat_code(direction: u8) -> Result<u8> {
-        Ok(match direction {
-            0x01 => 0,
-            0x04 => 1,
-            0x08 => 2,
-            0x02 => 3,
-            _ => anyhow::bail!("Nestopia hat direction is not cardinal"),
-        })
-    }
-
-    fn player_bindings(
-        calibration: &Calibration,
-        device: &Device,
-    ) -> Result<BTreeMap<String, Binding>> {
+    fn stick_mapping(calibration: &Calibration, device: &Device) -> Result<StickMapping> {
         let profile = crate::controller_catalog::catalog()
             .emulator_profiles
             .iter()
             .find(|profile| profile.id == PROFILE_ID)
-            .context("Missing Nestopia native profile")?;
+            .context("Missing Uzem native profile")?;
         let physical = PhysicalMap::from_device(device)?;
         let state = device
             .sampled_state
             .as_ref()
-            .context("Nestopia SDL released state is missing")?;
+            .context("Uzem SDL released state is missing")?;
         state.validate(
             device
                 .controls
                 .as_ref()
-                .context("Nestopia SDL control counts are missing")?,
+                .context("Uzem SDL control counts are missing")?,
         )?;
-        let mut result = BTreeMap::new();
+        let mut buttons = BTreeMap::new();
+        let mut axes: BTreeMap<u32, (bool, bool)> = BTreeMap::new();
         for row in calibration.plan_profile(profile)?.rows {
             ensure!(
-                STANDARD_CONTROLS.contains(&row.target_id.as_str()),
-                "Nestopia turbo controls are outside the native profile"
+                ROUTES.iter().any(|(target, _)| *target == row.target_id),
+                "Uzem target {} outside contract",
+                row.target_id
             );
             let input = row
                 .input
                 .as_ref()
-                .context("Nestopia NES control is not calibrated")?;
+                .context("Uzem SNES control is not calibrated")?;
             let native = input
                 .native
                 .as_ref()
-                .context("Nestopia requires measured native controls")?;
+                .context("Uzem requires measured native controls")?;
             let measured = input.axis.as_ref().map(|axis| AxisEndpoints {
                 released: axis.released,
                 pressed: axis.pressed,
@@ -474,36 +362,83 @@ mod session {
             };
             ensure!(
                 released,
-                "Release the Nestopia controls before launch preparation"
+                "Release the Uzem controls before launch preparation"
             );
-            let binding = match translated {
-                DigitalInput::Button(index) => Binding::Button(
-                    u8::try_from(index).context("Nestopia button index is too large")?,
-                ),
-                DigitalInput::Hat { index, direction } => Binding::Hat {
-                    index: u8::try_from(index).context("Nestopia hat index is too large")?,
-                    direction: hat_code(direction)?,
-                },
-                DigitalInput::Axis { index, .. } => Binding::Axis {
-                    index: u8::try_from(index).context("Nestopia axis index is too large")?,
-                    positive: native.direction > 0,
-                },
-            };
-            ensure!(
-                result.insert(row.target_id, binding).is_none(),
-                "Nestopia target control appears twice"
-            );
+            // Axes must pair into direction halves; hats ride free and need
+            // no mapping. Buttons land on their own raw indices.
+            match translated {
+                DigitalInput::Button(index) => {
+                    let index = u8::try_from(index).context("Uzem button index is too large")?;
+                    ensure!(
+                        buttons.insert(row.target_id, index).is_none(),
+                        "Uzem control appears twice"
+                    );
+                }
+                DigitalInput::Axis { index, .. } => {
+                    let index = u32::try_from(index).context("Uzem axis index is too large")?;
+                    let entry = axes.entry(index).or_insert((false, false));
+                    if native.direction > 0 {
+                        ensure!(!entry.1, "Uzem axis direction appears twice");
+                        entry.1 = true;
+                    } else {
+                        ensure!(!entry.0, "Uzem axis direction appears twice");
+                        entry.0 = true;
+                    }
+                }
+                DigitalInput::Hat { .. } => {}
+            }
         }
+        // Direction halves must resolve to exactly one shared X and one
+        // shared Y axis; each pair faces opposite polarity by construction
+        // of the calibration endpoints.
+        let mut axis_x = None;
+        let mut axis_y = None;
+        for (index, (neg, pos)) in &axes {
+            ensure!(*neg && *pos, "Uzem axis {index} needs both halves");
+            if axis_x.is_none() {
+                axis_x = Some(*index);
+            } else if axis_y.is_none() {
+                ensure!(*index != axis_x.unwrap(), "Uzem axes must differ");
+                axis_y = Some(*index);
+            } else {
+                anyhow::bail!("Uzem supports one direction axis pair per stick");
+            }
+        }
+        let (axis_x, axis_y) = match (axis_x, axis_y) {
+            (Some(x), Some(y)) => (x, y),
+            _ => anyhow::bail!("Uzem directions need two shared analog axes"),
+        };
         ensure!(
-            result.len() == STANDARD_CONTROLS.len(),
-            "Nestopia native mapping is incomplete"
+            u8::try_from(axis_x).is_ok() && u8::try_from(axis_y).is_ok(),
+            "Uzem axis index is too large"
         );
-        Ok(result)
+        // Remap-order buttons: START, SELECT, A, B, X, Y, L, R.
+        // Directions ride the shared axes; only action buttons consume raw
+        // indices here.
+        let mut action = |target: &str| {
+            buttons
+                .remove(target)
+                .with_context(|| format!("Uzem button {target} is not calibrated"))
+        };
+        let ordered = [
+            action("start")?,
+            action("select")?,
+            action("a")?,
+            action("b")?,
+            action("x")?,
+            action("y")?,
+            action("l")?,
+            action("r")?,
+        ];
+        Ok(StickMapping {
+            buttons: ordered,
+            axis_x: axis_x as u8,
+            axis_y: axis_y as u8,
+        })
     }
 
     pub(crate) struct PreparedSession {
         directory: tempfile::TempDir,
-        config_home: PathBuf,
         physical_paths: Vec<String>,
         topology: InputTopology,
         initial: Snapshot,
@@ -523,7 +458,7 @@ mod session {
             ensure!(
                 fs::symlink_metadata(&setup.content)?.file_type().is_file()
                     && setup.content.canonicalize()? == setup.content,
-                "Nestopia content must be a direct regular file with canonical ancestry"
+                "Uzem content must be a direct regular file with canonical ancestry"
             );
             let mut selected = Vec::new();
             for player in &setup.players {
@@ -533,15 +468,14 @@ mod session {
                     .collect::<Vec<_>>();
                 ensure!(
                     found.len() == 1 && !found[0].is_virtual,
-                    "Nestopia physical controller is missing or ambiguous"
+                    "Uzem physical controller is missing or ambiguous"
                 );
                 selected.push(found[0].device_path.clone());
             }
             let topology = InputTopology::capture(&selected)?;
             let initial = routing(observe(setup, None, cancel)?);
             let mut physical_paths = Vec::new();
-            let mut fragments = Vec::new();
-            let mut ports = Vec::new();
+            let mut sticks = Vec::new();
             for (player, selected_path) in setup.players.iter().zip(&selected) {
                 let path = topology.resolve_runtime_path(
                     selected_path,
@@ -552,60 +486,47 @@ mod session {
                 )?;
                 ensure!(
                     !physical_paths.contains(&path),
-                    "Nestopia players share a controller"
+                    "Uzem players share a controller"
                 );
                 let captured = observe(setup, Some(&path), cancel)?;
                 initial.ensure_same_routing(&routing(captured.clone()))?;
                 topology.verify()?;
                 let device = captured.device_at_path(&path)?;
-                // The j-port prefix is the player index Nestopia assigns in
-                // SDL open order (`SDL_JoystickSetPlayerIndex(joystick[i],
-                // i)` on SDL_JOYDEVICEADDED); the probe's device_index is
-                // that same enumeration order. Hotplug churn can reassign
-                // it, so the routing — and the index below — are rechecked
-                // immediately before launch.
+                // SDL_JoystickOpen(i) for i in 0..1: the pads must hold
+                // slots 0 and 1 in order.
                 ensure!(
-                    device.device_index <= 9,
-                    "Nestopia SDL player index is outside the j-port grammar"
+                    device.device_index == u32::from(player.player) - 1,
+                    "Uzem player {} needs SDL slot {}, found {}",
+                    player.player,
+                    player.player - 1,
+                    device.device_index
                 );
-                let host_player = device.device_index as u8;
-                let bindings = player_bindings(
+                sticks.push(stick_mapping(
                     calibrations
                         .get(&player.controller_id)
-                        .context("Nestopia calibration disappeared")?,
+                        .context("Uzem calibration disappeared")?,
                     device,
-                )?;
-                fragments.push(input_fragment(player.player, host_player, &bindings)?);
-                ports.push(player.player);
+                )?);
                 physical_paths.push(path);
             }
-            let nestopia_conf = controller_fragment(&ports)?;
-            let config_home = tempfile::Builder::new()
-                .prefix("lunchbox-nestopia-config-")
+            let directory = tempfile::Builder::new()
+                .prefix("lunchbox-uzem-")
                 .tempdir()?;
-            // SettingManager resolves $XDG_CONFIG_HOME/nestopia and keeps
-            // defaults for absent keys, so partial files are safe.
-            let config_dir = config_home.path().join("nestopia");
-            fs::create_dir(&config_dir)?;
-            fs::write(config_dir.join("nestopia.conf"), nestopia_conf)?;
-            let mut input_conf = String::new();
-            for fragment in &fragments {
-                input_conf.push_str(fragment);
-            }
-            fs::write(config_dir.join("input.conf"), input_conf)?;
+            // joystick-settings resolves in the working directory; the
+            // launch layer runs there so only the private file is visible.
+            let settings_path = directory.path().join(SETTINGS_FILE);
+            fs::write(&settings_path, joystick_settings(&sticks)?)?;
             let mut hashes = BTreeMap::new();
             for path in [
                 &setup.content,
                 &setup.probe_program,
                 &setup.sdl_library,
-                &config_dir.join("nestopia.conf"),
-                &config_dir.join("input.conf"),
+                &settings_path,
             ] {
                 hashes.insert(path.clone(), file_hash(path)?);
             }
             let prepared = Self {
-                directory: config_home,
-                config_home: config_dir,
+                directory,
                 physical_paths,
                 topology,
                 initial,
@@ -616,9 +537,7 @@ mod session {
             Ok(prepared)
         }
 
-        /// Private config root for `XDG_CONFIG_HOME`; SettingManager
-        /// appends `/nestopia` itself.
-        pub(crate) fn xdg_config_home(&self) -> &std::path::Path {
+        pub(crate) fn directory(&self) -> &std::path::Path {
             self.directory.path()
         }
 
@@ -626,28 +545,18 @@ mod session {
             cancelled(cancel)?;
             self.topology.verify()?;
             for (path, hash) in &self.hashes {
-                ensure!(file_hash(path)? == *hash, "Nestopia launch input changed");
+                ensure!(file_hash(path)? == *hash, "Uzem launch input changed");
             }
             let fresh = routing(observe(&self.setup, None, cancel)?);
             self.initial.ensure_same_routing(&fresh)?;
-            for (path, expected) in self.physical_paths.iter().zip(self.setup.players.iter()) {
+            for (index, path) in self.physical_paths.iter().enumerate() {
                 let captured = observe(&self.setup, Some(path), cancel)?;
                 self.initial
                     .ensure_same_routing(&routing(captured.clone()))?;
-                let position = self
-                    .initial
-                    .devices
-                    .iter()
-                    .position(|other| other.path.as_deref() == Some(path.as_str()))
-                    .context("Nestopia device left SDL enumeration")?;
+                let device = captured.device_at_path(path)?;
                 ensure!(
-                    captured
-                        .devices
-                        .iter()
-                        .position(|other| other.path.as_deref() == Some(path.as_str()))
-                        == Some(position),
-                    "Nestopia SDL enumeration order moved for player {}",
-                    expected.player
+                    device.device_index == index as u32,
+                    "Uzem SDL slot order moved"
                 );
                 self.topology.verify()?;
             }
@@ -693,7 +602,7 @@ pub(crate) mod native_command {
             cancelled(cancel)?;
             ensure!(
                 file_hash(&self.executable)?.eq_ignore_ascii_case(&self.setup.executable_sha256),
-                "Nestopia executable differs from the saved trusted runtime"
+                "Uzem executable differs from the saved trusted runtime"
             );
             self.inputs.verify(cancel)
         }
@@ -705,7 +614,7 @@ pub(crate) mod native_command {
         ) -> Result<std::process::Child> {
             ensure!(
                 plan == &self.plan,
-                "Nestopia launch plan changed after preparation"
+                "Uzem launch plan changed after preparation"
             );
             self.verify(cancel)?;
             let mut child = crate::emulator::spawn_launch_plan(plan)?;
@@ -723,7 +632,7 @@ pub(crate) mod native_command {
                 cancelled(cancel)?;
                 ensure!(
                     child.try_wait()?.is_none(),
-                    "Nestopia exited before controller handoff"
+                    "Uzem exited before controller handoff"
                 );
                 if let Some(pid) = native_pid(child.id(), &self.executable)?
                     && self.ready(pid)?
@@ -733,7 +642,7 @@ pub(crate) mod native_command {
                 }
                 ensure!(
                     Instant::now() < deadline,
-                    "Nestopia did not open the selected SDL controllers before timeout"
+                    "Uzem did not open the selected SDL controllers before timeout"
                 );
                 std::thread::sleep(Duration::from_millis(25));
             }
@@ -768,36 +677,34 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("Nestopia calibrated launch requires native Linux");
+            anyhow::bail!("Uzem calibrated launch requires native Linux");
         };
         ensure!(
-            option.emulator_name.eq_ignore_ascii_case("Nestopia UE")
+            option.emulator_name.eq_ignore_ascii_case("Uzem")
                 && setup.emulator_id == option.emulator_id
                 && original.environment.is_empty()
                 && original.retroarch_content.is_none(),
-            "Nestopia identity differs or custom environment needs resolution"
+            "Uzem identity differs or custom environment needs resolution"
         );
         let executable = executable.canonicalize()?;
         ensure!(
             executable == original.program.canonicalize()?,
-            "Nestopia launch executable differs from selection"
+            "Uzem launch executable differs from selection"
         );
         ensure!(
             original.arguments.as_slice() == [setup.content.as_os_str()],
-            "Nestopia calibrated launch requires exactly the saved content argument"
+            "Uzem calibrated launch requires exactly the saved content argument"
         );
         ensure!(
             file_hash(&executable)?.eq_ignore_ascii_case(&setup.executable_sha256),
-            "Nestopia executable differs from the saved trusted runtime"
+            "Uzem executable differs from the saved trusted runtime"
         );
         let inputs = session::PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
         let mut plan = original.clone();
         plan.program = executable.clone();
-        // SettingManager resolves $XDG_CONFIG_HOME/nestopia.
-        plan.environment.push((
-            std::ffi::OsString::from("XDG_CONFIG_HOME"),
-            inputs.xdg_config_home().as_os_str().to_owned(),
-        ));
+        // joystick-settings resolves in the working directory; running there
+        // selects the private file. The ROM keeps its default positional slot.
+        plan.current_directory = inputs.directory().to_path_buf();
         let session = NativeSession {
             inputs,
             executable,
@@ -806,20 +713,5 @@ pub(crate) mod native_command {
         };
         session.verify(cancel)?;
         Ok(session)
-    }
-}
-
-#[cfg(all(test, target_os = "linux"))]
-mod session_tests {
-    use super::session::hat_code;
-
-    #[test]
-    fn hat_codes_follow_capture_order() {
-        assert_eq!(hat_code(0x01).unwrap(), 0);
-        assert_eq!(hat_code(0x04).unwrap(), 1);
-        assert_eq!(hat_code(0x08).unwrap(), 2);
-        assert_eq!(hat_code(0x02).unwrap(), 3);
-        assert!(hat_code(0x03).is_err());
-        assert!(hat_code(0x00).is_err());
     }
 }

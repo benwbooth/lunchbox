@@ -14,6 +14,24 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 625: connected the pinned Uzem joystick-settings binary to a
+one/two-player native Linux launch adapter. Source review proved the
+per-stick `{u8 button, u8 bit}` remap order with SNES bit values, the
+`{i32 axis, u8 bits}` direction records, `SDL_JoystickOpen(i)` slot
+assignment, and working-directory resolution. The session proves SDL slots
+0/1, pairs direction axes, and leaves hats unmapped. Launch runs in the
+session directory so only the private file is visible. Catalog/settings/QML/
+guided/launch dispatch are connected. This step also fixed a latent review
+gap across fourteen adapters: settings review looked up PROFILE_IDs that no
+registered EmulatorProfile carried, so every review would have failed. All
+wired PROFILE_IDs are now aligned to the `{core}:standalone-{layout}`
+registration convention with a live-catalog probe proving all 28 resolve,
+and the nine missing profile tuples are registered. Focused writer tests
+and a full QML/C++ check passed; no Uzem executable, ROM, firmware, save,
+state, or controller runtime was exercised. This moves the source-backed
+inventory to 59/250 partial standalone dispatches and 153/344 catalog source
+entries (44.5%), not runtime completion.
+
 Step 624: connected the pinned PokeMini joybutton grammar to a
 single-player native Linux launch adapter, replacing the module's incorrect
 refusal (the source proves pokemini.cfg persists all ten joybutton slots).
@@ -106,6 +124,24 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 625: connected the pinned Uzem joystick-settings binary to a
+one/two-player native Linux launch adapter. Source review proved the
+per-stick `{u8 button, u8 bit}` remap order with SNES bit values, the
+`{i32 axis, u8 bits}` direction records, `SDL_JoystickOpen(i)` slot
+assignment, and working-directory resolution. The session proves SDL slots
+0/1, pairs direction axes, and leaves hats unmapped. Launch runs in the
+session directory so only the private file is visible. Catalog/settings/QML/
+guided/launch dispatch are connected. This step also fixed a latent review
+gap across fourteen adapters: settings review looked up PROFILE_IDs that no
+registered EmulatorProfile carried, so every review would have failed. All
+wired PROFILE_IDs are now aligned to the `{core}:standalone-{layout}`
+registration convention with a live-catalog probe proving all 28 resolve,
+and the nine missing profile tuples are registered. Focused writer tests
+and a full QML/C++ check passed; no Uzem executable, ROM, firmware, save,
+state, or controller runtime was exercised. This moves the source-backed
+inventory to 59/250 partial standalone dispatches and 153/344 catalog source
+entries (44.5%), not runtime completion.
 
 Step 624: connected the pinned PokeMini joybutton grammar to a
 single-player native Linux launch adapter, replacing the module's incorrect

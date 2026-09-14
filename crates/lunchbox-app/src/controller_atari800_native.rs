@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 pub(crate) const SOURCE_COMMIT: &str = "fe1d2890d9f05fcecb2fd033d09a5c43f534bebf";
-pub(crate) const PROFILE_ID: &str = "atari800:standalone-digital-joystick";
+pub(crate) const PROFILE_ID: &str = "atari800:standalone-atari800-native-joystick";
 pub(crate) const CONTROLS: [(&str, &str); 5] = [
     ("up", "SDL joystick vertical negative"),
     ("down", "SDL joystick vertical positive"),

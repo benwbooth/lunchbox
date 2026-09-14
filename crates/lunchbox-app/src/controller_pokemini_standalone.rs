@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const SOURCE_COMMIT: &str = "15cc97ff70d6d9d749287ac55cb68198708564f3";
-pub(crate) const PROFILE_ID: &str = "pokemini:standalone-sdl-joystick";
+pub(crate) const PROFILE_ID: &str = "pokemini:standalone-pokemini";
 pub(crate) const ARTIFACT_SHA256: &str =
     "19de65332abe6d203c7065a70764202f28c974fa851b67cf0fe689a5d5c1f17e";
 

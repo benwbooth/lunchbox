@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const SOURCE_COMMIT: &str = "05a05e931b3993ff3e6316b0d841a1fb4d3ac7a7";
-pub(crate) const PROFILE_ID: &str = "gbe-plus:standalone-gba-gamepad";
+pub(crate) const PROFILE_ID: &str = "gbe-plus:standalone-gbe-plus-gamepad";
 
 pub(crate) const CONTROLS: [&str; 12] = [
     "a", "b", "x", "y", "start", "select", "left", "right", "up", "down", "l", "r",

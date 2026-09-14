@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const SOURCE_COMMIT: &str = "6c12c4c92360065cdc229ac9ada7551f941436b8";
-pub(crate) const PROFILE_ID: &str = "caprice32:standalone-native-fixed-sdl-v1";
+pub(crate) const PROFILE_ID: &str = "caprice32:standalone-caprice32-cpc";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct FixedSdlSelection {

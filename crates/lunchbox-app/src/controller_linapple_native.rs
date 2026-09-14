@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 pub(crate) const SOURCE_COMMIT: &str = "fa31e11b579edec32dd431c8b400a04e60a21dab";
-pub(crate) const PROFILE_ID: &str = "linapple:native-sdl-joystick-v1";
+pub(crate) const PROFILE_ID: &str = "linapple:standalone-linapple-joystick";
 
 /// Values from the source's `joyinfo` table in JoystickFrontend.cpp.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

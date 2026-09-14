@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const SOURCE_COMMIT: &str = "7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8";
-pub(crate) const PROFILE_ID: &str = "a7800:standalone-atari7800";
+pub(crate) const PROFILE_ID: &str = "a7800:standalone-a7800-proline";
 pub(crate) const CONTROLS: [(&str, &str); 6] = [
     ("up", "Up"),
     ("down", "Down"),

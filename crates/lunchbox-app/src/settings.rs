@@ -354,6 +354,8 @@ pub struct ControllerMappingSettings {
     pub(crate) pokemini_native_launches:
         Vec<crate::controller_pokemini_standalone::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) uzem_native_launches: Vec<crate::controller_uzem_standalone::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) vita3k_native_launches: Vec<crate::controller_vita3k_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) caprice32_native_launches:
@@ -529,6 +531,7 @@ impl Default for ControllerMappingSettings {
             amiberry_native_launches: Vec::new(),
             gbe_plus_native_launches: Vec::new(),
             pokemini_native_launches: Vec::new(),
+            uzem_native_launches: Vec::new(),
             vita3k_native_launches: Vec::new(),
             caprice32_native_launches: Vec::new(),
             rmg_native_launches: Vec::new(),
@@ -8774,7 +8777,14 @@ mod tests {
         assert_eq!(loaded.controller_mapping.device_names["first"], "Blue pad");
         assert_eq!(loaded.controller_mapping.device_names["second"], "Red pad");
         assert_eq!(loaded.qbittorrent_host, original.qbittorrent_host);
-        assert!(store.save_controller_name("first", "bad\nname").is_err());
+        assert!(
+            store
+                .save_controller_name(
+                    "first", "bad
+name"
+                )
+                .is_err()
+        );
         store.save_controller_name("first", "").unwrap();
         let loaded = store.load().unwrap();
         assert!(!loaded.controller_mapping.device_names.contains_key("first"));
@@ -9591,7 +9601,9 @@ mod tests {
                 ..CouchModePreferences::default()
             },
             CouchModePreferences {
-                shelf: "collection:bad\nidentity".into(),
+                shelf: "collection:bad
+identity"
+                    .into(),
                 ..CouchModePreferences::default()
             },
             CouchModePreferences {

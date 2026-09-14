@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const SOURCE_COMMIT: &str = "5ba7804a44483466d7403a6e646a228da562ed5d";
-pub(crate) const PROFILE_ID: &str = "fuse:standalone-native-fixed-sdl-v1";
+pub(crate) const PROFILE_ID: &str = "fuse:standalone-fuse-spectrum";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[repr(u8)]

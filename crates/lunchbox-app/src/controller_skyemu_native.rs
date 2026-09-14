@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const SOURCE_COMMIT: &str = "01516d6798e3652b583e6a366085bb51c43b528d";
-pub(crate) const PROFILE_ID: &str = "skyemu:standalone-native-sdl-controller";
+pub(crate) const PROFILE_ID: &str = "skyemu:standalone-skyemu-ds-buttons";
 pub(crate) const UPSTREAM_URL: &str = "https://github.com/skylersaleh/SkyEmu";
 pub(crate) const SDL_PREF_ORGANIZATION: &str = "Sky";
 pub(crate) const SDL_PREF_APPLICATION: &str = "SkyEmu";

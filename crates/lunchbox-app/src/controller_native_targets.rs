@@ -806,6 +806,69 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["Nintendo Game Boy", "Nintendo Game Boy Color"],
             "https://github.com/EclipseEmu/gambatte/tree/04e7ddf85ff23032cb7132f155c42c7d1857f474",
         ),
+        (
+            "skyemu",
+            "skyemu-ds-buttons",
+            1,
+            vec!["Nintendo DS"],
+            "https://github.com/skylersaleh/SkyEmu/tree/01516d6798e3652b583e6a366085bb51c43b528d",
+        ),
+        (
+            "linapple",
+            "linapple-joystick",
+            2,
+            vec!["Apple II"],
+            "https://github.com/linappleii/linapple/tree/fa31e11b579edec32dd431c8b400a04e60a21dab",
+        ),
+        (
+            "caprice32",
+            "caprice32-cpc",
+            2,
+            vec!["Amstrad CPC"],
+            "https://github.com/ColinPitrat/caprice32/tree/6c12c4c92360065cdc229ac9ada7551f941436b8",
+        ),
+        (
+            "fuse",
+            "fuse-spectrum",
+            2,
+            vec!["ZX Spectrum"],
+            "https://github.com/fuse-emulator/fuse/tree/5ba7804a44483466d7403a6e646a228da562ed5d",
+        ),
+        (
+            "amiberry",
+            "amiberry-amiga",
+            2,
+            vec!["Commodore Amiga"],
+            "https://github.com/BlitterStudio/amiberry/tree/06ff25093b620deef734a395189a1c564ed8beac",
+        ),
+        (
+            "vita3k",
+            "vita3k-vita",
+            1,
+            vec!["PlayStation Vita"],
+            "https://github.com/Vita3K/Vita3K/tree/84184a363aa99c7f331a7e75bdd75f43ff63db08",
+        ),
+        (
+            "gbe-plus",
+            "gbe-plus-gamepad",
+            1,
+            vec!["Nintendo Game Boy Advance"],
+            "https://github.com/shonumi/gbe-plus/tree/05a05e931b3993ff3e6316b0d841a1fb4d3ac7a7",
+        ),
+        (
+            "pokemini",
+            "pokemini",
+            1,
+            vec!["Nintendo Pokemon Mini"],
+            "https://sourceforge.net/p/pokemini/code/ci/15cc97ff70d6d9d749287ac55cb68198708564f3/tree/",
+        ),
+        (
+            "uzem",
+            "snes",
+            2,
+            vec!["Uzebox"],
+            "https://github.com/Uzebox/uzebox/tree/abf5125847e68a6b7c4432f7849cd5baf717bba5/tools/uzem",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -1106,6 +1169,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("vita3k", "vita3k-vita") {
         return Some(
             crate::controller_vita3k_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("uzem", "snes") {
+        return Some(
+            crate::controller_uzem_standalone::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),
