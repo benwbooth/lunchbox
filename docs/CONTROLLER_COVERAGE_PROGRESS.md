@@ -14,6 +14,19 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 639: connected the pinned ep128emu joystick event grammar to a
+single-player native Linux launch adapter. Source review proved the
+`SDL_JoystickOpen(i)` slot selection with capable-pad preference, the
+`0xC000` axis/button/hat event codes, the `keyboard.XX.x` config keys with
+7-bit matrix rows, `-cfg`/`-snapshot` launch flags, and `$HOME/.ep128emu`
+resolution. The session proves a capable first-slot pad, requires staged
+matrix rows for every produced event, and stages a session config under
+HOME. Catalog/settings/QML/guided/launch dispatch are connected. Focused
+writer tests and a full QML/C++ check passed; no ep128emu executable,
+snapshot, firmware, save, state, or controller runtime was exercised. This
+moves the source-backed inventory to 73/250 partial standalone dispatches
+and 167/344 catalog source entries (48.5%), not runtime completion.
+
 Step 638: connected the pinned PCem gameport grammar to a
 single-player native Linux launch adapter. Source review proved the
 1-based `plat_joystick_nr` selection, the `[Joysticks]` key names, raw SDL
@@ -309,6 +322,19 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 639: connected the pinned ep128emu joystick event grammar to a
+single-player native Linux launch adapter. Source review proved the
+`SDL_JoystickOpen(i)` slot selection with capable-pad preference, the
+`0xC000` axis/button/hat event codes, the `keyboard.XX.x` config keys with
+7-bit matrix rows, `-cfg`/`-snapshot` launch flags, and `$HOME/.ep128emu`
+resolution. The session proves a capable first-slot pad, requires staged
+matrix rows for every produced event, and stages a session config under
+HOME. Catalog/settings/QML/guided/launch dispatch are connected. Focused
+writer tests and a full QML/C++ check passed; no ep128emu executable,
+snapshot, firmware, save, state, or controller runtime was exercised. This
+moves the source-backed inventory to 73/250 partial standalone dispatches
+and 167/344 catalog source entries (48.5%), not runtime completion.
 
 Step 638: connected the pinned PCem gameport grammar to a
 single-player native Linux launch adapter. Source review proved the

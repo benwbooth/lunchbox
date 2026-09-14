@@ -536,6 +536,40 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(pcem);
+    let mut ep128emu = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    ep128emu.id = "ep128emu-joystick".into();
+    ep128emu.name = "Enterprise joystick — ep128emu".into();
+    ep128emu.family = "two-button".into();
+    ep128emu.source = "https://github.com/istvan-v/ep128emu/tree/9054a7bcb7defb27e23390196c07152f387b3a37/src/joystick.hpp".into();
+    ep128emu.notes = "ep128emu Enterprise joystick. Directions, fire, and two extra buttons; matrix rows come from the user's own keyboard map.".into();
+    ep128emu.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("fire", "Fire", 70.0, 50.0, "face", true),
+        ("fire2", "Fire 2", 80.0, 35.0, "face", true),
+        ("fire3", "Fire 3", 80.0, 65.0, "face", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(ep128emu);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -1359,6 +1393,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/sarah-walker-pcem/pcem/tree/a5a54ab5981902fc227b0afd1756ebe4660178d0",
         ),
         (
+            "ep128emu",
+            "ep128emu-joystick",
+            1,
+            vec!["Enterprise 128"],
+            "https://github.com/istvan-v/ep128emu/tree/9054a7bcb7defb27e23390196c07152f387b3a37",
+        ),
+        (
             "play",
             "dualshock",
             1,
@@ -1673,6 +1714,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("play", "dualshock") {
         return Some(
             crate::controller_play_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("ep128emu", "ep128emu-joystick") {
+        return Some(
+            crate::controller_ep128emu_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

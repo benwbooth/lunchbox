@@ -54,6 +54,7 @@ mod controller_eka2l1_native;
 mod controller_emma_02_standalone;
 mod controller_emulicious_standalone;
 mod controller_ep128emu;
+mod controller_ep128emu_native;
 mod controller_escv_native;
 mod controller_fbneo;
 mod controller_fceux;

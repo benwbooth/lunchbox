@@ -39,6 +39,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "touchHLE",
     "Tsugaru",
     "PCem",
+    "ep128emu",
     "Play!",
     "Vita3K",
     "Caprice32",
@@ -373,6 +374,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let touchhle = name.eq_ignore_ascii_case("touchHLE");
             let tsugaru = name.eq_ignore_ascii_case("Tsugaru");
             let pcem = name.eq_ignore_ascii_case("PCem");
+            let ep128emu = name.eq_ignore_ascii_case("ep128emu");
             let play = name.eq_ignore_ascii_case("Play!");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
@@ -454,6 +456,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if play {
                     "Native Linux Play! dispatch is connected for the single DualShock 2 pad through evdev. It stages a private evdev input profile in a session directory, rechecks the exact evdev routes, and confirms child ownership. Hats and rumble are out of scope; other hosts, packages, and runtime input remain unverified."
+                } else if ep128emu {
+                    "Native Linux ep128emu dispatch is connected for the single Enterprise joystick in the first SDL slot. It stages a session .ep128emu config with joystick event rows, rechecks the exact SDL routes, and confirms the child loaded the declared SDL library. Matrix rows, other hosts, packages, and runtime input remain unverified."
                 } else if pcem {
                     "Native Linux PCem dispatch is connected for the single standard 2-button gameport joystick on SDL slot 0. It passes a private machine config with --config, rechecks the exact SDL2 routes, and confirms the child loaded the declared SDL library. POV hats, other hosts, packages, and runtime input remain unverified."
                 } else if tsugaru {

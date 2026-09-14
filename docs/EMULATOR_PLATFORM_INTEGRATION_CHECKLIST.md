@@ -39,9 +39,9 @@ is documented in [EMULATOR_FEATURE_MATRIX.md](EMULATOR_FEATURE_MATRIX.md).
 
 | Track | Current | Denominator | Percent | Meaning / remaining work |
 |---|---:|---:|---:|---|
-| Native controller source adapters | 72 | 250 standalone candidates | 28.8% | 178 catalog candidates still lack a registered partial adapter |
+| Native controller source adapters | 73 | 250 standalone candidates | 29.2% | 177 catalog candidates still lack a registered partial adapter |
 | RetroArch core source contracts | 94 | 94 core names | 100.0% | Source contracts are complete; runtime verification remains |
-| Combined controller source entries | 166 | 344 catalog runtimes | 48.3% | 72 native adapters plus 94 core contracts; record-only simple64 is tracked separately |
+| Combined controller source entries | 167 | 344 catalog runtimes | 48.5% | 73 native adapters plus 94 core contracts; record-only simple64 is tracked separately |
 | Standalone platform records | 250 | 251 tracked runtimes | 99.6% | 250 catalog identities plus record-only `simple64`; the newly cataloged AltirraQt identity still needs its own record |
 | Record/host cells dispositioned | 1,000 | 1,004 | 99.6% | 576 host records plus 424 explicit gaps; AltirraQt's four cells are not yet captured |
 | Fully captured host cells | 419 | 1,004 | 41.7% | Every required dimension has a non-unresolved disposition |

@@ -127,6 +127,7 @@ enum PreparedJsonNativeLaunch {
     Touchhle(crate::controller_touchhle_native::native_command::NativeSession),
     Tsugaru(crate::controller_tsugaru_native::native_command::NativeSession),
     Pcem(crate::controller_pcem_native::native_command::NativeSession),
+    Ep128emu(crate::controller_ep128emu_native::native_command::NativeSession),
     Play(crate::controller_play_native::native_command::NativeSession),
     Vita3K(crate::controller_vita3k_native::native_command::NativeSession),
     Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
@@ -183,6 +184,7 @@ impl PreparedJsonNativeLaunch {
             Self::Touchhle(session) => session.spawn(plan, cancel),
             Self::Tsugaru(session) => session.spawn(plan, cancel),
             Self::Pcem(session) => session.spawn(plan, cancel),
+            Self::Ep128emu(session) => session.spawn(plan, cancel),
             Self::Play(session) => session.spawn(plan, cancel),
             Self::Vita3K(session) => session.spawn(plan, cancel),
             Self::Caprice32(session) => session.spawn(plan, cancel),
@@ -234,6 +236,7 @@ impl PreparedJsonNativeLaunch {
             Self::Touchhle(session) => session.verify(cancel),
             Self::Tsugaru(session) => session.verify(cancel),
             Self::Pcem(session) => session.verify(cancel),
+            Self::Ep128emu(session) => session.verify(cancel),
             Self::Play(session) => session.verify(cancel),
             Self::Vita3K(session) => session.verify(cancel),
             Self::Caprice32(session) => session.verify(cancel),
@@ -285,6 +288,7 @@ impl PreparedJsonNativeLaunch {
             Self::Touchhle(session) => session.check_health(),
             Self::Tsugaru(session) => session.check_health(),
             Self::Pcem(session) => session.check_health(),
+            Self::Ep128emu(session) => session.check_health(),
             Self::Play(session) => session.check_health(),
             Self::Vita3K(session) => session.check_health(),
             Self::Caprice32(session) => session.check_health(),
@@ -9260,6 +9264,37 @@ pub fn prepare_with_cancellation(
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Play(native)),
                 description: "Play!: calibrated single DualShock 2 pad through a private evdev input profile in a session directory, with exact evdev routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("ep128emu")
+    {
+        let matches: Vec<_> = mapping
+            .ep128emu_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous ep128emu native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_ep128emu_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Ep128emu(native)),
+                description: "ep128emu: calibrated single Enterprise joystick in the first SDL slot through a session .ep128emu config, with exact SDL routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
                 ..Default::default()
             }));
         }

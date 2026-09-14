@@ -317,6 +317,19 @@ pub(super) fn reuse(
                 mapping.play_native_launches.push(setup);
             }
         }
+        "ep128emu"
+            if !mapping
+                .ep128emu_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.ep128emu_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.ep128emu_native_launches.push(setup);
+            }
+        }
         "pcem"
             if !mapping
                 .pcem_native_launches

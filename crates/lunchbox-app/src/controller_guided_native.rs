@@ -152,6 +152,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "touchhle"
                 | "tsugaru"
                 | "pcem"
+                | "ep128emu"
                 | "play"
                 | "vita3k"
                 | "caprice32"
@@ -672,6 +673,19 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.players = vec![crate::controller_play_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "ep128emu" => {
+            for setup in &mut mapping.ep128emu_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_ep128emu_native::settings::Player {
                     player: 1,
                     controller_id: ids[0].clone(),
                 }];
