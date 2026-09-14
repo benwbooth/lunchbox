@@ -396,6 +396,43 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(panda3ds);
+    let mut supermodel = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    supermodel.id = "supermodel-fighting".into();
+    supermodel.name = "Model 3 fighting — Supermodel P1 deck".into();
+    supermodel.family = "two-button".into();
+    supermodel.source = "https://github.com/trzy/Supermodel/tree/24d2ffcfc7f14229337f05f4920fe26b56633d9d/Src/Inputs/Inputs.cpp".into();
+    supermodel.notes = "Supermodel P1 fighting deck. Punch/kick/guard/escape on four buttons; extra arcade buttons are not mapped by this contract.".into();
+    supermodel.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("button1", "Punch", 70.0, 50.0, "face", true),
+        ("button2", "Kick", 80.0, 35.0, "face", true),
+        ("button3", "Guard", 80.0, 65.0, "face", true),
+        ("button4", "Escape", 90.0, 50.0, "face", true),
+        ("start", "P1 Start", 30.0, 90.0, "menu", true),
+        ("select", "P1 Coin", 70.0, 90.0, "menu", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(supermodel);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -1184,6 +1221,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/wheremyfoodat/Panda3DS/tree/5aaa1d26565c834a6f1999026260e559f54aacf1",
         ),
         (
+            "supermodel",
+            "supermodel-fighting",
+            1,
+            vec!["Sega Model 3"],
+            "https://github.com/trzy/Supermodel/tree/24d2ffcfc7f14229337f05f4920fe26b56633d9d",
+        ),
+        (
             "play",
             "dualshock",
             1,
@@ -1498,6 +1542,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("play", "dualshock") {
         return Some(
             crate::controller_play_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("supermodel", "supermodel-fighting") {
+        return Some(
+            crate::controller_supermodel_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

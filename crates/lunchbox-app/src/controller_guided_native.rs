@@ -147,6 +147,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "ymir"
                 | "dreampotato"
                 | "panda3ds"
+                | "supermodel"
                 | "play"
                 | "vita3k"
                 | "caprice32"
@@ -667,6 +668,19 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.players = vec![crate::controller_play_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "supermodel" => {
+            for setup in &mut mapping.supermodel_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_supermodel_native::settings::Player {
                     player: 1,
                     controller_id: ids[0].clone(),
                 }];

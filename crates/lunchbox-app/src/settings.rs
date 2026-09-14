@@ -362,6 +362,9 @@ pub struct ControllerMappingSettings {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) play_native_launches: Vec<crate::controller_play_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) supermodel_native_launches:
+        Vec<crate::controller_supermodel_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) panda3ds_native_launches:
         Vec<crate::controller_panda3ds_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -553,6 +556,7 @@ impl Default for ControllerMappingSettings {
             eka2l1_native_launches: Vec::new(),
             cemu_native_launches: Vec::new(),
             play_native_launches: Vec::new(),
+            supermodel_native_launches: Vec::new(),
             panda3ds_native_launches: Vec::new(),
             dreampotato_native_launches: Vec::new(),
             ymir_native_launches: Vec::new(),
@@ -1594,6 +1598,9 @@ impl ControllerMappingSettings {
         crate::controller_eka2l1_native::settings::validate_setups(&self.eka2l1_native_launches)?;
         crate::controller_cemu_native::settings::validate_setups(&self.cemu_native_launches)?;
         crate::controller_play_native::settings::validate_setups(&self.play_native_launches)?;
+        crate::controller_supermodel_native::settings::validate_setups(
+            &self.supermodel_native_launches,
+        )?;
         crate::controller_panda3ds_native::settings::validate_setups(
             &self.panda3ds_native_launches,
         )?;

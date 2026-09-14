@@ -14,6 +14,19 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 634: connected the pinned Supermodel JOY token grammar to a
+single-player native Linux launch adapter for the P1 fighting deck. Source
+review proved `JOY1_*` 1-based selection, the BUTTON/axis/POV token tables,
+the `sdlgamepad` backend selection, `./Config` search priority, and the
+positional ROM slot. The writer gained an `InputSystem` setter; the session
+proves SDL index 0, inverts calibrated controls through the game-controller
+mapping into JOY1_BUTTON tokens, and stages a session config.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused writer
+tests and a full QML/C++ check passed; no Supermodel executable, ROM,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 68/250 partial standalone dispatches and 162/344
+catalog source entries (47.1%), not runtime completion.
+
 Step 633: connected the pinned Panda3DS hard-wired gamepad mapping to a
 single-player native Linux launch adapter, replacing the module's gamepad
 refusal (the SDL frontend does read gamepad 0; only authored mapping tables
@@ -244,6 +257,19 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 634: connected the pinned Supermodel JOY token grammar to a
+single-player native Linux launch adapter for the P1 fighting deck. Source
+review proved `JOY1_*` 1-based selection, the BUTTON/axis/POV token tables,
+the `sdlgamepad` backend selection, `./Config` search priority, and the
+positional ROM slot. The writer gained an `InputSystem` setter; the session
+proves SDL index 0, inverts calibrated controls through the game-controller
+mapping into JOY1_BUTTON tokens, and stages a session config.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused writer
+tests and a full QML/C++ check passed; no Supermodel executable, ROM,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 68/250 partial standalone dispatches and 162/344
+catalog source entries (47.1%), not runtime completion.
 
 Step 633: connected the pinned Panda3DS hard-wired gamepad mapping to a
 single-player native Linux launch adapter, replacing the module's gamepad
