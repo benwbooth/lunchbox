@@ -1111,6 +1111,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
                 .collect(),
         );
     }
+    if (core, layout) == ("pokemini", "pokemini") {
+        return Some(
+            crate::controller_pokemini_standalone::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
     if (core, layout) == ("gbe-plus", "gbe-plus-gamepad") {
         return Some(
             crate::controller_gbe_plus_standalone::ROUTES

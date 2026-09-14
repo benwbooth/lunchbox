@@ -25,6 +25,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "VICE (xvic)",
     "Amiberry",
     "GBE+",
+    "PokeMini",
     "Vita3K",
     "Caprice32",
     "puNES",
@@ -344,6 +345,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let fuse = name.eq_ignore_ascii_case("Fuse");
             let amiberry = name.eq_ignore_ascii_case("Amiberry");
             let gbe_plus = name.eq_ignore_ascii_case("GBE+");
+            let pokemini = name.eq_ignore_ascii_case("PokeMini");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
             let caprice32 = name.eq_ignore_ascii_case("Caprice32");
@@ -422,6 +424,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Caprice32 dispatch is connected for fixed CPC joystick ports with two menu buttons. It patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if vita3k {
                     "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
+                } else if pokemini {
+                    "Native Linux PokeMini dispatch is connected for raw-button Mini controls on SDL index 0. It runs a symlink sandbox with a private pokemini.cfg, rechecks the exact SDL routes, and confirms the child loaded the declared SDL library. Menu/power/shake stay unassigned; other hosts, packages, and runtime input remain unverified."
                 } else if gbe_plus {
                     "Native Linux GBE+ dispatch is connected for the single GBA gamepad. It writes a private gbe.ini gamepad section under HOME, proves the pad is SDL index 0, and confirms the child loaded the declared SDL library. Other systems, hosts, packages, and runtime input remain unverified."
                 } else if amiberry {

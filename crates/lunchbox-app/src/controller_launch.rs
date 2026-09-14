@@ -113,6 +113,7 @@ enum PreparedJsonNativeLaunch {
     Fuse(crate::controller_fuse_standalone::native_command::NativeSession),
     Amiberry(crate::controller_amiberry_native::native_command::NativeSession),
     GbePlus(crate::controller_gbe_plus_standalone::native_command::NativeSession),
+    PokeMini(crate::controller_pokemini_standalone::native_command::NativeSession),
     Vita3K(crate::controller_vita3k_native::native_command::NativeSession),
     Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
     YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
@@ -154,6 +155,7 @@ impl PreparedJsonNativeLaunch {
             Self::Fuse(session) => session.spawn(plan, cancel),
             Self::Amiberry(session) => session.spawn(plan, cancel),
             Self::GbePlus(session) => session.spawn(plan, cancel),
+            Self::PokeMini(session) => session.spawn(plan, cancel),
             Self::Vita3K(session) => session.spawn(plan, cancel),
             Self::Caprice32(session) => session.spawn(plan, cancel),
             Self::YabaSanshiro(session) => session.spawn(plan, cancel),
@@ -190,6 +192,7 @@ impl PreparedJsonNativeLaunch {
             Self::Fuse(session) => session.verify(cancel),
             Self::Amiberry(session) => session.verify(cancel),
             Self::GbePlus(session) => session.verify(cancel),
+            Self::PokeMini(session) => session.verify(cancel),
             Self::Vita3K(session) => session.verify(cancel),
             Self::Caprice32(session) => session.verify(cancel),
             Self::YabaSanshiro(session) => session.verify(cancel),
@@ -226,6 +229,7 @@ impl PreparedJsonNativeLaunch {
             Self::Fuse(session) => session.check_health(),
             Self::Amiberry(session) => session.check_health(),
             Self::GbePlus(session) => session.check_health(),
+            Self::PokeMini(session) => session.check_health(),
             Self::Vita3K(session) => session.check_health(),
             Self::Caprice32(session) => session.check_health(),
             Self::YabaSanshiro(session) => session.check_health(),
@@ -8162,6 +8166,37 @@ pub fn prepare_with_cancellation(
 
     #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("PokeMini")
+    {
+        let matches: Vec<_> = mapping
+            .pokemini_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous PokeMini native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_pokemini_standalone::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::PokeMini(native)),
+                description: "PokeMini: calibrated raw-button Mini controls through a symlink sandbox with a private pokemini.cfg, with exact SDL index-0 order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("GBE+")
     {
         let matches: Vec<_> = mapping
@@ -8729,6 +8764,37 @@ pub fn prepare_with_cancellation(
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Vita3K(native)),
                 description: "Vita3K: calibrated single Vita pad through a private config.yml, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("PokeMini")
+    {
+        let matches: Vec<_> = mapping
+            .pokemini_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous PokeMini native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_pokemini_standalone::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::PokeMini(native)),
+                description: "PokeMini: calibrated raw-button Mini controls through a symlink sandbox with a private pokemini.cfg, with exact SDL index-0 order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
                 ..Default::default()
             }));
         }

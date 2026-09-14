@@ -14,6 +14,18 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 624: connected the pinned PokeMini joybutton grammar to a
+single-player native Linux launch adapter, replacing the module's incorrect
+refusal (the source proves pokemini.cfg persists all ten joybutton slots).
+The config resolves beside argv[0], so launch links the trusted executable
+into a sandbox directory holding the private config; joyid must be SDL index
+0 and only raw buttons map (directions additionally work through axes/hats).
+Menu/power/shake stay unassigned. Catalog/settings/QML/guided/launch dispatch
+are connected. Focused writer tests and a full QML/C++ check passed; no
+PokeMini executable, ROM, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 58/250 partial standalone
+dispatches and 152/344 catalog source entries (44.2%), not runtime completion.
+
 Step 623: connected the pinned GBE+ SDL event grammar to a
 single-player native Linux launch adapter. Source review proved the pad codes
 (100+button, 200+axis*2+sign, 300+hat*4+direction with LEFT=0/RIGHT=1/UP=2/
@@ -94,6 +106,18 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 624: connected the pinned PokeMini joybutton grammar to a
+single-player native Linux launch adapter, replacing the module's incorrect
+refusal (the source proves pokemini.cfg persists all ten joybutton slots).
+The config resolves beside argv[0], so launch links the trusted executable
+into a sandbox directory holding the private config; joyid must be SDL index
+0 and only raw buttons map (directions additionally work through axes/hats).
+Menu/power/shake stay unassigned. Catalog/settings/QML/guided/launch dispatch
+are connected. Focused writer tests and a full QML/C++ check passed; no
+PokeMini executable, ROM, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 58/250 partial standalone
+dispatches and 152/344 catalog source entries (44.2%), not runtime completion.
 
 Step 623: connected the pinned GBE+ SDL event grammar to a
 single-player native Linux launch adapter. Source review proved the pad codes

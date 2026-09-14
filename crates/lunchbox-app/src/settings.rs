@@ -351,6 +351,9 @@ pub struct ControllerMappingSettings {
     pub(crate) gbe_plus_native_launches:
         Vec<crate::controller_gbe_plus_standalone::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) pokemini_native_launches:
+        Vec<crate::controller_pokemini_standalone::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) vita3k_native_launches: Vec<crate::controller_vita3k_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) caprice32_native_launches:
@@ -525,6 +528,7 @@ impl Default for ControllerMappingSettings {
             fuse_native_launches: Vec::new(),
             amiberry_native_launches: Vec::new(),
             gbe_plus_native_launches: Vec::new(),
+            pokemini_native_launches: Vec::new(),
             vita3k_native_launches: Vec::new(),
             caprice32_native_launches: Vec::new(),
             rmg_native_launches: Vec::new(),

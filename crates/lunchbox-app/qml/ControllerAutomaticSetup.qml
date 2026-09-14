@@ -331,6 +331,16 @@ ColumnLayout {
         }
     }
     Button {
+        text: "PokeMini setups…"
+        onClicked: {
+            duckstationSetups.adapter = "pokemini-native"
+            duckstationEditor.text = setup.settingsModel.pokemini_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch runs a symlink sandbox with a private pokemini.cfg, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
         text: "GBE+ GBA setups…"
         onClicked: {
             duckstationSetups.adapter = "gbe-plus-native"
@@ -573,6 +583,7 @@ ColumnLayout {
         readonly property bool fuseNative: adapter === "fuse-native"
         readonly property bool amiberryNative: adapter === "amiberry-native"
         readonly property bool gbePlusNative: adapter === "gbe-plus-native"
+        readonly property bool pokeminiNative: adapter === "pokemini-native"
         readonly property bool vita3kNative: adapter === "vita3k-native"
         readonly property bool caprice32Native: adapter === "caprice32-native"
         readonly property bool b2Native: adapter === "b2-native"
@@ -641,6 +652,8 @@ ColumnLayout {
                     ? "Caprice32: edit a JSON list with emulator_id, content (absolute disk/ROM path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch passes -c with a private cap32.cfg ahead of the content path; the pads must hold SDL instances 0/1 and start/select supply the two one-based menu buttons. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.vita3kNative
                     ? "Vita3K: edit a JSON list with emulator_id, content (absolute installed-app path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes -c with a private config.yml ahead of -r <app> and maps the fifteen buttons plus twin sticks through exact SDL gamepad indices. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.pokeminiNative
+                    ? "PokeMini: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch links the trusted executable into a sandbox directory holding a private pokemini.cfg ahead of the ROM path; the pad must be SDL index 0 and only raw buttons map. Menu/power/shake stay unassigned. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.gbePlusNative
                     ? "GBE+: edit a JSON list with emulator_id, content (absolute ROM path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch keeps the default positional ROM slot and maps the twelve gamepad controls to SDL event codes under a private HOME. The pad must be SDL index 0. Other systems, hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.amiberryNative
@@ -781,6 +794,8 @@ ColumnLayout {
                             ? setup.settingsModel.review_caprice32_native_setups(duckstationEditor.text)
                             : duckstationSetups.vita3kNative
                             ? setup.settingsModel.review_vita3k_native_setups(duckstationEditor.text)
+                            : duckstationSetups.pokeminiNative
+                            ? setup.settingsModel.review_pokemini_native_setups(duckstationEditor.text)
                             : duckstationSetups.gbePlusNative
                             ? setup.settingsModel.review_gbe_plus_native_setups(duckstationEditor.text)
                             : duckstationSetups.amiberryNative
@@ -897,6 +912,8 @@ ColumnLayout {
                             ? setup.settingsModel.stage_caprice32_native_setups(duckstationEditor.text)
                             : duckstationSetups.vita3kNative
                             ? setup.settingsModel.stage_vita3k_native_setups(duckstationEditor.text)
+                            : duckstationSetups.pokeminiNative
+                            ? setup.settingsModel.stage_pokemini_native_setups(duckstationEditor.text)
                             : duckstationSetups.gbePlusNative
                             ? setup.settingsModel.stage_gbe_plus_native_setups(duckstationEditor.text)
                             : duckstationSetups.amiberryNative
@@ -1002,6 +1019,8 @@ ColumnLayout {
                             ? "Staged. Save settings in the main page. Caprice32 native dispatch patches a private cap32.cfg and rechecks exact SDL instance order at launch; no devices were opened."
                             : duckstationSetups.vita3kNative
                             ? "Staged. Save settings in the main page. Vita3K native dispatch writes a private config.yml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
+                            : duckstationSetups.pokeminiNative
+                            ? "Staged. Save settings in the main page. PokeMini native dispatch runs a symlink sandbox with a private pokemini.cfg and rechecks SDL index 0 at launch; no devices were opened."
                             : duckstationSetups.gbePlusNative
                             ? "Staged. Save settings in the main page. GBE+ native dispatch writes a private gbe.ini and rechecks SDL index 0 at launch; no devices were opened."
                             : duckstationSetups.amiberryNative

@@ -304,6 +304,19 @@ pub(super) fn reuse(
                 mapping.vita3k_native_launches.push(setup);
             }
         }
+        "pokemini"
+            if !mapping
+                .pokemini_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.pokemini_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.pokemini_native_launches.push(setup);
+            }
+        }
         "gbe-plus"
             if !mapping
                 .gbe_plus_native_launches
