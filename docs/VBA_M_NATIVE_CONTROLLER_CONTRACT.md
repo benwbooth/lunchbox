@@ -26,22 +26,51 @@ The wx frontend writes the same logical keys as a `[Joypad/1]` section with
 `Up=...` through `Start=...` entries; use the adapter's wx rendering for a wx
 baseline and its Qt rendering for a Qt baseline.
 
-`JoyN` is the SDL enumeration slot (`N` is one-based), not a stable device
-identity.  Axis values use `JoyN-AxisM+`/`JoyN-AxisM-`; hats use
-`JoyN-HatMH` with `N`, `S`, `W` or `E`.  Keyboard values use the source's
-named or numeric `UserInput` grammar.  The adapter emits only the first-player
-section and must merge it into a copied baseline, preserving all other
-options, keyboard shortcuts, joypads, save paths and state paths.
+`JoyN` is the SDL joystick enumeration slot plus one, not a stable device
+identity. Axis values use `JoyN-AxisM+`/`JoyN-AxisM-`; hats use
+`JoyN-HatMH` with `N`, `S`, `W` or `E`. The source engages a positive axis
+above `0x1fff` and a negative axis below `-0x1fff`. Keyboard values use the
+source's named or numeric `UserInput` grammar. The native adapter emits all ten
+first-player controls and rejects duplicate physical inputs. It merges them
+into a copied baseline, preserving other options, keyboard shortcuts, joypads,
+save paths and state paths.
 
 The wx frontend's default file is `vbam.ini`; the Qt frontend's default file
 is `vbam-qt.ini`.  Both resolve under the source-selected user configuration
 root (XDG on Linux, platform-standard user data/config roots on Windows and
 macOS), and either frontend accepts an explicit configuration file.  A
-runtime launch must re-enumerate the intended SDL device immediately before
-starting VBA-M; this writer does not prove that a slot still denotes the same
-physical controller.
+runtime launch passes that private file with `--config`, forces
+`SDLGameControllerMode=false`, and re-enumerates the intended SDL device
+immediately before starting VBA-M. This matters because the option defaults to
+logical SDL GameController events when enabled, while `JoyN-ButtonM`, axis and
+hat values otherwise refer to raw joystick controls.
 
-Preserve ROM-adjacent `.sav`/`.sgm` data, user-selected state files, optional
-`gba_bios.bin`, `gb_bios.bin` and `gbc_bios.bin` firmware, and the existing
-configuration root.  The source-backed writer is not a runtime claim about a
-particular VBA-M binary or game.
+The Linux launch guard supports either an exact SDL2 runtime with captured
+classic/evdev raw numbering or an exact SDL3 runtime forced onto its classic
+`/dev/input/js*` backend. It pins the executable, helper, SDL library, content,
+source and private configs by SHA-256; retains the selected kernel topology;
+and rechecks routing and raw numbering immediately before spawn. The setup is
+restricted to one controller and uncompressed `.gba` content because the
+database relationship is Nintendo e-Reader. It configures the GBA host pad;
+card scanning or loading is outside this contract.
+
+An empty `General/BatteryDir` or `General/StateDir` means the ROM directory.
+Absolute configured directories are accepted after `%s` is expanded to
+`GameBoy Advance`, and must already exist and be writable. Relative configured
+directories are rejected: Qt anchors them to its selected configuration root,
+while the inspected wx Linux path helper applies a different normalization
+chain, so the saved setup does not carry one common exact destination. The
+guard records the resolved save and state directories by canonical path,
+device and inode before launch and rechecks them during the session.
+
+When `preferences/BootRomEn` is enabled, `GBA/BiosFile` must resolve from the
+actual launch working directory to a readable 16 KiB file; its hash is pinned
+for the session. Disabled BIOS settings are preserved without inventing a
+firmware requirement. ROM-adjacent `.sav`/`.sgm` data and frontend-selected
+state files remain native VBA-M data rather than copied into the private config
+directory.
+
+The writer tests prove Qt/wx INI patching, CRLF preservation, axis/hat syntax,
+and malformed/duplicate rejection. They do not prove a particular VBA-M binary,
+physical controller, game, save load, state restore, or e-Reader workflow at
+runtime.

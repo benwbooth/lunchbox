@@ -326,6 +326,12 @@ fn saved_brawler64_calibration_prepares_and_controls_gba_through_retroarch() -> 
     brawler64_hardware_oracle(OracleTarget::Gba, true)
 }
 
+#[test]
+#[ignore = "requires writable uinput, an isolated X display, the pinned RetroArch Flatpak/FBNeo core, and the pinned user-owned SF2 set"]
+fn saved_calibration_runs_fbneo_six_button_static_profile_through_flatpak() -> Result<()> {
+    fbneo_six_button_static_profile_oracle()
+}
+
 fn saved_calibration_plan(
     directory: &Path,
     calibration: &Calibration,
@@ -920,5 +926,444 @@ fn brawler64_hardware_oracle(target: OracleTarget, saved_launch: bool) -> Result
             "Launch-scoped controller config survived teardown"
         );
     }
+    Ok(())
+}
+
+fn fbneo_six_button_static_profile_oracle() -> Result<()> {
+    use sha2::{Digest, Sha256};
+
+    const CORE_SHA256: &str = "3555759523d6da5f78012c6846921ac27884b03264604387d07a4877579a177e";
+    const SF2_SHA256: &str = "4abbfccd30caf163f18064bf8c27b2780f370d67d34ee802999dcbb7e6436a30";
+    const RETROARCH_SHA256: &str =
+        "2c58ad9ae854b3370ac139b7278711d3048927676ba026995a2d3f62887f13bb";
+    const FLATPAK_COMMIT: &str = "9c51e2bcb6f7f29ecb327ee057b273c5b59efc22d35026e90aef601bc0052752";
+
+    let hash = |bytes: &[u8]| format!("{:x}", Sha256::digest(bytes));
+    let core_source = PathBuf::from(
+        std::env::var("LUNCHBOX_ORACLE_FBNEO_CORE").context("Set pinned FBNeo core path")?,
+    );
+    let content_source = PathBuf::from(
+        std::env::var("LUNCHBOX_ORACLE_FBNEO_SF2").context("Set pinned SF2 archive path")?,
+    );
+    ensure!(
+        core_source.is_absolute() && content_source.is_absolute(),
+        "FBNeo oracle inputs must be absolute"
+    );
+    let core_bytes = fs::read(&core_source)?;
+    let content_bytes = fs::read(&content_source)?;
+    ensure!(
+        hash(&core_bytes) == CORE_SHA256,
+        "Unreviewed FBNeo core binary"
+    );
+    ensure!(
+        content_bytes.len() == 3_551_819 && hash(&content_bytes) == SF2_SHA256,
+        "Unreviewed SF2 archive"
+    );
+
+    let flatpak_commit = Command::new("flatpak")
+        .args(["info", "--show-commit", "org.libretro.RetroArch"])
+        .output()?;
+    ensure!(
+        flatpak_commit.status.success(),
+        "Could not resolve Flatpak commit"
+    );
+    ensure!(
+        String::from_utf8(flatpak_commit.stdout)?.trim() == FLATPAK_COMMIT,
+        "RetroArch Flatpak commit differs from the reviewed runtime"
+    );
+    let flatpak_location = Command::new("flatpak")
+        .args(["info", "--show-location", "org.libretro.RetroArch"])
+        .output()?;
+    ensure!(
+        flatpak_location.status.success(),
+        "Could not resolve Flatpak location"
+    );
+    let retroarch = PathBuf::from(String::from_utf8(flatpak_location.stdout)?.trim())
+        .join("files/bin/retroarch");
+    ensure!(
+        hash(&fs::read(&retroarch)?) == RETROARCH_SHA256,
+        "RetroArch executable differs from the reviewed runtime"
+    );
+
+    let display =
+        std::env::var("LUNCHBOX_ORACLE_DISPLAY").context("Set a private X server display")?;
+    validate_private_display(
+        &display,
+        &std::env::var("DISPLAY")
+            .context("Desktop DISPLAY is required to rule out the user's display")?,
+    )?;
+    let socket = PathBuf::from(format!(
+        "/tmp/.X11-unix/X{}",
+        local_display_number(&display)?
+    ));
+    let _display_connection = std::os::unix::net::UnixStream::connect(&socket)
+        .with_context(|| format!("Private X server is not listening at {}", socket.display()))?;
+
+    let evidence = PathBuf::from(
+        std::env::var("LUNCHBOX_ORACLE_EVIDENCE")
+            .context("Set a new retained evidence directory")?,
+    );
+    ensure!(evidence.is_absolute(), "Evidence path must be absolute");
+    fs::create_dir(&evidence)?;
+    let parent = evidence
+        .parent()
+        .context("Evidence directory has no parent")?;
+    let root = tempfile::Builder::new()
+        .prefix("lunchbox-fbneo-static-")
+        .tempdir_in(parent)?;
+    let dir = root.path();
+    for name in [
+        "config", "data", "cache", "state", "saves", "states", "system", "logs",
+    ] {
+        fs::create_dir(dir.join(name))?;
+    }
+    let core = dir.join("fbneo_libretro.so");
+    let content = dir.join("sf2.zip");
+    fs::write(&core, core_bytes)?;
+    fs::write(&content, content_bytes)?;
+
+    let (mut calibration, _) = super::tests::calibrated_layout("brawler64");
+    let mut index = 0_u32;
+    for binding in calibration
+        .bindings
+        .values_mut()
+        .filter(|binding| binding.kind == "button")
+    {
+        let native = NativeInput {
+            code: 0x10000 + 0x2c0 + (index * 7 + 3) % 17,
+            direction: 0,
+        };
+        binding.code = native.code;
+        binding.native = Some(native);
+        index += 1;
+    }
+    ensure!(index == 17, "Update fixture for changed Brawler64 controls");
+    let (mut pad, pad_path) = VirtualPad::create(&calibration, true)?;
+    let numbering = JoydevMap::read(&pad_path)?;
+    let mut warnings = Vec::new();
+    let inventory = crate::controllers::list_local_controllers(&mut warnings);
+    let discovered = inventory
+        .iter()
+        .filter(|device| device.device_path == pad_path)
+        .collect::<Vec<_>>();
+    ensure!(
+        discovered.len() == 1 && discovered[0].is_virtual,
+        "Production discovery did not resolve the oracle pad exactly once: {warnings:?}"
+    );
+
+    let store = crate::settings::SettingsStore::at(dir.join("lunchbox-state.db"))?;
+    let mut settings = AppSettings::default();
+    settings.controller_mapping.calibrated_launch = true;
+    settings
+        .controller_mapping
+        .calibrations
+        .insert(discovered[0].stable_id.clone(), calibration.clone());
+    settings.controller_mapping.preferred_devices.insert(
+        crate::controllers::system_layout("Arcade").to_owned(),
+        discovered[0].stable_id.clone(),
+    );
+    store.save(&settings)?;
+    let settings = store.load()?;
+    let option = RomEmulatorOption::retroarch(
+        "oracle-fbneo".into(),
+        "FinalBurn Neo".into(),
+        "fbneo",
+        EmulatorExecutable::Flatpak {
+            command: "flatpak".into(),
+            app_id: "org.libretro.RetroArch".into(),
+        },
+        core.clone(),
+        true,
+    );
+    let mut plan = crate::emulator::build_rom_launch_plan(&content, "Arcade", &option)?;
+    let session = prepare(&settings, "Arcade", &option, &mut plan)?
+        .context("Saved calibration did not prepare the FBNeo launch")?;
+    let boundary = plan
+        .arguments
+        .iter()
+        .position(|argument| argument == "org.libretro.RetroArch")
+        .context("Prepared plan lost the production Flatpak boundary")?;
+    plan.arguments.splice(
+        boundary + 1..boundary + 1,
+        [
+            "--verbose".into(),
+            "--sram-mode".into(),
+            "noload-nosave".into(),
+            "-c".into(),
+            dir.join("base.cfg").into_os_string(),
+        ],
+    );
+    let static_profile =
+        contract("fbneo", "Arcade").context("Missing default FBNeo Arcade controller contract")?;
+    ensure!(
+        static_profile.id == "retroarch:fbneo:arcade-6"
+            && static_profile
+                .retroarch_launch
+                .as_ref()
+                .is_some_and(|launch| launch.device == 261),
+        "Production selection did not resolve the static six-button contract"
+    );
+    let generated_directory = session
+        ._directory
+        .as_ref()
+        .context("Missing launch-scoped controller configuration")?
+        .path()
+        .to_owned();
+    let controller_path = generated_directory.join("controllers.cfg");
+    let controller_config = fs::read_to_string(&controller_path)?;
+    ensure!(
+        cfg_value(&controller_config, "input_player1_joypad_index")?
+            == Some(numbering.index.to_string()),
+        "Production preparation selected the wrong joydev index"
+    );
+    ensure!(
+        cfg_value(&controller_config, "input_libretro_device_p1")?.as_deref() == Some("261"),
+        "Production preparation did not select FBNeo device 261"
+    );
+    ensure!(
+        cfg_value(&controller_config, "input_max_users")?.as_deref() == Some("1"),
+        "Production preparation did not restrict input to the connected calibrated pad"
+    );
+    for suffix in [
+        "up", "down", "left", "right", "y", "x", "l", "b", "a", "r", "start", "select",
+    ] {
+        let key = format!("input_player1_{suffix}_btn");
+        ensure!(
+            cfg_value(&controller_config, &key)?.is_some_and(|value| value != "nul"),
+            "Production six-button config omitted {key}"
+        );
+    }
+    ensure!(
+        plan.arguments.iter().any(|argument| argument
+            == &OsString::from(format!("--filesystem={}", generated_directory.display()))),
+        "Production argv omitted the launch-scoped config grant"
+    );
+
+    let mut base_config = String::from(
+        "stdin_cmd_enable = \"true\"\nnetwork_cmd_enable = \"false\"\ninput_driver = \"x\"\ninput_joypad_driver = \"linuxraw\"\ninput_poll_type_behavior = \"0\"\nvideo_driver = \"glcore\"\nvideo_context_driver = \"x\"\naudio_driver = \"sdl2\"\naudio_enable = \"true\"\nvideo_fullscreen = \"false\"\npause_nonactive = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\nauto_overrides_enable = \"false\"\nauto_remaps_enable = \"false\"\ninput_autodetect_enable = \"false\"\nhistory_list_enable = \"false\"\ngame_specific_options = \"false\"\ncore_info_cache_enable = \"false\"\nglobal_core_options = \"true\"\ncontent_runtime_log = \"false\"\ncontent_runtime_log_aggregate = \"false\"\nvideo_vsync = \"false\"\nui_companion_enable = \"false\"\ndesktop_menu_enable = \"false\"\nsuspend_screensaver_enable = \"false\"\nmicrophone_enable = \"false\"\ngamemode_enable = \"false\"\n",
+    );
+    for (key, value) in [
+        ("savefile_directory", dir.join("saves")),
+        ("savestate_directory", dir.join("states")),
+        ("system_directory", dir.join("system")),
+        ("cache_directory", dir.join("cache")),
+        ("log_dir", dir.join("logs")),
+        ("core_options_path", dir.join("config/options.cfg")),
+        ("content_history_path", dir.join("config/history.lpl")),
+        ("playlist_directory", dir.join("data")),
+        ("screenshot_directory", dir.join("data")),
+        ("runtime_log_directory", dir.join("logs")),
+    ] {
+        base_config.push_str(&format!("{key} = \"{}\"\n", value.display()));
+    }
+    ensure!(
+        cfg_value(&base_config, "gamemode_enable")?.as_deref() == Some("false"),
+        "Isolated oracle must never request privileged GameMode CPU changes"
+    );
+    fs::write(dir.join("base.cfg"), &base_config)?;
+
+    ensure!(
+        plan.program == Path::new("flatpak"),
+        "Unexpected production launcher"
+    );
+    ensure!(
+        plan.environment.is_empty(),
+        "Expected an unmodified launch environment"
+    );
+    let mut command = Command::new(&plan.program);
+    let stderr_path = evidence.join("frontend-stderr.log");
+    command
+        .env("DISPLAY", &display)
+        .args([
+            "run",
+            "--unshare=network",
+            "--nosocket=wayland",
+            "--nodevice=all",
+            "--device=input",
+            "--device=shm",
+            "--nofilesystem=host:reset",
+            "--nofilesystem=home",
+            "--command=env",
+        ])
+        .args(&plan.arguments[1..boundary])
+        .arg(format!("--env=DISPLAY={display}"))
+        .arg("org.libretro.RetroArch")
+        .arg("QT_QPA_PLATFORM=xcb")
+        .arg("SDL_AUDIODRIVER=dummy")
+        .arg(format!("DISPLAY={display}"));
+    for (key, suffix) in [
+        ("XDG_CONFIG_HOME", "config"),
+        ("XDG_DATA_HOME", "data"),
+        ("XDG_CACHE_HOME", "cache"),
+        ("XDG_STATE_HOME", "state"),
+    ] {
+        command.arg(format!("{key}={}", dir.join(suffix).display()));
+    }
+    command
+        .arg("/app/bin/retroarch")
+        .args(&plan.arguments[boundary + 1..])
+        .current_dir(&plan.current_directory)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::from(File::create(&stderr_path)?))
+        .process_group(0);
+    let mut child = RetroArch(command.spawn()?);
+    let stdout = child.0.stdout.take().context("Missing stdout")?;
+    let (sender, replies) = mpsc::channel();
+    let stdout_thread = std::thread::spawn(move || {
+        let mut lines = Vec::new();
+        for line in BufReader::new(stdout)
+            .lines()
+            .map_while(std::result::Result::ok)
+        {
+            if (line.starts_with("GET_STATUS ") || line.starts_with("READ_CORE_RAM "))
+                && sender.send(line.clone()).is_err()
+            {
+                break;
+            }
+            lines.push(line);
+        }
+        lines
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let status = loop {
+        child
+            .0
+            .stdin
+            .as_mut()
+            .context("Missing stdin")?
+            .write_all(b"GET_STATUS\n")?;
+        match replies.recv_timeout(Duration::from_millis(250)) {
+            Ok(reply) if reply.starts_with("GET_STATUS PLAYING ") => break reply,
+            Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                anyhow::bail!("RetroArch command response stream closed")
+            }
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "RetroArch did not expose running FBNeo content"
+        );
+    };
+
+    let controls = [
+        ("Coin", "select"),
+        ("Start", "start"),
+        ("Up", "up"),
+        ("Down", "down"),
+        ("Left", "left"),
+        ("Right", "right"),
+        ("Weak Punch", "b"),
+        ("Medium Punch", "c_up"),
+        ("Strong Punch", "l"),
+        ("Weak Kick", "a"),
+        ("Medium Kick", "c_right"),
+        ("Strong Kick", "r"),
+    ];
+    let mut samples = Vec::new();
+    for (label, source) in controls {
+        let code = (calibration.bindings[source]
+            .native
+            .as_ref()
+            .context("Oracle source has no native code")?
+            .code
+            & 0xffff) as u16;
+        pad.button(code, true)?;
+        std::thread::sleep(Duration::from_millis(100));
+        child
+            .0
+            .stdin
+            .as_mut()
+            .context("Missing stdin")?
+            .write_all(b"READ_CORE_RAM 0 32\n")?;
+        let sample_deadline = Instant::now() + Duration::from_secs(3);
+        let reply = loop {
+            match replies.recv_timeout(Duration::from_millis(250)) {
+                Ok(reply) if reply.starts_with("READ_CORE_RAM 0 ") => break reply,
+                Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    anyhow::bail!("RetroArch RAM response stream closed while pressing {label}")
+                }
+            }
+            ensure!(
+                Instant::now() < sample_deadline,
+                "No core-RAM response while pressing {label}"
+            );
+        };
+        let bytes = reply
+            .split_whitespace()
+            .skip(2)
+            .map(|value| u8::from_str_radix(value, 16))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        ensure!(
+            bytes.len() == 32,
+            "Short core-RAM response while pressing {label}"
+        );
+        pad.button(code, false)?;
+        std::thread::sleep(Duration::from_millis(100));
+        samples.push(serde_json::json!({
+            "control": label,
+            "source": source,
+            "native_code": code,
+            "core_ram_sample_sha256": hash(&bytes),
+        }));
+    }
+
+    drop(child);
+    let stdout_lines = stdout_thread
+        .join()
+        .map_err(|_| anyhow::anyhow!("RetroArch stdout collector panicked"))?;
+    let log = stdout_lines
+        .into_iter()
+        .chain(fs::read_to_string(&stderr_path)?.lines().map(str::to_owned))
+        .collect::<Vec<_>>()
+        .join("\n");
+    ensure!(
+        log.contains("[FBNeo] Running v1.0.0.03 260417 GITe923538")
+            && log.contains("Driver sf2 was successfully started")
+            && log.contains("Lunchbox Steam-compatible virtual gamepad oracle")
+            && !log.contains("Unknown device type"),
+        "Runtime log did not prove the pinned FBNeo/SF2/device path"
+    );
+    fs::write(evidence.join("frontend.log"), &log)?;
+    let report = serde_json::json!({
+        "status": "pass",
+        "flatpak": {
+            "app_id": "org.libretro.RetroArch",
+            "version": "1.22.2",
+            "commit": FLATPAK_COMMIT,
+            "retroarch_sha256": RETROARCH_SHA256,
+        },
+        "core": {
+            "name": "FinalBurn Neo",
+            "version": "v1.0.0.03 260417 GITe923538",
+            "sha256": CORE_SHA256,
+        },
+        "content": {
+            "name": "sf2.zip",
+            "bytes": 3_551_819,
+            "sha256": SF2_SHA256,
+        },
+        "profile": "retroarch:fbneo:arcade-6",
+        "selected_device": 261,
+        "private_display": display,
+        "flatpak_home_unshared": true,
+        "gamemode_disabled": true,
+        "production_status": status,
+        "joydev_index": numbering.index,
+        "controller_config_sha256": hash(controller_config.as_bytes()),
+        "frontend_log_sha256": hash(log.as_bytes()),
+        "pressed_and_released": samples,
+    });
+    fs::write(
+        evidence.join("report.json"),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    drop(session);
+    ensure!(
+        !generated_directory.exists(),
+        "Launch-scoped controller config survived teardown"
+    );
     Ok(())
 }

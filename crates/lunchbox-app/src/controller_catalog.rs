@@ -1374,10 +1374,21 @@ impl Catalog {
                             | "scummvm-native-settings"
                             | "jgenesis-native-settings"
                             | "gopher64-native-settings"
+                            | "gearsystem-native-settings"
+                            | "gearcoleco-native-settings"
+                            | "xroar-native-settings"
+                            | "zesarux-native-settings"
+                            | "oricutron-native-settings"
+                            | "atari-plus-plus-native-settings"
+                            | "aranym-native-settings"
+                            | "atari800-native-settings"
+                            | "nanoboyadvance-native-settings"
+                            | "vba-m-native-settings"
                             | "rmg-native-settings"
                             | "simple64-native-settings"
                             | "bizhawk-native-settings"
                             | "yaba-sanshiro-native-settings"
+                            | "kronos-native-settings"
                     ),
                 "unsupported profile contract"
             );
@@ -1655,9 +1666,20 @@ impl Catalog {
                         | "scummvm-native-settings"
                         | "jgenesis-native-settings"
                         | "gopher64-native-settings"
+                        | "gearsystem-native-settings"
+                        | "gearcoleco-native-settings"
+                        | "xroar-native-settings"
+                        | "zesarux-native-settings"
+                        | "oricutron-native-settings"
+                        | "atari-plus-plus-native-settings"
+                        | "aranym-native-settings"
+                        | "atari800-native-settings"
+                        | "nanoboyadvance-native-settings"
+                        | "vba-m-native-settings"
                         | "rmg-native-settings"
                         | "simple64-native-settings"
-                        | "yaba-sanshiro-native-settings" => {
+                        | "yaba-sanshiro-native-settings"
+                        | "kronos-native-settings" => {
                             crate::controller_native_targets::valid_output(profile, target, output)
                         }
                         "retropad" => {

@@ -1874,7 +1874,7 @@ mod tests {
                 .iter()
                 .map(|(_, coverage)| coverage.matching.len())
                 .sum::<usize>(),
-            113
+            114
         );
         assert_eq!(
             coverage
@@ -1897,7 +1897,7 @@ mod tests {
                     coverage.matching.len() + coverage.dynamic.len() + coverage.missing.len()
                 })
                 .sum::<usize>(),
-            236
+            237
         );
 
         let mupen = coverage

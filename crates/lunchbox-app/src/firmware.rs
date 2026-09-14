@@ -354,13 +354,19 @@ fn status_for_rule(
     let target_root = runtime_root
         .as_ref()
         .and_then(|root| target_root_for_rule(root, rule));
-    let target_path = target_root.as_ref().map(|target| {
-        if rule.install_mode == "copy_archive" {
-            target.join(&rule.package_name)
-        } else {
-            target.clone()
-        }
-    });
+    let target_path = if is_nestopia_ue_fds_rule(rule) && !nestopia_fds_manual {
+        runtime_root
+            .as_ref()
+            .map(|root| root.join(crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME))
+    } else {
+        target_root.as_ref().map(|target| {
+            if rule.install_mode == "copy_archive" {
+                target.join(&rule.package_name)
+            } else {
+                target.clone()
+            }
+        })
+    };
     let package_key = (rule.source_id.clone(), rule.package_name.clone());
     if rule.runtime_kind == "ryubing"
         && rule.source_id == "manual:nintendo-switch-firmware"
@@ -390,7 +396,9 @@ fn status_for_rule(
         packages.contains_key(&package_key) || runtime_target_ready
     };
     let runtime_text = runtime_path.to_string_lossy().into_owned();
-    let synced = if effective_target_strategy == "managed_import" {
+    let synced = if is_nestopia_ue_fds_rule(rule) && !nestopia_fds_manual {
+        runtime_target_ready
+    } else if effective_target_strategy == "managed_import" {
         runtime_target_ready
     } else {
         target_path.as_ref().is_some_and(|target| {
@@ -451,10 +459,10 @@ fn status_for_rule(
 
 fn is_nestopia_ue_fds_rule(rule: &FirmwareRuleRow) -> bool {
     rule.runtime_kind == "nestopia"
-        && rule.source_id == "manual:nestopia-fds-bios"
-        && rule.package_name == crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME
-        && rule.install_mode == "copy_archive"
-        && rule.target_strategy == "managed_import"
+        && rule.source_id == crate::nestopia_ue_fds_firmware::FDS_MINERVA_SOURCE_ID
+        && rule.package_name == crate::nestopia_ue_fds_firmware::FDS_MINERVA_PACKAGE_NAME
+        && rule.install_mode == "merge_tree"
+        && rule.target_strategy == "runtime_dir"
 }
 
 fn is_exact_nestopia_ue_fds_runtime(option: &RomEmulatorOption) -> bool {
@@ -471,10 +479,10 @@ fn is_exact_nestopia_ue_fds_runtime(option: &RomEmulatorOption) -> bool {
 
 fn is_nestopia_ue_fds_status(status: &FirmwareStatus) -> bool {
     status.runtime_kind == "nestopia"
-        && status.source_id == "manual:nestopia-fds-bios"
-        && status.package_name == crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME
-        && status.install_mode == "copy_archive"
-        && status.target_strategy == "managed_import"
+        && status.source_id == crate::nestopia_ue_fds_firmware::FDS_MINERVA_SOURCE_ID
+        && status.package_name == crate::nestopia_ue_fds_firmware::FDS_MINERVA_PACKAGE_NAME
+        && status.install_mode == "merge_tree"
+        && status.target_strategy == "runtime_dir"
         && status.platform_id == crate::nestopia_ue_fds_firmware::FDS_PLATFORM_ID
         && status.platform_name == crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME
         && status.flatpak_app_id == crate::nestopia_ue_fds_firmware::NESTOPIA_UE_FLATPAK_ID
@@ -1060,6 +1068,11 @@ fn firmware_selection_matches(
     selected_name: &str,
     selected_is_switch_keys: bool,
 ) -> bool {
+    if is_nestopia_ue_fds_status(status) {
+        return status.package_name.eq_ignore_ascii_case(selected_name)
+            || crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME
+                .eq_ignore_ascii_case(selected_name);
+    }
     if status.source_id == "manual:nintendo-switch-keys"
         && status.package_name == SWITCH_KEYS_PACKAGE
     {
@@ -2655,15 +2668,15 @@ mod tests {
             rule_key: "nestopia:nestopia:Nintendo - Famicom Disk System".into(),
             runtime_kind: "nestopia".into(),
             runtime_name: crate::nestopia_ue_fds_firmware::NESTOPIA_UE_EMULATOR_NAME.into(),
-            source_id: "manual:nestopia-fds-bios".into(),
-            source_transport: "manual".into(),
+            source_id: crate::nestopia_ue_fds_firmware::FDS_MINERVA_SOURCE_ID.into(),
+            source_transport: "minerva".into(),
             source_url: String::new(),
-            torrent_file: String::new(),
-            path_prefix: String::new(),
-            package_name: crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME.into(),
+            torrent_file: "minerva.torrent".into(),
+            path_prefix: "Retroarch-System/".into(),
+            package_name: crate::nestopia_ue_fds_firmware::FDS_MINERVA_PACKAGE_NAME.into(),
             target_subdir: String::new(),
-            install_mode: "copy_archive".into(),
-            target_strategy: "managed_import".into(),
+            install_mode: "merge_tree".into(),
+            target_strategy: "runtime_dir".into(),
             required: true,
             supports_hle_fallback: false,
             notes: "FDS firmware".into(),
@@ -2779,6 +2792,37 @@ mod tests {
             crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME,
             Path::new("/games/disk.fds"),
             &wrong_name,
+        ));
+
+        let status = status_for_rule(
+            &nestopia_fds_rule(),
+            &option,
+            crate::nestopia_ue_fds_firmware::FDS_PLATFORM_ID,
+            crate::nestopia_ue_fds_firmware::FDS_PLATFORM_NAME,
+            Path::new("/games/disk.fds"),
+            &HashMap::new(),
+            &HashMap::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            status.source_id,
+            crate::nestopia_ue_fds_firmware::FDS_MINERVA_SOURCE_ID
+        );
+        assert_eq!(status.source_transport, "minerva");
+        assert_eq!(
+            status.package_name,
+            crate::nestopia_ue_fds_firmware::FDS_MINERVA_PACKAGE_NAME
+        );
+        assert_eq!(
+            Path::new(&status.target_path).file_name().unwrap(),
+            crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME
+        );
+        assert!(status.required);
+        assert_eq!(status.source_label(), "Minerva");
+        assert!(firmware_selection_matches(
+            &status,
+            crate::nestopia_ue_fds_firmware::FDS_BIOS_FILENAME,
+            false,
         ));
     }
 

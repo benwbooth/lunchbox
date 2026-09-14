@@ -14,8 +14,11 @@ pub(crate) struct SavedSetup {
     pub controller_id: String,
     pub port: u32,
     pub device_id: u32,
+    /// Existing native QSettings INI. It is copied, never edited in place.
+    pub config_path: std::path::PathBuf,
     pub probe_program: std::path::PathBuf,
     pub sdl_library: std::path::PathBuf,
+    pub bubblewrap_program: std::path::PathBuf,
     pub executable_sha256: String,
 }
 
@@ -40,12 +43,36 @@ impl SavedSetup {
             !self.controller_id.trim().is_empty(),
             "Yaba Sanshiro 2 needs a controller identity"
         );
-        for path in [&self.content, &self.probe_program, &self.sdl_library] {
-            anyhow::ensure!(path.is_absolute(), "Yaba Sanshiro 2 paths must be absolute");
+        for path in [
+            &self.content,
+            &self.config_path,
+            &self.probe_program,
+            &self.sdl_library,
+            &self.bubblewrap_program,
+        ] {
+            anyhow::ensure!(
+                path.is_absolute()
+                    && !path
+                        .components()
+                        .any(|part| matches!(part, std::path::Component::ParentDir)),
+                "Yaba Sanshiro 2 paths must be absolute without parent traversal"
+            );
         }
         anyhow::ensure!(
-            self.executable_sha256.len() == 64,
-            "Yaba Sanshiro 2 needs a 64-char SHA-256"
+            self.config_path.file_name().and_then(|name| name.to_str()) == Some("yabause.ini"),
+            "Yaba Sanshiro 2 config_path must name yabause.ini"
+        );
+        anyhow::ensure!(
+            matches!(self.port, 1 | 2) && matches!(self.device_id, 1..=6),
+            "Yaba Sanshiro 2 pad port/id is outside the standard Saturn topology"
+        );
+        anyhow::ensure!(
+            self.executable_sha256.len() == 64
+                && self
+                    .executable_sha256
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit()),
+            "Yaba Sanshiro 2 needs a trusted executable SHA-256"
         );
         Ok(())
     }
@@ -67,6 +94,7 @@ impl SavedSetup {
         Ok(serde_json::json!({"launch_ready":false,
             "launch_integration":"partial",
             "target_layout":profile.target_layout,
-            "mapping":mapping}))
+            "mapping":mapping,
+            "detail":"Native Linux launch patches one Saturn pad entry in a copied yabause.ini and overlays only that file. The real backup-RAM and state roots remain active. Exact SDL2 device identity, mapping, and order are rechecked at launch; runtime behavior is unverified."}))
     }
 }

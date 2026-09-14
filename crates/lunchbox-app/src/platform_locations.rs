@@ -755,6 +755,64 @@ mod tests {
     }
 
     #[test]
+    fn nestopia_flatpak_sync_has_exactly_two_disjoint_runtime_routes() {
+        let records = load_records().unwrap();
+        let sandbox = PathBuf::from("/home/test/.var/app/ca._0ldsk00l.Nestopia");
+        let nestopia_bases = LocationBases {
+            flatpak_roots: vec![("ca._0ldsk00l.Nestopia".into(), sandbox.clone())],
+            ..bases()
+        };
+        let roots = save_route_roots_for_platform(
+            &records,
+            "nestopia-ue",
+            "linux-flatpak",
+            &nestopia_bases,
+        )
+        .unwrap();
+        assert_eq!(roots.len(), 2);
+        assert_eq!(
+            roots[0].route,
+            SaveRoute {
+                purpose: SavePurpose::Saves,
+                root_index: 0,
+            }
+        );
+        assert_eq!(roots[0].path, sandbox.join("data/nestopia/save"));
+        assert!(roots[0].create_if_missing);
+        assert_eq!(
+            roots[1].route,
+            SaveRoute {
+                purpose: SavePurpose::States,
+                root_index: 0,
+            }
+        );
+        assert_eq!(roots[1].path, sandbox.join("data/nestopia/state"));
+        assert!(roots[1].create_if_missing);
+        assert!(
+            !roots[0].path.starts_with(&roots[1].path)
+                && !roots[1].path.starts_with(&roots[0].path)
+        );
+
+        // Selecting another captured host must never reuse the discovered
+        // Flatpak sandbox, even though the frontend name and path suffixes
+        // happen to match on Unix hosts.
+        for platform in ["linux", "macos"] {
+            if let Ok(native) =
+                save_route_roots_for_platform(&records, "nestopia-ue", platform, &nestopia_bases)
+            {
+                assert!(
+                    native.iter().all(|root| !root.path.starts_with(&sandbox)),
+                    "{platform} unexpectedly reused the Flatpak sandbox"
+                );
+            }
+        }
+        assert!(
+            save_route_roots_for_platform(&records, "nestopia-ue", "windows", &nestopia_bases,)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn retroarch_core_scopes_refuse_shared_frontend_routes() {
         let error = save_route_roots_for_platform(
             &load_records().unwrap(),

@@ -1,10 +1,12 @@
 # Save and save-state synchronization
 
 Lunchbox uses Apache OpenDAL 0.59.1 as its cloud-storage abstraction. The
-compiled providers are Google Drive, Dropbox, and OneDrive; the in-memory
-backend is used as a deterministic storage oracle in tests. Lunchbox owns the
-sync policy because a generic newest-file or two-way-copy policy is unsafe for
-emulator data.
+compiled providers are a local filesystem folder, Google Drive, Dropbox, and
+OneDrive; the in-memory backend is used as a deterministic storage oracle in
+tests. The local-folder provider is suitable both for direct testing and for a
+folder already managed by Syncthing, Nextcloud, rsync, or another user-owned
+synchronization system. Lunchbox owns the save merge policy because a generic
+newest-file or two-way-copy policy is unsafe for emulator data.
 
 ## Safety model
 
@@ -29,6 +31,12 @@ emulator data.
   user chooses **Local** or **Remote** for every conflicting artifact.
 - Whole-image save models such as Xemu HDD images and Saturn backup RAM remain
   atomic artifacts. Lunchbox does not attempt a byte-level merge.
+- A local-folder root must already exist and be an absolute directory. Lunchbox
+  canonicalizes the selected path before storing it; the root cannot be the
+  filesystem root or a symbolic link. Existing `health`,
+  `saves`, and `saves/v1` entries must be real directories rather than links or
+  special files. Connection verification performs an actual write/read/delete
+  probe inside the selected root.
 
 ## Remote layout
 
@@ -40,6 +48,10 @@ saves/v1/<emulator>/<runtime>/
   manifests/<manifest-sha256>.json
   devices/<device-id>.json
 ```
+
+The same hierarchy is preserved directly beneath a selected local folder; no
+provider-specific prefix is inserted. This lets another synchronization tool
+replicate the directory unchanged between machines.
 
 Blobs and manifests are immutable and verified by readback. Manifests are
 canonical JSON objects whose ID is the SHA-256 of their body. Each installation
@@ -59,8 +71,10 @@ first sync, one-sided edits and deletes, edit/edit and edit/delete conflicts,
 mandatory exact conflict choices, unavailable roots, timestamp-independent
 content identity, canonical/tamper-evident manifests, portable-path and symlink
 rejection, immutable object verification, streamed multi-megabyte artifacts,
-provider builder construction, device-head round trips, and common-ancestor
-discovery. The application coordinator re-scans before applying a plan, stages
+provider builder construction, real local-filesystem write/read/delete probes,
+an end-to-end local-folder upload and second-device download through the exact
+`saves/v1/<emulator>/<runtime>` layout, device-head round trips, and
+common-ancestor discovery. The application coordinator re-scans before applying a plan, stages
 and verifies downloads, retains replaced files with a recovery journal, and
 only publishes a new manifest and device head after local application succeeds.
 
@@ -71,13 +85,20 @@ every artifact. Device heads that share a manifest, are already incorporated,
 or are ancestors of another remote head collapse to the unmerged history
 frontier. When several divergent tips remain, a separate prompt makes the
 remote history explicit; histories are merged one at a time without using
-timestamps as a winner. Provider profiles and OAuth tokens are stored in the
-operating system credential store; the settings panel verifies authenticated
-write/read/delete I/O before accepting a connection. Lunchbox consumes tokens
-issued for a registered OAuth application; it does not yet run the provider's
-browser authorization flow itself.
+timestamps as a winner. Network-provider profiles and OAuth tokens are stored
+in the operating system credential store. Local-folder profiles are kept in
+the ordinary private Lunchbox state database and contain only the canonical
+root, device identity, automatic-sync preference, and an explicitly empty auth
+record; configuring and using them does not require keyring access. A durable
+local-selection tombstone prevents an older cloud token from becoming active
+when a local connection is removed. Schema-1 cloud profiles migrate to schema 2
+with the existing `/Lunchbox Save Sync` remote root before being saved again.
+The settings panel verifies write/read/delete I/O before accepting any connection.
+Lunchbox consumes cloud tokens issued for a registered OAuth application; it
+does not yet run the provider's browser authorization flow itself.
 
-This is not a claim of live provider interoperability. The three provider
-builders compile and initialize without network I/O, but provider-account tests
-require real user-authorized credentials and still need to be run and recorded
-on Linux, Linux Flatpak, Windows, and macOS.
+The local filesystem transport is exercised against a real temporary directory
+in unit tests. This is not a claim of live cloud-provider interoperability. The
+three network provider builders compile and initialize without network I/O, but
+provider-account tests require real user-authorized credentials and still need
+to be run and recorded on Linux, Linux Flatpak, Windows, and macOS.

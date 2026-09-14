@@ -1,5 +1,6 @@
-//! Narrow, user-supplied Famicom Disk System firmware installation for the
-//! Nestopia UE Flatpak. This code never discovers or downloads firmware.
+//! Narrow Famicom Disk System firmware installation for the Nestopia UE
+//! Flatpak. Discovery and download stay in the central firmware service; this
+//! module accepts either an exact raw BIOS or the reviewed Minerva ZIP.
 
 use std::ffi::{CStr, CString};
 use std::fs::{self, File, OpenOptions};
@@ -20,7 +21,11 @@ pub const NESTOPIA_UE_EMULATOR_NAME: &str = "Nestopia UE";
 pub const FDS_PLATFORM_ID: &str = "d01f03eb-cbf9-5847-92a6-f5fb9ba80b15";
 pub const FDS_PLATFORM_NAME: &str = "Nintendo Famicom Disk System";
 pub const FDS_BIOS_FILENAME: &str = "disksys.rom";
+pub const FDS_MINERVA_SOURCE_ID: &str = "minerva:retroarch-system-files";
+pub const FDS_MINERVA_PACKAGE_NAME: &str = "Nintendo - NES - Famicom (Nestopia UE).zip";
 pub const FDS_BIOS_BYTES: usize = 8_192;
+const MAX_FDS_ARCHIVE_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_FDS_ARCHIVE_ENTRIES: usize = 128;
 // Primary-source allowlist: SourMesen/Mesen2
 // UI/Interop/FirmwareTypeExtensions.cs @ b9fa69ddc6d0a331fb103fdb5eef6904305703c2.
 pub const RECOGNIZED_FDS_BIOS_SHA256: [&str; 2] = [
@@ -29,7 +34,7 @@ pub const RECOGNIZED_FDS_BIOS_SHA256: [&str; 2] = [
 ];
 /// Diagnostic values only; CRC32 is never an acceptance criterion.
 pub const RECOGNIZED_FDS_BIOS_CRC32: [u32; 2] = [0x5e60_7dcf, 0x4df2_4a6c];
-pub const RUNTIME_PROOF_BLOCKER: &str = "Runtime proof requires a lawfully obtained FDS BIOS and FDS game image; Lunchbox does not discover or download either file.";
+pub const RUNTIME_PROOF_BLOCKER: &str = "Runtime proof requires an available reviewed Minerva package or lawful raw FDS BIOS plus a lawfully obtained FDS game image; Lunchbox does not bundle either file.";
 
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -561,7 +566,15 @@ fn inspect_source(path: &Path, allowed: &[&str]) -> Result<Inspected> {
         FileIdentity::metadata(&file.metadata()?) == FileIdentity::metadata(&named),
         "FDS BIOS identity changed while it was being opened"
     );
-    let inspected = inspect_open(file, allowed)?;
+    let inspected = if path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("zip"))
+    {
+        inspect_zip(file, allowed)?
+    } else {
+        inspect_open(file, allowed)?
+    };
     let final_named = fs::symlink_metadata(path)?;
     ensure!(
         final_named.is_file()
@@ -621,21 +634,91 @@ fn inspect_open(mut file: File, allowed: &[&str]) -> Result<Inspected> {
             && FileIdentity::metadata(&final_meta) == identity,
         "FDS BIOS changed while it was being inspected"
     );
+    let image = validate_image(bytes, allowed)?;
+    Ok(Inspected {
+        image,
+        identity,
+        mode: final_meta.mode(),
+        uid: final_meta.uid(),
+        links: final_meta.nlink(),
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn inspect_zip(file: File, allowed: &[&str]) -> Result<Inspected> {
+    let initial = file.metadata()?;
+    ensure!(
+        initial.is_file() && initial.len() <= MAX_FDS_ARCHIVE_BYTES,
+        "FDS firmware ZIP exceeds the {MAX_FDS_ARCHIVE_BYTES}-byte safety limit"
+    );
+    let identity = FileIdentity::metadata(&initial);
+    let mut archive = zip::ZipArchive::new(file).context("opening FDS firmware ZIP")?;
+    ensure!(
+        archive.len() <= MAX_FDS_ARCHIVE_ENTRIES,
+        "FDS firmware ZIP contains too many entries"
+    );
+    let mut selected = None;
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .context("reading FDS firmware ZIP entry")?;
+        let enclosed = entry
+            .enclosed_name()
+            .context("FDS firmware ZIP contains an unsafe path")?;
+        if entry.is_dir()
+            || !enclosed
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case(FDS_BIOS_FILENAME))
+        {
+            continue;
+        }
+        ensure!(
+            selected.is_none(),
+            "FDS firmware ZIP contains multiple disksys.rom candidates"
+        );
+        ensure!(
+            entry.size() == FDS_BIOS_BYTES as u64,
+            "FDS firmware ZIP disksys.rom must contain exactly {FDS_BIOS_BYTES} bytes"
+        );
+        let mut bytes = [0; FDS_BIOS_BYTES];
+        entry
+            .read_exact(&mut bytes)
+            .context("reading FDS BIOS from ZIP")?;
+        let mut trailing = [0];
+        ensure!(
+            entry.read(&mut trailing)? == 0,
+            "FDS firmware ZIP disksys.rom exceeds {FDS_BIOS_BYTES} bytes"
+        );
+        selected = Some(validate_image(bytes, allowed)?);
+    }
+    let file = archive.into_inner();
+    let final_meta = file.metadata()?;
+    ensure!(
+        final_meta.len() == initial.len() && FileIdentity::metadata(&final_meta) == identity,
+        "FDS firmware ZIP changed while it was being inspected"
+    );
+    let image = selected.context("FDS firmware ZIP contains no recognized disksys.rom")?;
+    Ok(Inspected {
+        image,
+        identity,
+        mode: final_meta.mode(),
+        uid: final_meta.uid(),
+        links: final_meta.nlink(),
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn validate_image(bytes: [u8; FDS_BIOS_BYTES], allowed: &[&str]) -> Result<ValidatedFdsBios> {
     let crc32 = crc32fast::hash(&bytes);
     let sha256 = hex::encode(Sha256::digest(bytes));
     ensure!(
         allowed.iter().any(|candidate| *candidate == sha256),
         "unrecognized FDS BIOS SHA-256 {sha256} (diagnostic CRC32 {crc32:08x})"
     );
-    Ok(Inspected {
-        image: ValidatedFdsBios {
-            bytes,
-            fingerprint: FirmwareFingerprint { crc32, sha256 },
-        },
-        identity,
-        mode: final_meta.mode(),
-        uid: final_meta.uid(),
-        links: final_meta.nlink(),
+    Ok(ValidatedFdsBios {
+        bytes,
+        fingerprint: FirmwareFingerprint { crc32, sha256 },
     })
 }
 

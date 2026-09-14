@@ -10,7 +10,7 @@ use anyhow::{Context, Result, ensure};
 use opendal::layers::{RetryLayer, TimeoutLayer};
 #[cfg(test)]
 use opendal::services::Memory;
-use opendal::services::{Dropbox, Gdrive, Onedrive};
+use opendal::services::{Dropbox, Fs, Gdrive, Onedrive};
 use opendal::{ErrorKind, Operator, blocking};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -23,13 +23,14 @@ use std::time::Duration;
 use uuid::Uuid;
 
 const HEAD_SCHEMA: u32 = 1;
-const PROFILE_SCHEMA: u32 = 1;
+const PROFILE_SCHEMA: u32 = 2;
 const MAX_GRAPH_MANIFESTS: usize = 512;
 pub const DEFAULT_CLOUD_ROOT: &str = "/Lunchbox Save Sync";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CloudProvider {
+    LocalFolder,
     GoogleDrive,
     Dropbox,
     OneDrive,
@@ -38,6 +39,7 @@ pub enum CloudProvider {
 impl CloudProvider {
     pub fn key(self) -> &'static str {
         match self {
+            Self::LocalFolder => "local_folder",
             Self::GoogleDrive => "google_drive",
             Self::Dropbox => "dropbox",
             Self::OneDrive => "one_drive",
@@ -46,6 +48,7 @@ impl CloudProvider {
 
     pub fn display_name(self) -> &'static str {
         match self {
+            Self::LocalFolder => "Local folder",
             Self::GoogleDrive => "Google Drive",
             Self::Dropbox => "Dropbox",
             Self::OneDrive => "OneDrive",
@@ -54,6 +57,7 @@ impl CloudProvider {
 
     pub fn parse(value: &str) -> Result<Self> {
         Ok(match value.trim() {
+            "local_folder" => Self::LocalFolder,
             "google_drive" => Self::GoogleDrive,
             "dropbox" => Self::Dropbox,
             "one_drive" => Self::OneDrive,
@@ -94,6 +98,13 @@ impl std::fmt::Debug for CloudAuth {
 
 impl CloudAuth {
     pub fn validate(&self, provider: CloudProvider) -> Result<()> {
+        if provider == CloudProvider::LocalFolder {
+            ensure!(
+                self == &Self::default(),
+                "local-folder synchronization does not accept cloud credentials"
+            );
+            return Ok(());
+        }
         let has_access = nonempty(&self.access_token);
         let has_refresh = nonempty(&self.refresh_token);
         ensure!(
@@ -139,6 +150,8 @@ impl CloudAuth {
 pub struct CloudProfile {
     pub schema: u32,
     pub provider: CloudProvider,
+    #[serde(default)]
+    pub root: String,
     pub device_id: String,
     pub automatic: bool,
     pub auth: CloudAuth,
@@ -151,9 +164,14 @@ impl CloudProfile {
         automatic: bool,
         auth: CloudAuth,
     ) -> Result<Self> {
+        ensure!(
+            provider != CloudProvider::LocalFolder,
+            "local-folder profiles require an explicit filesystem root"
+        );
         let profile = Self {
             schema: PROFILE_SCHEMA,
             provider,
+            root: DEFAULT_CLOUD_ROOT.to_owned(),
             device_id: device_id.into(),
             automatic,
             auth,
@@ -162,12 +180,57 @@ impl CloudProfile {
         Ok(profile)
     }
 
+    pub fn new_local_folder(
+        root: impl AsRef<Path>,
+        device_id: impl Into<String>,
+        automatic: bool,
+    ) -> Result<Self> {
+        let root = canonical_local_root(root.as_ref())?;
+        let profile = Self {
+            schema: PROFILE_SCHEMA,
+            provider: CloudProvider::LocalFolder,
+            root: path_to_utf8(&root)?.to_owned(),
+            device_id: device_id.into(),
+            automatic,
+            auth: CloudAuth::default(),
+        };
+        profile.validate()?;
+        Ok(profile)
+    }
+
+    /// Upgrade the schema-1 cloud-only profile representation. The migration
+    /// is deliberately explicit so adding a provider-specific root cannot
+    /// silently reinterpret existing credentials.
+    pub fn migrate(mut self) -> Result<(Self, bool)> {
+        match self.schema {
+            PROFILE_SCHEMA => {
+                self.validate()?;
+                Ok((self, false))
+            }
+            1 => {
+                ensure!(
+                    self.provider != CloudProvider::LocalFolder,
+                    "schema-1 profiles cannot describe a local folder"
+                );
+                self.schema = PROFILE_SCHEMA;
+                self.root = DEFAULT_CLOUD_ROOT.to_owned();
+                self.validate()?;
+                Ok((self, true))
+            }
+            _ => anyhow::bail!("unsupported cloud-save profile schema"),
+        }
+    }
+
     pub fn validate(&self) -> Result<()> {
         ensure!(
             self.schema == PROFILE_SCHEMA,
             "unsupported cloud-save profile schema"
         );
         validate_token("device ID", &self.device_id)?;
+        match self.provider {
+            CloudProvider::LocalFolder => validate_local_root_syntax(&self.root)?,
+            _ => validate_cloud_root(&self.root)?,
+        }
         self.auth.validate(self.provider)
     }
 }
@@ -223,20 +286,33 @@ pub struct CloudStore {
 
 impl CloudStore {
     pub fn connect(provider: CloudProvider, root: &str, auth: &CloudAuth) -> Result<Self> {
-        validate_root(root)?;
         auth.validate(provider)?;
         opendal::install_default();
 
         let operator = match provider {
+            CloudProvider::LocalFolder => {
+                let configured_root = Path::new(root);
+                let root = canonical_local_root(configured_root)?;
+                ensure!(
+                    root == configured_root,
+                    "saved local save-sync root is not canonical ({})",
+                    root.display()
+                );
+                let builder = Fs::default().root(path_to_utf8(&root)?);
+                Operator::new(builder).context("configuring local-folder save storage")?
+            }
             CloudProvider::GoogleDrive => {
+                validate_cloud_root(root)?;
                 let builder = configure_gdrive(Gdrive::default().root(root), auth);
                 Operator::new(builder).context("configuring Google Drive save storage")?
             }
             CloudProvider::Dropbox => {
+                validate_cloud_root(root)?;
                 let builder = configure_dropbox(Dropbox::default().root(root), auth);
                 Operator::new(builder).context("configuring Dropbox save storage")?
             }
             CloudProvider::OneDrive => {
+                validate_cloud_root(root)?;
                 let builder = configure_onedrive(Onedrive::default().root(root), auth);
                 Operator::new(builder).context("configuring OneDrive save storage")?
             }
@@ -786,7 +862,7 @@ fn nonempty(value: &Option<String>) -> bool {
     value.as_ref().is_some_and(|value| !value.trim().is_empty())
 }
 
-fn validate_root(root: &str) -> Result<()> {
+fn validate_cloud_root(root: &str) -> Result<()> {
     ensure!(root.len() <= 512, "cloud save root is too long");
     ensure!(
         !root.chars().any(char::is_control),
@@ -797,6 +873,68 @@ fn validate_root(root: &str) -> Result<()> {
         "cloud save root may not contain traversal"
     );
     Ok(())
+}
+
+fn validate_local_root_syntax(root: &str) -> Result<()> {
+    ensure!(!root.is_empty(), "local save-sync root is empty");
+    ensure!(root.len() <= 4096, "local save-sync root is too long");
+    ensure!(
+        !root.chars().any(char::is_control),
+        "local save-sync root contains control characters"
+    );
+    let path = Path::new(root);
+    ensure!(path.is_absolute(), "local save-sync root must be absolute");
+    ensure!(
+        path.parent().is_some(),
+        "the filesystem root cannot be used for save synchronization"
+    );
+    Ok(())
+}
+
+fn canonical_local_root(root: &Path) -> Result<std::path::PathBuf> {
+    validate_local_root_syntax(path_to_utf8(root)?)?;
+    let metadata = std::fs::symlink_metadata(root)
+        .with_context(|| format!("inspecting local save-sync root {}", root.display()))?;
+    ensure!(
+        !metadata.file_type().is_symlink(),
+        "local save-sync root may not be a symbolic link"
+    );
+    ensure!(
+        metadata.is_dir(),
+        "local save-sync root must be a directory"
+    );
+    let canonical = root
+        .canonicalize()
+        .with_context(|| format!("canonicalizing local save-sync root {}", root.display()))?;
+    for relative in ["health", "saves", "saves/v1"] {
+        let candidate = canonical.join(relative);
+        match std::fs::symlink_metadata(&candidate) {
+            Ok(metadata) => {
+                ensure!(
+                    !metadata.file_type().is_symlink(),
+                    "local save-sync managed path may not be a symbolic link: {}",
+                    candidate.display()
+                );
+                ensure!(
+                    metadata.is_dir(),
+                    "local save-sync managed path must be a directory: {}",
+                    candidate.display()
+                );
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("inspecting local save-sync path {}", candidate.display())
+                });
+            }
+        }
+    }
+    Ok(canonical)
+}
+
+fn path_to_utf8(path: &Path) -> Result<&str> {
+    path.to_str()
+        .context("local save-sync root is not valid UTF-8")
 }
 
 fn validate_token(label: &str, value: &str) -> Result<()> {
@@ -879,6 +1017,19 @@ mod tests {
                 .validate(CloudProvider::GoogleDrive)
                 .is_err()
         );
+        assert!(
+            CloudAuth::default()
+                .validate(CloudProvider::LocalFolder)
+                .is_ok()
+        );
+        assert!(
+            CloudAuth {
+                access_token: Some("not-used-locally".into()),
+                ..CloudAuth::default()
+            }
+            .validate(CloudProvider::LocalFolder)
+            .is_err()
+        );
     }
 
     #[test]
@@ -917,6 +1068,94 @@ mod tests {
         assert!(!debug.contains("refresh-secret"));
         assert!(!debug.contains("client-secret"));
         assert!(debug.contains("[redacted]"));
+    }
+
+    #[test]
+    fn schema_one_cloud_profile_migrates_to_the_explicit_default_root() {
+        let encoded = r#"{
+            "schema": 1,
+            "provider": "google_drive",
+            "device_id": "desktop-a",
+            "automatic": true,
+            "auth": {"access_token":"token","refresh_token":null,"client_id":null,"client_secret":null}
+        }"#;
+        let profile: CloudProfile = serde_json::from_str(encoded).unwrap();
+        let (profile, migrated) = profile.migrate().unwrap();
+        assert!(migrated);
+        assert_eq!(profile.schema, PROFILE_SCHEMA);
+        assert_eq!(profile.root, DEFAULT_CLOUD_ROOT);
+        assert_eq!(profile.provider, CloudProvider::GoogleDrive);
+    }
+
+    #[test]
+    fn local_folder_profile_is_canonical_and_contains_no_credentials() {
+        let directory = tempfile::tempdir().unwrap();
+        let profile = CloudProfile::new_local_folder(directory.path(), "desktop-a", true).unwrap();
+        assert_eq!(profile.provider, CloudProvider::LocalFolder);
+        assert_eq!(Path::new(&profile.root), directory.path());
+        assert_eq!(profile.auth, CloudAuth::default());
+        profile.validate().unwrap();
+    }
+
+    #[test]
+    fn local_folder_store_probes_and_preserves_the_remote_prefix() {
+        let directory = tempfile::tempdir().unwrap();
+        let profile = CloudProfile::new_local_folder(directory.path(), "desktop-a", true).unwrap();
+        let store = CloudStore::connect(profile.provider, &profile.root, &profile.auth).unwrap();
+        store.probe().unwrap();
+        assert_eq!(
+            std::fs::read_dir(directory.path().join("health"))
+                .unwrap()
+                .count(),
+            0
+        );
+
+        let bytes = b"folder-backed save";
+        let file = version(bytes, 100);
+        store.put_blob(&scope(), &file, bytes).unwrap();
+        let expected = directory
+            .path()
+            .join("saves/v1/duckstation/linux/blobs")
+            .join(&file.sha256);
+        assert_eq!(std::fs::read(expected).unwrap(), bytes);
+        assert_eq!(store.get_blob(&scope(), &file).unwrap(), bytes);
+    }
+
+    #[test]
+    fn local_folder_canonicalizes_input_and_rejects_filesystem_roots() {
+        let directory = tempfile::tempdir().unwrap();
+        let child = directory.path().join("child");
+        std::fs::create_dir(&child).unwrap();
+        let profile = CloudProfile::new_local_folder(child.join(".."), "desktop-a", true).unwrap();
+        assert_eq!(Path::new(&profile.root), directory.path());
+        assert!(
+            CloudStore::connect(
+                CloudProvider::LocalFolder,
+                path_to_utf8(&child.join("..")).unwrap(),
+                &CloudAuth::default(),
+            )
+            .is_err()
+        );
+        let filesystem_root = directory.path().ancestors().last().unwrap();
+        assert!(CloudProfile::new_local_folder(filesystem_root, "desktop-a", true).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_folder_rejects_symlink_roots_and_managed_paths() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("root");
+        let target = directory.path().join("target");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&target).unwrap();
+        let linked_root = directory.path().join("linked-root");
+        symlink(&root, &linked_root).unwrap();
+        assert!(CloudProfile::new_local_folder(&linked_root, "desktop-a", true).is_err());
+
+        symlink(&target, root.join("saves")).unwrap();
+        assert!(CloudProfile::new_local_folder(&root, "desktop-a", true).is_err());
     }
 
     #[test]

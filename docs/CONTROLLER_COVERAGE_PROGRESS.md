@@ -14,6 +14,72 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 609: connected the pinned VBA-M Qt/wx raw-joystick grammar to a
+single-player native Linux guided/setup/launch path for uncompressed GBA content
+on the database-linked Nintendo e-Reader entry. The adapter copies the selected
+INI, writes all ten first-player controls, forces `SDLGameControllerMode=false`,
+and passes the private file with `--config`. Preparation translates saved Linux
+calibration through the exact SDL2 classic/evdev map or an SDL3 classic-backend
+map, then rechecks kernel topology, joystick order, raw control numbering,
+executable/content/config/helper/runtime hashes, writable battery/state directory
+identities, and any enabled 16 KiB GBA BIOS. Empty persistence roots retain the
+ROM directory; absolute roots support `%s` expansion; ambiguous relative roots
+are rejected because Qt and wx do not share one declarative Linux anchor. Card
+scanning/loading, other systems and hosts, emulator startup, physical input,
+BIOS acceptance, and save/state round trips remain unverified. The four focused
+adapter tests and all 15 catalog tests passed, including a full QML/C++ build; no
+VBA-M executable, controller, ROM, BIOS, save, or state was exercised. The live
+canonical database now contains AltirraQt as an additional standalone candidate,
+so the current inventory is 44/250 standalone dispatches and 138/344 total source
+entries (40.1%), not runtime completion.
+
+Step 608: connected the pinned NanoBoyAdvance Qt/SDL3 raw-joystick contract to
+a single-player native Linux guided/setup/launch path. The private TOML patch
+replaces only the unique selected GUID and ten controller halves while retaining
+keyboard values and every unrelated BIOS, cartridge, video, hotkey, save and
+state option. Launch overlays the copy at the selected config path, so both
+ordinary and portable Linux config locations remain usable without touching the
+real file. Preparation resolves and hashes the configured 16 KiB BIOS, captures
+the save/state directory identity, translates physical calibration through the
+exact SDL3 classic joystick map, and rechecks topology, inventory, unique GUID,
+control numbering, config/dependency hashes, and executable hash. Same-GUID
+devices are rejected because upstream opens the first match. Windows/macOS,
+emulator startup, effective input, and save/state round trips remain unverified.
+The three deterministic writer tests and full QML/C++ build passed; no emulator,
+BIOS, save, state, or physical controller was executed. The catalog now reports
+43/249 source-dispatched standalone candidates, not runtime completion.
+Uncommitted/unreviewed.
+
+Step 607: connected the pinned Atari800 7.2.0 digital-joystick grammar to a
+native Linux guided/setup/launch path. One through four contiguous players now
+resolve through the exact target SDL2 library to the source-supported raw axes
+0/1 or 2/3, cardinal hat 0, and Fire button 0..14. The copied config writes the
+exact trigger action/key pair 1/-100 and is mounted at the selected original
+`-config` path, retaining mounted-media writes, firmware paths, explicit states,
+and the real config-adjacent quick-save. Preparation rechecks kernel topology,
+ordered paths, SDL names, duplicate-name slots, raw mappings, dependency hashes,
+and the executable hash. Paddles and 5200 analog controls remain explicit
+unsupported modes; Windows/macOS and all runtime behavior remain unverified.
+The two focused writer tests, full QML/C++ build, and all 15 catalog tests
+passed; no emulator or device was executed. The catalog now reports 42/249 source-dispatched standalone
+candidates, not runtime completion. Uncommitted/unreviewed.
+
+Step 606: the exact Linux Flatpak-updater FBNeo core and byte-pinned SF2 set
+closed the direct-libretro six-button boundary in both callback modes. Device 261
+published the exact P1/P2 Coin, Start, directions, three punches and three kicks;
+all 34 staged observations were deterministic and distinct, and every contracted
+address transitioned through pressed and released states. The 269,189-byte state
+restored exact RAM, video and serialized bytes in-process; a fresh process
+reproduced RAM/video but not the reserialized byte stream. This does not close
+the production route: Lunchbox prepared the static profile and generated device
+261, but pinned RetroArch loaded the exact core/content, discovered the oracle
+pad, then FBNeo forced both ports to `Classic` as unknown device types and the
+frontend exited 139 on `SIGSEGV` before command readiness. The same failure
+occurred on a 1920x1080 private Xvfb. Linux Flatpak controller acceptance remains
+blocked; the eight-button and dynamic per-game paths were not exercised. The
+oracle is guarded against GameMode elevation, and teardown left no RetroArch,
+virtual pad, `pkexec`, or `cpugovctl` process. Uncommitted/unreviewed.
+
 Step 605: completed the exact-hash native macOS/Windows RetroArch Nestopia
 frontend-autoconfiguration batch for the existing two- and four-player profiles.
 The retained session now pins the complete prepared environment through spawn and
@@ -5630,11 +5696,50 @@ is made.
 The exact Nestopia UE Flatpak now has a separate managed FDS firmware path. It
 binds the canonical FDS platform UUID/name, standalone Nestopia UUID/name,
 Flatpak app ID, selected canonical `.fds`/`.FDS` file, and sandbox data root.
-Import accepts only the two SHA-256 identities published by Mesen2 at pinned
-commit `b9fa69ddc6d0a331fb103fdb5eef6904305703c2`, installs privately without
-replacement, and performs a fresh verifier pass immediately before every exact
-FDS spawn regardless of controller path. Native Linux, macOS, Windows, and other
-Flatpak identities remain explicit manual configuration and are not marked
-managed-ready. The deterministic helper and integration tests are implemented;
-runtime FDS behavior remains `not_tested` until a lawfully obtained BIOS and FDS
-game are exercised end to end.
+The exact runtime obtains its package from the reviewed Minerva
+`Retroarch-System/Nintendo - NES - Famicom (Nestopia UE).zip` member; exact raw
+`disksys.rom` local import remains accepted. Import extracts only one bounded,
+safe-path BIOS whose SHA-256 is one of the two identities published by Mesen2 at
+pinned commit `b9fa69ddc6d0a331fb103fdb5eef6904305703c2`, installs it privately
+without replacement, and performs a fresh verifier pass immediately before
+every exact FDS spawn regardless of controller path. Native Linux, macOS,
+Windows, and other Flatpak identities remain explicit manual configuration and
+are not marked managed-ready. The deterministic helper and integration tests
+pass 13/13. A
+separate opt-in installed-runtime oracle then used the existing recognized
+EmuDeck `Disksys.rom` and extracted `Bubble Bobble (Japan)` disk as read-only
+inputs. The public installer and immediate verifier admitted the BIOS, the exact
+pinned Flatpak opened the disk under isolated Xvfb, F5 created a 177,142-byte
+state, F7 left the process live, and the emulator exited cleanly. The oracle
+post-verified the BIOS and restored the absent-target baseline while preserving
+both source assets. Firmware status is now `pass` for this exact deployment;
+behavioral FDS state restoration, other packages/hosts, and a live runtime run
+from the unavailable Minerva archive remain outside the result. Local torrent
+metadata independently proves the exact 125.2 kB Minerva member exists once.
+
+## Nestopia UE Flatpak save/state sync oracle (2026-09-13)
+
+The exact record's disjoint sandbox `save/` and `state/` roots are now covered
+by a four-fresh-process, two-device synchronization oracle. Device A uploaded a
+generation-1 `.sav` plus slot-0 `.nst`; device B downloaded exactly both and a
+fresh Nestopia process advanced the save to generation 2 with 18 retained
+events. F7 behaviorally restored the pulled state to generation 1, B uploaded
+only its newer stopped-runtime save, A selected B's descendant head and
+downloaded only that save, and a final fresh A process loaded generation 2 and
+advanced to generation 3 with 19 events. The user's save/state baseline and
+source configs were unchanged and all owned processes/outputs were reaped.
+
+This proves production route resolution and the coordinator's exact
+upload/download behavior through the production `local_folder` provider,
+including fresh-runtime reload of transferred save and state bytes. The
+provider performed a real write/read/delete probe and retained an on-disk
+snapshot under `saves/v1/nestopia-ue/linux-flatpak/`, including immutable blobs,
+four manifests, and both device heads. The report explicitly limits the claim
+to `local_folder: true` and `network_cloud: false`. Save sync is therefore
+`pass` for this exact local-folder deployment; Google Drive, Dropbox, and
+OneDrive interoperability remain untested.
+
+The elevation-free accepted rerun passed 1/1 in 245.46 seconds. Its mode-0600
+report is `/tmp/lunchbox-nestopia-local-sync-rb1ItU/sync-report.json` (12,245
+bytes, SHA-256
+`86795f5de158fb30057e241542373fb27671a46b9137a72c1945334781d9f6d9`).

@@ -13,6 +13,7 @@ pub mod qobject {
         #[qproperty(bool, credentials_saved)]
         #[qproperty(bool, automatic_enabled)]
         #[qproperty(QString, provider)]
+        #[qproperty(QString, local_folder_root)]
         #[qproperty(QString, message)]
         #[qproperty(QString, status)]
         #[qproperty(QString, operation)]
@@ -33,7 +34,11 @@ pub mod qobject {
             refresh_token: QString,
             client_id: QString,
             client_secret: QString,
+            local_folder_root: QString,
         );
+
+        #[qinvokable]
+        fn choose_local_folder(self: Pin<&mut SaveSyncModel>);
 
         #[qinvokable]
         fn test_saved_connection(self: Pin<&mut SaveSyncModel>);
@@ -86,9 +91,7 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 use uuid::Uuid;
 
-use crate::save_cloud::{
-    CloudAuth, CloudProfile, CloudProvider, CloudStore, DEFAULT_CLOUD_ROOT, DeviceHead,
-};
+use crate::save_cloud::{CloudAuth, CloudProfile, CloudProvider, CloudStore, DeviceHead};
 use crate::save_sync::{ArtifactKey, ConflictChoice, SyncConflict, SyncScope};
 use crate::save_sync_service::{AppliedSync, PreparedSync, prepare_sync};
 
@@ -98,6 +101,7 @@ pub struct SaveSyncModelRust {
     credentials_saved: bool,
     automatic_enabled: bool,
     provider: QString,
+    local_folder_root: QString,
     message: QString,
     status: QString,
     operation: QString,
@@ -120,9 +124,10 @@ impl Default for SaveSyncModelRust {
             busy: false,
             credentials_saved: false,
             automatic_enabled: false,
-            provider: qstring("google_drive"),
+            provider: qstring("local_folder"),
+            local_folder_root: QString::default(),
             message: qstring(
-                "Connect Google Drive, Dropbox, or OneDrive to synchronize captured emulator saves and states.",
+                "Choose a local folder or connect Google Drive, Dropbox, or OneDrive to synchronize captured emulator saves and states.",
             ),
             status: qstring("idle"),
             operation: QString::default(),
@@ -185,7 +190,7 @@ fn recovery_base() -> Result<std::path::PathBuf> {
 
 fn connected_store(profile: &CloudProfile) -> Result<CloudStore> {
     profile.validate()?;
-    CloudStore::connect(profile.provider, DEFAULT_CLOUD_ROOT, &profile.auth)
+    CloudStore::connect(profile.provider, &profile.root, &profile.auth)
 }
 
 impl qobject::SaveSyncModel {
@@ -195,7 +200,7 @@ impl qobject::SaveSyncModel {
         }
         self.as_mut().set_busy(true);
         self.as_mut()
-            .set_message(qstring("Inspecting the operating-system credential store…"));
+            .set_message(qstring("Inspecting saved synchronization settings…"));
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
             .name("lunchbox-save-sync-initialize".into())
@@ -211,7 +216,7 @@ impl qobject::SaveSyncModel {
             self.as_mut().set_initialized(true);
             self.as_mut().set_status(qstring("error"));
             self.as_mut().set_message(qstring(format!(
-                "Could not inspect cloud-save credentials: {error}"
+                "Could not inspect save-sync settings: {error}"
             )));
             self.as_mut().bump_revision();
         }
@@ -225,9 +230,16 @@ impl qobject::SaveSyncModel {
                 self.as_mut().set_credentials_saved(true);
                 self.as_mut().set_automatic_enabled(profile.automatic);
                 self.as_mut().set_provider(qstring(profile.provider.key()));
+                self.as_mut().set_local_folder_root(qstring(
+                    if profile.provider == CloudProvider::LocalFolder {
+                        profile.root.as_str()
+                    } else {
+                        ""
+                    },
+                ));
                 self.as_mut().set_status(qstring("idle"));
                 self.as_mut().set_message(qstring(format!(
-                    "{} credentials are stored securely. Automatic synchronization is {}.",
+                    "{} is configured. Automatic synchronization is {}.",
                     profile.provider.display_name(),
                     if profile.automatic {
                         "enabled"
@@ -239,15 +251,16 @@ impl qobject::SaveSyncModel {
             Ok(None) => {
                 self.as_mut().set_credentials_saved(false);
                 self.as_mut().set_automatic_enabled(false);
+                self.as_mut().set_local_folder_root(QString::default());
                 self.as_mut().set_status(qstring("idle"));
                 self.as_mut().set_message(qstring(
-                    "Connect a cloud provider before enabling automatic save synchronization.",
+                    "Choose a local folder or connect a cloud provider before enabling automatic save synchronization.",
                 ));
             }
             Err(error) => {
                 self.as_mut().set_status(qstring("error"));
                 self.as_mut().set_message(qstring(format!(
-                    "Could not read cloud-save credentials: {error}"
+                    "Could not read save-sync settings: {error}"
                 )));
             }
         }
@@ -261,6 +274,7 @@ impl qobject::SaveSyncModel {
         refresh_token: QString,
         client_id: QString,
         client_secret: QString,
+        local_folder_root: QString,
     ) {
         if *self.as_ref().busy() {
             return;
@@ -272,22 +286,23 @@ impl qobject::SaveSyncModel {
                 return;
             }
         };
-        let auth = CloudAuth {
-            access_token: optional(access_token),
-            refresh_token: optional(refresh_token),
-            client_id: optional(client_id),
-            client_secret: optional(client_secret),
+        let auth = if provider == CloudProvider::LocalFolder {
+            CloudAuth::default()
+        } else {
+            CloudAuth {
+                access_token: optional(access_token),
+                refresh_token: optional(refresh_token),
+                client_id: optional(client_id),
+                client_secret: optional(client_secret),
+            }
         };
-        if let Err(error) = auth.validate(provider) {
-            self.as_mut().set_message(qstring(error.to_string()));
-            return;
-        }
+        let local_folder_root = local_folder_root.to_string().trim().to_owned();
         self.as_mut().rust_mut().generation = self.as_ref().rust().generation.wrapping_add(1);
         let generation = self.as_ref().rust().generation;
         self.as_mut().set_busy(true);
         self.as_mut().set_status(qstring("busy"));
         self.as_mut().set_message(qstring(format!(
-            "Testing authenticated read/write access to {}…",
+            "Testing write/read/delete access to {}…",
             provider.display_name()
         )));
         let qt_thread = self.as_ref().qt_thread();
@@ -295,12 +310,20 @@ impl qobject::SaveSyncModel {
             .name("lunchbox-save-sync-save-credentials".into())
             .spawn(move || {
                 let result = (|| {
+                    // The device head identifies this Lunchbox installation,
+                    // not a provider account. Preserve it when the user moves
+                    // between a local folder and a cloud transport, as well as
+                    // when they change settings within one provider.
                     let previous = crate::settings::load_save_cloud_profile()?;
                     let device_id = previous
                         .as_ref()
                         .map(|profile| profile.device_id.clone())
                         .unwrap_or_else(|| format!("device-{}", Uuid::new_v4().simple()));
-                    let profile = CloudProfile::new(provider, device_id, true, auth)?;
+                    let profile = if provider == CloudProvider::LocalFolder {
+                        CloudProfile::new_local_folder(&local_folder_root, device_id, true)?
+                    } else {
+                        CloudProfile::new(provider, device_id, true, auth)?
+                    };
                     connected_store(&profile)?.probe()?;
                     crate::settings::save_save_cloud_profile(Some(&profile))?;
                     Ok(profile)
@@ -314,7 +337,7 @@ impl qobject::SaveSyncModel {
             self.as_mut().set_busy(false);
             self.as_mut().set_status(qstring("error"));
             self.as_mut().set_message(qstring(format!(
-                "Could not start the cloud connection test: {error}"
+                "Could not start the synchronization connection test: {error}"
             )));
             self.as_mut().bump_revision();
         }
@@ -334,19 +357,47 @@ impl qobject::SaveSyncModel {
                 self.as_mut().set_credentials_saved(true);
                 self.as_mut().set_automatic_enabled(true);
                 self.as_mut().set_provider(qstring(profile.provider.key()));
+                self.as_mut().set_local_folder_root(qstring(
+                    if profile.provider == CloudProvider::LocalFolder {
+                        profile.root.as_str()
+                    } else {
+                        ""
+                    },
+                ));
                 self.as_mut().set_status(qstring("idle"));
                 self.as_mut().set_message(qstring(format!(
-                    "{} read/write access is verified. Credentials are stored securely and automatic synchronization is enabled.",
+                    "{} write/read/delete access is verified and automatic synchronization is enabled.",
                     profile.provider.display_name()
                 )));
             }
             Err(error) => {
                 self.as_mut().set_status(qstring("error"));
                 self.as_mut().set_message(qstring(format!(
-                    "Cloud connection failed; credentials were not saved: {error}"
+                    "Save-sync connection failed; the profile was not saved: {error}"
                 )));
             }
         }
+        self.as_mut().bump_revision();
+    }
+
+    pub fn choose_local_folder(mut self: Pin<&mut Self>) {
+        if *self.as_ref().busy() {
+            return;
+        }
+        let current = self.as_ref().local_folder_root().to_string();
+        let mut dialog = rfd::FileDialog::new().set_title("Choose save synchronization folder");
+        if !current.trim().is_empty() {
+            dialog = dialog.set_directory(current);
+        }
+        let Some(path) = dialog.pick_folder() else {
+            return;
+        };
+        self.as_mut()
+            .set_local_folder_root(qstring(path.to_string_lossy()));
+        self.as_mut().set_status(qstring("idle"));
+        self.as_mut().set_message(qstring(
+            "Folder selected. Save and verify it before synchronization is enabled.",
+        ));
         self.as_mut().bump_revision();
     }
 
@@ -359,14 +410,14 @@ impl qobject::SaveSyncModel {
         self.as_mut().set_busy(true);
         self.as_mut().set_status(qstring("busy"));
         self.as_mut()
-            .set_message(qstring("Testing the saved cloud connection…"));
+            .set_message(qstring("Testing the saved synchronization connection…"));
         let qt_thread = self.as_ref().qt_thread();
         let spawn = std::thread::Builder::new()
             .name("lunchbox-save-sync-test".into())
             .spawn(move || {
                 let result = (|| {
                     let profile = crate::settings::load_save_cloud_profile()?
-                        .context("no cloud-save credentials are stored")?;
+                        .context("no save-sync connection is stored")?;
                     connected_store(&profile)?.probe()?;
                     Ok(profile.provider)
                 })()
@@ -380,14 +431,14 @@ impl qobject::SaveSyncModel {
                         Ok(provider) => {
                             model.as_mut().set_status(qstring("idle"));
                             model.as_mut().set_message(qstring(format!(
-                                "{} authenticated read/write access is verified.",
+                                "{} write/read/delete access is verified.",
                                 provider.display_name()
                             )));
                         }
                         Err(error) => {
                             model.as_mut().set_status(qstring("error"));
                             model.as_mut().set_message(qstring(format!(
-                                "Saved cloud connection failed: {error}"
+                                "Saved synchronization connection failed: {error}"
                             )));
                         }
                     }
@@ -428,6 +479,7 @@ impl qobject::SaveSyncModel {
                             model.as_mut().rust_mut().choices.clear();
                             model.as_mut().set_credentials_saved(false);
                             model.as_mut().set_automatic_enabled(false);
+                            model.as_mut().set_local_folder_root(QString::default());
                             model.as_mut().set_conflict_count(0);
                             model.as_mut().set_choice_count(0);
                             model.as_mut().set_remote_device_count(0);
@@ -436,7 +488,7 @@ impl qobject::SaveSyncModel {
                             model.as_mut().rust_mut().recheck_remote_frontier = false;
                             model.as_mut().set_status(qstring("idle"));
                             model.as_mut().set_message(qstring(
-                                "Cloud-save credentials were removed from the operating-system credential store.",
+                                "The saved synchronization connection was removed.",
                             ));
                         }
                         Err(error) => {
@@ -475,7 +527,7 @@ impl qobject::SaveSyncModel {
             .spawn(move || {
                 let result = (|| {
                     let mut profile = crate::settings::load_save_cloud_profile()?
-                        .context("no cloud-save credentials are stored")?;
+                        .context("no save-sync connection is stored")?;
                     profile.automatic = enabled;
                     profile.validate()?;
                     crate::settings::save_save_cloud_profile(Some(&profile))?;
@@ -724,7 +776,7 @@ impl qobject::SaveSyncModel {
             .spawn(move || {
                 let result = (|| {
                     let profile = crate::settings::load_save_cloud_profile()?
-                        .context("cloud-save credentials were removed")?;
+                        .context("the save-sync connection was removed")?;
                     ensure!(
                         profile.device_id == prepared.device_id,
                         "cloud-save device identity changed after review"

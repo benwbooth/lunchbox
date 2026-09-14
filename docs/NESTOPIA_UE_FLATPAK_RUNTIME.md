@@ -34,8 +34,10 @@ platform UUID `d01f03eb-cbf9-5847-92a6-f5fb9ba80b15`, canonical platform name
 `Nintendo Famicom Disk System`, standalone emulator UUID
 `73ad4eb8-0f5f-56ca-b839-8398db3e8d77`, emulator name `Nestopia UE`, Flatpak
 app ID `ca._0ldsk00l.Nestopia`, and canonical `.fds` or `.FDS` content, Lunchbox
-accepts a user-selected file only when it is an exact raw 8,192-byte image with
-one of these SHA-256 identities:
+uses the reviewed Minerva member `Nintendo - NES - Famicom (Nestopia UE).zip`.
+The same action also accepts an exact raw `disksys.rom` as a local import. In
+either case, exactly one 8,192-byte image must have one of these SHA-256
+identities:
 
 - `99c18490ed9002d9c6d999b9d8d15be5c051bdfa7cc7e73318053c9a994b0178`
 - `a0a9d57cbace21bf9c85c2b85e86656317f0768d7772acc90c7411ab1dbff2bf`
@@ -44,10 +46,13 @@ Both values come from the primary-source Mesen2 allowlist in
 `UI/Interop/FirmwareTypeExtensions.cs` at commit
 `b9fa69ddc6d0a331fb103fdb5eef6904305703c2`. The known CRC32 values
 `5e607dcf` and `4df24a6c` are retained only as diagnostics; CRC32 never admits a
-file. Lunchbox does not discover, download, or bundle a BIOS or disk image.
+file. The central firmware service discovers and downloads the exact package
+through Minerva; Lunchbox does not bundle a BIOS or disk image.
 
-The installer rejects relative paths, symlinks, path-identity drift, wrong
-ownership, and an existing unrecognized target. It publishes
+The ZIP reader is bounded to 16 MiB and 128 entries, rejects unsafe paths and
+multiple `disksys.rom` candidates, and extracts no unrelated member. The
+installer rejects relative paths, symlinks, path-identity drift, wrong ownership,
+and an existing unrecognized target. It publishes
 `~/.var/app/ca._0ldsk00l.Nestopia/data/nestopia/disksys.rom` atomically without
 replacement, with mode `0600`, effective-user ownership, and one hard link.
 The status probe and general pre-spawn path reopen that installed file and
@@ -59,9 +64,43 @@ on both sides.
 The catalog rule remains host-agnostic, so other Nestopia packages are exposed
 as an explicit non-blocking manual configuration. They are never reported as
 managed-ready and never use this installer. The exact Flatpak implementation is
-covered by deterministic security and integration tests, but no lawfully
-obtained BIOS plus FDS game has been run through Nestopia here. Firmware runtime
-status therefore remains `not_tested`.
+covered by deterministic security and integration tests. The local torrent
+metadata contains the exact 125.2 kB Minerva member once; a deterministic ZIP
+fixture proves the bounded extraction path. The installed-runtime result below
+additionally proves the managed path with a raw lawful input for this one pinned
+deployment; the Minerva archive itself was not available locally for a second
+runtime run.
+
+### Accepted FDS runtime result
+
+On 2026-09-13 an opt-in oracle used the existing EmuDeck BIOS
+`/mnt/roms/emudeck/Emulation/bios/Disksys.rom` (8,192 bytes, SHA-256
+`99c18490ed9002d9c6d999b9d8d15be5c051bdfa7cc7e73318053c9a994b0178`,
+CRC32 `5e607dcf`) and the sole extracted member of the existing
+`Bubble Bobble (Japan).zip` as read-only oracle inputs. The extracted disk was
+131,016 bytes with SHA-256
+`688a5b4b47795982c6b7be0c3bf59937939d3e8d6cd9ad8bb159f27fafdea378`;
+the source ZIP SHA-256 was
+`b5add7bfa789fd86f5fc701c6dafc2ea7496e068141c16e77799b9a590aa0433`.
+
+The public installer atomically installed `disksys.rom`, the launch verifier
+reopened it immediately before spawn, and the exact pinned Flatpak opened the
+disk under isolated Xvfb `:148`. F5 created a 177,142-byte slot-0 state with
+SHA-256 `a44270f00d5358d14ca68c183af6266b3c54f11b6b7b8f9ccf7df9a791848fa3`;
+after F7 the process remained live and then closed cleanly. This proves that
+the selected recognized BIOS admits real FDS startup and that this frontend can
+create and accept a slot-0 state for the selected disk. It does not by itself
+behaviorally prove FDS state restoration.
+
+The oracle post-verified the installed BIOS, then removed it because the target
+was absent before the run. It also removed the unique state/output files and
+private config, preserved the source BIOS and ZIP, and reaped the Flatpak. The
+mode-0600 retained report is
+`/tmp/lunchbox-nestopia-fds-oracle-Xi3SJ9/runtime-report.json` (1,888 bytes,
+SHA-256 `0f23188f0c29be608319d965a57c49c1c4fa044047349d1b4103864e67dec6c4`).
+The production catalog now discovers the exact Minerva member
+`Retroarch-System/Nintendo - NES - Famicom (Nestopia UE).zip`; the local
+EmuDeck assets remain oracle inputs rather than an implicit host-folder rule.
 
 ## Controller and configuration contract
 
@@ -121,6 +160,43 @@ production oracle runs the generated ROM twice through the ordinary
 prepare/spawn path, targets only the unique exact-title window, and closes the
 window cleanly after each run.
 
+## Save/state synchronization oracle
+
+The exact Linux Flatpak record resolves two disjoint synchronization roots:
+`data/nestopia/save/` for saves and `data/nestopia/state/` for states. An
+opt-in installed-runtime oracle exercised those production routes across four
+fresh Nestopia processes and two simulated device heads, always beginning a
+sync only after observing the emulator exit.
+
+Device A uploaded its unique generation-1 8,192-byte `.sav` and 21,463-byte
+slot-0 `.nst`. A fresh device B root downloaded exactly those two files and a
+fresh emulator loaded the save as generation 2 with 18 events. F7 against the
+pulled state behaviorally returned the generated diagnostic to generation 1
+with two retained events. After B uploaded exactly its newer save, A selected
+B's descendant head and downloaded only that save while retaining the state; a
+final fresh process loaded generation 2 and advanced it to generation 3 with 19
+events. The final save SHA-256 was
+`6c73f8418be11f90e1ca23ec318794cd0f1bd7e1fc92441aca5be1f78fb8fd43`.
+
+The oracle preserved the pre-existing save/state trees and source configs,
+removed its unique outputs, and reaped the emulator and pad driver. It used the
+production OpenDAL `local_folder` provider against an ephemeral real directory,
+performed a write/read/delete probe, and retained an exact tree snapshot below
+`saves/v1/nestopia-ue/linux-flatpak/`. That snapshot contains the content-
+addressed blobs, four immutable manifests, and the two independent device-head
+files. Its claim is deliberately limited to `local_folder: true` and
+`network_cloud: false`.
+
+The elevation-free accepted rerun passed 1/1 in 245.46 seconds. Its mode-0600
+report is `/tmp/lunchbox-nestopia-local-sync-rb1ItU/sync-report.json` (12,245
+bytes, SHA-256
+`86795f5de158fb30057e241542373fb27671a46b9137a72c1945334781d9f6d9`).
+This is production-provider proof of route discovery, immutable manifest
+transfer, descendant-head selection, exact file restoration, fresh-runtime
+save reload, and behavioral state restoration. Save sync is `pass` for this
+exact local-folder deployment. It does not prove Google Drive, Dropbox, or
+OneDrive interoperability.
+
 ## Accepted runtime result
 
 On 2026-09-13 the ignored installed-runtime test passed under isolated Xvfb
@@ -151,7 +227,8 @@ This proves the exact Flatpak/X11 production path for two stable eight-button
 uinput joydev pads, ordinary battery-backed NROM persistence across fresh
 processes, and slot-0 F5/F7 state restoration. It does not prove Wayland,
 physical controllers, hats or axes, hotplug, other player/device modes, other
-Nestopia packages or versions, FDS firmware runtime behavior, or save-provider
-export/restore.
+Nestopia packages or versions, or real-provider export/restore. The separate
+FDS and synchronization oracles above narrow those two boundaries without
+expanding the controller claim.
 The shared ledger therefore records controller `pass`, state `pass`, firmware
-`not_tested`, and save sync `blocked` despite the proven native `.sav` reload.
+`pass`, and local-folder save sync `pass` for the exact pinned deployment.

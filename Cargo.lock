@@ -2547,6 +2547,7 @@ dependencies = [
  "opendal-layer-retry",
  "opendal-layer-timeout",
  "opendal-service-dropbox",
+ "opendal-service-fs",
  "opendal-service-gdrive",
  "opendal-service-onedrive",
 ]
@@ -2623,6 +2624,20 @@ dependencies = [
  "opendal-core",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "opendal-service-fs"
+version = "0.59.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb9caf04d6d38713299dd4abac984b95ab16ee20e1ff09160f495c5a64644083"
+dependencies = [
+ "bytes",
+ "log",
+ "opendal-core",
+ "serde",
+ "tokio",
+ "xattr",
 ]
 
 [[package]]

@@ -344,8 +344,22 @@ mod tests {
     fn declared_catalog_has_unique_exact_rules_and_sources() {
         let catalog: FirmwareCatalog = serde_json::from_str(RULES_JSON).unwrap();
         validate_catalog(&catalog).unwrap();
-        assert_eq!(catalog.rules.len(), 138);
-        assert_eq!(catalog.acquisition_sources.len(), 24);
+        assert_eq!(catalog.rules.len(), 221);
+        assert_eq!(catalog.acquisition_sources.len(), 23);
+        let minerva_system_files = catalog
+            .rules
+            .iter()
+            .filter(|rule| rule.source == "minerva:retroarch-system-files")
+            .collect::<Vec<_>>();
+        assert_eq!(minerva_system_files.len(), 125);
+        assert_eq!(
+            minerva_system_files
+                .iter()
+                .map(|rule| rule.source_package_name.as_str())
+                .collect::<BTreeSet<_>>()
+                .len(),
+            55
+        );
         assert!(catalog.rules.iter().any(|rule| {
             rule.runtime_kind == "retroarch"
                 && rule.runtime_name == "swanstation"

@@ -16,13 +16,20 @@ enum. `_BUTTON_ACTIONS` and `_BUTTON_KEYS` are comma-separated arrays for up
 to 15 buttons. Host identity is the SDL display name plus duplicate-name slot;
 it is not a stable hardware identifier.
 
-This source contract permits a conservative overlay for a measured SDL2 host
-joystick, but it does not justify inventing a universal Atari gamepad map.
-Any writer must preserve all unrelated configuration lines, require an
-explicit port and calibrated axis/hat choice, and refuse to select paddle,
-parallel, keyboard, 5200 analog, or button-action modes unless that mode was
-measured for the content. The 5200 uses analog paddle inputs and is therefore
-outside the ordinary digital-joystick overlay.
+The native Linux adapter now implements that conservative overlay. It maps one
+through four calibrated physical controllers to contiguous Atari ports, accepts
+only the source-supported raw SDL axis pairs 0/1 or 2/3 or cardinal hat 0, and
+requires Fire on raw SDL button 0..14. The trigger is written using the exact
+`JoystickUiAction`/`AKEY_CONTROLLER_BUTTON_TRIGGER` pair (1/-100). It preserves
+all unrelated configuration lines and refuses paddle, parallel, keyboard and
+5200 analog modes.
+
+Preparation captures kernel topology plus the exact target SDL2 library's
+ordered device paths, names, raw controls, and duplicate-name slots. All are
+rechecked immediately before launching the exact executable hash. Bubblewrap
+mounts the copied config at the selected original `-config` path; this keeps
+the source config untouched without changing Atari800's config-directory data
+root.
 
 Guest saves remain inside writable mounted media images. Explicit emulator
 states are user-selected gzip-compatible binary files beginning with the
@@ -33,5 +40,8 @@ paths are passed with the documented `-osa_rom`, `-osb_rom`, `-xlxe_rom`,
 `-5200_rom`, and `-basic_rom` switches. No separate key file is used, and no
 canonical user-ROM checksums are published by this source revision.
 
-No Flatpak package is identified by the upstream project. Native mapping is
-source-backed on Linux, Windows, and macOS builds but remains runtime-unverified.
+No Flatpak package is identified by the upstream project. Windows and macOS use
+the same source grammar but have no Lunchbox launch adapter yet. Linux launch,
+effective gameplay input, firmware selection, media write-back, quick-save,
+explicit state round trips, hotplug, and multiple identical controllers remain
+runtime-unverified.

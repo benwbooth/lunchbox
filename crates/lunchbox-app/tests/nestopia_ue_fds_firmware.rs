@@ -5,16 +5,20 @@
 #[path = "../src/nestopia_ue_fds_firmware.rs"]
 mod firmware;
 
-use std::fs;
-use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
+use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{Context, Result, ensure};
 use firmware::{
-    FDS_BIOS_BYTES, FDS_BIOS_FILENAME, FDS_PLATFORM_ID, FDS_PLATFORM_NAME, FdsRuntimeScope,
-    InstallDisposition, InstallPhase, InstallRequest, NESTOPIA_UE_FLATPAK_ID,
-    RECOGNIZED_FDS_BIOS_CRC32, RECOGNIZED_FDS_BIOS_SHA256, RUNTIME_PROOF_BLOCKER, inspect_fds_bios,
-    inspect_fds_bios_for_test, install_fds_firmware_for_test, verify_fds_firmware_for_test,
+    FDS_BIOS_BYTES, FDS_BIOS_FILENAME, FDS_MINERVA_PACKAGE_NAME, FDS_PLATFORM_ID,
+    FDS_PLATFORM_NAME, FdsRuntimeScope, InstallDisposition, InstallPhase, InstallRequest,
+    NESTOPIA_UE_FLATPAK_ID, RECOGNIZED_FDS_BIOS_CRC32, RECOGNIZED_FDS_BIOS_SHA256,
+    RUNTIME_PROOF_BLOCKER, inspect_fds_bios, inspect_fds_bios_for_test, install_fds_firmware,
+    install_fds_firmware_for_test, verify_fds_firmware_for_launch, verify_fds_firmware_for_test,
 };
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
@@ -99,6 +103,20 @@ fn write_file(temp: &TempDir, name: &str, bytes: &[u8]) -> PathBuf {
     fs::canonicalize(path).unwrap()
 }
 
+fn write_zip(temp: &TempDir, name: &str, entries: &[(&str, &[u8])]) -> PathBuf {
+    let path = temp.path().join(name);
+    let file = fs::File::create(&path).unwrap();
+    let mut archive = zip::ZipWriter::new(file);
+    for (entry_name, bytes) in entries {
+        archive
+            .start_file(*entry_name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(bytes).unwrap();
+    }
+    archive.finish().unwrap();
+    fs::canonicalize(path).unwrap()
+}
+
 fn content(temp: &TempDir, name: &str) -> PathBuf {
     write_file(temp, name, b"lawfully owned test content")
 }
@@ -139,6 +157,471 @@ fn install(
     install_fds_firmware_for_test(request(data, source, game), home, allowed, uid(), |_| {})
 }
 
+struct RuntimeCleanup {
+    outputs: Vec<PathBuf>,
+    firmware_target: PathBuf,
+    remove_firmware: bool,
+    remove_firmware_directory: bool,
+}
+
+struct RuntimeChild {
+    child: Child,
+}
+
+impl RuntimeChild {
+    fn new(child: Child) -> Self {
+        Self { child }
+    }
+}
+
+impl Drop for RuntimeChild {
+    fn drop(&mut self) {
+        if self.child.try_wait().ok().flatten().is_none() {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+impl RuntimeCleanup {
+    fn finish(&mut self) -> Result<()> {
+        for output in &self.outputs {
+            if output.symlink_metadata().is_ok() {
+                fs::remove_file(output)
+                    .with_context(|| format!("removing FDS oracle output {}", output.display()))?;
+            }
+        }
+        if self.remove_firmware && self.firmware_target.symlink_metadata().is_ok() {
+            fs::remove_file(&self.firmware_target).context("removing installed FDS oracle BIOS")?;
+        }
+        self.remove_firmware = false;
+        if self.remove_firmware_directory {
+            fs::remove_dir(
+                self.firmware_target
+                    .parent()
+                    .context("FDS firmware target has no parent")?,
+            )
+            .context("removing FDS oracle firmware directory")?;
+        }
+        self.remove_firmware_directory = false;
+        Ok(())
+    }
+}
+
+impl Drop for RuntimeCleanup {
+    fn drop(&mut self) {
+        for output in &self.outputs {
+            if output.symlink_metadata().is_ok() {
+                let _ = fs::remove_file(output);
+            }
+        }
+        if self.remove_firmware && self.firmware_target.symlink_metadata().is_ok() {
+            let _ = fs::remove_file(&self.firmware_target);
+        }
+        if self.remove_firmware_directory
+            && let Some(parent) = self.firmware_target.parent()
+        {
+            let _ = fs::remove_dir(parent);
+        }
+    }
+}
+
+fn command_stdout(command: &mut Command, description: &str) -> Result<String> {
+    let output = command.output()?;
+    ensure!(
+        output.status.success(),
+        "{description} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(std::str::from_utf8(&output.stdout)?.trim().to_owned())
+}
+
+fn wait_for_exact_x11_window(xdotool: &Path, title: &str) -> Result<String> {
+    let pattern = format!("^{title}$");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let output = Command::new(xdotool)
+            .args(["search", "--all", "--limit", "2", "--name", &pattern])
+            .output()?;
+        ensure!(
+            output.status.success()
+                || output.status.code() == Some(1)
+                    && output.stdout.is_empty()
+                    && output.stderr.is_empty(),
+            "could not inspect the exact FDS oracle window: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let windows = std::str::from_utf8(&output.stdout)?
+            .lines()
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>();
+        ensure!(
+            windows.len() <= 1,
+            "found multiple exact FDS oracle windows"
+        );
+        if let Some(window) = windows.first() {
+            let observed = command_stdout(
+                Command::new(xdotool).args(["getwindowname", window]),
+                "reading FDS oracle window title",
+            )?;
+            if observed == title {
+                return Ok((*window).to_owned());
+            }
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "the exact FDS oracle window did not become ready"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+fn focus_and_key(xdotool: &Path, window: &str, title: &str, key: &str) -> Result<()> {
+    ensure!(
+        Command::new(xdotool)
+            .args(["windowfocus", "--sync", window])
+            .status()?
+            .success(),
+        "could not focus the exact FDS oracle window"
+    );
+    let focused = command_stdout(
+        Command::new(xdotool).arg("getwindowfocus"),
+        "reading focused FDS oracle window",
+    )?;
+    let observed = command_stdout(
+        Command::new(xdotool).args(["getwindowname", window]),
+        "reading focused FDS oracle title",
+    )?;
+    ensure!(
+        focused == window && observed == title,
+        "FDS oracle focus changed"
+    );
+    ensure!(
+        Command::new(xdotool)
+            .args(["key", "--clearmodifiers", key])
+            .status()?
+            .success(),
+        "could not send {key} to the FDS oracle"
+    );
+    Ok(())
+}
+
+/// Opt-in proof using user-supplied lawful inputs. The source BIOS and source
+/// disk are read-only inputs; all installed/runtime artifacts are restored to
+/// their pre-test state before the report is retained.
+#[test]
+#[ignore = "needs installed pinned Nestopia UE Flatpak, Xvfb/xdotool, and user-supplied lawful FDS BIOS/game"]
+fn production_fds_install_verify_and_state_runtime_oracle() -> Result<()> {
+    const APP_COMMIT: &str = "0f3d30d71419cee53f903b77944821d919fcfbe98aa3648bf8d12765bddd6169";
+    const APP_EXECUTABLE_SHA256: &str =
+        "1b63638f9e19e007900ac7c81451dbaa734661f79e3033d7013dbec2509543ea";
+    const RUNTIME_REF: &str = "org.freedesktop.Platform/x86_64/25.08";
+    const RUNTIME_COMMIT: &str = "bd44a6230581917d04f89812a4c21090c304d390edb73995af1c2f9fd8abf4e8";
+
+    let bios = fs::canonicalize(
+        std::env::var_os("LUNCHBOX_NESTOPIA_FDS_BIOS").context("missing FDS BIOS path")?,
+    )?;
+    let content = fs::canonicalize(
+        std::env::var_os("LUNCHBOX_NESTOPIA_FDS_CONTENT")
+            .context("missing extracted FDS content path")?,
+    )?;
+    let xdotool = fs::canonicalize(
+        std::env::var_os("LUNCHBOX_NESTOPIA_FDS_XDOTOOL").context("missing xdotool path")?,
+    )?;
+    let report_path = PathBuf::from(
+        std::env::var_os("LUNCHBOX_NESTOPIA_FDS_REPORT").context("missing FDS report path")?,
+    );
+    ensure!(
+        report_path.is_absolute() && !report_path.try_exists()?,
+        "FDS report must be a new absolute path"
+    );
+    ensure!(
+        report_path.parent().is_some_and(Path::is_dir),
+        "FDS report parent does not exist"
+    );
+    let source_zip = std::env::var_os("LUNCHBOX_NESTOPIA_FDS_SOURCE_ZIP")
+        .map(fs::canonicalize)
+        .transpose()?;
+    let title = content
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .context("FDS content has no UTF-8 stem")?;
+    ensure!(
+        !title.is_empty()
+            && title
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-'),
+        "FDS oracle content needs a unique ASCII word stem"
+    );
+    ensure!(
+        matches!(
+            content.extension().and_then(|value| value.to_str()),
+            Some("fds" | "FDS")
+        ),
+        "FDS oracle content extension differs"
+    );
+
+    let flatpak = fs::canonicalize("/run/current-system/sw/bin/flatpak")?;
+    let running = command_stdout(
+        Command::new(&flatpak).arg("ps"),
+        "listing Flatpak processes",
+    )?;
+    ensure!(
+        !running.contains(NESTOPIA_UE_FLATPAK_ID),
+        "refusing to mix the FDS oracle with an existing Nestopia process"
+    );
+    let app_commit = command_stdout(
+        Command::new(&flatpak).args(["info", "--show-commit", NESTOPIA_UE_FLATPAK_ID]),
+        "reading Nestopia Flatpak commit",
+    )?;
+    ensure!(app_commit == APP_COMMIT, "Nestopia Flatpak commit differs");
+    let runtime_ref = command_stdout(
+        Command::new(&flatpak).args(["info", "--show-runtime", NESTOPIA_UE_FLATPAK_ID]),
+        "reading Nestopia runtime ref",
+    )?;
+    ensure!(runtime_ref == RUNTIME_REF, "Nestopia runtime ref differs");
+    let runtime_commit = command_stdout(
+        Command::new(&flatpak).args(["info", "--show-commit", RUNTIME_REF]),
+        "reading Nestopia runtime commit",
+    )?;
+    ensure!(
+        runtime_commit == RUNTIME_COMMIT,
+        "Nestopia runtime commit differs"
+    );
+    let app_location = PathBuf::from(command_stdout(
+        Command::new(&flatpak).args(["info", "--show-location", NESTOPIA_UE_FLATPAK_ID]),
+        "locating Nestopia Flatpak",
+    )?);
+    let executable = fs::canonicalize(app_location.join("files/bin/nestopia"))?;
+    let executable_sha256 = sha256(&fs::read(&executable)?);
+    ensure!(
+        executable_sha256 == APP_EXECUTABLE_SHA256,
+        "Nestopia executable identity differs"
+    );
+
+    let bios_before = fs::read(&bios)?;
+    let bios_metadata_before = bios.metadata()?;
+    let inspected = inspect_fds_bios(&bios)?;
+    let home = fs::canonicalize(
+        directories::BaseDirs::new()
+            .context("finding user home")?
+            .home_dir(),
+    )?;
+    let data_home = fs::canonicalize(
+        home.join(".var/app")
+            .join(NESTOPIA_UE_FLATPAK_ID)
+            .join("data"),
+    )?;
+    let firmware_directory = data_home.join("nestopia");
+    let firmware_directory_existed = firmware_directory.is_dir();
+    let firmware_target = firmware_directory.join(FDS_BIOS_FILENAME);
+    let firmware_existed = firmware_target.is_file();
+    let firmware_before = firmware_existed
+        .then(|| fs::read(&firmware_target))
+        .transpose()?;
+    let save_root = firmware_directory.join("save");
+    let state_root = firmware_directory.join("state");
+    let outputs = vec![
+        save_root.join(format!("{title}.sav")),
+        save_root.join(format!("{title}.ups")),
+        state_root.join(format!("{title}_0.nst")),
+        content.with_extension("ups"),
+    ];
+    ensure!(
+        outputs
+            .iter()
+            .all(|path| !path.try_exists().unwrap_or(false)),
+        "FDS oracle needs a unique content stem without existing outputs"
+    );
+    let mut cleanup = RuntimeCleanup {
+        outputs,
+        firmware_target: firmware_target.clone(),
+        remove_firmware: !firmware_existed,
+        remove_firmware_directory: !firmware_directory_existed,
+    };
+
+    let receipt = install_fds_firmware(InstallRequest {
+        flatpak_app_id: NESTOPIA_UE_FLATPAK_ID,
+        platform_id: FDS_PLATFORM_ID,
+        platform_name: FDS_PLATFORM_NAME,
+        content_path: &content,
+        flatpak_data_home: &data_home,
+        firmware_source: &bios,
+    })?;
+    ensure!(receipt.target == firmware_target, "FDS BIOS target differs");
+    let verified = verify_fds_firmware_for_launch(scope(&data_home, &content))?;
+    ensure!(
+        verified.target == firmware_target && verified.fingerprint == inspected.fingerprint,
+        "fresh FDS pre-launch verification differs"
+    );
+
+    let private = TempDir::new()?;
+    let private_config = private.path().join("config");
+    fs::create_dir(&private_config)?;
+    let mut child = RuntimeChild::new(
+        Command::new(&flatpak)
+            .args([
+                "run",
+                "--die-with-parent",
+                "--nofilesystem=host:reset",
+                "--nofilesystem=home",
+                "--nosocket=wayland",
+                "--socket=x11",
+            ])
+            .arg(format!(
+                "--filesystem={}",
+                content.parent().unwrap().display()
+            ))
+            .arg(format!("--filesystem={}", private.path().display()))
+            .arg("--env=FLTK_BACKEND=x11")
+            .arg(format!(
+                "--env=XDG_CONFIG_HOME={}",
+                private_config.display()
+            ))
+            .arg(NESTOPIA_UE_FLATPAK_ID)
+            .arg(&content)
+            .spawn()?,
+    );
+    let window = wait_for_exact_x11_window(&xdotool, title)?;
+    std::thread::sleep(Duration::from_secs(2));
+    focus_and_key(&xdotool, &window, title, "F5")?;
+    let state = state_root.join(format!("{title}_0.nst"));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !state.is_file() {
+        ensure!(
+            child.child.try_wait()?.is_none(),
+            "Nestopia exited before creating the FDS state"
+        );
+        ensure!(Instant::now() < deadline, "FDS state did not appear");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let state_bytes = fs::read(&state)?;
+    ensure!(!state_bytes.is_empty(), "FDS state is empty");
+    let state_sha256 = sha256(&state_bytes);
+    focus_and_key(&xdotool, &window, title, "F7")?;
+    std::thread::sleep(Duration::from_millis(500));
+    ensure!(
+        child.child.try_wait()?.is_none(),
+        "Nestopia exited after loading the FDS state"
+    );
+    ensure!(
+        Command::new(&xdotool)
+            .args(["windowclose", &window])
+            .status()?
+            .success(),
+        "could not close the exact FDS oracle window"
+    );
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let status = loop {
+        if let Some(status) = child.child.try_wait()? {
+            break status;
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Nestopia FDS oracle did not exit"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    };
+    ensure!(status.success(), "Nestopia FDS oracle failed: {status}");
+    let post_launch = verify_fds_firmware_for_launch(scope(&data_home, &content))?;
+    ensure!(
+        post_launch.fingerprint == inspected.fingerprint,
+        "installed FDS BIOS changed during runtime"
+    );
+    cleanup.finish()?;
+
+    ensure!(fs::read(&bios)? == bios_before, "source FDS BIOS changed");
+    let bios_metadata_after = bios.metadata()?;
+    ensure!(
+        bios_metadata_before.len() == bios_metadata_after.len()
+            && bios_metadata_before.modified()? == bios_metadata_after.modified()?,
+        "source FDS BIOS metadata changed"
+    );
+    if let Some(before) = firmware_before {
+        ensure!(
+            fs::read(&firmware_target)? == before,
+            "pre-existing FDS BIOS changed"
+        );
+    } else {
+        ensure!(
+            !firmware_target.try_exists()?,
+            "temporary installed FDS BIOS remained"
+        );
+    }
+    ensure!(
+        cleanup
+            .outputs
+            .iter()
+            .all(|path| !path.try_exists().unwrap_or(false)),
+        "unique FDS runtime outputs remained"
+    );
+    ensure!(
+        !command_stdout(
+            Command::new(&flatpak).arg("ps"),
+            "listing final Flatpak processes"
+        )?
+        .contains(NESTOPIA_UE_FLATPAK_ID),
+        "Nestopia remained running after the FDS oracle"
+    );
+
+    let source_zip_sha256 = source_zip
+        .as_ref()
+        .map(|path| fs::read(path).map(|bytes| sha256(&bytes)))
+        .transpose()?;
+    let report = serde_json::json!({
+        "schema": 1,
+        "oracle": "nestopia-ue-linux-flatpak-fds-runtime",
+        "deployment": {
+            "flatpak_app_id": NESTOPIA_UE_FLATPAK_ID,
+            "flatpak_app_commit": app_commit,
+            "flatpak_executable_sha256": executable_sha256,
+            "flatpak_runtime": runtime_ref,
+            "flatpak_runtime_commit": runtime_commit,
+        },
+        "inputs": {
+            "bios": bios,
+            "bios_sha256": inspected.fingerprint.sha256,
+            "bios_crc32": format!("{:08x}", inspected.fingerprint.crc32),
+            "content": content,
+            "content_sha256": sha256(&fs::read(&content)?),
+            "source_zip": source_zip,
+            "source_zip_sha256": source_zip_sha256,
+        },
+        "firmware": {
+            "install_disposition": format!("{:?}", receipt.disposition),
+            "target": receipt.target,
+            "immediate_prelaunch_reverified": true,
+            "post_runtime_reverified": true,
+        },
+        "runtime": {
+            "display_backend": "x11",
+            "exact_window_title": title,
+            "state_bytes": state_bytes.len(),
+            "state_sha256": state_sha256,
+            "f5_created_state": true,
+            "f7_process_remained_live": true,
+            "clean_exit": true,
+        },
+        "safety": {
+            "bios_source_unchanged": true,
+            "firmware_baseline_restored": true,
+            "unique_outputs_removed": true,
+            "nestopia_process_reaped": true,
+            "private_config_removed": true,
+        },
+        "minerva_follow_up": "Retroarch-System/Nintendo - NES - Famicom (Nestopia UE).zip",
+    });
+    let mut report_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&report_path)?;
+    serde_json::to_writer_pretty(&mut report_file, &report)?;
+    report_file.write_all(b"\n")?;
+    report_file.sync_all()?;
+    Ok(())
+}
+
 #[test]
 fn production_allowlist_matches_pinned_mesen_primary_source() {
     // SourMesen/Mesen2 UI/Interop/FirmwareTypeExtensions.cs
@@ -169,7 +652,7 @@ fn production_acceptance_is_sha256_not_crc32() -> Result<()> {
 }
 
 #[test]
-fn test_hashes_accept_only_exact_raw_canonical_regular_sources() -> Result<()> {
+fn test_hashes_accept_only_exact_raw_or_reviewed_zip_sources() -> Result<()> {
     let temp = TempDir::new()?;
     let bytes = test_bios(17);
     let allowed = allowlist(&bytes);
@@ -177,6 +660,41 @@ fn test_hashes_accept_only_exact_raw_canonical_regular_sources() -> Result<()> {
     let inspected = inspect_fds_bios_for_test(&source, &allowed)?;
     assert_eq!(inspected.bytes(), &bytes);
     assert_eq!(inspected.fingerprint.sha256, allowed[0]);
+
+    let archive = write_zip(
+        &temp,
+        FDS_MINERVA_PACKAGE_NAME,
+        &[("system/disksys.rom", &bytes), ("README.txt", b"metadata")],
+    );
+    let inspected = inspect_fds_bios_for_test(&archive, &allowed)?;
+    assert_eq!(inspected.bytes(), &bytes);
+    assert_eq!(inspected.fingerprint.sha256, allowed[0]);
+
+    let unsafe_archive = write_zip(&temp, "unsafe.zip", &[("../disksys.rom", &bytes)]);
+    assert!(
+        inspect_fds_bios_for_test(&unsafe_archive, &allowed)
+            .unwrap_err()
+            .to_string()
+            .contains("unsafe path")
+    );
+    let duplicate_archive = write_zip(
+        &temp,
+        "duplicate.zip",
+        &[("a/disksys.rom", &bytes), ("b/DISKSYS.ROM", &bytes)],
+    );
+    assert!(
+        inspect_fds_bios_for_test(&duplicate_archive, &allowed)
+            .unwrap_err()
+            .to_string()
+            .contains("multiple disksys.rom")
+    );
+    let missing_archive = write_zip(&temp, "missing.zip", &[("readme.txt", b"metadata")]);
+    assert!(
+        inspect_fds_bios_for_test(&missing_archive, &allowed)
+            .unwrap_err()
+            .to_string()
+            .contains("no recognized disksys.rom")
+    );
 
     assert!(
         inspect_fds_bios_for_test(Path::new("relative.rom"), &allowed)

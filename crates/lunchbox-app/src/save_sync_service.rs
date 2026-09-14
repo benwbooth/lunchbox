@@ -1245,6 +1245,47 @@ mod tests {
     }
 
     #[test]
+    fn local_folder_provider_round_trips_a_full_two_device_sync() {
+        let provider = tempfile::tempdir().unwrap();
+        let profile =
+            crate::save_cloud::CloudProfile::new_local_folder(provider.path(), "device-a", true)
+                .unwrap();
+        let store = CloudStore::connect(profile.provider, &profile.root, &profile.auth).unwrap();
+        store.probe().unwrap();
+
+        let device_a = tempfile::tempdir().unwrap();
+        let device_b = tempfile::tempdir().unwrap();
+        let recovery = tempfile::tempdir().unwrap();
+        std::fs::write(device_a.path().join("game.sav"), b"folder-backed save").unwrap();
+        let uploaded = prepare_sync(&store, scope(), "device-a", roots(device_a.path()), None)
+            .unwrap()
+            .apply(&store, &BTreeMap::new(), recovery.path(), 1000)
+            .unwrap();
+
+        let prefix = provider.path().join("saves/v1/duckstation/linux");
+        assert!(prefix.join("devices/device-a.json").is_file());
+        assert!(
+            prefix
+                .join("manifests")
+                .join(format!("{}.json", uploaded.manifest_id))
+                .is_file()
+        );
+
+        let downloaded =
+            prepare_sync(&store, scope(), "device-b", roots(device_b.path()), None).unwrap();
+        assert_eq!(downloaded.plan.actions.len(), 1);
+        assert_eq!(downloaded.plan.actions[0].kind, SyncActionKind::Download);
+        downloaded
+            .apply(&store, &BTreeMap::new(), recovery.path(), 2000)
+            .unwrap();
+        assert_eq!(
+            std::fs::read(device_b.path().join("game.sav")).unwrap(),
+            b"folder-backed save"
+        );
+        assert!(prefix.join("devices/device-b.json").is_file());
+    }
+
+    #[test]
     fn remote_choice_replaces_local_file_and_keeps_recovery_copy() {
         let store = CloudStore::memory().unwrap();
         let device_a = tempfile::tempdir().unwrap();

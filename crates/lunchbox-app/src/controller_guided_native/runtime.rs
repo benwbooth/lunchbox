@@ -136,6 +136,133 @@ pub(super) fn reuse(
                 mapping.gopher64_native_launches.push(setup);
             }
         }
+        "gearsystem" | "gearcoleco"
+            if !mapping
+                .gear_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(
+                &mapping.gear_native_launches,
+                emulator,
+                &["players", "profile_id"],
+            )? {
+                setup.content = content(plan, &["-f", "--fullscreen", "-w", "--windowed"])?;
+                mapping.gear_native_launches.push(setup);
+            }
+        }
+        "xroar"
+            if !mapping
+                .xroar_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(
+                &mapping.xroar_native_launches,
+                emulator,
+                &["players", "profile_id"],
+            )? {
+                setup.content = content(plan, &[])?;
+                mapping.xroar_native_launches.push(setup);
+            }
+        }
+        "zesarux"
+            if !mapping
+                .zesarux_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(
+                &mapping.zesarux_native_launches,
+                emulator,
+                &["controller_id"],
+            )? {
+                setup.content = content(plan, &[])?;
+                mapping.zesarux_native_launches.push(setup);
+            }
+        }
+        "oricutron"
+            if !mapping
+                .oricutron_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.oricutron_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.oricutron_native_launches.push(setup);
+            }
+        }
+        "atari-plus-plus"
+            if !mapping
+                .atari_plus_plus_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(
+                &mapping.atari_plus_plus_native_launches,
+                emulator,
+                &["players"],
+            )? {
+                setup.content = content(plan, &[])?;
+                mapping.atari_plus_plus_native_launches.push(setup);
+            }
+        }
+        "aranym"
+            if !mapping
+                .aranym_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.aranym_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.aranym_native_launches.push(setup);
+            }
+        }
+        "atari800"
+            if !mapping
+                .atari800_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.atari800_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.atari800_native_launches.push(setup);
+            }
+        }
+        "nanoboyadvance"
+            if !mapping
+                .nanoboyadvance_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(
+                &mapping.nanoboyadvance_native_launches,
+                emulator,
+                &["players"],
+            )? {
+                setup.content = content(plan, &[])?;
+                mapping.nanoboyadvance_native_launches.push(setup);
+            }
+        }
+        "vba-m"
+            if !mapping
+                .vba_m_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.vba_m_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.vba_m_native_launches.push(setup);
+            }
+        }
         "rmg"
             if !mapping
                 .rmg_native_launches
@@ -174,6 +301,19 @@ pub(super) fn reuse(
             )? {
                 setup.content = content(plan, &[])?;
                 mapping.yaba_sanshiro_native_launches.push(setup);
+            }
+        }
+        "kronos"
+            if !mapping
+                .kronos_native_launches
+                .iter()
+                .any(|setup| matches(&setup.emulator_id, &setup.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.kronos_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.kronos_native_launches.push(setup);
             }
         }
         "xemu"

@@ -12,6 +12,28 @@ use std::collections::BTreeMap;
 
 pub(crate) const SOURCE_COMMIT: &str = "253752954d5237a30b60c40789117ded345bcd48";
 
+/// Target-control IDs and the source-owned `config.ini` fields they feed.
+/// Directions are represented by the shared directional selector rather than
+/// four independently configurable fields.
+pub(crate) const GAME_GEAR_ROUTES: [(&str, &str); 7] = [
+    ("up", "GamepadDirectional (up)"),
+    ("down", "GamepadDirectional (down)"),
+    ("left", "GamepadDirectional (left)"),
+    ("right", "GamepadDirectional (right)"),
+    ("b", "Gamepad1"),
+    ("a", "Gamepad2"),
+    ("start", "GamepadStart"),
+];
+
+pub(crate) const MASTER_SYSTEM_ROUTES: [(&str, &str); 6] = [
+    ("up", "GamepadDirectional (up)"),
+    ("down", "GamepadDirectional (down)"),
+    ("left", "GamepadDirectional (left)"),
+    ("right", "GamepadDirectional (right)"),
+    ("b", "Gamepad1"),
+    ("a", "Gamepad2"),
+];
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum GamepadInput {
     Disabled,
@@ -54,8 +76,10 @@ pub(crate) struct PlayerProfile {
     pub directional: Directional,
     pub button_1: GamepadInput,
     pub button_2: GamepadInput,
-    pub start: GamepadInput,
-    pub reset: GamepadInput,
+    /// `None` preserves the source config's console-level binding.
+    pub start: Option<GamepadInput>,
+    /// Reset is not part of either standard pad contract.
+    pub reset: Option<GamepadInput>,
 }
 
 fn fields(profile: PlayerProfile) -> Result<BTreeMap<String, String>> {
@@ -68,9 +92,13 @@ fn fields(profile: PlayerProfile) -> Result<BTreeMap<String, String>> {
         ("Gamepad".into(), "true".into()),
         ("Gamepad1".into(), profile.button_1.value()?.to_string()),
         ("Gamepad2".into(), profile.button_2.value()?.to_string()),
-        ("GamepadReset".into(), profile.reset.value()?.to_string()),
-        ("GamepadStart".into(), profile.start.value()?.to_string()),
     ]);
+    if let Some(start) = profile.start {
+        fields.insert("GamepadStart".into(), start.value()?.to_string());
+    }
+    if let Some(reset) = profile.reset {
+        fields.insert("GamepadReset".into(), reset.value()?.to_string());
+    }
     match profile.directional {
         Directional::Dpad => {
             fields.insert("GamepadDirectional".into(), "0".into());
@@ -215,8 +243,8 @@ mod tests {
                 },
                 button_1: GamepadInput::Button(0),
                 button_2: GamepadInput::Button(1),
-                start: GamepadInput::Button(6),
-                reset: GamepadInput::Disabled,
+                start: Some(GamepadInput::Button(6)),
+                reset: None,
             }],
         )
         .unwrap();
@@ -235,8 +263,8 @@ mod tests {
             directional: Directional::Dpad,
             button_1: GamepadInput::Button(27),
             button_2: GamepadInput::Button(1),
-            start: GamepadInput::Axis(6),
-            reset: GamepadInput::Disabled,
+            start: Some(GamepadInput::Axis(6)),
+            reset: None,
         };
         assert!(patch_config(b"", &[profile]).is_err());
     }

@@ -40,10 +40,20 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "ScummVM",
     "jgenesis",
     "Gopher64",
+    "Gearsystem",
+    "Gearcoleco",
+    "XRoar",
+    "ZEsarUX",
+    "Oricutron",
+    "Atari++",
+    "ARAnyM",
+    "Atari800",
+    "NanoBoyAdvance",
+    "VBA-M",
     "RMG",
     "b2",
     "Hypseus Singe",
-    "kronos",
+    "Kronos",
     "Yaba Sanshiro 2",
 ];
 
@@ -328,9 +338,37 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let melonds_native = name.eq_ignore_ascii_case("melonDS");
             let ares = name.eq_ignore_ascii_case("ares");
             let hypseus = name.eq_ignore_ascii_case("Hypseus Singe");
+            let gear =
+                name.eq_ignore_ascii_case("Gearsystem") || name.eq_ignore_ascii_case("Gearcoleco");
+            let xroar = name.eq_ignore_ascii_case("XRoar");
+            let zesarux = name.eq_ignore_ascii_case("ZEsarUX");
+            let oricutron = name.eq_ignore_ascii_case("Oricutron");
+            let atari_plus_plus = name.eq_ignore_ascii_case("Atari++");
+            let aranym = name.eq_ignore_ascii_case("ARAnyM");
+            let atari800 = name.eq_ignore_ascii_case("Atari800");
+            let nanoboyadvance = name.eq_ignore_ascii_case("NanoBoyAdvance");
+            let vba_m = name.eq_ignore_ascii_case("VBA-M");
             rows.push(json!({"name":name,"platform":platform,"kind":"Standalone / non-core catalog entry",
                 "status":if native_adapter { "partial" } else { "missing" },"profiles":[],"choices":[],"selected":null,
-                "detail":if hypseus {
+                "detail":if gear {
+                    "Native Linux SDL3 dispatch is connected through a copied config.ini under a private SDL preference root. Exact first-gamepad ordering is checked and existing save/state destinations are preserved. Portable mode, nonstandard peripherals, other hosts, and runtime behavior remain unverified."
+                } else if xroar {
+                    "Native Linux SDL3 dispatch is connected through a private first-option xroar.conf. Exact joystick order and logical bindings are rechecked, config auto-save is disabled, and caller-owned media/snapshot paths are not relocated. Button-backed D-pads, non-SDL3 builds, other hosts, and runtime behavior remain unverified."
+                } else if zesarux {
+                    "Native Linux joydev dispatch is connected through a copied first-option configuration and launch-owned immutable joystick symlink. Exact topology and joydev numbering are rechecked while firmware, media and state paths remain caller-owned. Other input backends, other hosts, and runtime behavior remain unverified."
+                } else if oricutron {
+                    "Native Linux SDL2 dispatch is connected through an exact executable-sibling oricutron.cfg overlay. The pinned source's fixed mapping and unusual slot-equals-instance requirement are enforced while firmware, media, saves and snapshots remain in their native locations. Other hosts and runtime behavior remain unverified."
+                } else if atari_plus_plus {
+                    "Native Linux Atari++ AnalogJoystick dispatch is connected through an exact config overlay and launch-owned joydev nodes. Directions require the source's axis 0-3 grammar; firmware, mounted-media saves, and user-selected snapshots remain in their native locations. SDL/keyboard/paddle/5200 modes, other hosts, and runtime behavior remain unverified."
+                } else if aranym {
+                    "Native Linux ARAnyM IKBD joystick dispatch is connected through an exact config-path overlay. SDL2 slot/instance identity and the source's fixed axes-or-hat/any-button behavior are enforced while TOS, disks, GEMDOS guest saves, NVRAM, and snapshots remain in their native locations. Jaguar joypads, other hosts, and runtime behavior remain unverified."
+                } else if atari800 {
+                    "Native Linux Atari800 digital-joystick dispatch is connected through an exact selected-config overlay. SDL2 names, duplicate-name slots, source-supported axes or hat, and raw Fire are rechecked while mounted-media saves, firmware paths, explicit states, and the real config-adjacent quick-save remain native. Paddles, 5200 analog controls, other hosts, and runtime behavior remain unverified."
+                } else if nanoboyadvance {
+                    "Native Linux NanoBoyAdvance dispatch is connected through an exact selected-config overlay. The selected raw SDL3 joystick GUID must remain unique; the 16 KiB configured BIOS, save/state directory, executable, config, probe, and classic control numbering are rechecked. Other hosts and runtime behavior remain unverified."
+                } else if vba_m {
+                    "Native Linux VBA-M Qt/wx dispatch is connected through an explicit private configuration. It disables logical GameController translation, rechecks exact SDL2/SDL3 joystick order and raw controls, and guards the configured battery/state roots plus any active 16 KiB GBA BIOS. Other systems, hosts, packages, and runtime behavior remain unverified."
+                } else if hypseus {
                     "Native Linux Hypseus Singe dispatch is connected for explicit laserdisc framefile setups: exact SDL3 Gamepad order, source-defined keymap columns, a private configuration home, and a separate writable NVRAM directory. Other content modes, other hosts, and runtime input/save behavior remain unverified."
                 } else if ares {
                     "Native ares 148+ guided player/target mapping with private settings. Default gamepad modes and ordinary six/eight-button arcade panels are implemented. Alternate attachments, target-runtime device availability and cross-platform runtime verification remain incomplete."

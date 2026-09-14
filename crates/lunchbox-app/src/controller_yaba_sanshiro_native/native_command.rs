@@ -59,7 +59,9 @@ pub(crate) fn prepare(
         anyhow::bail!("Yaba Sanshiro 2 calibrated launch requires native Linux, not Wine/Flatpak");
     };
     ensure!(
-        setup.emulator_id == option.emulator_id && original.environment.is_empty(),
+        option.emulator_name.eq_ignore_ascii_case("Yaba Sanshiro 2")
+            && setup.emulator_id == option.emulator_id
+            && original.environment.is_empty(),
         "Yaba Sanshiro 2 identity differs or custom environment needs resolution"
     );
     let executable = executable.canonicalize()?;
@@ -77,10 +79,22 @@ pub(crate) fn prepare(
     );
     let inputs = PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
     let mut plan = original.clone();
-    // A private HOME keeps Yaba Sanshiro 2's configuration isolated: Qt
-    // resolves yabause.ini under <home>/.config/YabaSanshiro/qt/.
-    plan.environment
-        .push(("HOME".into(), inputs.home_path.as_os_str().to_owned()));
+    let cwd = original.current_directory.canonicalize()?;
+    plan.program = setup.bubblewrap_program.clone();
+    plan.arguments = vec![
+        "--die-with-parent".into(),
+        "--bind".into(),
+        "/".into(),
+        "/".into(),
+        "--bind".into(),
+        inputs.config_path.as_os_str().to_owned(),
+        setup.config_path.as_os_str().to_owned(),
+        "--chdir".into(),
+        cwd.into_os_string(),
+        "--".into(),
+        executable.as_os_str().to_owned(),
+        setup.content.as_os_str().to_owned(),
+    ];
     let session = NativeSession {
         inputs,
         executable,

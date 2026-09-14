@@ -171,6 +171,116 @@ ColumnLayout {
         }
     }
     Button {
+        text: "Gearsystem / Gearcoleco SDL3 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "gear-native"
+            duckstationEditor.text = setup.settingsModel.gear_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch uses a private SDL preference root, exact first-gamepad ordering, and preserved save/state destinations; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "XRoar SDL3 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "xroar-native"
+            duckstationEditor.text = setup.settingsModel.xroar_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch uses a private first-option config and rechecks exact SDL3 joystick order and bindings; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "ZEsarUX Kempston setups…"
+        onClicked: {
+            duckstationSetups.adapter = "zesarux-native"
+            duckstationEditor.text = setup.settingsModel.zesarux_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch uses a copied first-option config plus an exact launch-owned joydev link; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "Oricutron joystick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "oricutron-native"
+            duckstationEditor.text = setup.settingsModel.oricutron_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch overlays only the executable-sibling oricutron.cfg and rechecks exact SDL2 slot/instance routing; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "Yaba Sanshiro 2 Saturn setups…"
+        onClicked: {
+            duckstationSetups.adapter = "yaba-sanshiro-native"
+            duckstationEditor.text = setup.settingsModel.yaba_sanshiro_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch overlays only a copied yabause.ini and rechecks measured SDL2 routing while retaining the real data root; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "Kronos Saturn setups…"
+        onClicked: {
+            duckstationSetups.adapter = "kronos-native"
+            duckstationEditor.text = setup.settingsModel.kronos_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch overlays only a copied kronos.ini and rechecks exact raw-SDL2 routing while retaining the real data paths; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "Atari++ AnalogJoystick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "atari-plus-plus-native"
+            duckstationEditor.text = setup.settingsModel.atari_plus_plus_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch overlays the selected config and exact joydev nodes while preserving media/save/state paths; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "ARAnyM IKBD joystick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "aranym-native"
+            duckstationEditor.text = setup.settingsModel.aranym_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch overlays the selected config at its original path and rechecks exact SDL2 slot/instance routing; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "Atari800 digital joystick setups…"
+        onClicked: {
+            duckstationSetups.adapter = "atari800-native"
+            duckstationEditor.text = setup.settingsModel.atari800_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch overlays the selected config at its original path and rechecks SDL2 names, duplicate-name slots and raw controls; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "NanoBoyAdvance GBA controller setups…"
+        onClicked: {
+            duckstationSetups.adapter = "nanoboyadvance-native"
+            duckstationEditor.text = setup.settingsModel.nanoboyadvance_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch overlays the selected config and rechecks the unique SDL3 GUID, raw controls, 16 KiB BIOS, and save/state root; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
+        text: "VBA-M GBA controller setups…"
+        onClicked: {
+            duckstationSetups.adapter = "vba-m-native"
+            duckstationEditor.text = setup.settingsModel.vba_m_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch uses an explicit private Qt/wx config and rechecks exact raw SDL2/SDL3 controls, persistence roots, and any active GBA BIOS; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
         text: "RMG N64 setups…"
         onClicked: {
             duckstationSetups.adapter = "rmg-native"
@@ -322,6 +432,17 @@ ColumnLayout {
         readonly property bool scummvmNative: adapter === "scummvm-native"
         readonly property bool jgenesisNative: adapter === "jgenesis-native"
         readonly property bool gopher64Native: adapter === "gopher64-native"
+        readonly property bool gearNative: adapter === "gear-native"
+        readonly property bool xroarNative: adapter === "xroar-native"
+        readonly property bool zesaruxNative: adapter === "zesarux-native"
+        readonly property bool oricutronNative: adapter === "oricutron-native"
+        readonly property bool yabaSanshiroNative: adapter === "yaba-sanshiro-native"
+        readonly property bool kronosNative: adapter === "kronos-native"
+        readonly property bool atariPlusPlusNative: adapter === "atari-plus-plus-native"
+        readonly property bool aranymNative: adapter === "aranym-native"
+        readonly property bool atari800Native: adapter === "atari800-native"
+        readonly property bool nanoboyadvanceNative: adapter === "nanoboyadvance-native"
+        readonly property bool vbaMNative: adapter === "vba-m-native"
         readonly property bool b2Native: adapter === "b2-native"
         readonly property bool hypseusNative: adapter === "hypseus-native"
         readonly property bool rmgNative: adapter === "rmg-native"
@@ -333,7 +454,7 @@ ColumnLayout {
         readonly property bool rpcs3: adapter === "rpcs3"
         readonly property bool pcsx2: adapter === "pcsx2"
         readonly property var catalog: JSON.parse(setup.settingsModel.controller_catalog_json())
-        title: punes ? "puNES Flatpak setups — exact Linux deployment" : nestopia ? "Nestopia UE Flatpak setups — exact Linux deployment" : melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
+        title: punes ? "puNES Flatpak setups — exact Linux deployment" : nestopia ? "Nestopia UE Flatpak setups — exact Linux deployment" : melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : gearNative ? "Gearsystem / Gearcoleco setups — partial native Linux" : xroarNative ? "XRoar setups — partial native Linux" : zesaruxNative ? "ZEsarUX Kempston setups — partial native Linux" : oricutronNative ? "Oricutron joystick setups — partial native Linux" : yabaSanshiroNative ? "Yaba Sanshiro 2 Saturn setups — partial native Linux" : kronosNative ? "Kronos Saturn setups — partial native Linux" : atariPlusPlusNative ? "Atari++ AnalogJoystick setups — partial native Linux" : aranymNative ? "ARAnyM IKBD joystick setups — partial native Linux" : atari800Native ? "Atari800 digital joystick setups — partial native Linux" : nanoboyadvanceNative ? "NanoBoyAdvance GBA controller setups — partial native Linux" : vbaMNative ? "VBA-M GBA controller setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
         width: Math.min(900, setup.width)
         height: 640
         modal: true
@@ -360,6 +481,28 @@ ColumnLayout {
                     ? "jgenesis: edit a JSON list with emulator_id, content (absolute ROM path), controller_id, probe_program, sdl_library (the SDL library the jgenesis build links), and executable_sha256. Paths must be absolute. Launch writes a private jgenesis-config.toml using raw SDL joystick indices; the SDL2 probe captures the same kernel-order mapping. Custom keymaps are not covered. Runtime testing remains deferred; review opens no devices."
                     : duckstationSetups.gopher64Native
                     ? "Gopher64: edit a JSON list with emulator_id, content (absolute ROM path), config_path (the existing absolute config.json), probe_program, sdl_library (the SDL3 library the Gopher64 build links), executable_sha256, and players. Each player has player (1–4) and controller_id. Launch copies config.json plus cheats/RetroAchievements companions under a private XDG_CONFIG_HOME, patches only profiles/assignments, and leaves XDG_DATA_HOME untouched so saves and states remain in the native data root. Measured Linux controls are translated through the target SDL3 mapping with SDL_JOYSTICK_LINUX_CLASSIC=1. Portable mode, VRU authoring and Transfer Pak authoring are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.gearNative
+                    ? "Gearsystem / Gearcoleco: edit a JSON list with adapter (gearsystem or gearcoleco), profile_id, emulator_id, content, config_path (the existing config.ini), probe_program, sdl_library, mapping_database (the executable's sibling gamecontrollerdb.txt), executable_sha256, and contiguous players starting at one. Gearsystem profiles are gearsystem:standalone-gamegear and gearsystem:standalone-master-system; Gearcoleco uses gearcoleco:standalone-colecovision. Launch translates physical Linux calibration through the exact SDL3 runtime, requires the selected pads to be the first SDL gamepads in player order, and copies config.ini under a private XDG_DATA_HOME. Default save/state roots are pinned back to the original config directory; ROM and absolute custom roots are preserved. Portable mode and nonstandard peripherals are not covered. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.xroarNative
+                    ? "XRoar: edit a JSON list with profile_id (xroar:standalone-xroar-analog-joystick), emulator_id, content, config_path (the existing xroar.conf), probe_program, sdl_library, mapping_database, executable_sha256, and one or two contiguous players. Player one selects XRoar's right port and player two its left port. Guided directions must resolve to opposite halves of two SDL gamepad axes; fire controls must resolve to SDL gamepad buttons. Launch copies the config, supplies it with first-option -c, disables config auto-save, and rechecks exact SDL joystick order and bindings. Media and snapshot paths stay caller-owned. Runtime testing remains deferred; review opens no devices."
+                    : duckstationSetups.zesaruxNative
+                    ? "ZEsarUX: edit a JSON list with emulator_id, content, config_path (the existing command-style config), executable_sha256, and controller_id. Launch translates the saved Linux physical calibration directly into the pinned native joydev button/axis numbering, copies and appends to the config, creates a private immutable joystick symlink, and supplies --configfile first. The profile covers one Kempston joystick with four directions and Fire. Firmware, media, autosnapshot and state paths stay caller-owned. SDL mode, keyboard mappings, other interfaces, other hosts, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.oricutronNative
+                    ? "Oricutron: edit a JSON list with emulator_id, content, config_path (the executable-sibling oricutron.cfg), probe_program, sdl_library, bubblewrap_program, executable_sha256, machine_ports (atmos-ijk, atmos-altai-pase, or telestrat), and one or two contiguous players. Launch accepts only the pinned source's fixed SDL axis/hat/button layout, requires each selected SDL slot (0–9) to equal its event instance ID, and overlays only the copied configuration. Firmware, media, saves, and snapshots keep their native paths. Other hosts and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.yabaSanshiroNative
+                    ? "Yaba Sanshiro 2: edit a JSON list with emulator_id, content, controller_id, port, device_id, config_path (the existing yabause.ini), probe_program, sdl_library, bubblewrap_program, and executable_sha256. Launch translates physical calibration through the exact SDL2 GameController mapping, patches the complete Saturn pad entry in a copied INI, and overlays only that file at its original path. Native backup RAM and state paths remain active. Runtime behavior remains unverified; review opens no devices."
+                    : duckstationSetups.kronosNative
+                    ? "Kronos: edit a JSON list with emulator_id, content, config_path (the existing kronos.ini), probe_program, sdl_library, bubblewrap_program, executable_sha256, and one to four contiguous players. Each player has player, controller_id, port (1 or 2), and device_id (1–6). Launch translates calibration to the pinned raw SDL2 joystick codes, requires selected devices among the first four enumeration slots, patches complete 13-control Saturn pad entries in a copied INI, and overlays only that file. Native backup RAM, cartridge, state, BIOS and media paths remain active. Runtime behavior remains unverified; review opens no devices."
+                    : duckstationSetups.atariPlusPlusNative
+                    ? "Atari++: edit a JSON list with emulator_id, content, config_path (the selected existing Atari++ config), bubblewrap_program, executable_sha256, and one through four contiguous players. Launch requires directions on opposite halves of joydev axes 0–3 and four distinct joydev buttons, overlays the copied config at its original path, and maps the exact selected devices to launch-owned /dev/input/jsN units. The command template must contain the content exactly once and use the appropriate Atari++ media option. Firmware, mounted-media saves, and user-selected snapshots keep their native paths. Runtime behavior remains unverified; review opens no devices."
+                    : duckstationSetups.aranymNative
+                    ? "ARAnyM: edit a JSON list with emulator_id, content (an absolute floppy image), config_path (the existing ARAnyM config), probe_program, sdl_library, bubblewrap_program, executable_sha256, and one or two contiguous players. Player one uses Ikbd1 and player two Ikbd0. Launch requires directions on SDL axes 0/1 or one cardinal hat and Fire on a button, mounts the copied config at its original path, requires each SDL slot to equal its event instance ID, and launches the content with --floppy. TOS, disk/GEMDOS guest saves, NVRAM and snapshots retain their native paths. Jaguar joypads, other media modes, other hosts and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.atari800Native
+                    ? "Atari800: edit a JSON list with emulator_id, content, config_path (an existing selected Atari800 config), probe_program, sdl_library, bubblewrap_program, executable_sha256, and one to four contiguous players. Launch requires directions on raw SDL axes 0/1 or 2/3, or cardinal hat 0, and Fire on raw button 0–14. It overlays the copied config at the original path and rechecks exact SDL2 names and duplicate-name slots. Mounted-media saves, firmware paths, explicit states, and the config-adjacent quick-save remain native. Paddles, 5200 analog controls, other hosts and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.nanoboyadvanceNative
+                    ? "NanoBoyAdvance: edit a JSON list with emulator_id, content, config_path (the existing config.toml), probe_program, sdl_library, bubblewrap_program, executable_sha256, and exactly one player. Launch maps all ten GBA controls to raw SDL3 joystick buttons, axis halves, or cardinal hats; overlays only a private copied config; preserves keyboard, cartridge, BIOS, save and state settings; verifies the configured 16 KiB BIOS and save directory; and rejects a selected GUID shared by another attached controller. Other hosts and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.vbaMNative
+                    ? "VBA-M: edit a JSON list with emulator_id, content (an uncompressed .gba file), config_path (vbam-qt.ini or vbam.ini), frontend (qt or wx), sdl_api (sdl2 or sdl3), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes an explicit private --config, disables SDL GameController translation, maps the ten ordinary GBA controls through exact raw joystick numbering, and guards the configured battery/state directories plus any enabled 16 KiB GBA BIOS. BatteryDir and StateDir must be empty (ROM directory) or absolute; relative roots are rejected because the two frontends resolve them differently. e-Reader card scanning, other systems/hosts/packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.b2Native
                     ? "b2: edit a JSON list with emulator_id, content (absolute launched disk/content path), config_path (the existing absolute b2.json), probe_program, sdl_library (the SDL2 library the b2 build links), executable_sha256, swap_joysticks_when_shared, and slots. Each slot has slot 0 (analogue 0), 1 (analogue 1), or 2 (digital) plus controller_id. One controller may intentionally occupy both analogue slots; two distinct attached controllers with the same SDL name are rejected. Launch writes only a private XDG_CONFIG_HOME/b2/b2.json. Runtime testing remains deferred; review opens no devices."
                     : duckstationSetups.hypseusNative
@@ -454,6 +597,28 @@ ColumnLayout {
                             ? setup.settingsModel.review_jgenesis_native_setups(duckstationEditor.text)
                             : duckstationSetups.gopher64Native
                             ? setup.settingsModel.review_gopher64_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gearNative
+                            ? setup.settingsModel.review_gear_native_setups(duckstationEditor.text)
+                            : duckstationSetups.xroarNative
+                            ? setup.settingsModel.review_xroar_native_setups(duckstationEditor.text)
+                            : duckstationSetups.zesaruxNative
+                            ? setup.settingsModel.review_zesarux_native_setups(duckstationEditor.text)
+                            : duckstationSetups.oricutronNative
+                            ? setup.settingsModel.review_oricutron_native_setups(duckstationEditor.text)
+                            : duckstationSetups.yabaSanshiroNative
+                            ? setup.settingsModel.review_yaba_sanshiro_native_setups(duckstationEditor.text)
+                            : duckstationSetups.kronosNative
+                            ? setup.settingsModel.review_kronos_native_setups(duckstationEditor.text)
+                            : duckstationSetups.atariPlusPlusNative
+                            ? setup.settingsModel.review_atari_plus_plus_native_setups(duckstationEditor.text)
+                            : duckstationSetups.aranymNative
+                            ? setup.settingsModel.review_aranym_native_setups(duckstationEditor.text)
+                            : duckstationSetups.atari800Native
+                            ? setup.settingsModel.review_atari800_native_setups(duckstationEditor.text)
+                            : duckstationSetups.nanoboyadvanceNative
+                            ? setup.settingsModel.review_nanoboyadvance_native_setups(duckstationEditor.text)
+                            : duckstationSetups.vbaMNative
+                            ? setup.settingsModel.review_vba_m_native_setups(duckstationEditor.text)
                             : duckstationSetups.b2Native
                             ? setup.settingsModel.review_b2_native_setups(duckstationEditor.text)
                             : duckstationSetups.hypseusNative
@@ -524,6 +689,28 @@ ColumnLayout {
                             ? setup.settingsModel.stage_jgenesis_native_setups(duckstationEditor.text)
                             : duckstationSetups.gopher64Native
                             ? setup.settingsModel.stage_gopher64_native_setups(duckstationEditor.text)
+                            : duckstationSetups.gearNative
+                            ? setup.settingsModel.stage_gear_native_setups(duckstationEditor.text)
+                            : duckstationSetups.xroarNative
+                            ? setup.settingsModel.stage_xroar_native_setups(duckstationEditor.text)
+                            : duckstationSetups.zesaruxNative
+                            ? setup.settingsModel.stage_zesarux_native_setups(duckstationEditor.text)
+                            : duckstationSetups.oricutronNative
+                            ? setup.settingsModel.stage_oricutron_native_setups(duckstationEditor.text)
+                            : duckstationSetups.yabaSanshiroNative
+                            ? setup.settingsModel.stage_yaba_sanshiro_native_setups(duckstationEditor.text)
+                            : duckstationSetups.kronosNative
+                            ? setup.settingsModel.stage_kronos_native_setups(duckstationEditor.text)
+                            : duckstationSetups.atariPlusPlusNative
+                            ? setup.settingsModel.stage_atari_plus_plus_native_setups(duckstationEditor.text)
+                            : duckstationSetups.aranymNative
+                            ? setup.settingsModel.stage_aranym_native_setups(duckstationEditor.text)
+                            : duckstationSetups.atari800Native
+                            ? setup.settingsModel.stage_atari800_native_setups(duckstationEditor.text)
+                            : duckstationSetups.nanoboyadvanceNative
+                            ? setup.settingsModel.stage_nanoboyadvance_native_setups(duckstationEditor.text)
+                            : duckstationSetups.vbaMNative
+                            ? setup.settingsModel.stage_vba_m_native_setups(duckstationEditor.text)
                             : duckstationSetups.b2Native
                             ? setup.settingsModel.stage_b2_native_setups(duckstationEditor.text)
                             : duckstationSetups.hypseusNative
@@ -583,6 +770,28 @@ ColumnLayout {
                             ? "Staged. Save settings in the main page. jgenesis native dispatch writes a private config at launch; no devices were opened."
                             : duckstationSetups.gopher64Native
                             ? "Staged. Save settings in the main page. Gopher64 native dispatch writes a private config while preserving its normal save/state data root; no devices were opened."
+                            : duckstationSetups.gearNative
+                            ? "Staged. Save settings in the main page. Gearsystem/Gearcoleco native dispatch writes a private config, preserves save/state roots, and checks exact SDL3 player order at launch; no devices were opened."
+                            : duckstationSetups.xroarNative
+                            ? "Staged. Save settings in the main page. XRoar native dispatch writes a private first-option config and checks exact SDL3 joystick order and bindings at launch; no devices were opened."
+                            : duckstationSetups.zesaruxNative
+                            ? "Staged. Save settings in the main page. ZEsarUX native dispatch writes a private first-option config and exact joydev link at launch; no devices were opened."
+                            : duckstationSetups.oricutronNative
+                            ? "Staged. Save settings in the main page. Oricutron native dispatch overlays only a copied sibling config and rechecks exact SDL2 slot/instance routing at launch; no devices were opened."
+                            : duckstationSetups.yabaSanshiroNative
+                            ? "Staged. Save settings in the main page. Yaba Sanshiro 2 native dispatch writes a private Qt input config and checks exact SDL2 routing at launch; no devices were opened."
+                            : duckstationSetups.kronosNative
+                            ? "Staged. Save settings in the main page. Kronos native dispatch overlays a private Qt config and checks exact raw-SDL2 routing at launch; no devices were opened."
+                            : duckstationSetups.atariPlusPlusNative
+                            ? "Staged. Save settings in the main page. Atari++ native dispatch overlays only the copied config and exact joydev nodes while retaining media/save/state paths; no devices were opened."
+                            : duckstationSetups.aranymNative
+                            ? "Staged. Save settings in the main page. ARAnyM native dispatch overlays only the copied config and rechecks exact SDL2 slot/instance routing while retaining TOS/media/save/state paths; no devices were opened."
+                            : duckstationSetups.atari800Native
+                            ? "Staged. Save settings in the main page. Atari800 native dispatch overlays only the selected config and rechecks exact SDL2 name, duplicate-slot, and raw-control routing while retaining media, firmware and state paths; no devices were opened."
+                            : duckstationSetups.nanoboyadvanceNative
+                            ? "Staged. Save settings in the main page. NanoBoyAdvance native dispatch overlays only a copied config and rechecks the unique SDL3 GUID, raw controls, configured BIOS, and save/state directory; no devices were opened."
+                            : duckstationSetups.vbaMNative
+                            ? "Staged. Save settings in the main page. VBA-M native dispatch passes an explicit private Qt/wx config and rechecks raw SDL routing, configured persistence roots, and any active GBA BIOS; no devices were opened."
                             : duckstationSetups.b2Native
                             ? "Staged. Save settings in the main page. b2 native dispatch writes a private b2.json while leaving disk images in place; no devices were opened."
                             : duckstationSetups.hypseusNative

@@ -6,15 +6,33 @@ use crate::controller_catalog::Calibration;
 use crate::controller_native_process::{cancelled, capture};
 use crate::controllers::ControllerDevice;
 use anyhow::{Context, Result, ensure};
-use lunchbox_controller_probe::{Snapshot, file_hash};
-use std::{collections::HashMap, process::Command, sync::atomic::AtomicBool};
+use lunchbox_controller_probe::{
+    duckstation::DigitalInput,
+    file_hash,
+    linux_classic::AxisEndpoints,
+    sdl2::Snapshot,
+    sdl2_mapping::{self, Input as MappingInput},
+    sdl2_physical::PhysicalMap,
+};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    process::Command,
+    sync::atomic::AtomicBool,
+};
 
 fn observe(
     setup: &crate::controller_yaba_sanshiro_native::settings::SavedSetup,
+    path: Option<&str>,
     cancel: &AtomicBool,
 ) -> Result<Snapshot> {
     let mut command = Command::new(&setup.probe_program);
-    command.arg("--sdl-library").arg(&setup.sdl_library);
+    command
+        .arg("--sdl2-inventory")
+        .arg("--sdl-library")
+        .arg(&setup.sdl_library);
+    if let Some(path) = path {
+        command.arg("--sdl2-controls-for-path").arg(path);
+    }
     let (output, _) = capture(&mut command, cancel)?;
     let snapshot: Snapshot =
         serde_json::from_slice(&output).context("Invalid Yaba Sanshiro 2 SDL capture")?;
@@ -26,13 +44,192 @@ fn observe(
     Ok(snapshot)
 }
 
+fn routing(mut snapshot: Snapshot) -> Snapshot {
+    for device in &mut snapshot.devices {
+        device.controls = None;
+        device.linux_classic = None;
+        device.linux_evdev = None;
+        device.sampled_state = None;
+    }
+    snapshot
+}
+
+fn read_mapping_input(input: &MappingInput, measured: DigitalInput, pressed: bool) -> Result<i32> {
+    match (input, measured) {
+        (MappingInput::Button(index), DigitalInput::Button(actual)) if *index == actual => {
+            Ok(i32::from(pressed))
+        }
+        (
+            MappingInput::Hat { index, mask },
+            DigitalInput::Hat {
+                index: actual,
+                direction,
+            },
+        ) if *index == actual && *mask == direction => {
+            Ok(if pressed { i32::from(direction) } else { 0 })
+        }
+        (
+            MappingInput::Axis { index, .. },
+            DigitalInput::Axis {
+                index: actual,
+                released,
+                pressed: active,
+            },
+        ) if *index == actual => Ok(i32::from(if pressed { active } else { released })),
+        _ => anyhow::bail!("SDL2 logical output depends on another physical input"),
+    }
+}
+
+enum LogicalInput {
+    Button(u16),
+    Axis { index: u16, positive: bool },
+}
+
+fn logical_input(mapping: &str, measured: DigitalInput) -> Result<LogicalInput> {
+    let bindings = sdl2_mapping::parse(mapping)?;
+    let outputs = bindings
+        .iter()
+        .map(|binding| binding.output.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut candidates = Vec::new();
+    for output in outputs {
+        let before = sdl2_mapping::output_value(&bindings, output, |input| {
+            read_mapping_input(input, measured, false)
+        });
+        let after = sdl2_mapping::output_value(&bindings, output, |input| {
+            read_mapping_input(input, measured, true)
+        });
+        let (Ok(before), Ok(after)) = (before, after) else {
+            continue;
+        };
+        if before == after {
+            continue;
+        }
+        let analog = bindings
+            .iter()
+            .find(|binding| binding.output == output)
+            .is_some_and(|binding| binding.output_range.is_some());
+        if analog {
+            ensure!(
+                before.abs() < 10_000 && after.abs() > 10_000,
+                "Yaba Sanshiro 2 logical axis does not leave a centered rest"
+            );
+            let index = [
+                "leftx",
+                "lefty",
+                "rightx",
+                "righty",
+                "lefttrigger",
+                "righttrigger",
+            ]
+            .iter()
+            .position(|candidate| *candidate == output)
+            .context("Yaba Sanshiro 2 mapping uses an unknown logical axis")?;
+            candidates.push(LogicalInput::Axis {
+                index: u16::try_from(index)?,
+                positive: after > 0,
+            });
+        } else if before == 0 && after != 0 {
+            let index = [
+                "a",
+                "b",
+                "x",
+                "y",
+                "back",
+                "guide",
+                "start",
+                "leftstick",
+                "rightstick",
+                "leftshoulder",
+                "rightshoulder",
+                "dpup",
+                "dpdown",
+                "dpleft",
+                "dpright",
+            ]
+            .iter()
+            .position(|candidate| *candidate == output)
+            .context("Yaba Sanshiro 2 mapping uses an unsupported logical button")?;
+            candidates.push(LogicalInput::Button(u16::try_from(index)?));
+        }
+    }
+    ensure!(
+        candidates.len() == 1,
+        "Yaba Sanshiro 2 physical control has no unique SDL2 logical output"
+    );
+    Ok(candidates.remove(0))
+}
+
+fn host_code(
+    device: &lunchbox_controller_probe::sdl2::Device,
+    physical: &PhysicalMap,
+    device_index: u32,
+    input: &crate::controller_catalog::InputBinding,
+) -> Result<u32> {
+    let native = input
+        .native
+        .as_ref()
+        .context("Yaba Sanshiro 2 needs native controls")?;
+    let endpoints = input.axis.as_ref().map(|axis| AxisEndpoints {
+        released: axis.released,
+        pressed: axis.pressed,
+    });
+    let measured = physical.digital_input(native.code, endpoints)?;
+    let encoded = if device.is_game_controller {
+        match logical_input(
+            device
+                .mapping
+                .as_deref()
+                .context("Yaba Sanshiro 2 SDL2 game controller mapping is absent")?,
+            measured,
+        )? {
+            LogicalInput::Button(index) => {
+                super::super::controller_yaba_sanshiro::gc_button_code(device_index, index)
+            }
+            LogicalInput::Axis { index, positive } => {
+                super::super::controller_yaba_sanshiro::gc_axis_code(device_index, index, positive)
+            }
+        }
+    } else {
+        match measured {
+            DigitalInput::Button(index) => super::super::controller_yaba_sanshiro::raw_button_code(
+                device_index,
+                u16::try_from(index)?,
+            ),
+            DigitalInput::Hat { index, direction } => {
+                super::super::controller_yaba_sanshiro::raw_hat_code(
+                    device_index,
+                    u16::try_from(index)?,
+                    direction,
+                )
+            }
+            DigitalInput::Axis {
+                index,
+                released,
+                pressed,
+            } => {
+                ensure!(
+                    released.abs() < 10_000 && pressed.abs() > 10_000,
+                    "Yaba Sanshiro 2 raw axis does not leave a centered rest"
+                );
+                super::super::controller_yaba_sanshiro::raw_axis_code(
+                    device_index,
+                    u16::try_from(index)?,
+                    pressed > 0,
+                )
+            }
+        }
+    };
+    encoded.map_err(|()| anyhow::anyhow!("Yaba Sanshiro 2 input is outside host encoding"))
+}
+
 pub(crate) struct PreparedSession {
     pub(crate) directory: tempfile::TempDir,
-    pub(crate) home_path: std::path::PathBuf,
     pub(crate) config_path: std::path::PathBuf,
     pub(crate) runtime_path: String,
     pub(crate) device_index: u32,
     pub(crate) topology: InputTopology,
+    initial: Snapshot,
     setup: crate::controller_yaba_sanshiro_native::settings::SavedSetup,
     hashes: std::collections::BTreeMap<std::path::PathBuf, String>,
 }
@@ -58,25 +255,19 @@ impl PreparedSession {
         );
         let selected = device.device_path.clone();
         let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
-        let snapshot = observe(setup, cancel)?;
+        let initial = routing(observe(setup, None, cancel)?);
         let runtime_path = topology
             .resolve_runtime_path(
                 &selected,
-                snapshot.devices.iter().filter_map(|d| d.path.as_deref()),
+                initial.devices.iter().filter_map(|d| d.path.as_deref()),
             )
             .context("Yaba Sanshiro 2 device not found in SDL enumeration")?;
-        let dev = snapshot
-            .devices
-            .iter()
-            .find(|d| d.path.as_deref() == Some(runtime_path.as_str()))
-            .context("Yaba Sanshiro 2 device not found")?;
-        let is_gamepad = dev.is_gamepad;
-        let device_index = snapshot
-            .devices
-            .iter()
-            .position(|d| d.path.as_deref() == Some(runtime_path.as_str()))
-            .context("Yaba Sanshiro 2 device position not found")?
-            as u32;
+        let captured = observe(setup, Some(&runtime_path), cancel)?;
+        initial.ensure_same_routing(&routing(captured.clone()))?;
+        topology.verify()?;
+        let dev = captured.device_at_path(&runtime_path)?;
+        let physical = PhysicalMap::from_device(dev)?;
+        let device_index = dev.device_index;
         ensure!(
             device_index < super::super::controller_yaba_sanshiro::PERSDL_MAX_DEVICES,
             "Yaba Sanshiro 2 host codes address at most four devices"
@@ -106,77 +297,43 @@ impl PreparedSession {
                 .input
                 .as_ref()
                 .context("Yaba Sanshiro 2 control not calibrated")?;
-            let native = input
-                .native
-                .as_ref()
-                .context("Yaba Sanshiro 2 needs native controls")?;
-            let code = (native.code & 0xffff) as u16;
-            let host = match native.code >> 16 {
-                1 => {
-                    let composed = if is_gamepad {
-                        super::super::controller_yaba_sanshiro::gc_button_code(device_index, code)
-                    } else {
-                        super::super::controller_yaba_sanshiro::raw_button_code(device_index, code)
-                    };
-                    composed.map_err(|()| {
-                        anyhow::anyhow!("Yaba Sanshiro 2 button {code} outside host encoding")
-                    })?
-                }
-                3 => {
-                    ensure!(
-                        !(0x10..=0x17).contains(&u32::from(code)),
-                        "Yaba Sanshiro 2 hat switches need SDL-hat identity mapping"
-                    );
-                    let positive = native.direction > 0;
-                    let composed = if is_gamepad {
-                        super::super::controller_yaba_sanshiro::gc_axis_code(
-                            device_index,
-                            code,
-                            positive,
-                        )
-                    } else {
-                        super::super::controller_yaba_sanshiro::raw_axis_code(
-                            device_index,
-                            code,
-                            positive,
-                        )
-                    };
-                    composed.map_err(|()| {
-                        anyhow::anyhow!("Yaba Sanshiro 2 axis {code} outside host encoding")
-                    })?
-                }
-                other => anyhow::bail!("Yaba Sanshiro 2 cannot consume input class {other}"),
-            };
+            let host = host_code(dev, &physical, device_index, input)?;
             bindings.push((pad_key, host));
         }
-        let body = super::super::controller_yaba_sanshiro::ini_body(
-            setup.port,
-            setup.device_id,
-            &bindings,
-        )
-        .map_err(|()| anyhow::anyhow!("Yaba Sanshiro 2 pad key outside contract"))?;
         let directory = tempfile::Builder::new()
             .prefix("lunchbox-yaba-sanshiro-")
             .tempdir()?;
-        // A private HOME keeps the user's own yabause.ini untouched: Qt
-        // resolves the config to <home>/.config/YabaSanshiro/qt/yabause.ini.
-        let home_path = directory.path().join("home");
-        let config_dir = home_path.join(".config").join("YabaSanshiro").join("qt");
-        std::fs::create_dir_all(&config_dir)?;
-        let config_path = config_dir.join("yabause.ini");
-        std::fs::write(&config_path, body)?;
-        let mut hashes = std::collections::BTreeMap::new();
-        for path in [&setup.probe_program, &setup.sdl_library, &setup.content] {
+        let config_path = directory.path().join("yabause.ini");
+        let baseline = std::fs::read(&setup.config_path)
+            .context("Reading the declared Yaba Sanshiro 2 configuration")?;
+        std::fs::write(
+            &config_path,
+            super::super::controller_yaba_sanshiro::patch_ini(
+                &baseline,
+                setup.port,
+                setup.device_id,
+                &runtime_path,
+                dev.name.as_deref().unwrap_or("SDL controller"),
+                &bindings,
+            )?,
+        )?;
+        let mut hashes = BTreeMap::new();
+        for path in [
+            &setup.probe_program,
+            &setup.sdl_library,
+            &setup.content,
+            &setup.config_path,
+            &config_path,
+        ] {
             hashes.insert(path.clone(), file_hash(path)?);
         }
-        hashes.insert(config_path.clone(), file_hash(&config_path)?);
         let session = Self {
             directory,
-            home_path,
             config_path,
             runtime_path,
             device_index,
             topology,
+            initial,
             setup: setup.clone(),
             hashes,
         };
@@ -193,13 +350,11 @@ impl PreparedSession {
                 "Yaba Sanshiro 2 launch input changed"
             );
         }
-        let fresh = observe(&self.setup, cancel)?;
+        let fresh = routing(observe(&self.setup, None, cancel)?);
+        self.initial.ensure_same_routing(&fresh)?;
         ensure!(
-            fresh
-                .devices
-                .iter()
-                .any(|device| device.path.as_deref() == Some(self.runtime_path.as_str())),
-            "Yaba Sanshiro 2 controller disappeared"
+            fresh.device_at_path(&self.runtime_path)?.device_index == self.device_index,
+            "Yaba Sanshiro 2 controller routing changed"
         );
         self.topology.verify()
     }

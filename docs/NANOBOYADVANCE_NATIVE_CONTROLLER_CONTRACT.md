@@ -12,22 +12,32 @@ array `[keyboard, button, axis, hat, hat_direction]`.  Axis negatives set the
 `controller_manager.cc` opens the joystick by the exact GUID and polls the
 selected button/axis/hat values.
 
-`crates/lunchbox-app/src/controller_nanoboyadvance_native.rs` renders only the
-`[input]`/`[input.gba]` fragment and validates the lowercase 32-hex-digit GUID
-spelling emitted by SDL3, byte-sized
-SDL control indices, and duplicate physical inputs.  It must be merged into a
-copied baseline TOML, preserving all unrelated options, especially
-`general.save_folder` and backup settings.  A GUID string alone is not a
-complete device identity proof: the launch layer must verify that the GUID
-identifies the intended runtime joystick.
+`crates/lunchbox-app/src/controller_nanoboyadvance_native.rs` now parses a
+copied baseline TOML and replaces only `input.controller_guid` plus the
+controller halves of the ten `input.gba` arrays. Keyboard values and all
+unrelated options remain intact. The writer validates lowercase 32-hex-digit
+GUID spelling, byte-sized SDL control indices, cardinal hats, threshold-crossing
+axis halves, completeness, and duplicate physical inputs.
+
+The native Linux session resolves the chosen physical controller through the
+kernel topology, inventories the exact declared SDL3 library with
+`SDL_JOYSTICK_LINUX_CLASSIC=1`, translates the saved physical calibration into
+raw SDL joystick numbering, and rechecks the inventory, GUID, classic control
+map, dependency hashes, and topology before spawn. Upstream opens the first
+joystick whose GUID matches, so the session rejects a selected GUID that occurs
+more than once. The private config is mounted over the selected real config
+path with bubblewrap; this covers both ordinary and portable Linux builds
+without relocating any persistent data.
 
 The default config path is `<QStandardPaths::ConfigLocation>/NanoBoyAdvance/config.toml`;
 portable builds use `config.toml`, and an app-bundle macOS build uses
 `~/Library/Application Support/org.github.fleroviux.NanoBoyAdvance/config.toml`.
 The core config defaults `general.bios_path` to `bios.bin`; the Qt UI requires a
 valid 16 KiB GBA BIOS and the upstream README suggests `gba_bios.bin` only as
-an unofficial BIOS filename.  Preserve the user-selected save folder and
+an unofficial BIOS filename. The launch resolves and hashes that configured
+BIOS, but deliberately asserts no universal BIOS digest. It also captures and
+rechecks the selected save directory identity. Preserve the user-selected save folder and
 ROM-basename `.sav` cartridge backup data, plus the ten numbered
-ROM-basename `.01.nbss` through `.10.nbss` save-state files.  The writer is
-source-backed but runtime-unverified; it does not prove SDL3 enumeration,
-effective input, BIOS availability, or save/state round trips.
+ROM-basename `.01.nbss` through `.10.nbss` save-state files. The executable
+adapter and deterministic writer tests are source-backed but runtime-unverified;
+they do not prove emulator startup, effective input, or save/state round trips.

@@ -59,6 +59,9 @@ static SAVE_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
 static CONTENT_DIRECTORY: Mutex<Option<CString>> = Mutex::new(None);
 static OPTIONS: Mutex<Option<OptionEnvironment>> = Mutex::new(None);
 static INPUT_QUERIES: Mutex<BTreeSet<InputAddress>> = Mutex::new(BTreeSet::new());
+static PRESSED_QUERIES: Mutex<BTreeSet<InputAddress>> = Mutex::new(BTreeSet::new());
+static RELEASED_QUERIES: Mutex<BTreeSet<InputAddress>> = Mutex::new(BTreeSet::new());
+static OBSERVED_MASKS: Mutex<BTreeSet<(u32, u16)>> = Mutex::new(BTreeSet::new());
 static DESCRIPTORS: Mutex<Capture<Vec<InputDescriptor>>> = Mutex::new(Capture {
     updates: 0,
     value: Ok(Vec::new()),
@@ -73,6 +76,7 @@ static VIDEO: Mutex<VideoCapture> = Mutex::new(VideoCapture::new());
 #[serde(rename_all = "kebab-case")]
 pub enum ArcadeProfile {
     Fbneo,
+    FbneoSf2Six,
     Mame,
 }
 
@@ -99,6 +103,14 @@ impl ArcadeProfile {
                 device: RETRO_DEVICE_ANALOG,
                 state_bytes: 14_256,
             },
+            Self::FbneoSf2Six => ProfileSpec {
+                core_name: "FinalBurn Neo",
+                core_version: "v1.0.0.03 260417 GITe923538",
+                core_sha256: "3555759523d6da5f78012c6846921ac27884b03264604387d07a4877579a177e",
+                source_commit: "e9235389cede90638ad2726cfe80660841b23425",
+                device: 261,
+                state_bytes: 269_189,
+            },
             Self::Mame => ProfileSpec {
                 core_name: "MAME",
                 core_version: "0.287 (a891bc3b)",
@@ -113,9 +125,59 @@ impl ArcadeProfile {
     fn cli(self) -> &'static str {
         match self {
             Self::Fbneo => "fbneo",
+            Self::FbneoSf2Six => "fbneo-sf2-six",
             Self::Mame => "mame",
         }
     }
+
+    fn content(self) -> ContentSpec {
+        match self {
+            Self::Fbneo | Self::Mame => ContentSpec {
+                filename: "1943.zip",
+                bytes: 805_560,
+                sha256: "e44b89e80bf8bccc4f16476d7254d959d937a1668d27ec564d57103ac94fba6f",
+            },
+            Self::FbneoSf2Six => ContentSpec {
+                filename: "sf2.zip",
+                bytes: 3_551_819,
+                sha256: "4abbfccd30caf163f18064bf8c27b2780f370d67d34ee802999dcbb7e6436a30",
+            },
+        }
+    }
+
+    fn gameplay_controls(self) -> &'static [(u32, &'static str)] {
+        const TWO_BUTTON: &[(u32, &str)] = &[
+            (4, "Up"),
+            (5, "Down"),
+            (6, "Left"),
+            (7, "Right"),
+            (0, "Fire 1"),
+            (8, "Fire 2"),
+        ];
+        const SF2_SIX: &[(u32, &str)] = &[
+            (4, "Up"),
+            (5, "Down"),
+            (6, "Left"),
+            (7, "Right"),
+            (1, "Weak Punch"),
+            (9, "Medium Punch"),
+            (10, "Strong Punch"),
+            (0, "Weak Kick"),
+            (8, "Medium Kick"),
+            (11, "Strong Kick"),
+        ];
+        match self {
+            Self::Fbneo | Self::Mame => TWO_BUTTON,
+            Self::FbneoSf2Six => SF2_SIX,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ContentSpec {
+    filename: &'static str,
+    bytes: u64,
+    sha256: &'static str,
 }
 
 #[derive(Debug, Parser)]
@@ -140,7 +202,7 @@ pub struct Args {
     /// Full source commit for provenance when known for a caller-supplied build.
     #[arg(long)]
     expected_source_commit: Option<String>,
-    /// User-owned 1943.zip; bytes are read in place and never copied into the repo.
+    /// User-owned pinned arcade archive; bytes are read in place and never copied into the repo.
     #[arg(long)]
     content: PathBuf,
     /// New private evidence directory. A retained private temporary directory is used if omitted.
@@ -297,6 +359,16 @@ struct CallbackSnapshots {
     input_descriptors: Vec<InputDescriptor>,
     effective_options: BTreeMap<String, String>,
     input_queries: Vec<InputAddress>,
+    pressed_queries: Vec<InputAddress>,
+    released_queries: Vec<InputAddress>,
+    observed_masks: Vec<ObservedMask>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ObservedMask {
+    port: u32,
+    mask: u16,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -325,6 +397,7 @@ struct ResponseEvidence {
     first: Observation,
     repeat: Observation,
     deterministic: bool,
+    emulated_deterministic: bool,
     system_ram_changed_from_neutral: bool,
     state_changed_from_neutral: bool,
     video_changed_from_neutral: bool,
@@ -343,6 +416,7 @@ struct RestoreEvidence {
     initial_continuation: Observation,
     same_process_restored_continuation: Observation,
     same_process_exact: bool,
+    same_process_emulated_exact: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -362,6 +436,9 @@ struct CaptureReport {
     input_descriptors: Vec<InputDescriptor>,
     effective_options: BTreeMap<String, String>,
     input_queries: Vec<InputAddress>,
+    pressed_queries: Vec<InputAddress>,
+    released_queries: Vec<InputAddress>,
+    observed_masks: Vec<ObservedMask>,
     input_polls: u64,
     bitmask_requests: u64,
     individual_requests: u64,
@@ -410,6 +487,7 @@ struct FinalRestoreReport {
     baseline_state_sha256: String,
     continuation_frames: usize,
     same_process_exact: bool,
+    same_process_emulated_exact: bool,
     fresh_process_system_ram_exact: bool,
     fresh_process_video_exact: bool,
     fresh_process_emulated_exact: bool,
@@ -425,6 +503,9 @@ struct CallbackEvidence {
     bitmask_requests: u64,
     individual_requests: u64,
     addresses: Vec<InputAddress>,
+    pressed_addresses: Vec<InputAddress>,
+    released_addresses: Vec<InputAddress>,
+    observed_masks: Vec<ObservedMask>,
     effective_options: BTreeMap<String, String>,
     descriptor_updates: u64,
     controller_info_updates: u64,
@@ -749,6 +830,11 @@ unsafe extern "C" fn input_state(port: u32, device: u32, index: u32, id: u32) ->
         .unwrap_or(0);
     if id == RETRO_DEVICE_ID_JOYPAD_MASK {
         MASK_REQUESTS.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut masks) = OBSERVED_MASKS.lock()
+            && masks.len() < 4096
+        {
+            masks.insert((port, mask));
+        }
         return if BITMASK.load(Ordering::Relaxed) {
             mask as i16
         } else {
@@ -756,9 +842,25 @@ unsafe extern "C" fn input_state(port: u32, device: u32, index: u32, id: u32) ->
         };
     }
     SINGLE_REQUESTS.fetch_add(1, Ordering::Relaxed);
+    let address = InputAddress {
+        port,
+        device,
+        index,
+        id,
+    };
     if id < 16 && mask & (1_u16 << id) != 0 {
+        if let Ok(mut addresses) = PRESSED_QUERIES.lock()
+            && addresses.len() < 4096
+        {
+            addresses.insert(address);
+        }
         1
     } else {
+        if let Ok(mut addresses) = RELEASED_QUERIES.lock()
+            && addresses.len() < 4096
+        {
+            addresses.insert(address);
+        }
         0
     }
 }
@@ -794,6 +896,15 @@ fn reset_callback_state(bitmask: bool, system: &Path, save: &Path, content: &Pat
     *INPUT_QUERIES
         .lock()
         .map_err(|_| anyhow::anyhow!("Input-query lock poisoned"))? = BTreeSet::new();
+    *PRESSED_QUERIES
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Pressed-query lock poisoned"))? = BTreeSet::new();
+    *RELEASED_QUERIES
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Released-query lock poisoned"))? = BTreeSet::new();
+    *OBSERVED_MASKS
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Observed-mask lock poisoned"))? = BTreeSet::new();
     *DESCRIPTORS
         .lock()
         .map_err(|_| anyhow::anyhow!("Descriptor lock poisoned"))? = Capture {
@@ -994,10 +1105,7 @@ impl LoadedCore {
             size: 0,
             meta: std::ptr::null(),
         };
-        ensure!(
-            unsafe { load_game(&info) },
-            "Core rejected pinned 1943.zip content"
-        );
+        ensure!(unsafe { load_game(&info) }, "Core rejected pinned content");
         core.loaded = true;
         // Repeat selection after load because FBNeo registers game topology there.
         unsafe {
@@ -1175,6 +1283,7 @@ fn create_response(
         settle_frames,
     )?;
     let deterministic = first == repeat;
+    let emulated_deterministic = emulated_observation_equal(&first, &repeat);
     Ok(ResponseEvidence {
         stage: stage.to_owned(),
         player: (player + 1) as u32,
@@ -1189,6 +1298,7 @@ fn create_response(
         first,
         repeat,
         deterministic,
+        emulated_deterministic,
         distinguishing_observable: None,
         unique_emulated_response_within_stage: false,
         promoted_as_distinguished: false,
@@ -1279,7 +1389,7 @@ fn classify_responses(responses: &mut [ResponseEvidence]) {
         responses[index].unique_emulated_response_within_stage =
             key.is_some() && collisions.is_empty();
         responses[index].promoted_as_distinguished =
-            responses[index].deterministic && key.is_some() && collisions.is_empty();
+            responses[index].emulated_deterministic && key.is_some() && collisions.is_empty();
         responses[index].collision_with = collisions;
     }
 }
@@ -1311,23 +1421,25 @@ fn hash_file(path: &Path) -> Result<String> {
     Ok(format!("{:x}", digest.finalize()))
 }
 
-fn content_identity(path: &Path) -> Result<ContentIdentity> {
-    const EXPECTED_HASH: &str = "e44b89e80bf8bccc4f16476d7254d959d937a1668d27ec564d57103ac94fba6f";
-    const EXPECTED_BYTES: u64 = 805_560;
+fn content_identity(profile: ArcadeProfile, path: &Path) -> Result<ContentIdentity> {
+    let expected = profile.content();
     let canonical = path.canonicalize()?;
     ensure!(
-        canonical.file_name().and_then(|v| v.to_str()) == Some("1943.zip"),
-        "Pinned arcade oracle requires 1943.zip"
+        canonical.file_name().and_then(|v| v.to_str()) == Some(expected.filename),
+        "Pinned arcade oracle requires {}",
+        expected.filename
     );
     let metadata = canonical.metadata()?;
     ensure!(
-        metadata.is_file() && metadata.len() == EXPECTED_BYTES,
-        "1943.zip byte length does not match pinned user set"
+        metadata.is_file() && metadata.len() == expected.bytes,
+        "{} byte length does not match pinned user set",
+        expected.filename
     );
     let sha256 = hash_file(&canonical)?;
     ensure!(
-        sha256.eq_ignore_ascii_case(EXPECTED_HASH),
-        "1943.zip SHA-256 does not match pinned user set"
+        sha256.eq_ignore_ascii_case(expected.sha256),
+        "{} SHA-256 does not match pinned user set",
+        expected.filename
     );
     Ok(ContentIdentity {
         path: canonical,
@@ -1381,6 +1493,15 @@ fn snapshots() -> Result<CallbackSnapshots> {
     let queries = INPUT_QUERIES
         .lock()
         .map_err(|_| anyhow::anyhow!("Input-query lock poisoned"))?;
+    let pressed_queries = PRESSED_QUERIES
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Pressed-query lock poisoned"))?;
+    let released_queries = RELEASED_QUERIES
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Released-query lock poisoned"))?;
+    let observed_masks = OBSERVED_MASKS
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Observed-mask lock poisoned"))?;
     Ok(CallbackSnapshots {
         controller_info_updates: controllers.updates,
         controller_choices: controllers.value.clone().map_err(anyhow::Error::msg)?,
@@ -1391,6 +1512,12 @@ fn snapshots() -> Result<CallbackSnapshots> {
             .ok_or_else(|| anyhow::anyhow!("Core-option registry missing"))?
             .effective_values()?,
         input_queries: queries.iter().cloned().collect(),
+        pressed_queries: pressed_queries.iter().cloned().collect(),
+        released_queries: released_queries.iter().cloned().collect(),
+        observed_masks: observed_masks
+            .iter()
+            .map(|&(port, mask)| ObservedMask { port, mask })
+            .collect(),
     })
 }
 
@@ -1437,11 +1564,86 @@ fn validate_topology(
             "Input descriptors omit {label} at port {port}, joypad id {id}"
         );
     }
+    if profile == ArcadeProfile::FbneoSf2Six {
+        let actions = [
+            (1, "Weak Punch"),
+            (9, "Medium Punch"),
+            (10, "Strong Punch"),
+            (0, "Weak Kick"),
+            (8, "Medium Kick"),
+            (11, "Strong Kick"),
+        ];
+        for port in 0..2 {
+            for (id, description) in actions {
+                ensure!(
+                    descriptors.iter().any(|descriptor| descriptor.port == port
+                        && descriptor.device == RETRO_DEVICE_JOYPAD
+                        && descriptor.index == 0
+                        && descriptor.id == id
+                        && descriptor.description == description),
+                    "SF2 descriptor differs at port {port}, joypad id {id}: {description}"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_callback_transitions(
+    profile: ArcadeProfile,
+    bitmask: bool,
+    snapshots: &CallbackSnapshots,
+) -> Result<()> {
+    let required_ids: BTreeSet<u32> = [2_u32, 3_u32]
+        .into_iter()
+        .chain(profile.gameplay_controls().iter().map(|(id, _)| *id))
+        .collect();
+    for port in 0..2 {
+        for id in &required_ids {
+            if bitmask {
+                ensure!(
+                    snapshots
+                        .observed_masks
+                        .iter()
+                        .any(|entry| entry.port == port && entry.mask == 1_u16 << id),
+                    "Bitmask callback did not observe P{} joypad id {id} pressed independently",
+                    port + 1
+                );
+            } else {
+                let address = InputAddress {
+                    port,
+                    device: RETRO_DEVICE_JOYPAD,
+                    index: 0,
+                    id: *id,
+                };
+                ensure!(
+                    snapshots.pressed_queries.contains(&address),
+                    "Individual callback did not observe P{} joypad id {id} pressed",
+                    port + 1
+                );
+                ensure!(
+                    snapshots.released_queries.contains(&address),
+                    "Individual callback did not observe P{} joypad id {id} released",
+                    port + 1
+                );
+            }
+        }
+        if bitmask {
+            ensure!(
+                snapshots
+                    .observed_masks
+                    .iter()
+                    .any(|entry| entry.port == port && entry.mask == 0),
+                "Bitmask callback did not observe P{} release to a zero mask",
+                port + 1
+            );
+        }
+    }
     Ok(())
 }
 
 fn run_capture(args: &Args, evidence: &Path) -> Result<CaptureReport> {
-    let content = content_identity(&args.content)?;
+    let content = content_identity(args.profile, &args.content)?;
     let private_root = evidence.join("capture-private");
     create_private_dir(&private_root)?;
     let (mut core, identity) =
@@ -1481,8 +1683,8 @@ fn run_capture(args: &Args, evidence: &Path) -> Result<CaptureReport> {
         0,
         "Start",
         3,
-        2,
-        60,
+        12,
+        1,
     )?);
 
     core.restore(&attract)?;
@@ -1496,8 +1698,8 @@ fn run_capture(args: &Args, evidence: &Path) -> Result<CaptureReport> {
         1,
         "Start",
         3,
-        2,
-        60,
+        12,
+        1,
     )?);
 
     // Enter gameplay through P1 first, then use the second coin/start channel
@@ -1509,15 +1711,8 @@ fn run_capture(args: &Args, evidence: &Path) -> Result<CaptureReport> {
     let (one_player_gameplay, player_1_activation_frames) =
         find_active_gameplay(&mut core, 0, "P1 start")?;
 
-    let controls = [
-        (4, "Up"),
-        (5, "Down"),
-        (6, "Left"),
-        (7, "Right"),
-        (0, "Fire 1"),
-        (8, "Fire 2"),
-    ];
-    for (id, name) in controls {
+    let controls = args.profile.gameplay_controls();
+    for &(id, name) in controls {
         responses.push(create_response(
             &mut core,
             &one_player_gameplay,
@@ -1536,7 +1731,7 @@ fn run_capture(args: &Args, evidence: &Path) -> Result<CaptureReport> {
     let (gameplay, player_2_join_activation_frames) =
         find_active_gameplay(&mut core, 1, "P2 join")?;
     for player in 0..2 {
-        for (id, name) in controls {
+        for &(id, name) in controls {
             responses.push(create_response(
                 &mut core,
                 &gameplay,
@@ -1560,9 +1755,11 @@ fn run_capture(args: &Args, evidence: &Path) -> Result<CaptureReport> {
     neutral(&mut core, RESTORE_CONTINUATION_FRAMES)?;
     let same_process_restored_continuation = core.observe()?;
     let same_process_exact = initial_continuation == same_process_restored_continuation;
+    let same_process_emulated_exact =
+        emulated_observation_equal(&initial_continuation, &same_process_restored_continuation);
     ensure!(
-        same_process_exact,
-        "Same-process state restoration was not byte-deterministic"
+        same_process_emulated_exact,
+        "Same-process state restoration did not reproduce RAM and video"
     );
 
     let snapshots = snapshots()?;
@@ -1571,6 +1768,7 @@ fn run_capture(args: &Args, evidence: &Path) -> Result<CaptureReport> {
         &snapshots.controller_choices,
         &snapshots.input_descriptors,
     )?;
+    validate_callback_transitions(args.profile, args.bitmask, &snapshots)?;
     ensure!(
         snapshots.descriptor_updates > 0 && snapshots.controller_info_updates > 0,
         "Core published no controller metadata"
@@ -1603,6 +1801,9 @@ fn run_capture(args: &Args, evidence: &Path) -> Result<CaptureReport> {
         input_descriptors: snapshots.input_descriptors,
         effective_options: snapshots.effective_options,
         input_queries: snapshots.input_queries,
+        pressed_queries: snapshots.pressed_queries,
+        released_queries: snapshots.released_queries,
+        observed_masks: snapshots.observed_masks,
         input_polls: POLLS.load(Ordering::Relaxed),
         bitmask_requests: MASK_REQUESTS.load(Ordering::Relaxed),
         individual_requests: SINGLE_REQUESTS.load(Ordering::Relaxed),
@@ -1614,13 +1815,14 @@ fn run_capture(args: &Args, evidence: &Path) -> Result<CaptureReport> {
             initial_continuation,
             same_process_restored_continuation,
             same_process_exact,
+            same_process_emulated_exact,
         },
         shutdown_requested: SHUTDOWN.load(Ordering::Relaxed),
     })
 }
 
 fn run_fresh_restore(args: &Args, evidence: &Path) -> Result<FreshRestoreReport> {
-    let content = content_identity(&args.content)?;
+    let content = content_identity(args.profile, &args.content)?;
     let state = read_bounded(
         &evidence.join("two-player-baseline.state"),
         MAX_STATE_BYTES as u64,
@@ -1763,16 +1965,16 @@ fn validate_capture(args: &Args, report: &CaptureReport) -> Result<()> {
         "Core requested shutdown during capture"
     );
     ensure!(
-        report.same_process_restore.same_process_exact,
-        "Same-process restore did not match"
+        report.same_process_restore.same_process_emulated_exact,
+        "Same-process restore did not reproduce RAM and video"
     );
     ensure!(
-        report.responses.len() == 22,
+        report.responses.len() == 4 + 3 * args.profile.gameplay_controls().len(),
         "Unexpected response-evidence count"
     );
     for response in &report.responses {
         ensure!(
-            response.deterministic,
+            response.emulated_deterministic,
             "{} P{} {} was nondeterministic",
             response.stage,
             response.player,
@@ -1783,7 +1985,7 @@ fn validate_capture(args: &Args, report: &CaptureReport) -> Result<()> {
 }
 
 fn supervise(args: &Args) -> Result<FinalReport> {
-    let pinned_content = content_identity(&args.content)?;
+    let pinned_content = content_identity(args.profile, &args.content)?;
     let expected = args.expected_core()?;
     ensure!(
         hash_file(&args.core)?.eq_ignore_ascii_case(&expected.sha256),
@@ -1889,6 +2091,7 @@ fn supervise(args: &Args) -> Result<FinalReport> {
             baseline_state_sha256: capture.same_process_restore.baseline_state_sha256,
             continuation_frames: capture.same_process_restore.continuation_frames,
             same_process_exact: capture.same_process_restore.same_process_exact,
+            same_process_emulated_exact: capture.same_process_restore.same_process_emulated_exact,
             fresh_process_system_ram_exact,
             fresh_process_video_exact,
             fresh_process_emulated_exact,
@@ -1904,6 +2107,9 @@ fn supervise(args: &Args) -> Result<FinalReport> {
             bitmask_requests: capture.bitmask_requests,
             individual_requests: capture.individual_requests,
             addresses: capture.input_queries,
+            pressed_addresses: capture.pressed_queries,
+            released_addresses: capture.released_queries,
+            observed_masks: capture.observed_masks,
             effective_options: capture.effective_options,
             descriptor_updates: capture.descriptor_updates,
             controller_info_updates: capture.controller_info_updates,
@@ -1995,6 +2201,7 @@ mod tests {
             repeat: first.clone(),
             first,
             deterministic: true,
+            emulated_deterministic: true,
             system_ram_changed_from_neutral: ram != "neutral-ram",
             state_changed_from_neutral: true,
             video_changed_from_neutral: video != "neutral-video",
@@ -2050,10 +2257,13 @@ mod tests {
     #[test]
     fn linux_profiles_pin_exact_state_sizes_and_full_commits() {
         let fbneo = ArcadeProfile::Fbneo.spec();
+        let fbneo_sf2 = ArcadeProfile::FbneoSf2Six.spec();
         let mame = ArcadeProfile::Mame.spec();
         assert_eq!(fbneo.state_bytes, 14_256);
+        assert_eq!(fbneo_sf2.state_bytes, 269_189);
         assert_eq!(mame.state_bytes, 4_568_390);
         assert_eq!(fbneo.source_commit.len(), 40);
+        assert_eq!(fbneo_sf2.source_commit.len(), 40);
         assert_eq!(mame.source_commit.len(), 40);
     }
 }

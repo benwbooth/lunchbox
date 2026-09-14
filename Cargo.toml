@@ -37,6 +37,7 @@ opendal = { version = "0.59.1", default-features = false, features = [
     "layers-retry",
     "layers-timeout",
     "services-dropbox",
+    "services-fs",
     "services-gdrive",
     "services-memory",
     "services-onedrive",

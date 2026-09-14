@@ -120,6 +120,82 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(st);
+    let mut atari_plus_plus = db
+        .layout("hatari-native-joystick")
+        .context("Missing digital joystick reference layout")?
+        .clone();
+    atari_plus_plus.id = "atari-plus-plus-native-joystick".into();
+    atari_plus_plus.name = "Atari 8-bit — Atari++ AnalogJoystick".into();
+    atari_plus_plus.source = "https://sources.debian.org/src/atari++/1.85-1/".into();
+    atari_plus_plus.notes = "Atari++ native Linux AnalogJoystick input. Directions require two joydev axes among 0..3; four source-defined abstract buttons are mapped explicitly. SDL, keyboard, paddle and 5200 analog modes are separate contracts.".into();
+    atari_plus_plus
+        .controls
+        .push(crate::controller_catalog::Control {
+            id: "fire4".into(),
+            label: "Fire 4".into(),
+            x: 90.0,
+            y: 50.0,
+            group: "face".into(),
+            optional: false,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        });
+    for control in &mut atari_plus_plus.controls {
+        control.optional = false;
+    }
+    db.layouts.push(atari_plus_plus);
+    let mut aranym = db
+        .layout("hatari-native-joystick")
+        .context("Missing digital joystick reference layout")?
+        .clone();
+    aranym.id = "aranym-ikbd-joystick".into();
+    aranym.name = "Atari ST — ARAnyM IKBD joystick".into();
+    aranym.source = "https://github.com/aranym/aranym".into();
+    aranym.notes = "ARAnyM native IKBD joystick. The pinned source accepts only SDL axes 0/1 or a cardinal hat for directions and treats every physical button as Fire; Jaguar joypads are a separate contract.".into();
+    aranym.controls.retain(|control| {
+        matches!(
+            control.id.as_str(),
+            "up" | "down" | "left" | "right" | "fire"
+        )
+    });
+    for control in &mut aranym.controls {
+        control.optional = false;
+    }
+    db.layouts.push(aranym);
+    let mut atari800 = db
+        .layout("aranym-ikbd-joystick")
+        .context("Missing five-control joystick reference layout")?
+        .clone();
+    atari800.id = "atari800-native-joystick".into();
+    atari800.name = "Atari 8-bit — Atari800 digital joystick".into();
+    atari800.source = "https://github.com/atari800/atari800".into();
+    atari800.notes = "Atari800 native SDL2 host joystick. Directions must resolve to source-supported axes 0/1 or 2/3, or cardinal hat 0; Fire must be raw button 0..14. The runtime selects a physical device by exact SDL name plus duplicate-name slot.".into();
+    db.layouts.push(atari800);
+    let mut nanoboyadvance = db
+        .layout("gba")
+        .context("Missing Game Boy Advance reference layout")?
+        .clone();
+    nanoboyadvance.id = "gba-controller".into();
+    nanoboyadvance.name = "Game Boy Advance — NanoBoyAdvance controller".into();
+    nanoboyadvance.source = format!(
+        "https://github.com/nba-emu/NanoBoyAdvance/tree/{}",
+        crate::controller_nanoboyadvance_native::SOURCE_COMMIT
+    );
+    nanoboyadvance.notes = "NanoBoyAdvance native SDL3 joystick input. One uniquely matched SDL GUID selects the device; every GBA control is written as a raw button, axis half, or cardinal hat while keyboard bindings remain intact.".into();
+    db.layouts.push(nanoboyadvance);
+    let mut vba_m = db
+        .layout("gba")
+        .context("Missing Game Boy Advance reference layout")?
+        .clone();
+    vba_m.id = "vba-m-gba-controller".into();
+    vba_m.name = "Game Boy Advance — VBA-M controller".into();
+    vba_m.source = format!(
+        "https://github.com/visualboyadvance-m/visualboyadvance-m/tree/{}",
+        crate::controller_vba_m_native::SOURCE_COMMIT
+    );
+    vba_m.notes = "VBA-M native Qt/wx SDL joystick input. The private configuration disables GameController translation and maps all ten ordinary GBA controls through exact raw SDL2 or SDL3 joystick numbering.".into();
+    db.layouts.push(vba_m);
     let mut joystick = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -154,6 +230,31 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(joystick);
+    let mut xroar = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    xroar.id = "xroar-analog-joystick".into();
+    xroar.name = "Dragon/CoCo — analog joystick".into();
+    xroar.family = "two-button".into();
+    xroar.source =
+        "https://www.6809.org.uk/git/xroar.git/commit/?id=0229f97a636c3c80d51fd27e7d145d792f0a8932"
+            .into();
+    xroar.notes = "XRoar native right/left joystick ports. Guided directions must resolve to opposite halves of two SDL gamepad axes; button-backed D-pads cannot be represented by this physical-axis grammar.".into();
+    xroar.controls.retain(|control| {
+        matches!(
+            control.id.as_str(),
+            "up" | "down" | "left" | "right" | "a" | "b"
+        )
+    });
+    for control in &mut xroar.controls {
+        match control.id.as_str() {
+            "b" => control.label = "Fire 1".into(),
+            "a" => control.label = "Fire 2".into(),
+            _ => {}
+        }
+    }
+    db.layouts.push(xroar);
 
     for (core, layout, players, platforms, source) in [
         (
@@ -188,6 +289,27 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             4,
             vec!["Nintendo 64"],
             "https://github.com/gopher64/gopher64/blob/0bb9fbba638f5cebe3b8a3c1c245abcfec8b0132/src/ui/input.rs",
+        ),
+        (
+            "gearsystem",
+            "gamegear",
+            1,
+            vec!["Sega Game Gear"],
+            "https://github.com/drhelius/Gearsystem/blob/253752954d5237a30b60c40789117ded345bcd48/platforms/shared/desktop/events.cpp",
+        ),
+        (
+            "gearsystem",
+            "master-system",
+            2,
+            vec!["Sega Master System", "Sega SG-1000", "Othello Multivision"],
+            "https://github.com/drhelius/Gearsystem/blob/253752954d5237a30b60c40789117ded345bcd48/platforms/shared/desktop/events.cpp",
+        ),
+        (
+            "gearcoleco",
+            "colecovision",
+            2,
+            vec!["ColecoVision", "Coleco ColecoVision"],
+            "https://github.com/drhelius/Gearcoleco/blob/8ad5f92c45e7ca616535a057495557c2352a9115/platforms/shared/desktop/events.cpp",
         ),
         (
             "rmg",
@@ -308,6 +430,79 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             2,
             vec!["Sega Saturn"],
             "https://d1t36rsydvwkyk.cloudfront.net/yabasanshiro-src-1.20.37.tar.gz",
+        ),
+        (
+            "kronos",
+            "saturn-digital",
+            4,
+            vec!["Sega Saturn", "Sega ST-V"],
+            "https://github.com/FCare/Kronos/tree/d451a55253e2e75bcef704ec8ade2085d298212c",
+        ),
+        (
+            "xroar",
+            "xroar-analog-joystick",
+            2,
+            vec!["Dragon 32/64", "TRS-80 Color Computer"],
+            "https://www.6809.org.uk/git/xroar.git/commit/?id=0229f97a636c3c80d51fd27e7d145d792f0a8932",
+        ),
+        (
+            "zesarux",
+            "spectrum-joystick",
+            1,
+            vec![
+                "Sinclair ZX Spectrum",
+                "Sinclair ZX80",
+                "Sinclair ZX81",
+                "Jupiter Ace",
+            ],
+            "https://github.com/chernandezba/zesarux/tree/2e529034957cb61dec35d52d0008f03dcd35c019",
+        ),
+        (
+            "oricutron",
+            "spectrum-joystick",
+            2,
+            vec!["Oric Atmos"],
+            "https://github.com/pete-gordon/oricutron/tree/002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+        ),
+        (
+            "atari-plus-plus",
+            "atari-plus-plus-native-joystick",
+            4,
+            vec!["Atari 800", "Atari XEGS"],
+            "https://sources.debian.org/src/atari++/1.85-1/",
+        ),
+        (
+            "aranym",
+            "aranym-ikbd-joystick",
+            2,
+            vec!["Atari ST"],
+            "https://github.com/aranym/aranym/tree/5f4ebed6b039ddf42eef1122a315ad9608d20f6e",
+        ),
+        (
+            "atari800",
+            "atari800-native-joystick",
+            4,
+            vec!["Atari 800", "Atari XEGS"],
+            "https://github.com/atari800/atari800/tree/fe1d2890d9f05fcecb2fd033d09a5c43f534bebf",
+        ),
+        (
+            "nanoboyadvance",
+            "gba-controller",
+            1,
+            vec![
+                "Nintendo Game Boy Advance",
+                "Nintendo - Game Boy Advance",
+                "Game Boy Advance",
+                "GBA",
+            ],
+            "https://github.com/nba-emu/NanoBoyAdvance/tree/55b5cf0ae3d929582ac5bfd486558173502b8354",
+        ),
+        (
+            "vba-m",
+            "vba-m-gba-controller",
+            1,
+            vec!["Nintendo e-Reader", "Nintendo - e-Reader"],
+            "https://github.com/visualboyadvance-m/visualboyadvance-m/tree/fd13034143c128c8b68133a7a18bc785178ec4e4",
         ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
@@ -494,6 +689,94 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
                 .collect(),
         );
     }
+    if (core, layout) == ("gearsystem", "gamegear") {
+        return Some(
+            crate::controller_gearsystem_standalone::GAME_GEAR_ROUTES
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("gearsystem", "master-system") {
+        return Some(
+            crate::controller_gearsystem_standalone::MASTER_SYSTEM_ROUTES
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("gearcoleco", "colecovision") {
+        return Some(
+            crate::controller_gearcoleco_standalone::STANDARD_ROUTES
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("xroar", "xroar-analog-joystick") {
+        return Some(
+            crate::controller_xroar_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("zesarux", "spectrum-joystick") {
+        return Some(
+            crate::controller_zesarux_native::CONTROLS
+                .iter()
+                .map(|target| ((*target).to_owned(), format!("--joystickevent {target}")))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("oricutron", "spectrum-joystick") {
+        return Some(
+            crate::controller_oricutron_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("atari-plus-plus", "atari-plus-plus-native-joystick") {
+        return Some(
+            crate::controller_atari_plus_plus_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("aranym", "aranym-ikbd-joystick") {
+        return Some(
+            crate::controller_aranym_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("atari800", "atari800-native-joystick") {
+        return Some(
+            crate::controller_atari800_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("nanoboyadvance", "gba-controller") {
+        return Some(
+            crate::controller_nanoboyadvance_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("vba-m", "vba-m-gba-controller") {
+        return Some(
+            crate::controller_vba_m_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
     let routes = match (core, layout) {
         ("bsnes", "snes") => crate::controller_bsnes::CONTROLS
             .into_iter()
@@ -541,6 +824,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
         ("rpcs3", "dualshock") => crate::controller_rpcs3::visual_routes(),
         ("melonds", "nds-native-buttons") => crate::controller_melonds::visual_routes(),
         ("yaba-sanshiro", "saturn-digital") => crate::controller_yaba_sanshiro::SATURN_ROUTES
+            .iter()
+            .copied()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("kronos", "saturn-digital") => crate::controller_kronos::SATURN_ROUTES
             .iter()
             .copied()
             .collect::<BTreeMap<&str, &str>>(),

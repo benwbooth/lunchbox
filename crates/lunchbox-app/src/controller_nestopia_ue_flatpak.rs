@@ -144,14 +144,21 @@ mod tests {
         controller_catalog::{Calibration, InputBinding, NativeInput, catalog},
         controllers::ControllerDevice,
         emulator::EmulatorExecutable,
+        platform_locations::{LocationBases, load_records, save_route_roots_for_platform},
+        save_cloud::{CloudProfile, CloudStore},
+        save_sync::{ArtifactKey, SavePurpose, SaveRoute, SyncAction, SyncActionKind, SyncScope},
+        save_sync_service::{AppliedSync, prepare_sync},
     };
     use anyhow::Context;
+    use serde::Serialize;
     use std::{
         collections::BTreeMap,
+        fs::{FileTimes, OpenOptions},
         io::{BufRead, BufReader, Write},
-        os::unix::fs::FileTypeExt,
+        os::unix::fs::{FileTypeExt, OpenOptionsExt},
         path::Path,
         process::{Child, Command, Stdio},
+        time::SystemTime,
     };
 
     struct ChildGuard {
@@ -176,16 +183,140 @@ mod tests {
     struct OracleOutputs {
         save: PathBuf,
         state: PathBuf,
+        created_directories: Vec<PathBuf>,
     }
 
     impl Drop for OracleOutputs {
         fn drop(&mut self) {
             for path in [&self.save, &self.state] {
-                if path.is_file() {
+                if path.symlink_metadata().is_ok() {
                     let _ = std::fs::remove_file(path);
                 }
             }
+            for path in self.created_directories.iter().rev() {
+                let _ = std::fs::remove_dir(path);
+            }
         }
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+    struct TreeSnapshot {
+        existed: bool,
+        entries: BTreeMap<String, TreeEntry>,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+    struct TreeEntry {
+        kind: &'static str,
+        size: Option<u64>,
+        sha256: Option<String>,
+        symlink_target: Option<String>,
+    }
+
+    fn snapshot_tree(root: &Path) -> Result<TreeSnapshot> {
+        let existed = root.try_exists()?;
+        let mut entries = BTreeMap::new();
+        if !existed {
+            return Ok(TreeSnapshot { existed, entries });
+        }
+        ensure!(
+            root.symlink_metadata()?.file_type().is_dir(),
+            "Nestopia sync root is not a directory"
+        );
+        let mut pending = vec![root.to_path_buf()];
+        while let Some(directory) = pending.pop() {
+            let mut children =
+                std::fs::read_dir(&directory)?.collect::<std::io::Result<Vec<_>>>()?;
+            children.sort_by_key(|entry| entry.file_name());
+            for child in children {
+                let path = child.path();
+                let relative = path
+                    .strip_prefix(root)?
+                    .to_str()
+                    .context("Nestopia sync path is not UTF-8")?
+                    .replace(std::path::MAIN_SEPARATOR, "/");
+                let metadata = path.symlink_metadata()?;
+                let file_type = metadata.file_type();
+                let entry = if file_type.is_dir() {
+                    pending.push(path);
+                    TreeEntry {
+                        kind: "directory",
+                        size: None,
+                        sha256: None,
+                        symlink_target: None,
+                    }
+                } else if file_type.is_file() {
+                    TreeEntry {
+                        kind: "file",
+                        size: Some(metadata.len()),
+                        sha256: Some(file_hash(&path)?),
+                        symlink_target: None,
+                    }
+                } else if file_type.is_symlink() {
+                    TreeEntry {
+                        kind: "symlink",
+                        size: None,
+                        sha256: None,
+                        symlink_target: Some(
+                            std::fs::read_link(&path)?
+                                .to_str()
+                                .context("Nestopia sync symlink target is not UTF-8")?
+                                .to_owned(),
+                        ),
+                    }
+                } else {
+                    TreeEntry {
+                        kind: "other",
+                        size: None,
+                        sha256: None,
+                        symlink_target: None,
+                    }
+                };
+                entries.insert(relative, entry);
+            }
+        }
+        Ok(TreeSnapshot { existed, entries })
+    }
+
+    fn snapshot_roots(roots: &[crate::save_sync::RouteRoot]) -> Result<Vec<TreeSnapshot>> {
+        roots.iter().map(|root| snapshot_tree(&root.path)).collect()
+    }
+
+    fn ensure_stopped(child: &mut ChildGuard) -> Result<()> {
+        ensure!(
+            child.child.try_wait()?.is_some(),
+            "Refusing to synchronize while Nestopia is running"
+        );
+        Ok(())
+    }
+
+    fn unique_actions<'a>(actions: &'a [SyncAction], title: &str) -> Vec<&'a SyncAction> {
+        let save = format!("saves/0/{title}.sav");
+        let state = format!("states/0/{title}_0.nst");
+        actions
+            .iter()
+            .filter(|action| {
+                let key = action.key.as_str();
+                key == save || key == state
+            })
+            .collect()
+    }
+
+    fn restore_file(path: &Path, bytes: &[u8], modified: SystemTime) -> Result<()> {
+        std::fs::write(path, bytes)?;
+        OpenOptions::new()
+            .write(true)
+            .open(path)?
+            .set_times(FileTimes::new().set_modified(modified))?;
+        Ok(())
+    }
+
+    fn applied_evidence(applied: &AppliedSync) -> serde_json::Value {
+        serde_json::json!({
+            "manifest_id": applied.manifest_id,
+            "actions": applied.actions,
+            "recovery_directory_created": applied.recovery_directory.is_some(),
+        })
     }
 
     #[test]
@@ -451,8 +582,9 @@ mod tests {
     }
 
     /// Opt-in installed-runtime proof. It exercises the ordinary production
-    /// prepare/spawn path twice, uses the exact new compositor window for
-    /// save/load/close actions, and removes only its unique save/state files.
+    /// prepare/spawn path across four fresh processes, uses the exact new
+    /// compositor window for save/load/close actions, and removes only its
+    /// unique save/state files.
     #[test]
     #[ignore = "needs installed Nestopia UE Flatpak, /dev/uinput, compositor tools and generated oracle artifacts"]
     fn production_two_pad_sram_and_state_oracle() -> Result<()> {
@@ -481,6 +613,18 @@ mod tests {
                 .context("Missing exact-window input tool")?,
         )
         .canonicalize()?;
+        let report_path = PathBuf::from(
+            std::env::var_os("LUNCHBOX_NESTOPIA_FLATPAK_SYNC_REPORT")
+                .context("Missing retained Nestopia sync report path")?,
+        );
+        ensure!(
+            report_path.is_absolute() && !report_path.try_exists()?,
+            "Nestopia sync report must be a new absolute path"
+        );
+        ensure!(
+            report_path.parent().is_some_and(|parent| parent.is_dir()),
+            "Nestopia sync report parent does not exist"
+        );
         let x11 = window_tool == input_tool
             && window_tool
                 .file_name()
@@ -528,13 +672,46 @@ mod tests {
             file_hash(&source_main_config)?,
             file_hash(&source_input_config)?,
         ];
-        let outputs = OracleOutputs {
-            save: profile
-                .join("data/nestopia/save")
-                .join(format!("{title}.sav")),
-            state: profile
-                .join("data/nestopia/state")
-                .join(format!("{title}_0.nst")),
+        let roots = save_route_roots_for_platform(
+            &load_records()?,
+            "nestopia-ue",
+            "linux-flatpak",
+            &LocationBases::detect(),
+        )?;
+        ensure!(
+            roots.len() == 2,
+            "Nestopia must expose exactly two sync routes"
+        );
+        let save_root = profile.join("data/nestopia/save");
+        let state_root = profile.join("data/nestopia/state");
+        ensure!(
+            roots[0].route
+                == (SaveRoute {
+                    purpose: SavePurpose::Saves,
+                    root_index: 0,
+                })
+                && roots[0].path == save_root
+                && roots[1].route
+                    == (SaveRoute {
+                        purpose: SavePurpose::States,
+                        root_index: 0,
+                    })
+                && roots[1].path == state_root
+                && !save_root.starts_with(&state_root)
+                && !state_root.starts_with(&save_root),
+            "Nestopia sync routes differ from the exact disjoint sandbox contract"
+        );
+        let baseline_before = snapshot_roots(&roots)?;
+        let created_directories = roots
+            .iter()
+            .zip(&baseline_before)
+            .filter(|(_, snapshot)| !snapshot.existed)
+            .map(|(root, _)| root.path.clone())
+            .collect();
+        let mut outputs = OracleOutputs {
+            save: save_root.join(format!("{title}.sav")),
+            state: state_root.join(format!("{title}_0.nst")),
+            created_directories,
         };
         ensure!(
             !outputs.save.try_exists()? && !outputs.state.try_exists()?,
@@ -642,7 +819,34 @@ mod tests {
             retroarch_content: None,
         };
 
+        let scope = SyncScope::new("nestopia-ue", "linux-flatpak")?;
+        let provider_root = tempfile::tempdir()?;
+        let provider_profile =
+            CloudProfile::new_local_folder(provider_root.path(), "device-a", true)?;
+        let store = CloudStore::connect(
+            provider_profile.provider,
+            &provider_profile.root,
+            &provider_profile.auth,
+        )?;
+        store.probe()?;
+        let recovery = tempfile::tempdir()?;
+        let save_key = ArtifactKey::new(
+            SaveRoute {
+                purpose: SavePurpose::Saves,
+                root_index: 0,
+            },
+            &format!("{title}.sav"),
+        )?;
+        let state_key = ArtifactKey::new(
+            SaveRoute {
+                purpose: SavePurpose::States,
+                root_index: 0,
+            },
+            &format!("{title}_0.nst"),
+        )?;
+
         let mut first = prepare(&setup, &calibrations, &inventory, &option, &plan, &cancel)?;
+        let deployed_executable_hash = file_hash(&first.executable)?;
         let launch = first.plan.clone();
         let mut first_emulator = ChildGuard::new(first.spawn(&launch, &cancel)?);
         let first_window = exact_window(
@@ -688,9 +892,62 @@ mod tests {
         std::thread::sleep(Duration::from_millis(500));
         pulse(&mut driver, &mut lines, 1, 1)?;
         close_and_wait(&window_tool, &first_window, x11, &mut first_emulator)?;
+        ensure_stopped(&mut first_emulator)?;
         drop(first);
         let first_sram = std::fs::read(&outputs.save)?;
         assert_sram(&first_sram, 1, &[(0x02, 0), (0x01, 0)])?;
+        let first_sram_hash = file_hash(&outputs.save)?;
+        let first_sram_modified = outputs.save.metadata()?.modified()?;
+        let first_state = std::fs::read(&outputs.state)?;
+        let first_state_modified = outputs.state.metadata()?.modified()?;
+
+        // Device A publishes only after its exact runtime has stopped. Other
+        // pre-existing saves may be present in this ephemeral memory store,
+        // but the two oracle artifacts must map to the two distinct routes.
+        let prepared_a = prepare_sync(&store, scope.clone(), "device-a", roots.clone(), None)?;
+        ensure!(
+            !prepared_a.plan.requires_user_choice()
+                && unique_actions(&prepared_a.plan.actions, title).len() == 2
+                && unique_actions(&prepared_a.plan.actions, title)
+                    .iter()
+                    .all(|action| action.kind == SyncActionKind::Upload),
+            "Device A did not plan both unique Nestopia uploads"
+        );
+        let applied_a = prepared_a.apply(&store, &BTreeMap::new(), recovery.path(), 1_000)?;
+        let manifest_a = store.get_manifest(&scope, &applied_a.manifest_id)?;
+        ensure!(
+            manifest_a.files.contains_key(&save_key) && manifest_a.files.contains_key(&state_key),
+            "Device A manifest omitted a Nestopia route"
+        );
+
+        // Simulate a fresh device B data root without touching any unrelated
+        // user entry. Pulling must restore exactly the absent unique save and
+        // state from A's immutable manifest.
+        std::fs::remove_file(&outputs.save)?;
+        std::fs::remove_file(&outputs.state)?;
+        ensure!(
+            !outputs.save.try_exists()? && !outputs.state.try_exists()?,
+            "Simulated device B did not start without the oracle outputs"
+        );
+        let prepared_b_pull = prepare_sync(&store, scope.clone(), "device-b", roots.clone(), None)?;
+        ensure!(
+            !prepared_b_pull.plan.requires_user_choice()
+                && prepared_b_pull.plan.actions.len() == 2
+                && unique_actions(&prepared_b_pull.plan.actions, title).len() == 2
+                && prepared_b_pull
+                    .plan
+                    .actions
+                    .iter()
+                    .all(|action| action.kind == SyncActionKind::Download),
+            "Device B did not plan exactly the two unique Nestopia downloads"
+        );
+        let applied_b_pull =
+            prepared_b_pull.apply(&store, &BTreeMap::new(), recovery.path(), 2_000)?;
+        ensure!(
+            std::fs::read(&outputs.save)? == first_sram
+                && std::fs::read(&outputs.state)? == first_state,
+            "Device B did not restore Device A's exact Nestopia artifacts"
+        );
 
         let mut second = prepare(&setup, &calibrations, &inventory, &option, &plan, &cancel)?;
         let launch = second.plan.clone();
@@ -718,14 +975,8 @@ mod tests {
             }
         }
         close_and_wait(&window_tool, &second_window, x11, &mut second_emulator)?;
+        ensure_stopped(&mut second_emulator)?;
         drop(second);
-        driver
-            .child
-            .stdin
-            .as_mut()
-            .context("Pad stdin disappeared")?
-            .write_all(b"quit\n")?;
-        ensure!(driver.child.wait()?.success(), "Pad driver failed");
 
         let expected_buttons = [0x02_u8, 0x01, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80];
         let mut expected = vec![(0x02, 0), (0x01, 0)];
@@ -733,9 +984,128 @@ mod tests {
         expected.extend(expected_buttons.map(|button| (0, button)));
         let second_sram = std::fs::read(&outputs.save)?;
         assert_sram(&second_sram, 2, &expected)?;
+        let second_sram_hash = file_hash(&outputs.save)?;
+        let second_sram_modified = outputs.save.metadata()?.modified()?;
         ensure!(
             file_hash(&outputs.state)? == state_hash,
             "Nestopia state changed without another save-state action"
+        );
+
+        // A third fresh process behaviorally loads the state pulled by B. The
+        // state was captured after P1 B, so loading it then pressing P2 A must
+        // discard every later SRAM event and restore generation 1.
+        let mut third = prepare(&setup, &calibrations, &inventory, &option, &plan, &cancel)?;
+        let launch = third.plan.clone();
+        let mut third_emulator = ChildGuard::new(third.spawn(&launch, &cancel)?);
+        let third_window = exact_window(
+            &window_tool,
+            &title_pattern,
+            x11,
+            Instant::now() + Duration::from_secs(20),
+        )?;
+        std::thread::sleep(Duration::from_secs(2));
+        send_function_key(
+            &window_tool,
+            &input_tool,
+            input_socket.as_deref(),
+            &third_window,
+            title,
+            x11,
+            "F7",
+            65,
+        )?;
+        std::thread::sleep(Duration::from_millis(500));
+        pulse(&mut driver, &mut lines, 2, 1)?;
+        close_and_wait(&window_tool, &third_window, x11, &mut third_emulator)?;
+        ensure_stopped(&mut third_emulator)?;
+        drop(third);
+        let state_loaded_sram = std::fs::read(&outputs.save)?;
+        assert_sram(&state_loaded_sram, 1, &[(0x02, 0), (0, 0x01)])?;
+        let state_loaded_sram_hash = file_hash(&outputs.save)?;
+        ensure!(
+            file_hash(&outputs.state)? == state_hash,
+            "Behavioral state load unexpectedly rewrote the pulled state"
+        );
+
+        // Restore B's generation-2 save byte-for-byte and with its captured
+        // mtime so the coordinator sees only B's real stopped-runtime change.
+        restore_file(&outputs.save, &second_sram, second_sram_modified)?;
+        let prepared_b_upload =
+            prepare_sync(&store, scope.clone(), "device-b", roots.clone(), None)?;
+        ensure!(
+            !prepared_b_upload.plan.requires_user_choice()
+                && prepared_b_upload.plan.actions.len() == 1
+                && prepared_b_upload.plan.actions[0].key == save_key
+                && prepared_b_upload.plan.actions[0].kind == SyncActionKind::Upload,
+            "Device B did not plan exactly its newer stopped-runtime save upload"
+        );
+        let applied_b_upload =
+            prepared_b_upload.apply(&store, &BTreeMap::new(), recovery.path(), 3_000)?;
+
+        // Return the unique physical files to A's earlier snapshot, select B's
+        // descendant head, and prove the coordinator downloads only B's save.
+        restore_file(&outputs.save, &first_sram, first_sram_modified)?;
+        restore_file(&outputs.state, &first_state, first_state_modified)?;
+        let prepared_a_pull = prepare_sync(
+            &store,
+            scope.clone(),
+            "device-a",
+            roots.clone(),
+            Some("device-b"),
+        )?;
+        ensure!(
+            !prepared_a_pull.plan.requires_user_choice()
+                && prepared_a_pull.plan.actions.len() == 1
+                && prepared_a_pull.plan.actions[0].key == save_key
+                && prepared_a_pull.plan.actions[0].kind == SyncActionKind::Download,
+            "Device A did not plan exactly B's newer save download"
+        );
+        let applied_a_pull =
+            prepared_a_pull.apply(&store, &BTreeMap::new(), recovery.path(), 4_000)?;
+        ensure!(
+            std::fs::read(&outputs.save)? == second_sram
+                && std::fs::read(&outputs.state)? == first_state,
+            "Device A did not receive B's newer save while retaining the state"
+        );
+
+        // The fourth fresh installed-runtime process must load B's pulled
+        // generation 2 and advance it to generation 3.
+        let mut fourth = prepare(&setup, &calibrations, &inventory, &option, &plan, &cancel)?;
+        let launch = fourth.plan.clone();
+        let mut fourth_emulator = ChildGuard::new(fourth.spawn(&launch, &cancel)?);
+        let fourth_window = exact_window(
+            &window_tool,
+            &title_pattern,
+            x11,
+            Instant::now() + Duration::from_secs(20),
+        )?;
+        std::thread::sleep(Duration::from_secs(2));
+        pulse(&mut driver, &mut lines, 1, 2)?;
+        close_and_wait(&window_tool, &fourth_window, x11, &mut fourth_emulator)?;
+        ensure_stopped(&mut fourth_emulator)?;
+        drop(fourth);
+        let mut final_expected = expected.clone();
+        final_expected.push((0x04, 0));
+        let final_sram = std::fs::read(&outputs.save)?;
+        assert_sram(&final_sram, 3, &final_expected)?;
+        let final_sram_hash = file_hash(&outputs.save)?;
+        ensure!(
+            file_hash(&outputs.state)? == state_hash,
+            "Final fresh launch unexpectedly rewrote the pulled state"
+        );
+
+        driver
+            .child
+            .stdin
+            .as_mut()
+            .context("Pad stdin disappeared")?
+            .write_all(b"quit\n")?;
+        ensure!(driver.child.wait()?.success(), "Pad driver failed");
+        let running_after = Command::new(&flatpak).arg("ps").output()?;
+        ensure!(
+            running_after.status.success()
+                && !String::from_utf8_lossy(&running_after.stdout).contains(flatpak::APP_ID),
+            "Nestopia remained running after the sync oracle"
         );
         ensure!(
             [
@@ -744,11 +1114,158 @@ mod tests {
             ] == source_hashes,
             "Nestopia source configuration changed during oracle"
         );
+
+        // Restore the user's physical directory trees before writing the
+        // success report. Only this unique generated fixture is removed.
+        std::fs::remove_file(&outputs.save)?;
+        std::fs::remove_file(&outputs.state)?;
+        for directory in outputs.created_directories.iter().rev() {
+            std::fs::remove_dir(directory)?;
+        }
+        outputs.created_directories.clear();
+        let baseline_after = snapshot_roots(&roots)?;
+        ensure!(
+            baseline_after == baseline_before,
+            "Nestopia user save/state baseline changed during the oracle"
+        );
+
+        let heads = store.device_heads(&scope)?;
+        ensure!(
+            heads.len() == 2
+                && heads.iter().any(|head| {
+                    head.device_id == "device-a" && head.manifest_id == applied_a_pull.manifest_id
+                })
+                && heads.iter().any(|head| {
+                    head.device_id == "device-b" && head.manifest_id == applied_b_upload.manifest_id
+                }),
+            "Simulated device heads do not retain the expected merged history"
+        );
+        let provider_snapshot = snapshot_tree(provider_root.path())?;
+        let provider_prefix = "saves/v1/nestopia-ue/linux-flatpak";
+        for expected in [
+            format!("{provider_prefix}/devices/device-a.json"),
+            format!("{provider_prefix}/devices/device-b.json"),
+            format!(
+                "{provider_prefix}/manifests/{}.json",
+                applied_a_pull.manifest_id
+            ),
+            format!(
+                "{provider_prefix}/manifests/{}.json",
+                applied_b_upload.manifest_id
+            ),
+        ] {
+            ensure!(
+                provider_snapshot
+                    .entries
+                    .get(&expected)
+                    .is_some_and(|entry| entry.kind == "file"),
+                "Local-folder provider omitted {expected}"
+            );
+        }
+        ensure!(
+            provider_snapshot
+                .entries
+                .values()
+                .all(|entry| matches!(entry.kind, "directory" | "file")),
+            "Local-folder provider tree contains a non-file entry"
+        );
+        let recovery_directories = std::fs::read_dir(recovery.path())?.count();
+        let report = serde_json::json!({
+            "schema": 1,
+            "oracle": "nestopia-ue-linux-flatpak-save-state-sync",
+            "provider": "local_folder",
+            "provider_claim": {
+                "local_folder": true,
+                "network_cloud": false,
+                "write_read_delete_probe": true,
+                "ephemeral_root": provider_root.path(),
+                "snapshot": provider_snapshot,
+            },
+            "scope": scope,
+            "deployment": {
+                "source_commit": SOURCE_COMMIT,
+                "flatpak_app_id": flatpak::APP_ID,
+                "flatpak_app_commit": flatpak::APP_COMMIT,
+                "flatpak_executable_sha256": deployed_executable_hash,
+                "flatpak_runtime": flatpak::RUNTIME_REF,
+                "flatpak_runtime_commit": flatpak::RUNTIME_COMMIT,
+                "sdl_sha256": file_hash(&setup.sdl_library)?,
+                "probe_sha256": file_hash(&setup.probe_program)?,
+            },
+            "fixture": {
+                "rom": rom,
+                "rom_sha256": file_hash(&setup.content)?,
+                "rom_bytes": setup.content.metadata()?.len(),
+                "unique_stem": title,
+            },
+            "routes": roots.iter().map(|root| serde_json::json!({
+                "purpose": root.route.purpose.as_str(),
+                "root_index": root.route.root_index,
+                "path": root.path,
+                "create_if_missing": root.create_if_missing,
+            })).collect::<Vec<_>>(),
+            "device_a_initial": {
+                "save_sha256": first_sram_hash,
+                "state_sha256": state_hash,
+                "save_generation": 1,
+                "manifest_save_version": manifest_a.files.get(&save_key),
+                "manifest_state_version": manifest_a.files.get(&state_key),
+                "sync": applied_evidence(&applied_a),
+            },
+            "device_b_restore": {
+                "removed_unique_outputs_before_pull": true,
+                "restored_save_sha256": first_sram_hash,
+                "restored_state_sha256": state_hash,
+                "sync": applied_evidence(&applied_b_pull),
+            },
+            "device_b_fresh_reload": {
+                "save_sha256": second_sram_hash,
+                "save_generation": 2,
+                "events": expected.len(),
+            },
+            "device_b_pulled_state_behavior": {
+                "save_sha256_after_load": state_loaded_sram_hash,
+                "restored_generation": 1,
+                "restored_events": 2,
+            },
+            "device_b_newer_upload": applied_evidence(&applied_b_upload),
+            "device_a_newer_pull": applied_evidence(&applied_a_pull),
+            "device_a_final_fresh_reload": {
+                "save_sha256": final_sram_hash,
+                "save_generation": 3,
+                "events": final_expected.len(),
+            },
+            "device_heads": heads,
+            "safety": {
+                "syncs_started_only_after_observed_process_exit": true,
+                "source_config_hashes_before": source_hashes,
+                "source_config_hashes_after": [
+                    file_hash(&setup.source_main_config)?,
+                    file_hash(&setup.source_input_config)?,
+                ],
+                "baseline_before": baseline_before,
+                "baseline_after": baseline_after,
+                "baseline_unchanged": true,
+                "unique_outputs_removed": true,
+                "nestopia_process_reaped": true,
+                "pad_driver_reaped": true,
+                "temporary_recovery_directories": recovery_directories,
+            },
+        });
+        let mut report_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&report_path)?;
+        serde_json::to_writer_pretty(&mut report_file, &report)?;
+        report_file.write_all(b"\n")?;
+        report_file.sync_all()?;
         eprintln!(
-            "Nestopia oracle passed: save_sha256={} state_sha256={} generations=1,2 events={}",
-            file_hash(&outputs.save)?,
+            "Nestopia sync oracle passed: final_save_sha256={} state_sha256={} generations=1,2,3 events={} report={}",
+            final_sram_hash,
             state_hash,
-            expected.len()
+            final_expected.len(),
+            report_path.display()
         );
         Ok(())
     }

@@ -301,6 +301,28 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub(crate) gopher64_native_launches:
         Vec<crate::controller_gopher64_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) gear_native_launches: Vec<crate::controller_gear_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) xroar_native_launches: Vec<crate::controller_xroar_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) zesarux_native_launches: Vec<crate::controller_zesarux_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) oricutron_native_launches:
+        Vec<crate::controller_oricutron_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) atari_plus_plus_native_launches:
+        Vec<crate::controller_atari_plus_plus_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) aranym_native_launches: Vec<crate::controller_aranym_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) atari800_native_launches:
+        Vec<crate::controller_atari800_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) nanoboyadvance_native_launches:
+        Vec<crate::controller_nanoboyadvance_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) vba_m_native_launches: Vec<crate::controller_vba_m_native::settings::SavedSetup>,
     #[serde(default)]
     pub(crate) rmg_native_launches: Vec<crate::controller_rmg_native::settings::SavedSetup>,
     #[serde(default)]
@@ -309,6 +331,8 @@ pub struct ControllerMappingSettings {
     #[serde(default)]
     pub(crate) yaba_sanshiro_native_launches:
         Vec<crate::controller_yaba_sanshiro_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) kronos_native_launches: Vec<crate::controller_kronos_native::settings::SavedSetup>,
     #[serde(default)]
     pub(crate) mednafen_launches: Vec<crate::controller_mednafen::settings::SavedSetup>,
     #[serde(default)]
@@ -450,9 +474,19 @@ impl Default for ControllerMappingSettings {
             scummvm_native_launches: Vec::new(),
             jgenesis_native_launches: Vec::new(),
             gopher64_native_launches: Vec::new(),
+            gear_native_launches: Vec::new(),
+            xroar_native_launches: Vec::new(),
+            zesarux_native_launches: Vec::new(),
+            oricutron_native_launches: Vec::new(),
+            atari_plus_plus_native_launches: Vec::new(),
+            aranym_native_launches: Vec::new(),
+            atari800_native_launches: Vec::new(),
+            nanoboyadvance_native_launches: Vec::new(),
+            vba_m_native_launches: Vec::new(),
             rmg_native_launches: Vec::new(),
             simple64_native_launches: Vec::new(),
             yaba_sanshiro_native_launches: Vec::new(),
+            kronos_native_launches: Vec::new(),
             mednafen_launches: Vec::new(),
             mame_native_launches: Vec::new(),
             flycast_native_launches: Vec::new(),
@@ -1435,6 +1469,23 @@ impl ControllerMappingSettings {
         crate::controller_gopher64_native::settings::validate_setups(
             &self.gopher64_native_launches,
         )?;
+        crate::controller_gear_native::settings::validate_setups(&self.gear_native_launches)?;
+        crate::controller_xroar_native::settings::validate_setups(&self.xroar_native_launches)?;
+        crate::controller_zesarux_native::settings::validate_setups(&self.zesarux_native_launches)?;
+        crate::controller_oricutron_native::settings::validate_setups(
+            &self.oricutron_native_launches,
+        )?;
+        crate::controller_atari_plus_plus_native::settings::validate_setups(
+            &self.atari_plus_plus_native_launches,
+        )?;
+        crate::controller_aranym_native::settings::validate_setups(&self.aranym_native_launches)?;
+        crate::controller_atari800_native::settings::validate_setups(
+            &self.atari800_native_launches,
+        )?;
+        crate::controller_nanoboyadvance_native::settings::validate_setups(
+            &self.nanoboyadvance_native_launches,
+        )?;
+        crate::controller_vba_m_native::settings::validate_setups(&self.vba_m_native_launches)?;
         crate::controller_rmg_native::settings::validate_setups(&self.rmg_native_launches)?;
         crate::controller_simple64_native::settings::validate_setups(
             &self.simple64_native_launches,
@@ -1442,6 +1493,7 @@ impl ControllerMappingSettings {
         crate::controller_yaba_sanshiro_native::settings::validate_setups(
             &self.yaba_sanshiro_native_launches,
         )?;
+        crate::controller_kronos_native::settings::validate_setups(&self.kronos_native_launches)?;
         crate::controller_mednafen::settings::validate_setups(&self.mednafen_launches)?;
         crate::controller_mame_native::settings::validate_setups(&self.mame_native_launches)?;
         crate::controller_flycast_native::settings::validate_setups(&self.flycast_native_launches)?;
@@ -2003,6 +2055,12 @@ pub struct SettingsStore {
     path: PathBuf,
 }
 
+enum LocalSaveSyncProfileState {
+    Missing,
+    Disabled,
+    Configured(crate::save_cloud::CloudProfile),
+}
+
 impl SettingsStore {
     pub fn open_default() -> Result<Self> {
         Self::at(state_database_path()?)
@@ -2035,6 +2093,61 @@ impl SettingsStore {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    fn local_save_sync_profile_state(&self) -> Result<LocalSaveSyncProfileState> {
+        let encoded = self
+            .connection()?
+            .query_row(
+                "SELECT profile_json FROM save_sync_local_profile WHERE id=1",
+                [],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .context("loading the local-folder save-sync profile")?;
+        match encoded {
+            None => Ok(LocalSaveSyncProfileState::Missing),
+            Some(None) => Ok(LocalSaveSyncProfileState::Disabled),
+            Some(Some(encoded)) => {
+                let (profile, migrated) = decode_save_cloud_profile(&encoded)?;
+                ensure!(
+                    profile.provider == crate::save_cloud::CloudProvider::LocalFolder,
+                    "local save-sync settings contain a non-local provider"
+                );
+                if migrated {
+                    self.save_local_save_sync_profile(Some(&profile))?;
+                }
+                Ok(LocalSaveSyncProfileState::Configured(profile))
+            }
+        }
+    }
+
+    fn save_local_save_sync_profile(
+        &self,
+        profile: Option<&crate::save_cloud::CloudProfile>,
+    ) -> Result<()> {
+        let encoded = profile
+            .map(|profile| {
+                profile.validate()?;
+                ensure!(
+                    profile.provider == crate::save_cloud::CloudProvider::LocalFolder,
+                    "only local-folder profiles belong in local settings"
+                );
+                serde_json::to_string(profile).context("encoding local-folder save-sync profile")
+            })
+            .transpose()?;
+        self.connection()?.execute(
+            "INSERT INTO save_sync_local_profile (id, profile_json) VALUES (1, ?1)
+             ON CONFLICT(id) DO UPDATE SET profile_json=excluded.profile_json",
+            [encoded],
+        )?;
+        Ok(())
+    }
+
+    fn clear_local_save_sync_selection(&self) -> Result<()> {
+        self.connection()?
+            .execute("DELETE FROM save_sync_local_profile WHERE id=1", [])?;
+        Ok(())
     }
 
     pub fn qbittorrent_connection_test(&self) -> Result<Option<QbittorrentConnectionTest>> {
@@ -5714,24 +5827,53 @@ pub fn save_password(password: &str) -> Result<()> {
 }
 
 pub fn load_save_cloud_profile() -> Result<Option<crate::save_cloud::CloudProfile>> {
+    let store = SettingsStore::open_default()?;
+    match store.local_save_sync_profile_state()? {
+        LocalSaveSyncProfileState::Configured(profile) => return Ok(Some(profile)),
+        LocalSaveSyncProfileState::Disabled => return Ok(None),
+        LocalSaveSyncProfileState::Missing => {}
+    }
     let Some(encoded) = load_secret(SAVE_CLOUD_KEYRING_ACCOUNT, "cloud-save profile")? else {
         return Ok(None);
     };
-    let profile: crate::save_cloud::CloudProfile =
-        serde_json::from_str(&encoded).context("decoding cloud-save profile")?;
-    profile.validate()?;
+    let (profile, migrated) = decode_save_cloud_profile(&encoded)?;
+    if migrated {
+        save_save_cloud_profile(Some(&profile))?;
+    }
     Ok(Some(profile))
 }
 
+fn decode_save_cloud_profile(encoded: &str) -> Result<(crate::save_cloud::CloudProfile, bool)> {
+    let profile: crate::save_cloud::CloudProfile =
+        serde_json::from_str(encoded).context("decoding cloud-save profile")?;
+    profile.migrate()
+}
+
 pub fn save_save_cloud_profile(profile: Option<&crate::save_cloud::CloudProfile>) -> Result<()> {
-    let encoded = profile
-        .map(|profile| {
+    let store = SettingsStore::open_default()?;
+    match profile {
+        Some(profile) if profile.provider == crate::save_cloud::CloudProvider::LocalFolder => {
             profile.validate()?;
-            serde_json::to_string(profile).context("encoding cloud-save profile")
-        })
-        .transpose()?
-        .unwrap_or_default();
-    save_secret(SAVE_CLOUD_KEYRING_ACCOUNT, &encoded, "cloud-save profile")
+            store.save_local_save_sync_profile(Some(profile))
+        }
+        Some(profile) => {
+            profile.validate()?;
+            let encoded = serde_json::to_string(profile).context("encoding cloud-save profile")?;
+            save_secret(SAVE_CLOUD_KEYRING_ACCOUNT, &encoded, "cloud-save profile")?;
+            store.clear_local_save_sync_selection()
+        }
+        None => match store.local_save_sync_profile_state()? {
+            LocalSaveSyncProfileState::Configured(_) | LocalSaveSyncProfileState::Disabled => {
+                // The tombstone prevents a previously stored cloud token from
+                // becoming active merely because a local profile was removed.
+                store.save_local_save_sync_profile(None)
+            }
+            LocalSaveSyncProfileState::Missing => {
+                save_secret(SAVE_CLOUD_KEYRING_ACCOUNT, "", "cloud-save profile")?;
+                store.save_local_save_sync_profile(None)
+            }
+        },
+    }
 }
 
 pub fn load_steamgriddb_api_key() -> Result<Option<String>> {
@@ -6692,6 +6834,12 @@ fn migrate(connection: &Connection) -> Result<()> {
                  check_policy IN ('daily', 'weekly', 'manual')
              ),
              last_checked_at INTEGER NOT NULL CHECK (last_checked_at >= 0)
+         );
+         CREATE TABLE IF NOT EXISTS save_sync_local_profile (
+             id INTEGER PRIMARY KEY CHECK (id=1),
+             profile_json TEXT CHECK (
+                 profile_json IS NULL OR length(profile_json) BETWEEN 1 AND 32768
+             )
          );
          CREATE TABLE IF NOT EXISTS emulator_update_pins (
              host_system_slug TEXT NOT NULL CHECK (
@@ -11719,5 +11867,40 @@ mod tests {
         assert_eq!(decoded.client_id, "native-client");
         assert_eq!(decoded.client_secret, "native-secret");
         assert!(!encoded.contains("steamgriddb"));
+    }
+
+    #[test]
+    fn legacy_cloud_profile_decode_reports_an_explicit_schema_migration() {
+        let encoded = r#"{
+            "schema": 1,
+            "provider": "dropbox",
+            "device_id": "desktop-a",
+            "automatic": false,
+            "auth": {"access_token":"token","refresh_token":null,"client_id":null,"client_secret":null}
+        }"#;
+        let (profile, migrated) = decode_save_cloud_profile(encoded).unwrap();
+        assert!(migrated);
+        assert_eq!(profile.provider, crate::save_cloud::CloudProvider::Dropbox);
+        assert_eq!(profile.root, crate::save_cloud::DEFAULT_CLOUD_ROOT);
+    }
+
+    #[test]
+    fn local_save_sync_profile_uses_non_secret_state_storage_and_a_tombstone() {
+        let (directory, store) = store();
+        let root = directory.path().join("sync");
+        std::fs::create_dir(&root).unwrap();
+        let profile =
+            crate::save_cloud::CloudProfile::new_local_folder(&root, "desktop-a", true).unwrap();
+        store.save_local_save_sync_profile(Some(&profile)).unwrap();
+        match store.local_save_sync_profile_state().unwrap() {
+            LocalSaveSyncProfileState::Configured(loaded) => assert_eq!(loaded, profile),
+            _ => panic!("expected a configured local-folder profile"),
+        }
+
+        store.save_local_save_sync_profile(None).unwrap();
+        assert!(matches!(
+            store.local_save_sync_profile_state().unwrap(),
+            LocalSaveSyncProfileState::Disabled
+        ));
     }
 }

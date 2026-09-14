@@ -118,6 +118,16 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "scummvm"
                 | "jgenesis"
                 | "gopher64"
+                | "gearsystem"
+                | "gearcoleco"
+                | "xroar"
+                | "zesarux"
+                | "oricutron"
+                | "atari-plus-plus"
+                | "aranym"
+                | "atari800"
+                | "nanoboyadvance"
+                | "vba-m"
                 | "rmg"
                 | "simple64"
                 | "kronos"
@@ -418,6 +428,167 @@ pub(crate) fn settings_for_launch<'a>(
                 setup.review(&mapping.calibrations)?;
             }
         }
+        "gearsystem" | "gearcoleco" => {
+            for setup in &mut mapping.gear_native_launches {
+                if !matches(&setup.emulator_id, &setup.content)
+                    || setup.adapter.core() != profile.core
+                {
+                    continue;
+                }
+                found += 1;
+                setup.profile_id.clone_from(&profile.id);
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_gear_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "xroar" => {
+            for setup in &mut mapping.xroar_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.profile_id.clone_from(&profile.id);
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_xroar_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "zesarux" => {
+            ensure!(ids.len() == 1, "ZEsarUX Kempston setup requires one player");
+            for setup in &mut mapping.zesarux_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "oricutron" => {
+            for setup in &mut mapping.oricutron_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_oricutron_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "atari-plus-plus" => {
+            for setup in &mut mapping.atari_plus_plus_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_atari_plus_plus_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "aranym" => {
+            for setup in &mut mapping.aranym_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_aranym_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "atari800" => {
+            for setup in &mut mapping.atari800_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_atari800_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "nanoboyadvance" => {
+            for setup in &mut mapping.nanoboyadvance_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_nanoboyadvance_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "vba-m" => {
+            for setup in &mut mapping.vba_m_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_vba_m_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
         "rmg" => {
             for setup in &mut mapping.rmg_native_launches {
                 if !matches(&setup.emulator_id, &setup.content) {
@@ -461,6 +632,38 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.controller_id = ids[0].clone();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "kronos" => {
+            for setup in &mut mapping.kronos_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                let slots = setup
+                    .players
+                    .iter()
+                    .map(|player| (player.port, player.device_id))
+                    .collect::<Vec<_>>();
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(index, id)| {
+                        let (port, device_id) =
+                            slots.get(index).copied().unwrap_or_else(|| match index {
+                                0 => (1, 1),
+                                1 => (2, 1),
+                                other => (1, other as u8),
+                            });
+                        crate::controller_kronos_native::settings::Player {
+                            player: (index + 1) as u8,
+                            controller_id: id.clone(),
+                            port,
+                            device_id,
+                        }
+                    })
+                    .collect();
                 setup.review(&mapping.calibrations)?;
             }
         }

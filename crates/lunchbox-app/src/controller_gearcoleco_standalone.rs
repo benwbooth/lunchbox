@@ -13,6 +13,27 @@ use std::collections::BTreeMap;
 
 pub(crate) const SOURCE_COMMIT: &str = "8ad5f92c45e7ca616535a057495557c2352a9115";
 
+pub(crate) const STANDARD_ROUTES: [(&str, &str); 18] = [
+    ("up", "GamepadDirectional (up)"),
+    ("down", "GamepadDirectional (down)"),
+    ("left", "GamepadDirectional (left)"),
+    ("right", "GamepadDirectional (right)"),
+    ("fire1", "GamepadLeft"),
+    ("fire2", "GamepadRight"),
+    ("key_1", "Gamepad1"),
+    ("key_2", "Gamepad2"),
+    ("key_3", "Gamepad3"),
+    ("key_4", "Gamepad4"),
+    ("key_5", "Gamepad5"),
+    ("key_6", "Gamepad6"),
+    ("key_7", "Gamepad7"),
+    ("key_8", "Gamepad8"),
+    ("key_9", "Gamepad9"),
+    ("key_0", "Gamepad0"),
+    ("key_star", "GamepadAsterisk"),
+    ("key_hash", "GamepadHash"),
+];
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum GamepadInput {
     Disabled,
@@ -74,7 +95,9 @@ pub(crate) const BUTTON_FIELDS: [&str; 16] = [
 pub(crate) struct PlayerProfile {
     pub player: u8,
     pub directional: Directional,
-    pub buttons: [GamepadInput; 16],
+    /// `None` preserves nonstandard Blue/Purple bindings that are outside the
+    /// standard-controller contract.
+    pub buttons: [Option<GamepadInput>; 16],
 }
 
 fn fields(profile: PlayerProfile) -> Result<BTreeMap<String, String>> {
@@ -87,7 +110,9 @@ fn fields(profile: PlayerProfile) -> Result<BTreeMap<String, String>> {
         ("Gamepad".into(), "true".into()),
     ]);
     for (name, binding) in BUTTON_FIELDS.iter().zip(profile.buttons) {
-        fields.insert((*name).into(), binding.value()?.to_string());
+        if let Some(binding) = binding {
+            fields.insert((*name).into(), binding.value()?.to_string());
+        }
     }
     match profile.directional {
         Directional::Dpad => {
@@ -221,11 +246,11 @@ mod tests {
 
     #[test]
     fn writes_all_keypad_and_fire_bindings() {
-        let mut buttons = [GamepadInput::Disabled; 16];
+        let mut buttons = [Some(GamepadInput::Disabled); 16];
         for (index, binding) in buttons.iter_mut().enumerate() {
-            *binding = GamepadInput::Button((index % 15) as u8);
+            *binding = Some(GamepadInput::Button((index % 15) as u8));
         }
-        buttons[2] = GamepadInput::Axis(4);
+        buttons[2] = Some(GamepadInput::Axis(4));
         let output = patch_config(
             b"[Emulator]\nSaveSlot=2\n[InputA]\nGamepad=false\nKeyLeft=80\n",
             &[PlayerProfile {
@@ -253,7 +278,7 @@ mod tests {
                 invert_x: false,
                 invert_y: false,
             },
-            buttons: [GamepadInput::Button(27); 16],
+            buttons: [Some(GamepadInput::Button(27)); 16],
         };
         assert!(patch_config(b"", &[profile]).is_err());
     }

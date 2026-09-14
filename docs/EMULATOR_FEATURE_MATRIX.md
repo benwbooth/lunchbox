@@ -6,17 +6,18 @@ Linux, Linux Flatpak, macOS, and Windows.
 
 It contains one row for every host/runtime pair in the canonical database:
 
-- 249 standalone emulator definitions x 4 hosts = 996 rows.
+- 250 standalone emulator definitions x 4 hosts = 1,000 rows.
 - 94 canonical non-BizHawk-only RetroArch core names x 4 hosts = 376 rows.
 - 1 source-captured runtime absent from the canonical database (`simple64`) x 4
   hosts = 4 explicit `record_only` rows.
-- Total: 1,376 rows.
+- Total: 1,380 rows.
 
-The source set now contains 250 standalone platform records: every one of the
-249 catalog identities plus the separately researched `simple64` record. Their
+The source set now contains 250 standalone platform records: 249 of the 250
+catalog identities plus the separately researched `simple64` record. Their
 1,000 record/host cells are all explicitly dispositioned: 419 fully captured,
 157 partially captured, 223 without a verified package, 122 unsupported, and 79
-unresolved. There are no `missing_record` rows.
+unresolved. The newly catalogued `AltirraQt` identity has no platform record yet,
+so its four host rows are explicitly `missing_record`.
 
 The 94 canonical RetroArch cores also have one structured record apiece. Every
 record is linked to at least one documented RetroPad profile, preserving 94/94
@@ -27,18 +28,19 @@ Every core still has at least one launch-enabled profile, including
 `mupen64plus_next` through its `n64-independent` profile.
 
 Platform matching is narrower than core-level profile presence. The database
-has 236 non-BizHawk-only core/platform relationships: 113 match a launch
+has 237 non-BizHawk-only core/platform relationships: 114 match a launch
 profile's declared platform aliases, 84 use the explicit per-game MAME/FBNeo
 adapters, and 39 have no launch contract for that platform. Dynamic MAME/FBNeo
 coverage is reported separately rather than counted as either a universal
 static profile or a gap.
 
 Host adapter coverage is separate again. The launch writer is implemented for
-the 188 Linux and Linux Flatpak core/host cells. The 188 macOS and Windows cells
-are `launch_adapter_missing`; they are not `not_applicable`, because the
-frontend/core may exist there. None of these source-derived fields is a runtime
-pass. Live acceptance remains confined to the test-status columns and their
-evidence.
+the 188 Linux and Linux Flatpak core/host cells, plus the exact Nestopia
+ordinary-cartridge profiles on macOS and Windows. The other 186 macOS and
+Windows cells are `launch_adapter_missing`; they are not `not_applicable`,
+because the frontend/core may exist there. None of these source-derived fields
+is a runtime pass. Live acceptance remains confined to the test-status columns
+and their evidence.
 
 Together the core records also cover 399 firmware-file dispositions, save
 behavior, state serialization, and all four frontend hosts. Core host
@@ -58,7 +60,7 @@ availability from the RetroArch frontend.
 
 Because the shared RetroArch frontend record supplies the platform paths for
 all 94 core rows, the generated matrix contains 795 captured rows, 157 partial
-rows, and 424 explicit host-gap rows.
+rows, 424 explicit host-gap rows, and the four `AltirraQt` missing-record rows.
 
 Generate or refresh it with:
 

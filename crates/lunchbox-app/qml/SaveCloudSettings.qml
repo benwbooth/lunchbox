@@ -26,7 +26,7 @@ ColumnLayout {
     }
 
     Text {
-        text: "CLOUD SAVES & STATES"
+        text: "SAVE & STATE SYNCHRONIZATION"
         color: root.accent
         font.pixelSize: 10
         font.weight: Font.Bold
@@ -53,16 +53,19 @@ ColumnLayout {
             valueRole: "value"
             enabled: !root.providerModel.busy
             model: [
+                { label: "Local folder", value: "local_folder" },
                 { label: "Google Drive", value: "google_drive" },
                 { label: "Dropbox", value: "dropbox" },
                 { label: "OneDrive", value: "one_drive" }
             ]
-            currentIndex: root.providerModel.provider === "dropbox" ? 1
-                          : root.providerModel.provider === "one_drive" ? 2 : 0
+            currentIndex: root.providerModel.provider === "google_drive" ? 1
+                          : root.providerModel.provider === "dropbox" ? 2
+                          : root.providerModel.provider === "one_drive" ? 3 : 0
         }
         ComboBox {
             id: authMode
             Layout.preferredWidth: 190
+            visible: provider.currentValue !== "local_folder"
             textRole: "label"
             valueRole: "value"
             enabled: !root.providerModel.busy
@@ -75,6 +78,7 @@ ColumnLayout {
 
     Text {
         Layout.fillWidth: true
+        visible: provider.currentValue !== "local_folder"
         text: authMode.currentValue === "refresh"
               ? "Use credentials from a registered desktop OAuth application. Google Drive and Dropbox require its client secret; OneDrive permits a public-client refresh token without one."
               : "Access tokens are useful for short-lived testing and usually expire. Lunchbox stores the token only in the operating-system credential store."
@@ -86,7 +90,8 @@ ColumnLayout {
     SecretField {
         id: accessToken
         Layout.fillWidth: true
-        visible: authMode.currentValue === "access"
+        visible: provider.currentValue !== "local_folder"
+                 && authMode.currentValue === "access"
         placeholderText: "OAuth access token"
         enabled: !root.providerModel.busy
         ink: root.ink
@@ -98,7 +103,8 @@ ColumnLayout {
     SecretField {
         id: refreshToken
         Layout.fillWidth: true
-        visible: authMode.currentValue === "refresh"
+        visible: provider.currentValue !== "local_folder"
+                 && authMode.currentValue === "refresh"
         placeholderText: "OAuth refresh token"
         enabled: !root.providerModel.busy
         ink: root.ink
@@ -109,7 +115,8 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        visible: authMode.currentValue === "refresh"
+        visible: provider.currentValue !== "local_folder"
+                 && authMode.currentValue === "refresh"
         spacing: 8
 
         TextField {
@@ -130,6 +137,35 @@ ColumnLayout {
             line: root.line
             accent: root.accent
         }
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        visible: provider.currentValue === "local_folder"
+        spacing: 8
+
+        TextField {
+            id: localFolderRoot
+            Layout.fillWidth: true
+            text: root.providerModel.local_folder_root
+            placeholderText: "Absolute folder used by Syncthing, Nextcloud, rsync, or another tool"
+            enabled: !root.providerModel.busy
+            onTextEdited: root.providerModel.local_folder_root = text
+        }
+        Button {
+            text: "Choose…"
+            enabled: !root.providerModel.busy
+            onClicked: root.providerModel.choose_local_folder()
+        }
+    }
+
+    Text {
+        Layout.fillWidth: true
+        visible: provider.currentValue === "local_folder"
+        text: "Lunchbox keeps the same saves/v1/{emulator}/{runtime} hierarchy inside this folder. The folder must already exist and be entered as an absolute path; Lunchbox stores its canonical path and rejects symbolic-link roots and unsafe managed paths."
+        color: root.muted
+        font.pixelSize: 9
+        wrapMode: Text.WordWrap
     }
 
     RowLayout {
@@ -190,9 +226,13 @@ ColumnLayout {
         }
         Item { Layout.fillWidth: true }
         Button {
-            text: root.providerModel.busy ? "VERIFYING…" : "SAVE && VERIFY CONNECTION"
+            text: root.providerModel.busy ? "VERIFYING…"
+                  : provider.currentValue === "local_folder"
+                    ? "SAVE && VERIFY FOLDER" : "SAVE && VERIFY CONNECTION"
             enabled: !root.providerModel.busy
-                     && ((authMode.currentValue === "access"
+                     && ((provider.currentValue === "local_folder"
+                          && localFolderRoot.text.length > 0)
+                         || (authMode.currentValue === "access"
                           && accessToken.text.length > 0)
                          || (authMode.currentValue === "refresh"
                              && refreshToken.text.length > 0
@@ -204,7 +244,8 @@ ColumnLayout {
                            authMode.currentValue === "access" ? accessToken.text : "",
                            authMode.currentValue === "refresh" ? refreshToken.text : "",
                            authMode.currentValue === "refresh" ? clientId.text : "",
-                           authMode.currentValue === "refresh" ? clientSecret.text : "")
+                           authMode.currentValue === "refresh" ? clientSecret.text : "",
+                           provider.currentValue === "local_folder" ? localFolderRoot.text : "")
         }
     }
 
@@ -213,7 +254,7 @@ ColumnLayout {
         spacing: 2
         Text {
             Layout.fillWidth: true
-            text: "Provider transport is implemented with Apache OpenDAL. Save blobs and manifests are content-addressed; each installation owns its device pointer, and local replacements retain a recovery copy."
+            text: "Provider transport is implemented with Apache OpenDAL. Local folders need no account credentials and can be managed by Syncthing, Nextcloud, rsync, or another sync tool. Save blobs and manifests are content-addressed; each installation owns its device pointer, and local replacements retain a recovery copy."
             color: root.muted
             font.pixelSize: 9
             wrapMode: Text.WordWrap

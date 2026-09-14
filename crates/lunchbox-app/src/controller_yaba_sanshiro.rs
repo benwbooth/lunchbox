@@ -132,6 +132,12 @@ pub(crate) fn binding_key(port: u32, id: u32, per_type: u32, pad_key: u8) -> Str
     format!("Input/Port/{port}/Id/{id}/Controller/{per_type}/Key/{pad_key}")
 }
 
+/// QSettings uses `/` in its API but serializes nested groups with `\` in an
+/// IniFormat file. This conversion is for on-disk keys only.
+fn ini_key(key: &str) -> String {
+    key.replace('/', "\\")
+}
+
 /// One standard-pad binding line: the key from [`binding_key`] with
 /// `PER_TYPE_PAD`, holding the u32 host code as decimal (QSettings stores
 /// the `quint32` from `UIControllerSetting::setPadKey` in decimal).
@@ -141,7 +147,7 @@ pub(crate) fn binding_line(port: u32, id: u32, pad_key: u8, code: u32) -> Result
     }
     Ok(format!(
         "{}={code}",
-        binding_key(port, id, PER_TYPE_PAD, pad_key)
+        ini_key(&binding_key(port, id, PER_TYPE_PAD, pad_key))
     ))
 }
 
@@ -159,6 +165,118 @@ pub(crate) fn ini_body(port: u32, id: u32, bindings: &[(u8, u32)]) -> Result<Str
         body.push('\n');
     }
     Ok(body)
+}
+
+/// Patch one source-defined Saturn pad entry in a copied QSettings INI while
+/// retaining machine, BIOS, backup-RAM, state, media, and unrelated input
+/// settings. The live SDL device path is the pinned source's durable device ID.
+pub(crate) fn patch_ini(
+    baseline: &[u8],
+    port: u32,
+    id: u32,
+    device_path: &str,
+    device_name: &str,
+    bindings: &[(u8, u32)],
+) -> anyhow::Result<String> {
+    anyhow::ensure!(
+        baseline.len() <= 2 * 1024 * 1024,
+        "Yaba Sanshiro 2 config is too large"
+    );
+    anyhow::ensure!(
+        matches!(port, 1 | 2) && matches!(id, 1..=6),
+        "Yaba Sanshiro 2 pad port/id is outside the standard Saturn topology"
+    );
+    for value in [device_path, device_name] {
+        anyhow::ensure!(
+            !value.is_empty() && !value.contains(['\0', '\r', '\n']),
+            "Yaba Sanshiro 2 device identity is invalid"
+        );
+    }
+    let original = std::str::from_utf8(baseline)?;
+    anyhow::ensure!(
+        !original.contains('\0'),
+        "Yaba Sanshiro 2 config contains a NUL byte"
+    );
+    let mut fields = std::collections::BTreeMap::new();
+    fields.insert(
+        ini_key(&identity_key(port, id, IdentityField::Type)),
+        PER_TYPE_PAD.to_string(),
+    );
+    fields.insert(
+        ini_key(&identity_key(port, id, IdentityField::Device)),
+        device_path.to_owned(),
+    );
+    fields.insert(
+        ini_key(&identity_key(port, id, IdentityField::DeviceName)),
+        device_name.to_owned(),
+    );
+    let mut seen = std::collections::BTreeSet::new();
+    for (pad_key, code) in bindings {
+        anyhow::ensure!(
+            seen.insert(*pad_key) && pad_button_name(*pad_key).is_some(),
+            "Yaba Sanshiro 2 pad binding is duplicated or unknown"
+        );
+        fields.insert(
+            ini_key(&binding_key(port, id, PER_TYPE_PAD, *pad_key)),
+            code.to_string(),
+        );
+    }
+    anyhow::ensure!(
+        seen.len() == PAD_BUTTONS.len(),
+        "Yaba Sanshiro 2 standard pad needs all 13 controls"
+    );
+
+    let newline = if original.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
+    let mut output = String::new();
+    let mut active = false;
+    let mut inserted = false;
+    for line in original.split_inclusive('\n') {
+        if let Some(header) = line
+            .trim_start()
+            .strip_prefix('[')
+            .and_then(|line| line.split_once(']').map(|(name, _)| name.trim()))
+        {
+            if active && !inserted {
+                for (key, value) in &fields {
+                    output.push_str(&format!("{key}={value}{newline}"));
+                }
+                inserted = true;
+            }
+            active = header == SETTINGS_GROUP;
+            output.push_str(line);
+        } else {
+            let owned = active
+                && line
+                    .split_once('=')
+                    .is_some_and(|(key, _)| fields.contains_key(key.trim()));
+            if !owned {
+                output.push_str(line);
+            }
+        }
+    }
+    if active && !inserted {
+        if !output.is_empty() && !output.ends_with('\n') {
+            output.push_str(newline);
+        }
+        for (key, value) in &fields {
+            output.push_str(&format!("{key}={value}{newline}"));
+        }
+        inserted = true;
+    }
+    if !inserted {
+        if !output.is_empty() && !output.ends_with('\n') {
+            output.push_str(newline);
+        }
+        output.push_str(&format!("[{SETTINGS_GROUP}]{newline}"));
+        for (key, value) in &fields {
+            output.push_str(&format!("{key}={value}{newline}"));
+        }
+    }
+    Ok(output)
 }
 
 /// Host key-code layout from `yabause/src/persdlcodes.h`: bits 0-15 payload,
@@ -230,6 +348,7 @@ pub(crate) fn raw_hat_code(device: u32, hat_index: u16, hat: u8) -> Result<u32, 
 
 /// `(device << 18) | SDL_{MAX,MIN}_AXIS_VALUE | axis` for unmapped devices.
 pub(crate) fn raw_axis_code(device: u32, axis: u16, positive: bool) -> Result<u32, ()> {
+    // persdljoy.c emits MAX for a positive SDL value and MIN for negative.
     let base = if positive {
         SDL_MAX_AXIS_VALUE
     } else {
@@ -310,6 +429,28 @@ mod tests {
     }
 
     #[test]
+    fn patches_one_pad_and_preserves_native_data_paths() {
+        let bindings = PAD_BUTTONS
+            .iter()
+            .map(|(key, _)| (*key, u32::from(*key) + 100))
+            .collect::<Vec<_>>();
+        let output = patch_ini(
+            b"[0.9.11]\nMemory\\Path=/saves/bkram.bin\nInput\\Port\\1\\Id\\1\\Type=0\n[other]\nkeep=yes\n",
+            1,
+            1,
+            "/dev/input/js2",
+            "Test Pad",
+            &bindings,
+        )
+        .unwrap();
+        assert!(output.contains("Memory\\Path=/saves/bkram.bin"));
+        assert!(output.contains("Input\\Port\\1\\Id\\1\\Type=2"));
+        assert!(output.contains("Input\\Port\\1\\Id\\1\\Device=/dev/input/js2"));
+        assert!(output.contains("Input\\Port\\1\\Id\\1\\Controller\\2\\Key\\12=112"));
+        assert!(output.contains("[other]\nkeep=yes"));
+    }
+
+    #[test]
     fn config_locations_match_the_capture() {
         assert_eq!(SETTINGS_GROUP, "0.9.11");
         assert_eq!(CONFIG_RELATIVE, "YabaSanshiro/qt/yabause.ini");
@@ -379,13 +520,13 @@ mod tests {
         let body = ini_body(0, 0, &[(7, 0x40_0005), (0, 0x40_0000)]).unwrap();
         assert_eq!(
             body,
-            "[0.9.11]\nInput/Port/0/Id/0/Controller/2/Key/7=4194309\n\
-             Input/Port/0/Id/0/Controller/2/Key/0=4194304\n"
+            "[0.9.11]\nInput\\Port\\0\\Id\\0\\Controller\\2\\Key\\7=4194309\n\
+             Input\\Port\\0\\Id\\0\\Controller\\2\\Key\\0=4194304\n"
         );
         assert!(ini_body(0, 0, &[(13, 0)]).is_err());
         assert_eq!(
             binding_line(1, 2, 6, 99).unwrap(),
-            "Input/Port/1/Id/2/Controller/2/Key/6=99"
+            "Input\\Port\\1\\Id\\2\\Controller\\2\\Key\\6=99"
         );
         assert!(ini_body(0, 0, &[(7, 1), (7, 2)]).is_err());
     }

@@ -94,6 +94,17 @@ enum PreparedJsonNativeLaunch {
     Hypseus(crate::controller_hypseus_singe_native::native_command::NativeSession),
     Jgenesis(crate::controller_jgenesis_native::native_command::NativeSession),
     Gopher64(crate::controller_gopher64_native::native_command::NativeSession),
+    Gear(crate::controller_gear_native::native_command::NativeSession),
+    Xroar(crate::controller_xroar_native::native_command::NativeSession),
+    Zesarux(crate::controller_zesarux_native::native_command::NativeSession),
+    Oricutron(crate::controller_oricutron_native::native_command::NativeSession),
+    AtariPlusPlus(crate::controller_atari_plus_plus_native::native_command::NativeSession),
+    Aranym(crate::controller_aranym_native::native_command::NativeSession),
+    Atari800(crate::controller_atari800_native::native_command::NativeSession),
+    NanoBoyAdvance(crate::controller_nanoboyadvance_native::native_command::NativeSession),
+    VbaM(crate::controller_vba_m_native::native_command::NativeSession),
+    YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
+    Kronos(crate::controller_kronos_native::native_command::NativeSession),
     Rmg(crate::controller_rmg_native::native_command::NativeSession),
     Simple64(crate::controller_simple64_native::native_command::NativeSession),
     Nestopia(crate::controller_nestopia_ue_flatpak::PreparedLaunch),
@@ -112,6 +123,17 @@ impl PreparedJsonNativeLaunch {
             Self::Hypseus(session) => session.spawn(plan, cancel),
             Self::Jgenesis(session) => session.spawn(plan, cancel),
             Self::Gopher64(session) => session.spawn(plan, cancel),
+            Self::Gear(session) => session.spawn(plan, cancel),
+            Self::Xroar(session) => session.spawn(plan, cancel),
+            Self::Zesarux(session) => session.spawn(plan, cancel),
+            Self::Oricutron(session) => session.spawn(plan, cancel),
+            Self::AtariPlusPlus(session) => session.spawn(plan, cancel),
+            Self::Aranym(session) => session.spawn(plan, cancel),
+            Self::Atari800(session) => session.spawn(plan, cancel),
+            Self::NanoBoyAdvance(session) => session.spawn(plan, cancel),
+            Self::VbaM(session) => session.spawn(plan, cancel),
+            Self::YabaSanshiro(session) => session.spawn(plan, cancel),
+            Self::Kronos(session) => session.spawn(plan, cancel),
             Self::Rmg(session) => session.spawn(plan, cancel),
             Self::Simple64(session) => session.spawn(plan, cancel),
             Self::Nestopia(session) => session.spawn(plan, cancel),
@@ -125,6 +147,17 @@ impl PreparedJsonNativeLaunch {
             Self::Hypseus(session) => session.verify(cancel),
             Self::Jgenesis(session) => session.verify(cancel),
             Self::Gopher64(session) => session.verify(cancel),
+            Self::Gear(session) => session.verify(cancel),
+            Self::Xroar(session) => session.verify(cancel),
+            Self::Zesarux(session) => session.verify(cancel),
+            Self::Oricutron(session) => session.verify(cancel),
+            Self::AtariPlusPlus(session) => session.verify(cancel),
+            Self::Aranym(session) => session.verify(cancel),
+            Self::Atari800(session) => session.verify(cancel),
+            Self::NanoBoyAdvance(session) => session.verify(cancel),
+            Self::VbaM(session) => session.verify(cancel),
+            Self::YabaSanshiro(session) => session.verify(cancel),
+            Self::Kronos(session) => session.verify(cancel),
             Self::Rmg(session) => session.verify(cancel),
             Self::Simple64(session) => session.verify(cancel),
             Self::Nestopia(session) => session.verify(cancel),
@@ -138,6 +171,17 @@ impl PreparedJsonNativeLaunch {
             Self::Hypseus(session) => session.check_health(),
             Self::Jgenesis(session) => session.check_health(),
             Self::Gopher64(session) => session.check_health(),
+            Self::Gear(session) => session.check_health(),
+            Self::Xroar(session) => session.check_health(),
+            Self::Zesarux(session) => session.check_health(),
+            Self::Oricutron(session) => session.check_health(),
+            Self::AtariPlusPlus(session) => session.check_health(),
+            Self::Aranym(session) => session.check_health(),
+            Self::Atari800(session) => session.check_health(),
+            Self::NanoBoyAdvance(session) => session.check_health(),
+            Self::VbaM(session) => session.check_health(),
+            Self::YabaSanshiro(session) => session.check_health(),
+            Self::Kronos(session) => session.check_health(),
             Self::Rmg(session) => session.check_health(),
             Self::Simple64(session) => session.check_health(),
             Self::Nestopia(session) => session.check_health(),
@@ -7647,6 +7691,394 @@ pub fn prepare_with_cancellation(
                 stella: None,
                 description: "Gopher64: calibrated N64 controls through a copied config.json under private XDG_CONFIG_HOME with measured SDL3 routing; native save/state data root preserved; partial Linux support; portable mode, VRU and Transfer Pak authoring not covered"
                     .into(),
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && matches!(
+            option.emulator_name.to_ascii_lowercase().as_str(),
+            "gearsystem" | "gearcoleco"
+        )
+    {
+        let core = option.emulator_name.to_ascii_lowercase();
+        let matches: Vec<_> = mapping
+            .gear_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.adapter.core() == core
+                    && setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Gear native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_gear_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Gear(native)),
+                description: format!(
+                    "{}: calibrated SDL3 controls through a private config.ini with exact first-gamepad ordering; native save/state destinations preserved; partial Linux support; runtime unverified",
+                    option.emulator_name
+                ),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("xroar")
+    {
+        let matches: Vec<_> = mapping
+            .xroar_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous XRoar native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_xroar_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Xroar(native)),
+                description: "XRoar: calibrated analog joystick controls through a private first-option configuration with exact SDL3 joystick ordering; native media and snapshot paths preserved; partial Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("zesarux")
+    {
+        let matches: Vec<_> = mapping
+            .zesarux_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous ZEsarUX native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_zesarux_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Zesarux(native)),
+                description: "ZEsarUX: calibrated native-Linux Kempston controls through a copied first-option configuration and launch-owned joydev symlink; firmware/media/state paths preserved; partial Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("oricutron")
+    {
+        let matches: Vec<_> = mapping
+            .oricutron_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Oricutron native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_oricutron_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Oricutron(native)),
+                description: "Oricutron: calibrated fixed SDL2 joystick controls through an exact sibling-config overlay with slot/instance guards; firmware, media, save and snapshot paths preserved; partial Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Atari++")
+    {
+        let matches: Vec<_> = mapping
+            .atari_plus_plus_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Atari++ native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_atari_plus_plus_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::AtariPlusPlus(native)),
+                description: "Atari++: calibrated four-port AnalogJoystick controls through an exact config overlay and launch-owned joydev nodes; firmware, mounted-media saves and user-selected snapshots preserved; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("ARAnyM")
+    {
+        let matches: Vec<_> = mapping
+            .aranym_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous ARAnyM native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_aranym_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Aranym(native)),
+                description: "ARAnyM: calibrated one/two-player IKBD controls through an exact config-path overlay with SDL2 slot/instance guards; TOS, disks, GEMDOS guest saves, NVRAM and snapshots preserved; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Atari800")
+    {
+        let matches: Vec<_> = mapping
+            .atari800_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|argument| argument == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Atari800 native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_atari800_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Atari800(native)),
+                description: "Atari800: calibrated four-port digital joysticks through an exact config-path overlay with SDL2 name, duplicate-slot and raw-control guards; mounted-media saves, firmware and state destinations preserved; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("NanoBoyAdvance")
+    {
+        let matches: Vec<_> = mapping
+            .nanoboyadvance_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.len() == 1
+                    && plan.arguments[0] == setup.content.as_os_str()
+            })
+            .collect();
+        ensure!(
+            matches.len() <= 1,
+            "Ambiguous NanoBoyAdvance native saved setup"
+        );
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_nanoboyadvance_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::NanoBoyAdvance(native)),
+                description: "NanoBoyAdvance: calibrated single-player raw SDL3 joystick through an exact config-path overlay with unique-GUID, BIOS, persistence, topology and control-numbering guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("VBA-M")
+    {
+        let matches: Vec<_> = mapping
+            .vba_m_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .filter(|argument| *argument == setup.content.as_os_str())
+                        .count()
+                        == 1
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous VBA-M native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_vba_m_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::VbaM(native)),
+                description: "VBA-M: calibrated single-player raw SDL2/SDL3 GBA controller through an explicit private Qt/wx config with persistence, optional BIOS, topology, runtime and control-numbering guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Yaba Sanshiro 2")
+    {
+        let matches: Vec<_> = mapping
+            .yaba_sanshiro_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(
+            matches.len() <= 1,
+            "Ambiguous Yaba Sanshiro 2 native saved setup"
+        );
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_yaba_sanshiro_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::YabaSanshiro(native)),
+                description: "Yaba Sanshiro 2: calibrated Saturn digital controls through a private Qt configuration home with measured SDL2 routing; native backup RAM/state paths preserved; partial Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Kronos")
+    {
+        let matches: Vec<_> = mapping
+            .kronos_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan
+                        .arguments
+                        .iter()
+                        .any(|arg| arg == setup.content.as_os_str())
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Kronos native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_kronos_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Kronos(native)),
+                description: "Kronos: one to four calibrated Saturn digital pads through source-derived raw SDL2 codes and an exact private kronos.ini overlay; native backup RAM/cartridge/state paths preserved; partial Linux support; runtime unverified".into(),
+                ..Default::default()
             }));
         }
     }

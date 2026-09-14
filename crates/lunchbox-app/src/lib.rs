@@ -63,6 +63,7 @@ mod controller_fs_uae_native;
 mod controller_fuse_standalone;
 mod controller_gambatte_standalone;
 mod controller_gbe_plus_standalone;
+mod controller_gear_native;
 mod controller_gearcoleco_standalone;
 mod controller_gearsystem_standalone;
 mod controller_gopher64_native;

@@ -385,12 +385,15 @@ IDs; macOS consumes Homebrew's structured outdated inventory. A failed source
 check is reported as a warning and never converted into a false update.
 
 Firmware is resolved for the selected runtime and core, rather than from one
-global folder per platform. The canonical catalog carries 124 reviewed rules
-and 19 exact sources recovered from the legacy Lunchbox design, including
+global folder per platform. The canonical catalog carries 221 reviewed rules
+and 23 exact sources recovered from the legacy Lunchbox design, including
 required and optional packages, HLE fallbacks, launch-scoped MAME files, and
 manual-only dumps. The game-details card can download exact Minerva packages,
 official HTTPS files, and reviewed GitHub source archives; it can also import an
-exact local package. Imports are traversal-safe and bounded, retain archive and
+exact local package. The pinned Minerva Retroarch-System source now backs 125
+runtime/platform rules with 55 distinct exact package members, so these packs
+use the ordinary reviewed Minerva acquisition path instead of a machine-local
+BIOS-folder assumption. Imports are traversal-safe and bounded, retain archive and
 per-file SHA-256 provenance in the local state database, and activate through a
 staged package store. Sync and repair verify the complete manifest before
 copying to native RetroArch, DuckStation, PCSX2, Dolphin, Flycast, openMSX,
