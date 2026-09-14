@@ -281,6 +281,16 @@ ColumnLayout {
         }
     }
     Button {
+        text: "86Box PC gameport setups…"
+        onClicked: {
+            duckstationSetups.adapter = "86box-native"
+            duckstationEditor.text = setup.settingsModel.eighty_six_box_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch overlays the exact machine 86box.cfg and rechecks SDL2 raw controls and enumeration; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
         text: "RMG N64 setups…"
         onClicked: {
             duckstationSetups.adapter = "rmg-native"
@@ -443,6 +453,7 @@ ColumnLayout {
         readonly property bool atari800Native: adapter === "atari800-native"
         readonly property bool nanoboyadvanceNative: adapter === "nanoboyadvance-native"
         readonly property bool vbaMNative: adapter === "vba-m-native"
+        readonly property bool eightySixBoxNative: adapter === "86box-native"
         readonly property bool b2Native: adapter === "b2-native"
         readonly property bool hypseusNative: adapter === "hypseus-native"
         readonly property bool rmgNative: adapter === "rmg-native"
@@ -454,7 +465,7 @@ ColumnLayout {
         readonly property bool rpcs3: adapter === "rpcs3"
         readonly property bool pcsx2: adapter === "pcsx2"
         readonly property var catalog: JSON.parse(setup.settingsModel.controller_catalog_json())
-        title: punes ? "puNES Flatpak setups — exact Linux deployment" : nestopia ? "Nestopia UE Flatpak setups — exact Linux deployment" : melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : gearNative ? "Gearsystem / Gearcoleco setups — partial native Linux" : xroarNative ? "XRoar setups — partial native Linux" : zesaruxNative ? "ZEsarUX Kempston setups — partial native Linux" : oricutronNative ? "Oricutron joystick setups — partial native Linux" : yabaSanshiroNative ? "Yaba Sanshiro 2 Saturn setups — partial native Linux" : kronosNative ? "Kronos Saturn setups — partial native Linux" : atariPlusPlusNative ? "Atari++ AnalogJoystick setups — partial native Linux" : aranymNative ? "ARAnyM IKBD joystick setups — partial native Linux" : atari800Native ? "Atari800 digital joystick setups — partial native Linux" : nanoboyadvanceNative ? "NanoBoyAdvance GBA controller setups — partial native Linux" : vbaMNative ? "VBA-M GBA controller setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
+        title: punes ? "puNES Flatpak setups — exact Linux deployment" : nestopia ? "Nestopia UE Flatpak setups — exact Linux deployment" : melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : gearNative ? "Gearsystem / Gearcoleco setups — partial native Linux" : xroarNative ? "XRoar setups — partial native Linux" : zesaruxNative ? "ZEsarUX Kempston setups — partial native Linux" : oricutronNative ? "Oricutron joystick setups — partial native Linux" : yabaSanshiroNative ? "Yaba Sanshiro 2 Saturn setups — partial native Linux" : kronosNative ? "Kronos Saturn setups — partial native Linux" : atariPlusPlusNative ? "Atari++ AnalogJoystick setups — partial native Linux" : aranymNative ? "ARAnyM IKBD joystick setups — partial native Linux" : atari800Native ? "Atari800 digital joystick setups — partial native Linux" : nanoboyadvanceNative ? "NanoBoyAdvance GBA controller setups — partial native Linux" : vbaMNative ? "VBA-M GBA controller setups — partial native Linux" : eightySixBoxNative ? "86Box PC gameport setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
         width: Math.min(900, setup.width)
         height: 640
         modal: true
@@ -503,6 +514,8 @@ ColumnLayout {
                     ? "NanoBoyAdvance: edit a JSON list with emulator_id, content, config_path (the existing config.toml), probe_program, sdl_library, bubblewrap_program, executable_sha256, and exactly one player. Launch maps all ten GBA controls to raw SDL3 joystick buttons, axis halves, or cardinal hats; overlays only a private copied config; preserves keyboard, cartridge, BIOS, save and state settings; verifies the configured 16 KiB BIOS and save directory; and rejects a selected GUID shared by another attached controller. Other hosts and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.vbaMNative
                     ? "VBA-M: edit a JSON list with emulator_id, content (an uncompressed .gba file), config_path (vbam-qt.ini or vbam.ini), frontend (qt or wx), sdl_api (sdl2 or sdl3), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes an explicit private --config, disables SDL GameController translation, maps the ten ordinary GBA controls through exact raw joystick numbering, and guards the configured battery/state directories plus any enabled 16 KiB GBA BIOS. BatteryDir and StateDir must be empty (ROM directory) or absolute; relative roots are rejected because the two frontends resolve them differently. e-Reader card scanning, other systems/hosts/packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.eightySixBoxNative
+                    ? "86Box: edit a JSON list with emulator_id, content (the absolute selected machine 86box.cfg), sdl_api (sdl2), probe_program, sdl_library, bubblewrap_program, executable_sha256, and one or two contiguous players. Launch overlays a private config at the same path, forces the source-defined 2axis_2button topology, and rechecks exact raw SDL2 device order. Directions must use opposite raw axis halves or cardinal hats; A/B map to distinct raw buttons. Other gameport types, SDL3 builds, Flatpak, guest behavior, other hosts, and runtime input remain unverified; review opens no devices."
                     : duckstationSetups.b2Native
                     ? "b2: edit a JSON list with emulator_id, content (absolute launched disk/content path), config_path (the existing absolute b2.json), probe_program, sdl_library (the SDL2 library the b2 build links), executable_sha256, swap_joysticks_when_shared, and slots. Each slot has slot 0 (analogue 0), 1 (analogue 1), or 2 (digital) plus controller_id. One controller may intentionally occupy both analogue slots; two distinct attached controllers with the same SDL name are rejected. Launch writes only a private XDG_CONFIG_HOME/b2/b2.json. Runtime testing remains deferred; review opens no devices."
                     : duckstationSetups.hypseusNative
@@ -619,6 +632,8 @@ ColumnLayout {
                             ? setup.settingsModel.review_nanoboyadvance_native_setups(duckstationEditor.text)
                             : duckstationSetups.vbaMNative
                             ? setup.settingsModel.review_vba_m_native_setups(duckstationEditor.text)
+                            : duckstationSetups.eightySixBoxNative
+                            ? setup.settingsModel.review_eighty_six_box_native_setups(duckstationEditor.text)
                             : duckstationSetups.b2Native
                             ? setup.settingsModel.review_b2_native_setups(duckstationEditor.text)
                             : duckstationSetups.hypseusNative
@@ -711,6 +726,8 @@ ColumnLayout {
                             ? setup.settingsModel.stage_nanoboyadvance_native_setups(duckstationEditor.text)
                             : duckstationSetups.vbaMNative
                             ? setup.settingsModel.stage_vba_m_native_setups(duckstationEditor.text)
+                            : duckstationSetups.eightySixBoxNative
+                            ? setup.settingsModel.stage_eighty_six_box_native_setups(duckstationEditor.text)
                             : duckstationSetups.b2Native
                             ? setup.settingsModel.stage_b2_native_setups(duckstationEditor.text)
                             : duckstationSetups.hypseusNative
@@ -792,6 +809,8 @@ ColumnLayout {
                             ? "Staged. Save settings in the main page. NanoBoyAdvance native dispatch overlays only a copied config and rechecks the unique SDL3 GUID, raw controls, configured BIOS, and save/state directory; no devices were opened."
                             : duckstationSetups.vbaMNative
                             ? "Staged. Save settings in the main page. VBA-M native dispatch passes an explicit private Qt/wx config and rechecks raw SDL routing, configured persistence roots, and any active GBA BIOS; no devices were opened."
+                            : duckstationSetups.eightySixBoxNative
+                            ? "Staged. Save settings in the main page. 86Box native dispatch overlays the machine config and rechecks raw SDL2 device order and controls while leaving guest disks and ROM paths native; no devices were opened."
                             : duckstationSetups.b2Native
                             ? "Staged. Save settings in the main page. b2 native dispatch writes a private b2.json while leaving disk images in place; no devices were opened."
                             : duckstationSetups.hypseusNative

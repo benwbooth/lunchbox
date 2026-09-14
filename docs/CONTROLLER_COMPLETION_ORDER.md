@@ -4,8 +4,8 @@ Latest source checkpoint: [guided integration](CONTROLLER_GUIDED_INTEGRATION.md)
 The cross-platform controller/firmware/save matrix is the
 [emulator platform integration checklist](EMULATOR_PLATFORM_INTEGRATION_CHECKLIST.md).
 It supersedes historical counts below: 94/94 RetroArch core contracts and
-44/250 partial standalone dispatches, or 138/344 catalog source entries (40.1%),
-not overall completion. All 44 catalog-native adapters consume guided choices,
+45/250 partial standalone dispatches, or 139/344 catalog source entries (40.4%),
+not overall completion. All 45 catalog-native adapters consume guided choices,
 with runtime setup/backend restrictions. simple64 has the same source-backed
 guided path but is record-only until it gains a canonical catalog identity.
 Focused source tests do not establish runtime compatibility.

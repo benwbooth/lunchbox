@@ -50,6 +50,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "Atari800",
     "NanoBoyAdvance",
     "VBA-M",
+    "86Box",
     "RMG",
     "b2",
     "Hypseus Singe",
@@ -348,6 +349,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let atari800 = name.eq_ignore_ascii_case("Atari800");
             let nanoboyadvance = name.eq_ignore_ascii_case("NanoBoyAdvance");
             let vba_m = name.eq_ignore_ascii_case("VBA-M");
+            let eighty_six_box = name.eq_ignore_ascii_case("86Box");
             rows.push(json!({"name":name,"platform":platform,"kind":"Standalone / non-core catalog entry",
                 "status":if native_adapter { "partial" } else { "missing" },"profiles":[],"choices":[],"selected":null,
                 "detail":if gear {
@@ -368,6 +370,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux NanoBoyAdvance dispatch is connected through an exact selected-config overlay. The selected raw SDL3 joystick GUID must remain unique; the 16 KiB configured BIOS, save/state directory, executable, config, probe, and classic control numbering are rechecked. Other hosts and runtime behavior remain unverified."
                 } else if vba_m {
                     "Native Linux VBA-M Qt/wx dispatch is connected through an explicit private configuration. It disables logical GameController translation, rechecks exact SDL2/SDL3 joystick order and raw controls, and guards the configured battery/state roots plus any active 16 KiB GBA BIOS. Other systems, hosts, packages, and runtime behavior remain unverified."
+                } else if eighty_six_box {
+                    "Native Linux 86Box dispatch is connected for an exact machine 86box.cfg and the source-defined two-axis/two-button gameport topology. The config is overlaid at its original path while SDL2 order and raw controls are rechecked; guest disk saves and ROM paths stay native. Other joystick types, SDL3 builds, Flatpak, other hosts, guest behavior, and runtime input remain unverified."
                 } else if hypseus {
                     "Native Linux Hypseus Singe dispatch is connected for explicit laserdisc framefile setups: exact SDL3 Gamepad order, source-defined keymap columns, a private configuration home, and a separate writable NVRAM directory. Other content modes, other hosts, and runtime input/save behavior remain unverified."
                 } else if ares {

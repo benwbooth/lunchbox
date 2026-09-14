@@ -196,6 +196,28 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     );
     vba_m.notes = "VBA-M native Qt/wx SDL joystick input. The private configuration disables GameController translation and maps all ten ordinary GBA controls through exact raw SDL2 or SDL3 joystick numbering.".into();
     db.layouts.push(vba_m);
+    let mut eighty_six_box = db
+        .layout("atari7800")
+        .context("Missing two-button joystick reference layout")?
+        .clone();
+    eighty_six_box.id = "86box-2axis-2button".into();
+    eighty_six_box.name = "PC gameport — 2-axis, 2-button joystick".into();
+    eighty_six_box.family = "two-button".into();
+    eighty_six_box.source = format!(
+        "https://github.com/86Box/86Box/tree/{}",
+        crate::controller_86box_native::SOURCE_COMMIT
+    );
+    eighty_six_box.notes = "86Box native SDL2 gameport input. The selected machine config is overlaid at its original path and forced to the source-defined 2axis_2button topology; directions require two raw SDL axes or cardinal hats and buttons remain raw.".into();
+    eighty_six_box.controls.retain(|control| {
+        matches!(
+            control.id.as_str(),
+            "up" | "down" | "left" | "right" | "a" | "b"
+        )
+    });
+    for control in &mut eighty_six_box.controls {
+        control.optional = false;
+    }
+    db.layouts.push(eighty_six_box);
     let mut joystick = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -504,6 +526,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["Nintendo e-Reader", "Nintendo - e-Reader"],
             "https://github.com/visualboyadvance-m/visualboyadvance-m/tree/fd13034143c128c8b68133a7a18bc785178ec4e4",
         ),
+        (
+            "86box",
+            "86box-2axis-2button",
+            2,
+            vec!["MS-DOS", "Windows", "Windows 3.X"],
+            "https://github.com/86Box/86Box/tree/189d9d003ad9670853cec6edac8db7d6ff63550f",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -772,6 +801,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("vba-m", "vba-m-gba-controller") {
         return Some(
             crate::controller_vba_m_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("86box", "86box-2axis-2button") {
+        return Some(
+            crate::controller_86box_native::CONTROLS
                 .iter()
                 .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
                 .collect(),

@@ -14,6 +14,23 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 610: connected the pinned 86Box SDL2 gameport grammar to a one/two-player
+native Linux guided/setup/launch path. The selected content is the machine's
+exact canonical `86box.cfg`; launch overlays a private writable copy at that
+same path and supplies `-C`, preserving relative ROM/disk references and every
+unowned setting. The adapter forces only upstream's `2axis_2button` topology,
+maps opposite centered raw axes or cardinal hats plus two distinct raw buttons,
+and rejects values outside the fixed 8-device/4-slot/16-axis/32-button/4-POV
+arrays. Preparation and pre-spawn verification hash the executable, real and
+private configs, helper, exact SDL2 library, and Bubblewrap binary, while
+rechecking kernel topology, enumeration, raw counts, and classic/evdev control
+numbering. Other gameport types, SDL3, Flatpak, other hosts, emulator startup,
+guest input, firmware, disk writes, saves, and states remain unverified. Five
+focused writer/translation tests and all 15 catalog tests passed, including a
+full QML/C++ build; no 86Box executable, device, firmware, disk, guest, save, or
+state was exercised. The inventory is now 45/250 standalone dispatches and
+139/344 catalog source entries (40.4%), not runtime completion.
+
 Step 609: connected the pinned VBA-M Qt/wx raw-joystick grammar to a
 single-player native Linux guided/setup/launch path for uncompressed GBA content
 on the database-linked Nintendo e-Reader entry. The adapter copies the selected

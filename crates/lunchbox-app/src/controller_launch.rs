@@ -103,6 +103,7 @@ enum PreparedJsonNativeLaunch {
     Atari800(crate::controller_atari800_native::native_command::NativeSession),
     NanoBoyAdvance(crate::controller_nanoboyadvance_native::native_command::NativeSession),
     VbaM(crate::controller_vba_m_native::native_command::NativeSession),
+    EightySixBox(crate::controller_86box_native::native_command::NativeSession),
     YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
     Kronos(crate::controller_kronos_native::native_command::NativeSession),
     Rmg(crate::controller_rmg_native::native_command::NativeSession),
@@ -132,6 +133,7 @@ impl PreparedJsonNativeLaunch {
             Self::Atari800(session) => session.spawn(plan, cancel),
             Self::NanoBoyAdvance(session) => session.spawn(plan, cancel),
             Self::VbaM(session) => session.spawn(plan, cancel),
+            Self::EightySixBox(session) => session.spawn(plan, cancel),
             Self::YabaSanshiro(session) => session.spawn(plan, cancel),
             Self::Kronos(session) => session.spawn(plan, cancel),
             Self::Rmg(session) => session.spawn(plan, cancel),
@@ -156,6 +158,7 @@ impl PreparedJsonNativeLaunch {
             Self::Atari800(session) => session.verify(cancel),
             Self::NanoBoyAdvance(session) => session.verify(cancel),
             Self::VbaM(session) => session.verify(cancel),
+            Self::EightySixBox(session) => session.verify(cancel),
             Self::YabaSanshiro(session) => session.verify(cancel),
             Self::Kronos(session) => session.verify(cancel),
             Self::Rmg(session) => session.verify(cancel),
@@ -180,6 +183,7 @@ impl PreparedJsonNativeLaunch {
             Self::Atari800(session) => session.check_health(),
             Self::NanoBoyAdvance(session) => session.check_health(),
             Self::VbaM(session) => session.check_health(),
+            Self::EightySixBox(session) => session.check_health(),
             Self::YabaSanshiro(session) => session.check_health(),
             Self::Kronos(session) => session.check_health(),
             Self::Rmg(session) => session.check_health(),
@@ -8007,6 +8011,37 @@ pub fn prepare_with_cancellation(
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::VbaM(native)),
                 description: "VBA-M: calibrated single-player raw SDL2/SDL3 GBA controller through an explicit private Qt/wx config with persistence, optional BIOS, topology, runtime and control-numbering guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("86Box")
+    {
+        let matches: Vec<_> = mapping
+            .eighty_six_box_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous 86Box native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_86box_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::EightySixBox(native)),
+                description: "86Box: calibrated one/two-player 2-axis, 2-button PC gameport joysticks through an exact machine-config overlay with SDL2 topology and raw-control guards; guest disks and ROM paths preserved; partial native Linux support; runtime unverified".into(),
                 ..Default::default()
             }));
         }

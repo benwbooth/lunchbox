@@ -263,6 +263,21 @@ pub(super) fn reuse(
                 mapping.vba_m_native_launches.push(setup);
             }
         }
+        "86box"
+            if !mapping
+                .eighty_six_box_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) = template(
+                &mapping.eighty_six_box_native_launches,
+                emulator,
+                &["players"],
+            )? {
+                setup.content = content(plan, &[])?;
+                mapping.eighty_six_box_native_launches.push(setup);
+            }
+        }
         "rmg"
             if !mapping
                 .rmg_native_launches

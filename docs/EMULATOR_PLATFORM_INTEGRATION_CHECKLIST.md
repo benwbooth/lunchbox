@@ -1,6 +1,6 @@
 # Emulator platform integration checklist
 
-Source-capture and integration review: 2026-09-12. Runtime results are recorded
+Source-capture and integration review: 2026-09-13. Runtime results are recorded
 only in `emulator_details/runtime-test-results.json`; source checks, compilation,
 and matrix generation are not runtime evidence.
 
@@ -39,23 +39,24 @@ is documented in [EMULATOR_FEATURE_MATRIX.md](EMULATOR_FEATURE_MATRIX.md).
 
 | Track | Current | Denominator | Percent | Meaning / remaining work |
 |---|---:|---:|---:|---|
-| Native controller source adapters | 32 | 249 standalone candidates | 12.9% | 217 catalog candidates still lack a registered partial adapter |
+| Native controller source adapters | 45 | 250 standalone candidates | 18.0% | 205 catalog candidates still lack a registered partial adapter |
 | RetroArch core source contracts | 94 | 94 core names | 100.0% | Source contracts are complete; runtime verification remains |
-| Combined controller source entries | 126 | 343 runtimes | 36.7% | 32 native adapters plus 94 core contracts; record-only simple64 is tracked separately |
-| Standalone platform records | 250 | 250 tracked runtimes | 100.0% | 249 catalog identities plus `simple64` as `record_only` |
-| Record/host cells dispositioned | 1,000 | 1,000 | 100.0% | 576 host records plus 424 explicit gaps |
-| Fully captured host cells | 419 | 1,000 | 41.9% | Every required dimension has a non-unresolved disposition |
-| Partially captured host cells | 157 | 1,000 | 15.7% | At least one feature dimension remains explicitly unresolved |
-| Host gaps | 424 | 1,000 | 42.4% | 223 no-package, 122 unsupported, and 79 unresolved |
-| Records with host records on all four hosts | 54 | 250 | 21.6% | Includes fully and partially captured cells; other records carry at least one gap |
-| Linux host records | 172 | 250 records | 68.8% | Includes full and partial source capture; runtime verification remains |
-| Flatpak host records | 57 | 250 records | 22.8% | Flatpak requires package-specific evidence |
-| macOS host records | 144 | 250 records | 57.6% | Includes full and partial source capture |
-| Windows host records | 203 | 250 records | 81.2% | Includes full and partial source capture |
+| Combined controller source entries | 139 | 344 catalog runtimes | 40.4% | 45 native adapters plus 94 core contracts; record-only simple64 is tracked separately |
+| Standalone platform records | 250 | 251 tracked runtimes | 99.6% | 250 catalog identities plus record-only `simple64`; the newly cataloged AltirraQt identity still needs its own record |
+| Record/host cells dispositioned | 1,000 | 1,004 | 99.6% | 576 host records plus 424 explicit gaps; AltirraQt's four cells are not yet captured |
+| Fully captured host cells | 419 | 1,004 | 41.7% | Every required dimension has a non-unresolved disposition |
+| Partially captured host cells | 157 | 1,004 | 15.6% | At least one feature dimension remains explicitly unresolved |
+| Host gaps | 424 | 1,004 | 42.2% | 223 no-package, 122 unsupported, and 79 unresolved; excludes four uncaptured AltirraQt cells |
+| Uncaptured host cells | 4 | 1,004 | 0.4% | AltirraQt needs an independent four-host record; the Altirra record explicitly does not cover it |
+| Records with host records on all four hosts | 54 | 251 | 21.5% | Includes fully and partially captured cells; other records carry a gap or have no record |
+| Linux host records | 172 | 251 runtimes | 68.5% | Includes full and partial source capture; runtime verification remains |
+| Flatpak host records | 57 | 251 runtimes | 22.7% | Flatpak requires package-specific evidence |
+| macOS host records | 144 | 251 runtimes | 57.4% | Includes full and partial source capture |
+| Windows host records | 203 | 251 runtimes | 80.9% | Includes full and partial source capture |
 | Structured core firmware files | 399 | 399 dispositions | 100.0% | 181 have published digests; 218 explicitly have no published digest |
 | Structured core save dispositions | 94 | 94 cores | 100.0% | 52 supported, 19 content-dependent, 15 unsupported, 8 unknown |
 | Structured core state dispositions | 94 | 94 cores | 100.0% | 74 supported, 9 unsupported, 11 unknown |
-| Live end-to-end save synchronization | 0 | 343 catalog runtimes | 0.0% | The provider-neutral engine, transport, versioning, conflict UI, and atomic local restore are implemented; real-provider plus emulator save/load evidence remains per runtime and host |
+| Live end-to-end save synchronization | 1 | 344 catalog runtimes | 0.3% | Exact Nestopia UE Linux Flatpak save/state transfer passed through the local-folder provider; network-cloud providers and every other runtime/host remain unverified |
 
 ## Integration findings that remain distinct from completion
 
@@ -71,9 +72,9 @@ is documented in [EMULATOR_FEATURE_MATRIX.md](EMULATOR_FEATURE_MATRIX.md).
    `%APPDATA%/Dolphin Emulator`, and macOS openMSX firmware to
    `~/.openMSX/share/systemroms`. These are source-derived changes and still
    need runtime verification.
-4. The generated CSV has one row per 249 catalog standalone candidates, 94
+4. The generated CSV has one row per 250 catalog standalone candidates, 94
    canonical non-BizHawk-only RetroArch core names, and the source-captured
-   `simple64` runtime absent from the database, on all four hosts: 1,376 rows.
+   `simple64` runtime absent from the database, on all four hosts: 1,380 rows.
    It preserves manual test statuses across regeneration by exact runtime ID
    and host.
 5. The save consumer now hashes and versions the exact captured emulator/runtime
@@ -95,5 +96,5 @@ is documented in [EMULATOR_FEATURE_MATRIX.md](EMULATOR_FEATURE_MATRIX.md).
    digests where the pinned core-info source provides them. Neither proves that
    an emulator accepted an asset.
 7. Controller coverage counts source routing only. Exact runtime results for the
-   32 catalog-native adapters and 94 core contracts are kept separately in the
+   45 catalog-native adapters and 94 core contracts are kept separately in the
    runtime-test ledger; an unlisted runtime/host remains unverified.
