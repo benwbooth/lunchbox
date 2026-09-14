@@ -321,6 +321,16 @@ ColumnLayout {
         }
     }
     Button {
+        text: "Amiberry Amiga setups…"
+        onClicked: {
+            duckstationSetups.adapter = "amiberry-native"
+            duckstationEditor.text = setup.settingsModel.amiberry_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch writes a private gamecontrollerdb plus joyport fragment, rechecks the exact SDL3 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
         text: "Fuse Spectrum setups…"
         onClicked: {
             duckstationSetups.adapter = "fuse-native"
@@ -541,6 +551,7 @@ ColumnLayout {
         readonly property bool skyemuNative: adapter === "skyemu-native"
         readonly property bool linappleNative: adapter === "linapple-native"
         readonly property bool fuseNative: adapter === "fuse-native"
+        readonly property bool amiberryNative: adapter === "amiberry-native"
         readonly property bool caprice32Native: adapter === "caprice32-native"
         readonly property bool b2Native: adapter === "b2-native"
         readonly property bool hypseusNative: adapter === "hypseus-native"
@@ -606,6 +617,8 @@ ColumnLayout {
                     ? "86Box: edit a JSON list with emulator_id, content (the absolute selected machine 86box.cfg), sdl_api (sdl2), probe_program, sdl_library, bubblewrap_program, executable_sha256, and one or two contiguous players. Launch overlays a private config at the same path, forces the source-defined 2axis_2button topology, and rechecks exact raw SDL2 device order. Directions must use opposite raw axis halves or cardinal hats; A/B map to distinct raw buttons. Other gameport types, SDL3 builds, Flatpak, guest behavior, other hosts, and runtime input remain unverified; review opens no devices."
                     : duckstationSetups.caprice32Native
                     ? "Caprice32: edit a JSON list with emulator_id, content (absolute disk/ROM path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch passes -c with a private cap32.cfg ahead of the content path; the pads must hold SDL instances 0/1 and start/select supply the two one-based menu buttons. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.amiberryNative
+                    ? "Amiberry: edit a JSON list with emulator_id, content (absolute disk/WHDLoad path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch passes -f with a private joyport fragment plus controllers_path override ahead of the content path; directions use the fixed gamepad dpad and fire maps to raw buttons. Gamepad-only inventories are required. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.fuseNative
                     ? "Fuse: edit a JSON list with emulator_id, content (absolute tape/snapshot path), probe_program, sdl_library, executable_sha256, and one or two players each with a joystick_type. Launch keeps the default positional content argument and maps fire to its own raw button index on fixed SDL slots 0/1. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.linappleNative
@@ -740,6 +753,8 @@ ColumnLayout {
                             ? setup.settingsModel.review_eighty_six_box_native_setups(duckstationEditor.text)
                             : duckstationSetups.caprice32Native
                             ? setup.settingsModel.review_caprice32_native_setups(duckstationEditor.text)
+                            : duckstationSetups.amiberryNative
+                            ? setup.settingsModel.review_amiberry_native_setups(duckstationEditor.text)
                             : duckstationSetups.fuseNative
                             ? setup.settingsModel.review_fuse_native_setups(duckstationEditor.text)
                             : duckstationSetups.linappleNative
@@ -850,6 +865,8 @@ ColumnLayout {
                             ? setup.settingsModel.stage_eighty_six_box_native_setups(duckstationEditor.text)
                             : duckstationSetups.caprice32Native
                             ? setup.settingsModel.stage_caprice32_native_setups(duckstationEditor.text)
+                            : duckstationSetups.amiberryNative
+                            ? setup.settingsModel.stage_amiberry_native_setups(duckstationEditor.text)
                             : duckstationSetups.fuseNative
                             ? setup.settingsModel.stage_fuse_native_setups(duckstationEditor.text)
                             : duckstationSetups.linappleNative
@@ -949,6 +966,8 @@ ColumnLayout {
                             ? "Staged. Save settings in the main page. 86Box native dispatch overlays the machine config and rechecks raw SDL2 device order and controls while leaving guest disks and ROM paths native; no devices were opened."
                             : duckstationSetups.caprice32Native
                             ? "Staged. Save settings in the main page. Caprice32 native dispatch patches a private cap32.cfg and rechecks exact SDL instance order at launch; no devices were opened."
+                            : duckstationSetups.amiberryNative
+                            ? "Staged. Save settings in the main page. Amiberry native dispatch writes a private gamecontrollerdb plus joyport fragment and rechecks exact SDL3 routes at launch; no devices were opened."
                             : duckstationSetups.fuseNative
                             ? "Staged. Save settings in the main page. Fuse native dispatch patches a private fuserc and rechecks exact SDL slot order at launch; no devices were opened."
                             : duckstationSetups.linappleNative

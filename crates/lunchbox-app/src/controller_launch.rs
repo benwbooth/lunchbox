@@ -111,6 +111,7 @@ enum PreparedJsonNativeLaunch {
     SkyEmu(crate::controller_skyemu_native::native_command::NativeSession),
     LinApple(crate::controller_linapple_native::native_command::NativeSession),
     Fuse(crate::controller_fuse_standalone::native_command::NativeSession),
+    Amiberry(crate::controller_amiberry_native::native_command::NativeSession),
     Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
     YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
     Kronos(crate::controller_kronos_native::native_command::NativeSession),
@@ -149,6 +150,7 @@ impl PreparedJsonNativeLaunch {
             Self::SkyEmu(session) => session.spawn(plan, cancel),
             Self::LinApple(session) => session.spawn(plan, cancel),
             Self::Fuse(session) => session.spawn(plan, cancel),
+            Self::Amiberry(session) => session.spawn(plan, cancel),
             Self::Caprice32(session) => session.spawn(plan, cancel),
             Self::YabaSanshiro(session) => session.spawn(plan, cancel),
             Self::Kronos(session) => session.spawn(plan, cancel),
@@ -182,6 +184,7 @@ impl PreparedJsonNativeLaunch {
             Self::SkyEmu(session) => session.verify(cancel),
             Self::LinApple(session) => session.verify(cancel),
             Self::Fuse(session) => session.verify(cancel),
+            Self::Amiberry(session) => session.verify(cancel),
             Self::Caprice32(session) => session.verify(cancel),
             Self::YabaSanshiro(session) => session.verify(cancel),
             Self::Kronos(session) => session.verify(cancel),
@@ -215,6 +218,7 @@ impl PreparedJsonNativeLaunch {
             Self::SkyEmu(session) => session.check_health(),
             Self::LinApple(session) => session.check_health(),
             Self::Fuse(session) => session.check_health(),
+            Self::Amiberry(session) => session.check_health(),
             Self::Caprice32(session) => session.check_health(),
             Self::YabaSanshiro(session) => session.check_health(),
             Self::Kronos(session) => session.check_health(),
@@ -8112,6 +8116,37 @@ pub fn prepare_with_cancellation(
 
     #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Amiberry")
+    {
+        let matches: Vec<_> = mapping
+            .amiberry_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Amiberry native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_amiberry_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Amiberry(native)),
+                description: "Amiberry: calibrated fixed-dpad Amiga joysticks through a private gamecontrollerdb plus joyport fragment, with exact SDL3 routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Fuse")
     {
         let matches: Vec<_> = mapping
@@ -8586,6 +8621,37 @@ pub fn prepare_with_cancellation(
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Caprice32(native)),
                 description: "Caprice32: calibrated fixed CPC joystick ports with two menu buttons through a private cap32.cfg passed with -c, with exact SDL instance order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Amiberry")
+    {
+        let matches: Vec<_> = mapping
+            .amiberry_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Amiberry native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_amiberry_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Amiberry(native)),
+                description: "Amiberry: calibrated fixed-dpad Amiga joysticks through a private gamecontrollerdb plus joyport fragment, with exact SDL3 routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
                 ..Default::default()
             }));
         }

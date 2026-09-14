@@ -14,6 +14,20 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 620: connected the pinned Amiberry SDL3 gamepad grammar to a
+one/two-player native Linux launch adapter. Source review proved the custom
+mapping path is gamecontrollerdb_user.txt (loaded from controllers_path on
+top of the bundled database) plus joyport fragments, that directions come
+from fixed gamepad dpad buttons, and that mapping.button maps gamepad indices
+to raw SDL indices. The session requires a gamepad-only inventory so joy IDs
+equal gamepad indices, maps calibrated fire to raw buttons, and proves dpad
+presence through the resolved mapping. Catalog/settings/QML/guided/launch
+dispatch are connected. Focused writer/translation tests and a full QML/C++
+check passed; no Amiberry executable, disk, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+54/250 partial standalone dispatches and 148/344 catalog source entries
+(43.0%), not runtime completion.
+
 Step 619: connected the pinned Fuse fixed-slot grammar to a
 one/two-player native Linux launch adapter. No --config flag exists, so a
 private XDG_CONFIG_HOME/fuse-emulator/fuserc fully isolates input. The
@@ -50,6 +64,20 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 620: connected the pinned Amiberry SDL3 gamepad grammar to a
+one/two-player native Linux launch adapter. Source review proved the custom
+mapping path is gamecontrollerdb_user.txt (loaded from controllers_path on
+top of the bundled database) plus joyport fragments, that directions come
+from fixed gamepad dpad buttons, and that mapping.button maps gamepad indices
+to raw SDL indices. The session requires a gamepad-only inventory so joy IDs
+equal gamepad indices, maps calibrated fire to raw buttons, and proves dpad
+presence through the resolved mapping. Catalog/settings/QML/guided/launch
+dispatch are connected. Focused writer/translation tests and a full QML/C++
+check passed; no Amiberry executable, disk, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+54/250 partial standalone dispatches and 148/344 catalog source entries
+(43.0%), not runtime completion.
 
 Step 619: connected the pinned Fuse fixed-slot grammar to a
 one/two-player native Linux launch adapter. No --config flag exists, so a

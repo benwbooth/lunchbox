@@ -136,6 +136,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "skyemu"
                 | "linapple"
                 | "fuse"
+                | "amiberry"
                 | "caprice32"
                 | "rmg"
                 | "simple64"
@@ -626,6 +627,25 @@ pub(crate) fn settings_for_launch<'a>(
                     .enumerate()
                     .map(
                         |(i, id)| crate::controller_caprice32_standalone::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "amiberry" => {
+            for setup in &mut mapping.amiberry_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_amiberry_native::settings::Player {
                             player: (i + 1) as u8,
                             controller_id: id.clone(),
                         },

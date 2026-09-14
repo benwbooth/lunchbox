@@ -83,6 +83,42 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(caprice32);
+    let mut amiberry = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    amiberry.id = "amiberry-amiga".into();
+    amiberry.name = "Commodore Amiga — Amiberry joystick".into();
+    amiberry.family = "two-button".into();
+    amiberry.source =
+        "https://github.com/BlitterStudio/amiberry/tree/06ff25093b620deef734a395189a1c564ed8beac"
+            .into();
+    amiberry.notes = "Amiberry fixed-dpad directions with raw-button fire on SDL gamepads; the gamecontrollerdb line translates physical controls.".into();
+    amiberry.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("fire", "Fire", 70.0, 50.0, "face", true),
+        ("fire2", "Fire 2", 80.0, 35.0, "face", true),
+        ("fire3", "Fire 3", 80.0, 65.0, "face", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(amiberry);
     let mut fuse = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -1014,6 +1050,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("caprice32", "caprice32-cpc") {
         return Some(
             crate::controller_caprice32_standalone::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("amiberry", "amiberry-amiga") {
+        return Some(
+            crate::controller_amiberry_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),
