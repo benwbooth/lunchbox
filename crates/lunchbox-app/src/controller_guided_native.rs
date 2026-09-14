@@ -129,6 +129,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "nanoboyadvance"
                 | "vba-m"
                 | "86box"
+                | "a7800"
                 | "rmg"
                 | "simple64"
                 | "kronos"
@@ -600,6 +601,23 @@ pub(crate) fn settings_for_launch<'a>(
                     .iter()
                     .enumerate()
                     .map(|(i, id)| crate::controller_86box_native::settings::Player {
+                        player: (i + 1) as u8,
+                        controller_id: id.clone(),
+                    })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "a7800" => {
+            for setup in &mut mapping.a7800_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| crate::controller_a7800_native::settings::Player {
                         player: (i + 1) as u8,
                         controller_id: id.clone(),
                     })

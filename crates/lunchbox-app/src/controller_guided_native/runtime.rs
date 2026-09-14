@@ -278,6 +278,19 @@ pub(super) fn reuse(
                 mapping.eighty_six_box_native_launches.push(setup);
             }
         }
+        "a7800"
+            if !mapping
+                .a7800_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.a7800_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.a7800_native_launches.push(setup);
+            }
+        }
         "rmg"
             if !mapping
                 .rmg_native_launches

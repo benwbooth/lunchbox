@@ -326,6 +326,8 @@ pub struct ControllerMappingSettings {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) eighty_six_box_native_launches:
         Vec<crate::controller_86box_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) a7800_native_launches: Vec<crate::controller_a7800_native::settings::SavedSetup>,
     #[serde(default)]
     pub(crate) rmg_native_launches: Vec<crate::controller_rmg_native::settings::SavedSetup>,
     #[serde(default)]
@@ -487,6 +489,7 @@ impl Default for ControllerMappingSettings {
             nanoboyadvance_native_launches: Vec::new(),
             vba_m_native_launches: Vec::new(),
             eighty_six_box_native_launches: Vec::new(),
+            a7800_native_launches: Vec::new(),
             rmg_native_launches: Vec::new(),
             simple64_native_launches: Vec::new(),
             yaba_sanshiro_native_launches: Vec::new(),
@@ -1493,6 +1496,7 @@ impl ControllerMappingSettings {
         crate::controller_86box_native::settings::validate_setups(
             &self.eighty_six_box_native_launches,
         )?;
+        crate::controller_a7800_native::settings::validate_setups(&self.a7800_native_launches)?;
         crate::controller_rmg_native::settings::validate_setups(&self.rmg_native_launches)?;
         crate::controller_simple64_native::settings::validate_setups(
             &self.simple64_native_launches,

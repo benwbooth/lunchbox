@@ -17,16 +17,22 @@ The source-backed writer is
   `JOYSTICK_RIGHT` come from the controller device's `IPT_JOYSTICK_*` ports.
 - `P1_`/`P2_` `BUTTON1` is available on both source joystick devices;
   `BUTTON2` is available only on `proline_joystick`.
-- Each value must already be a provider-resolved `JOYCODE_*` or `KEYCODE_*`
-  token. The module does not guess SDL indices, keyboard layouts, controller
-  types, axis orientation, or the console switches.
+- Launch capture translates measured Linux controls through the exact declared
+  SDL2 library. Raw buttons become source-numbered `BUTTON1`–`BUTTON32`, the
+  first eight absolute axes become MAME half-axis switches, and the first four
+  hats accept only cardinal directions. The configured threshold must separate
+  every measured axis rest/press pair, all controls must be released, and no
+  two controls may share a token.
 
 The target also implements paddles, lightguns, driving wheels, keypads,
 trackballs, Amiga mice and ST mice. Those devices have different source input
 ports and analog semantics; they are intentionally refused by this overlay
-until a caller supplies a separately measured contract. The existing MAME
-controller-profile machinery remains the source of truth for stable device
-identity (`<mapdevice>`), provider choice and native item resolution.
+until a caller supplies a separately measured contract. This A7800 fork
+predates the current MAME identity contract: its SDL provider uses
+`SDL_JoystickNameForIndex` after removing whitespace, not the joystick GUID.
+Lunchbox reproduces that exact transformation, requires ASCII-safe names, and
+refuses duplicates or substring-overlapping names because `<mapdevice>`
+matching is substring based.
 
 ## Configuration and roots
 
@@ -54,13 +60,23 @@ are beside the executable:
 
 The generic MAME `-inipath`, `-rompath`, `-cfg_directory`,
 `-nvram_directory`, and `-state_directory` options are the relocation
-surface. Session launch should pass private copies/roots and leave the user's
-existing A7800/MAME tree untouched.
+surface. Session launch accepts only the base `a7800` (NTSC) and `a7800p` (PAL)
+machines and rewrites the generic one-ROM launch into `<machine> -cart <ROM>`.
+It emits a session-owned controller profile, copies only `default.cfg` and the
+exact machine cfg into a private cfg directory, and removes only the selected
+P1/P2 direction and button overrides from those copies. It forces
+`-joystickprovider sdl`, `-nosixaxis`, contiguous `-joy_idx1`/`-joy_idx2`
+mapping and `proline_joystick` devices. Other INI, ROM, NVRAM and state roots
+are not relocated.
 
 There is no verified official A7800 Flatpak identity in the pinned upstream
 repository. A native overlay must not claim Flatpak behavior without a
 separately verified package manifest and sandbox roots.
 
-Runtime application of the new writer and gameplay parity remain unverified;
-this document is a source-backed configuration contract, not an activation
-claim.
+Before spawn, Lunchbox rechecks the executable/content/probe/SDL hashes,
+physical topology, SDL enumeration, raw controls, source cfg snapshots and all
+private files. Startup succeeds only after the exact child executable has
+loaded the declared SDL library and opened every selected kernel device. This
+is still a partial native Linux adapter: no A7800 binary or game was run, and
+gameplay, save/state behavior, firmware behavior, other packages, other hosts,
+and alternate machines/peripherals remain unverified.

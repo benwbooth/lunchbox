@@ -218,6 +218,28 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
         control.optional = false;
     }
     db.layouts.push(eighty_six_box);
+    let mut a7800 = db
+        .layout("atari7800")
+        .context("Missing Atari 7800 controller reference layout")?
+        .clone();
+    a7800.id = "a7800-proline".into();
+    a7800.name = "Atari 7800 — A7800 Pro-Line joystick".into();
+    a7800.family = "two-button".into();
+    a7800.source = format!(
+        "https://github.com/7800-devtools/a7800/tree/{}",
+        crate::controller_a7800_native::SOURCE_COMMIT
+    );
+    a7800.notes = "A7800 5.2 raw SDL2 provider. Native mapdevice identity is the SDL joystick name with whitespace removed; ambiguous names are refused. Only the base NTSC/PAL machines and two-button Pro-Line ports are covered.".into();
+    a7800.controls.retain(|control| {
+        matches!(
+            control.id.as_str(),
+            "up" | "down" | "left" | "right" | "a" | "b"
+        )
+    });
+    for control in &mut a7800.controls {
+        control.optional = false;
+    }
+    db.layouts.push(a7800);
     let mut joystick = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -533,6 +555,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["MS-DOS", "Windows", "Windows 3.X"],
             "https://github.com/86Box/86Box/tree/189d9d003ad9670853cec6edac8db7d6ff63550f",
         ),
+        (
+            "a7800",
+            "a7800-proline",
+            2,
+            vec!["Atari 7800"],
+            "https://github.com/7800-devtools/a7800/tree/7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -809,6 +838,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("86box", "86box-2axis-2button") {
         return Some(
             crate::controller_86box_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("a7800", "a7800-proline") {
+        return Some(
+            crate::controller_a7800_native::CONTROLS
                 .iter()
                 .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
                 .collect(),

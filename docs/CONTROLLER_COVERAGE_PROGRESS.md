@@ -14,6 +14,22 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 611: connected the pinned A7800 5.2 raw-SDL2 controller grammar to a
+one/two-player native Linux launch adapter. The generic one-ROM plan is
+rewritten only to base `a7800`/`a7800p` plus `-cart`; a session-owned MAME v10
+profile maps measured Pro-Line directions/buttons while `default.cfg` and the
+exact machine cfg are copied and filtered privately. The old fork's actual
+whitespace-stripped SDL device-name identity is reproduced and duplicate or
+substring-ambiguous inventories are refused. Prelaunch guards cover the exact
+executable, content, helper, SDL library, topology, enumeration, raw item
+translation, released state, source cfg snapshots and private files; startup
+requires the child to load the declared SDL library and open all selected
+kernel devices. Catalog/settings/QML/guided/launch dispatch are connected.
+Focused writer/name tests and a full QML/C++ check passed; no A7800 executable,
+game, firmware, save, state, or controller runtime was exercised. This moves
+the source-backed inventory to 46/250 partial standalone dispatches and
+140/344 catalog source entries (40.7%), not runtime completion.
+
 Step 610: connected the pinned 86Box SDL2 gameport grammar to a one/two-player
 native Linux guided/setup/launch path. The selected content is the machine's
 exact canonical `86box.cfg`; launch overlays a private writable copy at that
