@@ -570,6 +570,16 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/notaz/picodrive/tree/26ecb2b6358fefba24e3d68b9eb2efba7f10d5ee",
         ),
         (
+            "nestopia-ue",
+            "nes",
+            2,
+            vec![
+                "Nintendo Entertainment System",
+                "Nintendo Famicom Disk System",
+            ],
+            "https://github.com/0ldsk00l/nestopia/tree/1.53.2",
+        ),
+        (
             "gambatte",
             "gameboy",
             1,
@@ -862,6 +872,17 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             crate::controller_gambatte_standalone::CONTROLS
                 .iter()
                 .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("nestopia-ue", "nes") {
+        return Some(
+            crate::controller_nestopia_ue_native::CONTROLS
+                .iter()
+                .filter(|(target, _)| {
+                    crate::controller_nestopia_ue_native::STANDARD_CONTROLS.contains(target)
+                })
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),
         );
     }

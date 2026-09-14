@@ -14,6 +14,20 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 614: connected the pinned Nestopia UE 1.53.2 fltkui input grammar to a
+one/two-player native Linux launch adapter alongside the existing Flatpak
+dispatch. Source review proved partial configs are safe (absent keys keep
+defaults), the j-port prefix is the SDL open-order player index, buttons
+encode as world keysyms, axes 0/1 as arrows, and hats are unhandled. A
+session-owned XDG_CONFIG_HOME holds nestopia.conf (port selection) and
+input.conf ([nespadNj] fragments); enumeration order is rechecked
+immediately before launch because hotplug reassigns player indices.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused
+writer/translation tests and a full QML/C++ check passed; no native Nestopia
+executable, game, firmware, save, state, or controller runtime was exercised.
+No emulator-count change: Nestopia UE was already counted; this is a second
+host dispatch for the same runtime.
+
 Step 613: connected the pinned PicoDrive bind grammar to a
 one/two-player native Linux launch adapter. The generic one-ROM plan is
 rewritten to `-config <private> <rom>` because the option parser stops at the

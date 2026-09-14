@@ -132,6 +132,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "a7800"
                 | "gambatte"
                 | "picodrive"
+                | "nestopia-ue"
                 | "rmg"
                 | "simple64"
                 | "kronos"
@@ -606,6 +607,25 @@ pub(crate) fn settings_for_launch<'a>(
                         player: (i + 1) as u8,
                         controller_id: id.clone(),
                     })
+                    .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "nestopia-ue" => {
+            for setup in &mut mapping.nestopia_ue_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = ids
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(i, id)| crate::controller_nestopia_ue_native::settings::Player {
+                            player: (i + 1) as u8,
+                            controller_id: id.clone(),
+                        },
+                    )
                     .collect();
                 setup.review(&mapping.calibrations)?;
             }

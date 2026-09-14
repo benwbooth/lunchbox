@@ -278,6 +278,19 @@ pub(super) fn reuse(
                 mapping.eighty_six_box_native_launches.push(setup);
             }
         }
+        "nestopia-ue"
+            if !mapping
+                .nestopia_ue_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.nestopia_ue_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.nestopia_ue_native_launches.push(setup);
+            }
+        }
         "picodrive"
             if !mapping
                 .picodrive_native_launches
