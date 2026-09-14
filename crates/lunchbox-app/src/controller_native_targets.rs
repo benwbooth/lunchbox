@@ -291,6 +291,41 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(azahar);
+    let mut dreampotato = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    dreampotato.id = "dreampotato-vmu".into();
+    dreampotato.name = "Dreamcast VMU — DreamPotato gamepad".into();
+    dreampotato.family = "two-button".into();
+    dreampotato.source =
+        "https://github.com/RikkiGibson/DreamPotato/tree/ba03ef47622ee105f127d47bc359f9c47bb431c2"
+            .into();
+    dreampotato.notes = "DreamPotato VMU gameplay buttons. Menu and system buttons stay on the user's own configuration.".into();
+    dreampotato.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("a", "A", 70.0, 50.0, "face", true),
+        ("b", "B", 80.0, 35.0, "face", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(dreampotato);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -1064,6 +1099,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["Sega Saturn"],
             "https://github.com/ymir-emu/Ymir/tree/8a8e8402dff5abcfaa3794ba0ae756c416650f52",
         ),
+        (
+            "dreampotato",
+            "dreampotato-vmu",
+            1,
+            vec!["Sega Dreamcast"],
+            "https://github.com/RikkiGibson/DreamPotato/tree/ba03ef47622ee105f127d47bc359f9c47bb431c2",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -1364,6 +1406,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("vita3k", "vita3k-vita") {
         return Some(
             crate::controller_vita3k_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("dreampotato", "dreampotato-vmu") {
+        return Some(
+            crate::controller_dreampotato_standalone::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

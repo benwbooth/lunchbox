@@ -32,6 +32,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "Azahar",
     "shadPS4",
     "Ymir",
+    "DreamPotato",
     "Vita3K",
     "Caprice32",
     "puNES",
@@ -358,6 +359,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let azahar = name.eq_ignore_ascii_case("Azahar");
             let shadps4 = name.eq_ignore_ascii_case("shadPS4");
             let ymir = name.eq_ignore_ascii_case("Ymir");
+            let dreampotato = name.eq_ignore_ascii_case("DreamPotato");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
             let caprice32 = name.eq_ignore_ascii_case("Caprice32");
@@ -436,6 +438,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Caprice32 dispatch is connected for fixed CPC joystick ports with two menu buttons. It patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if vita3k {
                     "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
+                } else if dreampotato {
+                    "Native Linux DreamPotato dispatch is connected for the single VMU pad in MonoGame slot 0. It patches a private configuration.json PrimaryInput under XDG_DATA_HOME, rechecks the exact SDL2 game-controller routes, and confirms the child loaded the declared SDL library. Menu buttons, other hosts, packages, and runtime input remain unverified."
                 } else if ymir {
                     "Native Linux Ymir dispatch is connected for the single Saturn Control Pad. It stages a session profile with a patched Ymir.toml, rechecks the exact SDL3 gamepad routes, and confirms the child loaded the declared SDL library. Other peripherals, hosts, packages, and runtime input remain unverified."
                 } else if shadps4 {

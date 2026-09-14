@@ -14,6 +14,20 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 631: connected the pinned DreamPotato MonoGame input grammar to a
+single-player native Linux launch adapter. Source review proved the
+`ButtonMappings`/`GamePadIndex` objects, `GamePad.GetState(index)` slot
+semantics, positional game launch, and XDG configuration resolution. The
+writer gained a primary-only patch preserving the second VMU; the session
+translates calibrated controls through the pad's SDL2 game-controller
+mapping into MonoGame `Buttons` names, pins slot 0, and stages a private
+configuration.json. Catalog/settings/QML/guided/launch dispatch are
+connected. Focused writer tests and a full QML/C++ check passed; no
+DreamPotato executable, game, firmware, save, state, or controller runtime
+was exercised. This moves the source-backed inventory to 65/250 partial
+standalone dispatches and 159/344 catalog source entries (46.2%), not
+runtime completion.
+
 Step 630: connected the pinned Ymir TOML bind grammar to a
 single-player native Linux launch adapter. Source review proved the
 `{Name}@{id}` element strings with SDL gamepad indices, the port 1 Control
@@ -199,6 +213,20 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 631: connected the pinned DreamPotato MonoGame input grammar to a
+single-player native Linux launch adapter. Source review proved the
+`ButtonMappings`/`GamePadIndex` objects, `GamePad.GetState(index)` slot
+semantics, positional game launch, and XDG configuration resolution. The
+writer gained a primary-only patch preserving the second VMU; the session
+translates calibrated controls through the pad's SDL2 game-controller
+mapping into MonoGame `Buttons` names, pins slot 0, and stages a private
+configuration.json. Catalog/settings/QML/guided/launch dispatch are
+connected. Focused writer tests and a full QML/C++ check passed; no
+DreamPotato executable, game, firmware, save, state, or controller runtime
+was exercised. This moves the source-backed inventory to 65/250 partial
+standalone dispatches and 159/344 catalog source entries (46.2%), not
+runtime completion.
 
 Step 630: connected the pinned Ymir TOML bind grammar to a
 single-player native Linux launch adapter. Source review proved the
