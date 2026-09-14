@@ -14,6 +14,22 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 632: connected the pinned Play! evdev input-profile grammar to a
+single-player native Linux launch adapter. Source review proved the
+`'evdv'` evdev provider, the uniq/MAC/vendor-product-version device-id
+derivation, simple/simulated-axis binding types, the `input.pad1.*`
+preference names, the `inputprofiles/<name>.xml` selection, portable.txt
+base resolution, and `--disc`/`--elf` launch flags. The probe gained a
+read-only EVIOCGUNIQ field (read beside capabilities from the same open
+file). The session translates calibrated controls to kernel codes through
+the same device's evdev map, pairs stick halves into simulated axes, and
+stages a session base with a private default profile. Catalog/settings/QML/
+guided/launch dispatch are connected. Focused writer/translation tests and a
+full QML/C++ check passed; no Play! executable, disc, firmware, save, state,
+or controller runtime was exercised. This moves the source-backed inventory
+to 66/250 partial standalone dispatches and 160/344 catalog source entries
+(46.5%), not runtime completion.
+
 Step 631: connected the pinned DreamPotato MonoGame input grammar to a
 single-player native Linux launch adapter. Source review proved the
 `ButtonMappings`/`GamePadIndex` objects, `GamePad.GetState(index)` slot
@@ -213,6 +229,22 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 632: connected the pinned Play! evdev input-profile grammar to a
+single-player native Linux launch adapter. Source review proved the
+`'evdv'` evdev provider, the uniq/MAC/vendor-product-version device-id
+derivation, simple/simulated-axis binding types, the `input.pad1.*`
+preference names, the `inputprofiles/<name>.xml` selection, portable.txt
+base resolution, and `--disc`/`--elf` launch flags. The probe gained a
+read-only EVIOCGUNIQ field (read beside capabilities from the same open
+file). The session translates calibrated controls to kernel codes through
+the same device's evdev map, pairs stick halves into simulated axes, and
+stages a session base with a private default profile. Catalog/settings/QML/
+guided/launch dispatch are connected. Focused writer/translation tests and a
+full QML/C++ check passed; no Play! executable, disc, firmware, save, state,
+or controller runtime was exercised. This moves the source-backed inventory
+to 66/250 partial standalone dispatches and 160/344 catalog source entries
+(46.5%), not runtime completion.
 
 Step 631: connected the pinned DreamPotato MonoGame input grammar to a
 single-player native Linux launch adapter. Source review proved the

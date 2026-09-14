@@ -33,6 +33,9 @@ const EVIOCGBIT_EV: libc::c_ulong = 0x8000_4520;
 const EVIOCGBIT_KEY: libc::c_ulong = 0x8000_4521;
 const EVIOCGBIT_ABS: libc::c_ulong = 0x8000_4523;
 const EVIOCGABS: libc::c_ulong = 0x8018_4540;
+/// EVIOCGUNIQ(len) = _IOR('E', 0x44, len); 256 bytes cover the kernel's
+/// 255-character uniq limit plus its NUL terminator.
+const EVIOCGUNIQ: libc::c_ulong = 0x8100_4544;
 const EV_KEY: u16 = 0x01;
 const KEY_CNT: usize = 0x300;
 const ABS_CNT: usize = 0x40;
@@ -82,6 +85,11 @@ pub struct EvdevDevice {
     /// Hat-window axis codes (ABS_HAT0X..=ABS_HAT3Y), ascending. Each axis
     /// code is a separate entry; frontends pair them.
     pub hats: Vec<AbsAxis>,
+    /// EVIOCGUNIQ string, empty when the kernel reports none. Frontends
+    /// like Play! derive device identity from this before falling back to
+    /// the numeric ids; consumers own that contract.
+    #[serde(default)]
+    pub uniq: String,
     pub identity: SysfsIdentity,
 }
 
@@ -233,8 +241,28 @@ pub fn read_event(event: &Path) -> Result<EvdevDevice> {
         buttons,
         axes,
         hats,
+        uniq: ioctl_uniq(&file)?,
         identity,
     })
+}
+
+fn ioctl_uniq(file: &File) -> Result<String> {
+    let mut raw = [0u8; 256];
+    let result = unsafe {
+        libc::ioctl(
+            file.as_raw_fd(),
+            EVIOCGUNIQ,
+            raw.as_mut_ptr().cast::<libc::c_void>(),
+        )
+    };
+    ensure!(
+        result >= 0,
+        "Reading evdev uniq: {}",
+        std::io::Error::last_os_error()
+    );
+    let end = raw.iter().position(|byte| *byte == 0).unwrap_or(raw.len());
+    ensure!(end <= 255, "Evdev uniq exceeds the kernel size limit");
+    String::from_utf8(raw[..end].to_vec()).context("Evdev uniq is not UTF-8")
 }
 
 fn read_small_text(path: &Path) -> Result<String> {

@@ -146,6 +146,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "shadps4"
                 | "ymir"
                 | "dreampotato"
+                | "play"
                 | "vita3k"
                 | "caprice32"
                 | "rmg"
@@ -652,6 +653,19 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.players = vec![crate::controller_vita3k_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "play" => {
+            for setup in &mut mapping.play_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_play_native::settings::Player {
                     player: 1,
                     controller_id: ids[0].clone(),
                 }];

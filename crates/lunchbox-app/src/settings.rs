@@ -360,6 +360,8 @@ pub struct ControllerMappingSettings {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) cemu_native_launches: Vec<crate::controller_cemu_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) play_native_launches: Vec<crate::controller_play_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) dreampotato_native_launches:
         Vec<crate::controller_dreampotato_standalone::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -547,6 +549,7 @@ impl Default for ControllerMappingSettings {
             uzem_native_launches: Vec::new(),
             eka2l1_native_launches: Vec::new(),
             cemu_native_launches: Vec::new(),
+            play_native_launches: Vec::new(),
             dreampotato_native_launches: Vec::new(),
             ymir_native_launches: Vec::new(),
             shadps4_native_launches: Vec::new(),
@@ -1586,6 +1589,7 @@ impl ControllerMappingSettings {
         crate::controller_uzem_standalone::settings::validate_setups(&self.uzem_native_launches)?;
         crate::controller_eka2l1_native::settings::validate_setups(&self.eka2l1_native_launches)?;
         crate::controller_cemu_native::settings::validate_setups(&self.cemu_native_launches)?;
+        crate::controller_play_native::settings::validate_setups(&self.play_native_launches)?;
         crate::controller_dreampotato_standalone::settings::validate_setups(
             &self.dreampotato_native_launches,
         )?;

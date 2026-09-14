@@ -331,6 +331,16 @@ ColumnLayout {
         }
     }
     Button {
+        text: "Play! PS2 setups…"
+        onClicked: {
+            duckstationSetups.adapter = "play-native"
+            duckstationEditor.text = setup.settingsModel.play_native_setups_json()
+            duckstationSetups.review = []
+            duckstationStatus.text = "Native Linux launch runs in a session directory with a private evdev input profile, rechecks the exact evdev routes, and confirms child ownership; runtime verification is deferred."
+            duckstationSetups.open()
+        }
+    }
+    Button {
         text: "DreamPotato VMU setups…"
         onClicked: {
             duckstationSetups.adapter = "dreampotato-native"
@@ -661,6 +671,7 @@ ColumnLayout {
         readonly property bool shadps4Native: adapter === "shadps4-native"
         readonly property bool ymirNative: adapter === "ymir-native"
         readonly property bool dreampotatoNative: adapter === "dreampotato-native"
+        readonly property bool playNative: adapter === "play-native"
         readonly property bool vita3kNative: adapter === "vita3k-native"
         readonly property bool caprice32Native: adapter === "caprice32-native"
         readonly property bool b2Native: adapter === "b2-native"
@@ -674,7 +685,7 @@ ColumnLayout {
         readonly property bool rpcs3: adapter === "rpcs3"
         readonly property bool pcsx2: adapter === "pcsx2"
         readonly property var catalog: JSON.parse(setup.settingsModel.controller_catalog_json())
-        title: punes ? "puNES Flatpak setups — exact Linux deployment" : nestopia ? "Nestopia UE Flatpak setups — exact Linux deployment" : melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : gearNative ? "Gearsystem / Gearcoleco setups — partial native Linux" : xroarNative ? "XRoar setups — partial native Linux" : zesaruxNative ? "ZEsarUX Kempston setups — partial native Linux" : oricutronNative ? "Oricutron joystick setups — partial native Linux" : yabaSanshiroNative ? "Yaba Sanshiro 2 Saturn setups — partial native Linux" : kronosNative ? "Kronos Saturn setups — partial native Linux" : atariPlusPlusNative ? "Atari++ AnalogJoystick setups — partial native Linux" : aranymNative ? "ARAnyM IKBD joystick setups — partial native Linux" : atari800Native ? "Atari800 digital joystick setups — partial native Linux" : nanoboyadvanceNative ? "NanoBoyAdvance GBA controller setups — partial native Linux" : vbaMNative ? "VBA-M GBA controller setups — partial native Linux" : eightySixBoxNative ? "86Box PC gameport setups — partial native Linux" : a7800Native ? "A7800 Pro-Line setups — partial native Linux" : gambatteNative ? "Gambatte Game Boy setups — partial native Linux" : picodriveNative ? "PicoDrive Genesis setups — partial native Linux" : nestopiaUeNative ? "Nestopia UE native setups — partial native Linux" : skyemuNative ? "SkyEmu DS setups — partial native Linux" : linappleNative ? "LinApple Apple II setups — partial native Linux" : caprice32Native ? "Caprice32 CPC setups — partial native Linux" : fuseNative ? "Fuse Spectrum setups — partial native Linux" : amiberryNative ? "Amiberry Amiga setups — partial native Linux" : gbePlusNative ? "GBE+ GBA setups — partial native Linux" : pokeminiNative ? "PokeMini setups — partial native Linux" : uzemNative ? "Uzem setups — partial native Linux" : eka2l1Native ? "EKA2L1 phone setups — partial native Linux" : vita3kNative ? "Vita3K Vita setups — partial native Linux" : cemuNative ? "Cemu Wii U setups — partial native Linux" : azaharNative ? "Azahar 3DS setups — partial native Linux" : shadps4Native ? "shadPS4 setups — partial native Linux" : ymirNative ? "Ymir Saturn setups — partial native Linux" : dreampotatoNative ? "DreamPotato VMU setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
+        title: punes ? "puNES Flatpak setups — exact Linux deployment" : nestopia ? "Nestopia UE Flatpak setups — exact Linux deployment" : melonds ? "melonDS controller setups — partial native Linux" : rpcs3 ? "RPCS3 controller setups — partial native Linux" : pcsx2 ? "PCSX2 DualShock 2 — partial native Linux" : flycastNative ? "Standalone Flycast panels — partial native Linux" : mednafen ? "Mednafen setups — partial native Linux" : sameboy ? "SameBoy SDL setups — partial native Linux" : bsnes ? "bsnes SNES setups — partial native Linux" : stellaNative ? "Stella Atari 2600 setups — partial native Linux" : viceNative ? "VICE Commodore joystick setups — partial native Linux" : hatariNative ? "Hatari Atari ST joystick setups — partial native Linux" : mesen2Native ? "Mesen2 NES setups — partial native Linux" : blastemNative ? "BlastEm Genesis setups — partial native Linux" : xemuNative ? "xemu Xbox setups — partial native Linux" : desmumeNative ? "DeSmuME DS setups — partial native Linux" : openmsxNative ? "openMSX MSX setups — partial native Linux" : scummvmNative ? "ScummVM setups — partial native Linux" : jgenesisNative ? "jgenesis Genesis setups — partial native Linux" : b2Native ? "b2 BBC Micro setups — partial native Linux" : hypseusNative ? "Hypseus Singe setups — partial native Linux" : gopher64Native ? "Gopher64 N64 setups — partial native Linux" : gearNative ? "Gearsystem / Gearcoleco setups — partial native Linux" : xroarNative ? "XRoar setups — partial native Linux" : zesaruxNative ? "ZEsarUX Kempston setups — partial native Linux" : oricutronNative ? "Oricutron joystick setups — partial native Linux" : yabaSanshiroNative ? "Yaba Sanshiro 2 Saturn setups — partial native Linux" : kronosNative ? "Kronos Saturn setups — partial native Linux" : atariPlusPlusNative ? "Atari++ AnalogJoystick setups — partial native Linux" : aranymNative ? "ARAnyM IKBD joystick setups — partial native Linux" : atari800Native ? "Atari800 digital joystick setups — partial native Linux" : nanoboyadvanceNative ? "NanoBoyAdvance GBA controller setups — partial native Linux" : vbaMNative ? "VBA-M GBA controller setups — partial native Linux" : eightySixBoxNative ? "86Box PC gameport setups — partial native Linux" : a7800Native ? "A7800 Pro-Line setups — partial native Linux" : gambatteNative ? "Gambatte Game Boy setups — partial native Linux" : picodriveNative ? "PicoDrive Genesis setups — partial native Linux" : nestopiaUeNative ? "Nestopia UE native setups — partial native Linux" : skyemuNative ? "SkyEmu DS setups — partial native Linux" : linappleNative ? "LinApple Apple II setups — partial native Linux" : caprice32Native ? "Caprice32 CPC setups — partial native Linux" : fuseNative ? "Fuse Spectrum setups — partial native Linux" : amiberryNative ? "Amiberry Amiga setups — partial native Linux" : gbePlusNative ? "GBE+ GBA setups — partial native Linux" : pokeminiNative ? "PokeMini setups — partial native Linux" : uzemNative ? "Uzem setups — partial native Linux" : eka2l1Native ? "EKA2L1 phone setups — partial native Linux" : vita3kNative ? "Vita3K Vita setups — partial native Linux" : cemuNative ? "Cemu Wii U setups — partial native Linux" : azaharNative ? "Azahar 3DS setups — partial native Linux" : shadps4Native ? "shadPS4 setups — partial native Linux" : ymirNative ? "Ymir Saturn setups — partial native Linux" : dreampotatoNative ? "DreamPotato VMU setups — partial native Linux" : playNative ? "Play! PS2 setups — partial native Linux" : rmgNative ? "RMG N64 setups — partial native Linux" : simple64Native ? "simple64 N64 setups — partial native Linux" : fceux ? "FCEUX Qt setups — partial native Linux" : snes9x ? "Snes9x GTK setups — native Linux" : dolphin ? "Dolphin GameCube setups — native Linux" : mgba ? "mGBA SDL controller setups — native Linux" : ppsspp ? "PPSSPP controller setups — native Linux SDL2" : "DuckStation controller setups — native Linux"
         width: Math.min(900, setup.width)
         height: 640
         modal: true
@@ -729,6 +740,8 @@ ColumnLayout {
                     ? "Caprice32: edit a JSON list with emulator_id, content (absolute disk/ROM path), probe_program, sdl_library, executable_sha256, and one or two contiguous players. Launch passes -c with a private cap32.cfg ahead of the content path; the pads must hold SDL instances 0/1 and start/select supply the two one-based menu buttons. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.vita3kNative
                     ? "Vita3K: edit a JSON list with emulator_id, content (absolute installed-app path), probe_program, sdl_library, executable_sha256, and exactly one player. Launch passes -c with a private config.yml ahead of -r <app> and maps the fifteen buttons plus twin sticks through exact SDL gamepad indices. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
+                    : duckstationSetups.playNative
+                    ? "Play!: edit a JSON list with emulator_id, content (absolute disc or ELF path), data_dir (absolute Play Data Files), probe_program, sdl_library, executable_sha256, and exactly one player. Launch runs in a session directory with portable.txt plus a private input profile; the pad is addressed through evdev uniq/vendor/product/version and kernel codes. Hats and rumble are unsupported. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.dreampotatoNative
                     ? "DreamPotato: edit a JSON list with emulator_id, content (absolute game path), config_source (absolute configuration.json), probe_program, sdl_library, executable_sha256, and exactly one player. Launch keeps the default positional game slot with a private configuration.json PrimaryInput; the pad must be SDL index 0 and menu buttons stay on the user's own configuration. Other hosts, packages, and runtime behavior remain unverified; review opens no devices."
                     : duckstationSetups.ymirNative
@@ -885,6 +898,8 @@ ColumnLayout {
                             ? setup.settingsModel.review_caprice32_native_setups(duckstationEditor.text)
                             : duckstationSetups.vita3kNative
                             ? setup.settingsModel.review_vita3k_native_setups(duckstationEditor.text)
+                            : duckstationSetups.playNative
+                            ? setup.settingsModel.review_play_native_setups(duckstationEditor.text)
                             : duckstationSetups.dreampotatoNative
                             ? setup.settingsModel.review_dreampotato_native_setups(duckstationEditor.text)
                             : duckstationSetups.ymirNative
@@ -1017,6 +1032,8 @@ ColumnLayout {
                             ? setup.settingsModel.stage_caprice32_native_setups(duckstationEditor.text)
                             : duckstationSetups.vita3kNative
                             ? setup.settingsModel.stage_vita3k_native_setups(duckstationEditor.text)
+                            : duckstationSetups.playNative
+                            ? setup.settingsModel.stage_play_native_setups(duckstationEditor.text)
                             : duckstationSetups.dreampotatoNative
                             ? setup.settingsModel.stage_dreampotato_native_setups(duckstationEditor.text)
                             : duckstationSetups.ymirNative
@@ -1138,6 +1155,8 @@ ColumnLayout {
                             ? "Staged. Save settings in the main page. Caprice32 native dispatch patches a private cap32.cfg and rechecks exact SDL instance order at launch; no devices were opened."
                             : duckstationSetups.vita3kNative
                             ? "Staged. Save settings in the main page. Vita3K native dispatch writes a private config.yml and rechecks exact SDL3 gamepad routes at launch; no devices were opened."
+                            : duckstationSetups.playNative
+                            ? "Staged. Save settings in the main page. Play! native dispatch runs in a session directory with a private input profile and rechecks evdev routes at launch; no devices were opened."
                             : duckstationSetups.dreampotatoNative
                             ? "Staged. Save settings in the main page. DreamPotato native dispatch patches a private configuration.json and rechecks SDL index 0 at launch; no devices were opened."
                             : duckstationSetups.ymirNative

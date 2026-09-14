@@ -130,6 +130,7 @@ mod controller_phem_standalone;
 mod controller_pico_8_standalone;
 mod controller_picodrive_native;
 mod controller_pk201_standalone;
+mod controller_play_native;
 mod controller_pokemini_standalone;
 mod controller_ppsspp;
 mod controller_prosystem_native;

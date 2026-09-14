@@ -1106,6 +1106,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["Sega Dreamcast"],
             "https://github.com/RikkiGibson/DreamPotato/tree/ba03ef47622ee105f127d47bc359f9c47bb431c2",
         ),
+        (
+            "play",
+            "dualshock",
+            1,
+            vec!["Sony Playstation 2"],
+            "https://github.com/jpd002/Play-/tree/83700b2c31e593bc94e845b4b31b797be84dda59",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -1406,6 +1413,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("vita3k", "vita3k-vita") {
         return Some(
             crate::controller_vita3k_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("play", "dualshock") {
+        return Some(
+            crate::controller_play_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),
