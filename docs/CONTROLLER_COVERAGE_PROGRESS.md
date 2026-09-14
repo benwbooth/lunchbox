@@ -14,6 +14,19 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 621: connected the pinned Vita3K SDL gamepad grammar to a
+single-player native Linux launch adapter. Source review proved
+controller-binds is indexed by vita_button (reusing SDL enum values), fixed
+the writer's BUTTON_KEYS order to match, and added a Vita base layout.
+Buttons map through inverted resolved mappings, sticks pair into four axes
+with identity triggers, and -c/-r select the staged config and installed app.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused
+writer/translation tests and a full QML/C++ check passed; no Vita3K
+executable, app, firmware, save, state, or controller runtime was exercised.
+This moves the source-backed inventory to 55/250 partial standalone
+dispatches and 149/344 catalog source entries (43.3%), not runtime
+completion.
+
 Step 620: connected the pinned Amiberry SDL3 gamepad grammar to a
 one/two-player native Linux launch adapter. Source review proved the custom
 mapping path is gamecontrollerdb_user.txt (loaded from controllers_path on
@@ -64,6 +77,19 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 621: connected the pinned Vita3K SDL gamepad grammar to a
+single-player native Linux launch adapter. Source review proved
+controller-binds is indexed by vita_button (reusing SDL enum values), fixed
+the writer's BUTTON_KEYS order to match, and added a Vita base layout.
+Buttons map through inverted resolved mappings, sticks pair into four axes
+with identity triggers, and -c/-r select the staged config and installed app.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused
+writer/translation tests and a full QML/C++ check passed; no Vita3K
+executable, app, firmware, save, state, or controller runtime was exercised.
+This moves the source-backed inventory to 55/250 partial standalone
+dispatches and 149/344 catalog source entries (43.3%), not runtime
+completion.
 
 Step 620: connected the pinned Amiberry SDL3 gamepad grammar to a
 one/two-player native Linux launch adapter. Source review proved the custom

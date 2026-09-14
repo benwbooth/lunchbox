@@ -291,6 +291,19 @@ pub(super) fn reuse(
                 mapping.caprice32_native_launches.push(setup);
             }
         }
+        "vita3k"
+            if !mapping
+                .vita3k_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.vita3k_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.vita3k_native_launches.push(setup);
+            }
+        }
         "amiberry"
             if !mapping
                 .amiberry_native_launches

@@ -23,6 +23,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "LinApple",
     "Fuse",
     "Amiberry",
+    "Vita3K",
     "Caprice32",
     "puNES",
     "FCEUX",
@@ -340,6 +341,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let linapple = name.eq_ignore_ascii_case("LinApple");
             let fuse = name.eq_ignore_ascii_case("Fuse");
             let amiberry = name.eq_ignore_ascii_case("Amiberry");
+            let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let caprice32 = name.eq_ignore_ascii_case("Caprice32");
             let punes = name.eq_ignore_ascii_case("puNES");
             let fceux = name.eq_ignore_ascii_case("FCEUX");
@@ -412,6 +414,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Linux Nestopia UE Flatpak 1.53.2 dispatch is connected for exact two-pad NES setups, with pinned app/runtime identity, private config, target-SDL routing checks, and persistent native data. A 2026-09-13 isolated-X11 production oracle passed two-player input, fresh-process battery reload, and F5/F7 slot-0 restoration. Native Linux dispatch is connected for one/two-pad NES setups through a private nestopia.conf/input.conf pair with exact SDL enumeration-order routing and child ownership checks. Wayland, other packages/hosts/modes, firmware, physical pads, hotplug, and save sync remain unverified."
                 } else if caprice32 {
                     "Native Linux Caprice32 dispatch is connected for fixed CPC joystick ports with two menu buttons. It patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
+                } else if vita3k {
+                    "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if amiberry {
                     "Native Linux Amiberry dispatch is connected for fixed-dpad Amiga joysticks with raw-button fire. It writes a private gamecontrollerdb_user.txt plus joyport fragment, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if fuse {

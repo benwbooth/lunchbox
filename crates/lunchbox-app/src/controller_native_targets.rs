@@ -83,6 +83,19 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(caprice32);
+    let mut vita3k = db
+        .layout("vita")
+        .context("Missing Vita reference layout")?
+        .clone();
+    vita3k.id = "vita3k-vita".into();
+    vita3k.name = "PlayStation Vita — Vita3K gamepad".into();
+    vita3k.family = "diamond".into();
+    vita3k.source = "https://github.com/Vita3K/Vita3K/tree/84184a363aa99c7f331a7e75bdd75f43ff63db08/vita3k/gui-qt/src/controls_dialog.cpp".into();
+    vita3k.notes = "Vita3K native SDL gamepad. Buttons use vita_button-order binds; sticks pair into four axes with identity triggers.".into();
+    for control in &mut vita3k.controls {
+        control.optional = false;
+    }
+    db.layouts.push(vita3k);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -1050,6 +1063,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("caprice32", "caprice32-cpc") {
         return Some(
             crate::controller_caprice32_standalone::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("vita3k", "vita3k-vita") {
+        return Some(
+            crate::controller_vita3k_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

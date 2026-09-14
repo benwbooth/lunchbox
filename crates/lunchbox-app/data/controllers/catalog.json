@@ -17956,6 +17956,224 @@
         }
       ]
     }
+    ,
+    {
+      "id": "vita",
+      "name": "PlayStation Vita \u2014 buttons and twin sticks",
+      "family": "diamond",
+      "shape": "handheld",
+      "source": "https://github.com/Vita3K/Vita3K/tree/84184a363aa99c7f331a7e75bdd75f43ff63db08/vita3k/gui-qt/src/controls_dialog.cpp",
+      "notes": "Vita gamepad layout: face buttons, dpad, shoulders, PS button, stick clicks and twin-stick directions.",
+      "controls": [
+        {
+          "id": "cross",
+          "label": "Cross",
+          "x": 78,
+          "y": 60,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "circle",
+          "label": "Circle",
+          "x": 90,
+          "y": 48,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "square",
+          "label": "Square",
+          "x": 66,
+          "y": 48,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "triangle",
+          "label": "Triangle",
+          "x": 78,
+          "y": 36,
+          "group": "face",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "select",
+          "label": "Select",
+          "x": 47,
+          "y": 88,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "psbutton",
+          "label": "PS button",
+          "x": 60,
+          "y": 70,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "start",
+          "label": "Start",
+          "x": 60,
+          "y": 88,
+          "group": "menu",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l3",
+          "label": "L3",
+          "x": 20,
+          "y": 80,
+          "group": "stick",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r3",
+          "label": "R3",
+          "x": 80,
+          "y": 80,
+          "group": "stick",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "l",
+          "label": "L",
+          "x": 20,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "r",
+          "label": "R",
+          "x": 80,
+          "y": 12,
+          "group": "shoulder",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "x": 20,
+          "y": 36,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "x": 20,
+          "y": 60,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "x": 8,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "x": 32,
+          "y": 48,
+          "group": "dpad",
+          "optional": false,
+          "analog": false
+        },
+        {
+          "id": "stick_up",
+          "label": "Left stick up",
+          "x": 20,
+          "y": 70,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_down",
+          "label": "Left stick down",
+          "x": 20,
+          "y": 90,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_left",
+          "label": "Left stick left",
+          "x": 10,
+          "y": 80,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "stick_right",
+          "label": "Left stick right",
+          "x": 30,
+          "y": 80,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_up",
+          "label": "Right stick up",
+          "x": 80,
+          "y": 70,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_down",
+          "label": "Right stick down",
+          "x": 80,
+          "y": 90,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_left",
+          "label": "Right stick left",
+          "x": 70,
+          "y": 80,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        },
+        {
+          "id": "right_stick_right",
+          "label": "Right stick right",
+          "x": 90,
+          "y": 80,
+          "group": "stick",
+          "optional": false,
+          "analog": true
+        }
+      ]
+    }
   ],
   "emulator_profiles": [
     {
