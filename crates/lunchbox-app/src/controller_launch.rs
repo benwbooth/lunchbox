@@ -105,6 +105,7 @@ enum PreparedJsonNativeLaunch {
     VbaM(crate::controller_vba_m_native::native_command::NativeSession),
     EightySixBox(crate::controller_86box_native::native_command::NativeSession),
     A7800(crate::controller_a7800_native::native_command::NativeSession),
+    Gambatte(crate::controller_gambatte_standalone::native_command::NativeSession),
     YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
     Kronos(crate::controller_kronos_native::native_command::NativeSession),
     Rmg(crate::controller_rmg_native::native_command::NativeSession),
@@ -136,6 +137,7 @@ impl PreparedJsonNativeLaunch {
             Self::VbaM(session) => session.spawn(plan, cancel),
             Self::EightySixBox(session) => session.spawn(plan, cancel),
             Self::A7800(session) => session.spawn(plan, cancel),
+            Self::Gambatte(session) => session.spawn(plan, cancel),
             Self::YabaSanshiro(session) => session.spawn(plan, cancel),
             Self::Kronos(session) => session.spawn(plan, cancel),
             Self::Rmg(session) => session.spawn(plan, cancel),
@@ -162,6 +164,7 @@ impl PreparedJsonNativeLaunch {
             Self::VbaM(session) => session.verify(cancel),
             Self::EightySixBox(session) => session.verify(cancel),
             Self::A7800(session) => session.verify(cancel),
+            Self::Gambatte(session) => session.verify(cancel),
             Self::YabaSanshiro(session) => session.verify(cancel),
             Self::Kronos(session) => session.verify(cancel),
             Self::Rmg(session) => session.verify(cancel),
@@ -188,6 +191,7 @@ impl PreparedJsonNativeLaunch {
             Self::VbaM(session) => session.check_health(),
             Self::EightySixBox(session) => session.check_health(),
             Self::A7800(session) => session.check_health(),
+            Self::Gambatte(session) => session.check_health(),
             Self::YabaSanshiro(session) => session.check_health(),
             Self::Kronos(session) => session.check_health(),
             Self::Rmg(session) => session.check_health(),
@@ -8046,6 +8050,37 @@ pub fn prepare_with_cancellation(
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::EightySixBox(native)),
                 description: "86Box: calibrated one/two-player 2-axis, 2-button PC gameport joysticks through an exact machine-config overlay with SDL2 topology and raw-control guards; guest disks and ROM paths preserved; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("Gambatte")
+    {
+        let matches: Vec<_> = mapping
+            .gambatte_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous Gambatte native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_gambatte_standalone::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Gambatte(native)),
+                description: "Gambatte: calibrated single Game Boy pad through a private gambatte_qt.conf [input] group, with exact SDL2 device order, raw-control, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
                 ..Default::default()
             }));
         }

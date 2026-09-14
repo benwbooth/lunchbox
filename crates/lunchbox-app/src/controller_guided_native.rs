@@ -130,6 +130,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "vba-m"
                 | "86box"
                 | "a7800"
+                | "gambatte"
                 | "rmg"
                 | "simple64"
                 | "kronos"
@@ -605,6 +606,19 @@ pub(crate) fn settings_for_launch<'a>(
                         controller_id: id.clone(),
                     })
                     .collect();
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "gambatte" => {
+            for setup in &mut mapping.gambatte_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_gambatte_standalone::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
                 setup.review(&mapping.calibrations)?;
             }
         }

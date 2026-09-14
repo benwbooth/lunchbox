@@ -14,6 +14,21 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 612: connected the pinned Gambatte Qt input grammar to a
+single-player native Linux launch adapter. The generic one-ROM plan keeps its
+bare content argument; a session-owned XDG_CONFIG_HOME holds a
+gambatte_qt.conf containing only the [input] group with all eight Game Boy
+controls as packed SDL event ids (keyboard sentinel 0x7fffffff, joystick
+type|device<<8|number<<16), translated from measured controls through the
+exact declared SDL2 library with released-state guards. Prelaunch guards cover
+the exact executable, content, helper, SDL library, topology, enumeration, raw
+item translation, and private config; startup requires the child to load the
+declared SDL library. Catalog/settings/QML/guided/launch dispatch are
+connected. Focused writer tests and a full QML/C++ check passed; no Gambatte
+executable, game, firmware, save, state, or controller runtime was exercised.
+This moves the source-backed inventory to 47/250 partial standalone dispatches
+and 141/344 catalog source entries (41.0%), not runtime completion.
+
 Step 611: connected the pinned A7800 5.2 raw-SDL2 controller grammar to a
 one/two-player native Linux launch adapter. The generic one-ROM plan is
 rewritten only to base `a7800`/`a7800p` plus `-cart`; a session-owned MAME v10
@@ -28,7 +43,7 @@ kernel devices. Catalog/settings/QML/guided/launch dispatch are connected.
 Focused writer/name tests and a full QML/C++ check passed; no A7800 executable,
 game, firmware, save, state, or controller runtime was exercised. This moves
 the source-backed inventory to 46/250 partial standalone dispatches and
-140/344 catalog source entries (40.7%), not runtime completion.
+140/344 catalog source entries (40.7%), not runtime completion. [SUPERSEDED BY STEP 612]
 
 Step 610: connected the pinned 86Box SDL2 gameport grammar to a one/two-player
 native Linux guided/setup/launch path. The selected content is the machine's

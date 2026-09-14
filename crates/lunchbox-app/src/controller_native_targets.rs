@@ -562,6 +562,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["Atari 7800"],
             "https://github.com/7800-devtools/a7800/tree/7a2afdc1ea08fc331b16b750d8c1f02d4ef62fc8",
         ),
+        (
+            "gambatte",
+            "gameboy",
+            1,
+            vec!["Nintendo Game Boy", "Nintendo Game Boy Color"],
+            "https://github.com/EclipseEmu/gambatte/tree/04e7ddf85ff23032cb7132f155c42c7d1857f474",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -838,6 +845,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("86box", "86box-2axis-2button") {
         return Some(
             crate::controller_86box_native::CONTROLS
+                .iter()
+                .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("gambatte", "gameboy") {
+        return Some(
+            crate::controller_gambatte_standalone::CONTROLS
                 .iter()
                 .map(|(target, field)| ((*target).to_owned(), (*field).to_owned()))
                 .collect(),
