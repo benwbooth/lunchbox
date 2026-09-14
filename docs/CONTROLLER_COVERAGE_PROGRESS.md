@@ -14,6 +14,21 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 629: connected the pinned shadPS4 per-game INI grammar to a
+single-player native Linux launch adapter. Source review proved the
+`output:ID=input:ID` grammar, the 1-based gamepad IDs with 4-controller
+multiplication when unspecified, runtime IDs from SDL gamepad order, the
+full default identity profile, `<cwd>/user` then XDG portable resolution,
+and `-g` game launch. The writer grew l2/r2/l3/r3/right-stick outputs; the
+session inverts resolved bindings into input tokens, pairs stick halves
+into full-axis tokens, pins gamepad ID 1, and stages default.ini plus the
+per-game file. Catalog/settings/QML/guided/launch dispatch are connected.
+Focused writer tests and a full QML/C++ check passed; no shadPS4
+executable, game, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 63/250 partial
+standalone dispatches and 157/344 catalog source entries (45.6%), not
+runtime completion.
+
 Step 628: connected the pinned Azahar SDL ParamPackage grammar to a
 single-player native Linux launch adapter. Source review proved the
 `guid/port` joystick matching, the `api:controller` gamepad indices,
@@ -170,6 +185,21 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 629: connected the pinned shadPS4 per-game INI grammar to a
+single-player native Linux launch adapter. Source review proved the
+`output:ID=input:ID` grammar, the 1-based gamepad IDs with 4-controller
+multiplication when unspecified, runtime IDs from SDL gamepad order, the
+full default identity profile, `<cwd>/user` then XDG portable resolution,
+and `-g` game launch. The writer grew l2/r2/l3/r3/right-stick outputs; the
+session inverts resolved bindings into input tokens, pairs stick halves
+into full-axis tokens, pins gamepad ID 1, and stages default.ini plus the
+per-game file. Catalog/settings/QML/guided/launch dispatch are connected.
+Focused writer tests and a full QML/C++ check passed; no shadPS4
+executable, game, firmware, save, state, or controller runtime was
+exercised. This moves the source-backed inventory to 63/250 partial
+standalone dispatches and 157/344 catalog source entries (45.6%), not
+runtime completion.
 
 Step 628: connected the pinned Azahar SDL ParamPackage grammar to a
 single-player native Linux launch adapter. Source review proved the

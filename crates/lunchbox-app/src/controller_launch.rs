@@ -118,6 +118,7 @@ enum PreparedJsonNativeLaunch {
     Eka2l1(crate::controller_eka2l1_native::native_command::NativeSession),
     Cemu(crate::controller_cemu_native::native_command::NativeSession),
     Azahar(crate::controller_azahar_native::native_command::NativeSession),
+    Shadps4(crate::controller_shadps4_native::native_command::NativeSession),
     Vita3K(crate::controller_vita3k_native::native_command::NativeSession),
     Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
     YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
@@ -164,6 +165,7 @@ impl PreparedJsonNativeLaunch {
             Self::Eka2l1(session) => session.spawn(plan, cancel),
             Self::Cemu(session) => session.spawn(plan, cancel),
             Self::Azahar(session) => session.spawn(plan, cancel),
+            Self::Shadps4(session) => session.spawn(plan, cancel),
             Self::Vita3K(session) => session.spawn(plan, cancel),
             Self::Caprice32(session) => session.spawn(plan, cancel),
             Self::YabaSanshiro(session) => session.spawn(plan, cancel),
@@ -205,6 +207,7 @@ impl PreparedJsonNativeLaunch {
             Self::Eka2l1(session) => session.verify(cancel),
             Self::Cemu(session) => session.verify(cancel),
             Self::Azahar(session) => session.verify(cancel),
+            Self::Shadps4(session) => session.verify(cancel),
             Self::Vita3K(session) => session.verify(cancel),
             Self::Caprice32(session) => session.verify(cancel),
             Self::YabaSanshiro(session) => session.verify(cancel),
@@ -246,6 +249,7 @@ impl PreparedJsonNativeLaunch {
             Self::Eka2l1(session) => session.check_health(),
             Self::Cemu(session) => session.check_health(),
             Self::Azahar(session) => session.check_health(),
+            Self::Shadps4(session) => session.check_health(),
             Self::Vita3K(session) => session.check_health(),
             Self::Caprice32(session) => session.check_health(),
             Self::YabaSanshiro(session) => session.check_health(),
@@ -8182,6 +8186,37 @@ pub fn prepare_with_cancellation(
 
     #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("shadPS4")
+    {
+        let matches: Vec<_> = mapping
+            .shadps4_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous shadPS4 native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_shadps4_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Shadps4(native)),
+                description: "shadPS4: calibrated single DualShock pad as gamepad 1 through a session input_config pair under XDG_DATA_HOME, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Azahar")
     {
         let matches: Vec<_> = mapping
@@ -8904,6 +8939,37 @@ pub fn prepare_with_cancellation(
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Vita3K(native)),
                 description: "Vita3K: calibrated single Vita pad through a private config.yml, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("shadPS4")
+    {
+        let matches: Vec<_> = mapping
+            .shadps4_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous shadPS4 native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_shadps4_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Shadps4(native)),
+                description: "shadPS4: calibrated single DualShock pad as gamepad 1 through a session input_config pair under XDG_DATA_HOME, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
                 ..Default::default()
             }));
         }

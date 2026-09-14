@@ -30,6 +30,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "EKA2L1",
     "Cemu",
     "Azahar",
+    "shadPS4",
     "Vita3K",
     "Caprice32",
     "puNES",
@@ -354,6 +355,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let eka2l1 = name.eq_ignore_ascii_case("EKA2L1");
             let cemu = name.eq_ignore_ascii_case("Cemu");
             let azahar = name.eq_ignore_ascii_case("Azahar");
+            let shadps4 = name.eq_ignore_ascii_case("shadPS4");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
             let vice_xvic = name.eq_ignore_ascii_case("VICE (xvic)");
             let caprice32 = name.eq_ignore_ascii_case("Caprice32");
@@ -432,6 +434,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Caprice32 dispatch is connected for fixed CPC joystick ports with two menu buttons. It patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if vita3k {
                     "Native Linux Vita3K dispatch is connected for the single Vita pad. It writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
+                } else if shadps4 {
+                    "Native Linux shadPS4 dispatch is connected for the single DualShock pad as gamepad 1. It stages default.ini plus the per-game input file under XDG_DATA_HOME, rechecks the exact SDL3 gamepad routes, and confirms the child loaded the declared SDL library. Touchpad, other hosts, packages, and runtime input remain unverified."
                 } else if azahar {
                     "Native Linux Azahar dispatch is connected for the single 3DS pad. It runs in a session directory with a private qt-config.ini while saves survive through symlinks, rechecks the exact SDL2 gamepad routes through a unique GUID, and confirms the child loaded the declared SDL library. Other hosts, packages, and runtime input remain unverified."
                 } else if cemu {

@@ -304,6 +304,19 @@ pub(super) fn reuse(
                 mapping.vita3k_native_launches.push(setup);
             }
         }
+        "shadps4"
+            if !mapping
+                .shadps4_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.shadps4_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.shadps4_native_launches.push(setup);
+            }
+        }
         "azahar"
             if !mapping
                 .azahar_native_launches

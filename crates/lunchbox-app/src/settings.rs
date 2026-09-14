@@ -360,6 +360,8 @@ pub struct ControllerMappingSettings {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) cemu_native_launches: Vec<crate::controller_cemu_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) shadps4_native_launches: Vec<crate::controller_shadps4_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) azahar_native_launches: Vec<crate::controller_azahar_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) vita3k_native_launches: Vec<crate::controller_vita3k_native::settings::SavedSetup>,
@@ -540,6 +542,7 @@ impl Default for ControllerMappingSettings {
             uzem_native_launches: Vec::new(),
             eka2l1_native_launches: Vec::new(),
             cemu_native_launches: Vec::new(),
+            shadps4_native_launches: Vec::new(),
             azahar_native_launches: Vec::new(),
             vita3k_native_launches: Vec::new(),
             caprice32_native_launches: Vec::new(),
@@ -1576,6 +1579,7 @@ impl ControllerMappingSettings {
         crate::controller_uzem_standalone::settings::validate_setups(&self.uzem_native_launches)?;
         crate::controller_eka2l1_native::settings::validate_setups(&self.eka2l1_native_launches)?;
         crate::controller_cemu_native::settings::validate_setups(&self.cemu_native_launches)?;
+        crate::controller_shadps4_native::settings::validate_setups(&self.shadps4_native_launches)?;
         crate::controller_azahar_native::settings::validate_setups(&self.azahar_native_launches)?;
         crate::controller_vita3k_native::settings::validate_setups(&self.vita3k_native_launches)?;
         crate::controller_caprice32_standalone::settings::validate_setups(

@@ -1050,6 +1050,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["Nintendo 3DS"],
             "https://github.com/azahar-emu/azahar/tree/ec8201d42cd3d8e2ec1d69d5832be0389490ea47",
         ),
+        (
+            "shadps4",
+            "dualshock",
+            1,
+            vec!["PlayStation 4"],
+            "https://github.com/shadps4-emu/shadPS4/tree/678705df8dead58799a3d9a9db38f8fb0c3dbefe",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -1350,6 +1357,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("vita3k", "vita3k-vita") {
         return Some(
             crate::controller_vita3k_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("shadps4", "dualshock") {
+        return Some(
+            crate::controller_shadps4_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),
