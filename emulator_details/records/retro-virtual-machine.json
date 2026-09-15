@@ -31,9 +31,147 @@
       "kind": "contract",
       "path": "docs/RETRO_VIRTUAL_MACHINE_CONTROLLER_BOUNDARY.md",
       "role": "fail-closed current-release controller boundary"
+    },
+    {
+      "kind": "artifact",
+      "url": "https://static.retrovm.org/release/2.1.20/RetroVirtualMachine.2.1.20.Linux.x64.zip",
+      "version": "2.1.20",
+      "sha256": "fd00b31cdd194fdbe2f80006b5042c5825c29afa55ae751f6f8e015a1ca5050b",
+      "role": "official Linux x64 release reviewed for data/input/state/ROM paths"
+    },
+    {
+      "kind": "artifact",
+      "url": "https://static.retrovm.org/release/2.1.20/RetroVirtualMachine.2.1.20.Windows.x64.zip",
+      "version": "2.1.20",
+      "sha256": "3766694cf5f292953bf5c3f36efb7a896125890c9bfa5179e5f46625b69aa3c9",
+      "role": "official Windows x64 release reviewed for data/input/state/ROM paths"
     }
   ],
   "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.config/Retro Virtual Machine v2.x/ (data/ plus romvault/ subdirs, created at startup)",
+          "status": "captured",
+          "naming": "Versioned data root; data/ carries runtime persistence and romvault/ the managed ROM vault.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Linux.zip makeDirIfNotExists v2.x/romvault strings L",
+            "artifact:RetroVirtualMachine.2.1.20.Linux.zip hOsAppDataFolder portable base L"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "SDL gamepads via the embedded GameControllerDB (Linux Linux entries); no keyboard-only limitation",
+          "status": "captured",
+          "naming": "Exact SDL CSV grammar GUID,name,field:value with platform:Linux rows; pads hot-plug at runtime.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Linux.zip embedded gamecontrollerdb platform:Linux L"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Machine documents are user-located *.rvm packages; runtime persistence under ~/.config/Retro Virtual Machine v2.x/data/",
+          "status": "captured",
+          "naming": "Save dialog filter is Retro Virtual Machine (*.rvm); data/ is written on save and read on load.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Linux.zip (*.rvm) dialog filter L",
+            "artifact:RetroVirtualMachine.2.1.20.Linux.zip save&/load& v2.x/data strings L"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Snapshots persist under ~/.config/Retro Virtual Machine v2.x/data/ alongside the *.rvm machine documents",
+          "status": "captured",
+          "naming": "Snapshot save/load round-trips through data/ via the loadRomsSnap routine; no numbered-slot grammar.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Linux.zip save&/load& v2.x/data strings L",
+            "artifact:RetroVirtualMachine.2.1.20.Linux.zip loadRomsSnap routine L"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Bundled compiled-in system ROMs (MSX C-BIOS 0.29, TRDBOOT, VDISK); no user firmware path",
+          "status": "captured",
+          "naming": "resource_rvm_rom_msx_cbios(_eu) plus SYS/TRDBOOT.BIN and BIN/VDISK resources ship inside the executable.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Linux.x64.zip resource_rvm_rom_msx_cbios/C-BIOS strings L",
+            "artifact:RetroVirtualMachine.2.1.20.Linux.x64.zip embedded SYS/*.BIN system ROMs L"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "String survey of the 2.1.20 Linux artifact found no key store or key-file references.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Linux.zip string survey L"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%/Retro Virtual Machine v2.x/ (data/ plus romvault/ subdirs, created at startup)",
+          "status": "captured",
+          "naming": "Versioned data root; data/ carries runtime persistence and romvault/ the managed ROM vault.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Windows.zip makeDirIfNotExists v2.x/romvault strings W",
+            "artifact:RetroVirtualMachine.2.1.20.Windows.zip hOsAppDataFolder portable base W"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "SDL gamepads via the embedded GameControllerDB (365 Windows Windows entries); no keyboard-only limitation",
+          "status": "captured",
+          "naming": "Exact SDL CSV grammar GUID,name,field:value with platform:Windows rows; pads hot-plug at runtime.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Windows.zip embedded gamecontrollerdb platform:Windows W"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Machine documents are user-located *.rvm packages; runtime persistence under %APPDATA%/Retro Virtual Machine v2.x/data/",
+          "status": "captured",
+          "naming": "Save dialog filter is Retro Virtual Machine (*.rvm); data/ is written on save and read on load.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Windows.zip (*.rvm) dialog filter W",
+            "artifact:RetroVirtualMachine.2.1.20.Windows.zip save&/load& v2.x/data strings W"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Snapshots persist under %APPDATA%/Retro Virtual Machine v2.x/data/ alongside the *.rvm machine documents",
+          "status": "captured",
+          "naming": "Snapshot save/load round-trips through data/ via the loadRomsSnap routine; no numbered-slot grammar.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Windows.zip save&/load& v2.x/data strings W",
+            "artifact:RetroVirtualMachine.2.1.20.Windows.zip loadRomsSnap routine W"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Bundled compiled-in system ROMs (MSX C-BIOS 0.29, TRDBOOT, VDISK); no user firmware path",
+          "status": "captured",
+          "naming": "resource_rvm_rom_msx_cbios(_eu) plus SYS/TRDBOOT.BIN and BIN/VDISK resources ship inside the executable.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Windows.x64.zip resource_rvm_rom_msx_cbios/C-BIOS strings W",
+            "artifact:RetroVirtualMachine.2.1.20.Windows.x64.zip compiled SYS/TRDBOOT.BIN and BIN/VDISK resources W"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "String survey of the 2.1.20 Windows artifact found no key store or key-file references.",
+          "evidence": [
+            "artifact:RetroVirtualMachine.2.1.20.Windows.zip string survey W"
+          ]
+        }
+      ]
+    },
     "macos": {
       "paths": [
         {
@@ -95,30 +233,12 @@
     }
   },
   "platform_gaps": {
-    "linux": {
-      "status": "unresolved",
-      "reason": "Commercial 2.1.20 builds for Windows/Linux have no reviewable paths; the public v1.1 source is macOS-only and the documentation site has no path documentation.",
-      "evidence": [
-        "official:https://retrovirtualmachine.org/download/ lists v2.1.20 Linux x64 .deb and .zip artifacts",
-        "source:README.md says v2.0.7 and later multi-host implementation is not open source @e2b3cbeda8f9",
-        "official:https://retrovirtualmachine.org/doc/ states the documentation section is still being developed"
-      ]
-    },
     "linux-flatpak": {
       "status": "no_verified_package",
       "reason": "The official download page lists Linux archives and a .deb but no Flatpak package or manifest.",
       "evidence": [
         "official:https://retrovirtualmachine.org/download/ current release list",
         "official:https://retrovirtualmachine.org/"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "Commercial 2.1.20 builds for Windows/Linux have no reviewable paths; the public v1.1 source is macOS-only and the documentation site has no path documentation.",
-      "evidence": [
-        "official:https://retrovirtualmachine.org/ lists Windows among supported hosts",
-        "official:https://retrovirtualmachine.org/download/ lists the v2.1.20 Windows x64 artifact",
-        "source:README.md limits the public source branch to macOS and says current multi-host v2 is not open source @e2b3cbeda8f9"
       ]
     }
   },
