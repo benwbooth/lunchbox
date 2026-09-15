@@ -13,34 +13,202 @@
       "kind": "docs",
       "url": "https://github.com/shinovon/KEmulator",
       "role": "official distribution or project documentation"
+    },
+    {
+      "kind": "source",
+      "repo": "https://github.com/shinovon/KEmulator",
+      "commit": "9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f",
+      "url": "https://github.com/shinovon/KEmulator/tree/9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f",
+      "role": "pinned reviewed source"
     }
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official KEmulator nnmod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/shinovon/KEmulator",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official KEmulator nnmod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/shinovon/KEmulator",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official KEmulator nnmod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://github.com/shinovon/KEmulator",
-        "host capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.local/share/KEmulator/property.txt (RMSFolder plus font/window keys)",
+          "status": "captured",
+          "naming": "Java properties file written by saveProperties on settings apply.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/ui/swt/Property.java lines 607-617 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f",
+            "source:shinovon/KEmulator src/main/emulator/Emulator.java line 136 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.local/share/KEmulator/property.txt key bindings plus JInput gamepads",
+          "status": "captured",
+          "naming": "KeyMapping keyboard tables with JInput controller/axis/POV binds.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/KeyMapping.java @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f",
+            "source:shinovon/KEmulator src/main/emulator/Controllers.java JInput binds @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "RMS stores under RMSFolder (default ./rms) as <base64-suite>/<id>.rms",
+          "status": "captured",
+          "naming": "RecordStore files are per-suite base64 directories with numeric .rms members.",
+          "evidence": [
+            "source:shinovon/KEmulator src/midp/javax/microedition/rms/RecordStore.java lines 104-149,192-237 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f",
+            "source:shinovon/KEmulator src/main/emulator/ui/swt/Property.java lines 286-294,348 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No save-state facility",
+          "status": "not_supported",
+          "naming": "No snapshot slots or state filename grammar in the reviewed source.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/ tree defines no snapshot writer @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS or firmware file required",
+          "status": "not_required",
+          "naming": "MIDlets boot directly; no firmware stage.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/Emulator.java loadGame @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/ tree defines no key store @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        }
       ]
     },
     "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "%APPDATA%\\KEmulator\\property.txt (RMSFolder plus font/window keys)",
+          "status": "captured",
+          "naming": "Java properties file written by saveProperties on settings apply.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/ui/swt/Property.java lines 607-617 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f",
+            "source:shinovon/KEmulator src/main/emulator/Emulator.java line 136 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "%APPDATA%\\KEmulator\\property.txt key bindings plus JInput gamepads",
+          "status": "captured",
+          "naming": "KeyMapping keyboard tables with JInput controller/axis/POV binds.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/KeyMapping.java @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f",
+            "source:shinovon/KEmulator src/main/emulator/Controllers.java JInput binds @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "RMS stores under RMSFolder (default ./rms) as <base64-suite>/<id>.rms",
+          "status": "captured",
+          "naming": "RecordStore files are per-suite base64 directories with numeric .rms members.",
+          "evidence": [
+            "source:shinovon/KEmulator src/midp/javax/microedition/rms/RecordStore.java lines 104-149,192-237 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f",
+            "source:shinovon/KEmulator src/main/emulator/ui/swt/Property.java lines 286-294,348 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No save-state facility",
+          "status": "not_supported",
+          "naming": "No snapshot slots or state filename grammar in the reviewed source.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/ tree defines no snapshot writer @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS or firmware file required",
+          "status": "not_required",
+          "naming": "MIDlets boot directly; no firmware stage.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/Emulator.java loadGame @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/ tree defines no key store @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "the install directory (getUserPath falls through to it outside Linux/Windows)property.txt (RMSFolder plus font/window keys)",
+          "status": "captured",
+          "naming": "Java properties file written by saveProperties on settings apply.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/ui/swt/Property.java lines 607-617 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f",
+            "source:shinovon/KEmulator src/main/emulator/Emulator.java line 136 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "the install directory (getUserPath falls through to it outside Linux/Windows)property.txt key bindings plus JInput gamepads",
+          "status": "captured",
+          "naming": "KeyMapping keyboard tables with JInput controller/axis/POV binds.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/KeyMapping.java @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f",
+            "source:shinovon/KEmulator src/main/emulator/Controllers.java JInput binds @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "RMS stores under RMSFolder (default ./rms) as <base64-suite>/<id>.rms",
+          "status": "captured",
+          "naming": "RecordStore files are per-suite base64 directories with numeric .rms members.",
+          "evidence": [
+            "source:shinovon/KEmulator src/midp/javax/microedition/rms/RecordStore.java lines 104-149,192-237 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f",
+            "source:shinovon/KEmulator src/main/emulator/ui/swt/Property.java lines 286-294,348 @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No save-state facility",
+          "status": "not_supported",
+          "naming": "No snapshot slots or state filename grammar in the reviewed source.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/ tree defines no snapshot writer @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS or firmware file required",
+          "status": "not_required",
+          "naming": "MIDlets boot directly; no firmware stage.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/Emulator.java loadGame @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:shinovon/KEmulator src/main/emulator/ tree defines no key store @9e8b780a5cf16182b71b6d5015bb2fc14f1ccb7f"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
       "status": "unresolved",
       "reason": "The official KEmulator nnmod source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
       "evidence": [
