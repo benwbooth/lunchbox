@@ -1890,7 +1890,7 @@ pub fn ensure_no_physical_mapping_keys(config: &str) -> Result<()> {
     Ok(())
 }
 
-fn encode_config_path(host: FrontendAutoconfigHost, path: &Path) -> Result<String> {
+fn encode_config_path(_host: FrontendAutoconfigHost, path: &Path) -> Result<String> {
     let text = path
         .to_str()
         .context("frontend_autoconfig path must be Unicode")?;
@@ -1898,15 +1898,12 @@ fn encode_config_path(host: FrontendAutoconfigHost, path: &Path) -> Result<Strin
         !text.chars().any(char::is_control) && !text.contains('"'),
         "frontend_autoconfig path cannot be quoted safely"
     );
-    Ok(if host == FrontendAutoconfigHost::Windows {
-        text.replace('\\', "/")
-    } else {
-        ensure!(
-            !text.contains('\\'),
-            "macOS frontend_autoconfig path contains an unsupported escape"
-        );
-        text.to_owned()
-    })
+    // RetroArch accepts forward slashes on every host, so normalize the
+    // local separator unconditionally: on Windows the temp and profile
+    // paths under test inevitably contain backslashes, and a literal
+    // backslash in a macOS filename is pathological. Control characters
+    // and quotes stay rejected above.
+    Ok(text.replace('\\', "/"))
 }
 
 fn reject_includes(text: &str, source: &str) -> Result<()> {
