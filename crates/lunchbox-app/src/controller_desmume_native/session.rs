@@ -1,8 +1,11 @@
 //! Native SDL2 launch-time inventory, calibration ownership and the private
 //! XDG config. The user's own DeSmuME configuration is never opened.
 use super::{Binding, settings};
+#[cfg(target_os = "linux")]
+use crate::controller_bizhawk_guard::InputTopology;
+#[cfg(not(target_os = "linux"))]
+use crate::controller_native_platform as platform;
 use crate::{
-    controller_bizhawk_guard::InputTopology,
     controller_catalog::Calibration,
     controller_native_process::{cancelled, capture},
     controllers::ControllerDevice,
@@ -56,7 +59,7 @@ pub(super) fn calibrated_bindings(
         duckstation::DigitalInput, linux_classic::AxisEndpoints, sdl2_physical::PhysicalMap,
     };
     ensure!(
-        calibration.os == "linux",
+        ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
         "DeSmuME native calibration requires Linux"
     );
     let device = snapshot.device_at_path(runtime_path)?;
@@ -167,6 +170,8 @@ pub(crate) struct PreparedSession {
     directory: tempfile::TempDir,
     pub(crate) config_root: std::path::PathBuf,
     runtime_path: String,
+    device_index: u32,
+    #[cfg(target_os = "linux")]
     topology: InputTopology,
     initial: Snapshot,
     setup: settings::SavedSetup,
@@ -193,17 +198,40 @@ impl PreparedSession {
             "DeSmuME requires an unambiguous physical controller"
         );
         let selected = device.device_path.clone();
-        let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
         let initial = routing(observe(setup, None, cancel)?);
-        let runtime_path = topology.resolve_runtime_path(
-            &selected,
-            initial
+        // Linux pins kernel input identity through the sysfs topology.
+        // Other hosts pin the SDL device-interface path and require
+        // uniqueness; names and GUIDs are never identity.
+        #[cfg(target_os = "linux")]
+        let (runtime_path, topology) = {
+            let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
+            let runtime_path = topology.resolve_runtime_path(
+                &selected,
+                initial
+                    .devices
+                    .iter()
+                    .filter_map(|device| device.path.as_deref()),
+            )?;
+            topology.verify()?;
+            (runtime_path, topology)
+        };
+        #[cfg(not(target_os = "linux"))]
+        let runtime_path = {
+            let selected_string = selected.to_string_lossy().into_owned();
+            let candidates = initial
                 .devices
                 .iter()
-                .filter_map(|device| device.path.as_deref()),
-        )?;
+                .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                .collect::<Vec<_>>();
+            ensure!(
+                candidates.len() == 1,
+                "DeSmuME physical controller is missing or ambiguous in SDL"
+            );
+            selected_string
+        };
         let captured = observe(setup, Some(&runtime_path), cancel)?;
         initial.ensure_same_routing(&routing(captured.clone()))?;
+        #[cfg(target_os = "linux")]
         topology.verify()?;
         let bindings = calibrated_bindings(
             calibrations
@@ -213,6 +241,8 @@ impl PreparedSession {
             &runtime_path,
         )?;
         let device_index = captured.device_at_path(&runtime_path)?.device_index;
+        #[cfg(not(target_os = "linux"))]
+        platform::require_unique_device_path(&captured.devices, &runtime_path, device_index)?;
         let directory = tempfile::Builder::new()
             .prefix("lunchbox-desmume-")
             .tempdir()?;
@@ -232,6 +262,8 @@ impl PreparedSession {
             directory,
             config_root,
             runtime_path,
+            device_index,
+            #[cfg(target_os = "linux")]
             topology,
             initial,
             setup: setup.clone(),
@@ -243,6 +275,7 @@ impl PreparedSession {
 
     pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
         cancelled(cancel)?;
+        #[cfg(target_os = "linux")]
         self.topology.verify()?;
         for (path, expected) in &self.hashes {
             ensure!(
@@ -252,13 +285,45 @@ impl PreparedSession {
         }
         let fresh = routing(observe(&self.setup, None, cancel)?);
         self.initial.ensure_same_routing(&fresh)?;
-        fresh
+        let device = fresh
             .device_at_path(&self.runtime_path)
             .context("DeSmuME controller disappeared")?;
-        self.topology.verify()
+        ensure!(
+            device.device_index == self.device_index,
+            "DeSmuME SDL joystick moved before launch"
+        );
+        #[cfg(not(target_os = "linux"))]
+        platform::require_unique_device_path(
+            &fresh.devices,
+            &self.runtime_path,
+            self.device_index,
+        )?;
+        #[cfg(target_os = "linux")]
+        {
+            return self.topology.verify();
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Ok(());
+        }
     }
 
     pub(crate) fn check_health(&self) -> Result<()> {
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        return self.topology.verify();
+        #[cfg(not(target_os = "linux"))]
+        return self.verify_health_probe();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn verify_health_probe(&self) -> Result<()> {
+        let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+        self.initial.ensure_same_routing(&fresh)?;
+        platform::require_unique_device_path(
+            &fresh.devices,
+            &self.runtime_path,
+            self.device_index,
+        )?;
+        Ok(())
     }
 }

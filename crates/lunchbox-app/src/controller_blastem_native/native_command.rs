@@ -56,7 +56,7 @@ pub(crate) fn prepare(
     cancelled(cancel)?;
     setup.validate()?;
     let EmulatorExecutable::Native(executable) = &option.executable else {
-        anyhow::bail!("BlastEm calibrated launch requires native Linux, not Wine/Flatpak");
+        anyhow::bail!("BlastEm calibrated launch requires a native build, not Wine/Flatpak");
     };
     ensure!(
         setup.emulator_id == option.emulator_id && original.environment.is_empty(),
@@ -78,8 +78,15 @@ pub(crate) fn prepare(
     let inputs = PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
     let mut plan = original.clone();
     // A private HOME keeps BlastEm's configuration and saves isolated.
+    // Other hosts additionally carry the session user roots; HOME itself
+    // is kept everywhere because the emulator resolves it directly.
+    // Config-home resolution outside Linux is a runtime-verification item.
     plan.environment
         .push(("HOME".into(), inputs.home_path.as_os_str().to_owned()));
+    #[cfg(not(target_os = "linux"))]
+    for (key, value) in crate::controller_native_platform::session_user_env(&inputs.home_path) {
+        plan.environment.push((key, value));
+    }
     let session = NativeSession {
         inputs,
         executable,

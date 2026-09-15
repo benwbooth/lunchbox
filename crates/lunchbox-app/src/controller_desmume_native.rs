@@ -16,9 +16,7 @@
 //!   every read and write from the user's own configuration.
 use anyhow::{Result, ensure};
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command;
-#[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
 

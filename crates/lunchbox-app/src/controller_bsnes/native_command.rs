@@ -56,7 +56,7 @@ pub(crate) fn prepare(
     cancelled(cancel)?;
     setup.validate()?;
     let EmulatorExecutable::Native(executable) = &option.executable else {
-        anyhow::bail!("bsnes calibrated launch requires native Linux, not Wine/Flatpak");
+        anyhow::bail!("bsnes calibrated launch requires a native build, not Wine/Flatpak");
     };
     ensure!(
         setup.emulator_id == option.emulator_id && original.environment.is_empty(),
