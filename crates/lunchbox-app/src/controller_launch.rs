@@ -127,7 +127,6 @@ enum PreparedJsonNativeLaunch {
     Amiberry(crate::controller_amiberry_native::native_command::NativeSession),
     GbePlus(crate::controller_gbe_plus_standalone::native_command::NativeSession),
     PokeMini(crate::controller_pokemini_standalone::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Uzem(crate::controller_uzem_standalone::native_command::NativeSession),
     Eka2l1(crate::controller_eka2l1_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
@@ -152,7 +151,6 @@ enum PreparedJsonNativeLaunch {
     Play(crate::controller_play_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Vita3K(crate::controller_vita3k_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
@@ -209,7 +207,6 @@ impl PreparedJsonNativeLaunch {
             Self::Amiberry(session) => session.spawn(plan, cancel),
             Self::GbePlus(session) => session.spawn(plan, cancel),
             Self::PokeMini(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Uzem(session) => session.spawn(plan, cancel),
             Self::Eka2l1(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
@@ -234,7 +231,6 @@ impl PreparedJsonNativeLaunch {
             Self::Play(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Vita3K(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Caprice32(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::YabaSanshiro(session) => session.spawn(plan, cancel),
@@ -287,7 +283,6 @@ impl PreparedJsonNativeLaunch {
             Self::Amiberry(session) => session.verify(cancel),
             Self::GbePlus(session) => session.verify(cancel),
             Self::PokeMini(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Uzem(session) => session.verify(cancel),
             Self::Eka2l1(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
@@ -312,7 +307,6 @@ impl PreparedJsonNativeLaunch {
             Self::Play(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Vita3K(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Caprice32(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::YabaSanshiro(session) => session.verify(cancel),
@@ -365,7 +359,6 @@ impl PreparedJsonNativeLaunch {
             Self::Amiberry(session) => session.check_health(),
             Self::GbePlus(session) => session.check_health(),
             Self::PokeMini(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Uzem(session) => session.check_health(),
             Self::Eka2l1(session) => session.check_health(),
             #[cfg(target_os = "linux")]
@@ -390,7 +383,6 @@ impl PreparedJsonNativeLaunch {
             Self::Play(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Vita3K(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Caprice32(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::YabaSanshiro(session) => session.check_health(),
@@ -8259,7 +8251,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Caprice32")
     {
@@ -8691,7 +8682,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Uzem")
     {
@@ -9260,7 +9250,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Caprice32")
     {
@@ -9845,7 +9834,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Uzem")
     {
