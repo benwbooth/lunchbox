@@ -3,16 +3,112 @@
   "slug": "nes-emu",
   "emulator": "NES.emu",
   "sources": [
-    {"kind":"source","repo":"Rakashazi/emu-ex-plus-alpha","commit":"1c12fac5ce49badaadff2e2f210dcc30b89f4943","url":"https://github.com/Rakashazi/emu-ex-plus-alpha/tree/1c12fac5ce49badaadff2e2f210dcc30b89f4943","role":"pinned upstream source"},
-    {"kind":"docs","url":"https://github.com/Rakashazi/emu-ex-plus-alpha","role":"upstream Android build/distribution documentation"}
+    {
+      "kind": "source",
+      "repo": "Rakashazi/emu-ex-plus-alpha",
+      "commit": "1c12fac5ce49badaadff2e2f210dcc30b89f4943",
+      "url": "https://github.com/Rakashazi/emu-ex-plus-alpha/tree/1c12fac5ce49badaadff2e2f210dcc30b89f4943",
+      "role": "pinned upstream source"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/Rakashazi/emu-ex-plus-alpha",
+      "role": "upstream Android build/distribution documentation"
+    }
   ],
-  "platforms": {},
-  "platform_gaps": {
-    "linux":{"status":"unresolved","reason":"Pinned upstream README names Android and Linux builds, but no local Linux package/runtime or verified controller-profile path is available for this catalog entry.","evidence":["source:README.md lines 3-12 @1c12fac5ce49badaadff2e2f210dcc30b89f4943","source:NES.emu/src/main/AppMeta.cc lines 27,105-145 @1c12fac5ce49badaadff2e2f210dcc30b89f4943","source:NES.emu/src/main/options.cc lines 58-140 @1c12fac5ce49badaadff2e2f210dcc30b89f4943"]},
-    "linux-flatpak":{"status":"unsupported","reason":"No official Linux/Flatpak package; Android storage and input APIs cannot be mapped safely to a desktop writer.","evidence":["source:Rakashazi/emu-ex-plus-alpha@1c12fac5ce49badaadff2e2f210dcc30b89f4943"]},
-    "windows":{"status":"unsupported","reason":"No official Windows package or source-backed Windows controller-profile format.","evidence":["source:Rakashazi/emu-ex-plus-alpha@1c12fac5ce49badaadff2e2f210dcc30b89f4943"]},
-    "macos":{"status":"unsupported","reason":"No official macOS package or source-backed macOS controller-profile format.","evidence":["source:Rakashazi/emu-ex-plus-alpha@1c12fac5ce49badaadff2e2f210dcc30b89f4943"]}
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "$XDG_DATA_HOME/NES.emu/NesEmu.config (fallback ~/.local/share/NES.emu/)",
+          "status": "captured",
+          "naming": "Binary MAIN grammar (video, palette, cheat/patch dirs, FDS BIOS path) plus SESSION grammar (ports, overclock); input devices and custom key configs included.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha NES.emu/src/main/options.cc lines 58-140 @1c12fac5ce49badaadff2e2f210dcc30b89f4943",
+            "source:Rakashazi/emu-ex-plus-alpha NES.emu/src/main/AppMeta.cc line 27 @1c12fac5ce49badaadff2e2f210dcc30b89f4943",
+            "source:Rakashazi/emu-ex-plus-alpha EmuFramework/src/ConfigFile.cc lines 118,256 @1c12fac5ce49badaadff2e2f210dcc30b89f4943",
+            "source:Rakashazi/emu-ex-plus-alpha imagine/src/base/linux/ApplicationContext.cc supportPath @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "$XDG_DATA_HOME/NES.emu/NesEmu.config device and key bindings",
+          "status": "captured",
+          "naming": "Saved input devices plus custom key configs in the same binary config.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha EmuFramework/src/ConfigFile.cc inputManager bindings @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Content directory <name>.sav (FDS titles <name>.fds.sav)",
+          "status": "captured",
+          "naming": "Battery SRAM beside content via the shared contentSaveFilePath mechanism.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha NES.emu/src/main/Main.cc line 125 @1c12fac5ce49badaadff2e2f210dcc30b89f4943",
+            "source:Rakashazi/emu-ex-plus-alpha NES.emu/src/main/FceuApi.cc lines 358-364 @1c12fac5ce49badaadff2e2f210dcc30b89f4943",
+            "source:Rakashazi/emu-ex-plus-alpha EmuFramework/src/EmuSystem.cc contentSaveFilePath @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Content directory <name>.fcs (slot -1) and <name>.fc<0-9>",
+          "status": "captured",
+          "naming": "FCEUX-serialized slots through the shared statePath mechanism.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha NES.emu/src/main/Main.cc lines 70-95 @1c12fac5ce49badaadff2e2f210dcc30b89f4943",
+            "source:Rakashazi/emu-ex-plus-alpha EmuFramework/src/EmuSystem.cc statePath @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "User FDS BIOS file via config; no cartridge BIOS needed",
+          "status": "captured",
+          "naming": "CFGKEY_FDS_BIOS_PATH selects the FDS BIOS for disk titles.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha NES.emu/src/main/options.cc FDS BIOS path @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha NES.emu/src/main/ tree defines no key store @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        }
+      ]
+    }
   },
-  "android_boundary":{"native_writer":"not_implemented","reason":"Android preference/storage and Java input-device integration are outside this desktop adapter boundary.","saves":"Catalog lists /storage/emulated/0/Android/data/com.explusalpha.NesEmu/files; runtime verification is still required."},
-  "notes":"Fail closed on all four desktop host variants. The pinned source is evidence of upstream identity only; it is not proof of a desktop build, Android runtime behavior, or persistent profile syntax."
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "unsupported",
+      "reason": "No official Linux/Flatpak package; Android storage and input APIs cannot be mapped safely to a desktop writer.",
+      "evidence": [
+        "source:Rakashazi/emu-ex-plus-alpha@1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+      ]
+    },
+    "windows": {
+      "status": "unsupported",
+      "reason": "No official Windows package or source-backed Windows controller-profile format.",
+      "evidence": [
+        "source:Rakashazi/emu-ex-plus-alpha@1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+      ]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "No official macOS package or source-backed macOS controller-profile format.",
+      "evidence": [
+        "source:Rakashazi/emu-ex-plus-alpha@1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+      ]
+    }
+  },
+  "android_boundary": {
+    "native_writer": "not_implemented",
+    "reason": "Android preference/storage and Java input-device integration are outside this desktop adapter boundary.",
+    "saves": "Catalog lists /storage/emulated/0/Android/data/com.explusalpha.NesEmu/files; runtime verification is still required."
+  },
+  "notes": "Fail closed on Windows/macOS desktop variants and on Android runtime behavior. Linux host paths are source-established (Imagine Linux backend with XDG support paths plus the NES.emu MAIN/SESSION config grammar and content save/state mechanisms); packaged Linux distribution and runtime verification remain open."
 }

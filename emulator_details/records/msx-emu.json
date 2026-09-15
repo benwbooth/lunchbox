@@ -1,1 +1,99 @@
-{"schema_version":1,"slug":"msx-emu","emulator":"MSX.emu","sources":[{"kind":"official","url":"https://www.explusalpha.com/contents/msx-emu/","role":"official proprietary distribution and feature page"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"The official page advertises Linux-family/mobile builds and external controllers but publishes no inspectable config, input, save/state, BIOS or key grammar.","evidence":["official:https://www.explusalpha.com/contents/msx-emu/"]},"linux-flatpak":{"status":"unsupported","reason":"No official Flatpak package verified.","evidence":["official:https://www.explusalpha.com/contents/msx-emu/"]},"windows":{"status":"unsupported","reason":"No official Windows build verified.","evidence":["official:https://www.explusalpha.com/contents/msx-emu/"]},"macos":{"status":"unsupported","reason":"No official macOS build verified.","evidence":["official:https://www.explusalpha.com/contents/msx-emu/"]}},"notes":"No native writer; do not infer private Android/iOS storage or reverse-engineer an unpinned package as a source-backed contract."}
+{
+  "schema_version": 1,
+  "slug": "msx-emu",
+  "emulator": "MSX.emu",
+  "sources": [
+    {
+      "kind": "official",
+      "url": "https://www.explusalpha.com/contents/msx-emu/",
+      "role": "official proprietary distribution and feature page"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "$XDG_DATA_HOME/MSX.emu/MsxEmu.config (fallback ~/.local/share/MSX.emu/)",
+          "status": "captured",
+          "naming": "Binary MAIN+SESSION grammar shared with the EmuFramework config file mechanism.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha MSX.emu/src/main/AppMeta.cc configFilename @1c12fac5ce49badaadff2e2f210dcc30b89f4943",
+            "source:Rakashazi/emu-ex-plus-alpha EmuFramework/src/ConfigFile.cc lines 118,256 @1c12fac5ce49badaadff2e2f210dcc30b89f4943",
+            "source:Rakashazi/emu-ex-plus-alpha imagine/src/base/linux/ApplicationContext.cc supportPath @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "$XDG_DATA_HOME/MSX.emu/MsxEmu.config device and key bindings",
+          "status": "captured",
+          "naming": "Saved input devices plus custom key configs in the same binary config.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha EmuFramework/src/ConfigFile.cc inputManager bindings @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Content directory battery saves via the shared contentSaveFilePath mechanism",
+          "status": "captured",
+          "naming": "SRAM beside content; same framework path as NES.emu.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha EmuFramework/src/EmuSystem.cc contentSaveFilePath @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Content directory slot-suffixed state files via the shared statePath mechanism",
+          "status": "captured",
+          "naming": "Slots through EmuFramework statePath/stateFilename.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha EmuFramework/src/EmuSystem.cc statePath/stateFilename @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Built-in C-BIOS machines need no BIOS; optional user BIOS directory via Options File Paths",
+          "status": "captured",
+          "naming": "MSX/MSX2/MSX2+ C-BIOS entries plus user BIOS folder selection.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha MSX.emu/src/main/EmuMenuViews.cc lines 73-75,199-207 @1c12fac5ce49badaadff2e2f210dcc30b89f4943",
+            "source:Rakashazi/emu-ex-plus-alpha MSX.emu/src/main/Main.cc line 217 @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:Rakashazi/emu-ex-plus-alpha MSX.emu/src/main/ tree defines no key store @1c12fac5ce49badaadff2e2f210dcc30b89f4943"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "unsupported",
+      "reason": "No official Flatpak package verified.",
+      "evidence": [
+        "official:https://www.explusalpha.com/contents/msx-emu/"
+      ]
+    },
+    "windows": {
+      "status": "unsupported",
+      "reason": "No official Windows build verified.",
+      "evidence": [
+        "official:https://www.explusalpha.com/contents/msx-emu/"
+      ]
+    },
+    "macos": {
+      "status": "unsupported",
+      "reason": "No official macOS build verified.",
+      "evidence": [
+        "official:https://www.explusalpha.com/contents/msx-emu/"
+      ]
+    }
+  },
+  "notes": "Fail closed on Windows/macOS desktop variants. Linux host paths are source-established (Imagine Linux backend with XDG support paths, MsxEmu.config grammar and content save/state mechanisms); packaged Linux distribution and runtime verification remain open. Do not infer private Android/iOS storage or reverse-engineer an unpinned package."
+}
