@@ -119,7 +119,6 @@ enum PreparedJsonNativeLaunch {
     NanoBoyAdvance(crate::controller_nanoboyadvance_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     VbaM(crate::controller_vba_m_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     EightySixBox(crate::controller_86box_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     A7800(crate::controller_a7800_native::native_command::NativeSession),
@@ -211,7 +210,6 @@ impl PreparedJsonNativeLaunch {
             Self::NanoBoyAdvance(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::VbaM(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::EightySixBox(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::A7800(session) => session.spawn(plan, cancel),
@@ -299,7 +297,6 @@ impl PreparedJsonNativeLaunch {
             Self::NanoBoyAdvance(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::VbaM(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::EightySixBox(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::A7800(session) => session.verify(cancel),
@@ -387,7 +384,6 @@ impl PreparedJsonNativeLaunch {
             Self::NanoBoyAdvance(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::VbaM(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::EightySixBox(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::A7800(session) => session.check_health(),
@@ -8277,7 +8273,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("86Box")
     {

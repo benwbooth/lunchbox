@@ -228,12 +228,12 @@ pub(crate) mod settings {
                 !self.emulator_id.trim().is_empty(),
                 "86Box setup needs an emulator identity"
             );
-            for path in [
-                &self.content,
-                &self.probe_program,
-                &self.sdl_library,
-                &self.bubblewrap_program,
-            ] {
+            let mut path_vec = vec![&self.content, &self.probe_program, &self.sdl_library];
+            // bubblewrap exists only on Linux; elsewhere the field is
+            // accepted and ignored by the unsandboxed launch below.
+            #[cfg(target_os = "linux")]
+            path_vec.push(&self.bubblewrap_program);
+            for path in path_vec {
                 ensure!(
                     path.is_absolute()
                         && !path
@@ -297,8 +297,8 @@ pub(crate) mod settings {
                     .get(&player.controller_id)
                     .context("86Box controller has no saved calibration")?;
                 ensure!(
-                    calibration.os == "linux",
-                    "86Box mapping requires Linux physical calibration"
+                    ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+                    "86Box mapping requires a desktop physical calibration"
                 );
                 let mapping = calibration.plan_profile(profile)?;
                 ensure!(
@@ -344,8 +344,11 @@ pub(crate) mod settings {
 #[cfg(target_os = "linux")]
 mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::Calibration,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
@@ -522,7 +525,9 @@ mod session {
         directory: tempfile::TempDir,
         pub(crate) private_config: PathBuf,
         runtime_paths: Vec<String>,
+        device_indices: Vec<u32>,
         captures: Vec<Snapshot>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         initial: Snapshot,
         setup: settings::SavedSetup,
@@ -555,6 +560,7 @@ mod session {
                 );
                 selected.push(matches[0].device_path.clone());
             }
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(&selected)?;
             let initial = routing(observe(setup, None, cancel)?);
             ensure!(
@@ -564,7 +570,11 @@ mod session {
             let mut runtime_paths = Vec::new();
             let mut captures = Vec::new();
             let mut joysticks = Vec::new();
+            let mut device_indices = Vec::new();
             for (slot, (player, selected_path)) in setup.players.iter().zip(&selected).enumerate() {
+                // Linux resolves through the sysfs topology; other hosts
+                // match the SDL device-interface path and require uniqueness.
+                #[cfg(target_os = "linux")]
                 let runtime_path = topology.resolve_runtime_path(
                     selected_path,
                     initial
@@ -572,13 +582,34 @@ mod session {
                         .iter()
                         .filter_map(|device| device.path.as_deref()),
                 )?;
+                #[cfg(not(target_os = "linux"))]
+                let runtime_path = {
+                    let selected_string = selected_path.to_string_lossy().into_owned();
+                    let candidates = initial
+                        .devices
+                        .iter()
+                        .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        candidates.len() == 1,
+                        "86Box physical controller is missing or ambiguous in SDL"
+                    );
+                    selected_string
+                };
                 ensure!(
                     !runtime_paths.contains(&runtime_path),
                     "86Box players resolved to the same controller"
                 );
                 let captured = observe(setup, Some(&runtime_path), cancel)?;
                 initial.ensure_same_routing(&routing(captured.clone()))?;
+                #[cfg(target_os = "linux")]
                 topology.verify()?;
+                #[cfg(not(target_os = "linux"))]
+                platform::require_unique_device_path(
+                    &captured.devices,
+                    &runtime_path,
+                    captured.device_at_path(&runtime_path)?.device_index,
+                )?;
                 let device = captured.device_at_path(&runtime_path)?;
                 let host_number = device
                     .device_index
@@ -601,6 +632,7 @@ mod session {
                     )?,
                 )?);
                 runtime_paths.push(runtime_path);
+                device_indices.push(device.device_index);
                 captures.push(captured);
             }
             let baseline = fs::read(&setup.content).context("Reading 86Box machine config")?;
@@ -613,20 +645,26 @@ mod session {
                 patch_config(&baseline, "2axis_2button", &joysticks)?,
             )?;
             let mut hashes = BTreeMap::new();
-            for path in [
+            let mut hash_paths = vec![
                 &setup.content,
                 &setup.probe_program,
                 &setup.sdl_library,
-                &setup.bubblewrap_program,
                 &private_config,
-            ] {
+            ];
+            // bubblewrap exists only on Linux; elsewhere the field is
+            // accepted and ignored by the unsandboxed launch below.
+            #[cfg(target_os = "linux")]
+            hash_paths.push(&setup.bubblewrap_program);
+            for path in hash_paths {
                 hashes.insert(path.clone(), file_hash(path)?);
             }
             let prepared = Self {
                 directory,
                 private_config,
                 runtime_paths,
+                device_indices,
                 captures,
+                #[cfg(target_os = "linux")]
                 topology,
                 initial,
                 setup: setup.clone(),
@@ -642,6 +680,7 @@ mod session {
                 self.directory.path().is_dir() && self.private_config.is_file(),
                 "86Box private configuration disappeared"
             );
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, expected) in &self.hashes {
                 ensure!(file_hash(path)? == *expected, "86Box launch input changed");
@@ -652,17 +691,50 @@ mod session {
                 fresh.devices.len() <= usize::from(MAX_PLAT_JOYSTICKS),
                 "86Box SDL2 runtime supports at most eight enumerated joysticks"
             );
-            for (path, expected) in self.runtime_paths.iter().zip(&self.captures) {
+            for ((path, expected), index) in self
+                .runtime_paths
+                .iter()
+                .zip(&self.captures)
+                .zip(&self.device_indices)
+            {
                 let captured = observe(&self.setup, Some(path), cancel)?;
                 expected.ensure_same_routing(&captured)?;
-                self.initial.ensure_same_routing(&routing(captured))?;
+                self.initial.ensure_same_routing(&routing(captured.clone()))?;
+                let device = captured.device_at_path(path)?;
+                ensure!(
+                    device.device_index == *index,
+                    "86Box SDL joystick moved before launch"
+                );
+                #[cfg(not(target_os = "linux"))]
+                platform::require_unique_device_path(&captured.devices, path, *index)?;
+                #[cfg(target_os = "linux")]
                 self.topology.verify()?;
             }
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+            self.initial.ensure_same_routing(&fresh)?;
+            for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
+                platform::require_unique_device_path(&fresh.devices, path, *index)?;
+            }
+            Ok(())
         }
     }
 
@@ -805,7 +877,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("86Box calibrated launch requires native Linux");
+            anyhow::bail!("86Box calibrated launch requires a native build");
         };
         ensure!(
             option.emulator_name.eq_ignore_ascii_case("86Box")
@@ -827,7 +899,9 @@ pub(crate) mod native_command {
             "86Box executable differs from the saved trusted runtime"
         );
         let inputs = session::PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
+        #[cfg(target_os = "linux")]
         let cwd = original.current_directory.canonicalize()?;
+        #[cfg(target_os = "linux")]
         let arguments = vec![
             "--die-with-parent".into(),
             "--bind".into(),
@@ -844,8 +918,19 @@ pub(crate) mod native_command {
             setup.content.as_os_str().to_owned(),
         ];
         let mut plan = original.clone();
-        plan.program = setup.bubblewrap_program.clone();
-        plan.arguments = arguments;
+        // Linux sandboxes through bubblewrap with the private config bound
+        // over the saved path. Other hosts run the trusted executable
+        // directly against the private config with no sandbox layer.
+        #[cfg(target_os = "linux")]
+        {
+            plan.program = setup.bubblewrap_program.clone();
+            plan.arguments = arguments;
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            plan.program = executable.clone();
+            plan.arguments = vec!["-C".into(), inputs.private_config.as_os_str().to_owned()];
+        }
         let session = NativeSession {
             inputs,
             executable,
