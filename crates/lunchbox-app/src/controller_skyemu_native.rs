@@ -352,7 +352,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch writes a private <name>-bindings.bin, then rechecks the exact SDL2 routes. Only the single DS pad is supported; runtime behavior remains unverified."
+                "detail": "Native launch writes a private <name>-bindings.bin, then rechecks the exact SDL2 routes. Only the single DS pad is supported; runtime behavior remains unverified."
             }))
         }
     }

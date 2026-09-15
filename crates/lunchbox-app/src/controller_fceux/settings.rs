@@ -111,7 +111,7 @@ impl SavedSetup {
         }
         Ok(serde_json::json!({"players":players,"launch_ready":false,
             "launch_integration":"partial",
-            "detail":"Native Linux FCEUX Qt launch dispatch is connected. ROM-selected device overrides remain unresolved and may replace standard pads. Review opens no devices and does not prove runtime readiness; no runtime testing performed."}))
+            "detail":"Native FCEUX Qt launch dispatch is connected. ROM-selected device overrides remain unresolved and may replace standard pads. Review opens no devices and does not prove runtime readiness; no runtime testing performed."}))
     }
 }
 

@@ -137,7 +137,7 @@ impl SavedSetup {
         }
         Ok(
             serde_json::json!({"players":players,"launch_ready":false,"launch_integration":"partial",
-            "detail":"RPCS3 standard pad setup is saved for native SDL translation. Native Linux file-boot dispatch is connected but untested; review opens no devices."}),
+            "detail":"RPCS3 standard pad setup is saved for native SDL translation. Native file-boot dispatch is connected but untested; review opens no devices."}),
         )
     }
 }

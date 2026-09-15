@@ -400,7 +400,7 @@ pub(crate) mod settings {
                 "players": [{"player": 1, "controller_id": self.players[0].controller_id, "source_layout": calibration.layout, "target_layout": profile.target_layout, "mapping": mapping}],
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch copies the selected Qt/wx INI, disables logical GameController translation, writes only first-player GBA controls, and rechecks the exact SDL runtime, raw control numbering, save/state roots, optional active GBA BIOS, content and executable. Runtime behavior is unverified."
+                "detail": "Native launch copies the selected Qt/wx INI, disables logical GameController translation, writes only first-player GBA controls, and rechecks the exact SDL runtime, raw control numbering, save/state roots, optional active GBA BIOS, content and executable. Runtime behavior is unverified."
             }))
         }
     }

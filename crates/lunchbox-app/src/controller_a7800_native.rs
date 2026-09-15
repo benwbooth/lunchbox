@@ -313,7 +313,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch builds a private MAME v10 controller profile and filtered cfg directory, then rechecks the exact SDL2 routes. Only the base NTSC/PAL machines and Pro-Line digital controls are supported; runtime behavior remains unverified."
+                "detail": "Native launch builds a private MAME v10 controller profile and filtered cfg directory, then rechecks the exact SDL2 routes. Only the base NTSC/PAL machines and Pro-Line digital controls are supported; runtime behavior remains unverified."
             }))
         }
     }

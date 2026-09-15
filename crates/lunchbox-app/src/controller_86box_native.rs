@@ -323,7 +323,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch overlays the selected machine 86box.cfg at its original path, selects the exact 2-axis/2-button gameport topology, and rechecks SDL2 raw controls and device order. Guest disk saves and ROM paths remain native. Runtime behavior is unverified."
+                "detail": "Native launch overlays the selected machine 86box.cfg at its original path, selects the exact 2-axis/2-button gameport topology, and rechecks SDL2 raw controls and device order. Guest disk saves and ROM paths remain native. Runtime behavior is unverified."
             }))
         }
     }

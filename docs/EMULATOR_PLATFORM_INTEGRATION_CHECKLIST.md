@@ -23,7 +23,9 @@ is documented in [EMULATOR_FEATURE_MATRIX.md](EMULATOR_FEATURE_MATRIX.md).
   for cryptographic firmware keys. General configuration remains `config`.
 - **Native** means a partial standalone controller writer/session/launch route
   is registered by `controller_coverage.rs`. It does not mean all devices,
-  modes, hosts, games, or peripherals work.
+  modes, hosts, games, or peripherals work. Sessions are cross-platform
+  (Linux + Windows + macOS) except joydev/evdev/classic-backend contracts,
+  Flatpak rows, and the BizHawk sysfs guard, which remain Linux-only.
 - **RetroArch** is the shared frontend platform record for 94/94 core names; it
   is not a standalone adapter. Each core has its own controller, firmware,
   save, state, and host-availability record.

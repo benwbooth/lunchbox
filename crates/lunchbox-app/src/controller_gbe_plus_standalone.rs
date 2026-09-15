@@ -180,7 +180,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch writes a private gbe.ini gamepad section, then rechecks the exact SDL routes. Only the single gamepad on SDL index 0 is supported; runtime behavior remains unverified."
+                "detail": "Native launch writes a private gbe.ini gamepad section, then rechecks the exact SDL routes. Only the single gamepad on SDL index 0 is supported; runtime behavior remains unverified."
             }))
         }
     }

@@ -364,7 +364,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch patches a private linapple.conf, then rechecks the exact SDL routes. Only analog-axis directions plus two buttons on ports one/two are supported; runtime behavior remains unverified."
+                "detail": "Native launch patches a private linapple.conf, then rechecks the exact SDL routes. Only analog-axis directions plus two buttons on ports one/two are supported; runtime behavior remains unverified."
             }))
         }
     }

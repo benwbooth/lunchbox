@@ -32,7 +32,11 @@ enum keeps per-variant `cfg(target_os = "linux")` gates that each ported
 adapter drops. Linux build plus focused/catalog gates pass; Windows/macOS
 compilation rides on CI (`native-packages.yml` builds windows-2025 and
 macos) until a foreign-target check exists locally. Counts unchanged:
-76/250 dispatches, 170/344 entries; vector06sdl is now 1/76 cross-platform.
+76/250 dispatches, 170/344 entries; all portable adapters are now
+cross-platform. Intentional Linux-only contracts keep their gates: joydev/evdev
+and classic-backend sessions (Atari++, ZEsarUX, NanoBoyAdvance, Play!, RMG,
+Mesen2, Mednafen, Dolphin-standalone), Flatpak rows (Nestopia UE, puNES),
+and the BizHawk sysfs guard.
 
 Step 642: connected the pinned ADAMEm SDL joystick table to a
 single-player native Linux launch adapter. Source review proved index-based
@@ -398,7 +402,11 @@ enum keeps per-variant `cfg(target_os = "linux")` gates that each ported
 adapter drops. Linux build plus focused/catalog gates pass; Windows/macOS
 compilation rides on CI (`native-packages.yml` builds windows-2025 and
 macos) until a foreign-target check exists locally. Counts unchanged:
-76/250 dispatches, 170/344 entries; vector06sdl is now 1/76 cross-platform.
+76/250 dispatches, 170/344 entries; all portable adapters are now
+cross-platform. Intentional Linux-only contracts keep their gates: joydev/evdev
+and classic-backend sessions (Atari++, ZEsarUX, NanoBoyAdvance, Play!, RMG,
+Mesen2, Mednafen, Dolphin-standalone), Flatpak rows (Nestopia UE, puNES),
+and the BizHawk sysfs guard.
 
 Step 642: connected the pinned ADAMEm SDL joystick table to a
 single-player native Linux launch adapter. Source review proved index-based

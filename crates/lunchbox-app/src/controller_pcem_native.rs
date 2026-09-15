@@ -193,7 +193,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch passes a private machine config with a slot-0 gameport joystick, then rechecks the exact SDL2 routes. Only axes plus two raw buttons are supported; runtime behavior remains unverified."
+                "detail": "Native launch passes a private machine config with a slot-0 gameport joystick, then rechecks the exact SDL2 routes. Only axes plus two raw buttons are supported; runtime behavior remains unverified."
             }))
         }
     }

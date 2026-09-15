@@ -128,7 +128,7 @@ impl SavedSetup {
             "launch_integration": "partial",
             "target_layout": profile.target_layout,
             "players": players,
-            "detail": "Native Linux launch translates each calibrated physical input into Kronos raw SDL joystick codes, patches complete Saturn pad entries in a copied kronos.ini, and overlays only that file. Real backup RAM, cartridge, state, BIOS, and media paths remain active. Exact SDL2 routing is rechecked at launch; runtime behavior is unverified."
+            "detail": "Native launch translates each calibrated physical input into Kronos raw SDL joystick codes, patches complete Saturn pad entries in a copied kronos.ini, and overlays only that file. Real backup RAM, cartridge, state, BIOS, and media paths remain active. Exact SDL2 routing is rechecked at launch; runtime behavior is unverified."
         }))
     }
 }

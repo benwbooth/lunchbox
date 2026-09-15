@@ -400,7 +400,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch runs in a session directory with a private qt-config.ini, then rechecks the exact SDL2 routes. Only the single 3DS pad on a unique GUID is supported; runtime behavior remains unverified."
+                "detail": "Native launch runs in a session directory with a private qt-config.ini, then rechecks the exact SDL2 routes. Only the single 3DS pad on a unique GUID is supported; runtime behavior remains unverified."
             }))
         }
     }

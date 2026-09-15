@@ -136,7 +136,7 @@ impl SavedSetup {
         }
         Ok(
             serde_json::json!({"players":players,"launch_ready":false,"launch_integration":"partial",
-            "detail":"Native Linux standard arcade panel dispatch is connected with private config and startup joystick checks. Game ID, internal routing and runtime compatibility remain unverified. Review opens no devices."}),
+            "detail":"Native standard arcade panel dispatch is connected with private config and startup joystick checks. Game ID, internal routing and runtime compatibility remain unverified. Review opens no devices."}),
         )
     }
 }

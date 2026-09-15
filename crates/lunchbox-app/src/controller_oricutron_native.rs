@@ -265,7 +265,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch overlays only oricutron.cfg inside bubblewrap and rechecks exact SDL2 joystick slots. The pinned source's fixed axis/hat/button interpretation and instance-ID comparison are enforced at launch; incompatible mappings are rejected. Firmware, media and snapshots retain their original locations. Runtime behavior is unverified."
+                "detail": "Native launch overlays only oricutron.cfg inside bubblewrap and rechecks exact SDL2 joystick slots. The pinned source's fixed axis/hat/button interpretation and instance-ID comparison are enforced at launch; incompatible mappings are rejected. Firmware, media and snapshots retain their original locations. Runtime behavior is unverified."
             }))
         }
     }

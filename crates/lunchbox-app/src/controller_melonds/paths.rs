@@ -1,4 +1,4 @@
-//! Native Linux Qt configuration lookup, retaining the selected source path.
+//! Native Qt configuration lookup, retaining the selected source path.
 use anyhow::{Context, Result, ensure};
 use std::{
     ffi::OsString,

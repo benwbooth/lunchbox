@@ -141,7 +141,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch stages a private adamem.joy with fire/aim buttons, then rechecks the exact SDL routes. Only stick 0 with axes is supported; runtime behavior remains unverified."
+                "detail": "Native launch stages a private adamem.joy with fire/aim buttons, then rechecks the exact SDL routes. Only stick 0 with axes is supported; runtime behavior remains unverified."
             }))
         }
     }

@@ -169,7 +169,7 @@ impl SavedSetup {
         }
         Ok(
             serde_json::json!({"players":players,"launch_ready":false,"launch_integration":"partial",
-            "detail":"PCSX2 native Linux DualShock2 dispatch is connected. Native content identity and SDL dependencies are required. Runtime/internal routing remain unverified; review opens no devices."}),
+            "detail":"PCSX2 native DualShock2 dispatch is connected. Native content identity and SDL dependencies are required. Runtime/internal routing remain unverified; review opens no devices."}),
         )
     }
 }

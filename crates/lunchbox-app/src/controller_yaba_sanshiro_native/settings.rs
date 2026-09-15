@@ -99,6 +99,6 @@ impl SavedSetup {
             "launch_integration":"partial",
             "target_layout":profile.target_layout,
             "mapping":mapping,
-            "detail":"Native Linux launch patches one Saturn pad entry in a copied yabause.ini and overlays only that file. The real backup-RAM and state roots remain active. Exact SDL2 device identity, mapping, and order are rechecked at launch; runtime behavior is unverified."}))
+            "detail":"Native launch patches one Saturn pad entry in a copied yabause.ini and overlays only that file. The real backup-RAM and state roots remain active. Exact SDL2 device identity, mapping, and order are rechecked at launch; runtime behavior is unverified."}))
     }
 }

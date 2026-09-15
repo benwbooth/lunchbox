@@ -190,7 +190,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch stages a session SimCoupe.cfg selecting the pad by exact SDL name, then rechecks the exact SDL routes. Only axes, hats, and fire on SAM joystick 1 are supported; runtime behavior remains unverified."
+                "detail": "Native launch stages a session SimCoupe.cfg selecting the pad by exact SDL name, then rechecks the exact SDL routes. Only axes, hats, and fire on SAM joystick 1 are supported; runtime behavior remains unverified."
             }))
         }
     }

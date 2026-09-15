@@ -279,7 +279,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch overlays only the selected config at its original path, rechecks exact SDL2 names, duplicate-name slots and raw controls, and leaves mounted media, firmware paths and explicit state destinations native. The quick-save remains beside the real selected config. Runtime behavior is unverified."
+                "detail": "Native launch overlays only the selected config at its original path, rechecks exact SDL2 names, duplicate-name slots and raw controls, and leaves mounted media, firmware paths and explicit state destinations native. The quick-save remains beside the real selected config. Runtime behavior is unverified."
             }))
         }
     }

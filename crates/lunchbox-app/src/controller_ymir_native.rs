@@ -269,7 +269,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch stages a session profile with a patched Ymir.toml, then rechecks the exact SDL3 routes. Only the single Control Pad is supported; runtime behavior remains unverified."
+                "detail": "Native launch stages a session profile with a patched Ymir.toml, then rechecks the exact SDL3 routes. Only the single Control Pad is supported; runtime behavior remains unverified."
             }))
         }
     }

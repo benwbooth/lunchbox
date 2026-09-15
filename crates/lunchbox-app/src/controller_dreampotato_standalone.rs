@@ -566,7 +566,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch stages a session configuration.json with a gamepad PrimaryInput, then rechecks the exact SDL2 routes. Only the single VMU pad in MonoGame slot 0 is supported; runtime behavior remains unverified."
+                "detail": "Native launch stages a session configuration.json with a gamepad PrimaryInput, then rechecks the exact SDL2 routes. Only the single VMU pad in MonoGame slot 0 is supported; runtime behavior remains unverified."
             }))
         }
     }

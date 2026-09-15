@@ -303,7 +303,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch patches a private cap32.cfg [system] block, then rechecks the exact SDL instance order. Only fixed CPC joystick ports with two menu buttons are supported; runtime behavior remains unverified."
+                "detail": "Native launch patches a private cap32.cfg [system] block, then rechecks the exact SDL instance order. Only fixed CPC joystick ports with two menu buttons are supported; runtime behavior remains unverified."
             }))
         }
     }

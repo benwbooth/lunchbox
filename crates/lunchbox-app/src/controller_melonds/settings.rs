@@ -143,7 +143,7 @@ impl SavedSetup {
         }
         Ok(
             serde_json::json!({"players":players,"launch_ready":false,"launch_integration":"partial",
-            "detail":"melonDS standard pad setup is saved for native SDL translation. Native Linux launch dispatch is connected but untested; this review covers standard buttons only and opens no devices."}),
+            "detail":"melonDS standard pad setup is saved for native SDL translation. Native launch dispatch is connected but untested; this review covers standard buttons only and opens no devices."}),
         )
     }
 }

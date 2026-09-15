@@ -269,7 +269,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch writes a private controller0.xml under XDG_CONFIG_HOME, then rechecks the exact SDL3 routes. Only the single VPAD on a unique gamepad GUID is supported; runtime behavior remains unverified."
+                "detail": "Native launch writes a private controller0.xml under XDG_CONFIG_HOME, then rechecks the exact SDL3 routes. Only the single VPAD on a unique gamepad GUID is supported; runtime behavior remains unverified."
             }))
         }
     }

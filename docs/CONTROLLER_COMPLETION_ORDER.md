@@ -12,11 +12,14 @@ Focused source tests do not establish runtime compatibility.
 
 ## Current scope override — 2026-09-08
 
-Update 2026-09-15: native launch adapters are going cross-platform
+Update 2026-09-15: native launch adapters are cross-platform
 (Linux + Windows + macOS) through `controller_native_platform.rs`.
 Writers were already portable; sessions/ownership/paths were Linux-only.
-vector06sdl is the ported pilot (1/76); remaining adapters keep their
-`cfg(target_os = "linux")` variant gates until ported. Windows-only input
+All portable adapters are ported (device identity, child ownership, session
+paths); intentional Linux-only contracts keep their gates: joydev/evdev and
+classic-backend sessions (Atari++, ZEsarUX, NanoBoyAdvance, Play!, RMG,
+Mesen2, Mednafen, Dolphin-standalone), Flatpak rows (Nestopia UE, puNES),
+and the BizHawk sysfs guard. Windows-only input
 paths (e.g. FreeJ2ME win32pad) are back in scope under the Windows session;
 fuzzy-identity paths (e.g. JPCSP names) stay refused.
 

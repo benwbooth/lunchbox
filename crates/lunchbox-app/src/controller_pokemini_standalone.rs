@@ -174,7 +174,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch runs a symlink sandbox with a private pokemini.cfg, then rechecks the exact SDL routes. Only raw-button mappings on SDL index 0 are supported; runtime behavior remains unverified."
+                "detail": "Native launch runs a symlink sandbox with a private pokemini.cfg, then rechecks the exact SDL routes. Only raw-button mappings on SDL index 0 are supported; runtime behavior remains unverified."
             }))
         }
     }

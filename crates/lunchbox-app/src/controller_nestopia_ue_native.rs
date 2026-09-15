@@ -332,7 +332,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch writes a private nestopia.conf/input.conf pair, then rechecks the exact SDL2 routes. Only standard NES pads on ports one/two are supported; runtime behavior remains unverified."
+                "detail": "Native launch writes a private nestopia.conf/input.conf pair, then rechecks the exact SDL2 routes. Only standard NES pads on ports one/two are supported; runtime behavior remains unverified."
             }))
         }
     }

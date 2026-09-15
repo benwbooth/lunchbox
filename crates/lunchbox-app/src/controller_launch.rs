@@ -366,19 +366,13 @@ pub struct CalibratedLaunch {
     mednafen_native: Option<crate::controller_mednafen::native_command::NativeSession>,
     mame_native: Option<crate::controller_mame_native::native_command::NativeSession>,
     flycast_native: Option<crate::controller_flycast_native::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     pcsx2_native: Option<crate::controller_pcsx2::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     rpcs3_native: Option<crate::controller_rpcs3::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     melonds_native: Option<crate::controller_melonds::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
     dolphin_native: Option<crate::controller_dolphin::standalone::native_command::PreparedCommand>,
-    #[cfg(target_os = "linux")]
     mgba: Option<crate::controller_mgba::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     ppsspp: Option<crate::controller_ppsspp::native_command::PreparedLaunch>,
-    #[cfg(target_os = "linux")]
     duckstation: Option<crate::controller_duckstation::native_command::NativeSession>,
     // Keeps the private append config alive until the child exits, including errors.
     _directory: Option<RetainedLaunchDirectory>,
@@ -597,15 +591,12 @@ impl CalibratedLaunch {
         cancel: &std::sync::atomic::AtomicBool,
     ) -> Result<std::process::Child> {
         check_preparation_cancel(cancel)?;
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.snes9x_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.fceux_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.sameboy_native {
             return native.spawn(plan, cancel);
         }
@@ -640,7 +631,6 @@ impl CalibratedLaunch {
         if let Some(native) = &mut self.scummvm_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.jgenesis_native {
             return native.spawn(plan, cancel);
         }
@@ -654,15 +644,12 @@ impl CalibratedLaunch {
         if let Some(native) = &mut self.flycast_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.pcsx2_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.rpcs3_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.melonds_native {
             return native.spawn(plan, cancel);
         }
@@ -670,15 +657,12 @@ impl CalibratedLaunch {
         if let Some(native) = &mut self.dolphin_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(ppsspp) = &mut self.ppsspp {
             return ppsspp.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(mgba) = &mut self.mgba {
             return mgba.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(duckstation) = &mut self.duckstation {
             return duckstation.spawn(plan, cancel);
         }
@@ -1044,11 +1028,8 @@ impl CalibratedLaunch {
             mgba: None,
             #[cfg(target_os = "linux")]
             dolphin_native: None,
-            #[cfg(target_os = "linux")]
             snes9x_native: None,
-            #[cfg(target_os = "linux")]
             fceux_native: None,
-            #[cfg(target_os = "linux")]
             sameboy_native: None,
             bsnes_native: None,
             stella_native: None,
@@ -1061,17 +1042,13 @@ impl CalibratedLaunch {
             blastem_native: None,
             xemu_native: None,
             scummvm_native: None,
-            #[cfg(target_os = "linux")]
             jgenesis_native: None,
             #[cfg(target_os = "linux")]
             mednafen_native: None,
             mame_native: None,
             flycast_native: None,
-            #[cfg(target_os = "linux")]
             pcsx2_native: None,
-            #[cfg(target_os = "linux")]
             rpcs3_native: None,
-            #[cfg(target_os = "linux")]
             melonds_native: None,
             duckstation: None,
             ppsspp: None,
@@ -1098,15 +1075,12 @@ impl CalibratedLaunch {
         if let Some(directory) = &self._directory {
             directory.verify()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.snes9x_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.fceux_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.sameboy_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
@@ -1141,7 +1115,6 @@ impl CalibratedLaunch {
         if let Some(native) = &self.scummvm_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.jgenesis_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
@@ -1155,15 +1128,12 @@ impl CalibratedLaunch {
         if let Some(native) = &self.flycast_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.pcsx2_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.rpcs3_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.melonds_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
@@ -1172,15 +1142,12 @@ impl CalibratedLaunch {
             native.verify()?;
         }
         self.check_health()?;
-        #[cfg(target_os = "linux")]
         if let Some(mgba) = &self.mgba {
             mgba.verify()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(ppsspp) = &self.ppsspp {
             ppsspp.verify()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(duckstation) = &self.duckstation {
             duckstation.verify()?;
         }
@@ -1235,15 +1202,12 @@ impl CalibratedLaunch {
         Ok(())
     }
     pub fn check_health(&self) -> Result<()> {
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.snes9x_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.fceux_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.sameboy_native {
             native.check_health()?;
         }
@@ -1278,7 +1242,6 @@ impl CalibratedLaunch {
         if let Some(native) = &self.scummvm_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.jgenesis_native {
             native.check_health()?;
         }
@@ -1292,15 +1255,12 @@ impl CalibratedLaunch {
         if let Some(native) = &self.flycast_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.pcsx2_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.rpcs3_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.melonds_native {
             native.check_health()?;
         }
@@ -1308,11 +1268,9 @@ impl CalibratedLaunch {
         if let Some(native) = &self.dolphin_native {
             native.session.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(mgba) = &self.mgba {
             mgba.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(ppsspp) = &self.ppsspp {
             ppsspp.check_health()?;
         }
@@ -1819,15 +1777,11 @@ pub(crate) fn attach_fbneo_session(
     };
     session.verify_inputs()?;
     let result = CalibratedLaunch {
-        #[cfg(target_os = "linux")]
         mgba: None,
         #[cfg(target_os = "linux")]
         dolphin_native: None,
-        #[cfg(target_os = "linux")]
         snes9x_native: None,
-        #[cfg(target_os = "linux")]
         fceux_native: None,
-        #[cfg(target_os = "linux")]
         sameboy_native: None,
         bsnes_native: None,
         stella_native: None,
@@ -1840,21 +1794,15 @@ pub(crate) fn attach_fbneo_session(
         blastem_native: None,
         xemu_native: None,
         scummvm_native: None,
-        #[cfg(target_os = "linux")]
         jgenesis_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         mame_native: None,
         flycast_native: None,
-        #[cfg(target_os = "linux")]
         pcsx2_native: None,
-        #[cfg(target_os = "linux")]
         rpcs3_native: None,
-        #[cfg(target_os = "linux")]
         melonds_native: None,
-        #[cfg(target_os = "linux")]
         ppsspp: None,
-        #[cfg(target_os = "linux")]
         duckstation: None,
         _directory: Some(directory.into()),
         bizhawk: None,
@@ -3589,15 +3537,11 @@ pub(crate) fn prepare_mame_calibrated_session(
         &path,
     )?;
     let mut session = CalibratedLaunch {
-        #[cfg(target_os = "linux")]
         mgba: None,
         #[cfg(target_os = "linux")]
         dolphin_native: None,
-        #[cfg(target_os = "linux")]
         snes9x_native: None,
-        #[cfg(target_os = "linux")]
         fceux_native: None,
-        #[cfg(target_os = "linux")]
         sameboy_native: None,
         bsnes_native: None,
         stella_native: None,
@@ -3610,21 +3554,15 @@ pub(crate) fn prepare_mame_calibrated_session(
         blastem_native: None,
         xemu_native: None,
         scummvm_native: None,
-        #[cfg(target_os = "linux")]
         jgenesis_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         mame_native: None,
         flycast_native: None,
-        #[cfg(target_os = "linux")]
         pcsx2_native: None,
-        #[cfg(target_os = "linux")]
         rpcs3_native: None,
-        #[cfg(target_os = "linux")]
         melonds_native: None,
-        #[cfg(target_os = "linux")]
         ppsspp: None,
-        #[cfg(target_os = "linux")]
         duckstation: None,
         _directory: Some(directory.into()),
         bizhawk: None,
@@ -6029,16 +5967,12 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             xemu_native: None,
             scummvm_native: None,
-            #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: Some(native),
                 ppsspp: None,
                 duckstation: None,
@@ -6058,7 +5992,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "melonDS: standard DS buttons; partial Linux SDL2 support; runtime and internal mapping verification incomplete"
+                description: "melonDS: standard DS buttons; partial native SDL2 support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
                     .into(),
             }));
         }
@@ -6116,16 +6050,12 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             xemu_native: None,
             scummvm_native: None,
-            #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: Some(native),
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -6145,7 +6075,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "RPCS3: standard pads, file boot targets; partial Linux SDL3 support; runtime and internal mapping verification incomplete"
+                description: "RPCS3: standard pads, file boot targets; partial native SDL3 support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
                     .into(),
             }));
         }
@@ -6203,16 +6133,12 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             xemu_native: None,
             scummvm_native: None,
-            #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: Some(native),
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -6232,7 +6158,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "PCSX2: native DualShock 2; partial Linux SDL3 support; runtime and internal mapping verification incomplete"
+                description: "PCSX2: native DualShock 2; partial native SDL3 support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
                     .into(),
             }));
         }
@@ -6290,16 +6216,12 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             xemu_native: None,
             scummvm_native: None,
-            #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: Some(native),
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -6319,7 +6241,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "Flycast: native standard six/eight-button panels; partial Linux raw SDL support; runtime and internal mapping verification incomplete"
+                description: "Flycast: native standard six/eight-button panels; partial native raw SDL support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
                     .into(),
             }));
         }
@@ -6362,16 +6284,12 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             xemu_native: None,
             scummvm_native: None,
-            #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: None,
                 mame_native: Some(native),
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -6391,7 +6309,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "MAME: native standard six/eight-button panels; partial Linux raw SDL support; runtime and internal mapping verification incomplete"
+                description: "MAME: native standard six/eight-button panels; partial native raw SDL support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
                     .into(),
             }));
         }
@@ -6442,16 +6360,12 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             xemu_native: None,
             scummvm_native: None,
-            #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: Some(native),
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -6520,17 +6434,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -6551,7 +6461,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "bsnes settings.bml: calibrated SNES gamepad controls through the SDL joypad driver; private per-launch settings file; partial Linux support; Mouse/Super Multitap/Super Scope/Justifier targets not covered"
+                description: "bsnes settings.bml: calibrated SNES gamepad controls through the SDL joypad driver; private per-launch settings file; partial native support on Linux, Windows, and macOS; Mouse/Super Multitap/Super Scope/Justifier targets not covered"
                     .into(),
             }));
         }
@@ -6600,17 +6510,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -6631,7 +6537,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "Stella 7.x: calibrated Atari 2600 joystick, Booster Grip/Genesis buttons and console switches through the private -basedir stella.sqlite3; SDL classic backend pinned; partial Linux support; paddles, driving controllers, keypads and Stelladaptors not covered"
+                description: "Stella 7.x: calibrated Atari 2600 joystick, Booster Grip/Genesis buttons and console switches through the private -basedir stella.sqlite3; SDL classic backend pinned; partial native support on Linux, Windows, and macOS; paddles, driving controllers, keypads and Stelladaptors not covered"
                     .into(),
             }));
         }
@@ -6687,17 +6593,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -6718,7 +6620,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "VICE: calibrated digital joystick pins through a private -config/-joymap pair; SDL2 numbering probed with the trusted runtime; partial Linux support; keysets, paddles, potentiometers and extra userport adapters not covered"
+                description: "VICE: calibrated digital joystick pins through a private -config/-joymap pair; SDL2 numbering probed with the trusted runtime; partial native support on Linux, Windows, and macOS; keysets, paddles, potentiometers and extra userport adapters not covered"
                     .into(),
             }));
         }
@@ -6767,17 +6669,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -6798,7 +6696,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "Hatari: calibrated ST joystick through a private HOME and -c configuration with the declared TOS image; directions pinned to SDL axes 0/1 with hat 0 override; partial Linux support; mouse, paddles and joypad emulation not covered"
+                description: "Hatari: calibrated ST joystick through a private HOME and -c configuration with the declared TOS image; directions pinned to SDL axes 0/1 with hat 0 override; partial native support on Linux, Windows, and macOS; mouse, paddles and joypad emulation not covered"
                     .into(),
             }));
         }
@@ -6847,17 +6745,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -6878,7 +6772,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "DeSmuME: calibrated DS buttons through a private XDG_CONFIG_HOME [JOYKEYS] section; SDL2 numbering probed with the trusted runtime; partial Linux support; touchscreen remains a mouse input; microphone, lid and Debug/Boost disabled"
+                description: "DeSmuME: calibrated DS buttons through a private XDG_CONFIG_HOME [JOYKEYS] section; SDL2 numbering probed with the trusted runtime; partial native support on Linux, Windows, and macOS; touchscreen remains a mouse input; microphone, lid and Debug/Boost disabled"
                     .into(),
             }));
         }
@@ -6927,17 +6821,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -6958,7 +6848,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "openMSX: calibrated MSX joysticks through a private OPENMSX_HOME and settings file with the msxjoystickN_config dicts; SDL2 numbering probed with the trusted runtime; partial Linux support; mice, JoyMega and paddle devices not covered"
+                description: "openMSX: calibrated MSX joysticks through a private OPENMSX_HOME and settings file with the msxjoystickN_config dicts; SDL2 numbering probed with the trusted runtime; partial native support on Linux, Windows, and macOS; mice, JoyMega and paddle devices not covered"
                     .into(),
             }));
         }
@@ -7008,17 +6898,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -7088,17 +6974,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: Some(native),
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -7119,7 +7001,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "BlastEm: calibrated six-button Genesis pads through a private HOME tern config binding the selected SDL devices to gamepad ports; SDL2 numbering probed with the trusted runtime; partial Linux support; mice, tee-input adapter and analog stick translation not covered"
+                description: "BlastEm: calibrated six-button Genesis pads through a private HOME tern config binding the selected SDL devices to gamepad ports; SDL2 numbering probed with the trusted runtime; partial native support on Linux, Windows, and macOS; mice, tee-input adapter and analog stick translation not covered"
                     .into(),
             }));
         }
@@ -7168,17 +7050,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: Some(native),
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -7199,7 +7077,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "xemu: calibrated Xbox pads through a private -config_path file mounting the declared boot ROM, flash image and game, with GUID port bindings and standard-index controller mappings over the SDL classic backend; partial Linux support; same-GUID devices and Steel Battalion not covered"
+                description: "xemu: calibrated Xbox pads through a private -config_path file mounting the declared boot ROM, flash image and game, with GUID port bindings and standard-index controller mappings over the SDL classic backend; partial native support on Linux, Windows, and macOS; same-GUID devices and Steel Battalion not covered"
                     .into(),
             }));
         }
@@ -7248,17 +7126,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: Some(native),
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -7279,7 +7153,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "ScummVM: calibrated engine-default keymap actions through a private XDG_CONFIG_HOME ini target over SDL standard gamepad fields; single SDL device zero; partial Linux support; custom engine keymaps and the GUI/global keymaps are not remapped"
+                description: "ScummVM: calibrated engine-default keymap actions through a private XDG_CONFIG_HOME ini target over SDL standard gamepad fields; single SDL device zero; partial native support on Linux, Windows, and macOS; custom engine keymaps and the GUI/global keymaps are not remapped"
                     .into(),
             }));
         }
@@ -7307,7 +7181,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Hypseus(native)),
-                description: "Hypseus Singe: exact native SDL3 Gamepad ordering with a private keymap/home and separate writable NVRAM directory; partial Linux support; runtime unverified"
+                description: "Hypseus Singe: exact native SDL3 Gamepad ordering with a private keymap/home and separate writable NVRAM directory; partial native support on Linux, Windows, and macOS; runtime unverified"
                     .into(),
                 ..Default::default()
             }));
@@ -7352,17 +7226,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: Some(PreparedJsonNativeLaunch::B2(native)),
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -7383,7 +7253,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "b2: selected native SDL2 GameControllers through a copied b2.json under a private XDG_CONFIG_HOME; source-fixed analogue/digital controls; partial Linux support; runtime unverified"
+                description: "b2: selected native SDL2 GameControllers through a copied b2.json under a private XDG_CONFIG_HOME; source-fixed analogue/digital controls; partial native support on Linux, Windows, and macOS; runtime unverified"
                     .into(),
             }));
         }
@@ -7432,17 +7302,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Jgenesis(native)),
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -7463,7 +7329,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "jgenesis: calibrated Genesis controls through a private jgenesis-config.toml using raw SDL joystick indices; partial Linux support; custom keymaps not covered"
+                description: "jgenesis: calibrated Genesis controls through a private jgenesis-config.toml using raw SDL joystick indices; partial native support on Linux, Windows, and macOS; custom keymaps not covered"
                     .into(),
             }));
         }
@@ -7512,17 +7378,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Gopher64(native)),
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -7543,7 +7405,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "Gopher64: calibrated N64 controls through a copied config.json under private XDG_CONFIG_HOME with measured SDL3 routing; native save/state data root preserved; partial Linux support; portable mode, VRU and Transfer Pak authoring not covered"
+                description: "Gopher64: calibrated N64 controls through a copied config.json under private XDG_CONFIG_HOME with measured SDL3 routing; native save/state data root preserved; partial native support on Linux, Windows, and macOS; portable mode, VRU and Transfer Pak authoring not covered"
                     .into(),
             }));
         }
@@ -7582,7 +7444,7 @@ pub fn prepare_with_cancellation(
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Gear(native)),
                 description: format!(
-                    "{}: calibrated SDL3 controls through a private config.ini with exact first-gamepad ordering; native save/state destinations preserved; partial Linux support; runtime unverified",
+                    "{}: calibrated SDL3 controls through a private config.ini with exact first-gamepad ordering; native save/state destinations preserved; partial native support on Linux, Windows, and macOS; runtime unverified",
                     option.emulator_name
                 ),
                 ..Default::default()
@@ -7617,7 +7479,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Xroar(native)),
-                description: "XRoar: calibrated analog joystick controls through a private first-option configuration with exact SDL3 joystick ordering; native media and snapshot paths preserved; partial Linux support; runtime unverified".into(),
+                description: "XRoar: calibrated analog joystick controls through a private first-option configuration with exact SDL3 joystick ordering; native media and snapshot paths preserved; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -7684,7 +7546,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Oricutron(native)),
-                description: "Oricutron: calibrated fixed SDL2 joystick controls through an exact sibling-config overlay with slot/instance guards; firmware, media, save and snapshot paths preserved; partial Linux support; runtime unverified".into(),
+                description: "Oricutron: calibrated fixed SDL2 joystick controls through an exact sibling-config overlay with slot/instance guards; firmware, media, save and snapshot paths preserved; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -7751,7 +7613,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Aranym(native)),
-                description: "ARAnyM: calibrated one/two-player IKBD controls through an exact config-path overlay with SDL2 slot/instance guards; TOS, disks, GEMDOS guest saves, NVRAM and snapshots preserved; partial native Linux support; runtime unverified".into(),
+                description: "ARAnyM: calibrated one/two-player IKBD controls through an exact config-path overlay with SDL2 slot/instance guards; TOS, disks, GEMDOS guest saves, NVRAM and snapshots preserved; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -7784,7 +7646,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Atari800(native)),
-                description: "Atari800: calibrated four-port digital joysticks through an exact config-path overlay with SDL2 name, duplicate-slot and raw-control guards; mounted-media saves, firmware and state destinations preserved; partial native Linux support; runtime unverified".into(),
+                description: "Atari800: calibrated four-port digital joysticks through an exact config-path overlay with SDL2 name, duplicate-slot and raw-control guards; mounted-media saves, firmware and state destinations preserved; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -7854,7 +7716,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::VbaM(native)),
-                description: "VBA-M: calibrated single-player raw SDL2/SDL3 GBA controller through an explicit private Qt/wx config with persistence, optional BIOS, topology, runtime and control-numbering guards; partial native Linux support; runtime unverified".into(),
+                description: "VBA-M: calibrated single-player raw SDL2/SDL3 GBA controller through an explicit private Qt/wx config with persistence, optional BIOS, topology, runtime and control-numbering guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -7884,7 +7746,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::EightySixBox(native)),
-                description: "86Box: calibrated one/two-player 2-axis, 2-button PC gameport joysticks through an exact machine-config overlay with SDL2 topology and raw-control guards; guest disks and ROM paths preserved; partial native Linux support; runtime unverified".into(),
+                description: "86Box: calibrated one/two-player 2-axis, 2-button PC gameport joysticks through an exact machine-config overlay with SDL2 topology and raw-control guards; guest disks and ROM paths preserved; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -7914,7 +7776,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Caprice32(native)),
-                description: "Caprice32: calibrated fixed CPC joystick ports with two menu buttons through a private cap32.cfg passed with -c, with exact SDL instance order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Caprice32: calibrated fixed CPC joystick ports with two menu buttons through a private cap32.cfg passed with -c, with exact SDL instance order, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -7944,7 +7806,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Vita3K(native)),
-                description: "Vita3K: calibrated single Vita pad through a private config.yml, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Vita3K: calibrated single Vita pad through a private config.yml, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8161,7 +8023,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::DreamPotato(native)),
-                description: "DreamPotato: calibrated single VMU pad in MonoGame slot 0 through a private configuration.json PrimaryInput, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "DreamPotato: calibrated single VMU pad in MonoGame slot 0 through a private configuration.json PrimaryInput, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8191,7 +8053,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Ymir(native)),
-                description: "Ymir: calibrated single Saturn Control Pad through a session profile with a patched Ymir.toml, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Ymir: calibrated single Saturn Control Pad through a session profile with a patched Ymir.toml, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8221,7 +8083,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Shadps4(native)),
-                description: "shadPS4: calibrated single DualShock pad as gamepad 1 through a session input_config pair under XDG_DATA_HOME, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "shadPS4: calibrated single DualShock pad as gamepad 1 through a session input_config pair under XDG_DATA_HOME, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8251,7 +8113,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Azahar(native)),
-                description: "Azahar: calibrated single 3DS pad through a session user directory with a private qt-config.ini, with exact SDL2 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Azahar: calibrated single 3DS pad through a session user directory with a private qt-config.ini, with exact SDL2 gamepad routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8281,7 +8143,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Cemu(native)),
-                description: "Cemu: calibrated single Wii U GamePad through a private controller0.xml under XDG_CONFIG_HOME, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Cemu: calibrated single Wii U GamePad through a private controller0.xml under XDG_CONFIG_HOME, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8311,7 +8173,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Eka2l1(native)),
-                description: "EKA2L1: calibrated single phone pad through a session config.yml plus keybind profile, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "EKA2L1: calibrated single phone pad through a session config.yml plus keybind profile, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8341,7 +8203,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Uzem(native)),
-                description: "Uzem: calibrated SNES pads through a private joystick-settings binary in a session working directory, with exact SDL slot order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Uzem: calibrated SNES pads through a private joystick-settings binary in a session working directory, with exact SDL slot order, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8371,7 +8233,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::PokeMini(native)),
-                description: "PokeMini: calibrated raw-button Mini controls through a symlink sandbox with a private pokemini.cfg, with exact SDL index-0 order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "PokeMini: calibrated raw-button Mini controls through a symlink sandbox with a private pokemini.cfg, with exact SDL index-0 order, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8401,7 +8263,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::GbePlus(native)),
-                description: "GBE+: calibrated single GBA gamepad through a private gbe.ini under HOME, with exact SDL index-0 order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "GBE+: calibrated single GBA gamepad through a private gbe.ini under HOME, with exact SDL index-0 order, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8431,7 +8293,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Amiberry(native)),
-                description: "Amiberry: calibrated fixed-dpad Amiga joysticks through a private gamecontrollerdb plus joyport fragment, with exact SDL3 routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Amiberry: calibrated fixed-dpad Amiga joysticks through a private gamecontrollerdb plus joyport fragment, with exact SDL3 routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8461,7 +8323,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Fuse(native)),
-                description: "Fuse: calibrated fixed-slot Spectrum joysticks through a private fuserc under XDG_CONFIG_HOME, with exact SDL slot order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Fuse: calibrated fixed-slot Spectrum joysticks through a private fuserc under XDG_CONFIG_HOME, with exact SDL slot order, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8491,7 +8353,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::LinApple(native)),
-                description: "LinApple: calibrated Apple II joysticks through a private linapple.conf passed with --config, with exact SDL routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "LinApple: calibrated Apple II joysticks through a private linapple.conf passed with --config, with exact SDL routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8521,7 +8383,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::SkyEmu(native)),
-                description: "SkyEmu: calibrated single DS pad through a private <name>-bindings.bin, with exact SDL device order, raw-control, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "SkyEmu: calibrated single DS pad through a private <name>-bindings.bin, with exact SDL device order, raw-control, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8551,7 +8413,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::NestopiaUe(native)),
-                description: "Nestopia UE: calibrated one/two-player NES pads through a private nestopia.conf/input.conf pair, with exact SDL enumeration-order routing, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Nestopia UE: calibrated one/two-player NES pads through a private nestopia.conf/input.conf pair, with exact SDL enumeration-order routing, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8581,7 +8443,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::PicoDrive(native)),
-                description: "PicoDrive: calibrated Genesis six-button pads through a private binddev/bind config, with exact SDL device order, raw-control, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "PicoDrive: calibrated Genesis six-button pads through a private binddev/bind config, with exact SDL device order, raw-control, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8611,7 +8473,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Gambatte(native)),
-                description: "Gambatte: calibrated single Game Boy pad through a private gambatte_qt.conf [input] group, with exact SDL2 device order, raw-control, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Gambatte: calibrated single Game Boy pad through a private gambatte_qt.conf [input] group, with exact SDL2 device order, raw-control, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8641,7 +8503,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::A7800(native)),
-                description: "A7800: calibrated one/two-player Pro-Line joysticks through a private controller profile and filtered machine configuration, with exact old-fork SDL2 name, topology, item, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "A7800: calibrated one/two-player Pro-Line joysticks through a private controller profile and filtered machine configuration, with exact old-fork SDL2 name, topology, item, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8677,7 +8539,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::YabaSanshiro(native)),
-                description: "Yaba Sanshiro 2: calibrated Saturn digital controls through a private Qt configuration home with measured SDL2 routing; native backup RAM/state paths preserved; partial Linux support; runtime unverified".into(),
+                description: "Yaba Sanshiro 2: calibrated Saturn digital controls through a private Qt configuration home with measured SDL2 routing; native backup RAM/state paths preserved; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8710,7 +8572,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Kronos(native)),
-                description: "Kronos: one to four calibrated Saturn digital pads through source-derived raw SDL2 codes and an exact private kronos.ini overlay; native backup RAM/cartridge/state paths preserved; partial Linux support; runtime unverified".into(),
+                description: "Kronos: one to four calibrated Saturn digital pads through source-derived raw SDL2 codes and an exact private kronos.ini overlay; native backup RAM/cartridge/state paths preserved; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8778,7 +8640,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Simple64(native)),
-                description: "simple64: calibrated N64 controls through private SDL2 GameController profiles and assignments beside a staged executable, with a private core config root and native save root preserved; partial Linux support; keyboard, raw joystick, VRU and Transfer Pak behavior not covered"
+                description: "simple64: calibrated N64 controls through private SDL2 GameController profiles and assignments beside a staged executable, with a private core config root and native save root preserved; partial native support on Linux, Windows, and macOS; keyboard, raw joystick, VRU and Transfer Pak behavior not covered"
                     .into(),
                 ..Default::default()
             }));
@@ -8816,7 +8678,6 @@ pub fn prepare_with_cancellation(
                 dolphin_native: None,
                 snes9x_native: None,
                 fceux_native: Some(native),
-                #[cfg(target_os = "linux")]
                 sameboy_native: None,
             bsnes_native: None,
             stella_native: None,
@@ -8829,17 +8690,13 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             xemu_native: None,
             scummvm_native: None,
-            #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -8859,7 +8716,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "FCEUX Qt: calibrated native NES controls; partial Linux support; ROM device overrides not resolved"
+                description: "FCEUX Qt: calibrated native NES controls; partial native support on Linux, Windows, and macOS; ROM device overrides not resolved"
                     .into(),
             }));
         }
@@ -8889,7 +8746,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Caprice32(native)),
-                description: "Caprice32: calibrated fixed CPC joystick ports with two menu buttons through a private cap32.cfg passed with -c, with exact SDL instance order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Caprice32: calibrated fixed CPC joystick ports with two menu buttons through a private cap32.cfg passed with -c, with exact SDL instance order, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8919,7 +8776,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Vita3K(native)),
-                description: "Vita3K: calibrated single Vita pad through a private config.yml, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Vita3K: calibrated single Vita pad through a private config.yml, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -8980,7 +8837,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Ep128emu(native)),
-                description: "ep128emu: calibrated single Enterprise joystick in the first SDL slot through a session .ep128emu config, with exact SDL routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "ep128emu: calibrated single Enterprise joystick in the first SDL slot through a session .ep128emu config, with exact SDL routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9010,7 +8867,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Adamem(native)),
-                description: "ADAMEm SDL: calibrated single ColecoVision stick with a private adamem.joy, with exact SDL routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "ADAMEm SDL: calibrated single ColecoVision stick with a private adamem.joy, with exact SDL routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9073,7 +8930,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Simcoupe(native)),
-                description: "SimCoupe: calibrated single SAM joystick selected by exact SDL name through a session SimCoupe.cfg, with exact SDL2 routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "SimCoupe: calibrated single SAM joystick selected by exact SDL name through a session SimCoupe.cfg, with exact SDL2 routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9103,7 +8960,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Pcem(native)),
-                description: "PCem: calibrated single standard 2-button gameport joystick on SDL slot 0 through a private machine config, with exact SDL2 routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "PCem: calibrated single standard 2-button gameport joystick on SDL slot 0 through a private machine config, with exact SDL2 routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9289,7 +9146,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::DreamPotato(native)),
-                description: "DreamPotato: calibrated single VMU pad in MonoGame slot 0 through a private configuration.json PrimaryInput, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "DreamPotato: calibrated single VMU pad in MonoGame slot 0 through a private configuration.json PrimaryInput, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9319,7 +9176,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Ymir(native)),
-                description: "Ymir: calibrated single Saturn Control Pad through a session profile with a patched Ymir.toml, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Ymir: calibrated single Saturn Control Pad through a session profile with a patched Ymir.toml, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9349,7 +9206,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Shadps4(native)),
-                description: "shadPS4: calibrated single DualShock pad as gamepad 1 through a session input_config pair under XDG_DATA_HOME, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "shadPS4: calibrated single DualShock pad as gamepad 1 through a session input_config pair under XDG_DATA_HOME, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9379,7 +9236,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Azahar(native)),
-                description: "Azahar: calibrated single 3DS pad through a session user directory with a private qt-config.ini, with exact SDL2 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Azahar: calibrated single 3DS pad through a session user directory with a private qt-config.ini, with exact SDL2 gamepad routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9409,7 +9266,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Cemu(native)),
-                description: "Cemu: calibrated single Wii U GamePad through a private controller0.xml under XDG_CONFIG_HOME, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Cemu: calibrated single Wii U GamePad through a private controller0.xml under XDG_CONFIG_HOME, with exact SDL3 gamepad routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9439,7 +9296,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Eka2l1(native)),
-                description: "EKA2L1: calibrated single phone pad through a session config.yml plus keybind profile, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "EKA2L1: calibrated single phone pad through a session config.yml plus keybind profile, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9469,7 +9326,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Uzem(native)),
-                description: "Uzem: calibrated SNES pads through a private joystick-settings binary in a session working directory, with exact SDL slot order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Uzem: calibrated SNES pads through a private joystick-settings binary in a session working directory, with exact SDL slot order, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9499,7 +9356,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::PokeMini(native)),
-                description: "PokeMini: calibrated raw-button Mini controls through a symlink sandbox with a private pokemini.cfg, with exact SDL index-0 order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "PokeMini: calibrated raw-button Mini controls through a symlink sandbox with a private pokemini.cfg, with exact SDL index-0 order, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9529,7 +9386,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::GbePlus(native)),
-                description: "GBE+: calibrated single GBA gamepad through a private gbe.ini under HOME, with exact SDL index-0 order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "GBE+: calibrated single GBA gamepad through a private gbe.ini under HOME, with exact SDL index-0 order, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9559,7 +9416,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Amiberry(native)),
-                description: "Amiberry: calibrated fixed-dpad Amiga joysticks through a private gamecontrollerdb plus joyport fragment, with exact SDL3 routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Amiberry: calibrated fixed-dpad Amiga joysticks through a private gamecontrollerdb plus joyport fragment, with exact SDL3 routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9589,7 +9446,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Fuse(native)),
-                description: "Fuse: calibrated fixed-slot Spectrum joysticks through a private fuserc under XDG_CONFIG_HOME, with exact SDL slot order, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Fuse: calibrated fixed-slot Spectrum joysticks through a private fuserc under XDG_CONFIG_HOME, with exact SDL slot order, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9619,7 +9476,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::LinApple(native)),
-                description: "LinApple: calibrated Apple II joysticks through a private linapple.conf passed with --config, with exact SDL routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "LinApple: calibrated Apple II joysticks through a private linapple.conf passed with --config, with exact SDL routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9649,7 +9506,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::SkyEmu(native)),
-                description: "SkyEmu: calibrated single DS pad through a private <name>-bindings.bin, with exact SDL device order, raw-control, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "SkyEmu: calibrated single DS pad through a private <name>-bindings.bin, with exact SDL device order, raw-control, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9751,9 +9608,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 dolphin_native: None,
                 snes9x_native: Some(native),
-                #[cfg(target_os = "linux")]
                 fceux_native: None,
-                #[cfg(target_os = "linux")]
                 sameboy_native: None,
                 bsnes_native: None,
                 stella_native: None,
@@ -9766,17 +9621,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -9796,7 +9647,7 @@ pub fn prepare_with_cancellation(
                 mame: None,
                 puae: None,
                 stella: None,
-                description: "Snes9x GTK: calibrated native SNES controls; partial Linux support"
+                description: "Snes9x GTK: calibrated native SNES controls; partial native support on Linux, Windows, and macOS"
                     .into(),
             }));
         }
@@ -9832,11 +9683,8 @@ pub fn prepare_with_cancellation(
                 mgba: None,
                 #[cfg(target_os = "linux")]
                 dolphin_native: Some(native),
-                #[cfg(target_os = "linux")]
                 snes9x_native: None,
-                #[cfg(target_os = "linux")]
                 fceux_native: None,
-                #[cfg(target_os = "linux")]
                 sameboy_native: None,
             bsnes_native: None,
             stella_native: None,
@@ -9849,17 +9697,13 @@ pub fn prepare_with_cancellation(
             blastem_native: None,
             xemu_native: None,
             scummvm_native: None,
-            #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -9913,11 +9757,8 @@ pub fn prepare_with_cancellation(
                 mgba: Some(native),
                 #[cfg(target_os = "linux")]
                 dolphin_native: None,
-                #[cfg(target_os = "linux")]
                 snes9x_native: None,
-                #[cfg(target_os = "linux")]
                 fceux_native: None,
-                #[cfg(target_os = "linux")]
                 sameboy_native: None,
                 bsnes_native: None,
                 stella_native: None,
@@ -9930,17 +9771,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 duckstation: None,
@@ -9995,11 +9832,8 @@ pub fn prepare_with_cancellation(
                 mgba: None,
                 #[cfg(target_os = "linux")]
                 dolphin_native: None,
-                #[cfg(target_os = "linux")]
                 snes9x_native: None,
-                #[cfg(target_os = "linux")]
                 fceux_native: None,
-                #[cfg(target_os = "linux")]
                 sameboy_native: None,
                 bsnes_native: None,
                 stella_native: None,
@@ -10012,17 +9846,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 duckstation: None,
                 _directory: None,
@@ -10075,11 +9905,8 @@ pub fn prepare_with_cancellation(
                 mgba: None,
                 #[cfg(target_os = "linux")]
                 dolphin_native: None,
-                #[cfg(target_os = "linux")]
                 snes9x_native: None,
-                #[cfg(target_os = "linux")]
                 fceux_native: None,
-                #[cfg(target_os = "linux")]
                 sameboy_native: None,
                 bsnes_native: None,
                 stella_native: None,
@@ -10092,17 +9919,13 @@ pub fn prepare_with_cancellation(
                 blastem_native: None,
                 xemu_native: None,
                 scummvm_native: None,
-                #[cfg(target_os = "linux")]
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
-                #[cfg(target_os = "linux")]
                 pcsx2_native: None,
-                #[cfg(target_os = "linux")]
                 rpcs3_native: None,
-                #[cfg(target_os = "linux")]
                 melonds_native: None,
                 ppsspp: None,
                 _directory: None,
@@ -10917,15 +10740,11 @@ pub fn prepare_with_cancellation(
         bizhawk_topology: None,
         transports,
         crocods,
-        #[cfg(target_os = "linux")]
         mgba: None,
         #[cfg(target_os = "linux")]
         dolphin_native: None,
-        #[cfg(target_os = "linux")]
         snes9x_native: None,
-        #[cfg(target_os = "linux")]
         fceux_native: None,
-        #[cfg(target_os = "linux")]
         sameboy_native: None,
         bsnes_native: None,
         stella_native: None,
@@ -10938,21 +10757,15 @@ pub fn prepare_with_cancellation(
         blastem_native: None,
         xemu_native: None,
         scummvm_native: None,
-        #[cfg(target_os = "linux")]
         jgenesis_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         mame_native: None,
         flycast_native: None,
-        #[cfg(target_os = "linux")]
         pcsx2_native: None,
-        #[cfg(target_os = "linux")]
         rpcs3_native: None,
-        #[cfg(target_os = "linux")]
         melonds_native: None,
-        #[cfg(target_os = "linux")]
         ppsspp: None,
-        #[cfg(target_os = "linux")]
         duckstation: None,
         ep128emu,
         hatari,
@@ -11329,17 +11142,12 @@ fn prepare_mode_aware(
         bizhawk_topology: None,
         transports,
         crocods: None,
-        #[cfg(target_os = "linux")]
         ppsspp: None,
-        #[cfg(target_os = "linux")]
         mgba: None,
         #[cfg(target_os = "linux")]
         dolphin_native: None,
-        #[cfg(target_os = "linux")]
         snes9x_native: None,
-        #[cfg(target_os = "linux")]
         fceux_native: None,
-        #[cfg(target_os = "linux")]
         sameboy_native: None,
         bsnes_native: None,
         stella_native: None,
@@ -11352,19 +11160,14 @@ fn prepare_mode_aware(
         blastem_native: None,
         xemu_native: None,
         scummvm_native: None,
-        #[cfg(target_os = "linux")]
         jgenesis_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         mame_native: None,
         flycast_native: None,
-        #[cfg(target_os = "linux")]
         pcsx2_native: None,
-        #[cfg(target_os = "linux")]
         rpcs3_native: None,
-        #[cfg(target_os = "linux")]
         melonds_native: None,
-        #[cfg(target_os = "linux")]
         duckstation: None,
         ep128emu: None,
         hatari: None,

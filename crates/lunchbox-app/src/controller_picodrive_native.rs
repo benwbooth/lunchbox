@@ -360,7 +360,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch writes a private config with binddev/bind lines, then rechecks the exact SDL routes. Only Genesis six-button pads on ports one/two are supported; runtime behavior remains unverified."
+                "detail": "Native launch writes a private config with binddev/bind lines, then rechecks the exact SDL routes. Only Genesis six-button pads on ports one/two are supported; runtime behavior remains unverified."
             }))
         }
     }

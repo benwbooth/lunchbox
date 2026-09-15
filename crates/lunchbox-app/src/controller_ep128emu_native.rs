@@ -190,7 +190,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch stages a session .ep128emu config with joystick event rows, then rechecks the exact SDL routes. Only a capable pad in the first slot is supported; runtime behavior remains unverified."
+                "detail": "Native launch stages a session .ep128emu config with joystick event rows, then rechecks the exact SDL routes. Only a capable pad in the first slot is supported; runtime behavior remains unverified."
             }))
         }
     }

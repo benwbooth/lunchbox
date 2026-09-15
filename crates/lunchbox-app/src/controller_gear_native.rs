@@ -191,7 +191,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch copies config.ini under a private SDL preference root, preserves the original save/state destinations, and requires selected controllers to occupy the exact first SDL3 gamepad slots. Runtime behavior is unverified."
+                "detail": "Native launch copies config.ini under a private SDL preference root, preserves the original save/state destinations, and requires selected controllers to occupy the exact first SDL3 gamepad slots. Runtime behavior is unverified."
             }))
         }
     }

@@ -1,0 +1,481 @@
+{
+  "schemaVersion": 1,
+  "id": "fdda71e6-7ef6-4761-9663-c9f2febcc2ee",
+  "sessionID": "ses_f6d0a7cfaffe4qBNUMYru5Jqux",
+  "objective": "can you pull up the most recent GLM session logs for this project? we need to proceed with creating adapters for every retroarch core and emulator supported by lunchbox for: controller mapping configuration syntax and location, bios/firmware/keys location and file names/checksums, and save state/save game location and naming conventions for future save sync feature.",
+  "constraints": [],
+  "revision": 1,
+  "status": "budget_limited",
+  "requirements": [
+    {
+      "id": "4ce232ca-47a2-4913-bae7-cdbd88c5b1af",
+      "text": "Objective achieved: can you pull up the most recent GLM session logs for this project? we need to proceed with creating adapters for every retroarch core and emulator supported by lunchbox for: controller mapping configuration syntax and location, bios/firmware/keys location and file names/checksums, and save state/save game location and naming conventions for future save sync feature.",
+      "required": true,
+      "status": "pending",
+      "evidenceIDs": [],
+      "verification": "semantic",
+      "source": "objective",
+      "updatedAt": 1789171958656
+    }
+  ],
+  "evidence": [],
+  "checks": [],
+  "usage": {
+    "turns": 30,
+    "tokens": 169910,
+    "cost": 0,
+    "runtimeMs": 131048,
+    "seenMessageIDs": [
+      "msg_092f58399001xMOB1h0Lx2PElf",
+      "msg_092f8b7150017nIqofMFccRXzh",
+      "msg_092f8b72e001GR60QnNzNoWNYM",
+      "msg_092f8c6c8001dx2waJLZj69x5T",
+      "msg_092fb92ba0011Ku6TAV0HXZ0c4",
+      "msg_092fc87c8001oiNzj6dsYHGIWG",
+      "msg_092fdd6ca001b12hRCEYlAcdJa",
+      "msg_092feed09001fjDVQHu0ZOT2Ka",
+      "msg_092ffdc7e001PbDpVtetFv3fjz",
+      "msg_093008d9f001ejyJIwCgOGtFsV",
+      "msg_093022248001tjz6yg4NCaDZsL",
+      "msg_0930356de001y1XMKa6EBYU9gn",
+      "msg_09303c881001riTEDF7PscwXUj",
+      "msg_09304c08f0014pVGoCQW7jjEoR",
+      "msg_093055277001BrvbslCricQTtT",
+      "msg_09305e620001zu4GiR3RlTtMxc",
+      "msg_09306d43d001iIT29QDLAiMTKf",
+      "msg_09307778e001lfWufGH1GA2Day",
+      "msg_0930864c8001w5PEGQSJC2KnHV",
+      "msg_0930a74d4001CZwVlhh3NBPQvp",
+      "msg_0930b6896001LU2Vw67XSTYiIU",
+      "msg_0930cd98b001QkHptKY0VmxKH7",
+      "msg_0930dc16c0012agq7RHBHpDeaR",
+      "msg_0930e72900011zaSgwmQWmnY99",
+      "msg_0930f5b53001Q0evL2gihkUi9u",
+      "msg_0930feca0001Izpn41bacUJVXl",
+      "msg_0931118f60016QOPh09pSZg18I",
+      "msg_09311a14e001w8hIcSP2DFzJC7",
+      "msg_0931283a4001zbZGebOOGGmh0z",
+      "msg_0931342570016TflsPx4I3Vna1"
+    ]
+  },
+  "revisionTurnBaseline": 0,
+  "budget": {
+    "maxTurns": 30,
+    "maxTokens": 400000,
+    "maxCost": 0,
+    "maxRuntimeMs": 3600000
+  },
+  "progressRevision": 206,
+  "observedProgressRevision": 206,
+  "progressFingerprints": [
+    "shell:f2afd32443e759d975ad91a006807c094b0dfc2dd8c8ec333d8f031dc6f76f06",
+    "shell:eee2eddaee1d742e2bdf8a4cb69fd25c1611ae2360f3e0cd22a3be31d9455fe5",
+    "shell:572916471d289c5a2afc3529aa259cda0949bc0f5a73a9ea81726c346a0514f1",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro.rs:7c9fe3a4eda7d38e0c9c859b2566d29903505c018c413caabd088626c3549a4c",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro.rs:ff2a7d36dfea4f4fc4b33f28a68702c2fefafb715c6e6a2a491d9ed13fab53ad",
+    "file:crates/lunchbox-app/src/lib.rs:25024eabbd0a5c5fc2e6d7420ef25aea3510b65be621ca57b40e35354452036f",
+    "shell:3cb497bdcb6304e0234a1b5eeb799054b61338fecfaf5b8bceec16c2187849bf",
+    "shell:b6cb720d5033053896908e5e099817d1160ed9fa52a069f0f0ea298368c4b9d5",
+    "shell:d1fda15f53fee74be6e41813cbae419d14ad05183485d1a8608e245482efc1e9",
+    "shell:8cd790ac164fc5964931d4722a54796c39a3e7b2aab50661beed60607e8c88a2",
+    "shell:42195326c17af28c2a3ccb6a13fc1f966471b3ea77d9128f09f1d5ca422b71f1",
+    "shell:b272da9a8891c83376e37fa98d297fbb49de641a6089943ae5d50afb34e7a823",
+    "shell:e817c7c96c4182cb6bc3797ce0be4de78fcb572a2442f7170792387cafe83712",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro_native.rs:c1990604b5b8a75a4e342919fa13d027134f915254377ee936cfc25f317ca2b9",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro_native/settings.rs:58b5164b21953ff07f1adf70af44fc94ed5a4529ab8be7eeee115da731465201",
+    "file:crates/lunchbox-app/src/lib.rs:7a023902d9d81d9816c210e1faedfe31e1a9c9f81787c90f97de674ba4c89dc3",
+    "shell:8bac55996e43dca90fb53ed8872f95bc52e22c6d4683a94fd81759ecd8bcb55f",
+    "shell:8b02f3961d79ade3ab67ca4e77621fdd8e4a1bce55c35c49c837c878f4c3c2e6",
+    "shell:1e9fd192acbc91f00f66141176cf57e75cc2a4045f8040a07588953565c8bd5c",
+    "shell:4ff8b415f7ebf621e22911fcac4db45b6a496bdf76a85575fe4f90272af22af0",
+    "shell:299f6dfe0acbab71f0f18d44eec1b6a4554b51ef7bc85421da7e59f04a462274",
+    "shell:f75839d2fc7367f38be323012dbe9095a07231964859d30301b10effb86f13af",
+    "shell:500db0e07687e964b4f17cefc578b0dd255e47011030e1ee6ec7b73b1b49c41e",
+    "shell:91196945961ace2fced7d2ba9723f5639c98d4b50acc43081d97edac3e7de35d",
+    "shell:db20d085685a11ed4e59065477530b637993f5fd793638711890853919f2ed4c",
+    "shell:aa53e74b37fb1163c6a13d04ef47c2932c3b3f25c03b90eda2c2684541d3895f",
+    "shell:469d5477070b6a82345b5afeab1ceb957b2197b09b533cf07d51396fee55cd37",
+    "shell:97801fafa52bbfac17fbcd2f0c9834cb75a79e513737d3b3580658064c2c8a13",
+    "shell:9aa20a81b4a9d4148494ee773a1763686c34adbab42e79ef3e174241801e6c79",
+    "shell:888229957df020d50e1832e4d5684b5870c887cd26e04a7ff01729f3c5c91d72",
+    "shell:6d58d4616664fb67acf02187fd5d39a5a028708b66201d8c40c96372361822ad",
+    "shell:29721439d123e619c2867e709a0009d185762952f7ff75399e002196af46af96",
+    "shell:290873b1bb40f17b30bf7d47a204b3017aa4493e29b35cf72919267d3ce86905",
+    "shell:9c0e07fbbe65eb11d378168ffa24ccb506ced7529c8abf87674fb0dab0b48320",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro.rs:4fc0c5c104008e515c065a7d69089687ae60607a16126103ad22a062fa6bda6a",
+    "shell:f48aa91670c7e84a93030027a983b198e8c3838b9164597f5139d25a4ecc8665",
+    "shell:8d893c1df0aeb08d7cb70c0e572ff415d6390f9fd75f8a85999ec69ea17d1302",
+    "shell:6b202c025f686d6e90920c05d7a17f0333d35612e3e8d11251e4c4d64a1d4738",
+    "shell:f73ac50671716038e6d260df7947ca8c5cc310d127baeac48ef1b66102d7d9b4",
+    "shell:41bd8dc112f2c7bea37cb429ffe086f05a0bd10a2458aaf168c226721959a48a",
+    "shell:65f044ecc28dd75e3f0333e366b9d2c5ff05e2190998a023c15055f160da94ea",
+    "shell:bc59ea3bc3872273c41141bcc9df4501bc55ee8966896166e6bce6e5c70f5214",
+    "shell:e2fc2ae2351123e9338a21318a25346a5eb529bcd5ec6e1a1af57eefcf9145da",
+    "shell:fd9c87e2a068f2cb4912b9dc44e2ea1bfe25decbd61622c4655ac7d1674c723b",
+    "shell:afc321774dbbdbd635428c73af316718b3b78da169f2a85fd659ce1176f8a973",
+    "shell:83739a9a1eb392659f5e4a469884c854fe5308c6eaffac57b1c16a92ed814bc8",
+    "shell:13a9389bddd1507f41ed7d7c6a9dded2e351a19c70e0f2de52ce5467a82698a4",
+    "shell:f9f50582d026b51b1a9af0279a397f278a7de28793cfad71ea3aa2f563ae29fc",
+    "shell:09e4618c6b0f1740f9bc6578c0cfc38630a76b8fc0e852a250694d5eb95aa6b3",
+    "shell:cea1bb3f735c747a518d45180d03bdfa3d01d08b4f3cba51fea57553366fa5f7",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro.rs:6c3c530bc377e222883ec7f61354e9cd434155fb03ee939d11b8d64db56c1cc3",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro.rs:bb415b9561fbe7745c5603565f9d8f43000a6fdd1c91fa1febcec4abba87a894",
+    "shell:48fb2258a2d3f2566b748967cb7717bca0456ee8bd53f07d33c1a710d0040a2b",
+    "shell:e39472261d79961275c94bd86e03de554a261af6e80118797b31beb084d20c1a",
+    "shell:7020461ad48e6627ac00c990d704ef332290cb81de61019bc1b31005511614c5",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro.rs:ea936d0c512c4ffd9f481f717facb07403f1da1722deff1f1d1b2172933d6413",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro.rs:b211b2611f20bbc796f54ac3b5716f762605976c7403a6888d8719c0479d213d",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro.rs:1945da44ce9dd7a86ff8eca1c3031956b31b4648e643f276631df84ec1f96e34",
+    "shell:12b2622bcd5a27ffc999160f70e44a07847be9ab7e0de295f2ddbb51472d7182",
+    "shell:a73d7807f027cbb98343f19b0d413df6567edb8c7acd55ad5c94ae2c09a16801",
+    "shell:b6d10c11c48d66e9463aa1d736217d612ba9f1517f98682a63d997f1370434f4",
+    "shell:b777ce3c65d6f61eac9d886658060ebdcb8d61773f67e04164abbf3b39e4e533",
+    "shell:f3fd0d1ccf428590c61a8a69acb513216173b6fd7baab50c176da27d45bedef8",
+    "shell:ede109e15043351a654968814ed527c6e05c75609364a1849cbdc287fdc27adb",
+    "shell:bfd5b1dbb6896d3b78ba919d2e027c79aaab4a5f68755134e840fbafcb38e21d",
+    "shell:14f03d79026f4c521fcc39afe82e3ba242ceca2c0cde9209067cfab524ba49d7",
+    "shell:67a3c09ab6f3040a95472a458ae74cee5a0f0076c6dc86358b23bfe38d9e4bb9",
+    "shell:1de34812626101b2d0a2e49b44a1a4d1643a449e44a32d949773b515ed0b5d8a",
+    "shell:8761bd600381ba2abb5d08bf0b00c89c7ab3d0cb15e911ba60e8267c0fefba7d",
+    "shell:d5f2bb6bd53134a32d6ceed9177598f31ec2460d5c4628615d3b0c9999997547",
+    "shell:0faf6b33e08d4497e0a845997b94b850aba401ab0f20b649e14a67daa1f0bb68",
+    "shell:8bd30311ca23a3b7b73dc200aff19d749d37659f1517419ab4d4111ccd92e110",
+    "shell:c946a9d567ba25ebf9b7838f92a075cd3df3ee4e549c23c5f85553b43a799d6c",
+    "shell:2fc4434e7475fd4873d35ff67216bc44bb6a2ee5a06b817d40a9bcdedc0390ae",
+    "shell:8150735750fad76532c5aaca5d2f31d48ecc4fb56de9bc1f534752dfcbbab65c",
+    "shell:b01f765ea98a5dc9827a5eaf641c0fc00b8e2d1b1508011cd8bc3dad53244f42",
+    "shell:086d39aff541af831905de029e796b54ee19f400e5fbe3a79ebf89c4d72f64b3",
+    "shell:a9e4631dd4980f7b55fc75d47a4d8b73721df865bac4c622625688d04e4c9f28",
+    "shell:d5ecf32707d108eee2ddbfc60fbc96d5989fcf5941e82748fe4a70e750429ead",
+    "shell:559f2e170cbddfb3deb5e5ec4810addea1d611d4271824a5b659e193f9d3f03f",
+    "shell:73221c33d9b99b51b7202a7c5ed573a74b905bc320c10d7e462852b67a80ef97",
+    "shell:0f46e862ca1344b500ebe6556e5b514ce09688a2a2cceaeb9ab8a15724db90a1",
+    "shell:e45842c723de1dfe7f282160982266d9d6911b0d5c296aa3191b8f7b76b826b8",
+    "shell:01860934291cd5dadf9e2eb172fef006639d9df5c7ed9b0ff4dfadae70234468",
+    "shell:96e644407ac8632b56ead55c0d3cd16acab8d0ffd6d1b26dabf22d9cccd478b0",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro.rs:181b823caf75a1e84efe0ef3e33445a84e6c69855384b113338c162fd61488c9",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro.rs:cd037a7f593f3ee6dad55354791c035c238aa581d4806f6aaefa2cdfca7d4f7c",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro.rs:007e49b2a71830c89fca9884d6df0513a1b65bef01f97cc8d1d64c2a1f28579d",
+    "shell:ece0fbde2898c9f5cd2b405497e0db293d40eb9f10ca56e37c399a1a937bba4f",
+    "shell:c1fba6611f360b1dd9efe7ef65ceef4d09bef8749cdc1b9ed70435c744c41688",
+    "shell:7f2277112ff9e724222865cf0e453ae4eca22f569650eaeacc60dc726c27772d",
+    "shell:4f39b98677427c2188c44feda56005f45e1fbeec24c191cb38441c47d77cccb7",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro_native/session.rs:17031af3169a036423182313d5aff2c93b9c59121822e2191d4d02eae1676f7f",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro_native/session.rs:246d7e3e6a3f8c772ef00b2d96069049f2153ffa75a1e26b9471f3a58844257d",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro_native/native_command.rs:119c9ec15b53e10925d8412de35f72c5c5713f4f073561ad6019887d8fd45fb8",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro_native.rs:2e629984474f19ddd46675d702cafbd9f402a710575200bbf7f9d9775d427ba8",
+    "shell:fe778e1daf3c47deecce084c35cc33df4d81bf89a62490ab57e5dc687d842340",
+    "shell:a9f14be2cbe0ab1edc27c33bedd3acaf8e14a077da98d9e8796504e960950e0e",
+    "shell:451616c59f58e9185dee134b569e1911e3a669b14ab2f55d64c68e50cceba399",
+    "shell:3be79deda2015525c843005e1bbc7d41854761a2ebf63df8952c5554e16f65b6",
+    "shell:563320e48319166b8b810ea63af3096437b7bff83f531cba194e79e5a3fb460f",
+    "shell:0560f2311ef074fc743c04407e206a0def951acb846bb8a2059bc41869f0b3db",
+    "shell:4e7043aa81875e80a600174bd5b10cdf817ba758bf0ab9cd2d561433ffcf09de",
+    "file:crates/lunchbox-app/src/controller_coverage.rs:449f30c09026b6962f6910d5b6bfb470b96ba6c3e75e1b1051f099d7fa41a92c",
+    "file:crates/lunchbox-app/src/controller_guided_native.rs:978aaa10cad9b1ff86c8ccab72e9b65f0207f85b3f9f57221fe743cb420c2ad3",
+    "shell:6d2b899c74a830db30a0111e002683785bb54cfe564eb6755e81394da11c9d2f",
+    "shell:7a34ef51125283cf7cc8c76eaa658436211e14374a798cfbf51e1b7bc3e3b2de",
+    "shell:ea694f27ca168a1607439bf0c135e11e45a96c288c6dced57fd3f8ec5b6712a6",
+    "shell:6896fee5d94549c17e1446e7b8ba4dc22feb0158accac6060b5bc952c8229370",
+    "shell:4337c77bc69b6a005716fa111a48f865733331ce5bd46a55b316ccf2611f1a43",
+    "file:crates/lunchbox-app/src/settings.rs:775ef2e063056493c988c8f0d8dd7954493977af48eebbd632ed86281b3c6dc7",
+    "file:crates/lunchbox-app/src/settings.rs:920ccba8c17fc3ec100bbf0f607d034d29a291eec06f2c7c2840b1382db3fe0f",
+    "file:crates/lunchbox-app/src/settings.rs:16a13fefaa9e62a37852c1e3a3a3c7bd99f841b868a248a896ebc342dee12b25",
+    "shell:4a48bcb3e1dbdec240c7d2035847545e9ca2f2f217ad44b37a869c4407a3b80a",
+    "shell:ca15a2a494778e4b5145be1b2c2132f03ef105703b1c1ab7bdd115167a45822e",
+    "shell:a9f7f645ee526c63df5c9b3c2e3780a1fda176995db7808a199e25a3ac1e2f25",
+    "shell:584cabaed9cd6612a3d99c21eaafdb6f960185af313254d2d33989f53add55af",
+    "shell:75397a0721746aa9c8e442e79d0ce71965e7adfe50ccf938341a06606c917321",
+    "shell:3c7ffce9e013e1318a0dbdde31f093c22681cb83f5db6d0dd32a9c54f8a36a14",
+    "shell:0a5c7ec19bf24e5cbcd006ffcc74402a184e0ca364e30454cc886d55b95dc4e3",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro_native/settings.rs:84eb794d14b2c73f87f6d164b76ed4e801ace10fb4c92bbab7fbbcc3feba75b8",
+    "file:crates/lunchbox-app/src/controller_yaba_sanshiro_native/settings.rs:d1963a2976a89664e74d05512e1a640f4de8cd2b45d842b22fcaa08ed71cf7d3",
+    "file:crates/lunchbox-app/src/controller_guided_native/runtime.rs:b4ce9211a3551ec7670c2571d83a9c9189c7a5008328373d9dd2cf307a1393c5",
+    "file:crates/lunchbox-app/src/controller_guided_native.rs:f66f16b4b2c1c66395d9af0b79e920497d913a4509c8ccea7daca5effc5c64e2",
+    "shell:591409d95c486d5147b88acbe5d5667149799a056aed74aaa0501dc8f3f13d13",
+    "shell:1be7e36d49e6801dff42016ad2c6f8556c0925ff2c45d9f9474a2b49e2ce2bf0",
+    "shell:c50baada3dfe17d5b115711d629bf954b0be9054d1295cb5bab5f8cc54c9798c",
+    "shell:d91c89a14c676edd129d93b7f8a3e54e6187f2e58338a09ab787ce766613f3a6"
+  ],
+  "stalledTurns": 0,
+  "progressNotes": [
+    {
+      "time": 1789173479991,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173484660,
+      "summary": "Wrote controller_yaba_sanshiro_native/session.rs mirroring Kronos/jgenesis call patterns verbatim: SDL observe with runtime verification, unambiguous-physical disambiguation, topology capture, GC-vs-raw translation via composers (class 1 buttons, class 3 axes with hat-ABS bail, 4-device cap), pad_key mapping, duplicate guard, private-HOME yabause.ini ownership with hashes + freshness verify. Plus pad_key_for_target() helper + test in contract module. 10/10 contract tests green, fmt clean. session.rs itself not type-checkable here (cxx-qt env block); API names copied verbatim from in-repo call sites. Uncommitted; commit+push next Goal turn per cadence.",
+      "next": "Verify + commit Yaba session stage (fmt, tests, DB audit, archive check, push), then native_command."
+    },
+    {
+      "time": 1789173537513,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173541559,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173545392,
+      "summary": "Committed 31d079d and pushed main (0502422..31d079d): Yaba session stage + pad_key_for_target helper (+230). Gates green: fmt clean, contract 10/10, lunchbox-db 15/15, strict audit valid:true, archive hash matches manifest + extracted audit valid:true. Qt-gated app build still env-blocked. Goal stays active.",
+      "next": "Write Yaba native_command.rs (launch ownership with private-HOME config isolation)."
+    },
+    {
+      "time": 1789173562977,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173565806,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/controller_yaba_sanshiro_native/session.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173573831,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/controller_yaba_sanshiro_native/session.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173577686,
+      "summary": "[host:tool:write] Project file content changed: crates/lunchbox-app/src/controller_yaba_sanshiro_native/native_command.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173580407,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/controller_yaba_sanshiro_native.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173585796,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173589944,
+      "summary": "Wrote native_command.rs mirroring BlastEm (identity/executable/argument/sha checks, NativeSession with spawn/verify/health, private-HOME override). Fixed session.rs to write yabause.ini at the real XDG path inside a private home/ dir and expose home_path. 10/10 contract tests green, fmt clean. Uncommitted; commit+push next Goal turn per cadence.",
+      "next": "Verify + commit Yaba native_command + private-HOME session fix (fmt, tests, DB audit, archive check, push), then coverage/guided wiring."
+    },
+    {
+      "time": 1789173641916,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173646299,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173649934,
+      "summary": "Committed 396b1a0 and pushed main (31d079d..396b1a0): native_command.rs + private-HOME session fix (+101). Gates green: fmt clean, contract 10/10, lunchbox-db 15/15, strict audit valid:true, archive hash matches manifest + extracted audit valid:true. Qt-gated app build still env-blocked. Goal stays active.",
+      "next": "Wire Yaba coverage (NATIVE_ADAPTERS) and guided-native support, matching the Kronos adapter commit."
+    },
+    {
+      "time": 1789173657867,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173659657,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173666320,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173671627,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173675063,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/controller_coverage.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173675067,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/controller_guided_native.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173681764,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173686343,
+      "summary": "Wired Yaba coverage: NATIVE_ADAPTERS += \"Yaba Sanshiro 2\" (exact case-insensitive DB name match, verified) and guided supports() += \"yaba-sanshiro\" core, mirroring the Kronos adapter commit. Checked the per-emulator guided dispatch: Kronos has no arm there either, so Yaba matches precedent; full setup-list plumbing (mapping field, invokables, QML) is a later unit. fmt clean. Uncommitted; commit+push next Goal turn per cadence.",
+      "next": "Verify + commit coverage/guided wiring (fmt, tests, DB audit, archive check, push); then settings-model/QML setup plumbing."
+    },
+    {
+      "time": 1789173739630,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173742729,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173764200,
+      "summary": "Committed 19bd78d and pushed main (396b1a0..19bd78d): Yaba coverage + guided support (+2). Gates green: fmt clean, contract 10/10, lunchbox-db 15/15, strict audit valid:true, archive hash matches manifest + extracted audit valid:true. Qt-gated app build still env-blocked. Goal stays active.",
+      "next": "Settings-model/QML setup plumbing for saved Yaba launches (mapping field, invokables, editor)."
+    },
+    {
+      "time": 1789173775439,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173779330,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173782381,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/settings.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173782394,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/settings.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173782397,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/settings.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173788073,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173794416,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173797696,
+      "summary": "Added yaba_sanshiro_native_launches field to ControllerMappingSettings (serde-default, Default init, validate_setups hookup), mirroring jgenesis; also collapsed a pre-existing duplicated jgenesis validate call in the touched lines. fmt clean, lunchbox-db 15/15. Uncommitted; commit+push next Goal turn per cadence.",
+      "next": "Verify + commit mapping field (fmt, tests, DB audit, archive check, push); then runtime template + guided dispatch arms."
+    },
+    {
+      "time": 1789173849844,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173853638,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173857360,
+      "summary": "Committed cde9044 and pushed main (19bd78d..cde9044): Yaba mapping field + validation (+6/-2). Gates green: fmt clean, contract 10/10, lunchbox-db 15/15, strict audit valid:true, archive hash matches manifest + extracted audit valid:true. Qt-gated app build still env-blocked. Goal stays active.",
+      "next": "Runtime template + guided dispatch arms for Yaba setups, then settings-model invokables."
+    },
+    {
+      "time": 1789173865200,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173868162,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173869867,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173876448,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/controller_yaba_sanshiro_native/settings.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173888462,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/controller_yaba_sanshiro_native/settings.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173892064,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/controller_guided_native/runtime.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173892068,
+      "summary": "[host:tool:edit] Project file content changed: crates/lunchbox-app/src/controller_guided_native.rs",
+      "next": ""
+    },
+    {
+      "time": 1789173898685,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173901208,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173905277,
+      "summary": "Added Yaba guided plumbing mirroring jgenesis: SavedSetup::review() (validate + registered-profile plan), runtime.rs reuse template arm, guided dispatch arm assigning ids[0] + review. Repaired a mid-turn bad edit that had dropped the emulator_id check (restored, verified). fmt clean. Uncommitted; commit+push next Goal turn per cadence.",
+      "next": "Verify + commit runtime/dispatch arms (fmt, tests, DB audit, archive check, push)."
+    },
+    {
+      "time": 1789173957717,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173961389,
+      "summary": "[host:tool:bash] Goal-owned shell command completed.",
+      "next": ""
+    },
+    {
+      "time": 1789173974543,
+      "summary": "Committed bea9967 and pushed main (cde9044..bea9967): Yaba review()+runtime reuse+dispatch (+45). Gates green: fmt clean, contract 10/10, lunchbox-db 15/15, strict audit valid:true, archive hash matches manifest + extracted audit valid:true. Qt-gated app build still env-blocked. Goal NOT complete: Yaba still needs settings-model invokables, QML editor, launch dispatch, runtime verification; broader scope (98 cores, 253 emulators) remains multi-cycle work. Keeping goal active for the final turn's assessment.",
+      "next": "Budget ends next turn: consolidate — honest scope assessment; remaining Yaba work is settings-model invokables, QML editor, launch dispatch, runtime verification, then the same cycle per remaining emulator/core."
+    }
+  ],
+  "storageGeneration": 920,
+  "createdAt": 1789171958656,
+  "updatedAt": 1789354818012,
+  "execution": {
+    "agent": "build",
+    "model": {
+      "providerID": "opencode",
+      "modelID": "muse-spark-1.3-contributor-free"
+    },
+    "modelContext": {
+      "contextLimit": 1048576,
+      "outputLimit": 131072,
+      "autoCompaction": true,
+      "observedAt": 1789354818012,
+      "lastRequestTokens": 312278
+    }
+  },
+  "todoPlan": {
+    "goalRevision": 1,
+    "digest": "sha256:55ff93f4d1177340b61c1683b1b6d3c8ba0cd5fce6f974bd7386170d655b4d60",
+    "total": 1,
+    "pending": 0,
+    "inProgress": 1,
+    "completed": 0,
+    "cancelled": 0,
+    "observedAt": 1789173910624
+  },
+  "stopReason": "Goal budget reached: turns 30 / 30."
+}

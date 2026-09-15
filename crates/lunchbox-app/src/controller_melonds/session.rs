@@ -1,4 +1,4 @@
-//! Native Linux launch-time SDL capture. Never called from settings review.
+//! Native launch-time SDL capture. Never called from settings review.
 use super::settings::SavedSetup;
 #[cfg(target_os = "linux")]
 use crate::controller_bizhawk_guard::InputTopology;

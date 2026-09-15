@@ -295,7 +295,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch mounts a private controller-only copy at the original ARAnyM config path, rechecks the exact SDL2 runtime slots, and enforces the pinned source's axis-0/axis-1-or-hat and any-button IKBD behavior. TOS, disks, GEMDOS folders, NVRAM, guest saves and snapshots retain their original paths. Runtime behavior is unverified."
+                "detail": "Native launch mounts a private controller-only copy at the original ARAnyM config path, rechecks the exact SDL2 runtime slots, and enforces the pinned source's axis-0/axis-1-or-hat and any-button IKBD behavior. TOS, disks, GEMDOS folders, NVRAM, guest saves and snapshots retain their original paths. Runtime behavior is unverified."
             }))
         }
     }

@@ -45,7 +45,7 @@ ColumnLayout {
                     text: "Stage setups"
                     onClicked: {
                         const error = setup.settingsModel.stage_mame_native_setups(mameNativeText.text)
-                        mameNativeResult.text = error || "Staged. Save settings on the main page. Native Linux raw SDL dispatch is partial and untested; no device discovery or emulator launch was performed."
+                        mameNativeResult.text = error || "Staged. Save settings on the main page. Native raw SDL dispatch is partial and untested; no device discovery or emulator launch was performed."
                     }
                 }
             }
@@ -91,7 +91,7 @@ ColumnLayout {
         text: "Standalone MAME panels…"
         onClicked: {
             mameNativeText.text = setup.settingsModel.mame_native_setups_json()
-            mameNativeResult.text = "Partial native Linux raw SDL dispatch. Set cfg_directory and runtime {probe_program, sdl_library} to absolute paths. Plain machine arguments and unique controller GUIDs are required. Changes to MAME cfg settings during play remain session-local."
+            mameNativeResult.text = "Partial native raw SDL dispatch. Set cfg_directory and runtime {probe_program, sdl_library} to absolute paths. Plain machine arguments and unique controller GUIDs are required. Changes to MAME cfg settings during play remain session-local."
             mameNativeEditor.open()
         }
     }
@@ -136,7 +136,7 @@ ColumnLayout {
             duckstationSetups.adapter = "jgenesis-native"
             duckstationEditor.text = setup.settingsModel.jgenesis_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private jgenesis-config.toml; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private jgenesis-config.toml; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -146,7 +146,7 @@ ColumnLayout {
             duckstationSetups.adapter = "b2-native"
             duckstationEditor.text = setup.settingsModel.b2_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch patches a copied b2.json under a private XDG_CONFIG_HOME; runtime verification is deferred."
+            duckstationStatus.text = "Native launch patches a copied b2.json under a private XDG_CONFIG_HOME; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -156,7 +156,7 @@ ColumnLayout {
             duckstationSetups.adapter = "hypseus-native"
             duckstationEditor.text = setup.settingsModel.hypseus_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch stages an exact SDL3 Gamepad order and private keymap/home while retaining a separate NVRAM directory; runtime verification is deferred."
+            duckstationStatus.text = "Native launch stages an exact SDL3 Gamepad order and private keymap/home while retaining a separate NVRAM directory; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -166,7 +166,7 @@ ColumnLayout {
             duckstationSetups.adapter = "gopher64-native"
             duckstationEditor.text = setup.settingsModel.gopher64_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch patches a copied config.json under a private XDG_CONFIG_HOME; runtime verification is deferred."
+            duckstationStatus.text = "Native launch patches a copied config.json under a private XDG_CONFIG_HOME; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -176,7 +176,7 @@ ColumnLayout {
             duckstationSetups.adapter = "gear-native"
             duckstationEditor.text = setup.settingsModel.gear_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch uses a private SDL preference root, exact first-gamepad ordering, and preserved save/state destinations; runtime verification is deferred."
+            duckstationStatus.text = "Native launch uses a private SDL preference root, exact first-gamepad ordering, and preserved save/state destinations; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -186,7 +186,7 @@ ColumnLayout {
             duckstationSetups.adapter = "xroar-native"
             duckstationEditor.text = setup.settingsModel.xroar_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch uses a private first-option config and rechecks exact SDL3 joystick order and bindings; runtime verification is deferred."
+            duckstationStatus.text = "Native launch uses a private first-option config and rechecks exact SDL3 joystick order and bindings; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -206,7 +206,7 @@ ColumnLayout {
             duckstationSetups.adapter = "oricutron-native"
             duckstationEditor.text = setup.settingsModel.oricutron_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch overlays only the executable-sibling oricutron.cfg and rechecks exact SDL2 slot/instance routing; runtime verification is deferred."
+            duckstationStatus.text = "Native launch overlays only the executable-sibling oricutron.cfg and rechecks exact SDL2 slot/instance routing; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -216,7 +216,7 @@ ColumnLayout {
             duckstationSetups.adapter = "yaba-sanshiro-native"
             duckstationEditor.text = setup.settingsModel.yaba_sanshiro_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch overlays only a copied yabause.ini and rechecks measured SDL2 routing while retaining the real data root; runtime verification is deferred."
+            duckstationStatus.text = "Native launch overlays only a copied yabause.ini and rechecks measured SDL2 routing while retaining the real data root; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -226,7 +226,7 @@ ColumnLayout {
             duckstationSetups.adapter = "kronos-native"
             duckstationEditor.text = setup.settingsModel.kronos_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch overlays only a copied kronos.ini and rechecks exact raw-SDL2 routing while retaining the real data paths; runtime verification is deferred."
+            duckstationStatus.text = "Native launch overlays only a copied kronos.ini and rechecks exact raw-SDL2 routing while retaining the real data paths; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -246,7 +246,7 @@ ColumnLayout {
             duckstationSetups.adapter = "aranym-native"
             duckstationEditor.text = setup.settingsModel.aranym_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch overlays the selected config at its original path and rechecks exact SDL2 slot/instance routing; runtime verification is deferred."
+            duckstationStatus.text = "Native launch overlays the selected config at its original path and rechecks exact SDL2 slot/instance routing; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -256,7 +256,7 @@ ColumnLayout {
             duckstationSetups.adapter = "atari800-native"
             duckstationEditor.text = setup.settingsModel.atari800_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch overlays the selected config at its original path and rechecks SDL2 names, duplicate-name slots and raw controls; runtime verification is deferred."
+            duckstationStatus.text = "Native launch overlays the selected config at its original path and rechecks SDL2 names, duplicate-name slots and raw controls; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -276,7 +276,7 @@ ColumnLayout {
             duckstationSetups.adapter = "vba-m-native"
             duckstationEditor.text = setup.settingsModel.vba_m_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch uses an explicit private Qt/wx config and rechecks exact raw SDL2/SDL3 controls, persistence roots, and any active GBA BIOS; runtime verification is deferred."
+            duckstationStatus.text = "Native launch uses an explicit private Qt/wx config and rechecks exact raw SDL2/SDL3 controls, persistence roots, and any active GBA BIOS; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -286,7 +286,7 @@ ColumnLayout {
             duckstationSetups.adapter = "86box-native"
             duckstationEditor.text = setup.settingsModel.eighty_six_box_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch overlays the exact machine 86box.cfg and rechecks SDL2 raw controls and enumeration; runtime verification is deferred."
+            duckstationStatus.text = "Native launch overlays the exact machine 86box.cfg and rechecks SDL2 raw controls and enumeration; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -296,7 +296,7 @@ ColumnLayout {
             duckstationSetups.adapter = "a7800-native"
             duckstationEditor.text = setup.settingsModel.a7800_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch builds a private A7800 controller profile and filtered config, rechecks the old fork's SDL2 name/item routing, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch builds a private A7800 controller profile and filtered config, rechecks the old fork's SDL2 name/item routing, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -306,7 +306,7 @@ ColumnLayout {
             duckstationSetups.adapter = "gambatte-native"
             duckstationEditor.text = setup.settingsModel.gambatte_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private gambatte_qt.conf [input] group, rechecks the exact SDL2 device order and raw controls, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private gambatte_qt.conf [input] group, rechecks the exact SDL2 device order and raw controls, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -316,7 +316,7 @@ ColumnLayout {
             duckstationSetups.adapter = "caprice32-native"
             duckstationEditor.text = setup.settingsModel.caprice32_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch patches a private cap32.cfg passed with -c, proves the pads hold SDL instances 0/1, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -326,7 +326,7 @@ ColumnLayout {
             duckstationSetups.adapter = "vita3k-native"
             duckstationEditor.text = setup.settingsModel.vita3k_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private config.yml with SDL gamepad binds, rechecks the exact SDL3 routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -346,7 +346,7 @@ ColumnLayout {
             duckstationSetups.adapter = "ep128emu-native"
             duckstationEditor.text = setup.settingsModel.ep128emu_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch stages a session .ep128emu config with joystick event rows, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch stages a session .ep128emu config with joystick event rows, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -356,7 +356,7 @@ ColumnLayout {
             duckstationSetups.adapter = "adamem-native"
             duckstationEditor.text = setup.settingsModel.adamem_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch stages a private adamem.joy with fire/aim buttons, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch stages a private adamem.joy with fire/aim buttons, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -366,7 +366,7 @@ ColumnLayout {
             duckstationSetups.adapter = "vector06sdl-native"
             duckstationEditor.text = setup.settingsModel.vector06sdl_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch stages a session gamecontrollerdb.txt with the six stick outputs, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch stages a session gamecontrollerdb.txt with the six stick outputs, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -376,7 +376,7 @@ ColumnLayout {
             duckstationSetups.adapter = "simcoupe-native"
             duckstationEditor.text = setup.settingsModel.simcoupe_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch stages a session SimCoupe.cfg selecting the pad by exact SDL name, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch stages a session SimCoupe.cfg selecting the pad by exact SDL name, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -386,7 +386,7 @@ ColumnLayout {
             duckstationSetups.adapter = "pcem-native"
             duckstationEditor.text = setup.settingsModel.pcem_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch passes a private machine config with --config, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch passes a private machine config with --config, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -396,7 +396,7 @@ ColumnLayout {
             duckstationSetups.adapter = "tsugaru-native"
             duckstationEditor.text = setup.settingsModel.tsugaru_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch passes explicit ROM/CMOS/CD/game-port flags with PHYS0, rechecks the exact joydev routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch passes explicit ROM/CMOS/CD/game-port flags with PHYS0, rechecks the exact joydev routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -406,7 +406,7 @@ ColumnLayout {
             duckstationSetups.adapter = "touchhle-native"
             duckstationEditor.text = setup.settingsModel.touchhle_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch passes --button-to-touch options over the fixed SDL2 buttons, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch passes --button-to-touch options over the fixed SDL2 buttons, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -416,7 +416,7 @@ ColumnLayout {
             duckstationSetups.adapter = "openbor-native"
             duckstationEditor.text = setup.settingsModel.openbor_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch stages a session Saves/<pak>.cfg with measured joystick codes, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch stages a session Saves/<pak>.cfg with measured joystick codes, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -426,7 +426,7 @@ ColumnLayout {
             duckstationSetups.adapter = "supermodel-native"
             duckstationEditor.text = setup.settingsModel.supermodel_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch stages a session Config/Supermodel.ini with the sdlgamepad backend, rechecks the exact SDL2 game-controller routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch stages a session Config/Supermodel.ini with the sdlgamepad backend, rechecks the exact SDL2 game-controller routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -436,7 +436,7 @@ ColumnLayout {
             duckstationSetups.adapter = "panda3ds-native"
             duckstationEditor.text = setup.settingsModel.panda3ds_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch runs in a session directory with a private config.toml, rechecks the exact SDL2 game-controller routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch runs in a session directory with a private config.toml, rechecks the exact SDL2 game-controller routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -446,7 +446,7 @@ ColumnLayout {
             duckstationSetups.adapter = "dreampotato-native"
             duckstationEditor.text = setup.settingsModel.dreampotato_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch patches a private configuration.json PrimaryInput, rechecks the exact SDL2 game-controller routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch patches a private configuration.json PrimaryInput, rechecks the exact SDL2 game-controller routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -456,7 +456,7 @@ ColumnLayout {
             duckstationSetups.adapter = "ymir-native"
             duckstationEditor.text = setup.settingsModel.ymir_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch stages a session profile with a patched Ymir.toml, rechecks the exact SDL3 gamepad routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch stages a session profile with a patched Ymir.toml, rechecks the exact SDL3 gamepad routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -466,7 +466,7 @@ ColumnLayout {
             duckstationSetups.adapter = "shadps4-native"
             duckstationEditor.text = setup.settingsModel.shadps4_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch stages default.ini plus the per-game input file under XDG_DATA_HOME, rechecks the exact SDL3 gamepad routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch stages default.ini plus the per-game input file under XDG_DATA_HOME, rechecks the exact SDL3 gamepad routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -476,7 +476,7 @@ ColumnLayout {
             duckstationSetups.adapter = "azahar-native"
             duckstationEditor.text = setup.settingsModel.azahar_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch runs in a session directory with a private qt-config.ini while saves survive through symlinks, rechecks the exact SDL2 gamepad routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch runs in a session directory with a private qt-config.ini while saves survive through symlinks, rechecks the exact SDL2 gamepad routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -486,7 +486,7 @@ ColumnLayout {
             duckstationSetups.adapter = "uzem-native"
             duckstationEditor.text = setup.settingsModel.uzem_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private joystick-settings binary in a session working directory, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private joystick-settings binary in a session working directory, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -496,7 +496,7 @@ ColumnLayout {
             duckstationSetups.adapter = "eka2l1-native"
             duckstationEditor.text = setup.settingsModel.eka2l1_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch stages a session config.yml plus keybind profile, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch stages a session config.yml plus keybind profile, rechecks the exact SDL2 routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -506,7 +506,7 @@ ColumnLayout {
             duckstationSetups.adapter = "cemu-native"
             duckstationEditor.text = setup.settingsModel.cemu_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private controller0.xml under XDG_CONFIG_HOME, rechecks the exact SDL3 gamepad routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private controller0.xml under XDG_CONFIG_HOME, rechecks the exact SDL3 gamepad routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -516,7 +516,7 @@ ColumnLayout {
             duckstationSetups.adapter = "pokemini-native"
             duckstationEditor.text = setup.settingsModel.pokemini_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch runs a symlink sandbox with a private pokemini.cfg, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch runs a symlink sandbox with a private pokemini.cfg, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -526,7 +526,7 @@ ColumnLayout {
             duckstationSetups.adapter = "gbe-plus-native"
             duckstationEditor.text = setup.settingsModel.gbe_plus_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private gbe.ini gamepad section under HOME, proves the pad is SDL index 0, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private gbe.ini gamepad section under HOME, proves the pad is SDL index 0, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -536,7 +536,7 @@ ColumnLayout {
             duckstationSetups.adapter = "amiberry-native"
             duckstationEditor.text = setup.settingsModel.amiberry_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private gamecontrollerdb plus joyport fragment, rechecks the exact SDL3 routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private gamecontrollerdb plus joyport fragment, rechecks the exact SDL3 routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -546,7 +546,7 @@ ColumnLayout {
             duckstationSetups.adapter = "fuse-native"
             duckstationEditor.text = setup.settingsModel.fuse_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch patches a private fuserc under XDG_CONFIG_HOME, proves the pads hold SDL slots 0/1, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch patches a private fuserc under XDG_CONFIG_HOME, proves the pads hold SDL slots 0/1, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -556,7 +556,7 @@ ColumnLayout {
             duckstationSetups.adapter = "linapple-native"
             duckstationEditor.text = setup.settingsModel.linapple_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch patches a private linapple.conf passed with --config, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch patches a private linapple.conf passed with --config, rechecks the exact SDL routes, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -566,7 +566,7 @@ ColumnLayout {
             duckstationSetups.adapter = "skyemu-native"
             duckstationEditor.text = setup.settingsModel.skyemu_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private <name>-bindings.bin, rechecks the exact SDL device order and raw controls, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private <name>-bindings.bin, rechecks the exact SDL device order and raw controls, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -576,7 +576,7 @@ ColumnLayout {
             duckstationSetups.adapter = "nestopia-ue-native"
             duckstationEditor.text = setup.settingsModel.nestopia_ue_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private nestopia.conf/input.conf pair, rechecks the exact SDL enumeration order and raw controls, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private nestopia.conf/input.conf pair, rechecks the exact SDL enumeration order and raw controls, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -586,7 +586,7 @@ ColumnLayout {
             duckstationSetups.adapter = "picodrive-native"
             duckstationEditor.text = setup.settingsModel.picodrive_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private binddev/bind config, rechecks the exact SDL device order and raw controls, and confirms child ownership; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private binddev/bind config, rechecks the exact SDL device order and raw controls, and confirms child ownership; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -606,7 +606,7 @@ ColumnLayout {
             duckstationSetups.adapter = "simple64-native"
             duckstationEditor.text = setup.settingsModel.simple64_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch stages a private simple64 configuration while preserving the native save root; runtime verification is deferred."
+            duckstationStatus.text = "Native launch stages a private simple64 configuration while preserving the native save root; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -616,7 +616,7 @@ ColumnLayout {
             duckstationSetups.adapter = "scummvm-native"
             duckstationEditor.text = setup.settingsModel.scummvm_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private ini target under an isolated XDG_CONFIG_HOME; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private ini target under an isolated XDG_CONFIG_HOME; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -626,7 +626,7 @@ ColumnLayout {
             duckstationSetups.adapter = "openmsx-native"
             duckstationEditor.text = setup.settingsModel.openmsx_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch isolates OPENMSX_HOME and loads a private settings file; runtime verification is deferred."
+            duckstationStatus.text = "Native launch isolates OPENMSX_HOME and loads a private settings file; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -636,7 +636,7 @@ ColumnLayout {
             duckstationSetups.adapter = "desmume-native"
             duckstationEditor.text = setup.settingsModel.desmume_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch isolates XDG_CONFIG_HOME and writes the private JOYKEYS keyfile; runtime verification is deferred."
+            duckstationStatus.text = "Native launch isolates XDG_CONFIG_HOME and writes the private JOYKEYS keyfile; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -646,7 +646,7 @@ ColumnLayout {
             duckstationSetups.adapter = "xemu-native"
             duckstationEditor.text = setup.settingsModel.xemu_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private -config_path file with the declared boot ROM, flash image and game; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private -config_path file with the declared boot ROM, flash image and game; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -656,7 +656,7 @@ ColumnLayout {
             duckstationSetups.adapter = "blastem-native"
             duckstationEditor.text = setup.settingsModel.blastem_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch isolates HOME and binds the selected SDL devices to gamepad ports; runtime verification is deferred."
+            duckstationStatus.text = "Native launch isolates HOME and binds the selected SDL devices to gamepad ports; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -676,7 +676,7 @@ ColumnLayout {
             duckstationSetups.adapter = "hatari-native"
             duckstationEditor.text = setup.settingsModel.hatari_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch isolates HOME and passes a private -c configuration with the declared TOS image; runtime verification is deferred."
+            duckstationStatus.text = "Native launch isolates HOME and passes a private -c configuration with the declared TOS image; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -686,7 +686,7 @@ ColumnLayout {
             duckstationSetups.adapter = "vice-native"
             duckstationEditor.text = setup.settingsModel.vice_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch uses a private -config/-joymap pair with SDL2 probing; runtime verification is deferred."
+            duckstationStatus.text = "Native launch uses a private -config/-joymap pair with SDL2 probing; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -696,7 +696,7 @@ ColumnLayout {
             duckstationSetups.adapter = "stella-native"
             duckstationEditor.text = setup.settingsModel.stella_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch uses a private -basedir and the SDL classic backend; runtime verification is deferred."
+            duckstationStatus.text = "Native launch uses a private -basedir and the SDL classic backend; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -706,7 +706,7 @@ ColumnLayout {
             duckstationSetups.adapter = "bsnes"
             duckstationEditor.text = setup.settingsModel.bsnes_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch writes a private settings.bml through --settings; runtime verification is deferred."
+            duckstationStatus.text = "Native launch writes a private settings.bml through --settings; runtime verification is deferred."
             duckstationSetups.open()
         }
     }
@@ -716,7 +716,7 @@ ColumnLayout {
             duckstationSetups.adapter = "duckstation"
             duckstationEditor.text = setup.settingsModel.duckstation_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Native Linux launch requires a saved trusted runtime; tests and runtime verification are deferred."
+            duckstationStatus.text = "Native launch requires a saved trusted runtime; tests and runtime verification are deferred."
             duckstationSetups.open()
         }
     }
@@ -809,11 +809,11 @@ ColumnLayout {
                     : duckstationSetups.nestopia
                     ? "Nestopia UE Flatpak 1.53.2: edit a JSON list with emulator_id, content, source_main_config, source_input_config, probe_program, sdl_library, executable_sha256, and exactly two players. Each player has player (1 or 2) and controller_id. All paths are absolute; configs must be the installed Flatpak profile siblings. Review uses saved calibration only. Launch pins the exact app/runtime hashes, stages private 0700/0600 config, rechecks target SDL2 routing, and preserves native cartridge/state data."
                     : duckstationSetups.melonds
-                    ? "melonDS standard controls: JSON setups require emulator_id, content, executable_sha256, source_config, probe_program, sdl_library, bubblewrap_program and players. runtime_libraries must be empty for the SDL2 probe. Supply one player entry with player: 1, controller_id and source_controls for a/b/x/y, up/down/left/right, start/select and l/r. Paths must be absolute. Review shows calibrated source links and the DS destination layout; stylus, lid and microphone controls are not implemented by this adapter. Native Linux launch integration is partial and untested."
+                    ? "melonDS standard controls: JSON setups require emulator_id, content, executable_sha256, source_config, probe_program, sdl_library, bubblewrap_program and players. runtime_libraries must be empty for the SDL2 probe. Supply one player entry with player: 1, controller_id and source_controls for a/b/x/y, up/down/left/right, start/select and l/r. Paths must be absolute. Review shows calibrated source links and the DS destination layout; stylus, lid and microphone controls are not implemented by this adapter. Native launch integration is partial and untested."
                     : duckstationSetups.rpcs3
-                    ? "RPCS3 standard pads: JSON setups require emulator_id, content, executable_sha256, source_config, probe_program, sdl_library, optional runtime_libraries, and players. Each player has player (1–7), controller_id and source_controls linking all 24 destination visual IDs to calibrated physical controls. Paths must be absolute. Review displays source and destination layouts without opening devices. Native Linux file-boot dispatch is connected but untested. Directory boot targets and other backends remain pending."
+                    ? "RPCS3 standard pads: JSON setups require emulator_id, content, executable_sha256, source_config, probe_program, sdl_library, optional runtime_libraries, and players. Each player has player (1–7), controller_id and source_controls linking all 24 destination visual IDs to calibrated physical controls. Paths must be absolute. Review displays source and destination layouts without opening devices. Native file-boot dispatch is connected but untested. Directory boot targets and other backends remain pending."
                     : duckstationSetups.pcsx2
-                    ? "PCSX2 DualShock 2: JSON setups require emulator_id, content, executable_sha256, source_config, probe_program, sdl_library, runtime_libraries (explicit libudev dependency), native (data_root, serial and integer disc crc), multitaps ([false,false] by default), and players. Each player has player, controller_id and source_controls. Source links use destination visual IDs: up/down/left/right, a/b/x/y, select/start, l/r/l2/r2/l3/r3, stick_up/down/left/right and right_stick_up/down/left/right. Players follow port-one slots then port-two slots. Paths must be absolute. Review shows both layouts without opening devices. Native Linux dispatch is connected for SDL 3.2.20 classic backend. Runtime/internal routing remain unverified."
+                    ? "PCSX2 DualShock 2: JSON setups require emulator_id, content, executable_sha256, source_config, probe_program, sdl_library, runtime_libraries (explicit libudev dependency), native (data_root, serial and integer disc crc), multitaps ([false,false] by default), and players. Each player has player, controller_id and source_controls. Source links use destination visual IDs: up/down/left/right, a/b/x/y, select/start, l/r/l2/r2/l3/r3, stick_up/down/left/right and right_stick_up/down/left/right. Players follow port-one slots then port-two slots. Paths must be absolute. Review shows both layouts without opening devices. Native dispatch is connected for SDL 3.2.20 classic backend. Runtime/internal routing remain unverified."
                     : duckstationSetups.flycastNative
                     ? "Standalone Flycast: edit a JSON list with emulator_id, content, game_id (native ID, not library title), executable_sha256, source_config, probe_program, sdl_library and players. Paths must be absolute. Each player has player (1–4), controller_id, panel (six by default or eight), and source_controls linking every target to a calibrated physical layout ID. Targets: up/down/left/right/start/coin/button1–6 or button1–8. Example source_controls entry: button1 maps to b. Review displays source/destination diagrams. Partial native Linux launch dispatch is connected. Startup checks can reject mismatched controllers. Internal routing and runtime compatibility remain unverified. Review opens no devices."
                     : duckstationSetups.mednafen
@@ -945,7 +945,7 @@ ColumnLayout {
                     : duckstationSetups.mgba
                     ? "Edit a JSON list with emulator_id, content, handheld (gba or gameboy), controller_id, source_config (native config.ini), probe_program, sdl_library, bubblewrap_program, and executable_sha256. Paths must be absolute and executables/libraries trusted. This targets mGBA 0.10.5's native Linux SDL frontend, not Qt. Launch checks the runtime and isolated config handoff; review/staging open no devices. Runtime testing remains deferred."
                     : duckstationSetups.ppsspp
-                    ? "Edit a JSON list with emulator_id, content (absolute path), game_id, source_system (native PSP/SYSTEM path), controller_id, probe_program, sdl_library, mapping_database (PPSSPP's bundled gamecontrollerdb.txt), bubblewrap_program, and executable_sha256. All paths must be absolute and executables/libraries trusted. Native Linux SDL2 launches use a private SYSTEM overlay; saves stay in their native location. The child must confirm its runtime and mapping order. This implementation has not been runtime-tested."
+                    ? "Edit a JSON list with emulator_id, content (absolute path), game_id, source_system (native PSP/SYSTEM path), controller_id, probe_program, sdl_library, mapping_database (PPSSPP's bundled gamecontrollerdb.txt), bubblewrap_program, and executable_sha256. All paths must be absolute and executables/libraries trusted. Native SDL2 launches use a private SYSTEM overlay; saves stay in their native location. The child must confirm its runtime and mapping order. This implementation has not been runtime-tested."
                     : "Edit a JSON list with emulator_id, content (absolute ROM path), data_root, serial, first_disc_serial (null only for a confirmed single-disc game), and players. Players need pad (1–8), controller_id and controller_type (DigitalController or AnalogController). For native launch add runtime: {probe_program, sdl_library, runtime_libraries: [absolute dependency paths], executable_sha256}. These must belong to trusted DuckStation 0a53bc47c / SDL 3.2.20. Existing controller types are preserved; Flatpak/Wine are not enabled."
             }
             ScrollView {
@@ -1284,7 +1284,7 @@ ColumnLayout {
                             ? setup.settingsModel.stage_ppsspp_setups(duckstationEditor.text)
                             : setup.settingsModel.stage_duckstation_setups(duckstationEditor.text)
                         duckstationStatus.text = error || (duckstationSetups.melonds
-                            ? "melonDS setups staged. Save settings on the main page. Native Linux launch integration is partial and untested; no devices opened."
+                            ? "melonDS setups staged. Save settings on the main page. Native launch integration is partial and untested; no devices opened."
                             : duckstationSetups.rpcs3
                             ? "RPCS3 setups staged. Save settings on the main page. Native integration is partial and untested; no devices opened."
                             : duckstationSetups.pcsx2
@@ -1530,7 +1530,7 @@ ColumnLayout {
             duckstationSetups.adapter = "flycast-native"
             duckstationEditor.text = setup.settingsModel.flycast_native_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Standard six/eight-button panels: partial native Linux dispatch connected; runtime behavior remains untested."
+            duckstationStatus.text = "Standard six/eight-button panels: partial native dispatch connected; runtime behavior remains untested."
             duckstationSetups.open()
         }
     }
@@ -1540,7 +1540,7 @@ ColumnLayout {
             duckstationSetups.adapter = "pcsx2"
             duckstationEditor.text = setup.settingsModel.pcsx2_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "DualShock 2 native Linux dispatch is partial and untested; review opens no devices."
+            duckstationStatus.text = "DualShock 2 native dispatch is partial and untested; review opens no devices."
             duckstationSetups.open()
         }
     }
@@ -1550,7 +1550,7 @@ ColumnLayout {
             duckstationSetups.adapter = "rpcs3"
             duckstationEditor.text = setup.settingsModel.rpcs3_setups_json()
             duckstationSetups.review = []
-            duckstationStatus.text = "Standard pads: partial native Linux file-boot dispatch; runtime behavior untested."
+            duckstationStatus.text = "Standard pads: partial native file-boot dispatch; runtime behavior untested."
             duckstationSetups.open()
         }
     }

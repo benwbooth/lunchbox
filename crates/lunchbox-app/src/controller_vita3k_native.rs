@@ -229,7 +229,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch writes a private config.yml with SDL gamepad binds, then rechecks the exact SDL3 routes. Only the single Vita pad is supported; runtime behavior remains unverified."
+                "detail": "Native launch writes a private config.yml with SDL gamepad binds, then rechecks the exact SDL3 routes. Only the single Vita pad is supported; runtime behavior remains unverified."
             }))
         }
     }

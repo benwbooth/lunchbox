@@ -274,7 +274,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch copies xroar.conf, supplies it with first-option -c, disables config auto-save, and rechecks the exact SDL3 joystick order and bindings. Each directional pair must resolve to one SDL gamepad axis. Runtime behavior is unverified."
+                "detail": "Native launch copies xroar.conf, supplies it with first-option -c, disables config auto-save, and rechecks the exact SDL3 joystick order and bindings. Each directional pair must resolve to one SDL gamepad axis. Runtime behavior is unverified."
             }))
         }
     }

@@ -1,4 +1,4 @@
-//! Owned native Linux PCSX2 session; startup checks are not gameplay validation.
+//! Owned native PCSX2 session; startup checks are not gameplay validation.
 use super::{launch::PreparedLaunch, session::InputSession, settings::SavedSetup};
 use crate::controller_native_process::cancelled;
 #[cfg(target_os = "linux")]

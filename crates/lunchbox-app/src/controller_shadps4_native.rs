@@ -1,4 +1,4 @@
-//! shadPS4 native Linux SDL3 input configuration.
+//! shadPS4 native SDL3 input configuration.
 //!
 //! Pinned to shadps4-emu/shadPS4
 //! `678705df8dead58799a3d9a9db38f8fb0c3dbefe`.  Input is not in TOML: the
@@ -274,7 +274,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch stages a session input_config pair, then rechecks the exact SDL3 routes. Only the single DualShock pad as gamepad 1 is supported; runtime behavior remains unverified."
+                "detail": "Native launch stages a session input_config pair, then rechecks the exact SDL3 routes. Only the single DualShock pad as gamepad 1 is supported; runtime behavior remains unverified."
             }))
         }
     }

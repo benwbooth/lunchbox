@@ -86,7 +86,7 @@ impl SavedSetup {
         Ok(
             serde_json::json!({"emulator_id":self.emulator_id,"players":players,
             "launch_ready":false,"launch_integration":"partial",
-            "detail":"Partial native Linux raw SDL dispatch is connected. Review only checks saved declarations; launch verifies device paths, GUIDs and physical item correspondence. Runtime compatibility and internal MAME routing remain unverified. No devices were opened."}),
+            "detail":"Partial native raw SDL dispatch is connected. Review only checks saved declarations; launch verifies device paths, GUIDs and physical item correspondence. Runtime compatibility and internal MAME routing remain unverified. No devices were opened."}),
         )
     }
 

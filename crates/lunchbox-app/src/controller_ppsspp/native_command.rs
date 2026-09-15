@@ -100,7 +100,7 @@ pub(crate) fn prepare(
         config_home.is_absolute()
             && config_home.join("ppsspp/PSP/SYSTEM").canonicalize()?
                 == setup.source_system.canonicalize()?,
-        "PPSSPP saved SYSTEM path differs from the native Linux search directory"
+        "PPSSPP saved SYSTEM path differs from the native search directory"
     );
     let EmulatorExecutable::Native(executable) = &option.executable else {
         anyhow::bail!(

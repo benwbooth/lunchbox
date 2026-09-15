@@ -400,7 +400,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch writes a private <name>.controller plus joyport fragment, then rechecks the exact SDL3 routes. Only fixed-dpad directions with raw-button fire on ports 0/1 are supported; runtime behavior remains unverified."
+                "detail": "Native launch writes a private <name>.controller plus joyport fragment, then rechecks the exact SDL3 routes. Only fixed-dpad directions with raw-button fire on ports 0/1 are supported; runtime behavior remains unverified."
             }))
         }
     }

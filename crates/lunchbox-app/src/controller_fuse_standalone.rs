@@ -403,7 +403,7 @@ pub(crate) mod settings {
                 "players": players,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch patches a private fuserc with fixed-slot joystick types and fire targets, then rechecks the exact SDL routes. Only Kempston-style fire on slots 0/1 is supported; runtime behavior remains unverified."
+                "detail": "Native launch patches a private fuserc with fixed-slot joystick types and fire targets, then rechecks the exact SDL routes. Only Kempston-style fire on slots 0/1 is supported; runtime behavior remains unverified."
             }))
         }
     }
