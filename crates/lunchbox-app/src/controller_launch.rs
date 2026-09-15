@@ -358,9 +358,7 @@ pub struct CalibratedLaunch {
     #[cfg(target_os = "linux")]
     mesen2_native: Option<crate::controller_mesen2_native::native_command::NativeSession>,
     blastem_native: Option<crate::controller_blastem_native::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     xemu_native: Option<crate::controller_xemu_native::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     scummvm_native: Option<crate::controller_scummvm_native::native_command::NativeSession>,
     /// One launch-scoped standalone JSON/TOML configuration session.
     jgenesis_native: Option<PreparedJsonNativeLaunch>,
@@ -638,11 +636,9 @@ impl CalibratedLaunch {
         if let Some(native) = &mut self.blastem_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.xemu_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.scummvm_native {
             return native.spawn(plan, cancel);
         }
@@ -1067,9 +1063,7 @@ impl CalibratedLaunch {
             #[cfg(target_os = "linux")]
             mesen2_native: None,
             blastem_native: None,
-            #[cfg(target_os = "linux")]
             xemu_native: None,
-            #[cfg(target_os = "linux")]
             scummvm_native: None,
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
@@ -1147,11 +1141,9 @@ impl CalibratedLaunch {
         if let Some(native) = &self.blastem_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.xemu_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.scummvm_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
@@ -1288,11 +1280,9 @@ impl CalibratedLaunch {
         if let Some(native) = &self.blastem_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.xemu_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.scummvm_native {
             native.check_health()?;
         }
@@ -1858,9 +1848,7 @@ pub(crate) fn attach_fbneo_session(
         #[cfg(target_os = "linux")]
         mesen2_native: None,
         blastem_native: None,
-        #[cfg(target_os = "linux")]
         xemu_native: None,
-        #[cfg(target_os = "linux")]
         scummvm_native: None,
         #[cfg(target_os = "linux")]
         jgenesis_native: None,
@@ -3632,9 +3620,7 @@ pub(crate) fn prepare_mame_calibrated_session(
         #[cfg(target_os = "linux")]
         mesen2_native: None,
         blastem_native: None,
-        #[cfg(target_os = "linux")]
         xemu_native: None,
-        #[cfg(target_os = "linux")]
         scummvm_native: None,
         #[cfg(target_os = "linux")]
         jgenesis_native: None,
@@ -6056,9 +6042,7 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             mesen2_native: None,
             blastem_native: None,
-            #[cfg(target_os = "linux")]
             xemu_native: None,
-            #[cfg(target_os = "linux")]
             scummvm_native: None,
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
@@ -6148,9 +6132,7 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             mesen2_native: None,
             blastem_native: None,
-            #[cfg(target_os = "linux")]
             xemu_native: None,
-            #[cfg(target_os = "linux")]
             scummvm_native: None,
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
@@ -6240,9 +6222,7 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             mesen2_native: None,
             blastem_native: None,
-            #[cfg(target_os = "linux")]
             xemu_native: None,
-            #[cfg(target_os = "linux")]
             scummvm_native: None,
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
@@ -6332,9 +6312,7 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             mesen2_native: None,
             blastem_native: None,
-            #[cfg(target_os = "linux")]
             xemu_native: None,
-            #[cfg(target_os = "linux")]
             scummvm_native: None,
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
@@ -6409,9 +6387,7 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             mesen2_native: None,
             blastem_native: None,
-            #[cfg(target_os = "linux")]
             xemu_native: None,
-            #[cfg(target_os = "linux")]
             scummvm_native: None,
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
@@ -6493,9 +6469,7 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             mesen2_native: None,
             blastem_native: None,
-            #[cfg(target_os = "linux")]
             xemu_native: None,
-            #[cfg(target_os = "linux")]
             scummvm_native: None,
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
@@ -6576,9 +6550,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -6660,9 +6632,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -6751,9 +6721,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -6835,9 +6803,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -6878,7 +6844,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("DeSmuME")
     {
@@ -6920,9 +6885,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -7004,9 +6967,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -7089,9 +7050,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: Some(native),
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -7173,9 +7132,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: Some(native),
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -7216,7 +7173,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("xemu")
     {
@@ -7258,9 +7214,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: Some(native),
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -7301,7 +7255,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("ScummVM")
     {
@@ -7343,9 +7296,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: Some(native),
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -7451,9 +7402,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: Some(PreparedJsonNativeLaunch::B2(native)),
@@ -7535,9 +7484,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Jgenesis(native)),
@@ -7619,9 +7566,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Gopher64(native)),
@@ -8941,9 +8886,7 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             mesen2_native: None,
             blastem_native: None,
-            #[cfg(target_os = "linux")]
             xemu_native: None,
-            #[cfg(target_os = "linux")]
             scummvm_native: None,
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
@@ -9882,9 +9825,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -9969,9 +9910,7 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             mesen2_native: None,
             blastem_native: None,
-            #[cfg(target_os = "linux")]
             xemu_native: None,
-            #[cfg(target_os = "linux")]
             scummvm_native: None,
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
@@ -10055,9 +9994,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -10142,9 +10079,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -10227,9 +10162,7 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
                 blastem_native: None,
-                #[cfg(target_os = "linux")]
                 xemu_native: None,
-                #[cfg(target_os = "linux")]
                 scummvm_native: None,
                 #[cfg(target_os = "linux")]
                 jgenesis_native: None,
@@ -11077,9 +11010,7 @@ pub fn prepare_with_cancellation(
         #[cfg(target_os = "linux")]
         mesen2_native: None,
         blastem_native: None,
-        #[cfg(target_os = "linux")]
         xemu_native: None,
-        #[cfg(target_os = "linux")]
         scummvm_native: None,
         #[cfg(target_os = "linux")]
         jgenesis_native: None,
@@ -11495,9 +11426,7 @@ fn prepare_mode_aware(
         #[cfg(target_os = "linux")]
         mesen2_native: None,
         blastem_native: None,
-        #[cfg(target_os = "linux")]
         xemu_native: None,
-        #[cfg(target_os = "linux")]
         scummvm_native: None,
         #[cfg(target_os = "linux")]
         jgenesis_native: None,

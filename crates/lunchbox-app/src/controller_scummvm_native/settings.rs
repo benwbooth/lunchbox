@@ -66,7 +66,7 @@ impl SavedSetup {
             .get(&self.controller_id)
             .context("ScummVM controller has no saved calibration")?;
         ensure!(
-            calibration.os == "linux",
+            ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
             "ScummVM native mapping requires Linux calibration"
         );
         let mapping = calibration.plan_profile(profile)?;

@@ -94,7 +94,7 @@ impl SavedSetup {
                 .get(&player.controller_id)
                 .context("xemu controller has no saved calibration")?;
             ensure!(
-                calibration.os == "linux",
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
                 "xemu native mapping requires Linux calibration"
             );
             let mapping = calibration.plan_profile(profile)?;

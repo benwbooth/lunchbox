@@ -1,8 +1,11 @@
 //! Native SDL2 launch-time inventory, calibration ownership and the private
 //! ini file. The user's own scummvm.ini is never opened.
 use super::{Raw, settings};
+#[cfg(target_os = "linux")]
+use crate::controller_bizhawk_guard::InputTopology;
+#[cfg(not(target_os = "linux"))]
+use crate::controller_native_platform as platform;
 use crate::{
-    controller_bizhawk_guard::InputTopology,
     controller_catalog::Calibration,
     controller_native_process::{cancelled, capture},
     controllers::ControllerDevice,
@@ -61,7 +64,7 @@ pub(super) fn calibrated_bindings(
         sdl2_physical::PhysicalMap,
     };
     ensure!(
-        calibration.os == "linux",
+        ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
         "ScummVM native calibration requires Linux"
     );
     let device = snapshot.device_at_path(runtime_path)?;
@@ -155,6 +158,8 @@ pub(crate) struct PreparedSession {
     pub(crate) config_path: std::path::PathBuf,
     pub(crate) target: String,
     runtime_path: String,
+    device_index: Option<u16>,
+    #[cfg(target_os = "linux")]
     topology: InputTopology,
     initial: Snapshot,
     setup: settings::SavedSetup,
@@ -186,16 +191,40 @@ impl PreparedSession {
             "ScummVM requires an unambiguous physical controller"
         );
         let selected = device.device_path.clone();
-        let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
         let initial = routing(observe(setup, None, cancel)?);
-        let runtime_path = topology.resolve_runtime_path(
-            &selected,
-            initial
+        // Linux pins kernel input identity through the sysfs topology.
+        // Other hosts pin the SDL device-interface path and require
+        // uniqueness; names and GUIDs are never identity.
+        #[cfg(target_os = "linux")]
+        let (runtime_path, topology) = {
+            let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
+            let runtime_path = topology.resolve_runtime_path(
+                &selected,
+                initial
+                    .devices
+                    .iter()
+                    .filter_map(|device| device.path.as_deref()),
+            )?;
+            (runtime_path, topology)
+        };
+        #[cfg(not(target_os = "linux"))]
+        let runtime_path = {
+            let selected_string = selected.to_string_lossy().into_owned();
+            let candidates = initial
                 .devices
                 .iter()
-                .filter_map(|device| device.path.as_deref()),
-        )?;
+                .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                .collect::<Vec<_>>();
+            ensure!(
+                candidates.len() == 1,
+                "ScummVM physical controller is missing or ambiguous in SDL"
+            );
+            selected_string
+        };
         let captured = observe(setup, Some(&runtime_path), cancel)?;
+        let device_index = captured.device_at_path(&runtime_path)?.gamepad_index;
+        #[cfg(not(target_os = "linux"))]
+        platform::require_unique_sdl3_path(&captured.devices, &runtime_path)?;
         let bindings = calibrated_bindings(
             calibrations
                 .get(&setup.controller_id)
@@ -229,6 +258,8 @@ impl PreparedSession {
             config_path,
             target,
             runtime_path,
+            device_index,
+            #[cfg(target_os = "linux")]
             topology,
             initial,
             setup: setup.clone(),
@@ -240,6 +271,7 @@ impl PreparedSession {
 
     pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
         cancelled(cancel)?;
+        #[cfg(target_os = "linux")]
         self.topology.verify()?;
         for (path, expected) in &self.hashes {
             ensure!(
@@ -248,18 +280,37 @@ impl PreparedSession {
             );
         }
         let fresh = routing(observe(&self.setup, None, cancel)?);
+        let device = fresh
+            .device_at_path(&self.runtime_path)
+            .context("ScummVM controller disappeared")?;
         ensure!(
-            fresh
-                .devices
-                .iter()
-                .any(|device| device.path.as_deref() == Some(self.runtime_path.as_str())),
-            "ScummVM controller disappeared"
+            device.gamepad_index == self.device_index,
+            "ScummVM SDL joystick moved before launch"
         );
-        self.topology.verify()
+        #[cfg(not(target_os = "linux"))]
+        platform::require_unique_sdl3_path(&fresh.devices, &self.runtime_path)?;
+        #[cfg(target_os = "linux")]
+        {
+            return self.topology.verify();
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Ok(());
+        }
     }
 
     pub(crate) fn check_health(&self) -> Result<()> {
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        return self.topology.verify();
+        #[cfg(not(target_os = "linux"))]
+        return self.verify_health_probe();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn verify_health_probe(&self) -> Result<()> {
+        let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+        platform::require_unique_sdl3_path(&fresh.devices, &self.runtime_path)?;
+        Ok(())
     }
 
     /// Launch arguments select the private ini and the prepared target.

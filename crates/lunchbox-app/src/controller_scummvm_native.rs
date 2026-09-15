@@ -25,9 +25,7 @@
 //!   isolates every read and write.
 use anyhow::{Context, Result, ensure};
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command;
-#[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
 
