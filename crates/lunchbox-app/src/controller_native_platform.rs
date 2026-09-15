@@ -122,6 +122,35 @@ pub(crate) fn is_appimage_target(executable: &Path) -> bool {
 pub(crate) fn use_bubblewrap_sandbox(executable: &Path) -> bool {
     cfg!(target_os = "linux") && linux_sandbox_available() && !is_appimage_target(executable)
 }
+/// Stable identity for a filesystem object across verify calls: Unix
+/// device/inode pairs, Windows volume/file-index pairs. Used to detect
+/// directory replacement; never persisted across reboots.
+pub(crate) fn file_identity(path: &Path) -> Result<(u64, u64)> {
+    let metadata = std::fs::metadata(path)
+        .with_context(|| format!("identity metadata is missing: {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        Ok((metadata.dev(), metadata.ino()))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        Ok((
+            metadata
+                .volume_serial_number()
+                .context("volume identity is unavailable")?,
+            metadata
+                .file_index()
+                .context("file identity is unavailable")?,
+        ))
+    }
+    #[cfg(not(any(unix, target_os = "windows")))]
+    {
+        anyhow::bail!("file identity is unsupported on this host")
+    }
+}
+
 /// Linux/macOS override `HOME`. Windows overrides the profile roots SDL and
 /// most emulators resolve (`USERPROFILE`, `APPDATA`, `LOCALAPPDATA`).
 /// The caller creates the directories; this only renders the pairs.

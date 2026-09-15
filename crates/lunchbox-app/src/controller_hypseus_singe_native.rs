@@ -437,21 +437,16 @@ pub(crate) mod settings {
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
     };
     use lunchbox_controller_probe::{Snapshot, file_hash};
-    use std::{
-        fs,
-        os::unix::{ffi::OsStrExt, fs::MetadataExt},
-        process::Command,
-        sync::atomic::AtomicBool,
-    };
+    use std::{fs, process::Command, sync::atomic::AtomicBool};
 
     type Routing = Vec<(String, String, Option<String>, Option<u16>, Option<String>)>;
 
@@ -518,7 +513,7 @@ pub(crate) mod session {
 
     fn source_argument(path: &std::path::Path, name: &str) -> Result<()> {
         ensure!(
-            path.as_os_str().as_bytes().len() <= 80,
+            path.as_os_str().as_encoded_bytes().len() <= 80,
             "Hypseus {name} exceeds its 80-byte source argument buffer"
         );
         Ok(())
@@ -532,6 +527,8 @@ pub(crate) mod session {
         pub(crate) gamepad_order: [u8; 8],
         pub(crate) mapping_database: PathBuf,
         runtime_paths: Vec<String>,
+        device_indices: Vec<u16>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         routing: Routing,
         setup: settings::SavedSetup,
@@ -559,6 +556,7 @@ pub(crate) mod session {
                 );
                 selected.push(matches[0].device_path.clone());
             }
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(&selected)?;
             let initial = observe(setup, &[], cancel)?;
             ensure!(
@@ -575,9 +573,29 @@ pub(crate) mod session {
                 .iter()
                 .filter_map(|device| device.path.as_deref())
                 .collect::<Vec<_>>();
+            // Linux resolves through the sysfs topology; other hosts
+            // match the SDL device-interface path and require uniqueness.
+            #[cfg(target_os = "linux")]
             let runtime_paths = selected
                 .iter()
                 .map(|path| topology.resolve_runtime_path(path, visible_paths.iter().copied()))
+                .collect::<Result<Vec<_>>>()?;
+            #[cfg(not(target_os = "linux"))]
+            let runtime_paths = selected
+                .iter()
+                .map(|path| {
+                    let path_string = path.to_string_lossy().into_owned();
+                    let candidates = initial
+                        .devices
+                        .iter()
+                        .filter(|device| device.path.as_deref() == Some(path_string.as_str()))
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        candidates.len() == 1,
+                        "Hypseus physical controller is missing or ambiguous in SDL"
+                    );
+                    Ok(path_string)
+                })
                 .collect::<Result<Vec<_>>>()?;
             let selected_snapshot = observe(setup, &runtime_paths, cancel)?;
             ensure!(
@@ -593,6 +611,18 @@ pub(crate) mod session {
                         .context("Hypseus selected device has no SDL Gamepad index")
                 })
                 .collect::<Result<Vec<_>>>()?;
+            #[cfg(not(target_os = "linux"))]
+            for path in &runtime_paths {
+                let count = selected_snapshot
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(path.as_str()))
+                    .count();
+                ensure!(
+                    count == 1,
+                    "Hypseus SDL device path is missing or ambiguous"
+                );
+            }
             ensure!(
                 selected_indexes.iter().all(|index| *index < 8)
                     && selected_indexes.iter().collect::<BTreeSet<_>>().len()
@@ -625,8 +655,7 @@ pub(crate) mod session {
             let ram_directory = setup.ram_directory.canonicalize()?;
             source_argument(&home, "private home")?;
             source_argument(&ram_directory, "NVRAM directory")?;
-            let metadata = fs::metadata(&ram_directory)?;
-            let ram_identity = (metadata.dev(), metadata.ino());
+            let ram_identity = crate::controller_native_platform::file_identity(&ram_directory)?;
             let mut hashes = BTreeMap::new();
             for path in [
                 &setup.probe_program,
@@ -650,6 +679,8 @@ pub(crate) mod session {
                 gamepad_order,
                 mapping_database,
                 runtime_paths,
+                device_indices: selected_indexes.clone(),
+                #[cfg(target_os = "linux")]
                 topology,
                 routing: routing(&selected_snapshot),
                 setup: setup.clone(),
@@ -666,6 +697,7 @@ pub(crate) mod session {
                 self.directory.path().is_dir() && self.home.is_dir(),
                 "Hypseus private home disappeared"
             );
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, expected) in &self.hashes {
                 ensure!(
@@ -673,9 +705,9 @@ pub(crate) mod session {
                     "Hypseus launch input changed"
                 );
             }
-            let ram = fs::metadata(&self.ram_directory)?;
             ensure!(
-                (ram.dev(), ram.ino()) == self.ram_identity,
+                crate::controller_native_platform::file_identity(&self.ram_directory)?
+                    == self.ram_identity,
                 "Hypseus NVRAM directory changed"
             );
             let current = observe(&self.setup, &self.runtime_paths, cancel)?;
@@ -683,14 +715,39 @@ pub(crate) mod session {
                 routing(&current) == self.routing,
                 "Hypseus SDL3 routing changed"
             );
-            self.topology.verify()
+            for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
+                ensure!(
+                    current.device_at_path(path)?.gamepad_index == Some(*index),
+                    "Hypseus SDL gamepad order moved before launch"
+                );
+            }
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()?;
-            let ram = fs::metadata(&self.ram_directory)?;
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let current = observe(&self.setup, &self.runtime_paths, &AtomicBool::new(false))?;
             ensure!(
-                (ram.dev(), ram.ino()) == self.ram_identity,
+                routing(&current) == self.routing,
+                "Hypseus SDL3 routing changed"
+            );
+            ensure!(
+                crate::controller_native_platform::file_identity(&self.ram_directory)?
+                    == self.ram_identity,
                 "Hypseus NVRAM directory changed"
             );
             Ok(())
@@ -698,7 +755,6 @@ pub(crate) mod session {
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
     use crate::{
@@ -708,7 +764,7 @@ pub(crate) mod native_command {
     };
     use anyhow::bail;
     use lunchbox_controller_probe::file_hash;
-    use std::{ffi::OsStr, os::unix::ffi::OsStrExt, sync::atomic::AtomicBool};
+    use std::{ffi::OsStr, sync::atomic::AtomicBool};
 
     fn option(argument: &OsStr) -> Option<String> {
         argument.to_str().map(str::to_ascii_lowercase)
@@ -717,7 +773,7 @@ pub(crate) mod native_command {
     pub(super) fn validate_source_arguments(arguments: &[std::ffi::OsString]) -> Result<()> {
         for argument in arguments {
             ensure!(
-                argument.as_os_str().as_bytes().len() <= 80,
+                argument.as_os_str().as_encoded_bytes().len() <= 80,
                 "Hypseus command-line token exceeds its 80-byte source buffer"
             );
         }
@@ -816,7 +872,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            bail!("Hypseus calibrated launch requires native Linux");
+            bail!("Hypseus calibrated launch requires a native build");
         };
         ensure!(
             setup.emulator_id == option.emulator_id && original.environment.is_empty(),
