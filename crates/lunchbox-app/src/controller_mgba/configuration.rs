@@ -61,6 +61,17 @@ impl PreparedConfig {
         self.directory.path().join("config.ini")
     }
 
+    /// Directory the staged config resolves from in portable mode: writing
+    /// a `portable.ini` marker here makes direct launches select the
+    /// private `config.ini` without touching the user's configuration.
+    pub(crate) fn staging_root(&self) -> PathBuf {
+        self.directory.path().to_path_buf()
+    }
+
+    pub(crate) fn portable_marker_path(&self) -> PathBuf {
+        self.directory.path().join("portable.ini")
+    }
+
     pub(crate) fn verify(&self) -> Result<()> {
         ensure!(
             self.source.canonicalize()? == self.canonical_source
@@ -74,7 +85,6 @@ impl PreparedConfig {
     /// Overlay only config.ini so native save, state, BIOS and screenshot paths
     /// remain unchanged. Caller must resolve native/portable config selection
     /// and retain this owner through the child lifetime.
-    #[cfg(target_os = "linux")]
     pub(crate) fn overlay_arguments(
         &self,
         executable: &Path,

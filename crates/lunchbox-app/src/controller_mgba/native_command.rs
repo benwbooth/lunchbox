@@ -1,7 +1,10 @@
 //! Native SDL frontend launch ownership. Invoked only for an explicit launch.
 use super::{configuration::PreparedConfig, settings::SavedSetup};
+#[cfg(target_os = "linux")]
 use crate::controller_bizhawk_guard::InputTopology;
 use crate::controller_catalog::Calibration;
+#[cfg(not(target_os = "linux"))]
+use crate::controller_native_platform as platform;
 use crate::controller_native_process::{cancelled, capture};
 use crate::controllers::ControllerDevice;
 use crate::emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption};
@@ -16,6 +19,7 @@ mod startup;
 
 pub(crate) struct NativeSession {
     configuration: PreparedConfig,
+    #[cfg(target_os = "linux")]
     topology: InputTopology,
     snapshot: Snapshot,
     runtime_path: String,
@@ -116,13 +120,14 @@ pub(crate) fn prepare(
         native_config(&cwd)?.canonicalize()? == setup.source_config.canonicalize()?,
         "mGBA saved config differs from native portable/XDG selection"
     );
+    let sandboxed = crate::controller_native_platform::use_bubblewrap_sandbox(&executable);
     let mut runtime_files = BTreeMap::new();
-    for path in [
-        &original.program,
-        &setup.probe_program,
-        &setup.sdl_library,
-        &setup.bubblewrap_program,
-    ] {
+    let mut file_paths = vec![&original.program, &setup.probe_program, &setup.sdl_library];
+    // bubblewrap is hashed only when the launch actually sandboxes.
+    if sandboxed {
+        file_paths.push(&setup.bubblewrap_program);
+    }
+    for path in file_paths {
         runtime_files.insert(path.clone(), file_hash(path)?);
     }
     ensure!(
@@ -151,15 +156,36 @@ pub(crate) fn prepare(
         devices.next().is_none() && !device.is_virtual,
         "mGBA requires one unambiguous physical controller"
     );
-    let topology = InputTopology::capture(std::slice::from_ref(&device.device_path))?;
     let initial = observe(setup, None, cancel)?;
-    let runtime_path = topology.resolve_runtime_path(
-        &device.device_path,
-        initial
+    // Linux pins kernel input identity through the sysfs topology.
+    // Other hosts pin the SDL device-interface path and require
+    // uniqueness; names and GUIDs are never identity.
+    #[cfg(target_os = "linux")]
+    let (runtime_path, topology) = {
+        let topology = InputTopology::capture(std::slice::from_ref(&device.device_path))?;
+        let runtime_path = topology.resolve_runtime_path(
+            &device.device_path,
+            initial
+                .devices
+                .iter()
+                .filter_map(|device| device.path.as_deref()),
+        )?;
+        (runtime_path, topology)
+    };
+    #[cfg(not(target_os = "linux"))]
+    let runtime_path = {
+        let selected_string = device.device_path.to_string_lossy().into_owned();
+        let candidates = initial
             .devices
             .iter()
-            .filter_map(|device| device.path.as_deref()),
-    )?;
+            .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+            .collect::<Vec<_>>();
+        ensure!(
+            candidates.len() == 1,
+            "mGBA physical controller is missing or ambiguous in SDL"
+        );
+        selected_string
+    };
     let snapshot = observe(setup, Some(&runtime_path), cancel)?;
     let mut routing = snapshot.clone();
     for device in &mut routing.devices {
@@ -168,20 +194,36 @@ pub(crate) fn prepare(
         device.linux_evdev = None;
     }
     initial.ensure_same_routing(&routing)?;
+    #[cfg(target_os = "linux")]
     topology.verify()?;
+    let device = snapshot.device_at_path(&runtime_path)?;
+    #[cfg(not(target_os = "linux"))]
+    platform::require_unique_device_path(&snapshot.devices, &runtime_path, device.device_index)?;
     let calibration = calibrations
         .get(&setup.controller_id)
         .context("mGBA calibration disappeared")?;
     let configuration = PreparedConfig::prepare(setup, calibration, &snapshot, &runtime_path)?;
+    // Sandbox or direct is a packaging decision, not an OS one. Direct
+    // launches run portable: a portable.ini marker beside the staged
+    // config.ini makes mGBA resolve the private config from the launch
+    // directory.
+    let sandboxed = crate::controller_native_platform::use_bubblewrap_sandbox(&executable);
     let mut plan = original.clone();
-    plan.arguments = configuration.overlay_arguments(&executable, &original.arguments, &cwd)?;
-    plan.program = setup.bubblewrap_program.clone();
+    if sandboxed {
+        plan.arguments = configuration.overlay_arguments(&executable, &original.arguments, &cwd)?;
+        plan.program = setup.bubblewrap_program.clone();
+    } else {
+        std::fs::write(configuration.portable_marker_path(), "[portable]\n")?;
+        plan.program = executable.clone();
+        plan.current_directory = configuration.staging_root().to_path_buf();
+    }
     plan.environment.extend([
         ("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS".into(), "1".into()),
         ("SDL_NO_SIGNAL_HANDLERS".into(), "1".into()),
     ]);
     let session = NativeSession {
         configuration,
+        #[cfg(target_os = "linux")]
         topology,
         snapshot,
         runtime_path,
@@ -202,7 +244,25 @@ impl NativeSession {
     }
 
     pub(crate) fn check_health(&self) -> Result<()> {
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        return self.topology.verify();
+        #[cfg(not(target_os = "linux"))]
+        return self.verify_health_probe();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn verify_health_probe(&self) -> Result<()> {
+        let fresh = observe(
+            &self.setup,
+            Some(&self.runtime_path),
+            &AtomicBool::new(false),
+        )?;
+        platform::require_unique_device_path(
+            &fresh.devices,
+            &self.runtime_path,
+            fresh.device_at_path(&self.runtime_path)?.device_index,
+        )?;
+        Ok(())
     }
 
     pub(crate) fn verify(&self) -> Result<()> {

@@ -32,13 +32,17 @@ impl SavedSetup {
             !self.emulator_id.trim().is_empty() && !self.controller_id.trim().is_empty(),
             "mGBA requires emulator and physical controller identities"
         );
-        for path in [
+        let mut path_vec = vec![
             &self.content,
             &self.source_config,
             &self.probe_program,
             &self.sdl_library,
-            &self.bubblewrap_program,
-        ] {
+        ];
+        // bubblewrap is required only when a launch can actually sandbox;
+        // elsewhere the field is accepted and ignored.
+        #[cfg(target_os = "linux")]
+        path_vec.push(&self.bubblewrap_program);
+        for path in path_vec {
             ensure!(
                 path.is_absolute()
                     && !path
@@ -73,8 +77,8 @@ impl SavedSetup {
             .get(&self.controller_id)
             .context("mGBA controller has no saved calibration")?;
         ensure!(
-            calibration.os == "linux",
-            "Native mGBA mapping currently requires Linux calibration"
+            ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+            "Native mGBA mapping requires a desktop calibration"
         );
         let profile_id = match self.handheld {
             Handheld::Gba => "mgba:standalone-gba",
