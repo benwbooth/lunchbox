@@ -97,7 +97,6 @@ enum PreparedJsonNativeLaunch {
     Hypseus(crate::controller_hypseus_singe_native::native_command::NativeSession),
     Jgenesis(crate::controller_jgenesis_native::native_command::NativeSession),
     Gopher64(crate::controller_gopher64_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Gear(crate::controller_gear_native::native_command::NativeSession),
     Xroar(crate::controller_xroar_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
@@ -180,7 +179,6 @@ impl PreparedJsonNativeLaunch {
             Self::Hypseus(session) => session.spawn(plan, cancel),
             Self::Jgenesis(session) => session.spawn(plan, cancel),
             Self::Gopher64(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Gear(session) => session.spawn(plan, cancel),
             Self::Xroar(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
@@ -259,7 +257,6 @@ impl PreparedJsonNativeLaunch {
             Self::Hypseus(session) => session.verify(cancel),
             Self::Jgenesis(session) => session.verify(cancel),
             Self::Gopher64(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Gear(session) => session.verify(cancel),
             Self::Xroar(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
@@ -338,7 +335,6 @@ impl PreparedJsonNativeLaunch {
             Self::Hypseus(session) => session.check_health(),
             Self::Jgenesis(session) => session.check_health(),
             Self::Gopher64(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Gear(session) => session.check_health(),
             Self::Xroar(session) => session.check_health(),
             #[cfg(target_os = "linux")]

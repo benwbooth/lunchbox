@@ -162,9 +162,9 @@ pub(crate) mod settings {
                     .get(&player.controller_id)
                     .context("Gear native controller has no saved calibration")?;
                 ensure!(
-                    calibration.os == "linux"
+                    ["linux", "macos", "windows"].contains(&calibration.os.as_str())
                         && calibration.backend != crate::controller_sdl3::BACKEND,
-                    "Gear native mapping needs Linux physical calibration"
+                    "Gear native mapping needs a desktop physical calibration"
                 );
                 let mapping = calibration.plan_profile(profile)?;
                 ensure!(
@@ -213,15 +213,18 @@ pub(crate) mod settings {
 #[cfg(target_os = "linux")]
 mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::{Calibration, EmulatorProfile},
         controller_native_process::{cancelled, capture},
         controller_pcsx2::sdl::{AxisRange, Input as SdlInput},
         controllers::ControllerDevice,
     };
     use lunchbox_controller_probe::{Snapshot, file_hash, linux_classic::AxisEndpoints};
-    use std::{fs, os::unix::fs::MetadataExt, process::Command, sync::atomic::AtomicBool};
+    use std::{fs, process::Command, sync::atomic::AtomicBool};
 
     #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
     enum LogicalInput {
@@ -659,28 +662,25 @@ mod session {
     struct DirectoryIdentity {
         path: PathBuf,
         canonical: PathBuf,
-        device: u64,
-        inode: u64,
+        identity: (u64, u64),
     }
 
     impl DirectoryIdentity {
         fn capture(path: PathBuf) -> Result<Self> {
             let canonical = path.canonicalize()?;
-            let metadata = fs::metadata(&path)?;
+            let identity = crate::controller_native_platform::file_identity(&path)?;
             Ok(Self {
                 path,
                 canonical,
-                device: metadata.dev(),
-                inode: metadata.ino(),
+                identity,
             })
         }
 
         fn verify(&self) -> Result<()> {
-            let metadata = fs::metadata(&self.path)?;
             ensure!(
                 self.path.canonicalize()? == self.canonical
-                    && metadata.dev() == self.device
-                    && metadata.ino() == self.inode,
+                    && crate::controller_native_platform::file_identity(&self.path)?
+                        == self.identity,
                 "Gear persistence directory changed"
             );
             Ok(())
@@ -691,6 +691,7 @@ mod session {
         directory: tempfile::TempDir,
         pub(crate) data_home: PathBuf,
         runtime_paths: Vec<String>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         snapshot: Snapshot,
         setup: settings::SavedSetup,
@@ -724,6 +725,7 @@ mod session {
                 );
                 selected.push(found[0].device_path.clone());
             }
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(&selected)?;
             let initial = observe(setup, &[], cancel)?;
             let visible_paths = initial
@@ -731,9 +733,29 @@ mod session {
                 .iter()
                 .filter_map(|device| device.path.as_deref())
                 .collect::<Vec<_>>();
+            // Linux resolves through the sysfs topology; other hosts
+            // match the SDL device-interface path and require uniqueness.
+            #[cfg(target_os = "linux")]
             let runtime_paths = selected
                 .iter()
                 .map(|path| topology.resolve_runtime_path(path, visible_paths.iter().copied()))
+                .collect::<Result<Vec<_>>>()?;
+            #[cfg(not(target_os = "linux"))]
+            let runtime_paths = selected
+                .iter()
+                .map(|path| {
+                    let path_string = path.to_string_lossy().into_owned();
+                    let candidates = initial
+                        .devices
+                        .iter()
+                        .filter(|device| device.path.as_deref() == Some(path_string.as_str()))
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        candidates.len() == 1,
+                        "Gear physical controller is missing or ambiguous in SDL"
+                    );
+                    Ok(path_string)
+                })
                 .collect::<Result<Vec<_>>>()?;
             let snapshot = observe(setup, &runtime_paths, cancel)?;
             ensure!(
@@ -810,6 +832,7 @@ mod session {
                 directory,
                 data_home,
                 runtime_paths,
+                #[cfg(target_os = "linux")]
                 topology,
                 snapshot,
                 setup: setup.clone(),
@@ -826,6 +849,7 @@ mod session {
                 self.directory.path().is_dir() && self.data_home.is_dir(),
                 "Gear private SDL preference root disappeared"
             );
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, expected) in &self.hashes {
                 ensure!(file_hash(path)? == *expected, "Gear launch input changed");
@@ -838,11 +862,39 @@ mod session {
                 comparable(&current)? == comparable(&self.snapshot)?,
                 "Gear SDL3 routing or resolved bindings changed before launch"
             );
-            self.topology.verify()
+            #[cfg(not(target_os = "linux"))]
+            for path in &self.runtime_paths {
+                let count = current
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(path.as_str()))
+                    .count();
+                ensure!(count == 1, "Gear SDL device path is missing or ambiguous");
+            }
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()?;
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let current = observe(&self.setup, &self.runtime_paths, &AtomicBool::new(false))?;
+            ensure!(
+                comparable(&current)? == comparable(&self.snapshot)?,
+                "Gear SDL3 routing or resolved bindings changed"
+            );
             for directory in &self.persistence {
                 directory.verify()?;
             }
@@ -851,7 +903,6 @@ mod session {
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
     use crate::{
@@ -909,7 +960,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("Gear calibrated launch requires native Linux");
+            anyhow::bail!("Gear calibrated launch requires a native build");
         };
         ensure!(
             setup
