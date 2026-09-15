@@ -179,11 +179,13 @@ pub(crate) mod settings {
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
     };
@@ -211,6 +213,8 @@ pub(crate) mod session {
         directory: tempfile::TempDir,
         pub(crate) config_home: PathBuf,
         runtime_paths: Vec<String>,
+        device_indices: Vec<u32>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         snapshot: Snapshot,
         setup: settings::SavedSetup,
@@ -240,6 +244,7 @@ pub(crate) mod session {
                     .or_insert_with(|| found[0].device_path.clone());
             }
             let selected = selected_by_id.values().cloned().collect::<Vec<_>>();
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(&selected)?;
             let initial = observe(setup, &[], cancel)?;
             let mut runtime_by_id = BTreeMap::new();
@@ -249,16 +254,32 @@ pub(crate) mod session {
                 .filter_map(|device| device.path.as_deref());
             let visible_paths = visible_paths.collect::<Vec<_>>();
             for (id, path) in &selected_by_id {
-                runtime_by_id.insert(
-                    id.clone(),
-                    topology.resolve_runtime_path(path, visible_paths.iter().copied())?,
-                );
+                // Linux resolves through the sysfs topology; other hosts
+                // match the SDL device-interface path and require uniqueness.
+                #[cfg(target_os = "linux")]
+                let runtime = topology.resolve_runtime_path(path, visible_paths.iter().copied())?;
+                #[cfg(not(target_os = "linux"))]
+                let runtime = {
+                    let path_string = path.to_string_lossy().into_owned();
+                    let candidates = initial
+                        .devices
+                        .iter()
+                        .filter(|device| device.path.as_deref() == Some(path_string.as_str()))
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        candidates.len() == 1,
+                        "b2 physical controller is missing or ambiguous in SDL"
+                    );
+                    path_string
+                };
+                runtime_by_id.insert(id.clone(), runtime);
             }
             let runtime_paths = runtime_by_id.values().cloned().collect::<Vec<_>>();
             let snapshot = observe(setup, &runtime_paths, cancel)?;
             initial.ensure_same_routing(&snapshot)?;
 
             let mut names_by_id = BTreeMap::new();
+            let mut device_indices = BTreeMap::new();
             for (id, path) in &runtime_by_id {
                 let device = snapshot.device_at_path(path)?;
                 ensure!(device.is_game_controller, "b2 needs an SDL2 GameController");
@@ -281,6 +302,7 @@ pub(crate) mod session {
                     "b2 cannot distinguish attached SDL2 controllers with the same name"
                 );
                 names_by_id.insert(id.clone(), name.to_owned());
+                device_indices.insert(id.clone(), device.device_index);
             }
             let mut device_names = ["", "", ""].map(str::to_owned);
             for slot in &setup.slots {
@@ -315,6 +337,8 @@ pub(crate) mod session {
                 directory,
                 config_home,
                 runtime_paths,
+                device_indices: runtime_by_id.keys().map(|id| device_indices[id]).collect(),
+                #[cfg(target_os = "linux")]
                 topology,
                 snapshot,
                 setup: setup.clone(),
@@ -330,22 +354,51 @@ pub(crate) mod session {
                 self.directory.path().is_dir(),
                 "b2 private config disappeared"
             );
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, expected) in &self.hashes {
                 ensure!(file_hash(path)? == *expected, "b2 launch input changed");
             }
             let current = observe(&self.setup, &self.runtime_paths, cancel)?;
             self.snapshot.ensure_same_routing(&current)?;
-            self.topology.verify()
+            for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
+                let device = current.device_at_path(path)?;
+                ensure!(
+                    device.device_index == *index,
+                    "b2 SDL joystick moved before launch"
+                );
+                #[cfg(not(target_os = "linux"))]
+                platform::require_unique_device_path(&current.devices, path, *index)?;
+            }
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let current = observe(&self.setup, &self.runtime_paths, &AtomicBool::new(false))?;
+            self.snapshot.ensure_same_routing(&current)?;
+            for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
+                platform::require_unique_device_path(&current.devices, path, *index)?;
+            }
+            Ok(())
         }
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
     use crate::{
@@ -401,7 +454,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("b2 calibrated launch requires native Linux, not Wine/Flatpak");
+            anyhow::bail!("b2 calibrated launch requires a native build, not Wine/Flatpak");
         };
         ensure!(
             setup.emulator_id == option.emulator_id && original.environment.is_empty(),

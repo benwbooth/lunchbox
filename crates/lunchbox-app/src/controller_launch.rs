@@ -93,7 +93,6 @@ impl PreparedBizhawkLaunch {
 }
 
 enum PreparedJsonNativeLaunch {
-    #[cfg(target_os = "linux")]
     B2(crate::controller_b2_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Hypseus(crate::controller_hypseus_singe_native::native_command::NativeSession),
@@ -180,7 +179,6 @@ impl PreparedJsonNativeLaunch {
         cancel: &std::sync::atomic::AtomicBool,
     ) -> Result<std::process::Child> {
         match self {
-            #[cfg(target_os = "linux")]
             Self::B2(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Hypseus(session) => session.spawn(plan, cancel),
@@ -263,7 +261,6 @@ impl PreparedJsonNativeLaunch {
 
     fn verify(&self, cancel: &std::sync::atomic::AtomicBool) -> Result<()> {
         match self {
-            #[cfg(target_os = "linux")]
             Self::B2(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Hypseus(session) => session.verify(cancel),
@@ -346,7 +343,6 @@ impl PreparedJsonNativeLaunch {
 
     fn check_health(&self) -> Result<()> {
         match self {
-            #[cfg(target_os = "linux")]
             Self::B2(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Hypseus(session) => session.check_health(),
@@ -7669,7 +7665,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("b2")
     {
