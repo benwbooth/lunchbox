@@ -181,6 +181,25 @@ pub(crate) fn require_unique_device_path<'a>(
     Ok(found[0])
 }
 
+/// Portable SDL3 device pin: the device at `path` must exist exactly once
+/// in `devices`. SDL3 devices carry no stable numeric index (instance IDs
+/// are runtime-ephemeral), so path presence plus uniqueness is the pin.
+/// Names and GUIDs are never consulted.
+pub(crate) fn require_unique_sdl3_path<'a>(
+    devices: &'a [lunchbox_controller_probe::Device],
+    path: &str,
+) -> Result<&'a lunchbox_controller_probe::Device> {
+    let found = devices
+        .iter()
+        .filter(|device| device.path.as_deref() == Some(path))
+        .collect::<Vec<_>>();
+    ensure!(
+        found.len() == 1,
+        "SDL3 device path is missing or ambiguous at launch"
+    );
+    Ok(found[0])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

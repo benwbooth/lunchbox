@@ -114,8 +114,11 @@ pub(crate) fn config_toml(p1: &[(u8, &str, Binding)]) -> Result<String> {
 #[cfg(target_os = "linux")]
 pub(crate) mod session {
     use super::{Binding, CONTROLS, config_toml};
+    #[cfg(target_os = "linux")]
     use crate::controller_bizhawk_guard::InputTopology;
     use crate::controller_catalog::Calibration;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::controller_native_process::{cancelled, capture};
     use crate::controllers::ControllerDevice;
     use anyhow::{Context, Result, ensure};
@@ -126,6 +129,7 @@ pub(crate) mod session {
         pub(crate) directory: tempfile::TempDir,
         pub(crate) config_path: std::path::PathBuf,
         pub(crate) runtime_path: String,
+        #[cfg(target_os = "linux")]
         pub(crate) topology: InputTopology,
         setup: crate::controller_jgenesis_native::settings::SavedSetup,
         hashes: std::collections::BTreeMap<std::path::PathBuf, String>,
@@ -181,15 +185,36 @@ pub(crate) mod session {
                 "jgenesis requires an unambiguous physical controller"
             );
             let selected = device.device_path.clone();
-            let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
             let initial = routing(observe(setup, None, cancel)?);
-            let runtime_path = topology.resolve_runtime_path(
-                &selected,
-                initial
+            // Linux pins kernel input identity through the sysfs topology.
+            // Other hosts pin the SDL device-interface path and require
+            // uniqueness; names and GUIDs are never identity.
+            #[cfg(target_os = "linux")]
+            let (runtime_path, topology) = {
+                let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
+                let runtime_path = topology.resolve_runtime_path(
+                    &selected,
+                    initial
+                        .devices
+                        .iter()
+                        .filter_map(|device| device.path.as_deref()),
+                )?;
+                (runtime_path, topology)
+            };
+            #[cfg(not(target_os = "linux"))]
+            let runtime_path = {
+                let selected_string = selected.to_string_lossy().into_owned();
+                let candidates = initial
                     .devices
                     .iter()
-                    .filter_map(|device| device.path.as_deref()),
-            )?;
+                    .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                    .collect::<Vec<_>>();
+                ensure!(
+                    candidates.len() == 1,
+                    "jgenesis physical controller is missing or ambiguous in SDL"
+                );
+                selected_string
+            };
             let captured = observe(setup, Some(&runtime_path), cancel)?;
             let device_index = captured
                 .devices
@@ -248,6 +273,7 @@ pub(crate) mod session {
                 directory,
                 config_path,
                 runtime_path,
+                #[cfg(target_os = "linux")]
                 topology,
                 setup: setup.clone(),
                 hashes,
@@ -260,6 +286,7 @@ pub(crate) mod session {
 
         pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
             cancelled(cancel)?;
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, expected) in &self.hashes {
                 ensure!(
@@ -275,11 +302,31 @@ pub(crate) mod session {
                     .any(|device| device.path.as_deref() == Some(self.runtime_path.as_str())),
                 "jgenesis controller disappeared"
             );
-            self.topology.verify()
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_sdl3_path(&fresh.devices, &self.runtime_path)?;
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+            self.initial.ensure_same_routing(&fresh)?;
+            platform::require_unique_sdl3_path(&fresh.devices, &self.runtime_path)?;
+            Ok(())
         }
 
         pub(crate) fn overlay_arguments(
@@ -372,6 +419,7 @@ pub(crate) mod settings {
 #[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::settings::SavedSetup;
+    #[cfg(target_os = "linux")]
     use crate::controller_bizhawk_guard::InputTopology;
     use crate::controller_catalog::Calibration;
     use crate::controller_native_process::{cancelled, capture};
@@ -427,7 +475,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("jgenesis calibrated launch requires native Linux, not Wine/Flatpak");
+            anyhow::bail!("jgenesis calibrated launch requires a native build, not Wine/Flatpak");
         };
         ensure!(
             setup.emulator_id == option.emulator_id && original.environment.is_empty(),
