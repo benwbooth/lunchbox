@@ -33,10 +33,71 @@
       "role": "fail-closed current-release controller boundary"
     }
   ],
+  "platforms": {
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/Retro Virtual Machine/gamepads.json",
+          "status": "captured",
+          "naming": "JSON dictionary of per-gamepad base64 configs, created under Application Support on save.",
+          "evidence": [
+            "source:jcgamestoy/retrovm1 Retro Virtual Machine/Input/rvmInputManager.m lines 190-207 @e2b3cbeda8f96d92947a1a1d004e2548da95db33"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/Retro Virtual Machine/gamepads.json plus live IOHID gamepads/joysticks",
+          "status": "captured",
+          "naming": "IOHIDManager matches USB gamepads and joysticks; mappings persist per gamepad.",
+          "evidence": [
+            "source:jcgamestoy/retrovm1 Retro Virtual Machine/Input/rvmInputManager.m lines 59-68,126-156 @e2b3cbeda8f96d92947a1a1d004e2548da95db33"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Inside the machine document package (.rvm file wrapper)",
+          "status": "captured",
+          "naming": "NSDocument file wrapper carries machine files; media images are user-located.",
+          "evidence": [
+            "source:jcgamestoy/retrovm1 Retro Virtual Machine/Architectures/rvmArchitecture.m file wrapper @e2b3cbeda8f96d92947a1a1d004e2548da95db33"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "snap/ wrapper inside the machine document package",
+          "status": "captured",
+          "naming": "createSnapshot output stored under the snap preferred filename; saveSnapshot/removeSnapshot manage entries.",
+          "evidence": [
+            "source:jcgamestoy/retrovm1 Retro Virtual Machine/Architectures/rvmArchitecture.m lines 277-332 @e2b3cbeda8f96d92947a1a1d004e2548da95db33",
+            "source:jcgamestoy/retrovm1 Retro Virtual Machine/Architectures/rvmArchitecture.h lines 69-72 @e2b3cbeda8f96d92947a1a1d004e2548da95db33"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Bundled machine ROMs under Resources/roms/ inside the app bundle",
+          "status": "captured",
+          "naming": "Per-machine .rom files (ZXSpectrum48k.rom, Plus2 variants, +3e firmware) ship with the app; no user-supplied firmware path.",
+          "evidence": [
+            "source:jcgamestoy/retrovm1 Retro Virtual Machine/Resources/roms/ listing @e2b3cbeda8f96d92947a1a1d004e2548da95db33"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files in the reviewed source.",
+          "evidence": [
+            "source:jcgamestoy/retrovm1 Retro Virtual Machine/ tree defines no key store @e2b3cbeda8f96d92947a1a1d004e2548da95db33"
+          ]
+        }
+      ]
+    }
+  },
   "platform_gaps": {
     "linux": {
       "status": "unresolved",
-      "reason": "The official site publishes Linux x64 packages, but the current v2 binary is not source-published and the available v1 source does not establish the v2 Linux config, input, save, state, firmware, and key paths as one compatible contract.",
+      "reason": "Commercial 2.1.20 builds for Windows/Linux have no reviewable paths; the public v1.1 source is macOS-only and the documentation site has no path documentation.",
       "evidence": [
         "official:https://retrovirtualmachine.org/download/ lists v2.1.20 Linux x64 .deb and .zip artifacts",
         "source:README.md says v2.0.7 and later multi-host implementation is not open source @e2b3cbeda8f9",
@@ -53,20 +114,11 @@
     },
     "windows": {
       "status": "unresolved",
-      "reason": "The official site publishes a Windows x64 binary, but current v2 persistence and controller paths are not source-published; the pinned v1 source is macOS-only and cannot safely describe v2 Windows behavior.",
+      "reason": "Commercial 2.1.20 builds for Windows/Linux have no reviewable paths; the public v1.1 source is macOS-only and the documentation site has no path documentation.",
       "evidence": [
         "official:https://retrovirtualmachine.org/ lists Windows among supported hosts",
         "official:https://retrovirtualmachine.org/download/ lists the v2.1.20 Windows x64 artifact",
         "source:README.md limits the public source branch to macOS and says current multi-host v2 is not open source @e2b3cbeda8f9"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official site publishes a macOS v2 artifact and the v1 source exposes a macOS .rvm document and gamepads.json implementation, but no source-backed proof shows those v1 formats remain compatible with the current v2 release.",
-      "evidence": [
-        "official:https://retrovirtualmachine.org/download/ lists v2.1.20 MacOs artifact",
-        "source:Architectures/rvmArchitecture.m and Input/rvmInputManager.m establish v1 .rvm/gzip-JSON and gamepads.json paths @e2b3cbeda8f9",
-        "artifact:https://static.retrovm.org/release/2.1.20/RetroVirtualMachine.2.1.20.dmg sha256=01d3d60e"
       ]
     }
   },
