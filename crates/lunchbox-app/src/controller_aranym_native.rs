@@ -754,8 +754,6 @@ pub(crate) mod native_command {
         let sandboxed = crate::controller_native_platform::use_bubblewrap_sandbox(&executable);
         let inputs =
             session::PreparedSession::prepare(setup, calibrations, inventory, sandboxed, cancel)?;
-        #[cfg(target_os = "linux")]
-        let cwd = original.current_directory.canonicalize()?;
         let mut plan = original.clone();
         // Sandbox or direct is a packaging decision, not an OS one:
         // bubblewrap nests under plain native/Nix Linux launches, while
