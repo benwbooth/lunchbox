@@ -114,7 +114,6 @@ enum PreparedJsonNativeLaunch {
     A7800(crate::controller_a7800_native::native_command::NativeSession),
     Gambatte(crate::controller_gambatte_standalone::native_command::NativeSession),
     PicoDrive(crate::controller_picodrive_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     NestopiaUe(crate::controller_nestopia_ue_native::native_command::NativeSession),
     SkyEmu(crate::controller_skyemu_native::native_command::NativeSession),
     LinApple(crate::controller_linapple_native::native_command::NativeSession),
@@ -190,7 +189,6 @@ impl PreparedJsonNativeLaunch {
             Self::A7800(session) => session.spawn(plan, cancel),
             Self::Gambatte(session) => session.spawn(plan, cancel),
             Self::PicoDrive(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.spawn(plan, cancel),
             Self::SkyEmu(session) => session.spawn(plan, cancel),
             Self::LinApple(session) => session.spawn(plan, cancel),
@@ -262,7 +260,6 @@ impl PreparedJsonNativeLaunch {
             Self::A7800(session) => session.verify(cancel),
             Self::Gambatte(session) => session.verify(cancel),
             Self::PicoDrive(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.verify(cancel),
             Self::SkyEmu(session) => session.verify(cancel),
             Self::LinApple(session) => session.verify(cancel),
@@ -334,7 +331,6 @@ impl PreparedJsonNativeLaunch {
             Self::A7800(session) => session.check_health(),
             Self::Gambatte(session) => session.check_health(),
             Self::PicoDrive(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.check_health(),
             Self::SkyEmu(session) => session.check_health(),
             Self::LinApple(session) => session.check_health(),
@@ -8876,7 +8872,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Nestopia UE")
     {

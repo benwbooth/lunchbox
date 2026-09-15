@@ -307,7 +307,7 @@ pub(crate) mod settings {
                     .get(&player.controller_id)
                     .context("Nestopia controller has no saved calibration")?;
                 ensure!(
-                    calibration.os == "linux",
+                    ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
                     "Nestopia mapping requires Linux physical calibration"
                 );
                 let mapping = calibration.plan_profile(profile)?;
@@ -351,11 +351,13 @@ pub(crate) mod settings {
     }
 }
 
-#[cfg(target_os = "linux")]
 mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::Calibration,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
@@ -505,6 +507,8 @@ mod session {
         directory: tempfile::TempDir,
         config_home: PathBuf,
         physical_paths: Vec<String>,
+        device_indices: Vec<u32>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         initial: Snapshot,
         setup: settings::SavedSetup,
@@ -537,12 +541,17 @@ mod session {
                 );
                 selected.push(found[0].device_path.clone());
             }
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(&selected)?;
             let initial = routing(observe(setup, None, cancel)?);
             let mut physical_paths = Vec::new();
             let mut fragments = Vec::new();
             let mut ports = Vec::new();
+            let mut device_indices = Vec::new();
             for (player, selected_path) in setup.players.iter().zip(&selected) {
+                // Linux resolves through the sysfs topology; other hosts
+                // match the SDL device-interface path and require uniqueness.
+                #[cfg(target_os = "linux")]
                 let path = topology.resolve_runtime_path(
                     selected_path,
                     initial
@@ -550,14 +559,35 @@ mod session {
                         .iter()
                         .filter_map(|device| device.path.as_deref()),
                 )?;
+                #[cfg(not(target_os = "linux"))]
+                let path = {
+                    let selected_string = selected_path.to_string_lossy().into_owned();
+                    let candidates = initial
+                        .devices
+                        .iter()
+                        .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        candidates.len() == 1,
+                        "Nestopia physical controller is missing or ambiguous in SDL"
+                    );
+                    selected_string
+                };
                 ensure!(
                     !physical_paths.contains(&path),
                     "Nestopia players share a controller"
                 );
                 let captured = observe(setup, Some(&path), cancel)?;
                 initial.ensure_same_routing(&routing(captured.clone()))?;
+                #[cfg(target_os = "linux")]
                 topology.verify()?;
                 let device = captured.device_at_path(&path)?;
+                #[cfg(not(target_os = "linux"))]
+                platform::require_unique_device_path(
+                    &captured.devices,
+                    &path,
+                    device.device_index,
+                )?;
                 // The j-port prefix is the player index Nestopia assigns in
                 // SDL open order (`SDL_JoystickSetPlayerIndex(joystick[i],
                 // i)` on SDL_JOYDEVICEADDED); the probe's device_index is
@@ -577,6 +607,7 @@ mod session {
                 )?;
                 fragments.push(input_fragment(player.player, host_player, &bindings)?);
                 ports.push(player.player);
+                device_indices.push(device.device_index);
                 physical_paths.push(path);
             }
             let nestopia_conf = controller_fragment(&ports)?;
@@ -607,6 +638,8 @@ mod session {
                 directory: config_home,
                 config_home: config_dir,
                 physical_paths,
+                device_indices,
+                #[cfg(target_os = "linux")]
                 topology,
                 initial,
                 setup: setup.clone(),
@@ -624,13 +657,19 @@ mod session {
 
         pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
             cancelled(cancel)?;
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, hash) in &self.hashes {
                 ensure!(file_hash(path)? == *hash, "Nestopia launch input changed");
             }
             let fresh = routing(observe(&self.setup, None, cancel)?);
             self.initial.ensure_same_routing(&fresh)?;
-            for (path, expected) in self.physical_paths.iter().zip(self.setup.players.iter()) {
+            for ((path, expected), index) in self
+                .physical_paths
+                .iter()
+                .zip(self.setup.players.iter())
+                .zip(&self.device_indices)
+            {
                 let captured = observe(&self.setup, Some(path), cancel)?;
                 self.initial
                     .ensure_same_routing(&routing(captured.clone()))?;
@@ -649,30 +688,60 @@ mod session {
                     "Nestopia SDL enumeration order moved for player {}",
                     expected.player
                 );
+                let device = captured.device_at_path(path)?;
+                ensure!(
+                    device.device_index == *index,
+                    "Nestopia SDL player index moved before launch"
+                );
+                #[cfg(not(target_os = "linux"))]
+                platform::require_unique_device_path(&captured.devices, path, *index)?;
+                #[cfg(target_os = "linux")]
                 self.topology.verify()?;
             }
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+            self.initial.ensure_same_routing(&fresh)?;
+            for (path, index) in self.physical_paths.iter().zip(&self.device_indices) {
+                platform::require_unique_device_path(&fresh.devices, path, *index)?;
+            }
+            Ok(())
         }
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
+    use crate::controller_native_process::cancelled;
+    #[cfg(target_os = "linux")]
+    use crate::controller_native_process::native_pid;
     use crate::{
         controller_catalog::Calibration,
-        controller_native_process::{cancelled, native_pid},
+        controller_native_platform as platform,
         controllers::ControllerDevice,
         emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption},
     };
     use lunchbox_controller_probe::file_hash;
     use std::{
         collections::HashMap,
-        path::{Path, PathBuf},
+        path::PathBuf,
         sync::atomic::AtomicBool,
         time::{Duration, Instant},
     };
@@ -725,9 +794,15 @@ pub(crate) mod native_command {
                     child.try_wait()?.is_none(),
                     "Nestopia exited before controller handoff"
                 );
-                if let Some(pid) = native_pid(child.id(), &self.executable)?
-                    && self.ready(pid)?
-                {
+                // Linux walks the launch tree (bubblewrap monitors); other
+                // hosts check the direct child, which they spawn directly.
+                #[cfg(target_os = "linux")]
+                let owned = native_pid(child.id(), &self.executable)?
+                    .is_some_and(|pid| self.ready(pid).unwrap_or(false));
+                #[cfg(not(target_os = "linux"))]
+                let owned = platform::child_exe_matches(child.id(), &self.executable)?
+                    && self.ready(child.id())?;
+                if owned {
                     self.inputs.check_health()?;
                     return Ok(());
                 }
@@ -740,19 +815,16 @@ pub(crate) mod native_command {
         }
 
         fn ready(&self, pid: u32) -> Result<bool> {
-            let expected_sdl = self.setup.sdl_library.canonicalize()?;
-            let maps = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
-            if !maps.lines().any(|line| {
-                let path = line
-                    .split_whitespace()
-                    .skip(5)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .replace("\\040", " ");
-                Path::new(&path) == expected_sdl
-            }) {
+            // Linux proves the child mapped the exact SDL library. Other
+            // hosts pin the executable plus a fresh device re-probe; the
+            // weaker guarantee is explicit here and in the launch text.
+            if cfg!(target_os = "linux") {
+                return platform::child_maps_library(pid, &self.setup.sdl_library);
+            }
+            if !platform::child_exe_matches(pid, &self.executable)? {
                 return Ok(false);
             }
+            self.inputs.check_health()?;
             Ok(true)
         }
     }
@@ -768,7 +840,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("Nestopia calibrated launch requires native Linux");
+            anyhow::bail!("Nestopia calibrated launch requires a native build");
         };
         ensure!(
             option.emulator_name.eq_ignore_ascii_case("Nestopia UE")
