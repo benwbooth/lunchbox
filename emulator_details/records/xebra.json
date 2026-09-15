@@ -35,12 +35,12 @@
         },
         {
           "purpose": "input",
-          "path": "View / Controller... interactive dialog in XEBRA.EXE; PC pad buttons and X/Y/Z/R/U/V axes are sampled at startup/dialog time",
-          "naming": "Associations are selected interactively by PS1 port, controller type, PC button and axis; no verified portable mapping-file grammar",
-          "status": "unresolved",
+          "path": "<exe-dir>\\XEBRA.INI (created on settings save; absent from the published archive)",
+          "naming": "WinMM joystick polling (joyGetPosEx); controller device setup via View/Controller; pad histories record to XEBRA.PAD.",
+          "status": "captured",
           "evidence": [
-            "docs:https://drhell.web.fc2.com/ps1/xebra/index2.html (CONTROLLER SETTINGS)",
-            "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip sha256=5f522e51a0cad7395bdcb070e7c6955327f4bd3449a9c04dc7ed35c6693c1bd2 (XEBRA.TXT controller section)"
+            "artifact:xebra221106.zip XEBRA.EXE XEBRA.INI/XEBRA.PAD/joyGetPosEx strings",
+            "artifact:xebra221106.zip archive ships no INI (runtime-created)"
           ]
         },
         {
@@ -71,11 +71,11 @@
         },
         {
           "purpose": "keys",
-          "path": "not applicable",
-          "naming": "No external cryptographic or decryption-key file is consumed by the documented XEBRA PC contract",
+          "path": "No external cryptographic key material required",
+          "naming": "PS1 needs no keys.",
           "status": "not_required",
           "evidence": [
-            "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip sha256=5f522e51a0cad7395bdcb070e7c6955327f4bd3449a9c04dc7ed35c6693c1bd2 (complete archive listing)"
+            "artifact:xebra221106.zip XEBRA.EXE string survey (no key store)"
           ]
         }
       ],
@@ -86,17 +86,26 @@
     "linux": {
       "status": "unsupported",
       "reason": "The official distribution is a Windows XEBRA.EXE archive and no native Linux build or source-backed Linux persistence contract is published.",
-      "evidence": ["docs:https://drhell.web.fc2.com/ps1/xebra/index2.html", "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip"]
+      "evidence": [
+        "docs:https://drhell.web.fc2.com/ps1/xebra/index2.html",
+        "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip"
+      ]
     },
     "linux-flatpak": {
       "status": "no_verified_package",
       "reason": "No XEBRA Flatpak package or manifest is published by the official distribution page.",
-      "evidence": ["docs:https://drhell.web.fc2.com/ps1/", "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip"]
+      "evidence": [
+        "docs:https://drhell.web.fc2.com/ps1/",
+        "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip"
+      ]
     },
     "macos": {
       "status": "unsupported",
       "reason": "The official PC distribution is Windows-only and publishes no native macOS build or source-backed macOS persistence contract.",
-      "evidence": ["docs:https://drhell.web.fc2.com/ps1/xebra/index2.html", "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip"]
+      "evidence": [
+        "docs:https://drhell.web.fc2.com/ps1/xebra/index2.html",
+        "artifact:https://drhell.web.fc2.com/ps1/xebra221106.zip"
+      ]
     }
   },
   "controller_boundary": {
