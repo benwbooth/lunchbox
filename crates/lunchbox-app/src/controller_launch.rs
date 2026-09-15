@@ -6325,7 +6325,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("MAME")
     {
@@ -6478,7 +6477,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("bsnes")
     {
@@ -7551,7 +7549,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && matches!(
             option.emulator_name.to_ascii_lowercase().as_str(),
@@ -9887,7 +9884,6 @@ pub fn prepare_with_cancellation(
             }));
         }
     }
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("mGBA")
     {
@@ -9969,7 +9965,6 @@ pub fn prepare_with_cancellation(
             }));
         }
     }
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("PPSSPP")
     {
@@ -10051,7 +10046,6 @@ pub fn prepare_with_cancellation(
             }));
         }
     }
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("DuckStation")
     {

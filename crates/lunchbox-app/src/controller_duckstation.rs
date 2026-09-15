@@ -14,7 +14,6 @@ use lunchbox_controller_probe::{
 
 use crate::controller_catalog::{Calibration, catalog};
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command;
 
 /// Owns the configuration and projection across preparation and actual startup.
@@ -427,8 +426,8 @@ pub(crate) fn bindings(
     controller_type: &str,
 ) -> Result<BTreeMap<String, String>> {
     ensure!(
-        request.calibration.os == "linux",
-        "DuckStation classic translation requires a Linux calibration"
+        ["linux", "macos", "windows"].contains(&request.calibration.os.as_str()),
+        "DuckStation classic translation requires a desktop calibration"
     );
     let profile_id = if controller_type.eq_ignore_ascii_case("DigitalController") {
         "duckstation:digital-controller"

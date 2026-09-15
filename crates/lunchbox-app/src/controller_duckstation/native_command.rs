@@ -45,7 +45,7 @@ pub(crate) fn prepare(
         .context("Configure trusted DuckStation helper and SDL runtime paths first")?;
     let EmulatorExecutable::Native(executable) = &option.executable else {
         anyhow::bail!(
-            "DuckStation calibrated launch currently requires native Linux; Flatpak/Wine namespace routing is separate"
+            "DuckStation calibrated launch requires a native build; Flatpak/Wine namespace routing is separate"
         );
     };
     ensure!(
@@ -234,26 +234,34 @@ impl NativeSession {
                         )
                     };
                     if self.input.confirm_startup(&log).is_ok() {
-                        let maps = std::fs::read_to_string(format!("/proc/{}/maps", child.id()))?;
-                        let loaded: BTreeSet<_> = maps
-                            .lines()
-                            .filter_map(|line| {
-                                let path = line
-                                    .split_whitespace()
-                                    .skip(5)
-                                    .collect::<Vec<_>>()
-                                    .join(" ");
-                                path.starts_with('/')
-                                    .then(|| std::path::PathBuf::from(path.replace("\\040", " ")))
-                            })
-                            .collect();
-                        for path in self.input.runtime_inputs.keys() {
-                            let expected = path.canonicalize()?;
-                            ensure!(
-                                loaded.contains(&expected),
-                                "DuckStation did not load the inspected runtime library: {}",
-                                expected.display()
-                            );
+                        // Linux additionally proves the inspected runtime
+                        // libraries are mapped; other hosts rely on the
+                        // startup-log routing plus the exe hash above.
+                        #[cfg(target_os = "linux")]
+                        {
+                            let maps =
+                                std::fs::read_to_string(format!("/proc/{}/maps", child.id()))?;
+                            let loaded: BTreeSet<_> = maps
+                                .lines()
+                                .filter_map(|line| {
+                                    let path = line
+                                        .split_whitespace()
+                                        .skip(5)
+                                        .collect::<Vec<_>>()
+                                        .join(" ");
+                                    path.starts_with('/').then(|| {
+                                        std::path::PathBuf::from(path.replace("\\040", " "))
+                                    })
+                                })
+                                .collect();
+                            for path in self.input.runtime_inputs.keys() {
+                                let expected = path.canonicalize()?;
+                                ensure!(
+                                    loaded.contains(&expected),
+                                    "DuckStation did not load the inspected runtime library: {}",
+                                    expected.display()
+                                );
+                            }
                         }
                         return Ok(());
                     }
