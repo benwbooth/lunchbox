@@ -1,1 +1,206 @@
-{"schema_version":1,"slug":"mini-vmac","emulator":"Mini vMac","sources":[{"kind":"official","url":"https://www.gryphel.com/c/minivmac/","role":"official generated-build distribution"}],"platform_gaps":{"linux":{"status":"unresolved","reason":"Generated build/model-specific project; no stable source-backed host controller/config contract was verified.","evidence":["official:https://www.gryphel.com/c/minivmac/"]},"linux-flatpak":{"status":"unsupported","reason":"No official Flatpak package verified.","evidence":["official:https://www.gryphel.com/c/minivmac/"]},"windows":{"status":"unresolved","reason":"Generated build/model-specific project; no stable source-backed host controller/config contract was verified.","evidence":["official:https://www.gryphel.com/c/minivmac/"]},"macos":{"status":"unresolved","reason":"Generated build/model-specific project; no stable source-backed host controller/config contract was verified.","evidence":["official:https://www.gryphel.com/c/minivmac/"]}},"notes":"No native writer; verify each generated build's ROM, disk, save/state and input behavior independently."}
+{
+  "schema_version": 1,
+  "slug": "mini-vmac",
+  "emulator": "Mini vMac",
+  "sources": [
+    {
+      "kind": "official",
+      "url": "https://www.gryphel.com/c/minivmac/",
+      "role": "official generated-build distribution"
+    },
+    {
+      "kind": "source",
+      "url": "https://www.gryphel.com/d/minivmac/minivmac-36.04/minivmac-36.04.src.tgz",
+      "role": "pinned 36.04 source reviewed for paths/input/state"
+    }
+  ],
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "unsupported",
+      "reason": "No official Flatpak package verified.",
+      "evidence": [
+        "official:https://www.gryphel.com/c/minivmac/"
+      ]
+    }
+  },
+  "notes": "No native writer; verify each generated build's ROM, disk, save/state and input behavior independently.",
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "No configuration file; machine variation is fixed at build/download time",
+          "status": "not_supported",
+          "naming": "No prefs keys, slots, or config grammar; choose a different generated variation for a different machine.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz setup/ build variation options",
+            "source:minivmac-36.04.src.tgz src/OSGLUWIN.c, src/OSGLUOSX.c, src/OSGLUXWN.c carry no config writer"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Host keyboard and mouse only; no gamepad/joystick device",
+          "status": "captured",
+          "naming": "ADB keyboard/mouse emulation (KBRDEMDV/MOUSEMDV); no pad, hat, or axis device exists.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/KBRDEMDV.c, src/MOUSEMDV.c"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mounted .dsk images, written back in place beside the application",
+          "status": "captured",
+          "naming": "Floppy/hard-disk images stay open as files and sector writes go back to the same image.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/OSGLUXWN.c Drives[]/vSonyTransfer open image files"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No persistent save-state file is implemented",
+          "status": "not_supported",
+          "naming": "No numbered slots or state filename grammar; state lives for the session only.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/ tree defines no snapshot writer"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Macintosh ROM file in the application directory (variation ROM name such as vMac.ROM)",
+          "status": "captured",
+          "naming": "One ROM file per machine variation, resolved beside the application (macOS additionally checks the Preferences folder).",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/OSGLUXWN.c mnvm_rom/RomFileName lookup"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz no key files or decryption in src/ (license headers only)"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "No configuration file; machine variation is fixed at build/download time",
+          "status": "not_supported",
+          "naming": "No prefs keys, slots, or config grammar; choose a different generated variation for a different machine.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz setup/ build variation options",
+            "source:minivmac-36.04.src.tgz src/OSGLUWIN.c, src/OSGLUOSX.c, src/OSGLUXWN.c carry no config writer"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Host keyboard and mouse only; no gamepad/joystick device",
+          "status": "captured",
+          "naming": "ADB keyboard/mouse emulation (KBRDEMDV/MOUSEMDV); no pad, hat, or axis device exists.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/KBRDEMDV.c, src/MOUSEMDV.c"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mounted .dsk images, written back in place beside the application",
+          "status": "captured",
+          "naming": "Floppy/hard-disk images stay open as files and sector writes go back to the same image.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/OSGLUWIN.c Drives[]/vSonyTransfer open image files"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No persistent save-state file is implemented",
+          "status": "not_supported",
+          "naming": "No numbered slots or state filename grammar; state lives for the session only.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/ tree defines no snapshot writer"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Macintosh ROM file in the application directory (variation ROM name such as vMac.ROM)",
+          "status": "captured",
+          "naming": "One ROM file per machine variation, resolved beside the application (macOS additionally checks the Preferences folder).",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/OSGLUWIN.c mnvm_rom ResolveNamedChildFile"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz no key files or decryption in src/ (license headers only)"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "No configuration file; machine variation is fixed at build/download time",
+          "status": "not_supported",
+          "naming": "No prefs keys, slots, or config grammar; choose a different generated variation for a different machine.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz setup/ build variation options",
+            "source:minivmac-36.04.src.tgz src/OSGLUWIN.c, src/OSGLUOSX.c, src/OSGLUXWN.c carry no config writer"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Host keyboard and mouse only; no gamepad/joystick device",
+          "status": "captured",
+          "naming": "ADB keyboard/mouse emulation (KBRDEMDV/MOUSEMDV); no pad, hat, or axis device exists.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/KBRDEMDV.c, src/MOUSEMDV.c"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mounted .dsk images, written back in place beside the application",
+          "status": "captured",
+          "naming": "Floppy/hard-disk images stay open as files and sector writes go back to the same image.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/OSGLUOSX.c Drives[]/vSonyTransfer open image files"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No persistent save-state file is implemented",
+          "status": "not_supported",
+          "naming": "No numbered slots or state filename grammar; state lives for the session only.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/ tree defines no snapshot writer"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Macintosh ROM file in the application bundle directory (variation ROM name such as vMac.ROM)",
+          "status": "captured",
+          "naming": "One ROM file per machine variation, resolved beside the application (macOS additionally checks the Preferences folder).",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz src/OSGLUOSX.c mnvm_rom/mnvm_dat refs plus Preferences fallback"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:minivmac-36.04.src.tgz no key files or decryption in src/ (license headers only)"
+          ]
+        }
+      ]
+    }
+  }
+}
