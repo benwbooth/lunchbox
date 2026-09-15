@@ -13,34 +13,194 @@
       "kind": "docs",
       "url": "https://kegs.sourceforge.net/",
       "role": "official distribution or project documentation"
+    },
+    {
+      "kind": "source",
+      "url": "https://kegs.sourceforge.net/kegs.1.38.zip",
+      "role": "pinned v1.38 source and binaries reviewed for paths/input/state"
     }
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official KEGS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://kegs.sourceforge.net/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official KEGS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://kegs.sourceforge.net/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official KEGS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:https://kegs.sourceforge.net/",
-        "host capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "config.kegs (also kegs_conf, .config.kegs) in the working directory",
+          "status": "captured",
+          "naming": "Disk-slot lines (s5d1/s6d1/s7d1) plus g_ options; auto-updated unless disabled.",
+          "evidence": [
+            "source:kegs.1.38.zip config.kegs sample file @v1.38",
+            "source:kegs.1.38.zip src/config.c lines 85-106,359 @v1.38"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Host keyboard joystick plus host keyboard",
+          "status": "captured",
+          "naming": "Linux /dev/js0 by default (g_joystick_dev)",
+          "evidence": [
+            "source:kegs.1.38.zip src/joystick_driver.c backend branches @v1.38"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mounted disk images, flushed back in place",
+          "status": "captured",
+          "naming": "iwm flush writes modified tracks back to the mounted image file.",
+          "evidence": [
+            "source:kegs.1.38.zip src/iwm.c iwm_flush_disk_to_unix @v1.38"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No save-state facility",
+          "status": "not_supported",
+          "naming": "No snapshot slots or state filename grammar in the reviewed source.",
+          "evidence": [
+            "source:kegs.1.38.zip src/ tree defines no snapshot writer @v1.38"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "ROM/ROM.01/ROM.03/APPLE2GS.ROM and slot ROMs under ROM/ beside the working directory",
+          "status": "captured",
+          "naming": "g_cfg_rom_path defaults to ROM/; slot ROM names enumerated per slot.",
+          "evidence": [
+            "source:kegs.1.38.zip src/config.c lines 135,407-419 @v1.38"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:kegs.1.38.zip src/config.c carries no key fields @v1.38"
+          ]
+        }
       ]
     },
     "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "config.kegs (also kegs_conf, .config.kegs) in the working directory",
+          "status": "captured",
+          "naming": "Disk-slot lines (s5d1/s6d1/s7d1) plus g_ options; auto-updated unless disabled.",
+          "evidence": [
+            "source:kegs.1.38.zip config.kegs sample file @v1.38",
+            "source:kegs.1.38.zip src/config.c lines 85-106,359 @v1.38"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Host keyboard joystick plus host keyboard",
+          "status": "captured",
+          "naming": "Windows WinMM JOYSTICKID1/2",
+          "evidence": [
+            "source:kegs.1.38.zip src/joystick_driver.c backend branches @v1.38"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mounted disk images, flushed back in place",
+          "status": "captured",
+          "naming": "iwm flush writes modified tracks back to the mounted image file.",
+          "evidence": [
+            "source:kegs.1.38.zip src/iwm.c iwm_flush_disk_to_unix @v1.38"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No save-state facility",
+          "status": "not_supported",
+          "naming": "No snapshot slots or state filename grammar in the reviewed source.",
+          "evidence": [
+            "source:kegs.1.38.zip src/ tree defines no snapshot writer @v1.38"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "ROM/ROM.01/ROM.03/APPLE2GS.ROM and slot ROMs under ROM/ beside the working directory",
+          "status": "captured",
+          "naming": "g_cfg_rom_path defaults to ROM/; slot ROM names enumerated per slot.",
+          "evidence": [
+            "source:kegs.1.38.zip src/config.c lines 135,407-419 @v1.38"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:kegs.1.38.zip src/config.c carries no key fields @v1.38"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "config.kegs (also kegs_conf, .config.kegs) in the working directory",
+          "status": "captured",
+          "naming": "Disk-slot lines (s5d1/s6d1/s7d1) plus g_ options; auto-updated unless disabled.",
+          "evidence": [
+            "source:kegs.1.38.zip config.kegs sample file @v1.38",
+            "source:kegs.1.38.zip src/config.c lines 85-106,359 @v1.38"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Host keyboard joystick plus host keyboard",
+          "status": "captured",
+          "naming": "macOS IOHIDManager USB HID",
+          "evidence": [
+            "source:kegs.1.38.zip src/joystick_driver.c backend branches @v1.38"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mounted disk images, flushed back in place",
+          "status": "captured",
+          "naming": "iwm flush writes modified tracks back to the mounted image file.",
+          "evidence": [
+            "source:kegs.1.38.zip src/iwm.c iwm_flush_disk_to_unix @v1.38"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No save-state facility",
+          "status": "not_supported",
+          "naming": "No snapshot slots or state filename grammar in the reviewed source.",
+          "evidence": [
+            "source:kegs.1.38.zip src/ tree defines no snapshot writer @v1.38"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "ROM/ROM.01/ROM.03/APPLE2GS.ROM and slot ROMs under ROM/ beside the working directory",
+          "status": "captured",
+          "naming": "g_cfg_rom_path defaults to ROM/; slot ROM names enumerated per slot.",
+          "evidence": [
+            "source:kegs.1.38.zip src/config.c lines 135,407-419 @v1.38"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:kegs.1.38.zip src/config.c carries no key fields @v1.38"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
       "status": "unresolved",
       "reason": "The official KEGS source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
       "evidence": [
