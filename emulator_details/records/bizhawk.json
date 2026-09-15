@@ -3,10 +3,28 @@
   "slug": "bizhawk",
   "emulator": "BizHawk",
   "sources": [
-    { "kind": "source", "repo": "TASEmulators/BizHawk", "commit": "8c6b8958bbbe623eaaa36bc82af858b812893628", "role": "portable config default, PathEntries defaults, SaveRAM/savestate/movie naming, firmware scan" },
-    { "kind": "docs", "url": "https://tasvideos.org/Bizhawk/Firmwares", "role": "required firmware per system" },
-    { "kind": "docs", "url": "https://tasvideos.org/Bizhawk/FAQ", "role": "Firmware folder error message" },
-    { "kind": "contract", "repo": "TASEmulators/BizHawk", "commit": "8c6b8958bbbe623eaaa36bc82af858b812893628", "role": "pinned controller config encoding: docs/BIZHAWK_SNES9X_CONTROLLER_CONTRACT.md, docs/BIZHAWK_GPGX_CONTROLLER_CONTRACT.md, docs/BIZHAWK_NESHAWK_CONTROLLER_CONTRACT.md, docs/BIZHAWK_PCEHAWK_CONTROLLER_CONTRACT.md, docs/BIZHAWK_SMSHAWK_CONTROLLER_CONTRACT.md, docs/BIZHAWK_TURBONYMA_CONTROLLER_CONTRACT.md; Unix BIZHAWK_HOME/BIZHAWK_DATA_HOME in docs/BIZHAWK_DEFINITION_CAPTURE.md" }
+    {
+      "kind": "source",
+      "repo": "TASEmulators/BizHawk",
+      "commit": "8c6b8958bbbe623eaaa36bc82af858b812893628",
+      "role": "portable config default, PathEntries defaults, SaveRAM/savestate/movie naming, firmware scan"
+    },
+    {
+      "kind": "docs",
+      "url": "https://tasvideos.org/Bizhawk/Firmwares",
+      "role": "required firmware per system"
+    },
+    {
+      "kind": "docs",
+      "url": "https://tasvideos.org/Bizhawk/FAQ",
+      "role": "Firmware folder error message"
+    },
+    {
+      "kind": "contract",
+      "repo": "TASEmulators/BizHawk",
+      "commit": "8c6b8958bbbe623eaaa36bc82af858b812893628",
+      "role": "pinned controller config encoding: docs/BIZHAWK_SNES9X_CONTROLLER_CONTRACT.md, docs/BIZHAWK_GPGX_CONTROLLER_CONTRACT.md, docs/BIZHAWK_NESHAWK_CONTROLLER_CONTRACT.md, docs/BIZHAWK_PCEHAWK_CONTROLLER_CONTRACT.md, docs/BIZHAWK_SMSHAWK_CONTROLLER_CONTRACT.md, docs/BIZHAWK_TURBONYMA_CONTROLLER_CONTRACT.md; Unix BIZHAWK_HOME/BIZHAWK_DATA_HOME in docs/BIZHAWK_DEFINITION_CAPTURE.md"
+    }
   ],
   "platforms": {
     "windows": {
@@ -54,8 +72,26 @@
             "docs:tasvideos.org/Bizhawk/FAQ"
           ]
         },
-        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; input capture remains unresolved for windows)"]},
-        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; keys capture remains unresolved for windows)"]}],
+        {
+          "purpose": "input",
+          "path": "<EmuHawk dir>/config.ini (--config-file overrides)",
+          "status": "captured",
+          "evidence": [
+            "source:TASEmulators/BizHawk src/BizHawk.Client.EmuHawk/Program.cs configPath @8c6b8958bbbe623eaaa36bc82af858b812893628",
+            "source:TASEmulators/BizHawk src/BizHawk.Client.Common/config/Config.cs AllTrollers @8c6b8958bbbe623eaaa36bc82af858b812893628"
+          ],
+          "naming": "config.ini is JSON carrying AllTrollers[ControllerType][ButtonName] binds plus AllTrollersAnalog, AllTrollersAutoFire, AllTrollersFeedbacks and HotkeyBindings dictionaries."
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "evidence": [
+            "source:TASEmulators/BizHawk src/BizHawk.Client.Common/config/Config.cs carries no key fields @8c6b8958bbbe623eaaa36bc82af858b812893628"
+          ],
+          "naming": "Firmware directory holds BIOS ROMs, not keys."
+        }
+      ],
       "notes": "Primary platform: EmuHawk.exe from GitHub releases (README requires at least Win10 22H2 or Win11 21H2; a 1.13.2 backport exists for XP/7/8.1). Lunchbox launches with a private --config copy and leaves PathEntries-directed save/state locations untouched."
     },
     "linux": {
@@ -100,8 +136,26 @@
             "docs:tasvideos.org/Bizhawk/Firmwares"
           ]
         },
-        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; input capture remains unresolved for linux)"]},
-        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; keys capture remains unresolved for linux)"]}],
+        {
+          "purpose": "input",
+          "path": "<EmuHawk dir>/config.ini (--config-file overrides)",
+          "status": "captured",
+          "evidence": [
+            "source:TASEmulators/BizHawk src/BizHawk.Client.EmuHawk/Program.cs configPath @8c6b8958bbbe623eaaa36bc82af858b812893628",
+            "source:TASEmulators/BizHawk src/BizHawk.Client.Common/config/Config.cs AllTrollers @8c6b8958bbbe623eaaa36bc82af858b812893628"
+          ],
+          "naming": "config.ini is JSON carrying AllTrollers[ControllerType][ButtonName] binds plus AllTrollersAnalog, AllTrollersAutoFire, AllTrollersFeedbacks and HotkeyBindings dictionaries."
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "evidence": [
+            "source:TASEmulators/BizHawk src/BizHawk.Client.Common/config/Config.cs carries no key fields @8c6b8958bbbe623eaaa36bc82af858b812893628"
+          ],
+          "naming": "Firmware directory holds BIOS ROMs, not keys."
+        }
+      ],
       "notes": "Supported: bizhawk-monort release started with EmuHawkMono.sh (runtime deps glibc, Mono complete, OpenAL, Lua 5.4); README calls the port about at parity with Mupen64Plus (N64) the notable omission, in a Windows-centric project. Lunchbox's direct-Mono launch supplies BIZHAWK_HOME/BIZHAWK_DATA_HOME explicitly and passes a private --config copy (docs/BIZHAWK_DEFINITION_CAPTURE.md)."
     },
     "macos": {
@@ -142,8 +196,26 @@
             "docs:tasvideos.org/Bizhawk/Firmwares"
           ]
         },
-        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; input capture remains unresolved for macos)"]},
-        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 (primary source cited by this record; keys capture remains unresolved for macos)"]}],
+        {
+          "purpose": "input",
+          "path": "<EmuHawk dir>/config.ini, legacy portable layout",
+          "status": "captured",
+          "evidence": [
+            "source:TASEmulators/BizHawk src/BizHawk.Client.EmuHawk/Program.cs configPath @8c6b8958bbbe623eaaa36bc82af858b812893628",
+            "source:TASEmulators/BizHawk src/BizHawk.Client.Common/config/Config.cs AllTrollers @8c6b8958bbbe623eaaa36bc82af858b812893628"
+          ],
+          "naming": "config.ini is JSON carrying AllTrollers[ControllerType][ButtonName] binds plus AllTrollersAnalog, AllTrollersAutoFire, AllTrollersFeedbacks and HotkeyBindings dictionaries."
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "evidence": [
+            "source:TASEmulators/BizHawk src/BizHawk.Client.Common/config/Config.cs carries no key fields @8c6b8958bbbe623eaaa36bc82af858b812893628"
+          ],
+          "naming": "Firmware directory holds BIOS ROMs, not keys."
+        }
+      ],
       "notes": "macOS support level: none for current releases. The README section macOS (legacy BizHawk) lists the options: use Windows/Linux or an x86_64 VM, run Sappharad's older 1.x port via Rosetta, or build his old 2.x source fork; Apple silicon would need x86_64 plus Rosetta. Paths above follow the pinned source's platform-independent exe-relative layout and apply to those legacy builds."
     }
   },
@@ -152,7 +224,7 @@
       "status": "no_verified_package",
       "reason": "BizHawk's upstream desktop distribution targets Windows and Linux/Unix builds; no trustworthy upstream Flatpak package is identified.",
       "evidence": [
-        "source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 README/release metadata — Windows and Unix desktop targets are documented, with no upstream Flatpak package"
+        "source:TASEmulators/BizHawk@8c6b8958bbbe623eaaa36bc82af858b812893628 README/release metadata \u2014 Windows and Unix desktop targets are documented, with no upstream Flatpak package"
       ]
     }
   }
