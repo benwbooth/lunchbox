@@ -148,7 +148,6 @@ enum PreparedJsonNativeLaunch {
     Vita3K(crate::controller_vita3k_native::native_command::NativeSession),
     Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
     YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Kronos(crate::controller_kronos_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Rmg(crate::controller_rmg_native::native_command::NativeSession),
@@ -221,7 +220,6 @@ impl PreparedJsonNativeLaunch {
             Self::Vita3K(session) => session.spawn(plan, cancel),
             Self::Caprice32(session) => session.spawn(plan, cancel),
             Self::YabaSanshiro(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Kronos(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Rmg(session) => session.spawn(plan, cancel),
@@ -290,7 +288,6 @@ impl PreparedJsonNativeLaunch {
             Self::Vita3K(session) => session.verify(cancel),
             Self::Caprice32(session) => session.verify(cancel),
             Self::YabaSanshiro(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Kronos(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Rmg(session) => session.verify(cancel),
@@ -359,7 +356,6 @@ impl PreparedJsonNativeLaunch {
             Self::Vita3K(session) => session.check_health(),
             Self::Caprice32(session) => session.check_health(),
             Self::YabaSanshiro(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Kronos(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Rmg(session) => session.check_health(),
@@ -9017,7 +9013,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Kronos")
     {

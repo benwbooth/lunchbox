@@ -1,6 +1,9 @@
 //! Exact raw-SDL2 preparation for native Kronos.
+#[cfg(target_os = "linux")]
 use crate::controller_bizhawk_guard::InputTopology;
 use crate::controller_catalog::{Calibration, InputBinding};
+#[cfg(not(target_os = "linux"))]
+use crate::controller_native_platform as platform;
 use crate::controller_native_process::{cancelled, capture};
 use crate::controllers::ControllerDevice;
 use anyhow::{Context, Result, ensure};
@@ -94,6 +97,7 @@ pub(crate) struct PreparedSession {
     pub(crate) directory: tempfile::TempDir,
     pub(crate) config_path: std::path::PathBuf,
     pub(crate) players: Vec<PreparedPlayer>,
+    #[cfg(target_os = "linux")]
     pub(crate) topology: InputTopology,
     initial: Snapshot,
     setup: super::settings::SavedSetup,
@@ -123,6 +127,7 @@ impl PreparedSession {
             );
             selected.push(device.device_path.clone());
         }
+        #[cfg(target_os = "linux")]
         let topology = InputTopology::capture(&selected)?;
         let initial = routing(observe(setup, None, cancel)?);
         let profile = crate::controller_catalog::catalog()
@@ -134,6 +139,9 @@ impl PreparedSession {
         let mut pads = Vec::new();
         let mut indices = BTreeSet::new();
         for (player, selected_path) in setup.players.iter().zip(selected.iter()) {
+            // Linux resolves through the sysfs topology; other hosts
+            // match the SDL device-interface path and require uniqueness.
+            #[cfg(target_os = "linux")]
             let runtime_path = topology
                 .resolve_runtime_path(
                     selected_path,
@@ -145,10 +153,32 @@ impl PreparedSession {
                 .with_context(|| {
                     format!("Kronos player {} device not found in SDL2", player.player)
                 })?;
+            #[cfg(not(target_os = "linux"))]
+            let runtime_path = {
+                let selected_string = selected_path.to_string_lossy().into_owned();
+                let candidates = initial
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                    .collect::<Vec<_>>();
+                ensure!(
+                    candidates.len() == 1,
+                    "Kronos player {} controller is missing or ambiguous in SDL",
+                    player.player
+                );
+                selected_string
+            };
             let captured = observe(setup, Some(&runtime_path), cancel)?;
             initial.ensure_same_routing(&routing(captured.clone()))?;
+            #[cfg(target_os = "linux")]
             topology.verify()?;
             let device = captured.device_at_path(&runtime_path)?;
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_device_path(
+                &captured.devices,
+                &runtime_path,
+                device.device_index,
+            )?;
             ensure!(
                 device.device_index < crate::controller_kronos::PERSDL_MAX_DEVICES,
                 "Kronos raw SDL codes address only the first four enumerated devices"
@@ -215,6 +245,7 @@ impl PreparedSession {
             directory,
             config_path,
             players: prepared,
+            #[cfg(target_os = "linux")]
             topology,
             initial,
             setup: setup.clone(),
@@ -226,6 +257,7 @@ impl PreparedSession {
 
     pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
         cancelled(cancel)?;
+        #[cfg(target_os = "linux")]
         self.topology.verify()?;
         for (path, expected) in &self.hashes {
             ensure!(file_hash(path)? == *expected, "Kronos launch input changed");
@@ -238,11 +270,41 @@ impl PreparedSession {
                 "Kronos player {} SDL2 routing changed",
                 player.player
             );
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_device_path(
+                &fresh.devices,
+                &player.runtime_path,
+                player.device_index,
+            )?;
         }
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        {
+            return self.topology.verify();
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Ok(());
+        }
     }
 
     pub(crate) fn check_health(&self) -> Result<()> {
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        return self.topology.verify();
+        #[cfg(not(target_os = "linux"))]
+        return self.verify_health_probe();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn verify_health_probe(&self) -> Result<()> {
+        let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+        self.initial.ensure_same_routing(&fresh)?;
+        for player in &self.players {
+            platform::require_unique_device_path(
+                &fresh.devices,
+                &player.runtime_path,
+                player.device_index,
+            )?;
+        }
+        Ok(())
     }
 }

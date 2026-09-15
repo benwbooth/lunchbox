@@ -44,13 +44,17 @@ impl SavedSetup {
             !self.emulator_id.trim().is_empty(),
             "Kronos needs an emulator identity"
         );
-        for path in [
+        let mut path_vec = vec![
             &self.content,
             &self.config_path,
             &self.probe_program,
             &self.sdl_library,
-            &self.bubblewrap_program,
-        ] {
+        ];
+        // bubblewrap is required only when a launch can actually sandbox;
+        // elsewhere the field is accepted and ignored.
+        #[cfg(target_os = "linux")]
+        path_vec.push(&self.bubblewrap_program);
+        for path in path_vec {
             ensure!(
                 path.is_absolute()
                     && !path
