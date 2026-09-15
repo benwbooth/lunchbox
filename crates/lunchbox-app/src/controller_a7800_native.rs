@@ -287,7 +287,7 @@ pub(crate) mod settings {
                     .get(&player.controller_id)
                     .context("A7800 controller has no saved calibration")?;
                 ensure!(
-                    calibration.os == "linux",
+                    ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
                     "A7800 mapping requires Linux physical calibration"
                 );
                 let mapping = calibration.plan_profile(profile)?;
@@ -335,8 +335,11 @@ pub(crate) mod settings {
 #[cfg(target_os = "linux")]
 mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::Calibration,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
@@ -532,8 +535,10 @@ mod session {
         cfg_directory: tempfile::TempDir,
         configs: Vec<SourceCopy>,
         physical_paths: Vec<String>,
+        device_indices: Vec<u32>,
         native_names: Vec<String>,
         captures: Vec<Snapshot>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         initial: Snapshot,
         setup: settings::SavedSetup,
@@ -566,6 +571,7 @@ mod session {
                 );
                 selected.push(found[0].device_path.clone());
             }
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(&selected)?;
             let initial = routing(observe(setup, None, cancel)?);
             ensure!(
@@ -577,7 +583,11 @@ mod session {
             let mut captures = Vec::new();
             let mut names = Vec::new();
             let mut token_maps = Vec::new();
+            let mut device_indices = Vec::new();
             for (player, selected_path) in setup.players.iter().zip(&selected) {
+                // Linux resolves through the sysfs topology; other hosts
+                // match the SDL device-interface path and require uniqueness.
+                #[cfg(target_os = "linux")]
                 let path = topology.resolve_runtime_path(
                     selected_path,
                     initial
@@ -585,14 +595,36 @@ mod session {
                         .iter()
                         .filter_map(|device| device.path.as_deref()),
                 )?;
+                #[cfg(not(target_os = "linux"))]
+                let path = {
+                    let selected_string = selected_path.to_string_lossy().into_owned();
+                    let candidates = initial
+                        .devices
+                        .iter()
+                        .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        candidates.len() == 1,
+                        "A7800 physical controller is missing or ambiguous in SDL"
+                    );
+                    selected_string
+                };
                 ensure!(
                     !physical_paths.contains(&path),
                     "A7800 players share a controller"
                 );
                 let captured = observe(setup, Some(&path), cancel)?;
                 initial.ensure_same_routing(&routing(captured.clone()))?;
+                #[cfg(target_os = "linux")]
                 topology.verify()?;
                 let device = captured.device_at_path(&path)?;
+                #[cfg(not(target_os = "linux"))]
+                platform::require_unique_device_path(
+                    &captured.devices,
+                    &path,
+                    device.device_index,
+                )?;
+                device_indices.push(device.device_index);
                 names.push(native_name(device, &captured.devices)?);
                 token_maps.push(mapped_items(
                     calibrations
@@ -705,8 +737,10 @@ mod session {
                 cfg_directory,
                 configs,
                 physical_paths,
+                device_indices,
                 native_names: names,
                 captures,
+                #[cfg(target_os = "linux")]
                 topology,
                 initial,
                 setup: setup.clone(),
@@ -750,6 +784,7 @@ mod session {
 
         pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
             cancelled(cancel)?;
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             ensure!(
                 fs::symlink_metadata(&self.profile)?.is_file()
@@ -779,17 +814,51 @@ mod session {
             }
             let fresh = routing(observe(&self.setup, None, cancel)?);
             self.initial.ensure_same_routing(&fresh)?;
-            for (path, expected) in self.physical_paths.iter().zip(&self.captures) {
+            for ((path, expected), index) in self
+                .physical_paths
+                .iter()
+                .zip(&self.captures)
+                .zip(&self.device_indices)
+            {
                 let captured = observe(&self.setup, Some(path), cancel)?;
                 expected.ensure_same_routing(&captured)?;
-                self.initial.ensure_same_routing(&routing(captured))?;
+                self.initial
+                    .ensure_same_routing(&routing(captured.clone()))?;
+                let device = captured.device_at_path(path)?;
+                ensure!(
+                    device.device_index == *index,
+                    "A7800 SDL joystick moved before launch"
+                );
+                #[cfg(not(target_os = "linux"))]
+                platform::require_unique_device_path(&captured.devices, path, *index)?;
+                #[cfg(target_os = "linux")]
                 self.topology.verify()?;
             }
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+            self.initial.ensure_same_routing(&fresh)?;
+            for (path, index) in self.physical_paths.iter().zip(&self.device_indices) {
+                platform::require_unique_device_path(&fresh.devices, path, *index)?;
+            }
+            Ok(())
         }
 
         pub(crate) fn physical_paths(&self) -> &[String] {
@@ -830,20 +899,23 @@ mod session {
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
+    use crate::controller_native_process::cancelled;
+    #[cfg(target_os = "linux")]
+    use crate::controller_native_process::native_pid;
     use crate::{
         controller_catalog::Calibration,
-        controller_native_process::{cancelled, native_pid},
+        controller_native_platform as platform,
         controllers::ControllerDevice,
         emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption},
     };
     use lunchbox_controller_probe::file_hash;
+    #[cfg(target_os = "linux")]
+    use std::{collections::BTreeSet, os::unix::fs::MetadataExt, path::Path};
     use std::{
-        collections::{BTreeSet, HashMap},
-        os::unix::fs::MetadataExt,
-        path::{Path, PathBuf},
+        collections::HashMap,
+        path::PathBuf,
         sync::atomic::AtomicBool,
         time::{Duration, Instant},
     };
@@ -896,9 +968,15 @@ pub(crate) mod native_command {
                     child.try_wait()?.is_none(),
                     "A7800 exited before controller handoff"
                 );
-                if let Some(pid) = native_pid(child.id(), &self.executable)?
-                    && self.ready(pid)?
-                {
+                // Linux walks the launch tree (bubblewrap monitors); other
+                // hosts check the direct child, which they spawn directly.
+                #[cfg(target_os = "linux")]
+                let owned = native_pid(child.id(), &self.executable)?
+                    .is_some_and(|pid| self.ready(pid).unwrap_or(false));
+                #[cfg(not(target_os = "linux"))]
+                let owned = platform::child_exe_matches(child.id(), &self.executable)?
+                    && self.ready(child.id())?;
+                if owned {
                     self.inputs.check_health()?;
                     return Ok(());
                 }
@@ -911,6 +989,21 @@ pub(crate) mod native_command {
         }
 
         fn ready(&self, pid: u32) -> Result<bool> {
+            // Linux proves the child mapped the SDL library and holds the
+            // pinned device nodes open. Other hosts pin the executable plus
+            // a fresh device re-probe; the weaker guarantee is explicit.
+            if cfg!(target_os = "linux") {
+                return self.ready_linux(pid);
+            }
+            if !platform::child_exe_matches(pid, &self.executable)? {
+                return Ok(false);
+            }
+            self.inputs.check_health()?;
+            Ok(true)
+        }
+
+        #[cfg(target_os = "linux")]
+        fn ready_linux(&self, pid: u32) -> Result<bool> {
             let expected_sdl = self.setup.sdl_library.canonicalize()?;
             let maps = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
             if !maps.lines().any(|line| {
@@ -959,7 +1052,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("A7800 calibrated launch requires native Linux");
+            anyhow::bail!("A7800 calibrated launch requires a native build");
         };
         ensure!(
             option.emulator_name.eq_ignore_ascii_case("A7800")
