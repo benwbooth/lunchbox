@@ -45,10 +45,17 @@ fn records_pin_sources_and_host_boundaries() {
             "unsupported"
         );
     }
-    for host in ["linux-flatpak", "windows", "macos"] {
+    assert_eq!(
+        record("picodrive")["platform_gaps"]["linux-flatpak"]["status"],
+        "unresolved"
+    );
+    for host in ["windows", "macos"] {
         assert_eq!(
-            record("picodrive")["platform_gaps"][host]["status"],
-            "unresolved"
+            record("picodrive")["platforms"][host]["paths"]
+                .as_array()
+                .unwrap()
+                .len(),
+            6
         );
     }
     for host in ["linux-flatpak", "macos"] {

@@ -79,7 +79,14 @@ fn captured_hosts_expose_all_six_purposes() {
             value["platform_gaps"]["linux-flatpak"]["status"],
             "no_verified_package"
         );
-        assert!(value["platform_gaps"].get("macos").is_some());
+        if slug == "xm7" {
+            assert!(value["platform_gaps"].get("macos").is_some());
+        } else {
+            let actual = purposes(&value, slug, "macos");
+            for expected in ["config", "input", "saves", "states", "bios", "keys"] {
+                assert!(actual.contains(&expected), "{slug} macos lacks {expected}");
+            }
+        }
     }
 
     let xroar = record("xroar");

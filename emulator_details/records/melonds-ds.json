@@ -76,6 +76,130 @@
           ]
         }
       ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<RetroArch application directory>\\retroarch.cfg (fallback %APPDATA%\\retroarch.cfg); melonDS DS has no native config file.",
+          "status": "captured",
+          "naming": "RetroArch key = value syntax plus melonDS DS core options; no standalone profile.",
+          "evidence": [
+            "source:src/libretro @bc4e4b6",
+            "source:records/retroarch.json frontend paths"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "RetroArch per-port input_playerN_* bindings; core sees port 1 RETRO_DEVICE_JOYPAD plus pointer/mouse/analog APIs.",
+          "status": "captured",
+          "naming": "Host mapping is RetroArch-owned; core input APIs declared in info/input sources.",
+          "evidence": [
+            "source:src/libretro/info.cpp @bc4e4b6",
+            "source:src/libretro/input/input.cpp @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<RetroArch application directory>\\saves\\ (or explicit savefile_directory); <content basename>.srm/.sav per core info.",
+          "status": "captured",
+          "naming": "Frontend save directory with core-declared SRAM extensions.",
+          "evidence": [
+            "source:melondsds_libretro.info @bc4e4b6",
+            "source:src/libretro/sram.cpp @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "<RetroArch application directory>\\states\\ (or explicit savestate_directory); frontend .state naming.",
+          "status": "captured",
+          "naming": "Serialized states via frontend; homebrew/DSi limitations apply.",
+          "evidence": [
+            "source:melondsds_libretro.info @bc4e4b6",
+            "docs:README.md @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<RetroArch application directory>\\system\\melonDS DS\\: bios7.bin, bios9.bin, dsi_bios7.bin, dsi_bios9.bin; firmware/NAND names are core-option selected.",
+          "status": "captured",
+          "naming": "System dir plus melonDS DS/ subdirectory; filenames core-option selected.",
+          "evidence": [
+            "docs:README.md @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "docs:README.md @bc4e4b6"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/Library/Application Support/RetroArch/config/retroarch.cfg (portable installs may be beside the app); melonDS DS has no native config file.",
+          "status": "captured",
+          "naming": "RetroArch key = value syntax plus melonDS DS core options; no standalone profile.",
+          "evidence": [
+            "source:src/libretro @bc4e4b6",
+            "source:records/retroarch.json frontend paths"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "RetroArch per-port input_playerN_* bindings; core sees port 1 RETRO_DEVICE_JOYPAD plus pointer/mouse/analog APIs.",
+          "status": "captured",
+          "naming": "Host mapping is RetroArch-owned; core input APIs declared in info/input sources.",
+          "evidence": [
+            "source:src/libretro/info.cpp @bc4e4b6",
+            "source:src/libretro/input/input.cpp @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/Documents/RetroArch/saves/ (portable installs may be beside the app); <content basename>.srm/.sav per core info.",
+          "status": "captured",
+          "naming": "Frontend save directory with core-declared SRAM extensions.",
+          "evidence": [
+            "source:melondsds_libretro.info @bc4e4b6",
+            "source:src/libretro/sram.cpp @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/Documents/RetroArch/states/ (portable installs may be beside the app); frontend .state naming.",
+          "status": "captured",
+          "naming": "Serialized states via frontend; homebrew/DSi limitations apply.",
+          "evidence": [
+            "source:melondsds_libretro.info @bc4e4b6",
+            "docs:README.md @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/Documents/RetroArch/system/melonDS DS/: bios7.bin, bios9.bin, dsi_bios7.bin, dsi_bios9.bin; firmware/NAND names are core-option selected.",
+          "status": "captured",
+          "naming": "System dir plus melonDS DS/ subdirectory; filenames core-option selected.",
+          "evidence": [
+            "docs:README.md @bc4e4b6"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "docs:README.md @bc4e4b6"
+          ]
+        }
+      ]
     }
   },
   "platform_gaps": {
@@ -84,20 +208,6 @@
       "reason": "melonDS DS is a libretro core; Flatpak behavior is determined by the chosen RetroArch package and its sandbox paths, so no standalone host contract is captured.",
       "evidence": [
         "source:README.md @bc4e4b6"
-      ]
-    },
-    "windows": {
-      "status": "unresolved",
-      "reason": "The core is distributed as a libretro DLL; RetroArch owns config, input, save and state roots, so no standalone host contract is captured.",
-      "evidence": [
-        "docs:README.md @bc4e4b6"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The core is distributed as a libretro dylib; RetroArch owns config, input, save and state roots, so no standalone host contract is captured.",
-      "evidence": [
-        "docs:README.md @bc4e4b6"
       ]
     }
   },

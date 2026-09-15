@@ -34,9 +34,13 @@ fn exact_records_have_pins_or_documented_no_pin_and_refuse_desktop_hosts() {
         }
     }
     assert_eq!(
-        record("nes-emu")["platform_gaps"]["linux"]["status"],
-        "unresolved"
+        record("nes-emu")["platforms"]["linux"]["paths"]
+            .as_array()
+            .unwrap()
+            .len(),
+        6
     );
+    assert!(record("nes-emu")["platform_gaps"].get("linux").is_none());
     assert_eq!(
         record("mugen")["platform_gaps"]["linux"]["status"],
         "unsupported"
