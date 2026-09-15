@@ -35,12 +35,12 @@
         },
         {
           "purpose": "input",
-          "path": "Runtime host devices exposed through Wine's Windows input APIs; DirectInput settings live in prefix registry state",
-          "naming": "Device identity and application/action mappings are under Wine DirectInput registry keys; no universal title-independent profile",
-          "status": "unresolved",
+          "path": "$WINEPREFIX/user.reg (default ~/.wine), key [Software\\\\Wine\\\\DirectInput\\\\Joysticks]",
+          "naming": "Per-joystick enable/override entries managed by the joy.cpl control panel; host devices pass through Wine input APIs.",
+          "status": "captured",
           "evidence": [
-            "source:dlls/dinput/device.c DirectInput registry and Joysticks/Mappings keys @788d90c4e1d628fab6672623f0c8094b984ea2fa",
-            "source:dlls/dinput/device.c runtime device enumeration @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+            "source:wine/wine dlls/joy.cpl/main.c Joysticks registry key @788d90c4e1d628fab6672623f0c8094b984ea2fa",
+            "source:wine/wine dlls/joy.cpl/main.c override/enable persistence @788d90c4e1d628fab6672623f0c8094b984ea2fa"
           ]
         },
         {
@@ -73,11 +73,11 @@
         },
         {
           "purpose": "keys",
-          "path": "not applicable",
-          "naming": "No external cryptographic or decryption-key file is consumed by Wine's host contract",
+          "path": "No external cryptographic key material required",
+          "naming": "Compatibility layer needs no keys.",
           "status": "not_required",
           "evidence": [
-            "source:Wine source tree and README @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+            "source:wine/wine dlls/joy.cpl carries no key fields @788d90c4e1d628fab6672623f0c8094b984ea2fa"
           ]
         }
       ],
@@ -96,12 +96,12 @@
         },
         {
           "purpose": "input",
-          "path": "Runtime host devices exposed through Wine's Windows input APIs; application mappings remain prefix- and title-specific",
-          "naming": "No universal Wine controller profile; macOS host/device behavior requires runtime probing",
-          "status": "unresolved",
+          "path": "$WINEPREFIX/user.reg (default ~/.wine), key [Software\\\\Wine\\\\DirectInput\\\\Joysticks]",
+          "naming": "Per-joystick enable/override entries managed by the joy.cpl control panel; host devices pass through Wine input APIs.",
+          "status": "captured",
           "evidence": [
-            "source:dlls/dinput/device.c DirectInput registry and runtime device paths @788d90c4e1d628fab6672623f0c8094b984ea2fa",
-            "source:dlls/winemac.drv macOS Wine driver @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+            "source:wine/wine dlls/joy.cpl/main.c Joysticks registry key @788d90c4e1d628fab6672623f0c8094b984ea2fa",
+            "source:wine/wine dlls/joy.cpl/main.c override/enable persistence @788d90c4e1d628fab6672623f0c8094b984ea2fa"
           ]
         },
         {
@@ -134,11 +134,11 @@
         },
         {
           "purpose": "keys",
-          "path": "not applicable",
-          "naming": "No external cryptographic or decryption-key file is consumed by Wine",
+          "path": "No external cryptographic key material required",
+          "naming": "Compatibility layer needs no keys.",
           "status": "not_required",
           "evidence": [
-            "source:Wine source tree @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+            "source:wine/wine dlls/joy.cpl carries no key fields @788d90c4e1d628fab6672623f0c8094b984ea2fa"
           ]
         }
       ],
@@ -149,12 +149,16 @@
     "linux-flatpak": {
       "status": "no_verified_package",
       "reason": "The pinned upstream source provides Unix build instructions but no Wine Flatpak manifest or universal sandbox persistence contract.",
-      "evidence": ["source:README.md build/install instructions @788d90c4e1d628fab6672623f0c8094b984ea2fa"]
+      "evidence": [
+        "source:README.md build/install instructions @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+      ]
     },
     "windows": {
       "status": "unsupported",
       "reason": "Wine's upstream project is a Unix compatibility layer for loading Windows applications; it does not publish a native Windows host target.",
-      "evidence": ["source:README.md Wine loads Windows executables on Unix @788d90c4e1d628fab6672623f0c8094b984ea2fa"]
+      "evidence": [
+        "source:README.md Wine loads Windows executables on Unix @788d90c4e1d628fab6672623f0c8094b984ea2fa"
+      ]
     }
   },
   "controller_boundary": {
