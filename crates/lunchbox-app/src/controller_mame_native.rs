@@ -7,12 +7,10 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(crate) mod config_copy;
 pub(crate) mod configuration;
 pub(crate) mod launch;
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command;
 pub(crate) mod overrides;
 pub(crate) mod prepared;
 pub(crate) mod sdl;
-#[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
 pub(crate) mod tokens;

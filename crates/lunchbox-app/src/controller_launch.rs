@@ -364,7 +364,6 @@ pub struct CalibratedLaunch {
     jgenesis_native: Option<PreparedJsonNativeLaunch>,
     #[cfg(target_os = "linux")]
     mednafen_native: Option<crate::controller_mednafen::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     mame_native: Option<crate::controller_mame_native::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
     flycast_native: Option<crate::controller_flycast_native::native_command::NativeSession>,
@@ -650,7 +649,6 @@ impl CalibratedLaunch {
         if let Some(native) = &mut self.mednafen_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.mame_native {
             return native.spawn(plan, cancel);
         }
@@ -1069,7 +1067,6 @@ impl CalibratedLaunch {
             jgenesis_native: None,
             #[cfg(target_os = "linux")]
             mednafen_native: None,
-            #[cfg(target_os = "linux")]
             mame_native: None,
             #[cfg(target_os = "linux")]
             flycast_native: None,
@@ -1155,7 +1152,6 @@ impl CalibratedLaunch {
         if let Some(native) = &self.mednafen_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.mame_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
@@ -1294,7 +1290,6 @@ impl CalibratedLaunch {
         if let Some(native) = &self.mednafen_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.mame_native {
             native.check_health()?;
         }
@@ -1854,7 +1849,6 @@ pub(crate) fn attach_fbneo_session(
         jgenesis_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
-        #[cfg(target_os = "linux")]
         mame_native: None,
         #[cfg(target_os = "linux")]
         flycast_native: None,
@@ -3626,7 +3620,6 @@ pub(crate) fn prepare_mame_calibrated_session(
         jgenesis_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
-        #[cfg(target_os = "linux")]
         mame_native: None,
         #[cfg(target_os = "linux")]
         flycast_native: None,
@@ -6047,7 +6040,6 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -6137,7 +6129,6 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -6227,7 +6218,6 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -6317,7 +6307,6 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: Some(native),
@@ -6392,7 +6381,6 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: Some(native),
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -6474,7 +6462,6 @@ pub fn prepare_with_cancellation(
             #[cfg(target_os = "linux")]
             jgenesis_native: None,
                 mednafen_native: Some(native),
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -6556,7 +6543,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -6638,7 +6624,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -6727,7 +6712,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -6809,7 +6793,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -6891,7 +6874,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -6973,7 +6955,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -7056,7 +7037,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -7138,7 +7118,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -7220,7 +7199,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -7302,7 +7280,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -7408,7 +7385,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: Some(PreparedJsonNativeLaunch::B2(native)),
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -7490,7 +7466,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Jgenesis(native)),
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -7572,7 +7547,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Gopher64(native)),
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -8892,7 +8866,6 @@ pub fn prepare_with_cancellation(
             jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -9831,7 +9804,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -9916,7 +9888,6 @@ pub fn prepare_with_cancellation(
             jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -10000,7 +9971,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -10085,7 +10055,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -10168,7 +10137,6 @@ pub fn prepare_with_cancellation(
                 jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                #[cfg(target_os = "linux")]
                 mame_native: None,
                 #[cfg(target_os = "linux")]
                 flycast_native: None,
@@ -11016,7 +10984,6 @@ pub fn prepare_with_cancellation(
         jgenesis_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
-        #[cfg(target_os = "linux")]
         mame_native: None,
         #[cfg(target_os = "linux")]
         flycast_native: None,
@@ -11432,7 +11399,6 @@ fn prepare_mode_aware(
         jgenesis_native: None,
         #[cfg(target_os = "linux")]
         mednafen_native: None,
-        #[cfg(target_os = "linux")]
         mame_native: None,
         #[cfg(target_os = "linux")]
         flycast_native: None,

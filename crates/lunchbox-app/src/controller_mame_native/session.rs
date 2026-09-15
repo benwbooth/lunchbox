@@ -1,7 +1,10 @@
 //! Native Linux launch-time SDL capture. Never called from settings review.
 use super::settings::{Runtime, SavedSetup};
+#[cfg(target_os = "linux")]
+use crate::controller_bizhawk_guard::InputTopology;
+#[cfg(not(target_os = "linux"))]
+use crate::controller_native_platform as platform;
 use crate::{
-    controller_bizhawk_guard::InputTopology,
     controller_native_process::{cancelled, capture},
     controllers::ControllerDevice,
 };
@@ -45,6 +48,7 @@ fn routing(mut snapshot: Snapshot) -> Snapshot {
 pub(crate) struct InputSession {
     pub physical_paths: HashMap<String, String>,
     pub devices: Vec<Device>,
+    #[cfg(target_os = "linux")]
     topology: InputTopology,
     initial: Snapshot,
     runtime: Runtime,
@@ -76,11 +80,15 @@ impl InputSession {
             );
             selected.push(found[0].device_path.clone());
         }
+        #[cfg(target_os = "linux")]
         let topology = InputTopology::capture(&selected)?;
         let initial = routing(observe(runtime, None, cancel)?);
         let mut devices = initial.devices.clone();
         let mut physical_paths = HashMap::new();
         for (player, selected) in setup.players.iter().zip(&selected) {
+            // Linux resolves through the sysfs topology; other hosts
+            // match the SDL device-interface path and require uniqueness.
+            #[cfg(target_os = "linux")]
             let path = topology.resolve_runtime_path(
                 selected,
                 initial
@@ -88,10 +96,31 @@ impl InputSession {
                     .iter()
                     .filter_map(|device| device.path.as_deref()),
             )?;
+            #[cfg(not(target_os = "linux"))]
+            let path = {
+                let selected_string = selected.to_string_lossy().into_owned();
+                let candidates = initial
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                    .collect::<Vec<_>>();
+                ensure!(
+                    candidates.len() == 1,
+                    "MAME physical controller is missing or ambiguous in SDL"
+                );
+                selected_string
+            };
             let captured = observe(runtime, Some(&path), cancel)?;
             initial.ensure_same_routing(&routing(captured.clone()))?;
+            #[cfg(target_os = "linux")]
             topology.verify()?;
             super::sdl::native_id(&path, &captured.devices)?;
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_device_path(
+                &captured.devices,
+                &path,
+                captured.device_at_path(&path)?.device_index,
+            )?;
             let device = captured
                 .devices
                 .into_iter()
@@ -107,6 +136,7 @@ impl InputSession {
         let session = Self {
             physical_paths,
             devices,
+            #[cfg(target_os = "linux")]
             topology,
             initial,
             runtime: runtime.clone(),
@@ -118,6 +148,7 @@ impl InputSession {
 
     pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
         cancelled(cancel)?;
+        #[cfg(target_os = "linux")]
         self.topology.verify()?;
         ensure!(
             file_hash(&self.runtime.probe_program)? == self.probe_hash,
@@ -125,10 +156,47 @@ impl InputSession {
         );
         self.initial
             .ensure_same_routing(&routing(observe(&self.runtime, None, cancel)?))?;
-        self.topology.verify()
+        // Stored capture devices pin their SDL index alongside the path.
+        let fresh = routing(observe(&self.runtime, None, cancel)?);
+        for stored in &self.devices {
+            let Some(path) = stored.path.as_deref() else {
+                continue;
+            };
+            let device = fresh.device_at_path(path)?;
+            ensure!(
+                device.device_index == stored.device_index,
+                "MAME SDL joystick moved before launch"
+            );
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_device_path(&fresh.devices, path, stored.device_index)?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            return self.topology.verify();
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Ok(());
+        }
     }
 
     pub(crate) fn check_health(&self) -> Result<()> {
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        return self.topology.verify();
+        #[cfg(not(target_os = "linux"))]
+        return self.verify_health_probe();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn verify_health_probe(&self) -> Result<()> {
+        let fresh = routing(observe(&self.runtime, None, &AtomicBool::new(false))?);
+        self.initial.ensure_same_routing(&fresh)?;
+        for stored in &self.devices {
+            let Some(path) = stored.path.as_deref() else {
+                continue;
+            };
+            platform::require_unique_device_path(&fresh.devices, path, stored.device_index)?;
+        }
+        Ok(())
     }
 }
