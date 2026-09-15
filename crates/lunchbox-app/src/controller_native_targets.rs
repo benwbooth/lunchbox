@@ -603,6 +603,39 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(simcoupe);
+    let mut vector06sdl = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    vector06sdl.id = "vector06sdl-stick".into();
+    vector06sdl.name = "Vector-06C stick — vector06sdl".into();
+    vector06sdl.family = "two-button".into();
+    vector06sdl.source = "https://github.com/svofski/vector06sdl/tree/5cbd54023df430446e283cb874cac36d71359d73/src/emulator.cpp".into();
+    vector06sdl.notes = "vector06sdl Vector-06C stick 0. Four dpad directions and two fire buttons; sticks have no mapping.".into();
+    vector06sdl.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("a", "Fire A", 70.0, 50.0, "face", true),
+        ("b", "Fire B", 80.0, 35.0, "face", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(vector06sdl);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -1433,6 +1466,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/simonowen/simcoupe/tree/1f966036543991c05022ce4f95cfbfbb0014b187",
         ),
         (
+            "vector06sdl",
+            "vector06sdl-stick",
+            1,
+            vec!["Vector-06C"],
+            "https://github.com/svofski/vector06sdl/tree/5cbd54023df430446e283cb874cac36d71359d73",
+        ),
+        (
             "ep128emu",
             "ep128emu-joystick",
             1,
@@ -1762,6 +1802,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("ep128emu", "ep128emu-joystick") {
         return Some(
             crate::controller_ep128emu_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("vector06sdl", "vector06sdl-stick") {
+        return Some(
+            crate::controller_vector06sdl_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),

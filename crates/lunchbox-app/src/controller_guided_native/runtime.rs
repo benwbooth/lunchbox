@@ -330,6 +330,19 @@ pub(super) fn reuse(
                 mapping.ep128emu_native_launches.push(setup);
             }
         }
+        "vector06sdl"
+            if !mapping
+                .vector06sdl_native_launches
+                .iter()
+                .any(|s| matches(&s.emulator_id, &s.content)) =>
+        {
+            if let Some(mut setup) =
+                template(&mapping.vector06sdl_native_launches, emulator, &["players"])?
+            {
+                setup.content = content(plan, &[])?;
+                mapping.vector06sdl_native_launches.push(setup);
+            }
+        }
         "simcoupe"
             if !mapping
                 .simcoupe_native_launches

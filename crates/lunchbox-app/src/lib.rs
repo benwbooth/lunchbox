@@ -172,6 +172,7 @@ mod controller_touchhle_native;
 mod controller_tsugaru_native;
 mod controller_uzem_standalone;
 mod controller_vba_m_native;
+mod controller_vector06sdl_native;
 mod controller_vice_native;
 mod controller_vice_xpet_standalone;
 mod controller_vice_xvic;

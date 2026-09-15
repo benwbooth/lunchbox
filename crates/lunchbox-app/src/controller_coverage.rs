@@ -40,6 +40,7 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "Tsugaru",
     "PCem",
     "SimCoupe",
+    "vector06sdl",
     "ep128emu",
     "Play!",
     "Vita3K",
@@ -376,6 +377,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
             let tsugaru = name.eq_ignore_ascii_case("Tsugaru");
             let pcem = name.eq_ignore_ascii_case("PCem");
             let simcoupe = name.eq_ignore_ascii_case("SimCoupe");
+            let vector06sdl = name.eq_ignore_ascii_case("vector06sdl");
             let ep128emu = name.eq_ignore_ascii_case("ep128emu");
             let play = name.eq_ignore_ascii_case("Play!");
             let vita3k = name.eq_ignore_ascii_case("Vita3K");
@@ -460,6 +462,8 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                     "Native Linux Play! dispatch is connected for the single DualShock 2 pad through evdev. It stages a private evdev input profile in a session directory, rechecks the exact evdev routes, and confirms child ownership. Hats and rumble are out of scope; other hosts, packages, and runtime input remain unverified."
                 } else if ep128emu {
                     "Native Linux ep128emu dispatch is connected for the single Enterprise joystick in the first SDL slot. It stages a session .ep128emu config with joystick event rows, rechecks the exact SDL routes, and confirms the child loaded the declared SDL library. Matrix rows, other hosts, packages, and runtime input remain unverified."
+                } else if vector06sdl {
+                    "Native Linux vector06sdl dispatch is connected for the single Vector-06C stick with a private gamecontrollerdb.txt. It stages the six stick outputs, rechecks the exact SDL2 routes, and confirms the child loaded the declared SDL library. Other sticks, hosts, packages, and runtime input remain unverified."
                 } else if simcoupe {
                     "Native Linux SimCoupe dispatch is connected for the single SAM joystick selected by exact SDL name. It stages a session SimCoupe.cfg under HOME, rechecks the exact SDL routes, and confirms the child loaded the declared SDL library. Other joysticks, hosts, packages, and runtime input remain unverified."
                 } else if pcem {

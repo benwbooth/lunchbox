@@ -14,6 +14,18 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 641: connected the pinned vector06sdl game-controller grammar to a
+single-player native Linux launch adapter. Source review proved index-based
+`SDL_GameControllerOpen(i)` selection, the six-button stick table, layered
+`gamecontrollerdb.txt` loading, and `--rom` launch. The session proves SDL
+index 0, inverts calibrated controls through the game-controller mapping
+into database tokens, and stages a session database. Catalog/settings/QML/
+guided/launch dispatch are connected. Focused writer tests and a full QML/C++
+check passed; no vector06sdl executable, image, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+75/250 partial standalone dispatches and 169/344 catalog source entries
+(49.1%), not runtime completion.
+
 Step 640: connected the pinned SimCoupe joystick options to a
 single-player native Linux launch adapter. Source review proved exact-SDL-
 name selection (`joydev1`), the SAM joystick-1 mapping, axes-0/1 plus hats
@@ -334,6 +346,18 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 641: connected the pinned vector06sdl game-controller grammar to a
+single-player native Linux launch adapter. Source review proved index-based
+`SDL_GameControllerOpen(i)` selection, the six-button stick table, layered
+`gamecontrollerdb.txt` loading, and `--rom` launch. The session proves SDL
+index 0, inverts calibrated controls through the game-controller mapping
+into database tokens, and stages a session database. Catalog/settings/QML/
+guided/launch dispatch are connected. Focused writer tests and a full QML/C++
+check passed; no vector06sdl executable, image, firmware, save, state, or
+controller runtime was exercised. This moves the source-backed inventory to
+75/250 partial standalone dispatches and 169/344 catalog source entries
+(49.1%), not runtime completion.
 
 Step 640: connected the pinned SimCoupe joystick options to a
 single-player native Linux launch adapter. Source review proved exact-SDL-
