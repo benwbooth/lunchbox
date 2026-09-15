@@ -378,7 +378,6 @@ impl PreparedJsonNativeLaunch {
 
 #[derive(Default)]
 pub struct CalibratedLaunch {
-    #[cfg(target_os = "linux")]
     snes9x_native: Option<crate::controller_snes9x::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
     fceux_native: Option<crate::controller_fceux::native_command::NativeSession>,
@@ -10081,7 +10080,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Snes9x")
     {

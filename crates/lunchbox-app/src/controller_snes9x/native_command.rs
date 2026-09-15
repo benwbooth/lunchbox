@@ -106,16 +106,23 @@ pub(crate) fn prepare(
             );
             (Runtime::Native, executable, Some(cwd.clone()))
         }
+        // Flatpak runtimes only exist on Linux.
+        #[cfg(target_os = "linux")]
         EmulatorExecutable::Flatpak { command, app_id } => {
             let runtime =
                 PreparedFlatpak::prepare(setup, option, original, command, app_id, cancel)?;
             let executable = runtime.executable().to_path_buf();
             (Runtime::Flatpak(runtime), executable, None)
         }
+        #[cfg(not(target_os = "linux"))]
+        EmulatorExecutable::Flatpak { .. } => {
+            anyhow::bail!("Snes9x Flatpak launches need Linux");
+        }
         EmulatorExecutable::Wine { .. } => {
             anyhow::bail!("Snes9x GTK calibrated launch does not support Wine");
         }
     };
+    let sandboxed = crate::controller_native_platform::use_bubblewrap_sandbox(&executable);
     let mut files = BTreeMap::new();
     let mut paths = vec![
         &executable,
@@ -123,7 +130,7 @@ pub(crate) fn prepare(
         &setup.sdl_library,
         &setup.content,
     ];
-    if native_cwd.is_some() {
+    if native_cwd.is_some() && sandboxed {
         paths.extend([&original.program, &setup.bubblewrap_program]);
     }
     for path in paths {
@@ -137,15 +144,25 @@ pub(crate) fn prepare(
     // parsing ordinary options. Do not launch a supposedly harmless --version
     // subprocess against the original configuration as a version probe.
     let mut inputs = PreparedSession::prepare(setup, calibrations, inventory, runtime, cancel)?;
+    // Sandbox or direct is a packaging decision, not an OS one:
+    // bubblewrap nests under plain native/Nix Linux launches. Contained
+    // launches and other hosts run direct with XDG_CONFIG_HOME pointed at
+    // the staged root, which resolves the private snes9x.conf.
     let mut plan = original.clone();
     if let Some(arguments) = inputs.stage_flatpak_launch(original)? {
         plan.arguments = arguments;
-    } else {
+    } else if sandboxed {
         plan.program = setup.bubblewrap_program.clone();
         plan.arguments =
             inputs
                 .configuration
                 .overlay_arguments(&executable, &original.arguments, &cwd)?;
+    } else {
+        plan.program = executable.clone();
+        plan.environment.push((
+            std::ffi::OsString::from("XDG_CONFIG_HOME"),
+            inputs.configuration.root().as_os_str().to_owned(),
+        ));
     }
     let session = NativeSession {
         inputs,

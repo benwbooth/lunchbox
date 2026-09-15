@@ -96,8 +96,8 @@ impl SavedSetup {
                 .get(&player.controller_id)
                 .context("Snes9x controller has no saved calibration")?;
             ensure!(
-                calibration.os == "linux",
-                "Snes9x native mapping requires Linux calibration"
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+                "Snes9x native mapping requires a desktop calibration"
             );
             let mapping = calibration.plan_profile(profile)?;
             ensure!(

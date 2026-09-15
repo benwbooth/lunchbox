@@ -149,7 +149,6 @@ impl PreparedConfig {
     /// Overlay only snes9x.conf so native save, state and screenshot paths
     /// remain unchanged. Caller must resolve native GTK config selection
     /// and retain this owner through the child lifetime.
-    #[cfg(target_os = "linux")]
     pub(crate) fn overlay_arguments(
         &self,
         executable: &Path,

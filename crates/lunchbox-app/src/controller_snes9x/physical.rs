@@ -15,8 +15,8 @@ pub(crate) fn calibrated_pad(
         sdl2_physical::PhysicalMap,
     };
     ensure!(
-        calibration.os == "linux",
-        "Snes9x native calibration requires Linux"
+        ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+        "Snes9x native calibration requires a desktop host"
     );
     let device = snapshot.device_at_path(runtime_path)?;
     let counts = device
