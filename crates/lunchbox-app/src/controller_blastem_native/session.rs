@@ -248,9 +248,9 @@ impl PreparedSession {
             initial.ensure_same_routing(&routing(captured.clone()))?;
             #[cfg(target_os = "linux")]
             topology.verify()?;
-            let device_index = captured.device_at_path(&path)?.device_index;
+            let device = captured.device_at_path(&path)?.device_index;
             #[cfg(not(target_os = "linux"))]
-            platform::require_unique_device_path(&captured.devices, &path, device_index)?;
+            platform::require_unique_device_path(&captured.devices, &path, device)?;
             let bindings = calibrated_bindings(
                 calibrations
                     .get(&player.controller_id)
@@ -258,7 +258,6 @@ impl PreparedSession {
                 &captured,
                 &path,
             )?;
-            let device = captured.device_at_path(&path)?.device_index;
             blocks.push_str(&super::pad_block(device, player.player, &bindings)?);
             devices.push(device);
             runtime_paths.push(path);

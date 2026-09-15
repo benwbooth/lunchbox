@@ -350,14 +350,10 @@ pub struct CalibratedLaunch {
     fceux_native: Option<crate::controller_fceux::native_command::NativeSession>,
     sameboy_native: Option<crate::controller_sameboy::native_command::NativeSession>,
     bsnes_native: Option<crate::controller_bsnes::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     stella_native: Option<crate::controller_stella_native::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     vice_native: Option<crate::controller_vice_native::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     hatari_native: Option<crate::controller_hatari_native::native_command::NativeSession>,
     desmume_native: Option<crate::controller_desmume_native::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     openmsx_native: Option<crate::controller_openmsx_native::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
     mesen2_native: Option<crate::controller_mesen2_native::native_command::NativeSession>,
@@ -620,22 +616,18 @@ impl CalibratedLaunch {
         if let Some(native) = &mut self.bsnes_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.stella_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.vice_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.hatari_native {
             return native.spawn(plan, cancel);
         }
         if let Some(native) = &mut self.desmume_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.openmsx_native {
             return native.spawn(plan, cancel);
         }
@@ -1067,14 +1059,10 @@ impl CalibratedLaunch {
             #[cfg(target_os = "linux")]
             sameboy_native: None,
             bsnes_native: None,
-            #[cfg(target_os = "linux")]
             stella_native: None,
-            #[cfg(target_os = "linux")]
             vice_native: None,
-            #[cfg(target_os = "linux")]
             hatari_native: None,
             desmume_native: None,
-            #[cfg(target_os = "linux")]
             openmsx_native: None,
             #[cfg(target_os = "linux")]
             mesen2_native: None,
@@ -1137,22 +1125,18 @@ impl CalibratedLaunch {
         if let Some(native) = &self.bsnes_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.stella_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.vice_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.hatari_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
         if let Some(native) = &self.desmume_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.openmsx_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
@@ -1282,22 +1266,18 @@ impl CalibratedLaunch {
         if let Some(native) = &self.bsnes_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.stella_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.vice_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.hatari_native {
             native.check_health()?;
         }
         if let Some(native) = &self.desmume_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.openmsx_native {
             native.check_health()?;
         }
@@ -1870,14 +1850,10 @@ pub(crate) fn attach_fbneo_session(
         #[cfg(target_os = "linux")]
         sameboy_native: None,
         bsnes_native: None,
-        #[cfg(target_os = "linux")]
         stella_native: None,
-        #[cfg(target_os = "linux")]
         vice_native: None,
-        #[cfg(target_os = "linux")]
         hatari_native: None,
         desmume_native: None,
-        #[cfg(target_os = "linux")]
         openmsx_native: None,
         #[cfg(target_os = "linux")]
         mesen2_native: None,
@@ -3648,14 +3624,10 @@ pub(crate) fn prepare_mame_calibrated_session(
         #[cfg(target_os = "linux")]
         sameboy_native: None,
         bsnes_native: None,
-        #[cfg(target_os = "linux")]
         stella_native: None,
-        #[cfg(target_os = "linux")]
         vice_native: None,
-        #[cfg(target_os = "linux")]
         hatari_native: None,
         desmume_native: None,
-        #[cfg(target_os = "linux")]
         openmsx_native: None,
         #[cfg(target_os = "linux")]
         mesen2_native: None,
@@ -6076,14 +6048,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
             bsnes_native: None,
-            #[cfg(target_os = "linux")]
             stella_native: None,
-            #[cfg(target_os = "linux")]
             vice_native: None,
-            #[cfg(target_os = "linux")]
             hatari_native: None,
             desmume_native: None,
-            #[cfg(target_os = "linux")]
             openmsx_native: None,
             #[cfg(target_os = "linux")]
             mesen2_native: None,
@@ -6172,14 +6140,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
             bsnes_native: None,
-            #[cfg(target_os = "linux")]
             stella_native: None,
-            #[cfg(target_os = "linux")]
             vice_native: None,
-            #[cfg(target_os = "linux")]
             hatari_native: None,
             desmume_native: None,
-            #[cfg(target_os = "linux")]
             openmsx_native: None,
             #[cfg(target_os = "linux")]
             mesen2_native: None,
@@ -6268,14 +6232,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
             bsnes_native: None,
-            #[cfg(target_os = "linux")]
             stella_native: None,
-            #[cfg(target_os = "linux")]
             vice_native: None,
-            #[cfg(target_os = "linux")]
             hatari_native: None,
             desmume_native: None,
-            #[cfg(target_os = "linux")]
             openmsx_native: None,
             #[cfg(target_os = "linux")]
             mesen2_native: None,
@@ -6364,14 +6324,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
             bsnes_native: None,
-            #[cfg(target_os = "linux")]
             stella_native: None,
-            #[cfg(target_os = "linux")]
             vice_native: None,
-            #[cfg(target_os = "linux")]
             hatari_native: None,
             desmume_native: None,
-            #[cfg(target_os = "linux")]
             openmsx_native: None,
             #[cfg(target_os = "linux")]
             mesen2_native: None,
@@ -6445,14 +6401,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
             bsnes_native: None,
-            #[cfg(target_os = "linux")]
             stella_native: None,
-            #[cfg(target_os = "linux")]
             vice_native: None,
-            #[cfg(target_os = "linux")]
             hatari_native: None,
             desmume_native: None,
-            #[cfg(target_os = "linux")]
             openmsx_native: None,
             #[cfg(target_os = "linux")]
             mesen2_native: None,
@@ -6533,14 +6485,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
             bsnes_native: None,
-            #[cfg(target_os = "linux")]
             stella_native: None,
-            #[cfg(target_os = "linux")]
             vice_native: None,
-            #[cfg(target_os = "linux")]
             hatari_native: None,
             desmume_native: None,
-            #[cfg(target_os = "linux")]
             openmsx_native: None,
             #[cfg(target_os = "linux")]
             mesen2_native: None,
@@ -6620,14 +6568,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: Some(native),
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -6675,7 +6619,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Stella")
     {
@@ -6709,14 +6652,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: Some(native),
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -6764,7 +6703,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && (option.emulator_name.eq_ignore_ascii_case("VICE")
             || option.emulator_name.eq_ignore_ascii_case("VICE (xvic)"))
@@ -6805,14 +6743,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: Some(native),
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -6860,7 +6794,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Hatari")
     {
@@ -6894,14 +6827,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: Some(native),
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -6983,14 +6912,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: Some(native),
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -7038,7 +6963,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("openMSX")
     {
@@ -7072,14 +6996,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: Some(native),
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -7161,14 +7081,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: Some(native),
@@ -7216,7 +7132,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("BlastEm")
     {
@@ -7250,14 +7165,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -7339,14 +7250,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -7428,14 +7335,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -7540,14 +7443,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -7628,14 +7527,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -7716,14 +7611,10 @@ pub fn prepare_with_cancellation(
                 fceux_native: None,
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -9042,14 +8933,10 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 sameboy_native: None,
             bsnes_native: None,
-            #[cfg(target_os = "linux")]
             stella_native: None,
-            #[cfg(target_os = "linux")]
             vice_native: None,
-            #[cfg(target_os = "linux")]
             hatari_native: None,
             desmume_native: None,
-            #[cfg(target_os = "linux")]
             openmsx_native: None,
             #[cfg(target_os = "linux")]
             mesen2_native: None,
@@ -9987,14 +9874,10 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -10078,14 +9961,10 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 sameboy_native: None,
             bsnes_native: None,
-            #[cfg(target_os = "linux")]
             stella_native: None,
-            #[cfg(target_os = "linux")]
             vice_native: None,
-            #[cfg(target_os = "linux")]
             hatari_native: None,
             desmume_native: None,
-            #[cfg(target_os = "linux")]
             openmsx_native: None,
             #[cfg(target_os = "linux")]
             mesen2_native: None,
@@ -10168,14 +10047,10 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -10259,14 +10134,10 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -10348,14 +10219,10 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 sameboy_native: None,
                 bsnes_native: None,
-                #[cfg(target_os = "linux")]
                 stella_native: None,
-                #[cfg(target_os = "linux")]
                 vice_native: None,
-                #[cfg(target_os = "linux")]
                 hatari_native: None,
                 desmume_native: None,
-                #[cfg(target_os = "linux")]
                 openmsx_native: None,
                 #[cfg(target_os = "linux")]
                 mesen2_native: None,
@@ -11202,14 +11069,10 @@ pub fn prepare_with_cancellation(
         #[cfg(target_os = "linux")]
         sameboy_native: None,
         bsnes_native: None,
-        #[cfg(target_os = "linux")]
         stella_native: None,
-        #[cfg(target_os = "linux")]
         vice_native: None,
-        #[cfg(target_os = "linux")]
         hatari_native: None,
         desmume_native: None,
-        #[cfg(target_os = "linux")]
         openmsx_native: None,
         #[cfg(target_os = "linux")]
         mesen2_native: None,
@@ -11624,14 +11487,10 @@ fn prepare_mode_aware(
         #[cfg(target_os = "linux")]
         sameboy_native: None,
         bsnes_native: None,
-        #[cfg(target_os = "linux")]
         stella_native: None,
-        #[cfg(target_os = "linux")]
         vice_native: None,
-        #[cfg(target_os = "linux")]
         hatari_native: None,
         desmume_native: None,
-        #[cfg(target_os = "linux")]
         openmsx_native: None,
         #[cfg(target_os = "linux")]
         mesen2_native: None,

@@ -262,6 +262,10 @@ pub(crate) mod settings {
     }
 }
 
+// Linux-only by source contract: the session reads the kernel joystick
+// device directly (`linux_classic::read_raw`) and the pinned mapper
+// interprets raw joydev axes/buttons. Other hosts have no joydev nodes,
+// so no port is staged.
 #[cfg(target_os = "linux")]
 mod session {
     use super::*;

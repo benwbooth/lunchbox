@@ -18,9 +18,7 @@
 use anyhow::{Context, Result, ensure};
 use std::collections::BTreeSet;
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command;
-#[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
 

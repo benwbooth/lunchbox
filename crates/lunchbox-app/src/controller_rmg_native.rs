@@ -390,6 +390,10 @@ pub(crate) mod settings {
     }
 }
 
+// Linux-only by source contract: prepare and verify read the kernel
+// joystick device directly (`linux_classic::read`) and require
+// /dev/input/js* paths. Other hosts have no joydev nodes, so no port
+// is staged.
 #[cfg(target_os = "linux")]
 pub(crate) mod session {
     use super::*;

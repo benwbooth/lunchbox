@@ -2,8 +2,11 @@
 //! stella.sqlite3 writer inside the persistent -basedir. The user's own
 //! Stella database is never opened.
 use super::{Binding, Stick, settings};
+#[cfg(target_os = "linux")]
+use crate::controller_bizhawk_guard::InputTopology;
+#[cfg(not(target_os = "linux"))]
+use crate::controller_native_platform as platform;
 use crate::{
-    controller_bizhawk_guard::InputTopology,
     controller_catalog::Calibration,
     controller_native_process::{cancelled, capture},
     controllers::ControllerDevice,
@@ -58,7 +61,7 @@ pub(super) fn calibrated_stick(
 ) -> Result<Stick> {
     use lunchbox_controller_probe::duckstation::DigitalInput;
     ensure!(
-        calibration.os == "linux",
+        ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
         "Stella native calibration requires Linux"
     );
     let device = snapshot.device_at_path(runtime_path)?;
@@ -178,6 +181,8 @@ fn port_events(player: u8) -> BTreeMap<&'static str, &'static str> {
 pub(crate) struct PreparedSession {
     setup: settings::SavedSetup,
     runtime_paths: Vec<String>,
+    device_indices: Vec<Option<u16>>,
+    #[cfg(target_os = "linux")]
     topology: InputTopology,
     initial: Snapshot,
     joymap: String,
@@ -206,12 +211,17 @@ impl PreparedSession {
             );
             selected.push(device.device_path.clone());
         }
+        #[cfg(target_os = "linux")]
         let topology = InputTopology::capture(&selected)?;
         let initial = observe(setup, None, cancel)?;
         let mut sticks = Vec::new();
         let mut names: Vec<String> = Vec::new();
         let mut runtime_paths = Vec::new();
+        let mut device_indices = Vec::new();
         for (player, selected) in setup.players.iter().zip(&selected) {
+            // Linux resolves through the sysfs topology; other hosts
+            // match the SDL device-interface path and require uniqueness.
+            #[cfg(target_os = "linux")]
             let path = topology.resolve_runtime_path(
                 selected,
                 initial
@@ -219,12 +229,31 @@ impl PreparedSession {
                     .iter()
                     .filter_map(|device| device.path.as_deref()),
             )?;
+            #[cfg(not(target_os = "linux"))]
+            let path = {
+                let selected_string = selected.to_string_lossy().into_owned();
+                let candidates = initial
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                    .collect::<Vec<_>>();
+                ensure!(
+                    candidates.len() == 1,
+                    "stella physical controller is missing or ambiguous in SDL"
+                );
+                selected_string
+            };
             ensure!(
                 !runtime_paths.contains(&path),
                 "Stella players resolved to the same native controller"
             );
             let captured = observe(setup, Some(&path), cancel)?;
+            #[cfg(target_os = "linux")]
             topology.verify()?;
+            let device = captured.device_at_path(&path)?;
+            device_indices.push(device.gamepad_index);
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_sdl3_path(&captured.devices, &path)?;
             let stick = calibrated_stick(
                 calibrations
                     .get(&player.controller_id)
@@ -248,6 +277,8 @@ impl PreparedSession {
         let session = Self {
             setup: setup.clone(),
             runtime_paths,
+            device_indices,
+            #[cfg(target_os = "linux")]
             topology,
             initial,
             joymap,
@@ -295,18 +326,44 @@ impl PreparedSession {
 
     pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
         cancelled(cancel)?;
+        #[cfg(target_os = "linux")]
         self.topology.verify()?;
         let fresh = observe(&self.setup, None, cancel)?;
-        for path in &self.runtime_paths {
-            fresh
+        for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
+            let device = fresh
                 .device_at_path(path)
                 .with_context(|| format!("Stella controller disappeared: {path}"))?;
+            ensure!(
+                device.gamepad_index == *index,
+                "Stella SDL joystick moved before launch"
+            );
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_sdl3_path(&fresh.devices, path)?;
         }
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        {
+            return self.topology.verify();
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Ok(());
+        }
     }
 
     pub(crate) fn check_health(&self) -> Result<()> {
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        return self.topology.verify();
+        #[cfg(not(target_os = "linux"))]
+        return self.verify_health_probe();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn verify_health_probe(&self) -> Result<()> {
+        let fresh = observe(&self.setup, None, &AtomicBool::new(false))?;
+        for path in &self.runtime_paths {
+            platform::require_unique_sdl3_path(&fresh.devices, path)?;
+        }
+        Ok(())
     }
 
     pub(crate) fn staged_joymap(&self) -> &str {

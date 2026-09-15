@@ -22,9 +22,7 @@
 //!   order, so the .vjm device column is the SDL joystick index.
 use anyhow::{Context, Result};
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command;
-#[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
 

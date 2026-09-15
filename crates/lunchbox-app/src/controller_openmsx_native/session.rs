@@ -1,8 +1,11 @@
 //! Native SDL2 launch-time inventory, calibration ownership and the private
 //! OPENMSX_HOME/-setting pair. The user's own settings.xml is never opened.
 use super::{Binding, settings};
+#[cfg(target_os = "linux")]
+use crate::controller_bizhawk_guard::InputTopology;
+#[cfg(not(target_os = "linux"))]
+use crate::controller_native_platform as platform;
 use crate::{
-    controller_bizhawk_guard::InputTopology,
     controller_catalog::Calibration,
     controller_native_process::{cancelled, capture},
     controllers::ControllerDevice,
@@ -56,7 +59,7 @@ pub(super) fn calibrated_bindings(
         duckstation::DigitalInput, linux_classic::AxisEndpoints, sdl2_physical::PhysicalMap,
     };
     ensure!(
-        calibration.os == "linux",
+        ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
         "openMSX native calibration requires Linux"
     );
     let device = snapshot.device_at_path(runtime_path)?;
@@ -169,6 +172,8 @@ pub(crate) struct PreparedSession {
     pub(crate) home_path: std::path::PathBuf,
     pub(crate) second_port_command: Option<String>,
     runtime_paths: Vec<String>,
+    device_indices: Vec<u32>,
+    #[cfg(target_os = "linux")]
     topology: InputTopology,
     initial: Snapshot,
     setup: settings::SavedSetup,
@@ -198,11 +203,16 @@ impl PreparedSession {
             );
             selected.push(device.device_path.clone());
         }
+        #[cfg(target_os = "linux")]
         let topology = InputTopology::capture(&selected)?;
         let initial = routing(observe(setup, None, cancel)?);
         let mut dicts = Vec::new();
         let mut runtime_paths = Vec::new();
+        let mut device_indices = Vec::new();
         for (player, selected) in setup.players.iter().zip(&selected) {
+            // Linux resolves through the sysfs topology; other hosts
+            // match the SDL device-interface path and require uniqueness.
+            #[cfg(target_os = "linux")]
             let path = topology.resolve_runtime_path(
                 selected,
                 initial
@@ -210,13 +220,34 @@ impl PreparedSession {
                     .iter()
                     .filter_map(|device| device.path.as_deref()),
             )?;
+            #[cfg(not(target_os = "linux"))]
+            let path = {
+                let selected_string = selected.to_string_lossy().into_owned();
+                let candidates = initial
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                    .collect::<Vec<_>>();
+                ensure!(
+                    candidates.len() == 1,
+                    "openmsx physical controller is missing or ambiguous in SDL"
+                );
+                selected_string
+            };
             ensure!(
                 !runtime_paths.contains(&path),
                 "openMSX players resolved to the same native controller"
             );
             let captured = observe(setup, Some(&path), cancel)?;
             initial.ensure_same_routing(&routing(captured.clone()))?;
+            #[cfg(target_os = "linux")]
             topology.verify()?;
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_device_path(
+                &captured.devices,
+                &path,
+                captured.device_at_path(&path)?.device_index,
+            )?;
             let bindings = calibrated_bindings(
                 calibrations
                     .get(&player.controller_id)
@@ -230,6 +261,7 @@ impl PreparedSession {
                 usize::from(player.player),
                 super::dict(&bindings, joystick)?,
             ));
+            device_indices.push(captured.device_at_path(&path)?.device_index);
             runtime_paths.push(path);
         }
         let references: Vec<_> = dicts.iter().map(|(p, d)| (*p, d.as_str())).collect();
@@ -255,6 +287,8 @@ impl PreparedSession {
                 None
             },
             runtime_paths,
+            device_indices,
+            #[cfg(target_os = "linux")]
             topology,
             initial,
             setup: setup.clone(),
@@ -266,6 +300,7 @@ impl PreparedSession {
 
     pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
         cancelled(cancel)?;
+        #[cfg(target_os = "linux")]
         self.topology.verify()?;
         for (path, expected) in &self.hashes {
             ensure!(
@@ -275,11 +310,40 @@ impl PreparedSession {
         }
         let fresh = routing(observe(&self.setup, None, cancel)?);
         self.initial.ensure_same_routing(&fresh)?;
-        self.topology.verify()
+        for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
+            let device = fresh.device_at_path(path)?;
+            ensure!(
+                device.device_index == *index,
+                "openMSX SDL joystick moved before launch"
+            );
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_device_path(&fresh.devices, path, *index)?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            return self.topology.verify();
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Ok(());
+        }
     }
 
     pub(crate) fn check_health(&self) -> Result<()> {
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        return self.topology.verify();
+        #[cfg(not(target_os = "linux"))]
+        return self.verify_health_probe();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn verify_health_probe(&self) -> Result<()> {
+        let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+        self.initial.ensure_same_routing(&fresh)?;
+        for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
+            platform::require_unique_device_path(&fresh.devices, path, *index)?;
+        }
+        Ok(())
     }
 
     /// Launch arguments select the private settings file (and the second
