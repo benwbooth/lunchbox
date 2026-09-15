@@ -365,6 +365,8 @@ pub struct ControllerMappingSettings {
     pub(crate) ep128emu_native_launches:
         Vec<crate::controller_ep128emu_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) adamem_native_launches: Vec<crate::controller_adamem_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) vector06sdl_native_launches:
         Vec<crate::controller_vector06sdl_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -576,6 +578,7 @@ impl Default for ControllerMappingSettings {
             cemu_native_launches: Vec::new(),
             play_native_launches: Vec::new(),
             ep128emu_native_launches: Vec::new(),
+            adamem_native_launches: Vec::new(),
             vector06sdl_native_launches: Vec::new(),
             simcoupe_native_launches: Vec::new(),
             pcem_native_launches: Vec::new(),
@@ -1627,6 +1630,7 @@ impl ControllerMappingSettings {
         crate::controller_ep128emu_native::settings::validate_setups(
             &self.ep128emu_native_launches,
         )?;
+        crate::controller_adamem_native::settings::validate_setups(&self.adamem_native_launches)?;
         crate::controller_vector06sdl_native::settings::validate_setups(
             &self.vector06sdl_native_launches,
         )?;

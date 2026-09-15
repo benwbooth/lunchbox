@@ -8,6 +8,7 @@ mod controller_86box_native;
 mod controller_8_bit_wonders_standalone;
 mod controller_a7800_native;
 mod controller_adam_plus_standalone;
+mod controller_adamem_native;
 mod controller_adviemulator_standalone;
 mod controller_amiarcadia_native;
 mod controller_amiberry_native;

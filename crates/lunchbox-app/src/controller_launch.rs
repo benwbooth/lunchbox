@@ -129,6 +129,7 @@ enum PreparedJsonNativeLaunch {
     Pcem(crate::controller_pcem_native::native_command::NativeSession),
     Simcoupe(crate::controller_simcoupe_native::native_command::NativeSession),
     Vector06sdl(crate::controller_vector06sdl_native::native_command::NativeSession),
+    Adamem(crate::controller_adamem_native::native_command::NativeSession),
     Ep128emu(crate::controller_ep128emu_native::native_command::NativeSession),
     Play(crate::controller_play_native::native_command::NativeSession),
     Vita3K(crate::controller_vita3k_native::native_command::NativeSession),
@@ -188,6 +189,7 @@ impl PreparedJsonNativeLaunch {
             Self::Pcem(session) => session.spawn(plan, cancel),
             Self::Simcoupe(session) => session.spawn(plan, cancel),
             Self::Vector06sdl(session) => session.spawn(plan, cancel),
+            Self::Adamem(session) => session.spawn(plan, cancel),
             Self::Ep128emu(session) => session.spawn(plan, cancel),
             Self::Play(session) => session.spawn(plan, cancel),
             Self::Vita3K(session) => session.spawn(plan, cancel),
@@ -242,6 +244,7 @@ impl PreparedJsonNativeLaunch {
             Self::Pcem(session) => session.verify(cancel),
             Self::Simcoupe(session) => session.verify(cancel),
             Self::Vector06sdl(session) => session.verify(cancel),
+            Self::Adamem(session) => session.verify(cancel),
             Self::Ep128emu(session) => session.verify(cancel),
             Self::Play(session) => session.verify(cancel),
             Self::Vita3K(session) => session.verify(cancel),
@@ -296,6 +299,7 @@ impl PreparedJsonNativeLaunch {
             Self::Pcem(session) => session.check_health(),
             Self::Simcoupe(session) => session.check_health(),
             Self::Vector06sdl(session) => session.check_health(),
+            Self::Adamem(session) => session.check_health(),
             Self::Ep128emu(session) => session.check_health(),
             Self::Play(session) => session.check_health(),
             Self::Vita3K(session) => session.check_health(),
@@ -9303,6 +9307,37 @@ pub fn prepare_with_cancellation(
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Ep128emu(native)),
                 description: "ep128emu: calibrated single Enterprise joystick in the first SDL slot through a session .ep128emu config, with exact SDL routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                ..Default::default()
+            }));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && option.emulator_name.eq_ignore_ascii_case("ADAMEm SDL")
+    {
+        let matches: Vec<_> = mapping
+            .adamem_native_launches
+            .iter()
+            .filter(|setup| {
+                setup.emulator_id == option.emulator_id
+                    && plan.arguments.as_slice() == [setup.content.as_os_str()]
+            })
+            .collect();
+        ensure!(matches.len() <= 1, "Ambiguous ADAMEm native saved setup");
+        if let Some(setup) = matches.first() {
+            let native = crate::controller_adamem_native::native_command::prepare(
+                setup,
+                &mapping.calibrations,
+                &inventory,
+                option,
+                plan,
+                cancel,
+            )?;
+            *plan = native.plan.clone();
+            return Ok(Some(CalibratedLaunch {
+                jgenesis_native: Some(PreparedJsonNativeLaunch::Adamem(native)),
+                description: "ADAMEm SDL: calibrated single ColecoVision stick with a private adamem.joy, with exact SDL routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
                 ..Default::default()
             }));
         }

@@ -14,6 +14,19 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 642: connected the pinned ADAMEm SDL joystick table to a
+single-player native Linux launch adapter. Source review proved index-based
+`SDL_JoystickOpen(i)` selection, axes as directions, the `raw,cv` adamem.joy
+grammar with fire/aim tokens, `ProgramPath`-beside-executable resolution, and
+positional cartridge launch. The session proves SDL index 0, pairs axis
+halves, refuses hats (no handler), and stages a private table beside a
+session executable link. Catalog/settings/QML/guided/launch dispatch are
+connected. Focused writer tests and a full QML/C++ check passed; no ADAMEm
+executable, cartridge, firmware, save, state, or controller runtime was
+exercised. This step also refused DREAMM (closed-source, no published binding
+grammar). This moves the source-backed inventory to 76/250 partial standalone
+dispatches and 170/344 catalog source entries (49.4%), not runtime completion.
+
 Step 641: connected the pinned vector06sdl game-controller grammar to a
 single-player native Linux launch adapter. Source review proved index-based
 `SDL_GameControllerOpen(i)` selection, the six-button stick table, layered
@@ -346,6 +359,19 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 642: connected the pinned ADAMEm SDL joystick table to a
+single-player native Linux launch adapter. Source review proved index-based
+`SDL_JoystickOpen(i)` selection, axes as directions, the `raw,cv` adamem.joy
+grammar with fire/aim tokens, `ProgramPath`-beside-executable resolution, and
+positional cartridge launch. The session proves SDL index 0, pairs axis
+halves, refuses hats (no handler), and stages a private table beside a
+session executable link. Catalog/settings/QML/guided/launch dispatch are
+connected. Focused writer tests and a full QML/C++ check passed; no ADAMEm
+executable, cartridge, firmware, save, state, or controller runtime was
+exercised. This step also refused DREAMM (closed-source, no published binding
+grammar). This moves the source-backed inventory to 76/250 partial standalone
+dispatches and 170/344 catalog source entries (49.4%), not runtime completion.
 
 Step 641: connected the pinned vector06sdl game-controller grammar to a
 single-player native Linux launch adapter. Source review proved index-based
