@@ -1,6 +1,7 @@
 //! Native GTK launch ownership; never invoked during settings review.
+#[cfg(target_os = "linux")]
+use super::flatpak::PreparedFlatpak;
 use super::{
-    flatpak::PreparedFlatpak,
     isolation::PreparedConfig,
     session::{PreparedSession, Runtime},
     settings::SavedSetup,

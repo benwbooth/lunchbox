@@ -111,7 +111,6 @@ pub(crate) fn config_toml(p1: &[(u8, &str, Binding)]) -> Result<String> {
 }
 
 /// Native SDL3 launch-time verification and private config ownership.
-#[cfg(target_os = "linux")]
 pub(crate) mod session {
     use super::{Binding, CONTROLS, config_toml};
     #[cfg(target_os = "linux")]
@@ -416,7 +415,6 @@ pub(crate) mod settings {
 }
 
 /// Native SDL3 launch-time verification and private config ownership.
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::settings::SavedSetup;
     #[cfg(target_os = "linux")]

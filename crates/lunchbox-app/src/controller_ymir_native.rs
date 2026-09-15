@@ -349,10 +349,13 @@ mod session {
         file_hash,
         linux_classic::AxisEndpoints,
     };
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
+    #[cfg(target_os = "windows")]
+    use std::os::windows::fs::symlink_file as symlink;
     use std::{
         collections::{BTreeMap, HashMap},
         fs,
-        os::unix::fs::symlink,
         path::PathBuf,
         process::Command,
         sync::atomic::AtomicBool,
@@ -413,7 +416,15 @@ mod session {
     fn mirror_entry(source: &PathBuf, link: &PathBuf) -> Result<()> {
         let kind = fs::symlink_metadata(source)?.file_type();
         if kind.is_symlink() {
-            symlink(fs::read_link(source)?, link)?;
+            let target = fs::read_link(source)?;
+            // The re-pointed target may be a file or a directory; Windows
+            // needs the matching symlink kind while Unix takes either.
+            #[cfg(target_os = "windows")]
+            if std::os::windows::fs::symlink_file(&target, link).is_err() {
+                std::os::windows::fs::symlink_dir(&target, link)?;
+            }
+            #[cfg(not(target_os = "windows"))]
+            symlink(target, link)?;
         } else if kind.is_dir() {
             fs::create_dir(link)?;
             for entry in fs::read_dir(source)? {

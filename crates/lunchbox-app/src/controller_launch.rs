@@ -28,7 +28,6 @@ enum PreparedBizhawkLaunch {
 enum RetainedLaunchDirectory {
     Plain(tempfile::TempDir),
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    #[cfg(target_os = "linux")]
     FrontendAutoconfig(crate::retroarch_frontend_autoconfig::FrontendAutoconfigSession),
 }
 
@@ -55,7 +54,6 @@ impl RetainedLaunchDirectory {
                 "Private controller launch directory disappeared"
             ),
             #[cfg(any(target_os = "macos", target_os = "windows"))]
-            #[cfg(target_os = "linux")]
             Self::FrontendAutoconfig(session) => session.verify()?,
         }
         Ok(())
@@ -85,6 +83,7 @@ impl RetainedLaunchDirectory {
 impl PreparedBizhawkLaunch {
     fn verify(&self) -> Result<()> {
         match self {
+            #[cfg(target_os = "linux")]
             Self::Configuration(config) => config.verify_source(),
             #[cfg(target_os = "linux")]
             Self::Captured(handoff) => handoff.verify(),
@@ -1052,6 +1051,7 @@ impl CalibratedLaunch {
             melonds_native: None,
             duckstation: None,
             ppsspp: None,
+            #[cfg(target_os = "linux")]
             bizhawk_topology: Some(topology),
             transports: Vec::new(),
             crocods: None,
@@ -3341,17 +3341,21 @@ pub(crate) fn mame_request_from_draft(
     inputs.extend(state);
     check_preparation_cancel(cancel)?;
     configuration.verify()?;
-    #[cfg(target_os = "linux")]
-    Ok(crate::controller_mame::InspectionRequest {
-        retroarch: runtime,
-        core: context.core.canonicalize()?,
-        machine: context.machine,
-        inspect_mouse: false,
-        inputs,
-        dependency_roots,
-        core_options,
-        environment: Vec::new(),
-    })
+    if cfg!(target_os = "linux") {
+        Ok(crate::controller_mame::InspectionRequest {
+            retroarch: runtime,
+            core: context.core.canonicalize()?,
+            machine: context.machine,
+            inspect_mouse: false,
+            inputs,
+            dependency_roots,
+            core_options,
+            environment: Vec::new(),
+        })
+    } else {
+        let _ = (runtime, inputs, dependency_roots, core_options);
+        anyhow::bail!("MAME inspection requires native Linux")
+    }
 }
 
 /// Owns a clean game-session dependency tree for the entire child lifetime. The caller
@@ -5968,6 +5972,7 @@ pub fn prepare_with_cancellation(
             xemu_native: None,
             scummvm_native: None,
             jgenesis_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
@@ -5978,6 +5983,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -5991,6 +5997,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "melonDS: standard DS buttons; partial native SDL2 support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
                     .into(),
@@ -6051,6 +6058,7 @@ pub fn prepare_with_cancellation(
             xemu_native: None,
             scummvm_native: None,
             jgenesis_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
@@ -6061,6 +6069,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -6074,6 +6083,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "RPCS3: standard pads, file boot targets; partial native SDL3 support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
                     .into(),
@@ -6134,6 +6144,7 @@ pub fn prepare_with_cancellation(
             xemu_native: None,
             scummvm_native: None,
             jgenesis_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: None,
@@ -6144,6 +6155,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -6157,6 +6169,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "PCSX2: native DualShock 2; partial native SDL3 support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
                     .into(),
@@ -6217,6 +6230,7 @@ pub fn prepare_with_cancellation(
             xemu_native: None,
             scummvm_native: None,
             jgenesis_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
                 flycast_native: Some(native),
@@ -6227,6 +6241,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -6240,6 +6255,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "Flycast: native standard six/eight-button panels; partial native raw SDL support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
                     .into(),
@@ -6285,6 +6301,7 @@ pub fn prepare_with_cancellation(
             xemu_native: None,
             scummvm_native: None,
             jgenesis_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: Some(native),
                 flycast_native: None,
@@ -6295,6 +6312,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -6308,6 +6326,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "MAME: native standard six/eight-button panels; partial native raw SDL support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
                     .into(),
@@ -6361,6 +6380,7 @@ pub fn prepare_with_cancellation(
             xemu_native: None,
             scummvm_native: None,
             jgenesis_native: None,
+                #[cfg(target_os = "linux")]
                 mednafen_native: Some(native),
                 mame_native: None,
                 flycast_native: None,
@@ -6371,6 +6391,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -6384,6 +6405,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "Mednafen: native GB/GBA/Lynx/Neo Geo Pocket/WonderSwan/Virtual Boy/Game Gear/Master System/PC Engine controls; partial Linux joydev support; child IDs and other native drivers unverified"
                     .into(),
@@ -6460,6 +6482,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "bsnes settings.bml: calibrated SNES gamepad controls through the SDL joypad driver; private per-launch settings file; partial native support on Linux, Windows, and macOS; Mouse/Super Multitap/Super Scope/Justifier targets not covered"
                     .into(),
@@ -6536,6 +6559,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "Stella 7.x: calibrated Atari 2600 joystick, Booster Grip/Genesis buttons and console switches through the private -basedir stella.sqlite3; SDL classic backend pinned; partial native support on Linux, Windows, and macOS; paddles, driving controllers, keypads and Stelladaptors not covered"
                     .into(),
@@ -6619,6 +6643,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "VICE: calibrated digital joystick pins through a private -config/-joymap pair; SDL2 numbering probed with the trusted runtime; partial native support on Linux, Windows, and macOS; keysets, paddles, potentiometers and extra userport adapters not covered"
                     .into(),
@@ -6695,6 +6720,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "Hatari: calibrated ST joystick through a private HOME and -c configuration with the declared TOS image; directions pinned to SDL axes 0/1 with hat 0 override; partial native support on Linux, Windows, and macOS; mouse, paddles and joypad emulation not covered"
                     .into(),
@@ -6771,6 +6797,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "DeSmuME: calibrated DS buttons through a private XDG_CONFIG_HOME [JOYKEYS] section; SDL2 numbering probed with the trusted runtime; partial native support on Linux, Windows, and macOS; touchscreen remains a mouse input; microphone, lid and Debug/Boost disabled"
                     .into(),
@@ -6847,6 +6874,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "openMSX: calibrated MSX joysticks through a private OPENMSX_HOME and settings file with the msxjoystickN_config dicts; SDL2 numbering probed with the trusted runtime; partial native support on Linux, Windows, and macOS; mice, JoyMega and paddle devices not covered"
                     .into(),
@@ -6924,6 +6952,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "Mesen2: calibrated NES controller through a private XDG_DATA_HOME settings.json using the evdev-keyed KeyMapping codes; the selected controller must be the sole qualifying gamepad; partial Linux support; Zapper, Power Pad, Four Score and non-NES systems not covered"
                     .into(),
@@ -7000,6 +7029,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "BlastEm: calibrated six-button Genesis pads through a private HOME tern config binding the selected SDL devices to gamepad ports; SDL2 numbering probed with the trusted runtime; partial native support on Linux, Windows, and macOS; mice, tee-input adapter and analog stick translation not covered"
                     .into(),
@@ -7076,6 +7106,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "xemu: calibrated Xbox pads through a private -config_path file mounting the declared boot ROM, flash image and game, with GUID port bindings and standard-index controller mappings over the SDL classic backend; partial native support on Linux, Windows, and macOS; same-GUID devices and Steel Battalion not covered"
                     .into(),
@@ -7152,6 +7183,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "ScummVM: calibrated engine-default keymap actions through a private XDG_CONFIG_HOME ini target over SDL standard gamepad fields; single SDL device zero; partial native support on Linux, Windows, and macOS; custom engine keymaps and the GUI/global keymaps are not remapped"
                     .into(),
@@ -7252,6 +7284,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "b2: selected native SDL2 GameControllers through a copied b2.json under a private XDG_CONFIG_HOME; source-fixed analogue/digital controls; partial native support on Linux, Windows, and macOS; runtime unverified"
                     .into(),
@@ -7328,6 +7361,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "jgenesis: calibrated Genesis controls through a private jgenesis-config.toml using raw SDL joystick indices; partial native support on Linux, Windows, and macOS; custom keymaps not covered"
                     .into(),
@@ -7404,6 +7438,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "Gopher64: calibrated N64 controls through a copied config.json under private XDG_CONFIG_HOME with measured SDL3 routing; native save/state data root preserved; partial native support on Linux, Windows, and macOS; portable mode, VRU and Transfer Pak authoring not covered"
                     .into(),
@@ -8702,6 +8737,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -8715,6 +8751,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "FCEUX Qt: calibrated native NES controls; partial native support on Linux, Windows, and macOS; ROM device overrides not resolved"
                     .into(),
@@ -9633,6 +9670,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -9646,6 +9684,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: "Snes9x GTK: calibrated native SNES controls; partial native support on Linux, Windows, and macOS"
                     .into(),
@@ -9709,6 +9748,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -9722,6 +9762,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description:
                     "Dolphin 2606: calibrated native GameCube controls; partial Linux ISO/GCM support".into(),
@@ -9783,6 +9824,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -9796,6 +9838,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description:
                     "mGBA SDL: calibrated native handheld controls; runtime handoff required".into(),
@@ -9857,6 +9900,7 @@ pub fn prepare_with_cancellation(
                 duckstation: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -9870,6 +9914,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description:
                     "PPSSPP: calibrated native PSP controls; startup confirmation required".into(),
@@ -9930,6 +9975,7 @@ pub fn prepare_with_cancellation(
                 ppsspp: None,
                 _directory: None,
                 bizhawk: None,
+                #[cfg(target_os = "linux")]
                 bizhawk_topology: None,
                 transports: Vec::new(),
                 crocods: None,
@@ -9943,6 +9989,7 @@ pub fn prepare_with_cancellation(
                 fbneo: None,
                 mame: None,
                 puae: None,
+                #[cfg(target_os = "linux")]
                 stella: None,
                 description: format!(
                     "DuckStation: {} calibrated native players; startup confirmation required",

@@ -8,7 +8,6 @@ pub(crate) mod configuration;
 pub(crate) mod isolation;
 pub(crate) mod native_command;
 pub(crate) mod physical;
-#[cfg(target_os = "linux")]
 pub(crate) mod preferences;
 pub(crate) mod routing;
 pub(crate) mod session;

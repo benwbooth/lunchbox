@@ -146,7 +146,8 @@ impl NativeSession {
             serial == expected.serial && crc == expected.crc,
             "PCSX2 native disc identity differs from saved setup"
         );
-        if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
             return self.ready_linux(pid);
         }
         if !platform::child_exe_matches(pid, &self.plan().program)? {

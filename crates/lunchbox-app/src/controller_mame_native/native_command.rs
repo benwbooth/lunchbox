@@ -127,7 +127,8 @@ impl NativeSession {
     fn ready(&self, pid: u32) -> Result<bool> {
         // Linux proves the maps plus the open device set. Other hosts pin
         // the executable plus a fresh device re-probe.
-        if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
             return self.ready_linux(pid);
         }
         if !platform::child_exe_matches(pid, &self.plan().program)? {

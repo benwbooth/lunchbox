@@ -173,7 +173,8 @@ impl NativeSession {
             opened.len() == self.inputs.devices.len(),
             "Flycast opened unexpected joysticks during handoff"
         );
-        if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
             return self.ready_linux(pid);
         }
         if !platform::child_exe_matches(pid, &self.plan().program)? {

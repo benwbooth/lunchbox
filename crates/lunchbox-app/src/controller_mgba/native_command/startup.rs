@@ -1,10 +1,16 @@
 //! Child-side mount/runtime checks for the pinned SDL native frontend.
 //! This establishes launch routing, not a gameplay or button-response test.
 use super::*;
+use crate::controller_native_platform as platform;
+#[cfg(target_os = "linux")]
 use crate::controller_native_process::native_pid;
+#[cfg(target_os = "linux")]
 use std::os::unix::fs::MetadataExt;
 use std::time::{Duration, Instant};
 
+// Linux proves the maps, the mount-namespace config bind, and the open
+// device set. Other hosts pin the executable plus a fresh device re-probe.
+#[cfg(target_os = "linux")]
 fn ready(session: &NativeSession, pid: u32) -> Result<bool> {
     let maps = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
     let sdl = session.setup.sdl_library.canonicalize()?;
@@ -58,6 +64,17 @@ fn ready(session: &NativeSession, pid: u32) -> Result<bool> {
     Ok(opened)
 }
 
+#[cfg(not(target_os = "linux"))]
+fn ready(session: &NativeSession, pid: u32) -> Result<bool> {
+    // Other hosts pin the executable plus a fresh device re-probe; the
+    // weaker guarantee is explicit here and in the launch text.
+    if !platform::child_exe_matches(pid, &session.executable)? {
+        return Ok(false);
+    }
+    session.check_health()?;
+    Ok(true)
+}
+
 pub(super) fn confirm(
     session: &NativeSession,
     child: &mut Child,
@@ -70,9 +87,15 @@ pub(super) fn confirm(
             child.try_wait()?.is_none(),
             "mGBA exited before controller handoff"
         );
-        if let Some(pid) = native_pid(child.id(), &session.executable)?
-            && ready(session, pid)?
-        {
+        // Linux walks the launch tree; other hosts check the direct
+        // child, which they spawn directly.
+        #[cfg(target_os = "linux")]
+        let owned = native_pid(child.id(), &session.executable)?
+            .is_some_and(|pid| ready(session, pid).unwrap_or(false));
+        #[cfg(not(target_os = "linux"))]
+        let owned = platform::child_exe_matches(child.id(), &session.executable)?
+            && ready(session, child.id())?;
+        if owned {
             session.verify()?;
             return Ok(());
         }

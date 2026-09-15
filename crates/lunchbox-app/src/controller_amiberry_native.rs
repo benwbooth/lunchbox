@@ -419,7 +419,6 @@ pub(crate) mod settings {
     }
 }
 
-#[cfg(target_os = "linux")]
 mod session {
     use super::*;
     use crate::{

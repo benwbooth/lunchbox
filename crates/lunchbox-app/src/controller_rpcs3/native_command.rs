@@ -112,7 +112,8 @@ impl NativeSession {
         // Linux proves the child log, SDL mapping and open device set.
         // Other hosts pin the executable plus a fresh device re-probe; the
         // weaker guarantee is explicit here and in the launch text.
-        if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
             return self.ready_linux(pid);
         }
         if !platform::child_exe_matches(pid, &self.plan().program)? {

@@ -342,7 +342,6 @@ pub(crate) mod settings {
     }
 }
 
-#[cfg(target_os = "linux")]
 mod session {
     use super::*;
     #[cfg(target_os = "linux")]
@@ -824,7 +823,6 @@ mod session {
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
     use crate::{

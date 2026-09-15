@@ -79,7 +79,6 @@ impl PreparedConfig {
     /// Native Linux startup appends /flycast to XDG_CONFIG_HOME. Do not change
     /// HOME, data directories, or cwd: those also affect saves and relative ROMs.
     /// This selects emu.cfg but does not isolate fallback mapping discovery.
-    #[cfg(target_os = "linux")]
     pub(crate) fn select_for_launch(&self, plan: &mut crate::emulator::LaunchPlan) -> Result<()> {
         self.verify_before_launch()?;
         ensure!(

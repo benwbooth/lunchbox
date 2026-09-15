@@ -332,7 +332,6 @@ pub(crate) mod settings {
     }
 }
 
-#[cfg(target_os = "linux")]
 mod session {
     use super::*;
     #[cfg(target_os = "linux")]
@@ -992,7 +991,8 @@ pub(crate) mod native_command {
             // Linux proves the child mapped the SDL library and holds the
             // pinned device nodes open. Other hosts pin the executable plus
             // a fresh device re-probe; the weaker guarantee is explicit.
-            if cfg!(target_os = "linux") {
+            #[cfg(target_os = "linux")]
+            {
                 return self.ready_linux(pid);
             }
             if !platform::child_exe_matches(pid, &self.executable)? {

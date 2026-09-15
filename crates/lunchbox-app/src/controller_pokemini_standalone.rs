@@ -543,9 +543,12 @@ pub(crate) mod native_command {
         emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption},
     };
     use lunchbox_controller_probe::file_hash;
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
+    #[cfg(target_os = "windows")]
+    use std::os::windows::fs::symlink_file as symlink;
     use std::{
         collections::HashMap,
-        os::unix::fs::symlink,
         path::PathBuf,
         sync::atomic::AtomicBool,
         time::{Duration, Instant},

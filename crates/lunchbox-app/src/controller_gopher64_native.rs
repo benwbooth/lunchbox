@@ -117,7 +117,6 @@ impl MappedInput {
         }
     }
 
-    #[cfg(target_os = "linux")]
     fn from_sdl(input: SdlInput) -> Result<Self> {
         match input {
             SdlInput::GamepadButton { index } => Ok(Self::Button(index)),

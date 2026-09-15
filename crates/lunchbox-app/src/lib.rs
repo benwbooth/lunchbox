@@ -84,7 +84,6 @@ mod controller_jpcsp_standalone;
 mod controller_jsorcerer_standalone;
 mod controller_jynx_standalone;
 mod controller_kronos;
-#[cfg(target_os = "linux")]
 mod controller_kronos_native;
 mod controller_launch;
 mod controller_launch_modes;
@@ -113,7 +112,6 @@ mod controller_msx_emu_standalone;
 mod controller_mu_native;
 mod controller_mugen_standalone;
 mod controller_nanoboyadvance_native;
-#[cfg(target_os = "linux")]
 mod controller_native_platform;
 mod controller_native_process;
 mod controller_native_targets;
