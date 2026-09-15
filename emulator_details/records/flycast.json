@@ -3,12 +3,37 @@
   "slug": "flycast",
   "emulator": "Flycast",
   "sources": [
-    { "kind": "source", "repo": "flyinghead/flycast", "commit": "eddf2635867f0f16f64bebd3185db151c99c551c", "role": "config/data roots, emu.cfg sections, VMU/savestate/nvmem naming, maple port and mapping-file persistence (v2.7 flatpak pin 5aa091fde632fb332c8d8c34e280d62dc951954c uses the same dc_boot/dc_nvmem patterns)" },
-    { "kind": "docs", "url": "https://github.com/TheArcadeStriker/flycast-wiki/wiki/Getting-started-with-Flycast", "role": "dc_boot.bin in the data folder, dc_nvmem.bin and VMU_save_XY.bin file table, arcade BIOS zip names" },
-    { "kind": "docs", "url": "https://github.com/TheArcadeStriker/flycast-wiki/wiki/Configuration-files-and-command-line-parameters", "role": "emu.cfg sections and -config section:key=value parameters" },
-    { "kind": "docs", "url": "https://flathub.org/apps/details/org.flycast.Flycast", "role": "flatpak app id org.flycast.Flycast" },
-    { "kind": "source", "repo": "flathub/org.flycast.Flycast", "role": "flatpak manifest org.flycast.Flycast.yml (app-id org.flycast.Flycast, --filesystem=host:ro, pins flycast v2.7)" },
-    { "kind": "docs", "url": "repo:docs/FLYCAST_STANDALONE_PROGRESS.md", "role": "Lunchbox pinned Flycast contracts: XDG_CONFIG_HOME/flycast/emu.cfg private config, [input] maple_sdl_joystick_ID player ports, [config] Dreamcast.MappingsPath grammar, version-3 mapping writer (pin fb286f777ce690ef8acf3359a75ab84b61566ad9)" }
+    {
+      "kind": "source",
+      "repo": "flyinghead/flycast",
+      "commit": "eddf2635867f0f16f64bebd3185db151c99c551c",
+      "role": "config/data roots, emu.cfg sections, VMU/savestate/nvmem naming, maple port and mapping-file persistence (v2.7 flatpak pin 5aa091fde632fb332c8d8c34e280d62dc951954c uses the same dc_boot/dc_nvmem patterns)"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/TheArcadeStriker/flycast-wiki/wiki/Getting-started-with-Flycast",
+      "role": "dc_boot.bin in the data folder, dc_nvmem.bin and VMU_save_XY.bin file table, arcade BIOS zip names"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/TheArcadeStriker/flycast-wiki/wiki/Configuration-files-and-command-line-parameters",
+      "role": "emu.cfg sections and -config section:key=value parameters"
+    },
+    {
+      "kind": "docs",
+      "url": "https://flathub.org/apps/details/org.flycast.Flycast",
+      "role": "flatpak app id org.flycast.Flycast"
+    },
+    {
+      "kind": "source",
+      "repo": "flathub/org.flycast.Flycast",
+      "role": "flatpak manifest org.flycast.Flycast.yml (app-id org.flycast.Flycast, --filesystem=host:ro, pins flycast v2.7)"
+    },
+    {
+      "kind": "docs",
+      "url": "repo:docs/FLYCAST_STANDALONE_PROGRESS.md",
+      "role": "Lunchbox pinned Flycast contracts: XDG_CONFIG_HOME/flycast/emu.cfg private config, [input] maple_sdl_joystick_ID player ports, [config] Dreamcast.MappingsPath grammar, version-3 mapping writer (pin fb286f777ce690ef8acf3359a75ab84b61566ad9)"
+    }
   ],
   "platforms": {
     "linux": {
@@ -66,8 +91,26 @@
             "repo:crates/lunchbox-app/src/firmware.rs (flycast firmware_rules entries for linux and linux-flatpak)"
           ]
         },
-        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; input capture remains unresolved for linux)"]},
-        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; keys capture remains unresolved for linux)"]}],
+        {
+          "purpose": "input",
+          "path": "~/.config/flycast/emu.cfg ($XDG_CONFIG_HOME/flycast/ when set)",
+          "status": "captured",
+          "evidence": [
+            "source:flyinghead/flycast core/linux-dist/main.cpp find_user_config_dir @eddf2635867f0f16f64bebd3185db151c99c551c",
+            "source:flyinghead/flycast core/input/gamepad_device.cpp input/maple port persistence @eddf2635867f0f16f64bebd3185db151c99c551c"
+          ],
+          "naming": "emu.cfg [input] maps SDL unique IDs to maple ports (maple_<id>); per-gamepad mappings persist alongside."
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "evidence": [
+            "source:flyinghead/flycast core/cfg/option.h carries no key fields @eddf2635867f0f16f64bebd3185db151c99c551c"
+          ],
+          "naming": "Dreamcast/Naomi/Atomiswave need no keys; reviewed config surface defines no key files."
+        }
+      ],
       "notes": "Lunchbox launches Flycast with a private XDG_CONFIG_HOME pointing at a session-owned flycast/emu.cfg (docs/FLYCAST_STANDALONE_PROGRESS.md 'Native Linux config selection' + 'Private config preparation'); user config is never overwritten and private writes stay session-local. Native VMU/nvmem/savestate files keep their data-dir locations."
     },
     "linux-flatpak": {
@@ -111,8 +154,23 @@
             "repo:crates/lunchbox-app/src/firmware.rs (flatpak flycast bios root)"
           ]
         },
-        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; input capture remains unresolved for linux-flatpak)"]},
-        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; keys capture remains unresolved for linux-flatpak)"]}],
+        {
+          "purpose": "input",
+          "path": "No source-backed input path or grammar was established for the linux-flatpak host during this catalog audit.",
+          "status": "unresolved",
+          "evidence": [
+            "source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; input capture remains unresolved for linux-flatpak)"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No source-backed keys path or grammar was established for the linux-flatpak host during this catalog audit.",
+          "status": "unresolved",
+          "evidence": [
+            "source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; keys capture remains unresolved for linux-flatpak)"
+          ]
+        }
+      ],
       "notes": "Flathub ships Flycast v2.7 as org.flycast.Flycast; inside the sandbox both XDG vars point under ~/.var/app/org.flycast.Flycast/, reproducing the native layout one level deeper."
     },
     "windows": {
@@ -157,8 +215,26 @@
             "source:core/windows/winmain.cpp (Windows data root is <exe dir>\\data\\)"
           ]
         },
-        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; input capture remains unresolved for windows)"]},
-        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; keys capture remains unresolved for windows)"]}],
+        {
+          "purpose": "input",
+          "path": "<exe-dir>\\emu.cfg (plus data\\ subdir)",
+          "status": "captured",
+          "evidence": [
+            "source:flyinghead/flycast core/windows/winmain.cpp exe-dir config/data roots @eddf2635867f0f16f64bebd3185db151c99c551c",
+            "source:flyinghead/flycast core/input/gamepad_device.cpp input/maple port persistence @eddf2635867f0f16f64bebd3185db151c99c551c"
+          ],
+          "naming": "emu.cfg [input] maps SDL unique IDs to maple ports (maple_<id>); per-gamepad mappings persist alongside."
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "evidence": [
+            "source:flyinghead/flycast core/cfg/option.h carries no key fields @eddf2635867f0f16f64bebd3185db151c99c551c"
+          ],
+          "naming": "Dreamcast/Naomi/Atomiswave need no keys; reviewed config surface defines no key files."
+        }
+      ],
       "notes": "The pinned source keeps all Windows data portable next to the executable (exe dir + data\\); there is no roaming/local AppData path in core/windows/winmain.cpp."
     },
     "macos": {
@@ -203,8 +279,26 @@
             "repo:crates/lunchbox-app/src/firmware.rs (macOS flycast bios root)"
           ]
         },
-        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; input capture remains unresolved for macos)"]},
-        {"purpose": "keys", "path": "No source-backed keys path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:flyinghead/flycast@eddf2635867f0f16f64bebd3185db151c99c551c (primary source cited by this record; keys capture remains unresolved for macos)"]}],
+        {
+          "purpose": "input",
+          "path": "~/.flycast/emu.cfg",
+          "status": "captured",
+          "evidence": [
+            "source:flyinghead/flycast shell/apple/emulator-osx/emulator-osx/osx-main.mm HOME .flycast @eddf2635867f0f16f64bebd3185db151c99c551c",
+            "source:flyinghead/flycast core/input/gamepad_device.cpp input/maple port persistence @eddf2635867f0f16f64bebd3185db151c99c551c"
+          ],
+          "naming": "emu.cfg [input] maps SDL unique IDs to maple ports (maple_<id>); per-gamepad mappings persist alongside."
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "evidence": [
+            "source:flyinghead/flycast core/cfg/option.h carries no key fields @eddf2635867f0f16f64bebd3185db151c99c551c"
+          ],
+          "naming": "Dreamcast/Naomi/Atomiswave need no keys; reviewed config surface defines no key files."
+        }
+      ],
       "notes": "The source and Lunchbox firmware adapter use the capitalized macOS data root ~/Library/Application Support/Flycast; legacy ~/.flycast remains an upstream compatibility path."
     }
   }
