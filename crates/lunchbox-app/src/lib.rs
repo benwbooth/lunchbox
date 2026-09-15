@@ -86,6 +86,7 @@ mod controller_kronos_native;
 mod controller_launch;
 mod controller_launch_modes;
 mod controller_layout;
+mod controller_libretro_core_rows;
 mod controller_linapple_native;
 mod controller_loopymse_standalone;
 mod controller_lrps2;
