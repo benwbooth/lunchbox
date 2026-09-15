@@ -2,11 +2,217 @@
   "schema_version": 1,
   "slug": "oricutron",
   "emulator": "Oricutron",
-  "sources": [{ "kind": "source", "repo": "https://github.com/pete-gordon/oricutron", "url": "https://github.com/pete-gordon/oricutron/commit/002279fce9fa756d1d63cdc40ae97939eb7de7ed", "commit": "002279fce9fa756d1d63cdc40ae97939eb7de7ed", "role": "main.c config parser and joystick.c SDL runtime-index selection and fixed input interpretation" }],
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://github.com/pete-gordon/oricutron",
+      "url": "https://github.com/pete-gordon/oricutron/commit/002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+      "commit": "002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+      "role": "main.c config parser and joystick.c SDL runtime-index selection and fixed input interpretation"
+    }
+  ],
   "platform_gaps": {
-    "linux": { "status": "unresolved", "reason": "The official Oricutron source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/pete-gordon/oricutron", "host capture withheld until all six purposes are source-backed"] },
-    "linux-flatpak": { "status": "unresolved", "reason": "The official Oricutron source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/pete-gordon/oricutron", "host capture withheld until all six purposes are source-backed"] },
-    "macos": { "status": "unresolved", "reason": "The official Oricutron source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/pete-gordon/oricutron", "host capture withheld until all six purposes are source-backed"] },
-    "windows": { "status": "unresolved", "reason": "The official Oricutron source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).", "evidence": ["official:https://github.com/pete-gordon/oricutron", "host capture withheld until all six purposes are source-backed"] }
+    "linux-flatpak": {
+      "status": "unresolved",
+      "reason": "The official Oricutron source does not establish an exact six-purpose host contract (config, controller input, saves, states, BIOS/firmware, and keys).",
+      "evidence": [
+        "official:https://github.com/pete-gordon/oricutron",
+        "host capture withheld until all six purposes are source-backed"
+      ]
+    }
+  },
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<exe-dir>/oricutron.cfg",
+          "status": "captured",
+          "naming": "Key = value config; machine/disktype/joystick selections persist here.",
+          "evidence": [
+            "source:main.c lines 523-535,197-230 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "<exe-dir>/oricutron.cfg joystick sections",
+          "status": "captured",
+          "naming": "SDL joystick slots with slot-equals-instance identity; fixed axis/hat/button interpretation.",
+          "evidence": [
+            "source:joystick.c SDL runtime-index selection @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "in place: the loaded disk image path (default images dir <exe-dir>/images/)",
+          "status": "captured",
+          "naming": "Floppy/Microdisc writes go back to the mounted image file itself; diskautosave controls write-back.",
+          "evidence": [
+            "source:disk.c fopen write-back @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:main.c diskautosave option @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "user-named snapshots under <exe-dir>/snapshots/ via the per-OS file requester",
+          "status": "captured",
+          "naming": "Save Snapshot requester defaults to the snapshots/ directory under the program root.",
+          "evidence": [
+            "source:gui.c lines 1390-1401,2299 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:filereq_win32.c/filereq_gtk.c/filereq_osx.m snapshot requests @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<exe-dir>/roms/ (basic11b.rom, basic10.rom and Microdisc/Jasmin/Pravetz controller ROMs; load_rom appends .rom)",
+          "status": "captured",
+          "naming": "Machine ROMs (Atmos basic11b, Oric-1 basic10, Microdisc/Jasmin/Pravetz controller ROMs) load from the roms/ directory under the program root.",
+          "evidence": [
+            "source:gui.c lines 2283-2284 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:machine.c load_diskroms @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:system.h ROMPREFIX/IMAGEPREFIX @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files; ROMs are plain dumps.",
+          "evidence": [
+            "source:machine.c load_rom plain reads @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "<exe-dir>\\oricutron.cfg",
+          "status": "captured",
+          "naming": "Key = value config; machine/disktype/joystick selections persist here.",
+          "evidence": [
+            "source:main.c lines 523-535,197-230 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "<exe-dir>\\oricutron.cfg joystick sections",
+          "status": "captured",
+          "naming": "SDL joystick slots with slot-equals-instance identity; fixed axis/hat/button interpretation.",
+          "evidence": [
+            "source:joystick.c SDL runtime-index selection @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "in place: the loaded disk image path (default images dir <exe-dir>\\images\\)",
+          "status": "captured",
+          "naming": "Floppy/Microdisc writes go back to the mounted image file itself; diskautosave controls write-back.",
+          "evidence": [
+            "source:disk.c fopen write-back @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:main.c diskautosave option @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "user-named snapshots under <exe-dir>\\snapshots\\ via the per-OS file requester",
+          "status": "captured",
+          "naming": "Save Snapshot requester defaults to the snapshots/ directory under the program root.",
+          "evidence": [
+            "source:gui.c lines 1390-1401,2299 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:filereq_win32.c/filereq_gtk.c/filereq_osx.m snapshot requests @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "<exe-dir>\\roms\\ (basic11b.rom, basic10.rom and Microdisc/Jasmin/Pravetz controller ROMs; load_rom appends .rom)",
+          "status": "captured",
+          "naming": "Machine ROMs (Atmos basic11b, Oric-1 basic10, Microdisc/Jasmin/Pravetz controller ROMs) load from the roms/ directory under the program root.",
+          "evidence": [
+            "source:gui.c lines 2283-2284 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:machine.c load_diskroms @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:system.h ROMPREFIX/IMAGEPREFIX @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files; ROMs are plain dumps.",
+          "evidence": [
+            "source:machine.c load_rom plain reads @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "oricutron.cfg beside the .app bundle (unbundled: beside the executable)",
+          "status": "captured",
+          "naming": "Key = value config; machine/disktype/joystick selections persist here. Bundled builds resolve the program root to the .app parent and chdir to Resources.",
+          "evidence": [
+            "source:main.c lines 523-535,197-230 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "oricutron.cfg beside the .app bundle (unbundled: beside the executable) joystick sections",
+          "status": "captured",
+          "naming": "SDL joystick slots with slot-equals-instance identity; fixed axis/hat/button interpretation.",
+          "evidence": [
+            "source:joystick.c SDL runtime-index selection @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "repo:crates/lunchbox-app/src/controller_oricutron_native.rs"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "in place: the loaded disk image path (default images dir images/ under the program root)",
+          "status": "captured",
+          "naming": "Floppy/Microdisc writes go back to the mounted image file itself; diskautosave controls write-back.",
+          "evidence": [
+            "source:disk.c fopen write-back @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:main.c diskautosave option @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "user-named snapshots under snapshots/ under the program root via the per-OS file requester",
+          "status": "captured",
+          "naming": "Save Snapshot requester defaults to the snapshots/ directory under the program root.",
+          "evidence": [
+            "source:gui.c lines 1390-1401,2299 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:filereq_win32.c/filereq_gtk.c/filereq_osx.m snapshot requests @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "roms/ under the program root (basic11b.rom, basic10.rom and Microdisc/Jasmin/Pravetz controller ROMs; load_rom appends .rom)",
+          "status": "captured",
+          "naming": "Machine ROMs (Atmos basic11b, Oric-1 basic10, Microdisc/Jasmin/Pravetz controller ROMs) load from the roms/ directory under the program root.",
+          "evidence": [
+            "source:gui.c lines 2283-2284 @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:machine.c load_diskroms @002279fce9fa756d1d63cdc40ae97939eb7de7ed",
+            "source:system.h ROMPREFIX/IMAGEPREFIX @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files; ROMs are plain dumps.",
+          "evidence": [
+            "source:machine.c load_rom plain reads @002279fce9fa756d1d63cdc40ae97939eb7de7ed"
+          ]
+        }
+      ]
+    }
   }
 }
