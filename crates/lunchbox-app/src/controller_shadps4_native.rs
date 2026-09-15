@@ -252,7 +252,7 @@ pub(crate) mod settings {
                 .get(&player.controller_id)
                 .context("shadPS4 controller has no saved calibration")?;
             ensure!(
-                calibration.os == "linux",
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
                 "shadPS4 mapping requires Linux physical calibration"
             );
             let mapping = calibration.plan_profile(profile)?;
@@ -293,11 +293,13 @@ pub(crate) mod settings {
     }
 }
 
-#[cfg(target_os = "linux")]
 mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::Calibration,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
@@ -409,6 +411,8 @@ mod session {
     pub(crate) struct PreparedSession {
         directory: tempfile::TempDir,
         physical_path: String,
+        gamepad_index: Option<u16>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         initial: serde_json::Value,
         setup: settings::SavedSetup,
@@ -439,8 +443,12 @@ mod session {
                 "shadPS4 physical controller is missing or ambiguous"
             );
             let selected = found[0].device_path.clone();
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
             let initial = comparable(&observe(setup, &[], cancel)?)?;
+            // Linux resolves through the sysfs topology; other hosts
+            // match the SDL device-interface path and require uniqueness.
+            #[cfg(target_os = "linux")]
             let physical_path = topology.resolve_runtime_path(
                 &selected,
                 observe(setup, &[], cancel)?
@@ -448,11 +456,27 @@ mod session {
                     .iter()
                     .filter_map(|device| device.path.as_deref()),
             )?;
+            #[cfg(not(target_os = "linux"))]
+            let physical_path = {
+                let selected_string = selected.to_string_lossy().into_owned();
+                let snapshot = observe(setup, &[], cancel)?;
+                let candidates = snapshot
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                    .collect::<Vec<_>>();
+                ensure!(
+                    candidates.len() == 1,
+                    "shadPS4 physical controller is missing or ambiguous in SDL"
+                );
+                selected_string
+            };
             let captured = observe(setup, &[physical_path.clone()], cancel)?;
             ensure!(
                 comparable(&captured)? == initial,
                 "shadPS4 SDL inventory moved during preparation"
             );
+            #[cfg(target_os = "linux")]
             topology.verify()?;
             let device = captured.device_at_path(&physical_path)?;
             ensure!(device.is_gamepad, "shadPS4 needs an SDL-recognized gamepad");
@@ -638,6 +662,8 @@ mod session {
             let prepared = Self {
                 directory,
                 physical_path,
+                gamepad_index: device.gamepad_index,
+                #[cfg(target_os = "linux")]
                 topology,
                 initial,
                 setup: setup.clone(),
@@ -654,6 +680,7 @@ mod session {
 
         pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
             cancelled(cancel)?;
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, hash) in &self.hashes {
                 ensure!(file_hash(path)? == *hash, "shadPS4 launch input changed");
@@ -668,11 +695,40 @@ mod session {
                 comparable(&captured)? == self.initial,
                 "shadPS4 SDL inventory moved before launch"
             );
-            self.topology.verify()
+            // SDL3 gamepad order is part of the pin alongside the path.
+            let device = captured.device_at_path(&self.physical_path)?;
+            ensure!(
+                device.gamepad_index == self.gamepad_index,
+                "shadPS4 SDL gamepad order moved before launch"
+            );
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_sdl3_path(&captured.devices, &self.physical_path)?;
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let snapshot = observe(&self.setup, &[], &AtomicBool::new(false))?;
+            ensure!(
+                comparable(&snapshot)? == self.initial,
+                "shadPS4 SDL inventory moved"
+            );
+            platform::require_unique_sdl3_path(&snapshot.devices, &self.physical_path)?;
+            Ok(())
         }
     }
 
@@ -733,19 +789,21 @@ mod session {
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
+    use crate::controller_native_platform as platform;
+    #[cfg(target_os = "linux")]
+    use crate::controller_native_process::native_pid;
     use crate::{
         controller_catalog::Calibration,
-        controller_native_process::{cancelled, native_pid},
+        controller_native_process::cancelled,
         controllers::ControllerDevice,
         emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption},
     };
     use lunchbox_controller_probe::file_hash;
     use std::{
         collections::HashMap,
-        path::{Path, PathBuf},
+        path::PathBuf,
         sync::atomic::AtomicBool,
         time::{Duration, Instant},
     };
@@ -798,9 +856,15 @@ pub(crate) mod native_command {
                     child.try_wait()?.is_none(),
                     "shadPS4 exited before controller handoff"
                 );
-                if let Some(pid) = native_pid(child.id(), &self.executable)?
-                    && self.ready(pid)?
-                {
+                // Linux walks the launch tree (bubblewrap monitors); other
+                // hosts check the direct child, which they spawn directly.
+                #[cfg(target_os = "linux")]
+                let owned = native_pid(child.id(), &self.executable)?
+                    .is_some_and(|pid| self.ready(pid).unwrap_or(false));
+                #[cfg(not(target_os = "linux"))]
+                let owned = platform::child_exe_matches(child.id(), &self.executable)?
+                    && self.ready(child.id())?;
+                if owned {
                     self.inputs.check_health()?;
                     return Ok(());
                 }
@@ -813,19 +877,16 @@ pub(crate) mod native_command {
         }
 
         fn ready(&self, pid: u32) -> Result<bool> {
-            let expected_sdl = self.setup.sdl_library.canonicalize()?;
-            let maps = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
-            if !maps.lines().any(|line| {
-                let path = line
-                    .split_whitespace()
-                    .skip(5)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .replace("\\040", " ");
-                Path::new(&path) == expected_sdl
-            }) {
+            // Linux proves the child mapped the exact SDL library. Other
+            // hosts pin the executable plus a fresh device re-probe; the
+            // weaker guarantee is explicit here and in the launch text.
+            if cfg!(target_os = "linux") {
+                return platform::child_maps_library(pid, &self.setup.sdl_library);
+            }
+            if !platform::child_exe_matches(pid, &self.executable)? {
                 return Ok(false);
             }
+            self.inputs.check_health()?;
             Ok(true)
         }
     }
@@ -841,7 +902,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("shadPS4 calibrated launch requires native Linux");
+            anyhow::bail!("shadPS4 calibrated launch requires a native build");
         };
         ensure!(
             option.emulator_name.eq_ignore_ascii_case("shadPS4")

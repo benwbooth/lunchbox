@@ -123,12 +123,9 @@ enum PreparedJsonNativeLaunch {
     PokeMini(crate::controller_pokemini_standalone::native_command::NativeSession),
     Uzem(crate::controller_uzem_standalone::native_command::NativeSession),
     Eka2l1(crate::controller_eka2l1_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Cemu(crate::controller_cemu_native::native_command::NativeSession),
     Azahar(crate::controller_azahar_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Shadps4(crate::controller_shadps4_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Ymir(crate::controller_ymir_native::native_command::NativeSession),
     DreamPotato(crate::controller_dreampotato_standalone::native_command::NativeSession),
     Panda3ds(crate::controller_panda3ds_native::native_command::NativeSession),
@@ -143,7 +140,6 @@ enum PreparedJsonNativeLaunch {
     Ep128emu(crate::controller_ep128emu_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Play(crate::controller_play_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Vita3K(crate::controller_vita3k_native::native_command::NativeSession),
     Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
     YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
@@ -194,12 +190,9 @@ impl PreparedJsonNativeLaunch {
             Self::PokeMini(session) => session.spawn(plan, cancel),
             Self::Uzem(session) => session.spawn(plan, cancel),
             Self::Eka2l1(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Cemu(session) => session.spawn(plan, cancel),
             Self::Azahar(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Shadps4(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Ymir(session) => session.spawn(plan, cancel),
             Self::DreamPotato(session) => session.spawn(plan, cancel),
             Self::Panda3ds(session) => session.spawn(plan, cancel),
@@ -214,7 +207,6 @@ impl PreparedJsonNativeLaunch {
             Self::Ep128emu(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Play(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Vita3K(session) => session.spawn(plan, cancel),
             Self::Caprice32(session) => session.spawn(plan, cancel),
             Self::YabaSanshiro(session) => session.spawn(plan, cancel),
@@ -261,12 +253,9 @@ impl PreparedJsonNativeLaunch {
             Self::PokeMini(session) => session.verify(cancel),
             Self::Uzem(session) => session.verify(cancel),
             Self::Eka2l1(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Cemu(session) => session.verify(cancel),
             Self::Azahar(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Shadps4(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Ymir(session) => session.verify(cancel),
             Self::DreamPotato(session) => session.verify(cancel),
             Self::Panda3ds(session) => session.verify(cancel),
@@ -281,7 +270,6 @@ impl PreparedJsonNativeLaunch {
             Self::Ep128emu(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Play(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Vita3K(session) => session.verify(cancel),
             Self::Caprice32(session) => session.verify(cancel),
             Self::YabaSanshiro(session) => session.verify(cancel),
@@ -328,12 +316,9 @@ impl PreparedJsonNativeLaunch {
             Self::PokeMini(session) => session.check_health(),
             Self::Uzem(session) => session.check_health(),
             Self::Eka2l1(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Cemu(session) => session.check_health(),
             Self::Azahar(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Shadps4(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Ymir(session) => session.check_health(),
             Self::DreamPotato(session) => session.check_health(),
             Self::Panda3ds(session) => session.check_health(),
@@ -348,7 +333,6 @@ impl PreparedJsonNativeLaunch {
             Self::Ep128emu(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Play(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Vita3K(session) => session.check_health(),
             Self::Caprice32(session) => session.check_health(),
             Self::YabaSanshiro(session) => session.check_health(),
@@ -8241,7 +8225,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Vita3K")
     {
@@ -8489,7 +8472,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Ymir")
     {
@@ -8520,7 +8502,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("shadPS4")
     {
@@ -8581,7 +8562,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Cemu")
     {
@@ -9232,7 +9212,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Vita3K")
     {
@@ -9633,7 +9612,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Ymir")
     {
@@ -9664,7 +9642,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("shadPS4")
     {
@@ -9725,7 +9702,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Cemu")
     {
