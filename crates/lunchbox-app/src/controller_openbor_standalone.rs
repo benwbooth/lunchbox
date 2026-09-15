@@ -266,7 +266,7 @@ pub(crate) mod settings {
                 .get(&player.controller_id)
                 .context("OpenBOR controller has no saved calibration")?;
             ensure!(
-                calibration.os == "linux",
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
                 "OpenBOR mapping requires Linux physical calibration"
             );
             let mapping = calibration.plan_profile(profile)?;
@@ -287,7 +287,7 @@ pub(crate) mod settings {
                 "mapping": mapping,
                 "launch_ready": false,
                 "launch_integration": "partial",
-                "detail": "Native Linux launch stages a session Saves/<pak>.cfg with player-1 joystick codes, then rechecks the exact SDL2 routes. Only the single P1 brawler deck on joystick slot 0 is supported; runtime behavior remains unverified."
+                "detail": "Native launch stages a session Saves/<pak>.cfg with player-1 joystick codes, then rechecks the exact SDL routes on Linux, Windows, and macOS. Ownership is strongest on Linux; other hosts pin the executable plus a fresh device re-probe. Only the single P1 brawler deck on joystick slot 0 is supported; runtime behavior remains unverified."
             }))
         }
     }
@@ -348,11 +348,13 @@ mod tests {
     }
 }
 
-#[cfg(target_os = "linux")]
 mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::Calibration,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
@@ -412,6 +414,8 @@ mod session {
         directory: tempfile::TempDir,
         config_name: String,
         physical_path: String,
+        device_index: u32,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         initial: Snapshot,
         setup: settings::SavedSetup,
@@ -457,17 +461,40 @@ mod session {
                 "OpenBOR physical controller is missing or ambiguous"
             );
             let selected = found[0].device_path.clone();
-            let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
             let initial = routing(observe(setup, None, cancel)?);
-            let physical_path = topology.resolve_runtime_path(
-                &selected,
-                initial
+            // Linux pins kernel input identity through the sysfs topology.
+            // Other hosts pin the SDL device-interface path plus index and
+            // re-probe it; names and GUIDs are never identity.
+            #[cfg(target_os = "linux")]
+            let (physical_path, topology) = {
+                let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
+                let physical_path = topology.resolve_runtime_path(
+                    &selected,
+                    initial
+                        .devices
+                        .iter()
+                        .filter_map(|device| device.path.as_deref()),
+                )?;
+                topology.verify()?;
+                (physical_path, topology)
+            };
+            #[cfg(not(target_os = "linux"))]
+            let physical_path = {
+                let selected_string = selected.to_string_lossy().into_owned();
+                let candidates = initial
                     .devices
                     .iter()
-                    .filter_map(|device| device.path.as_deref()),
-            )?;
+                    .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                    .collect::<Vec<_>>();
+                ensure!(
+                    candidates.len() == 1,
+                    "openbor physical controller is missing or ambiguous in SDL"
+                );
+                selected_string
+            };
             let captured = observe(setup, Some(&physical_path), cancel)?;
             initial.ensure_same_routing(&routing(captured.clone()))?;
+            #[cfg(target_os = "linux")]
             topology.verify()?;
             let device = captured.device_at_path(&physical_path)?;
             // SDL_JoystickOpen(i): player 1 uses slot 0.
@@ -580,6 +607,8 @@ mod session {
                 directory,
                 config_name,
                 physical_path,
+                device_index: device.device_index,
+                #[cfg(target_os = "linux")]
                 topology,
                 initial,
                 setup: setup.clone(),
@@ -595,6 +624,7 @@ mod session {
 
         pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
             cancelled(cancel)?;
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, hash) in &self.hashes {
                 ensure!(file_hash(path)? == *hash, "OpenBOR launch input changed");
@@ -609,28 +639,60 @@ mod session {
                 device.device_index == 0,
                 "OpenBOR SDL slot 0 moved before launch"
             );
-            self.topology.verify()
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_device_path(
+                &captured.devices,
+                &self.physical_path,
+                self.device_index,
+            )?;
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            // No sysfs exists here; health is a fresh same-routing probe
+            // that still sees the pinned path at the pinned index.
+            let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+            self.initial.ensure_same_routing(&fresh)?;
+            platform::require_unique_device_path(
+                &fresh.devices,
+                &self.physical_path,
+                self.device_index,
+            )?;
+            Ok(())
         }
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
+    use crate::controller_native_process::cancelled;
+    #[cfg(target_os = "linux")]
+    use crate::controller_native_process::native_pid;
     use crate::{
         controller_catalog::Calibration,
-        controller_native_process::{cancelled, native_pid},
+        controller_native_platform as platform,
         controllers::ControllerDevice,
         emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption},
     };
     use lunchbox_controller_probe::file_hash;
     use std::{
         collections::HashMap,
-        path::{Path, PathBuf},
+        path::PathBuf,
         sync::atomic::AtomicBool,
         time::{Duration, Instant},
     };
@@ -683,9 +745,15 @@ pub(crate) mod native_command {
                     child.try_wait()?.is_none(),
                     "OpenBOR exited before controller handoff"
                 );
-                if let Some(pid) = native_pid(child.id(), &self.executable)?
-                    && self.ready(pid)?
-                {
+                // Linux walks the launch tree (bubblewrap monitors); other
+                // hosts check the direct child, which they spawn directly.
+                #[cfg(target_os = "linux")]
+                let owned = native_pid(child.id(), &self.executable)?
+                    .is_some_and(|pid| self.ready(pid).unwrap_or(false));
+                #[cfg(not(target_os = "linux"))]
+                let owned = platform::child_exe_matches(child.id(), &self.executable)?
+                    && self.ready(child.id())?;
+                if owned {
                     self.inputs.check_health()?;
                     return Ok(());
                 }
@@ -698,19 +766,16 @@ pub(crate) mod native_command {
         }
 
         fn ready(&self, pid: u32) -> Result<bool> {
-            let expected_sdl = self.setup.sdl_library.canonicalize()?;
-            let maps = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
-            if !maps.lines().any(|line| {
-                let path = line
-                    .split_whitespace()
-                    .skip(5)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .replace("\\040", " ");
-                Path::new(&path) == expected_sdl
-            }) {
+            // Linux proves the child mapped the exact SDL library. Other
+            // hosts pin the executable plus a fresh device re-probe; the
+            // weaker guarantee is explicit here and in the launch text.
+            if cfg!(target_os = "linux") {
+                return platform::child_maps_library(pid, &self.setup.sdl_library);
+            }
+            if !platform::child_exe_matches(pid, &self.executable)? {
                 return Ok(false);
             }
+            self.inputs.check_health()?;
             Ok(true)
         }
     }
@@ -726,7 +791,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("OpenBOR calibrated launch requires native Linux");
+            anyhow::bail!("OpenBOR calibrated launch requires a native build");
         };
         ensure!(
             option.emulator_name.eq_ignore_ascii_case("OpenBOR")

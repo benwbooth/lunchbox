@@ -241,9 +241,9 @@ mod session {
     use super::*;
     #[cfg(target_os = "linux")]
     use crate::controller_bizhawk_guard::InputTopology;
+    use crate::controller_native_platform as platform;
     use crate::{
         controller_catalog::Calibration,
-        controller_native_platform as platform,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
     };

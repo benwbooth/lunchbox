@@ -29,6 +29,7 @@ mod controller_bgb_standalone;
 mod controller_bigpemu_standalone;
 mod controller_bizhawk;
 #[cfg(target_os = "linux")]
+#[cfg(target_os = "linux")]
 mod controller_bizhawk_guard;
 mod controller_blastem_native;
 mod controller_bluemsx_standalone;

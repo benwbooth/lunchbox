@@ -439,6 +439,10 @@ mod tests {
     }
 }
 
+// Linux-only by source contract: Play! on Linux reads evdev directly
+// (`InputProviderEvDev`) and the staged profile selects provider `evdv`
+// with a uniq-derived device id. Windows/macOS builds use different input
+// providers with different grammars; porting needs that grammar pinned.
 #[cfg(target_os = "linux")]
 mod session {
     use super::*;
