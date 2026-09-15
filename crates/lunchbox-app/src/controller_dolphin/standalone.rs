@@ -9,6 +9,9 @@ pub(crate) mod inventory;
 pub(crate) mod isolation;
 #[cfg(target_os = "linux")]
 pub(crate) mod native_command;
+// Linux-only by source contract: the session resolves kernel evdev devices
+// through sysfs topology plus a kernel-device inventory capture. Other
+// hosts have no evdev nodes, so no port is staged.
 #[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
