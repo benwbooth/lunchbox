@@ -3,10 +3,27 @@
   "slug": "dolphin",
   "emulator": "Dolphin",
   "sources": [
-    { "kind": "source", "repo": "dolphin-emu/dolphin", "commit": "6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4", "role": "pinned Dolphin 2606 source (matches docs/DOLPHIN_STANDALONE_PROGRESS.md pin) for all path and naming facts" },
-    { "kind": "contract", "url": "docs/DOLPHIN_CONTROLLER_CONTRACT.md", "role": "controller contract: GCPadNew.ini, Config/Profiles/GCPad, PadProfileN game-INI selection" },
-    { "kind": "docs", "url": "docs/DOLPHIN_STANDALONE_PROGRESS.md", "role": "standalone GCPadNew.ini writer and profile staging notes" },
-    { "kind": "docs", "url": "https://github.com/flathub/org.DolphinEmu.dolphin-emu", "role": "flatpak application id org.DolphinEmu.dolphin-emu" }
+    {
+      "kind": "source",
+      "repo": "dolphin-emu/dolphin",
+      "commit": "6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4",
+      "role": "pinned Dolphin 2606 source (matches docs/DOLPHIN_STANDALONE_PROGRESS.md pin) for all path and naming facts"
+    },
+    {
+      "kind": "contract",
+      "url": "docs/DOLPHIN_CONTROLLER_CONTRACT.md",
+      "role": "controller contract: GCPadNew.ini, Config/Profiles/GCPad, PadProfileN game-INI selection"
+    },
+    {
+      "kind": "docs",
+      "url": "docs/DOLPHIN_STANDALONE_PROGRESS.md",
+      "role": "standalone GCPadNew.ini writer and profile staging notes"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/flathub/org.DolphinEmu.dolphin-emu",
+      "role": "flatpak application id org.DolphinEmu.dolphin-emu"
+    }
   ],
   "platforms": {
     "linux": {
@@ -19,7 +36,7 @@
             "source:UICommon.cpp SetUserDirectory (portable.txt, DOLPHIN_EMU_USERPATH, legacy ~/.dolphin-emu, XDG data/config/cache split) @6094cfcf",
             "source:CommonPaths.h CONFIG_DIR, DOLPHIN_CONFIG, GCPAD_CONFIG=GCPadNew.ini, WIIPAD_CONFIG=WiimoteNew.ini @6094cfcf",
             "source:InputConfig.cpp GetUserProfileDirectoryPath = Config/Profiles/<name>/ and GetProfileKey PadProfileN/WiimoteProfileN game-INI keys @6094cfcf",
-            "controller syntax: pad sections [GCPad1..4]/[Wiimote1..4] and profile [Profile] sections serialize Device = <backend>/<index>/<devicename> plus group/control keys Buttons/A, D-Pad/Up, Main Stick/Up, C-Stick/Up, Triggers/L, Triggers/L-Analog with optional <key>/Range — ControllerEmu.cpp 'Device' key, ControlGroup/ControlGroup.cpp expression/Range keys, HW/GCPadEmu.h group names @6094cfcf",
+            "controller syntax: pad sections [GCPad1..4]/[Wiimote1..4] and profile [Profile] sections serialize Device = <backend>/<index>/<devicename> plus group/control keys Buttons/A, D-Pad/Up, Main Stick/Up, C-Stick/Up, Triggers/L, Triggers/L-Analog with optional <key>/Range \u2014 ControllerEmu.cpp 'Device' key, ControlGroup/ControlGroup.cpp expression/Range keys, HW/GCPadEmu.h group names @6094cfcf",
             "contract: docs/DOLPHIN_CONTROLLER_CONTRACT.md"
           ]
         },
@@ -36,7 +53,7 @@
         {
           "purpose": "states",
           "path": "~/.local/share/dolphin-emu/StateSaves/",
-          "naming": "<game id>.s<slot 01-10> for both GameCube and Wii (e.g. StateSaves/GALE01.s01), plus lastState.sav and undo.dtm; there is no .gci/.gcs state format — .gci is a memory-card save image",
+          "naming": "<game id>.s<slot 01-10> for both GameCube and Wii (e.g. StateSaves/GALE01.s01), plus lastState.sav and undo.dtm; there is no .gci/.gcs state format \u2014 .gci is a memory-card save image",
           "evidence": [
             "source:Core/State.cpp MakeStateFilename = {StateSaves}/{GameID}.s{slot:02d}, lastState.sav, undo.dtm @6094cfcf",
             "source:Core/State.h NUM_STATES=10 @6094cfcf"
@@ -59,14 +76,26 @@
             "source:Core/IOS/IOSC.cpp constexpr ROOT_PUBLIC_KEY/DEFAULT_PRIVATE_KEY key material @6094cfcf"
           ]
         },
-        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux host during this catalog audit.", "status": "unresolved", "evidence": ["source:dolphin-emu/dolphin@6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4 (primary source cited by this record; input capture remains unresolved for linux)"]}],
+        {
+          "purpose": "input",
+          "path": "~/.local/share/dolphin-emu/Config/GCPadNew.ini (also WiimoteNew.ini; profiles under Config/Profiles/GCPad/; ~/.dolphin-emu compat fallback)",
+          "status": "captured",
+          "evidence": [
+            "source:dolphin-emu/dolphin Source/Core/Core/HW/GCPad.cpp InputConfig GCPadNew @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4",
+            "source:dolphin-emu/dolphin Source/Core/Common/CommonPaths.h GCPAD_CONFIG/WIIPAD_CONFIG @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4",
+            "source:dolphin-emu/dolphin Source/Core/InputCommon/InputConfig.cpp Config/Profiles path @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4",
+            "source:dolphin-emu/dolphin Source/Core/UICommon/UICommon.cpp SetUserDirectory per-OS roots @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4"
+          ],
+          "naming": "INI pad-profile grammar with per-pad sections and device-qualified expressions; per-game INI PadProfileN selects a GCPad profile."
+        }
+      ],
       "notes": "Lunchbox firmware adapter roots at ~/.local/share/dolphin-emu with the ~/.dolphin-emu legacy fallback (crates/lunchbox-app/src/firmware.rs)."
     },
     "linux-flatpak": {
       "paths": [
         {
           "purpose": "config",
-          "path": "org.DolphinEmu.dolphin-emu: Config tree (Dolphin.ini, GCPadNew.ini, WiimoteNew.ini, Profiles/GCPad/*.ini, Profiles/Wiimote/*.ini) at ~/.var/app/org.DolphinEmu.dolphin-emu/config/dolphin-emu/Config/; the rest of the user dir (GC, Wii, StateSaves, GameSettings) roots at ~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/ — the sandbox /.flatpak-info check forces the XDG layout, so the legacy ~/.dolphin-emu branch never applies",
+          "path": "org.DolphinEmu.dolphin-emu: Config tree (Dolphin.ini, GCPadNew.ini, WiimoteNew.ini, Profiles/GCPad/*.ini, Profiles/Wiimote/*.ini) at ~/.var/app/org.DolphinEmu.dolphin-emu/config/dolphin-emu/Config/; the rest of the user dir (GC, Wii, StateSaves, GameSettings) roots at ~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/ \u2014 the sandbox /.flatpak-info check forces the XDG layout, so the legacy ~/.dolphin-emu branch never applies",
           "naming": "Same Dolphin controller INI syntax as native: [GCPad1..4]/[Wiimote1..4] and Profiles/GCPad|Wiimote sections with Device/Buttons/A/Triggers/L-Analog group-control keys",
           "evidence": [
             "source:UICommon.cpp File::Exists(\"/.flatpak-info\") forces XDG_DATA_HOME/XDG_CONFIG_HOME roots @6094cfcf",
@@ -109,7 +138,15 @@
             "source:Core/IOS/IOSC.cpp constexpr key material @6094cfcf"
           ]
         },
-        {"purpose": "input", "path": "No source-backed input path or grammar was established for the linux-flatpak host during this catalog audit.", "status": "unresolved", "evidence": ["source:dolphin-emu/dolphin@6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4 (primary source cited by this record; input capture remains unresolved for linux-flatpak)"]}],
+        {
+          "purpose": "input",
+          "path": "No source-backed input path or grammar was established for the linux-flatpak host during this catalog audit.",
+          "status": "unresolved",
+          "evidence": [
+            "source:dolphin-emu/dolphin@6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4 (primary source cited by this record; input capture remains unresolved for linux-flatpak)"
+          ]
+        }
+      ],
       "notes": "Flatpak sets XDG_DATA_HOME/XDG_CONFIG_HOME to the ~/.var/app/org.DolphinEmu.dolphin-emu sandbox, which the pinned XDG code path consumes directly."
     },
     "windows": {
@@ -121,7 +158,7 @@
           "evidence": [
             "source:UICommon.cpp SetUserDirectory Windows cases 1-6 (portable.txt, LocalUserConfig, UserConfigPath, Documents user directory and compatibility cases) @6094cfcf",
             "source:CommonPaths.h NORMAL_USER_DIR='Dolphin Emulator', PORTABLE_USER_DIR='User', GCPAD_CONFIG/WIIPAD_CONFIG @6094cfcf",
-            "controller syntax: same Device/Buttons/A/Triggers/L-Analog group-control keys as Linux, in [GCPad1..4]/[Wiimote1..4] or Config/Profiles/GCPad|Wiimote [Profile] files — ControllerEmu.cpp, ControlGroup/ControlGroup.cpp, HW/GCPadEmu.h @6094cfcf",
+            "controller syntax: same Device/Buttons/A/Triggers/L-Analog group-control keys as Linux, in [GCPad1..4]/[Wiimote1..4] or Config/Profiles/GCPad|Wiimote [Profile] files \u2014 ControllerEmu.cpp, ControlGroup/ControlGroup.cpp, HW/GCPadEmu.h @6094cfcf",
             "contract: docs/DOLPHIN_CONTROLLER_CONTRACT.md",
             "app:crates/lunchbox-app/src/firmware.rs Windows adapter roots new installs at Documents/Dolphin Emulator"
           ]
@@ -162,7 +199,19 @@
             "source:Core/IOS/IOSC.cpp constexpr ROOT_PUBLIC_KEY/DEFAULT_PRIVATE_KEY @6094cfcf"
           ]
         },
-        {"purpose": "input", "path": "No source-backed input path or grammar was established for the windows host during this catalog audit.", "status": "unresolved", "evidence": ["source:dolphin-emu/dolphin@6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4 (primary source cited by this record; input capture remains unresolved for windows)"]}],
+        {
+          "purpose": "input",
+          "path": "%APPDATA%/Dolphin Emulator/Config/GCPadNew.ini (also WiimoteNew.ini; profiles under Config/Profiles/GCPad/; portable.txt selects exe/User)",
+          "status": "captured",
+          "evidence": [
+            "source:dolphin-emu/dolphin Source/Core/Core/HW/GCPad.cpp InputConfig GCPadNew @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4",
+            "source:dolphin-emu/dolphin Source/Core/Common/CommonPaths.h GCPAD_CONFIG/WIIPAD_CONFIG @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4",
+            "source:dolphin-emu/dolphin Source/Core/InputCommon/InputConfig.cpp Config/Profiles path @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4",
+            "source:dolphin-emu/dolphin Source/Core/UICommon/UICommon.cpp SetUserDirectory per-OS roots @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4"
+          ],
+          "naming": "INI pad-profile grammar with per-pad sections and device-qualified expressions; per-game INI PadProfileN selects a GCPad profile."
+        }
+      ],
       "notes": "The pinned Windows source resolves the normal user directory under Documents/Dolphin Emulator; portable.txt, LocalUserConfig and UserConfigPath remain higher-priority overrides."
     },
     "macos": {
@@ -174,7 +223,7 @@
           "evidence": [
             "source:UICommon.cpp SetUserDirectory POSIX branch (EMBEDDED_USER_DIR, portable.txt, DOLPHIN_EMU_USERPATH, __APPLE__ default home+NORMAL_USER_DIR) @6094cfcf",
             "source:CommonPaths.h __APPLE__ NORMAL_USER_DIR='Library/Application Support/Dolphin', EMBEDDED_USER_DIR='Contents/Resources/User' @6094cfcf",
-            "controller syntax: same Device/group-control keys ([GCPad1..4] Device = ..., Buttons/A = ..., Triggers/L-Analog = ...) in Config/GCPadNew.ini or Config/Profiles/GCPad|Wiimote profiles — ControllerEmu.cpp, ControlGroup/ControlGroup.cpp @6094cfcf",
+            "controller syntax: same Device/group-control keys ([GCPad1..4] Device = ..., Buttons/A = ..., Triggers/L-Analog = ...) in Config/GCPadNew.ini or Config/Profiles/GCPad|Wiimote profiles \u2014 ControllerEmu.cpp, ControlGroup/ControlGroup.cpp @6094cfcf",
             "app:crates/lunchbox-app/src/firmware.rs macos adapter Library/Application Support/Dolphin"
           ]
         },
@@ -214,7 +263,19 @@
             "source:Core/IOS/IOSC.cpp constexpr key material @6094cfcf"
           ]
         },
-        {"purpose": "input", "path": "No source-backed input path or grammar was established for the macos host during this catalog audit.", "status": "unresolved", "evidence": ["source:dolphin-emu/dolphin@6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4 (primary source cited by this record; input capture remains unresolved for macos)"]}],
+        {
+          "purpose": "input",
+          "path": "~/Library/Application Support/Dolphin/Config/GCPadNew.ini (also WiimoteNew.ini; profiles under Config/Profiles/GCPad/)",
+          "status": "captured",
+          "evidence": [
+            "source:dolphin-emu/dolphin Source/Core/Core/HW/GCPad.cpp InputConfig GCPadNew @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4",
+            "source:dolphin-emu/dolphin Source/Core/Common/CommonPaths.h GCPAD_CONFIG/WIIPAD_CONFIG @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4",
+            "source:dolphin-emu/dolphin Source/Core/InputCommon/InputConfig.cpp Config/Profiles path @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4",
+            "source:dolphin-emu/dolphin Source/Core/UICommon/UICommon.cpp SetUserDirectory per-OS roots @6094cfcf7b8fba733b3116fdf3414d51c1c0e4a4"
+          ],
+          "naming": "INI pad-profile grammar with per-pad sections and device-qualified expressions; per-game INI PadProfileN selects a GCPad profile."
+        }
+      ],
       "notes": "No XDG split on macOS: one user root under ~/Library/Application Support/Dolphin carries Config, GC, Wii and StateSaves."
     }
   }
