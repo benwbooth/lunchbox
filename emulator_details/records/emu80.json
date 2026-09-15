@@ -30,13 +30,13 @@
         },
         {
           "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "Emu80qt_40571_linux_x86-64.tar.gz emu80.conf beside the executable",
+          "naming": "Dotted key=value grammar (emulation.*, keyboard.matrix, @OPT_FILE); keyboard matrix mappings persist in the same conf.",
           "evidence": [
-            "official:http://emu80.org",
-            "Windows/Linux listed"
+            "package:emu80.org Emu80qt_40571_linux_x86-64.tar.gz shipped emu80.conf grammar",
+            "package:emu80.org Emu80qt_40571 binary emu80.conf-not-found + keyboard.matrix strings"
           ],
-          "status": "unresolved"
+          "status": "captured"
         },
         {
           "purpose": "saves",
@@ -70,13 +70,12 @@
         },
         {
           "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "No external cryptographic key material required",
+          "naming": "Soviet PCs need no keys.",
           "evidence": [
-            "official:http://emu80.org",
-            "Windows/Linux listed"
+            "package:emu80.org Emu80qt_40571 emu80.conf carries no key fields"
           ],
-          "status": "unresolved"
+          "status": "not_required"
         }
       ]
     },
@@ -94,13 +93,13 @@
         },
         {
           "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "Emu80qt_40571.zip emu80.conf beside the executable",
+          "naming": "Dotted key=value grammar (emulation.*, keyboard.matrix, @OPT_FILE); keyboard matrix mappings persist in the same conf.",
           "evidence": [
-            "official:http://emu80.org",
-            "Windows/Linux listed"
+            "package:emu80.org Emu80qt_40571 portable-zip layout with emu80.conf",
+            "package:emu80.org Emu80qt_40571 binary emu80.conf-not-found + keyboard.matrix strings"
           ],
-          "status": "unresolved"
+          "status": "captured"
         },
         {
           "purpose": "saves",
@@ -134,13 +133,12 @@
         },
         {
           "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "No external cryptographic key material required",
+          "naming": "Soviet PCs need no keys.",
           "evidence": [
-            "official:http://emu80.org",
-            "Windows/Linux listed"
+            "package:emu80.org Emu80qt_40571 emu80.conf carries no key fields"
           ],
-          "status": "unresolved"
+          "status": "not_required"
         }
       ]
     },
@@ -158,13 +156,13 @@
         },
         {
           "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "Emu80qt_40571_macos_amd64.zip emu80.conf beside the executable",
+          "naming": "Dotted key=value grammar (emulation.*, keyboard.matrix, @OPT_FILE); keyboard matrix mappings persist in the same conf.",
           "evidence": [
-            "official:http://emu80.org",
-            "Windows/Linux listed"
+            "package:emu80.org Emu80qt_40571_macos_amd64.zip portable layout with emu80.conf",
+            "package:emu80.org Emu80qt_40571 binary emu80.conf-not-found + keyboard.matrix strings"
           ],
-          "status": "unresolved"
+          "status": "captured"
         },
         {
           "purpose": "saves",
@@ -198,13 +196,12 @@
         },
         {
           "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "No external cryptographic key material required",
+          "naming": "Soviet PCs need no keys.",
           "evidence": [
-            "official:http://emu80.org",
-            "Windows/Linux listed"
+            "package:emu80.org Emu80qt_40571 emu80.conf carries no key fields"
           ],
-          "status": "unresolved"
+          "status": "not_required"
         }
       ]
     }
