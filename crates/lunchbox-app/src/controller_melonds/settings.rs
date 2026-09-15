@@ -45,13 +45,17 @@ impl SavedSetup {
                     .all(|byte| byte.is_ascii_hexdigit()),
             "melonDS needs a trusted executable SHA-256"
         );
-        for path in [
+        let mut path_vec = vec![
             &self.content,
             &self.source_config,
             &self.probe_program,
-            &self.bubblewrap_program,
             &self.sdl_library,
-        ] {
+        ];
+        // bubblewrap is required only when a launch can actually sandbox;
+        // elsewhere the field is accepted and ignored.
+        #[cfg(target_os = "linux")]
+        path_vec.push(&self.bubblewrap_program);
+        for path in path_vec {
             ensure!(
                 path.is_absolute() && !path.components().any(|part| part == Component::ParentDir),
                 "melonDS paths must be absolute without parent traversal"
@@ -108,7 +112,7 @@ impl SavedSetup {
                 .context("melonDS controller needs calibration")?;
             calibration.validate()?;
             ensure!(
-                calibration.os == "linux",
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
                 "melonDS native preparation currently requires Linux calibration"
             );
             let layout = catalog()

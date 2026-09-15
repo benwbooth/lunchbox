@@ -1,16 +1,19 @@
 //! Owned native Linux RPCS3 session; startup checks are not gameplay validation.
 use super::{launch::PreparedLaunch, session::InputSession, settings::SavedSetup};
+use crate::controller_native_process::cancelled;
+#[cfg(target_os = "linux")]
+use crate::controller_native_process::native_pid;
 use crate::{
     controller_catalog::Calibration,
-    controller_native_process::{cancelled, native_pid},
+    controller_native_platform as platform,
     controllers::ControllerDevice,
     emulator::{LaunchPlan, RomEmulatorOption},
 };
 use anyhow::{Result, ensure};
+#[cfg(target_os = "linux")]
+use std::{collections::BTreeSet, os::unix::fs::MetadataExt, path::Path};
 use std::{
-    collections::{BTreeSet, HashMap},
-    os::unix::fs::MetadataExt,
-    path::Path,
+    collections::HashMap,
     sync::atomic::AtomicBool,
     time::{Duration, Instant},
 };
@@ -83,9 +86,15 @@ impl NativeSession {
                 child.try_wait()?.is_none(),
                 "RPCS3 exited before controller handoff"
             );
-            if let Some(pid) = native_pid(child.id(), &self.plan().program)?
-                && self.ready(pid)?
-            {
+            // Linux walks the launch tree; other hosts check the direct
+            // child, which they spawn directly.
+            #[cfg(target_os = "linux")]
+            let owned = native_pid(child.id(), &self.plan().program)?
+                .is_some_and(|pid| self.ready(pid).unwrap_or(false));
+            #[cfg(not(target_os = "linux"))]
+            let owned = platform::child_exe_matches(child.id(), &self.plan().program)?
+                && self.ready(child.id())?;
+            if owned {
                 // Native cfg copies may now be legitimately changing. Only
                 // recheck physical routing here, not prelaunch cfg contents.
                 self.inputs.verify(cancel)?;
@@ -100,6 +109,21 @@ impl NativeSession {
     }
 
     fn ready(&self, pid: u32) -> Result<bool> {
+        // Linux proves the child log, SDL mapping and open device set.
+        // Other hosts pin the executable plus a fresh device re-probe; the
+        // weaker guarantee is explicit here and in the launch text.
+        if cfg!(target_os = "linux") {
+            return self.ready_linux(pid);
+        }
+        if !platform::child_exe_matches(pid, &self.plan().program)? {
+            return Ok(false);
+        }
+        self.inputs.check_health()?;
+        Ok(true)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn ready_linux(&self, pid: u32) -> Result<bool> {
         let Some(log) = super::startup::child_log(pid)? else {
             return Ok(false);
         };

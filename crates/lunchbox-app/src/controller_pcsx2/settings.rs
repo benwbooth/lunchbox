@@ -138,7 +138,7 @@ impl SavedSetup {
                 .context("PCSX2 controller needs calibration")?;
             calibration.validate()?;
             ensure!(
-                calibration.os == "linux",
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
                 "PCSX2 native preparation currently requires Linux calibration"
             );
             let layout = catalog()

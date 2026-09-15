@@ -1,13 +1,19 @@
 //! Startup routing evidence, not a gameplay or button-response test.
 use super::*;
+use crate::controller_native_platform as platform;
+#[cfg(target_os = "linux")]
 use crate::controller_native_process::native_pid;
+#[cfg(target_os = "linux")]
+use std::os::unix::fs::MetadataExt;
 use std::{
-    os::unix::fs::MetadataExt,
     path::Path,
     process::Child,
     time::{Duration, Instant},
 };
 
+// Linux proves the maps, the mount-namespace config bind, and the open
+// device set. Other hosts pin the executable plus a fresh device re-probe.
+#[cfg(target_os = "linux")]
 fn ready(session: &NativeSession, pid: u32) -> Result<bool> {
     let maps = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
     let sdl = session.setup.sdl_library.canonicalize()?;
@@ -63,9 +69,15 @@ pub(super) fn confirm(
             child.try_wait()?.is_none(),
             "melonDS exited before controller handoff"
         );
-        if let Some(pid) = native_pid(child.id(), &session.executable)?
-            && ready(session, pid)?
-        {
+        // Linux walks the launch tree; other hosts check the direct
+        // child, which they spawn directly.
+        #[cfg(target_os = "linux")]
+        let owned = native_pid(child.id(), &session.executable)?
+            .is_some_and(|pid| ready(session, pid).unwrap_or(false));
+        #[cfg(not(target_os = "linux"))]
+        let owned = platform::child_exe_matches(child.id(), &session.executable)?
+            && ready_portable(session, child.id())?;
+        if owned {
             session.native_path.verify()?;
             session.config.verify_source()?;
             session.inputs.verify(cancel)?;
@@ -77,4 +89,13 @@ pub(super) fn confirm(
         );
         std::thread::sleep(Duration::from_millis(25));
     }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn ready_portable(session: &NativeSession, pid: u32) -> Result<bool> {
+    if !platform::child_exe_matches(pid, &session.executable)? {
+        return Ok(false);
+    }
+    session.inputs.check_health()?;
+    Ok(true)
 }

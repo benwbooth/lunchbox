@@ -37,7 +37,7 @@ pub(crate) fn prepare(
     cancelled(cancel)?;
     setup.validate()?;
     let EmulatorExecutable::Native(executable) = &option.executable else {
-        anyhow::bail!("melonDS mapping requires native Linux");
+        anyhow::bail!("melonDS mapping requires a native build");
     };
     let executable = executable.canonicalize()?;
     ensure!(
@@ -60,14 +60,19 @@ pub(crate) fn prepare(
         "melonDS ROM differs from saved setup"
     );
     let native_path = ConfigPath::capture(&executable, &setup.source_config)?;
+    let sandboxed = crate::controller_native_platform::use_bubblewrap_sandbox(&executable);
     let mut files = BTreeMap::new();
-    for path in [
+    let mut file_paths = vec![
         &executable,
         &content,
         &setup.probe_program,
         &setup.sdl_library,
-        &setup.bubblewrap_program,
-    ] {
+    ];
+    // bubblewrap is hashed only when the launch actually sandboxes.
+    if sandboxed {
+        file_paths.push(&setup.bubblewrap_program);
+    }
+    for path in file_paths {
         files.insert(path.clone(), file_hash(path)?);
     }
     ensure!(
@@ -82,6 +87,15 @@ pub(crate) fn prepare(
         controller_id,
         inputs.device(controller_id)?,
     )?;
+    // Sandbox or direct is a packaging decision, not an OS one. The staged
+    // config shadows the source through a bind mount; no environment
+    // variable redirects that resolution, so direct launches refuse
+    // instead of running unmapped.
+    if !sandboxed {
+        anyhow::bail!(
+            "melonDS direct launch needs mount shadowing, which is unsupported; use a sandboxable native Linux packaging"
+        );
+    }
     let mut plan = original.clone();
     plan.program = setup.bubblewrap_program.clone();
     plan.arguments = vec![

@@ -9,14 +9,12 @@ pub(crate) mod folders;
 pub(crate) mod game_settings;
 pub(crate) mod isolation;
 pub(crate) mod launch;
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command;
 pub(crate) mod physical;
 pub(crate) mod prepared;
 pub(crate) mod profile;
 pub(crate) mod routing;
 pub(crate) mod sdl;
-#[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
 

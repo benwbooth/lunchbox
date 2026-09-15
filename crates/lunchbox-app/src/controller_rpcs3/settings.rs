@@ -106,7 +106,7 @@ impl SavedSetup {
                 .context("RPCS3 controller needs calibration")?;
             calibration.validate()?;
             ensure!(
-                calibration.os == "linux",
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
                 "RPCS3 native preparation currently requires Linux calibration"
             );
             let layout = catalog()

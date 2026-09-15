@@ -1,7 +1,10 @@
 //! Launch-time SDL3 capture; never invoked by setup review.
 use super::{prepared::Controller, settings::SavedSetup};
+#[cfg(target_os = "linux")]
+use crate::controller_bizhawk_guard::InputTopology;
+#[cfg(not(target_os = "linux"))]
+use crate::controller_native_platform as platform;
 use crate::{
-    controller_bizhawk_guard::InputTopology,
     controller_native_process::{cancelled, capture},
     controllers::ControllerDevice,
 };
@@ -41,6 +44,7 @@ fn observe(setup: &SavedSetup, paths: &[String], cancel: &AtomicBool) -> Result<
 pub(crate) struct InputSession {
     pub snapshot: Snapshot,
     pub physical_paths: HashMap<String, String>,
+    #[cfg(target_os = "linux")]
     topology: InputTopology,
     setup: SavedSetup,
     probe_hash: String,
@@ -96,11 +100,15 @@ impl InputSession {
             );
             selected.push(found[0].device_path.clone());
         }
+        #[cfg(target_os = "linux")]
         let topology = InputTopology::capture(&selected)?;
         let initial = observe(setup, &[], cancel)?;
         let mut physical_paths = HashMap::new();
         let mut paths = Vec::new();
         for (player, selected) in setup.players.iter().zip(&selected) {
+            // Linux resolves through the sysfs topology; other hosts
+            // match the SDL device-interface path and require uniqueness.
+            #[cfg(target_os = "linux")]
             let path = topology.resolve_runtime_path(
                 selected,
                 initial
@@ -108,6 +116,20 @@ impl InputSession {
                     .iter()
                     .filter_map(|device| device.path.as_deref()),
             )?;
+            #[cfg(not(target_os = "linux"))]
+            let path = {
+                let selected_string = selected.to_string_lossy().into_owned();
+                let candidates = initial
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                    .collect::<Vec<_>>();
+                ensure!(
+                    candidates.len() == 1,
+                    "PCSX2 physical controller is missing or ambiguous in SDL"
+                );
+                selected_string
+            };
             physical_paths.insert(player.controller_id.clone(), path.clone());
             paths.push(path);
         }
@@ -119,6 +141,7 @@ impl InputSession {
         let session = Self {
             snapshot,
             physical_paths,
+            #[cfg(target_os = "linux")]
             topology,
             setup: setup.clone(),
             probe_hash,
@@ -156,6 +179,7 @@ impl InputSession {
 
     pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
         cancelled(cancel)?;
+        #[cfg(target_os = "linux")]
         self.topology.verify()?;
         ensure!(
             file_hash(&self.setup.probe_program)? == self.probe_hash,
@@ -183,10 +207,37 @@ impl InputSession {
             comparable(&current, true)? == comparable(&self.snapshot, true)?,
             "PCSX2 SDL player routing or physical bindings changed before handoff"
         );
-        self.topology.verify()
+        #[cfg(not(target_os = "linux"))]
+        for path in self.physical_paths.values() {
+            platform::require_unique_sdl3_path(&current.devices, path)?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            return self.topology.verify();
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Ok(());
+        }
     }
 
     pub(crate) fn check_health(&self) -> Result<()> {
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        return self.topology.verify();
+        #[cfg(not(target_os = "linux"))]
+        return self.verify_health_probe();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn verify_health_probe(&self) -> Result<()> {
+        let snapshot = observe(&self.setup, &[], &AtomicBool::new(false))?;
+        ensure!(
+            comparable(&snapshot, false)? == comparable(&self.snapshot, false)?,
+            "PCSX2 SDL routing changed"
+        );
+        for path in self.physical_paths.values() {
+            platform::require_unique_sdl3_path(&snapshot.devices, path)?;
+        }
+        Ok(())
     }
 }

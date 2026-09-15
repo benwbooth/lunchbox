@@ -3,12 +3,10 @@ use anyhow::{Result, ensure};
 use std::collections::BTreeMap;
 
 pub(crate) mod configuration;
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command;
 pub(crate) mod paths;
 pub(crate) mod physical;
 pub(crate) mod prepared;
-#[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
 
