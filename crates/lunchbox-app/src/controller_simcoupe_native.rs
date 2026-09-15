@@ -169,7 +169,7 @@ pub(crate) mod settings {
                 .get(&player.controller_id)
                 .context("SimCoupe controller has no saved calibration")?;
             ensure!(
-                calibration.os == "linux",
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
                 "SimCoupe mapping requires Linux physical calibration"
             );
             let mapping = calibration.plan_profile(profile)?;
@@ -229,11 +229,13 @@ mod tests {
     }
 }
 
-#[cfg(target_os = "linux")]
 mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::Calibration,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
@@ -292,7 +294,11 @@ mod session {
     pub(crate) struct PreparedSession {
         directory: tempfile::TempDir,
         config_home: PathBuf,
+        #[cfg(not(target_os = "linux"))]
+        executable: PathBuf,
         physical_path: String,
+        device_index: u32,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         initial: Snapshot,
         setup: settings::SavedSetup,
@@ -304,6 +310,7 @@ mod session {
             setup: &settings::SavedSetup,
             calibrations: &HashMap<String, Calibration>,
             inventory: &[ControllerDevice],
+            executable: &std::path::Path,
             cancel: &AtomicBool,
         ) -> Result<Self> {
             cancelled(cancel)?;
@@ -329,17 +336,40 @@ mod session {
                 "SimCoupe physical controller is missing or ambiguous"
             );
             let selected = found[0].device_path.clone();
-            let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
             let initial = routing(observe(setup, None, cancel)?);
-            let physical_path = topology.resolve_runtime_path(
-                &selected,
-                initial
+            // Linux pins kernel input identity through the sysfs topology.
+            // Other hosts pin the SDL device-interface path plus index and
+            // re-probe it; names and GUIDs are never identity.
+            #[cfg(target_os = "linux")]
+            let (physical_path, topology) = {
+                let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
+                let physical_path = topology.resolve_runtime_path(
+                    &selected,
+                    initial
+                        .devices
+                        .iter()
+                        .filter_map(|device| device.path.as_deref()),
+                )?;
+                topology.verify()?;
+                (physical_path, topology)
+            };
+            #[cfg(not(target_os = "linux"))]
+            let physical_path = {
+                let selected_string = selected.to_string_lossy().into_owned();
+                let candidates = initial
                     .devices
                     .iter()
-                    .filter_map(|device| device.path.as_deref()),
-            )?;
+                    .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                    .collect::<Vec<_>>();
+                ensure!(
+                    candidates.len() == 1,
+                    "simcoupe physical controller is missing or ambiguous in SDL"
+                );
+                selected_string
+            };
             let captured = observe(setup, Some(&physical_path), cancel)?;
             initial.ensure_same_routing(&routing(captured.clone()))?;
+            #[cfg(target_os = "linux")]
             topology.verify()?;
             let device = captured.device_at_path(&physical_path)?;
             let sdl_name = device
@@ -450,10 +480,39 @@ mod session {
                 hashes.insert(path.clone(), file_hash(path)?);
             }
             let config_home = directory.path().to_path_buf();
+            // Windows resolves settings beside the executable, so the
+            // session links the trusted executable here and mirrors the
+            // staged config beside the link. Other hosts use the config
+            // home through the environment override below.
+            #[cfg(not(target_os = "linux"))]
+            let executable_link = {
+                let link = directory.path().join("simcoupe");
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(executable, &link)?;
+                #[cfg(target_os = "windows")]
+                if std::os::windows::fs::symlink_file(executable, &link).is_err() {
+                    fs::copy(executable, &link)?;
+                }
+                ensure!(
+                    link.canonicalize()? == executable.canonicalize()?,
+                    "SimCoupe executable link escapes the trusted runtime"
+                );
+                let staged = fs::read(&config_path)?;
+                fs::write(directory.path().join(CONFIG_FILE), staged)?;
+                hashes.insert(
+                    directory.path().join(CONFIG_FILE),
+                    file_hash(&directory.path().join(CONFIG_FILE))?,
+                );
+                link
+            };
             let prepared = Self {
                 directory,
                 config_home,
+                #[cfg(not(target_os = "linux"))]
+                executable: executable_link,
                 physical_path,
+                device_index: device.device_index,
+                #[cfg(target_os = "linux")]
                 topology,
                 initial,
                 setup: setup.clone(),
@@ -468,8 +527,16 @@ mod session {
             &self.config_home
         }
 
+        /// Session executable link for hosts that resolve settings beside
+        /// the executable (Windows). Linux launches the real executable.
+        #[cfg(not(target_os = "linux"))]
+        pub(crate) fn executable(&self) -> &std::path::Path {
+            &self.executable
+        }
+
         pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
             cancelled(cancel)?;
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, hash) in &self.hashes {
                 ensure!(file_hash(path)? == *hash, "SimCoupe launch input changed");
@@ -479,28 +546,60 @@ mod session {
             let captured = observe(&self.setup, Some(&self.physical_path), cancel)?;
             self.initial
                 .ensure_same_routing(&routing(captured.clone()))?;
-            self.topology.verify()
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_device_path(
+                &captured.devices,
+                &self.physical_path,
+                self.device_index,
+            )?;
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            // No sysfs exists here; health is a fresh same-routing probe
+            // that still sees the pinned path at the pinned index.
+            let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+            self.initial.ensure_same_routing(&fresh)?;
+            platform::require_unique_device_path(
+                &fresh.devices,
+                &self.physical_path,
+                self.device_index,
+            )?;
+            Ok(())
         }
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
+    use crate::controller_native_process::cancelled;
+    #[cfg(target_os = "linux")]
+    use crate::controller_native_process::native_pid;
     use crate::{
         controller_catalog::Calibration,
-        controller_native_process::{cancelled, native_pid},
+        controller_native_platform as platform,
         controllers::ControllerDevice,
         emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption},
     };
     use lunchbox_controller_probe::file_hash;
     use std::{
         collections::HashMap,
-        path::{Path, PathBuf},
+        path::PathBuf,
         sync::atomic::AtomicBool,
         time::{Duration, Instant},
     };
@@ -553,9 +652,15 @@ pub(crate) mod native_command {
                     child.try_wait()?.is_none(),
                     "SimCoupe exited before controller handoff"
                 );
-                if let Some(pid) = native_pid(child.id(), &self.executable)?
-                    && self.ready(pid)?
-                {
+                // Linux walks the launch tree (bubblewrap monitors); other
+                // hosts check the direct child, which they spawn directly.
+                #[cfg(target_os = "linux")]
+                let owned = native_pid(child.id(), &self.executable)?
+                    .is_some_and(|pid| self.ready(pid).unwrap_or(false));
+                #[cfg(not(target_os = "linux"))]
+                let owned = platform::child_exe_matches(child.id(), &self.executable)?
+                    && self.ready(child.id())?;
+                if owned {
                     self.inputs.check_health()?;
                     return Ok(());
                 }
@@ -568,19 +673,16 @@ pub(crate) mod native_command {
         }
 
         fn ready(&self, pid: u32) -> Result<bool> {
-            let expected_sdl = self.setup.sdl_library.canonicalize()?;
-            let maps = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
-            if !maps.lines().any(|line| {
-                let path = line
-                    .split_whitespace()
-                    .skip(5)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .replace("\\040", " ");
-                Path::new(&path) == expected_sdl
-            }) {
+            // Linux proves the child mapped the exact SDL library. Other
+            // hosts pin the executable plus a fresh device re-probe; the
+            // weaker guarantee is explicit here and in the launch text.
+            if cfg!(target_os = "linux") {
+                return platform::child_maps_library(pid, &self.setup.sdl_library);
+            }
+            if !platform::child_exe_matches(pid, &self.executable)? {
                 return Ok(false);
             }
+            self.inputs.check_health()?;
             Ok(true)
         }
     }
@@ -596,7 +698,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("SimCoupe calibrated launch requires native Linux");
+            anyhow::bail!("SimCoupe calibrated launch requires a native build");
         };
         ensure!(
             option.emulator_name.eq_ignore_ascii_case("SimCoupe")
@@ -618,15 +720,28 @@ pub(crate) mod native_command {
             file_hash(&executable)?.eq_ignore_ascii_case(&setup.executable_sha256),
             "SimCoupe executable differs from the saved trusted runtime"
         );
-        let inputs = session::PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
+        let inputs =
+            session::PreparedSession::prepare(setup, calibrations, inventory, &executable, cancel)?;
         let mut plan = original.clone();
         plan.program = executable.clone();
         // $HOME/.simcoupe/SimCoupe.cfg resolves under HOME; the disk image
-        // keeps its default positional slot.
+        // keeps its default positional slot. Windows resolves beside the
+        // executable link and carries the session user roots instead.
+        #[cfg(target_os = "linux")]
         plan.environment.push((
             std::ffi::OsString::from("HOME"),
             inputs.config_home().as_os_str().to_owned(),
         ));
+        // Windows resolves beside the executable link and carries the
+        // session user roots instead.
+        #[cfg(not(target_os = "linux"))]
+        {
+            platform::prepare_user_dirs(inputs.config_home())?;
+            for (key, value) in platform::session_user_env(inputs.config_home()) {
+                plan.environment.push((key, value));
+            }
+            plan.program = inputs.executable().to_path_buf();
+        }
         let session = NativeSession {
             inputs,
             executable,

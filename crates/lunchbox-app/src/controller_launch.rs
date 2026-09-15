@@ -155,24 +155,15 @@ enum PreparedJsonNativeLaunch {
     Ymir(crate::controller_ymir_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     DreamPotato(crate::controller_dreampotato_standalone::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Panda3ds(crate::controller_panda3ds_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Supermodel(crate::controller_supermodel_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Openbor(crate::controller_openbor_standalone::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Touchhle(crate::controller_touchhle_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Tsugaru(crate::controller_tsugaru_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Pcem(crate::controller_pcem_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Simcoupe(crate::controller_simcoupe_native::native_command::NativeSession),
     Vector06sdl(crate::controller_vector06sdl_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Adamem(crate::controller_adamem_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Ep128emu(crate::controller_ep128emu_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Play(crate::controller_play_native::native_command::NativeSession),
@@ -263,24 +254,15 @@ impl PreparedJsonNativeLaunch {
             Self::Ymir(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::DreamPotato(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Panda3ds(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Supermodel(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Openbor(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Touchhle(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Tsugaru(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Pcem(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Simcoupe(session) => session.spawn(plan, cancel),
             Self::Vector06sdl(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Adamem(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Ep128emu(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Play(session) => session.spawn(plan, cancel),
@@ -367,24 +349,15 @@ impl PreparedJsonNativeLaunch {
             Self::Ymir(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::DreamPotato(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Panda3ds(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Supermodel(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Openbor(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Touchhle(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Tsugaru(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Pcem(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Simcoupe(session) => session.verify(cancel),
             Self::Vector06sdl(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Adamem(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Ep128emu(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Play(session) => session.verify(cancel),
@@ -471,24 +444,15 @@ impl PreparedJsonNativeLaunch {
             Self::Ymir(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::DreamPotato(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Panda3ds(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Supermodel(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Openbor(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Touchhle(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Tsugaru(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Pcem(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Simcoupe(session) => session.check_health(),
             Self::Vector06sdl(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Adamem(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Ep128emu(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Play(session) => session.check_health(),
@@ -8465,7 +8429,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Tsugaru")
     {
@@ -8490,13 +8453,12 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Tsugaru(native)),
-                description: "Tsugaru: calibrated single FM Towns pad on PHYS0 through explicit ROM/CMOS/CD/game-port flags, with exact joydev routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Tsugaru: calibrated single FM Towns pad on PHYS0 through explicit ROM/CMOS/CD/game-port flags, with exact joystick routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("touchHLE")
     {
@@ -8521,13 +8483,12 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Touchhle(native)),
-                description: "touchHLE: calibrated single gamepad driving staged touch points through CLI options, with exact SDL2 button routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "touchHLE: calibrated single gamepad driving staged touch points through CLI options, with exact SDL routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("OpenBOR")
     {
@@ -8552,13 +8513,12 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Openbor(native)),
-                description: "OpenBOR: calibrated single P1 brawler deck on joystick slot 0 through a session Saves/<pak>.cfg, with exact SDL2 routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "OpenBOR: calibrated single P1 brawler deck on joystick slot 0 through a session Saves/<pak>.cfg, with exact SDL routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Supermodel")
     {
@@ -8586,13 +8546,12 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Supermodel(native)),
-                description: "Supermodel: calibrated single P1 fighting deck on joystick 1 with the sdlgamepad backend through a session Config/Supermodel.ini, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Supermodel: calibrated single P1 fighting deck on joystick 1 with the sdlgamepad backend through a session Config/Supermodel.ini, with exact SDL game-controller routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Panda3DS")
     {
@@ -8617,7 +8576,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Panda3ds(native)),
-                description: "Panda3DS: calibrated single 3DS pad at SDL index 0 through a session config.toml, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Panda3DS: calibrated single 3DS pad at SDL index 0 through a session config.toml, with exact SDL game-controller routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
@@ -9479,7 +9438,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("ep128emu")
     {
@@ -9510,7 +9468,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("ADAMEm SDL")
     {
@@ -9574,7 +9531,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("SimCoupe")
     {
@@ -9605,7 +9561,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("PCem")
     {
@@ -9636,7 +9591,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Tsugaru")
     {
@@ -9661,13 +9615,12 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Tsugaru(native)),
-                description: "Tsugaru: calibrated single FM Towns pad on PHYS0 through explicit ROM/CMOS/CD/game-port flags, with exact joydev routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Tsugaru: calibrated single FM Towns pad on PHYS0 through explicit ROM/CMOS/CD/game-port flags, with exact joystick routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("touchHLE")
     {
@@ -9692,13 +9645,12 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Touchhle(native)),
-                description: "touchHLE: calibrated single gamepad driving staged touch points through CLI options, with exact SDL2 button routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "touchHLE: calibrated single gamepad driving staged touch points through CLI options, with exact SDL routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("OpenBOR")
     {
@@ -9723,13 +9675,12 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Openbor(native)),
-                description: "OpenBOR: calibrated single P1 brawler deck on joystick slot 0 through a session Saves/<pak>.cfg, with exact SDL2 routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "OpenBOR: calibrated single P1 brawler deck on joystick slot 0 through a session Saves/<pak>.cfg, with exact SDL routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Supermodel")
     {
@@ -9757,13 +9708,12 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Supermodel(native)),
-                description: "Supermodel: calibrated single P1 fighting deck on joystick 1 with the sdlgamepad backend through a session Config/Supermodel.ini, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Supermodel: calibrated single P1 fighting deck on joystick 1 with the sdlgamepad backend through a session Config/Supermodel.ini, with exact SDL game-controller routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Panda3DS")
     {
@@ -9788,7 +9738,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Panda3ds(native)),
-                description: "Panda3DS: calibrated single 3DS pad at SDL index 0 through a session config.toml, with exact SDL2 game-controller routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "Panda3DS: calibrated single 3DS pad at SDL index 0 through a session config.toml, with exact SDL game-controller routes, executable, and startup-ownership guards; partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }
