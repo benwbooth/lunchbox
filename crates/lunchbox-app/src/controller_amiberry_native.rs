@@ -375,7 +375,7 @@ pub(crate) mod settings {
                     .get(&player.controller_id)
                     .context("Amiberry controller has no saved calibration")?;
                 ensure!(
-                    calibration.os == "linux",
+                    ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
                     "Amiberry mapping requires Linux physical calibration"
                 );
                 let mapping = calibration.plan_profile(profile)?;
@@ -571,6 +571,8 @@ mod session {
         controllers_dir: PathBuf,
         uae_path: PathBuf,
         physical_paths: Vec<String>,
+        gamepad_indices: Vec<u16>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         initial: serde_json::Value,
         setup: settings::SavedSetup,
@@ -606,6 +608,7 @@ mod session {
             let topology = InputTopology::capture(&selected)?;
             let initial = comparable(&observe(setup, &[], cancel)?)?;
             let mut physical_paths = Vec::new();
+            let mut gamepad_indices = Vec::new();
             let mut uae = String::new();
             let mut db_lines = String::new();
             let controllers_dir_owned = tempfile::Builder::new()
@@ -628,6 +631,7 @@ mod session {
                     comparable(&captured)? == initial,
                     "Amiberry SDL inventory moved during preparation"
                 );
+                #[cfg(target_os = "linux")]
                 topology.verify()?;
                 let device = captured.device_at_path(&path)?;
                 ensure!(
@@ -647,8 +651,13 @@ mod session {
                     .as_deref()
                     .context("Amiberry SDL device has no name")?;
                 db_lines.push_str(
-                    &gamecontrollerdb_line(&device.guid, name, "Linux", &bindings)
-                        .context("Amiberry gamecontrollerdb line failed")?,
+                    &gamecontrollerdb_line(
+                        &device.guid,
+                        name,
+                        crate::controller_native_platform::sdl_platform_name(),
+                        &bindings,
+                    )
+                    .context("Amiberry gamecontrollerdb line failed")?,
                 );
                 // All devices are gamepads (proven above), so the SDL
                 // gamepad index is the di_joystick position the port
@@ -656,6 +665,9 @@ mod session {
                 let joy_index = device
                     .gamepad_index
                     .context("Amiberry SDL gamepad index is absent")?;
+                gamepad_indices.push(joy_index);
+                #[cfg(not(target_os = "linux"))]
+                platform::require_unique_sdl3_path(&captured.devices, &path)?;
                 uae.push_str(
                     &uae_port_fragment(player.player - 1, joy_index as u8, name)
                         .context("Amiberry port fragment failed")?,
@@ -700,6 +712,8 @@ mod session {
                 controllers_dir: controllers_dir_owned.keep(),
                 uae_path,
                 physical_paths,
+                gamepad_indices,
+                #[cfg(target_os = "linux")]
                 topology,
                 initial,
                 setup: setup.clone(),
@@ -719,6 +733,7 @@ mod session {
 
         pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
             cancelled(cancel)?;
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, hash) in &self.hashes {
                 ensure!(file_hash(path)? == *hash, "Amiberry launch input changed");
@@ -728,36 +743,69 @@ mod session {
                 fresh == self.initial,
                 "Amiberry SDL inventory moved before launch"
             );
-            for path in &self.physical_paths {
+            for (path, index) in self.physical_paths.iter().zip(&self.gamepad_indices) {
                 let captured = observe(&self.setup, &[path.clone()], cancel)?;
                 ensure!(
                     comparable(&captured)? == self.initial,
                     "Amiberry SDL inventory moved before launch"
                 );
+                let device = captured.device_at_path(path)?;
+                ensure!(
+                    device.gamepad_index == Some(*index),
+                    "Amiberry SDL gamepad order moved before launch"
+                );
+                #[cfg(not(target_os = "linux"))]
+                platform::require_unique_sdl3_path(&captured.devices, path)?;
+                #[cfg(target_os = "linux")]
                 self.topology.verify()?;
             }
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let snapshot = observe(&self.setup, &[], &AtomicBool::new(false))?;
+            ensure!(
+                comparable(&snapshot)? == self.initial,
+                "Amiberry SDL inventory moved"
+            );
+            for path in &self.physical_paths {
+                platform::require_unique_sdl3_path(&snapshot.devices, path)?;
+            }
+            Ok(())
         }
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
+    use crate::controller_native_process::cancelled;
+    #[cfg(target_os = "linux")]
+    use crate::controller_native_process::native_pid;
     use crate::{
         controller_catalog::Calibration,
-        controller_native_process::{cancelled, native_pid},
+        controller_native_platform as platform,
         controllers::ControllerDevice,
         emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption},
     };
     use lunchbox_controller_probe::file_hash;
     use std::{
         collections::HashMap,
-        path::{Path, PathBuf},
+        path::PathBuf,
         sync::atomic::AtomicBool,
         time::{Duration, Instant},
     };
@@ -810,9 +858,15 @@ pub(crate) mod native_command {
                     child.try_wait()?.is_none(),
                     "Amiberry exited before controller handoff"
                 );
-                if let Some(pid) = native_pid(child.id(), &self.executable)?
-                    && self.ready(pid)?
-                {
+                // Linux walks the launch tree (bubblewrap monitors); other
+                // hosts check the direct child, which they spawn directly.
+                #[cfg(target_os = "linux")]
+                let owned = native_pid(child.id(), &self.executable)?
+                    .is_some_and(|pid| self.ready(pid).unwrap_or(false));
+                #[cfg(not(target_os = "linux"))]
+                let owned = platform::child_exe_matches(child.id(), &self.executable)?
+                    && self.ready(child.id())?;
+                if owned {
                     self.inputs.check_health()?;
                     return Ok(());
                 }
@@ -825,19 +879,16 @@ pub(crate) mod native_command {
         }
 
         fn ready(&self, pid: u32) -> Result<bool> {
-            let expected_sdl = self.setup.sdl_library.canonicalize()?;
-            let maps = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
-            if !maps.lines().any(|line| {
-                let path = line
-                    .split_whitespace()
-                    .skip(5)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .replace("\\040", " ");
-                Path::new(&path) == expected_sdl
-            }) {
+            // Linux proves the child mapped the exact SDL library. Other
+            // hosts pin the executable plus a fresh device re-probe; the
+            // weaker guarantee is explicit here and in the launch text.
+            if cfg!(target_os = "linux") {
+                return platform::child_maps_library(pid, &self.setup.sdl_library);
+            }
+            if !platform::child_exe_matches(pid, &self.executable)? {
                 return Ok(false);
             }
+            self.inputs.check_health()?;
             Ok(true)
         }
     }
@@ -853,7 +904,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("Amiberry calibrated launch requires native Linux");
+            anyhow::bail!("Amiberry calibrated launch requires a native build");
         };
         ensure!(
             option.emulator_name.eq_ignore_ascii_case("Amiberry")

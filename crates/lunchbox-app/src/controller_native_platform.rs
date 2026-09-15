@@ -185,8 +185,20 @@ pub(crate) fn prepare_user_dirs(base: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Portable SDL device pin: the device at `path` must exist exactly once in
-/// `devices` by path, with the expected SDL index. Names and GUIDs are
+/// SDL gamecontrollerdb platform token for this host: `Linux`,
+/// `Windows`, or `Mac OS X`, matching `SDL_GetPlatform()`.
+pub(crate) fn sdl_platform_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "Windows"
+    } else if cfg!(target_os = "macos") {
+        "Mac OS X"
+    } else {
+        "Linux"
+    }
+}
+
+/// Portable SDL device pin: the device at `path` must exist exactly once
+/// in `devices`, with the expected SDL index. Names and GUIDs are
 /// never consulted. Linux callers additionally hold an `InputTopology`;
 /// other hosts rely on this plus snapshot routing equality.
 pub(crate) fn require_unique_device_path<'a>(

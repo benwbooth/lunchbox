@@ -117,7 +117,6 @@ enum PreparedJsonNativeLaunch {
     SkyEmu(crate::controller_skyemu_native::native_command::NativeSession),
     LinApple(crate::controller_linapple_native::native_command::NativeSession),
     Fuse(crate::controller_fuse_standalone::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Amiberry(crate::controller_amiberry_native::native_command::NativeSession),
     GbePlus(crate::controller_gbe_plus_standalone::native_command::NativeSession),
     PokeMini(crate::controller_pokemini_standalone::native_command::NativeSession),
@@ -184,7 +183,6 @@ impl PreparedJsonNativeLaunch {
             Self::SkyEmu(session) => session.spawn(plan, cancel),
             Self::LinApple(session) => session.spawn(plan, cancel),
             Self::Fuse(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.spawn(plan, cancel),
             Self::GbePlus(session) => session.spawn(plan, cancel),
             Self::PokeMini(session) => session.spawn(plan, cancel),
@@ -247,7 +245,6 @@ impl PreparedJsonNativeLaunch {
             Self::SkyEmu(session) => session.verify(cancel),
             Self::LinApple(session) => session.verify(cancel),
             Self::Fuse(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.verify(cancel),
             Self::GbePlus(session) => session.verify(cancel),
             Self::PokeMini(session) => session.verify(cancel),
@@ -310,7 +307,6 @@ impl PreparedJsonNativeLaunch {
             Self::SkyEmu(session) => session.check_health(),
             Self::LinApple(session) => session.check_health(),
             Self::Fuse(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.check_health(),
             Self::GbePlus(session) => session.check_health(),
             Self::PokeMini(session) => session.check_health(),
@@ -8712,7 +8708,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Amiberry")
     {
@@ -9852,7 +9847,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Amiberry")
     {
