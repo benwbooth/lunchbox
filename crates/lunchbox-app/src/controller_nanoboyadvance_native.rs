@@ -312,6 +312,10 @@ pub(crate) mod settings {
     }
 }
 
+// Linux-only by source contract: the session requires SDL's classic
+// /dev/input/js* backend (`runtime_path.starts_with("/dev/input/js")`),
+// which exists only on Linux. Other hosts cannot satisfy the pinned
+// mapper contract, so no port is staged.
 #[cfg(target_os = "linux")]
 mod session {
     use super::*;

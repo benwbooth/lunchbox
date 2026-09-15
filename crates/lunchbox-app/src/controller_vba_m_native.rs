@@ -384,8 +384,8 @@ pub(crate) mod settings {
                 .get(&self.players[0].controller_id)
                 .context("VBA-M controller has no saved calibration")?;
             ensure!(
-                calibration.os == "linux",
-                "VBA-M mapping requires Linux physical calibration"
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+                "VBA-M mapping requires a desktop physical calibration"
             );
             let mapping = calibration.plan_profile(profile)?;
             ensure!(
@@ -422,8 +422,11 @@ pub(crate) mod settings {
 #[cfg(target_os = "linux")]
 mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::Calibration,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
@@ -438,9 +441,7 @@ mod session {
         sdl2_physical::PhysicalMap,
     };
     use std::{
-        ffi::CString,
         fs,
-        os::unix::{ffi::OsStrExt, fs::MetadataExt},
         path::{Path, PathBuf},
         process::Command,
         sync::atomic::AtomicBool,
@@ -614,33 +615,28 @@ mod session {
     struct DirectoryIdentity {
         path: PathBuf,
         canonical: PathBuf,
-        device: u64,
-        inode: u64,
+        identity: (u64, u64),
     }
     impl DirectoryIdentity {
         fn capture(path: PathBuf, purpose: &str) -> Result<Self> {
             ensure!(path.is_dir(), "VBA-M {purpose} directory is missing");
-            let native = CString::new(path.as_os_str().as_bytes())?;
             ensure!(
-                unsafe { libc::access(native.as_ptr(), libc::W_OK) } == 0,
+                !fs::metadata(&path)?.permissions().readonly(),
                 "VBA-M {purpose} directory is not writable"
             );
-            let metadata = fs::metadata(&path)?;
+            let identity = crate::controller_native_platform::file_identity(&path)?;
             Ok(Self {
                 canonical: path.canonicalize()?,
                 path,
-                device: metadata.dev(),
-                inode: metadata.ino(),
+                identity,
             })
         }
         fn verify(&self) -> Result<()> {
-            let metadata = fs::metadata(&self.path)?;
-            let native = CString::new(self.path.as_os_str().as_bytes())?;
             ensure!(
                 self.path.canonicalize()? == self.canonical
-                    && metadata.dev() == self.device
-                    && metadata.ino() == self.inode
-                    && unsafe { libc::access(native.as_ptr(), libc::W_OK) } == 0,
+                    && crate::controller_native_platform::file_identity(&self.path)?
+                        == self.identity
+                    && !fs::metadata(&self.path)?.permissions().readonly(),
                 "VBA-M persistence directory changed"
             );
             Ok(())
@@ -791,6 +787,8 @@ mod session {
     pub(crate) struct PreparedSession {
         directory: tempfile::TempDir,
         pub(crate) private_config: PathBuf,
+        device_index: Option<u32>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         routing: Routing,
         setup: settings::SavedSetup,
@@ -822,9 +820,14 @@ mod session {
             let calibration = calibrations
                 .get(&player.controller_id)
                 .context("VBA-M calibration disappeared")?;
+            let mut prepared_index = None;
             let (routing, bindings) = match setup.sdl_api {
                 SdlApi::Sdl2 => {
                     let initial = sdl2_routing(observe_sdl2(setup, None, cancel)?);
+                    // Linux resolves through the sysfs topology; other hosts
+                    // match the SDL device-interface path and require
+                    // uniqueness.
+                    #[cfg(target_os = "linux")]
                     let runtime_path = topology.resolve_runtime_path(
                         &selected,
                         initial
@@ -832,12 +835,36 @@ mod session {
                             .iter()
                             .filter_map(|device| device.path.as_deref()),
                     )?;
+                    #[cfg(not(target_os = "linux"))]
+                    let runtime_path = {
+                        let selected_string = selected.to_string_lossy().into_owned();
+                        let candidates = initial
+                            .devices
+                            .iter()
+                            .filter(|device| {
+                                device.path.as_deref() == Some(selected_string.as_str())
+                            })
+                            .collect::<Vec<_>>();
+                        ensure!(
+                            candidates.len() == 1,
+                            "VBA-M physical controller is missing or ambiguous in SDL"
+                        );
+                        selected_string
+                    };
                     let captured = observe_sdl2(setup, Some(&runtime_path), cancel)?;
                     initial.ensure_same_routing(&sdl2_routing(captured.clone()))?;
+                    #[cfg(target_os = "linux")]
                     topology.verify()?;
                     let device = captured.device_at_path(&runtime_path)?;
+                    #[cfg(not(target_os = "linux"))]
+                    platform::require_unique_device_path(
+                        &captured.devices,
+                        &runtime_path,
+                        device.device_index,
+                    )?;
                     let slot = u8::try_from(device.device_index)
                         .context("VBA-M SDL2 joystick slot is out of range")?;
+                    prepared_index = Some(device.device_index);
                     let physical = PhysicalMap::from_device(device)?;
                     let classic = device.linux_classic.clone();
                     let evdev = device.linux_evdev.clone();
@@ -856,6 +883,10 @@ mod session {
                         bindings,
                     )
                 }
+                // The SDL3 path needs the classic Linux joydev backend
+                // (`/dev/input/js*` plus direct kernel reads); other hosts
+                // use the SDL2 API above.
+                #[cfg(target_os = "linux")]
                 SdlApi::Sdl3 => {
                     let initial = observe_sdl3(setup, &[], cancel)?;
                     let runtime_path = topology.resolve_runtime_path(
@@ -898,6 +929,12 @@ mod session {
                         bindings,
                     )
                 }
+                #[cfg(not(target_os = "linux"))]
+                SdlApi::Sdl3 => {
+                    anyhow::bail!(
+                        "VBA-M SDL3 needs the classic Linux joydev backend; use the SDL2 API on this host"
+                    )
+                }
             };
             let baseline =
                 fs::read(&setup.config_path).context("Reading declared VBA-M configuration")?;
@@ -933,6 +970,8 @@ mod session {
             let session = Self {
                 directory,
                 private_config,
+                device_index: prepared_index,
+                #[cfg(target_os = "linux")]
                 topology,
                 routing,
                 setup: setup.clone(),
@@ -950,6 +989,7 @@ mod session {
                 self.directory.path().is_dir() && self.private_config.is_file(),
                 "VBA-M private configuration disappeared"
             );
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             self.battery.verify()?;
             self.states.verify()?;
@@ -961,12 +1001,32 @@ mod session {
                 );
             }
             self.routing.verify(&self.setup, cancel)?;
-            self.topology.verify()
+            // SDL2 sessions additionally pin the device path plus index;
+            // SDL3 sessions only exist on Linux (classic backend).
+            #[cfg(not(target_os = "linux"))]
+            if let Some(index) = self.device_index {
+                let Routing::Sdl2 { runtime_path, .. } = &self.routing else {
+                    anyhow::bail!("VBA-M SDL3 sessions need Linux");
+                };
+                let fresh = observe_sdl2(&self.setup, Some(runtime_path), cancel)?;
+                platform::require_unique_device_path(&fresh.devices, runtime_path, index)?;
+            }
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
         pub(crate) fn check_health(&self) -> Result<()> {
             self.battery.verify()?;
             self.states.verify()?;
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return Ok(());
         }
     }
 
@@ -1018,7 +1078,6 @@ mod session {
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
     use crate::{
@@ -1073,7 +1132,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("VBA-M calibrated launch requires native Linux")
+            anyhow::bail!("VBA-M calibrated launch requires a native build")
         };
         ensure!(
             option.emulator_name.eq_ignore_ascii_case("VBA-M")
