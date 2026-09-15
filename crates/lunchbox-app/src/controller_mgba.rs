@@ -30,8 +30,8 @@ pub(crate) fn render_calibrated(
         sdl2_physical::PhysicalMap,
     };
     ensure!(
-        calibration.os == "linux",
-        "mGBA physical translation requires Linux calibration"
+        ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+        "mGBA physical translation requires a desktop calibration"
     );
     let device = snapshot.device_at_path(runtime_path)?;
     ensure!(

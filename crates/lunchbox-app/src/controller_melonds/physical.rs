@@ -77,8 +77,8 @@ pub(crate) fn controls(
 ) -> Result<std::collections::BTreeMap<String, Input>> {
     calibration.validate()?;
     ensure!(
-        calibration.os == "linux",
-        "melonDS physical mapping currently requires Linux calibration"
+        ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+        "melonDS physical mapping requires a desktop calibration"
     );
     let routes = super::visual_routes();
     ensure!(

@@ -66,8 +66,8 @@ impl SavedSetup {
             .get(&self.controller_id)
             .context("DeSmuME controller has no saved calibration")?;
         ensure!(
-            calibration.os == "linux",
-            "DeSmuME native mapping requires Linux calibration"
+            ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+            "DeSmuME native mapping requires a desktop calibration"
         );
         let mapping = calibration.plan_profile(profile)?;
         ensure!(

@@ -20,8 +20,8 @@ pub(crate) fn resolve(
     released: &InputState,
 ) -> Result<BTreeMap<String, SdlInput>> {
     ensure!(
-        calibration.os == "linux",
-        "PPSSPP physical translation requires a Linux calibration"
+        ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+        "PPSSPP physical translation requires a desktop calibration"
     );
     let context = MappingContext::capture(snapshot, runtime_path)?;
     let device = snapshot.device_at_path(runtime_path)?;

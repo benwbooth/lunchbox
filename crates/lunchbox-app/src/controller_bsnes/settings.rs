@@ -84,8 +84,8 @@ impl SavedSetup {
                 .get(&player.controller_id)
                 .context("bsnes controller has no saved calibration")?;
             ensure!(
-                calibration.os == "linux",
-                "bsnes native mapping requires Linux calibration"
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+                "bsnes native mapping requires a desktop calibration"
             );
             let mapping = calibration.plan_profile(profile)?;
             ensure!(

@@ -142,8 +142,8 @@ pub(crate) fn panel_mapping(
     use std::collections::{BTreeMap, BTreeSet};
     calibration.validate()?;
     ensure!(
-        calibration.os == "linux",
-        "Flycast physical SDL translation requires Linux calibration"
+        ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+        "Flycast physical SDL translation requires a desktop calibration"
     );
     let counts = device
         .controls

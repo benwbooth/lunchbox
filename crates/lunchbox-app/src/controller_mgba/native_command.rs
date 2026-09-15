@@ -88,7 +88,7 @@ pub(crate) fn prepare(
     setup.review(calibrations)?;
     let EmulatorExecutable::Native(executable) = &option.executable else {
         anyhow::bail!(
-            "mGBA calibrated launch requires native Linux SDL; Qt/Wine/Flatpak routing is separate"
+            "mGBA calibrated launch requires a native SDL build; Qt/Wine/Flatpak routing is separate"
         );
     };
     ensure!(

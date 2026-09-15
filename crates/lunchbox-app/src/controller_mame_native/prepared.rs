@@ -39,8 +39,9 @@ pub(crate) fn resolve_guided(
             .context("MAME physical calibration is missing")?;
         calibration.validate()?;
         ensure!(
-            calibration.os == "linux" && calibration.backend != crate::controller_sdl3::BACKEND,
-            "MAME needs physical Linux inputs, not SDL3 logical codes"
+            ["linux", "macos", "windows"].contains(&calibration.os.as_str())
+                && calibration.backend != crate::controller_sdl3::BACKEND,
+            "MAME needs physical desktop inputs, not SDL3 logical codes"
         );
         for (target, source) in &player.source_controls {
             let input = calibration
@@ -115,8 +116,8 @@ pub(crate) fn controller_xml(
             .get(&player.controller_id)
             .context("MAME physical calibration is missing")?;
         ensure!(
-            calibration.os == "linux",
-            "MAME physical backend translation requires Linux calibration"
+            ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+            "MAME physical backend translation requires a desktop calibration"
         );
         for (target, source) in &player.source_controls {
             let input = calibration
