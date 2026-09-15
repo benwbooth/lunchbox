@@ -27,6 +27,9 @@ pub(crate) mod prepared;
 pub(crate) mod profiles;
 pub(crate) mod psx;
 pub(crate) mod saturn;
+// Linux-only by source contract: the session captures joydev identity
+// through sysfs, corrects raw axis state, and builds bindings from raw
+// joydev maps. Other hosts have no joydev nodes, so no port is staged.
 #[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
