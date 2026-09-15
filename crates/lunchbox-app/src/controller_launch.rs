@@ -153,7 +153,6 @@ enum PreparedJsonNativeLaunch {
     Kronos(crate::controller_kronos_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Rmg(crate::controller_rmg_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Simple64(crate::controller_simple64_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Nestopia(crate::controller_nestopia_ue_flatpak::PreparedLaunch),
@@ -228,7 +227,6 @@ impl PreparedJsonNativeLaunch {
             Self::Kronos(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Rmg(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Simple64(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Nestopia(session) => session.spawn(plan, cancel),
@@ -299,7 +297,6 @@ impl PreparedJsonNativeLaunch {
             Self::Kronos(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Rmg(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Simple64(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Nestopia(session) => session.verify(cancel),
@@ -370,7 +367,6 @@ impl PreparedJsonNativeLaunch {
             Self::Kronos(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Rmg(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Simple64(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Nestopia(session) => session.check_health(),
@@ -9098,7 +9094,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("simple64")
     {

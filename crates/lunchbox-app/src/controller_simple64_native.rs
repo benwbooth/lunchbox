@@ -260,7 +260,10 @@ pub(crate) mod settings {
                 .context("Missing native simple64 profile")?;
             let players = self.players.iter().map(|player| {
                 let calibration = calibrations.get(&player.controller_id).context("simple64 controller has no saved calibration")?;
-                ensure!(calibration.os == "linux", "simple64 native mapping requires Linux calibration");
+                ensure!(
+                    ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+                    "simple64 native mapping requires a desktop calibration"
+                );
                 Ok(serde_json::json!({"port":player.player,"controller_id":player.controller_id,"target_layout":profile.target_layout,"mapping":calibration.plan_profile(profile)?}))
             }).collect::<Result<Vec<_>>>()?;
             Ok(
@@ -286,8 +289,11 @@ pub(crate) mod settings {
 #[cfg(target_os = "linux")]
 pub(crate) mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::Calibration,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
@@ -515,6 +521,7 @@ pub(crate) mod session {
     pub(crate) struct PreparedSession {
         directory: tempfile::TempDir,
         pub(crate) staged_executable: PathBuf,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         runtime_paths: Vec<String>,
         snapshot: Snapshot,
@@ -544,8 +551,12 @@ pub(crate) mod session {
                 );
                 selected.push(found[0].device_path.clone());
             }
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(&selected)?;
             let initial = routing(observe(setup, &[], cancel)?);
+            // Linux resolves through the sysfs topology; other hosts
+            // match the SDL device-interface path and require uniqueness.
+            #[cfg(target_os = "linux")]
             let runtime_paths = selected
                 .iter()
                 .map(|path| {
@@ -556,6 +567,23 @@ pub(crate) mod session {
                             .iter()
                             .filter_map(|device| device.path.as_deref()),
                     )
+                })
+                .collect::<Result<Vec<_>>>()?;
+            #[cfg(not(target_os = "linux"))]
+            let runtime_paths = selected
+                .iter()
+                .map(|path| {
+                    let path_string = path.to_string_lossy().into_owned();
+                    let candidates = initial
+                        .devices
+                        .iter()
+                        .filter(|device| device.path.as_deref() == Some(path_string.as_str()))
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        candidates.len() == 1,
+                        "simple64 physical controller is missing or ambiguous in SDL"
+                    );
+                    Ok(path_string)
                 })
                 .collect::<Result<Vec<_>>>()?;
             ensure!(
@@ -660,6 +688,7 @@ pub(crate) mod session {
         }
         pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
             cancelled(cancel)?;
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             ensure!(
                 self.directory.path().is_dir(),
@@ -685,15 +714,54 @@ pub(crate) mod session {
                         .collect::<Vec<_>>(),
                 "simple64 SDL2 routing changed before launch"
             );
-            self.topology.verify()
+            #[cfg(not(target_os = "linux"))]
+            for path in &self.runtime_paths {
+                let count = fresh
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(path.as_str()))
+                    .count();
+                ensure!(
+                    count == 1,
+                    "simple64 SDL device path is missing or ambiguous"
+                );
+            }
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let fresh = observe(&self.setup, &self.runtime_paths, &AtomicBool::new(false))?;
+            ensure!(
+                routing(fresh.clone())
+                    .devices
+                    .iter()
+                    .map(|d| (&d.device_index, &d.path, &d.mapping, &d.is_game_controller))
+                    .collect::<Vec<_>>()
+                    == routing(self.snapshot.clone())
+                        .devices
+                        .iter()
+                        .map(|d| (&d.device_index, &d.path, &d.mapping, &d.is_game_controller))
+                        .collect::<Vec<_>>(),
+                "simple64 SDL2 routing changed"
+            );
+            Ok(())
         }
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::settings::SavedSetup;
     use crate::{
@@ -748,7 +816,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("simple64 calibrated launch requires native Linux, not Wine/Flatpak")
+            anyhow::bail!("simple64 calibrated launch requires a native build, not Wine/Flatpak")
         };
         ensure!(
             setup.emulator_id == option.emulator_id && original.environment.is_empty(),
