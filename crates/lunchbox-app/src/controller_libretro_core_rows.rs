@@ -14,6 +14,8 @@
 //!   was captured.
 //! * `dosbox-pure` (schellingb/dosbox-pure): libretro core by design; its
 //!   input path is the RetroArch frontend.
+//! * `gw` (MADrigal simulators libretro core): record paths are
+//!   retroarch-only.
 
 pub(crate) fn refusal() -> anyhow::Result<()> {
     anyhow::bail!(
