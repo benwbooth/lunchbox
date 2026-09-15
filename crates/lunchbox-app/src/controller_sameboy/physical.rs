@@ -14,8 +14,8 @@ pub(crate) fn calibrated_bindings(
         sdl2_physical::PhysicalMap,
     };
     ensure!(
-        calibration.os == "linux",
-        "SameBoy native calibration requires Linux"
+        ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+        "SameBoy native calibration requires a desktop host"
     );
     let device = snapshot.device_at_path(runtime_path)?;
     let counts = device

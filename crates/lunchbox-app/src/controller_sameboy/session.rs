@@ -1,7 +1,10 @@
 //! Native SDL launch-time SDL inventory and physical calibration ownership.
 use super::{isolation::PreparedConfig, physical::calibrated_bindings, settings::SavedSetup};
+#[cfg(target_os = "linux")]
+use crate::controller_bizhawk_guard::InputTopology;
+#[cfg(not(target_os = "linux"))]
+use crate::controller_native_platform as platform;
 use crate::{
-    controller_bizhawk_guard::InputTopology,
     controller_catalog::Calibration,
     controller_native_process::{cancelled, capture},
     controllers::ControllerDevice,
@@ -44,6 +47,8 @@ fn routing(mut snapshot: Snapshot) -> Snapshot {
 pub(crate) struct PreparedSession {
     pub(crate) configuration: PreparedConfig,
     pub(crate) runtime_paths: Vec<String>,
+    device_indices: Vec<u32>,
+    #[cfg(target_os = "linux")]
     topology: InputTopology,
     initial: Snapshot,
     setup: SavedSetup,
@@ -73,11 +78,16 @@ impl PreparedSession {
             );
             selected.push(device.device_path.clone());
         }
+        #[cfg(target_os = "linux")]
         let topology = InputTopology::capture(&selected)?;
         let initial = routing(observe(setup, None, cancel)?);
         let mut bindings = None;
         let mut runtime_paths = Vec::new();
+        let mut device_indices = Vec::new();
         for (player, selected) in setup.players.iter().zip(&selected) {
+            // Linux resolves through the sysfs topology; other hosts
+            // match the SDL device-interface path and require uniqueness.
+            #[cfg(target_os = "linux")]
             let path = topology.resolve_runtime_path(
                 selected,
                 initial
@@ -85,13 +95,32 @@ impl PreparedSession {
                     .iter()
                     .filter_map(|device| device.path.as_deref()),
             )?;
+            #[cfg(not(target_os = "linux"))]
+            let path = {
+                let selected_string = selected.to_string_lossy().into_owned();
+                let candidates = initial
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                    .collect::<Vec<_>>();
+                ensure!(
+                    candidates.len() == 1,
+                    "SameBoy physical controller is missing or ambiguous in SDL"
+                );
+                selected_string
+            };
             ensure!(
                 !runtime_paths.contains(&path),
                 "SameBoy players resolved to the same native controller"
             );
             let captured = observe(setup, Some(&path), cancel)?;
             initial.ensure_same_routing(&routing(captured.clone()))?;
+            #[cfg(target_os = "linux")]
             topology.verify()?;
+            let device = captured.device_at_path(&path)?;
+            device_indices.push(device.device_index);
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_device_path(&captured.devices, &path, device.device_index)?;
             super::routing::validate(&captured, &path)?;
             bindings = Some(calibrated_bindings(
                 calibrations
@@ -114,6 +143,8 @@ impl PreparedSession {
         let session = Self {
             configuration,
             runtime_paths,
+            device_indices,
+            #[cfg(target_os = "linux")]
             topology,
             initial,
             setup: setup.clone(),
@@ -124,16 +155,46 @@ impl PreparedSession {
 
     pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
         cancelled(cancel)?;
+        #[cfg(target_os = "linux")]
         self.topology.verify()?;
         self.configuration.verify()?;
         let fresh = routing(observe(&self.setup, None, cancel)?);
         self.initial.ensure_same_routing(&fresh)?;
         super::routing::validate(&fresh, &self.runtime_paths[0])?;
-        self.topology.verify()
+        for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
+            let device = fresh.device_at_path(path)?;
+            ensure!(
+                device.device_index == *index,
+                "SameBoy SDL joystick moved before launch"
+            );
+            #[cfg(not(target_os = "linux"))]
+            platform::require_unique_device_path(&fresh.devices, path, *index)?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            return self.topology.verify();
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Ok(());
+        }
     }
 
     pub(crate) fn check_health(&self) -> Result<()> {
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        return self.topology.verify();
+        #[cfg(not(target_os = "linux"))]
+        return self.verify_health_probe();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn verify_health_probe(&self) -> Result<()> {
+        let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+        self.initial.ensure_same_routing(&fresh)?;
+        for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
+            platform::require_unique_device_path(&fresh.devices, path, *index)?;
+        }
+        Ok(())
     }
 }
 

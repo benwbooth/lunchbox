@@ -69,7 +69,6 @@ impl PreparedConfig {
     /// Overlay only prefs.bin so native save, state and screenshot paths
     /// remain unchanged. Caller must resolve native SDL preference selection
     /// and retain this owner through the child lifetime.
-    #[cfg(target_os = "linux")]
     pub(crate) fn overlay_arguments(
         &self,
         executable: &Path,

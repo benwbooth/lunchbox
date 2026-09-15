@@ -6,13 +6,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) mod configuration;
 pub(crate) mod isolation;
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command;
 pub(crate) mod physical;
 #[cfg(target_os = "linux")]
 pub(crate) mod preferences;
 pub(crate) mod routing;
-#[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
 

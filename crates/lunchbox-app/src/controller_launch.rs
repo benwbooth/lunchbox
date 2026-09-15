@@ -380,7 +380,6 @@ impl PreparedJsonNativeLaunch {
 pub struct CalibratedLaunch {
     snes9x_native: Option<crate::controller_snes9x::native_command::NativeSession>,
     fceux_native: Option<crate::controller_fceux::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     sameboy_native: Option<crate::controller_sameboy::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
     bsnes_native: Option<crate::controller_bsnes::native_command::NativeSession>,

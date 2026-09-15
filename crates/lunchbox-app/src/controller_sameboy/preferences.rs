@@ -1,16 +1,37 @@
-//! Read-only Linux preference selection for pinned SameBoy SDL.
+//! Read-only preference selection for pinned SameBoy SDL.
 use anyhow::{Context, Result, ensure};
-use std::{
-    ffi::CString,
-    os::unix::ffi::OsStrExt,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-fn accessible(path: &Path, mode: libc::c_int) -> Result<bool> {
-    let path = CString::new(path.as_os_str().as_bytes())?;
-    // Match native access(), including real-user permission semantics. This
-    // does not open, create, truncate or change the preference file.
-    Ok(unsafe { libc::access(path.as_ptr(), mode) } == 0)
+/// Readability/writability probe without opening or creating the file.
+/// Unix checks real-user access bits; other hosts check existence plus the
+/// readonly flag, which is weaker and documented at the call sites.
+fn accessible(path: &Path, write: bool) -> Result<bool> {
+    let metadata = match std::fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.is_file() {
+        return Ok(false);
+    }
+    if write && metadata.permissions().readonly() {
+        return Ok(false);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let native = std::ffi::CString::new(path.as_os_str().as_bytes()).context("NUL in path")?;
+        let mode = if write {
+            libc::R_OK | libc::W_OK
+        } else {
+            libc::R_OK
+        };
+        Ok(unsafe { libc::access(native.as_ptr(), mode) } == 0)
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(true)
+    }
 }
 
 /// Resource/data roots must be established from the selected executable.
@@ -30,7 +51,7 @@ pub(crate) fn resolve(
             data.is_absolute(),
             "SameBoy compiled data root must be resolved"
         );
-        if accessible(&local, libc::F_OK)? {
+        if accessible(&local, false)? {
             local
         } else {
             data.join("prefs.bin")
@@ -38,7 +59,7 @@ pub(crate) fn resolve(
     } else {
         local
     };
-    if accessible(&resource, libc::R_OK | libc::W_OK)? {
+    if accessible(&resource, true)? {
         return Ok(resource);
     }
     let root = if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
