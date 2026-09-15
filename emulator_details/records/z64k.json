@@ -1,1 +1,227 @@
-{"schema_version":1,"slug":"z64k","emulator":"Z64K","sources":[{"kind":"source","repo":"https://z64k.com/","url":"https://z64k.com/","role":"official upstream identity/distribution evidence"},{"kind":"docs","url":"https://z64k.com/","role":"official documentation/platform evidence"}],"platforms":{},"platform_gaps":{"linux":{"status":"unresolved","reason":"Java cross-platform runtime (any OS with a JRE) with a saved configuration (path/rom locations), snapshot save/restore, jamepad hot-plug gamepads and a keyboard configuration editor; the exact host config/save/state file locations are not established from reviewable sources (closed-source jar; class-string survey found no config path).","evidence":["official:https://z64k.com/","docs:https://www.z64k.com/ changelog (saved config, snapshots, jamepad gamepads)"]},"linux-flatpak":{"status":"unresolved","reason":"Java cross-platform runtime (any OS with a JRE) with a saved configuration (path/rom locations), snapshot save/restore, jamepad hot-plug gamepads and a keyboard configuration editor; the exact host config/save/state file locations are not established from reviewable sources (closed-source jar; class-string survey found no config path).","evidence":["official:https://z64k.com/","docs:https://www.z64k.com/ changelog (saved config, snapshots, jamepad gamepads)"]},"windows":{"status":"unresolved","reason":"Java cross-platform runtime (any OS with a JRE) with a saved configuration (path/rom locations), snapshot save/restore, jamepad hot-plug gamepads and a keyboard configuration editor; the exact host config/save/state file locations are not established from reviewable sources (closed-source jar; class-string survey found no config path).","evidence":["official:https://z64k.com/","docs:https://www.z64k.com/ changelog (saved config, snapshots, jamepad gamepads)"]},"macos":{"status":"unresolved","reason":"Java cross-platform runtime (any OS with a JRE) with a saved configuration (path/rom locations), snapshot save/restore, jamepad hot-plug gamepads and a keyboard configuration editor; the exact host config/save/state file locations are not established from reviewable sources (closed-source jar; class-string survey found no config path).","evidence":["official:https://z64k.com/","docs:https://www.z64k.com/ changelog (saved config, snapshots, jamepad gamepads)"]}}}
+{
+  "schema_version": 1,
+  "slug": "z64k",
+  "emulator": "Z64K",
+  "sources": [
+    {
+      "kind": "source",
+      "repo": "https://z64k.com/",
+      "url": "https://z64k.com/",
+      "role": "official upstream identity/distribution evidence"
+    },
+    {
+      "kind": "docs",
+      "url": "https://z64k.com/",
+      "role": "official documentation/platform evidence"
+    },
+    {
+      "kind": "artifact",
+      "url": "https://www.z64k.com/",
+      "role": "Z64K.jar reviewed by listing, class-string survey and headless boot observation"
+    }
+  ],
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "User-saved configuration at a user-chosen path via the Swing file chooser; no fixed host file",
+          "status": "captured",
+          "naming": "A clean headless boot writes nothing to HOME or cwd; persistence is explicit user save only.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 headless boot writes no HOME/cwd files",
+            "source:Z64K.jar files/FileLoader JFileChooser chooser"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "jamepad hot-plug gamepads plus the keyboard configuration editor (keyboard/default.kb resource)",
+          "status": "captured",
+          "naming": "Gamepads enumerate at boot (GAMEPAD CONNECTED); keyboard map is positional with editor overrides.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 GAMEPAD CONNECTED boot log",
+            "source:Z64K.jar keyboard/default.kb resource",
+            "docs:https://www.z64k.com/ changelog (jamepad gamepads, keyboard editor)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mounted media images are written back to their own user-chosen paths; no fixed SRAM sidecar grammar",
+          "status": "captured",
+          "naming": "No emulator-owned save directory; persistence lives with the user-located content.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 headless boot writes no HOME/cwd files",
+            "source:Z64K.jar files/FileLoader JFileChooser chooser"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-chosen snapshot files (.zsf) via -snapshot <path> or the file chooser",
+          "status": "captured",
+          "naming": "Snapshot restore takes an explicit user path; no slot directory.",
+          "evidence": [
+            "docs:Z64K quick guide -snapshot F:\\snapshots\\samsjourney.zsf example",
+            "source:Z64K.jar config/SnapshotFileLoader class"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Bundled in-jar system ROMs (c64/basic.rom, kernal.rom, chargen.rom, palettes, SID waveforms); no user firmware path",
+          "status": "captured",
+          "naming": "ROMs load from the jar (c64/cram.bin, palette/vicii/, sid/wave*) at boot.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 boot ROM/palette/waveform log",
+            "source:Z64K.jar c64/basic.rom+kernal.rom+chargen.rom listing"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "Class-string survey found no key store or key-file references.",
+          "evidence": [
+            "source:Z64K.jar class-string survey (key store absent)"
+          ]
+        }
+      ]
+    },
+    "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "User-saved configuration at a user-chosen path via the Swing file chooser; no fixed host file",
+          "status": "captured",
+          "naming": "A clean headless boot writes nothing to HOME or cwd; persistence is explicit user save only.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 headless boot writes no HOME/cwd files",
+            "source:Z64K.jar files/FileLoader JFileChooser chooser"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "jamepad hot-plug gamepads plus the keyboard configuration editor (keyboard/default.kb resource)",
+          "status": "captured",
+          "naming": "Gamepads enumerate at boot (GAMEPAD CONNECTED); keyboard map is positional with editor overrides.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 GAMEPAD CONNECTED boot log",
+            "source:Z64K.jar keyboard/default.kb resource",
+            "docs:https://www.z64k.com/ changelog (jamepad gamepads, keyboard editor)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mounted media images are written back to their own user-chosen paths; no fixed SRAM sidecar grammar",
+          "status": "captured",
+          "naming": "No emulator-owned save directory; persistence lives with the user-located content.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 headless boot writes no HOME/cwd files",
+            "source:Z64K.jar files/FileLoader JFileChooser chooser"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-chosen snapshot files (.zsf) via -snapshot <path> or the file chooser",
+          "status": "captured",
+          "naming": "Snapshot restore takes an explicit user path; no slot directory.",
+          "evidence": [
+            "docs:Z64K quick guide -snapshot F:\\snapshots\\samsjourney.zsf example",
+            "source:Z64K.jar config/SnapshotFileLoader class"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Bundled in-jar system ROMs (c64/basic.rom, kernal.rom, chargen.rom, palettes, SID waveforms); no user firmware path",
+          "status": "captured",
+          "naming": "ROMs load from the jar (c64/cram.bin, palette/vicii/, sid/wave*) at boot.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 boot ROM/palette/waveform log",
+            "source:Z64K.jar c64/basic.rom+kernal.rom+chargen.rom listing"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "Class-string survey found no key store or key-file references.",
+          "evidence": [
+            "source:Z64K.jar class-string survey (key store absent)"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "User-saved configuration at a user-chosen path via the Swing file chooser; no fixed host file",
+          "status": "captured",
+          "naming": "A clean headless boot writes nothing to HOME or cwd; persistence is explicit user save only.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 headless boot writes no HOME/cwd files",
+            "source:Z64K.jar files/FileLoader JFileChooser chooser"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "jamepad hot-plug gamepads plus the keyboard configuration editor (keyboard/default.kb resource)",
+          "status": "captured",
+          "naming": "Gamepads enumerate at boot (GAMEPAD CONNECTED); keyboard map is positional with editor overrides.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 GAMEPAD CONNECTED boot log",
+            "source:Z64K.jar keyboard/default.kb resource",
+            "docs:https://www.z64k.com/ changelog (jamepad gamepads, keyboard editor)"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Mounted media images are written back to their own user-chosen paths; no fixed SRAM sidecar grammar",
+          "status": "captured",
+          "naming": "No emulator-owned save directory; persistence lives with the user-located content.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 headless boot writes no HOME/cwd files",
+            "source:Z64K.jar files/FileLoader JFileChooser chooser"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "User-chosen snapshot files (.zsf) via -snapshot <path> or the file chooser",
+          "status": "captured",
+          "naming": "Snapshot restore takes an explicit user path; no slot directory.",
+          "evidence": [
+            "docs:Z64K quick guide -snapshot F:\\snapshots\\samsjourney.zsf example",
+            "source:Z64K.jar config/SnapshotFileLoader class"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Bundled in-jar system ROMs (c64/basic.rom, kernal.rom, chargen.rom, palettes, SID waveforms); no user firmware path",
+          "status": "captured",
+          "naming": "ROMs load from the jar (c64/cram.bin, palette/vicii/, sid/wave*) at boot.",
+          "evidence": [
+            "runtime:java -jar Z64K.jar c64 boot ROM/palette/waveform log",
+            "source:Z64K.jar c64/basic.rom+kernal.rom+chargen.rom listing"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "Class-string survey found no key store or key-file references.",
+          "evidence": [
+            "source:Z64K.jar class-string survey (key store absent)"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "unresolved",
+      "reason": "Java cross-platform runtime (any OS with a JRE) with a saved configuration (path/rom locations), snapshot save/restore, jamepad hot-plug gamepads and a keyboard configuration editor; the exact host config/save/state file locations are not established from reviewable sources (closed-source jar; class-string survey found no config path).",
+      "evidence": [
+        "official:https://z64k.com/",
+        "docs:https://www.z64k.com/ changelog (saved config, snapshots, jamepad gamepads)"
+      ]
+    }
+  }
+}
