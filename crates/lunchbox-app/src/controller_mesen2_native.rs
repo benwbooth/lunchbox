@@ -30,6 +30,9 @@ use anyhow::{Result, ensure};
 
 #[cfg(target_os = "linux")]
 pub(crate) mod native_command;
+// Linux-only by source contract: the session verifies through evdev
+// (`--evdev-catalog` captures) and needs the controller's event node.
+// Other hosts have no evdev nodes, so no port is staged.
 #[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
