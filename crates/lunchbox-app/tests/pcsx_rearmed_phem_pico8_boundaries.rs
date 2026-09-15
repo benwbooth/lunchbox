@@ -39,11 +39,20 @@ fn records_pin_primary_evidence_and_preserve_boundaries() {
         pico["platform_gaps"]["linux-flatpak"]["status"],
         "unsupported"
     );
-    for host in ["linux", "linux-flatpak", "windows", "macos"] {
+    assert_eq!(
+        record("pcsx-rearmed")["platforms"]["linux"]["paths"]
+            .as_array()
+            .unwrap()
+            .len(),
+        6
+    );
+    for host in ["linux-flatpak", "windows", "macos"] {
         assert_eq!(
             record("pcsx-rearmed")["platform_gaps"][host]["status"],
-            "unresolved"
+            "no_verified_package"
         );
+    }
+    for host in ["linux", "linux-flatpak", "windows", "macos"] {
         assert_eq!(
             record("phem")["platform_gaps"][host]["status"],
             "unsupported"

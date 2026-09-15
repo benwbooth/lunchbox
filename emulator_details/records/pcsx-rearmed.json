@@ -3,14 +3,107 @@
   "slug": "pcsx-rearmed",
   "emulator": "PCSX-ReARMed",
   "sources": [
-    {"kind":"source","repo":"notaz/pcsx_rearmed","commit":"d7d741db1d974cf8dd05a23149a1f12758fc1894","url":"https://github.com/notaz/pcsx_rearmed/tree/d7d741db1d974cf8dd05a23149a1f12758fc1894","role":"pinned upstream source"},
-    {"kind":"docs","url":"https://github.com/notaz/pcsx_rearmed/blob/d7d741db1d974cf8dd05a23149a1f12758fc1894/README.md","role":"upstream feature and frontend documentation"}
+    {
+      "kind": "source",
+      "repo": "notaz/pcsx_rearmed",
+      "commit": "d7d741db1d974cf8dd05a23149a1f12758fc1894",
+      "url": "https://github.com/notaz/pcsx_rearmed/tree/d7d741db1d974cf8dd05a23149a1f12758fc1894",
+      "role": "pinned upstream source"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/notaz/pcsx_rearmed/blob/d7d741db1d974cf8dd05a23149a1f12758fc1894/README.md",
+      "role": "upstream feature and frontend documentation"
+    }
   ],
-  "platform_gaps": {
-    "linux":{"status":"unresolved","reason":"The pinned source has a Linux CI build and a standalone frontend, but its input state is supplied by the frontend and no stable native config/profile path is established for this catalog entry.","evidence":["source:README.md lines 1-22 @d7d741db1d974cf8dd05a23149a1f12758fc1894","source:frontend/plugin_lib.c lines 704-726 @d7d741db1d974cf8dd05a23149a1f12758fc1894"]},
-    "linux-flatpak":{"status":"unresolved","reason":"No official Flatpak package and no source-backed Flatpak controller-profile path.","evidence":["source:README.md lines 1-22 @d7d741db1d974cf8dd05a23149a1f12758fc1894"]},
-    "windows":{"status":"unresolved","reason":"The source does not establish a current Windows distribution or stable native controller-profile path for this catalog entry.","evidence":["source:README.md lines 1-22 @d7d741db1d974cf8dd05a23149a1f12758fc1894"]},
-    "macos":{"status":"unresolved","reason":"The source does not establish a current macOS distribution or stable native controller-profile path for this catalog entry.","evidence":["source:README.md lines 1-22 @d7d741db1d974cf8dd05a23149a1f12758fc1894"]}
+  "platforms": {
+    "linux": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "~/.pcsx/pcsx.cfg (-cfg <file> overrides; per-game cfg/ sidecars)",
+          "status": "captured",
+          "naming": "Line-oriented name = value config; input uses binddev and bind lines; per-game configs live under cfg/.",
+          "evidence": [
+            "source:frontend/main.c lines 442,522,643 @d7d741db1d974cf8dd05a23149a1f12758fc1894",
+            "source:frontend/menu.c lines 522-544,639-648 @d7d741db1d974cf8dd05a23149a1f12758fc1894"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "~/.pcsx/pcsx.cfg binddev/bind lines (player1/player2 plus emulator actions)",
+          "status": "captured",
+          "naming": "`binddev = <device>` and `bind <host-key> = player1|player2 <action>`; keys_write_all persists measured binds.",
+          "evidence": [
+            "source:frontend/menu.c lines 973-1015 @d7d741db1d974cf8dd05a23149a1f12758fc1894",
+            "source:frontend/plugin_lib.c update_input/in_keystate @d7d741db1d974cf8dd05a23149a1f12758fc1894"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "~/.pcsx/memcards/card1.mcd and card2.mcd (provisioned at startup)",
+          "status": "captured",
+          "naming": "Two default memory-card files; LoadMcds opens the configured pair at init.",
+          "evidence": [
+            "source:frontend/main.h lines 26-28 @d7d741db1d974cf8dd05a23149a1f12758fc1894",
+            "source:frontend/main.c check_memcards/LoadMcds @d7d741db1d974cf8dd05a23149a1f12758fc1894"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "~/.pcsx/sstates/ (slots 0-9 via state_slot)",
+          "status": "captured",
+          "naming": "Numbered savestate slots 0-9 selected by the slot stepper.",
+          "evidence": [
+            "source:frontend/main.h line 29 @d7d741db1d974cf8dd05a23149a1f12758fc1894",
+            "source:frontend/main.c lines 75,170-189 @d7d741db1d974cf8dd05a23149a1f12758fc1894"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "~/.pcsx/bios/ (optional; default Config.Bios is HLE)",
+          "status": "captured",
+          "naming": "HLE BIOS is the default; a user BIOS file may be placed under bios/.",
+          "evidence": [
+            "source:frontend/main.c Config.Bios HLE default @d7d741db1d974cf8dd05a23149a1f12758fc1894",
+            "source:frontend/main.h line 34 @d7d741db1d974cf8dd05a23149a1f12758fc1894"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files; HLE needs no keys.",
+          "evidence": [
+            "source:frontend/main.c Config.Bios HLE default @d7d741db1d974cf8dd05a23149a1f12758fc1894"
+          ]
+        }
+      ]
+    }
   },
-  "notes":"PCSX-ReARMed is a core/fork whose frontend owns controller configuration, save-state and memory-card locations. Fail closed rather than writing RetroArch or frontend-owned settings under the core name. BIOS HLE is documented, but runtime and package behavior remain unverified."
+  "platform_gaps": {
+    "linux-flatpak": {
+      "status": "no_verified_package",
+      "reason": "No official Flatpak package or manifest exists for the pinned source.",
+      "evidence": [
+        "source:README.md lines 1-22 @d7d741db1d974cf8dd05a23149a1f12758fc1894"
+      ]
+    },
+    "windows": {
+      "status": "no_verified_package",
+      "reason": "No verified Windows standalone distribution exists (CI builds Windows only as a libretro core via mingw); standalone cwd-based .pcsx paths have no published Windows binary behind them, and RetroArch-owned settings are not captured under the core name.",
+      "evidence": [
+        "source:.github/workflows/ci-libretro.yml platform=win32 mingw @d7d741db1d974cf8dd05a23149a1f12758fc1894",
+        "source:frontend/main.c get_home_dir non-Unix branch @d7d741db1d974cf8dd05a23149a1f12758fc1894"
+      ]
+    },
+    "macos": {
+      "status": "no_verified_package",
+      "reason": "No verified macOS standalone distribution or core artifact exists for the pinned source; fail closed rather than inventing host paths.",
+      "evidence": [
+        "source:README.md lines 1-22 @d7d741db1d974cf8dd05a23149a1f12758fc1894"
+      ]
+    }
+  },
+  "notes": "PCSX-ReARMed standalone frontend owns its paths under ~/.pcsx/ (config, binds, memcards, states, bios/). Windows ships only as a libretro core and macOS has no verified distribution: fail closed rather than writing RetroArch or frontend-owned settings under the core name on those hosts. BIOS HLE is the default."
 }
