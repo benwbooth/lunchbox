@@ -1,5 +1,6 @@
 //! Confirm the owned native child, not a helper's predicted startup state.
 use super::*;
+#[cfg(target_os = "linux")]
 use std::os::unix::fs::MetadataExt;
 use std::process::Child;
 use std::sync::{Arc, Mutex, atomic::Ordering};
@@ -119,8 +120,13 @@ fn without_colors(line: &str) -> String {
     result
 }
 
+use crate::controller_native_platform as platform;
+#[cfg(target_os = "linux")]
 use crate::controller_native_process::native_pid;
 
+// Linux proves the SDL mapping plus the mount-namespace SYSTEM overlay.
+// Other hosts pin the executable plus the log-confirmed mappings.
+#[cfg(target_os = "linux")]
 fn verify_child(session: &PreparedLaunch, pid: u32) -> Result<()> {
     let maps = std::fs::read_to_string(format!("/proc/{pid}/maps"))?;
     let expected_sdl = session.setup.sdl_library.canonicalize()?;
@@ -165,10 +171,17 @@ pub(super) fn confirm(
             child.try_wait()?.is_none(),
             "PPSSPP exited before controller startup confirmation"
         );
-        if output.confirms(&session.mappings)?
-            && let Some(pid) = native_pid(child.id(), &session.executable)?
-        {
-            verify_child(session, pid)?;
+        // Linux walks the launch tree (bubblewrap monitors); other hosts
+        // check the direct child, which they spawn directly.
+        #[cfg(target_os = "linux")]
+        let owned = output.confirms(&session.mappings)?
+            && native_pid(child.id(), &session.executable)?
+                .is_some_and(|pid| verify_child(session, pid).is_ok());
+        #[cfg(not(target_os = "linux"))]
+        let owned = output.confirms(&session.mappings)?
+            && platform::child_exe_matches(child.id(), &session.executable)?;
+        if owned {
+            session.verify()?;
             return Ok(());
         }
         ensure!(

@@ -6,7 +6,6 @@ use anyhow::{Result, ensure};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) mod configuration;
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command;
 pub(crate) mod physical;
 pub(crate) mod session;

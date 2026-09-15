@@ -2,8 +2,11 @@
 //! This owns the topology and private configuration, but does not certify that
 //! a child loaded the expected SDL library, assets or configuration directory.
 use super::{session::PreparedInputs, settings::SavedSetup};
+#[cfg(target_os = "linux")]
 use crate::controller_bizhawk_guard::InputTopology;
 use crate::controller_catalog::Calibration;
+#[cfg(not(target_os = "linux"))]
+use crate::controller_native_platform as platform;
 use crate::controller_native_process::{cancelled, capture};
 use crate::controllers::ControllerDevice;
 use crate::emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption};
@@ -20,6 +23,7 @@ mod startup;
 
 pub(crate) struct PreparedLaunch {
     input: PreparedInputs,
+    #[cfg(target_os = "linux")]
     topology: InputTopology,
     runtime_files: BTreeMap<PathBuf, String>,
     setup: SavedSetup,
@@ -100,7 +104,7 @@ pub(crate) fn prepare(
     );
     let EmulatorExecutable::Native(executable) = &option.executable else {
         anyhow::bail!(
-            "PPSSPP calibrated launch requires native Linux; container/Wine routing is separate"
+            "PPSSPP calibrated launch requires a native build; container/Wine routing is separate"
         );
     };
     ensure!(
@@ -119,14 +123,19 @@ pub(crate) fn prepare(
             && setup.content.is_file(),
         "PPSSPP requires the exact saved content without custom arguments"
     );
+    let sandboxed = crate::controller_native_platform::use_bubblewrap_sandbox(&executable);
     let mut runtime_files = BTreeMap::new();
-    for path in [
+    let mut file_paths = vec![
         &original.program,
         &setup.probe_program,
         &setup.sdl_library,
         &setup.mapping_database,
-        &setup.bubblewrap_program,
-    ] {
+    ];
+    // bubblewrap is hashed only when the launch actually sandboxes.
+    if sandboxed {
+        file_paths.push(&setup.bubblewrap_program);
+    }
+    for path in file_paths {
         runtime_files.insert(path.clone(), file_hash(path)?);
     }
     ensure!(
@@ -143,17 +152,39 @@ pub(crate) fn prepare(
         matches.next().is_none() && !device.is_virtual,
         "PPSSPP requires one unambiguous physical controller identity"
     );
-    let topology = InputTopology::capture(std::slice::from_ref(&device.device_path))?;
-    // First enumerate without opening a guessed event/js path, then resolve
-    // through the kernel identity and capture that exact SDL runtime node.
+    // First enumerate without opening a guessed event/js path, then
+    // resolve through the kernel identity on Linux, or match the SDL
+    // device-interface path elsewhere, and capture that exact node.
     let inventory_snapshot = observe(setup, None, cancel)?;
-    let runtime_path = topology.resolve_runtime_path(
-        &device.device_path,
-        inventory_snapshot
+    // Linux pins kernel input identity through the sysfs topology.
+    // Other hosts pin the SDL device-interface path and require
+    // uniqueness; names and GUIDs are never identity.
+    #[cfg(target_os = "linux")]
+    let (runtime_path, topology) = {
+        let topology = InputTopology::capture(std::slice::from_ref(&device.device_path))?;
+        let runtime_path = topology.resolve_runtime_path(
+            &device.device_path,
+            inventory_snapshot
+                .devices
+                .iter()
+                .filter_map(|device| device.path.as_deref()),
+        )?;
+        (runtime_path, topology)
+    };
+    #[cfg(not(target_os = "linux"))]
+    let runtime_path = {
+        let selected_string = device.device_path.to_string_lossy().into_owned();
+        let candidates = inventory_snapshot
             .devices
             .iter()
-            .filter_map(|device| device.path.as_deref()),
-    )?;
+            .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+            .collect::<Vec<_>>();
+        ensure!(
+            candidates.len() == 1,
+            "PPSSPP physical controller is missing or ambiguous in SDL"
+        );
+        selected_string
+    };
     let snapshot = observe(setup, Some(&runtime_path), cancel)?;
     let mappings = snapshot
         .devices
@@ -183,7 +214,14 @@ pub(crate) fn prepare(
         device.linux_evdev = None;
     }
     inventory_snapshot.ensure_same_routing(&routing_snapshot)?;
+    #[cfg(target_os = "linux")]
     topology.verify()?;
+    #[cfg(not(target_os = "linux"))]
+    platform::require_unique_device_path(
+        &snapshot.devices,
+        &runtime_path,
+        snapshot.device_at_path(&runtime_path)?.device_index,
+    )?;
     let calibration = calibrations
         .get(&setup.controller_id)
         .context("PPSSPP controller calibration disappeared")?;
@@ -194,6 +232,15 @@ pub(crate) fn prepare(
         &setup.source_system,
         &setup.game_id,
     )?;
+    // Sandbox or direct is a packaging decision, not an OS one. The
+    // staged input profiles shadow user files through bind mounts and
+    // --appendconfig risks writeback, so direct launches refuse instead
+    // of corrupting or bypassing the user's configuration.
+    if !crate::controller_native_platform::use_bubblewrap_sandbox(&executable) {
+        anyhow::bail!(
+            "PPSSPP direct launch needs mount shadowing, which is unsupported; use a sandboxable native Linux packaging"
+        );
+    }
     let mut plan = original.clone();
     let mut native_arguments = original.arguments.clone();
     native_arguments.insert(0, "--loglevel=4".into());
@@ -207,6 +254,7 @@ pub(crate) fn prepare(
         .push(("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS".into(), "1".into()));
     let prepared = PreparedLaunch {
         input,
+        #[cfg(target_os = "linux")]
         topology,
         runtime_files,
         setup: setup.clone(),
@@ -222,7 +270,21 @@ pub(crate) fn prepare(
 
 impl PreparedLaunch {
     pub(crate) fn check_health(&self) -> Result<()> {
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        return self.topology.verify();
+        #[cfg(not(target_os = "linux"))]
+        return self.verify_health_probe();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn verify_health_probe(&self) -> Result<()> {
+        let fresh = observe(&self.setup, None, &AtomicBool::new(false))?;
+        platform::require_unique_device_path(
+            &fresh.devices,
+            &self.runtime_path,
+            fresh.device_at_path(&self.runtime_path)?.device_index,
+        )?;
+        Ok(())
     }
 
     pub(crate) fn launch_plan(&self) -> &LaunchPlan {
@@ -249,6 +311,7 @@ impl PreparedLaunch {
     }
 
     pub(crate) fn verify(&self) -> Result<()> {
+        #[cfg(target_os = "linux")]
         self.topology.verify()?;
         self.input.configuration.verify_sources()?;
         for (path, expected) in &self.runtime_files {
