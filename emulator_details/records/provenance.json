@@ -24,8 +24,77 @@
       "kind": "contract",
       "path": "docs/PROVENANCE_CONTROLLER_BOUNDARY.md",
       "role": "fail-closed desktop controller boundary"
+    },
+    {
+      "kind": "source",
+      "repo": "https://github.com/Provenance-Emu/Provenance",
+      "commit": "ca6ccfa5ef4c5e58c984e5aa43c25fe55d0b09fc",
+      "url": "https://github.com/Provenance-Emu/Provenance/tree/ca6ccfa5ef4c5e58c984e5aa43c25fe55d0b09fc",
+      "role": "pinned reviewed source"
     }
   ],
+  "platforms": {
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "App-group UserDefaults suite (default group.org.provenance-emu.provenance) plus the Documents container directories",
+          "status": "captured",
+          "naming": "PVSettings persist through UserDefaults; container dirs carry ROMs, saves, states and BIOS.",
+          "evidence": [
+            "source:Provenance-Emu/Provenance PVLibrary/Sources/PVFileSystem/Paths.swift app-group id @ca6ccfa5ef4c5e58c984e5aa43c25fe55d0b09fc",
+            "source:Provenance-Emu/Provenance PVSettings/Sources/PVSettings/Settings/Model/PVSettingsModel.swift UserDefaults models @ca6ccfa5ef4c5e58c984e5aa43c25fe55d0b09fc"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "GameController-framework gamepads plus custom controller mappings",
+          "status": "captured",
+          "naming": "Pads route through the PVEmulatorCore controller bridge; mappings persist with settings.",
+          "evidence": [
+            "source:Provenance-Emu/Provenance PVEmulatorCore/Sources/PVEmulatorCore/PVEmulatorCore+Controller.swift @ca6ccfa5ef4c5e58c984e5aa43c25fe55d0b09fc",
+            "source:Provenance-Emu/Provenance PVEmulatorCore/Sources/Legacy/PVCoreBridge/Features/Controls.swift @ca6ccfa5ef4c5e58c984e5aa43c25fe55d0b09fc"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "Documents/Battery States/ in the app container (iCloud variants sync the same dirs)",
+          "status": "captured",
+          "naming": "Per-game battery saves beside ROMs/, BIOS/, Save States/ and Screenshots/ container dirs.",
+          "evidence": [
+            "source:Provenance-Emu/Provenance PVLibrary/Sources/PVFileSystem/Paths.swift batterySavesPath @ca6ccfa5ef4c5e58c984e5aa43c25fe55d0b09fc"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "Documents/Save States/ in the app container",
+          "status": "captured",
+          "naming": "Named save-state entries beside battery saves.",
+          "evidence": [
+            "source:Provenance-Emu/Provenance PVLibrary/Sources/PVFileSystem/Paths.swift saveSavesPath @ca6ccfa5ef4c5e58c984e5aa43c25fe55d0b09fc"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "Documents/BIOS/ (plus per-console System/ dir) in the app container",
+          "status": "captured",
+          "naming": "Firmware per console with iCloud-synced System/ companion dir.",
+          "evidence": [
+            "source:Provenance-Emu/Provenance PVLibrary/Sources/PVFileSystem/Paths.swift biosesPath @ca6ccfa5ef4c5e58c984e5aa43c25fe55d0b09fc"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:Provenance-Emu/Provenance PVLibrary/Sources/PVFileSystem/Paths.swift directory roster @ca6ccfa5ef4c5e58c984e5aa43c25fe55d0b09fc"
+          ]
+        }
+      ]
+    }
+  },
   "platform_gaps": {
     "linux": {
       "status": "unsupported",
@@ -48,14 +117,6 @@
       "reason": "The pinned Provenance project does not publish a native Windows application or a Windows controller/configuration, save/state, firmware, or key contract.",
       "evidence": [
         "source:README.md supported-platform badges identify Apple targets and omit Windows @93f49b4"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The pinned project advertises a macOS target, but this catalog has no verified desktop build or source-backed six-purpose macOS persistence/controller path contract that Lunchbox can safely write.",
-      "evidence": [
-        "source:README.md macOS 13+ target badge @93f49b4",
-        "source:README.md documents app-level save states, BIOS and controller features but not a stable Lunchbox desktop path grammar @93f49b4"
       ]
     }
   },
