@@ -123,13 +123,11 @@ enum PreparedJsonNativeLaunch {
     EightySixBox(crate::controller_86box_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     A7800(crate::controller_a7800_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Gambatte(crate::controller_gambatte_standalone::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     PicoDrive(crate::controller_picodrive_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     NestopiaUe(crate::controller_nestopia_ue_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     SkyEmu(crate::controller_skyemu_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     LinApple(crate::controller_linapple_native::native_command::NativeSession),
@@ -137,23 +135,18 @@ enum PreparedJsonNativeLaunch {
     Fuse(crate::controller_fuse_standalone::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Amiberry(crate::controller_amiberry_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     GbePlus(crate::controller_gbe_plus_standalone::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     PokeMini(crate::controller_pokemini_standalone::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Uzem(crate::controller_uzem_standalone::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Eka2l1(crate::controller_eka2l1_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Cemu(crate::controller_cemu_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Azahar(crate::controller_azahar_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Shadps4(crate::controller_shadps4_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Ymir(crate::controller_ymir_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     DreamPotato(crate::controller_dreampotato_standalone::native_command::NativeSession),
     Panda3ds(crate::controller_panda3ds_native::native_command::NativeSession),
     Supermodel(crate::controller_supermodel_native::native_command::NativeSession),
@@ -222,13 +215,11 @@ impl PreparedJsonNativeLaunch {
             Self::EightySixBox(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::A7800(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Gambatte(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::PicoDrive(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::SkyEmu(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::LinApple(session) => session.spawn(plan, cancel),
@@ -236,23 +227,18 @@ impl PreparedJsonNativeLaunch {
             Self::Fuse(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::GbePlus(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::PokeMini(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Uzem(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Eka2l1(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Cemu(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Azahar(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Shadps4(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Ymir(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::DreamPotato(session) => session.spawn(plan, cancel),
             Self::Panda3ds(session) => session.spawn(plan, cancel),
             Self::Supermodel(session) => session.spawn(plan, cancel),
@@ -317,13 +303,11 @@ impl PreparedJsonNativeLaunch {
             Self::EightySixBox(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::A7800(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Gambatte(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::PicoDrive(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::SkyEmu(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::LinApple(session) => session.verify(cancel),
@@ -331,23 +315,18 @@ impl PreparedJsonNativeLaunch {
             Self::Fuse(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::GbePlus(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::PokeMini(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Uzem(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Eka2l1(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Cemu(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Azahar(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Shadps4(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Ymir(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::DreamPotato(session) => session.verify(cancel),
             Self::Panda3ds(session) => session.verify(cancel),
             Self::Supermodel(session) => session.verify(cancel),
@@ -412,13 +391,11 @@ impl PreparedJsonNativeLaunch {
             Self::EightySixBox(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::A7800(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Gambatte(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::PicoDrive(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::SkyEmu(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::LinApple(session) => session.check_health(),
@@ -426,23 +403,18 @@ impl PreparedJsonNativeLaunch {
             Self::Fuse(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::GbePlus(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::PokeMini(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Uzem(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Eka2l1(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Cemu(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Azahar(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Shadps4(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Ymir(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::DreamPotato(session) => session.check_health(),
             Self::Panda3ds(session) => session.check_health(),
             Self::Supermodel(session) => session.check_health(),
@@ -8582,7 +8554,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("DreamPotato")
     {
@@ -8678,7 +8649,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Azahar")
     {
@@ -8740,7 +8710,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("EKA2L1")
     {
@@ -8802,7 +8771,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("PokeMini")
     {
@@ -8833,7 +8801,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("GBE+")
     {
@@ -8957,7 +8924,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("SkyEmu")
     {
@@ -9050,7 +9016,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Gambatte")
     {
@@ -9744,7 +9709,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("DreamPotato")
     {
@@ -9840,7 +9804,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Azahar")
     {
@@ -9902,7 +9865,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("EKA2L1")
     {
@@ -9964,7 +9926,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("PokeMini")
     {
@@ -9995,7 +9956,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("GBE+")
     {
@@ -10119,7 +10079,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("SkyEmu")
     {
