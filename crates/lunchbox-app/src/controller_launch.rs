@@ -113,14 +113,11 @@ enum PreparedJsonNativeLaunch {
     EightySixBox(crate::controller_86box_native::native_command::NativeSession),
     A7800(crate::controller_a7800_native::native_command::NativeSession),
     Gambatte(crate::controller_gambatte_standalone::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     PicoDrive(crate::controller_picodrive_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     NestopiaUe(crate::controller_nestopia_ue_native::native_command::NativeSession),
     SkyEmu(crate::controller_skyemu_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     LinApple(crate::controller_linapple_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Fuse(crate::controller_fuse_standalone::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Amiberry(crate::controller_amiberry_native::native_command::NativeSession),
@@ -192,14 +189,11 @@ impl PreparedJsonNativeLaunch {
             Self::EightySixBox(session) => session.spawn(plan, cancel),
             Self::A7800(session) => session.spawn(plan, cancel),
             Self::Gambatte(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::PicoDrive(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.spawn(plan, cancel),
             Self::SkyEmu(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::LinApple(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Fuse(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.spawn(plan, cancel),
@@ -267,14 +261,11 @@ impl PreparedJsonNativeLaunch {
             Self::EightySixBox(session) => session.verify(cancel),
             Self::A7800(session) => session.verify(cancel),
             Self::Gambatte(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::PicoDrive(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.verify(cancel),
             Self::SkyEmu(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::LinApple(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Fuse(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.verify(cancel),
@@ -342,14 +333,11 @@ impl PreparedJsonNativeLaunch {
             Self::EightySixBox(session) => session.check_health(),
             Self::A7800(session) => session.check_health(),
             Self::Gambatte(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::PicoDrive(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.check_health(),
             Self::SkyEmu(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::LinApple(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Fuse(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.check_health(),
@@ -8798,7 +8786,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Fuse")
     {
@@ -8829,7 +8816,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("LinApple")
     {
@@ -8921,7 +8907,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("PicoDrive")
     {
@@ -9950,7 +9935,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Fuse")
     {
@@ -9981,7 +9965,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("LinApple")
     {
