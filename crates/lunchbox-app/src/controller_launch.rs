@@ -101,7 +101,6 @@ enum PreparedJsonNativeLaunch {
     Xroar(crate::controller_xroar_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Zesarux(crate::controller_zesarux_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Oricutron(crate::controller_oricutron_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     AtariPlusPlus(crate::controller_atari_plus_plus_native::native_command::NativeSession),
@@ -173,7 +172,6 @@ impl PreparedJsonNativeLaunch {
             Self::Xroar(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Zesarux(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Oricutron(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::AtariPlusPlus(session) => session.spawn(plan, cancel),
@@ -241,7 +239,6 @@ impl PreparedJsonNativeLaunch {
             Self::Xroar(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Zesarux(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Oricutron(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::AtariPlusPlus(session) => session.verify(cancel),
@@ -309,7 +306,6 @@ impl PreparedJsonNativeLaunch {
             Self::Xroar(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Zesarux(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Oricutron(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::AtariPlusPlus(session) => session.check_health(),
