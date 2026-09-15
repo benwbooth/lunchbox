@@ -229,8 +229,9 @@ pub(crate) mod settings {
                 "86Box setup needs an emulator identity"
             );
             let mut path_vec = vec![&self.content, &self.probe_program, &self.sdl_library];
-            // bubblewrap exists only on Linux; elsewhere the field is
-            // accepted and ignored by the unsandboxed launch below.
+            // bubblewrap is required only when the launch actually
+            // sandboxes (plain native/Nix Linux); elsewhere the field is
+            // accepted and ignored by the direct launch below.
             #[cfg(target_os = "linux")]
             path_vec.push(&self.bubblewrap_program);
             for path in path_vec {
@@ -539,6 +540,7 @@ mod session {
             setup: &settings::SavedSetup,
             calibrations: &HashMap<String, Calibration>,
             inventory: &[ControllerDevice],
+            sandboxed: bool,
             cancel: &AtomicBool,
         ) -> Result<Self> {
             cancelled(cancel)?;
@@ -651,10 +653,12 @@ mod session {
                 &setup.sdl_library,
                 &private_config,
             ];
-            // bubblewrap exists only on Linux; elsewhere the field is
-            // accepted and ignored by the unsandboxed launch below.
-            #[cfg(target_os = "linux")]
-            hash_paths.push(&setup.bubblewrap_program);
+            // bubblewrap is required only when the launch actually
+            // sandboxes (plain native/Nix Linux); elsewhere the field is
+            // accepted and ignored by the direct launch below.
+            if sandboxed {
+                hash_paths.push(&setup.bubblewrap_program);
+            }
             for path in hash_paths {
                 hashes.insert(path.clone(), file_hash(path)?);
             }
@@ -699,7 +703,8 @@ mod session {
             {
                 let captured = observe(&self.setup, Some(path), cancel)?;
                 expected.ensure_same_routing(&captured)?;
-                self.initial.ensure_same_routing(&routing(captured.clone()))?;
+                self.initial
+                    .ensure_same_routing(&routing(captured.clone()))?;
                 let device = captured.device_at_path(path)?;
                 ensure!(
                     device.device_index == *index,
@@ -898,36 +903,34 @@ pub(crate) mod native_command {
             file_hash(&executable)?.eq_ignore_ascii_case(&setup.executable_sha256),
             "86Box executable differs from the saved trusted runtime"
         );
-        let inputs = session::PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
-        #[cfg(target_os = "linux")]
-        let cwd = original.current_directory.canonicalize()?;
-        #[cfg(target_os = "linux")]
-        let arguments = vec![
-            "--die-with-parent".into(),
-            "--bind".into(),
-            "/".into(),
-            "/".into(),
-            "--bind".into(),
-            inputs.private_config.as_os_str().to_owned(),
-            setup.content.as_os_str().to_owned(),
-            "--chdir".into(),
-            cwd.into_os_string(),
-            "--".into(),
-            executable.as_os_str().to_owned(),
-            "-C".into(),
-            setup.content.as_os_str().to_owned(),
-        ];
+        let sandboxed = crate::controller_native_platform::use_bubblewrap_sandbox(&executable);
+        let inputs =
+            session::PreparedSession::prepare(setup, calibrations, inventory, sandboxed, cancel)?;
+        // Sandbox or direct is a packaging decision, not an OS one:
+        // bubblewrap nests under plain native/Nix Linux launches, while
+        // Flatpak/AppImage-contained launches and other hosts run the
+        // trusted executable directly against the private config.
+        let sandboxed = crate::controller_native_platform::use_bubblewrap_sandbox(&executable);
         let mut plan = original.clone();
-        // Linux sandboxes through bubblewrap with the private config bound
-        // over the saved path. Other hosts run the trusted executable
-        // directly against the private config with no sandbox layer.
-        #[cfg(target_os = "linux")]
-        {
+        if sandboxed {
+            let cwd = original.current_directory.canonicalize()?;
             plan.program = setup.bubblewrap_program.clone();
-            plan.arguments = arguments;
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
+            plan.arguments = vec![
+                "--die-with-parent".into(),
+                "--bind".into(),
+                "/".into(),
+                "/".into(),
+                "--bind".into(),
+                inputs.private_config.as_os_str().to_owned(),
+                setup.content.as_os_str().to_owned(),
+                "--chdir".into(),
+                cwd.into_os_string(),
+                "--".into(),
+                executable.as_os_str().to_owned(),
+                "-C".into(),
+                setup.content.as_os_str().to_owned(),
+            ];
+        } else {
             plan.program = executable.clone();
             plan.arguments = vec!["-C".into(), inputs.private_config.as_os_str().to_owned()];
         }

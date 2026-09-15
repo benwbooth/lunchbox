@@ -182,13 +182,18 @@ pub(crate) mod settings {
                 !self.emulator_id.trim().is_empty(),
                 "Atari800 setup needs an emulator identity"
             );
-            for path in [
+            let mut path_vec = vec![
                 &self.content,
                 &self.config_path,
                 &self.probe_program,
                 &self.sdl_library,
-                &self.bubblewrap_program,
-            ] {
+            ];
+            // bubblewrap is required only when the launch actually
+            // sandboxes (plain native/Nix Linux); elsewhere the field is
+            // accepted and ignored by the direct launch below.
+            #[cfg(target_os = "linux")]
+            path_vec.push(&self.bubblewrap_program);
+            for path in path_vec {
                 ensure!(
                     path.is_absolute()
                         && !path
@@ -248,7 +253,7 @@ pub(crate) mod settings {
                     .get(&player.controller_id)
                     .context("Atari800 controller has no saved calibration")?;
                 ensure!(
-                    calibration.os == "linux",
+                    ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
                     "Atari800 mapping requires Linux calibration"
                 );
                 let mapping = calibration.plan_profile(profile)?;
@@ -293,11 +298,13 @@ pub(crate) mod settings {
     }
 }
 
-#[cfg(target_os = "linux")]
 mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::Calibration,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
@@ -479,6 +486,8 @@ mod session {
         directory: tempfile::TempDir,
         pub(crate) private_config: PathBuf,
         runtime_paths: Vec<String>,
+        device_indices: Vec<u32>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         initial: Snapshot,
         setup: settings::SavedSetup,
@@ -490,6 +499,7 @@ mod session {
             setup: &settings::SavedSetup,
             calibrations: &HashMap<String, Calibration>,
             inventory: &[ControllerDevice],
+            sandboxed: bool,
             cancel: &AtomicBool,
         ) -> Result<Self> {
             cancelled(cancel)?;
@@ -506,11 +516,16 @@ mod session {
                 );
                 selected.push(matches[0].device_path.clone());
             }
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(&selected)?;
             let initial = routing(observe(setup, None, cancel)?);
             let mut runtime_paths = Vec::new();
+            let mut device_indices = Vec::new();
             let mut overlays = Vec::new();
             for (player, selected) in setup.players.iter().zip(&selected) {
+                // Linux resolves through the sysfs topology; other hosts
+                // match the SDL device-interface path and require uniqueness.
+                #[cfg(target_os = "linux")]
                 let runtime_path = topology.resolve_runtime_path(
                     selected,
                     initial
@@ -518,6 +533,20 @@ mod session {
                         .iter()
                         .filter_map(|device| device.path.as_deref()),
                 )?;
+                #[cfg(not(target_os = "linux"))]
+                let runtime_path = {
+                    let selected_string = selected.to_string_lossy().into_owned();
+                    let candidates = initial
+                        .devices
+                        .iter()
+                        .filter(|device| device.path.as_deref() == Some(selected_string.as_str()))
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        candidates.len() == 1,
+                        "Atari800 physical controller is missing or ambiguous in SDL"
+                    );
+                    selected_string
+                };
                 ensure!(
                     !runtime_paths.contains(&runtime_path),
                     "Atari800 players resolved to the same controller"
@@ -526,8 +555,15 @@ mod session {
                 let captured_routing = routing(captured.clone());
                 initial.ensure_same_routing(&captured_routing)?;
                 ensure_same_names(&initial, &captured_routing)?;
+                #[cfg(target_os = "linux")]
                 topology.verify()?;
                 let device = captured.device_at_path(&runtime_path)?;
+                #[cfg(not(target_os = "linux"))]
+                platform::require_unique_device_path(
+                    &captured.devices,
+                    &runtime_path,
+                    device.device_index,
+                )?;
                 let name = device
                     .name
                     .clone()
@@ -552,7 +588,9 @@ mod session {
                     )?,
                 )?);
                 runtime_paths.push(runtime_path);
+                device_indices.push(device.device_index);
             }
+            #[cfg(target_os = "linux")]
             topology.verify()?;
             let baseline = std::fs::read(&setup.config_path)
                 .context("Reading the declared Atari800 configuration")?;
@@ -562,20 +600,28 @@ mod session {
             let private_config = directory.path().join("atari800.cfg");
             std::fs::write(&private_config, patch_config(&baseline, &overlays)?)?;
             let mut hashes = BTreeMap::new();
-            for path in [
+            let mut hash_paths = vec![
                 &setup.content,
                 &setup.config_path,
                 &setup.probe_program,
                 &setup.sdl_library,
-                &setup.bubblewrap_program,
                 &private_config,
-            ] {
+            ];
+            // bubblewrap is required only when the launch actually
+            // sandboxes (plain native/Nix Linux); elsewhere the field is
+            // accepted and ignored by the direct launch below.
+            if sandboxed {
+                hash_paths.push(&setup.bubblewrap_program);
+            }
+            for path in hash_paths {
                 hashes.insert(path.clone(), file_hash(path)?);
             }
             let session = Self {
                 directory,
                 private_config,
                 runtime_paths,
+                device_indices,
+                #[cfg(target_os = "linux")]
                 topology,
                 initial,
                 setup: setup.clone(),
@@ -591,6 +637,7 @@ mod session {
                 self.directory.path().is_dir() && self.private_config.is_file(),
                 "Atari800 private configuration disappeared"
             );
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, expected) in &self.hashes {
                 ensure!(
@@ -601,19 +648,45 @@ mod session {
             let fresh = routing(observe(&self.setup, None, cancel)?);
             self.initial.ensure_same_routing(&fresh)?;
             ensure_same_names(&self.initial, &fresh)?;
-            for path in &self.runtime_paths {
-                fresh.device_at_path(path)?;
+            for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
+                let device = fresh.device_at_path(path)?;
+                ensure!(
+                    device.device_index == *index,
+                    "Atari800 SDL joystick moved before launch"
+                );
+                #[cfg(not(target_os = "linux"))]
+                platform::require_unique_device_path(&fresh.devices, path, *index)?;
             }
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+            self.initial.ensure_same_routing(&fresh)?;
+            ensure_same_names(&self.initial, &fresh)?;
+            for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
+                platform::require_unique_device_path(&fresh.devices, path, *index)?;
+            }
+            Ok(())
         }
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
     use crate::{
@@ -671,7 +744,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("Atari800 calibrated launch requires native Linux");
+            anyhow::bail!("Atari800 calibrated launch requires a native build");
         };
         ensure!(
             option.emulator_name.eq_ignore_ascii_case("Atari800")
@@ -701,26 +774,43 @@ pub(crate) mod native_command {
             file_hash(&executable)?.eq_ignore_ascii_case(&setup.executable_sha256),
             "Atari800 executable differs from the saved trusted runtime"
         );
-        let inputs = session::PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
-        let cwd = original.current_directory.canonicalize()?;
-        let mut arguments = vec![
-            "--die-with-parent".into(),
-            "--bind".into(),
-            "/".into(),
-            "/".into(),
-            "--bind".into(),
-            inputs.private_config.as_os_str().to_owned(),
-            setup.config_path.as_os_str().to_owned(),
-            "--chdir".into(),
-            cwd.into_os_string(),
-            "--".into(),
-            executable.as_os_str().to_owned(),
-            "-config".into(),
-            setup.config_path.as_os_str().to_owned(),
-        ];
+        let sandboxed = crate::controller_native_platform::use_bubblewrap_sandbox(&executable);
+        let inputs =
+            session::PreparedSession::prepare(setup, calibrations, inventory, sandboxed, cancel)?;
+        // Sandbox or direct is a packaging decision, not an OS one:
+        // bubblewrap nests under plain native/Nix Linux launches, while
+        // Flatpak/AppImage-contained launches and other hosts run the
+        // trusted executable directly against the private config.
+        let mut arguments = if sandboxed {
+            let cwd = original.current_directory.canonicalize()?;
+            vec![
+                "--die-with-parent".into(),
+                "--bind".into(),
+                "/".into(),
+                "/".into(),
+                "--bind".into(),
+                inputs.private_config.as_os_str().to_owned(),
+                setup.config_path.as_os_str().to_owned(),
+                "--chdir".into(),
+                cwd.into_os_string(),
+                "--".into(),
+                executable.as_os_str().to_owned(),
+                "-config".into(),
+                setup.config_path.as_os_str().to_owned(),
+            ]
+        } else {
+            vec![
+                "-config".into(),
+                inputs.private_config.as_os_str().to_owned(),
+            ]
+        };
         arguments.extend(original.arguments.iter().cloned());
         let mut plan = original.clone();
-        plan.program = setup.bubblewrap_program.clone();
+        if sandboxed {
+            plan.program = setup.bubblewrap_program.clone();
+        } else {
+            plan.program = executable.clone();
+        }
         plan.arguments = arguments;
         let session = NativeSession {
             inputs,

@@ -89,7 +89,39 @@ pub(crate) fn child_maps_library(pid: u32, library: &Path) -> Result<bool> {
     }
 }
 
-/// Environment isolating user roots under `base`.
+/// True when a bubblewrap sandbox can nest here: Linux, not already inside
+/// a Flatpak/OCI container or an AppImage runtime, where nested
+/// bubblewrap is fragile or privileged away. Native and Nix binaries get
+/// the sandbox; Flatpak/AppImage-contained launches run direct.
+pub(crate) fn linux_sandbox_available() -> bool {
+    if !cfg!(target_os = "linux") {
+        return false;
+    }
+    if std::path::Path::new("/.flatpak-info").exists()
+        || std::path::Path::new("/run/.containerenv").exists()
+    {
+        return false;
+    }
+    if std::env::var_os("APPIMAGE").is_some() {
+        return false;
+    }
+    true
+}
+
+/// True when the target executable is itself an AppImage: wrapping it in
+/// bubblewrap would fight its own runtime mounts, so it always runs direct.
+pub(crate) fn is_appimage_target(executable: &Path) -> bool {
+    executable
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("AppImage"))
+}
+
+/// True when this launch should sandbox through bubblewrap: Linux, outside
+/// any container runtime, with a plain (non-AppImage) native target.
+/// Packaging, not just the OS, decides.
+pub(crate) fn use_bubblewrap_sandbox(executable: &Path) -> bool {
+    cfg!(target_os = "linux") && linux_sandbox_available() && !is_appimage_target(executable)
+}
 /// Linux/macOS override `HOME`. Windows overrides the profile roots SDL and
 /// most emulators resolve (`USERPROFILE`, `APPDATA`, `LOCALAPPDATA`).
 /// The caller creates the directories; this only renders the pairs.
@@ -152,6 +184,19 @@ pub(crate) fn require_unique_device_path<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sandbox_and_appimage_targets_classify() {
+        assert!(!is_appimage_target(Path::new("/usr/bin/86box")));
+        assert!(is_appimage_target(Path::new("/opt/Emu.AppImage")));
+        assert!(is_appimage_target(Path::new("/opt/emu.appimage")));
+        // Outside containers on Linux this is true; anywhere else false.
+        // The assertion only pins the non-Linux side deterministically.
+        if !cfg!(target_os = "linux") {
+            assert!(!linux_sandbox_available());
+            assert!(!use_bubblewrap_sandbox(Path::new("/usr/bin/86box")));
+        }
+    }
 
     #[test]
     fn user_env_is_host_appropriate() {
