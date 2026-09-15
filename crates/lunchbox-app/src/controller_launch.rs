@@ -365,7 +365,6 @@ pub struct CalibratedLaunch {
     #[cfg(target_os = "linux")]
     mednafen_native: Option<crate::controller_mednafen::native_command::NativeSession>,
     mame_native: Option<crate::controller_mame_native::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     flycast_native: Option<crate::controller_flycast_native::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
     pcsx2_native: Option<crate::controller_pcsx2::native_command::NativeSession>,
@@ -652,7 +651,6 @@ impl CalibratedLaunch {
         if let Some(native) = &mut self.mame_native {
             return native.spawn(plan, cancel);
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &mut self.flycast_native {
             return native.spawn(plan, cancel);
         }
@@ -1068,7 +1066,6 @@ impl CalibratedLaunch {
             #[cfg(target_os = "linux")]
             mednafen_native: None,
             mame_native: None,
-            #[cfg(target_os = "linux")]
             flycast_native: None,
             #[cfg(target_os = "linux")]
             pcsx2_native: None,
@@ -1155,7 +1152,6 @@ impl CalibratedLaunch {
         if let Some(native) = &self.mame_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.flycast_native {
             native.verify(&std::sync::atomic::AtomicBool::new(false))?;
         }
@@ -1293,7 +1289,6 @@ impl CalibratedLaunch {
         if let Some(native) = &self.mame_native {
             native.check_health()?;
         }
-        #[cfg(target_os = "linux")]
         if let Some(native) = &self.flycast_native {
             native.check_health()?;
         }
@@ -1850,7 +1845,6 @@ pub(crate) fn attach_fbneo_session(
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         mame_native: None,
-        #[cfg(target_os = "linux")]
         flycast_native: None,
         #[cfg(target_os = "linux")]
         pcsx2_native: None,
@@ -3621,7 +3615,6 @@ pub(crate) fn prepare_mame_calibrated_session(
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         mame_native: None,
-        #[cfg(target_os = "linux")]
         flycast_native: None,
         #[cfg(target_os = "linux")]
         pcsx2_native: None,
@@ -6041,7 +6034,6 @@ pub fn prepare_with_cancellation(
             jgenesis_native: None,
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -6130,7 +6122,6 @@ pub fn prepare_with_cancellation(
             jgenesis_native: None,
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -6219,7 +6210,6 @@ pub fn prepare_with_cancellation(
             jgenesis_native: None,
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: Some(native),
@@ -6308,7 +6298,6 @@ pub fn prepare_with_cancellation(
             jgenesis_native: None,
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: Some(native),
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -6382,7 +6371,6 @@ pub fn prepare_with_cancellation(
             jgenesis_native: None,
                 mednafen_native: None,
                 mame_native: Some(native),
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -6463,7 +6451,6 @@ pub fn prepare_with_cancellation(
             jgenesis_native: None,
                 mednafen_native: Some(native),
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -6544,7 +6531,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -6625,7 +6611,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -6713,7 +6698,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -6794,7 +6778,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -6875,7 +6858,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -6956,7 +6938,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -7038,7 +7019,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -7119,7 +7099,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -7200,7 +7179,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -7281,7 +7259,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -7386,7 +7363,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -7467,7 +7443,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -7548,7 +7523,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -8867,7 +8841,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -9805,7 +9778,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -9889,7 +9861,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -9972,7 +9943,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -10056,7 +10026,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -10138,7 +10107,6 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
                 mame_native: None,
-                #[cfg(target_os = "linux")]
                 flycast_native: None,
                 #[cfg(target_os = "linux")]
                 pcsx2_native: None,
@@ -10985,7 +10953,6 @@ pub fn prepare_with_cancellation(
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         mame_native: None,
-        #[cfg(target_os = "linux")]
         flycast_native: None,
         #[cfg(target_os = "linux")]
         pcsx2_native: None,
@@ -11400,7 +11367,6 @@ fn prepare_mode_aware(
         #[cfg(target_os = "linux")]
         mednafen_native: None,
         mame_native: None,
-        #[cfg(target_os = "linux")]
         flycast_native: None,
         #[cfg(target_os = "linux")]
         pcsx2_native: None,

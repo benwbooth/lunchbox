@@ -105,8 +105,8 @@ impl SavedSetup {
                 .context("Flycast controller has no saved calibration")?;
             calibration.validate()?;
             ensure!(
-                calibration.os == "linux",
-                "Flycast native SDL review requires Linux calibration"
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+                "Flycast native SDL review requires a desktop calibration"
             );
             let layout = catalog()
                 .layout(&calibration.layout)

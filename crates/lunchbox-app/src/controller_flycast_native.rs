@@ -7,18 +7,14 @@ pub(crate) mod arcade;
 pub(crate) mod configuration;
 pub(crate) mod discovery;
 pub(crate) mod isolation;
-#[cfg(target_os = "linux")]
 pub(crate) mod launch;
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command;
 pub(crate) mod paths;
 pub(crate) mod physical;
 pub(crate) mod prepared;
 pub(crate) mod routing;
-#[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
-#[cfg(target_os = "linux")]
 pub(crate) mod startup_log;
 pub(crate) mod triggers;
 
