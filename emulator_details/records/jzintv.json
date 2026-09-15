@@ -13,34 +13,197 @@
       "kind": "docs",
       "url": "http://spatula-city.org/~im14u2c/intv/",
       "role": "official distribution or project documentation"
+    },
+    {
+      "kind": "source",
+      "url": "http://spatula-city.org/~im14u2c/intv/dl/jzintv-20200712-src.zip",
+      "role": "pinned 20200712 source archive reviewed for config/input/save/state/BIOS paths"
     }
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "The official jzIntv source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:http://spatula-city.org/~im14u2c/intv/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "linux-flatpak": {
-      "status": "unresolved",
-      "reason": "The official jzIntv source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:http://spatula-city.org/~im14u2c/intv/",
-        "host capture intentionally withheld until all six purposes are source-backed"
-      ]
-    },
-    "macos": {
-      "status": "unresolved",
-      "reason": "The official jzIntv source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
-      "evidence": [
-        "official:http://spatula-city.org/~im14u2c/intv/",
-        "host capture intentionally withheld until all six purposes are source-backed"
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "No configuration file; environment variables plus command-line flags",
+          "status": "not_supported",
+          "naming": "JZINTV_ROM_PATH selects the ROM directory; all other setup is CLI flags (a Unix program compiled for Windows per the platform doc).",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/jzintv.txt ROM path and launch",
+            "source:jzintv-20200712-src.zip doc/platform/README-win32.txt env vars and flags"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "SDL JS0-JS9 enumeration plus .kbd keyboard files",
+          "status": "captured",
+          "naming": "Up to 10 joysticks become JS0-JS9 event prefixes; analog/digital adaptation and .kbd bindings documented.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/joystick.txt identification and analog/digital sections",
+            "source:jzintv-20200712-src.zip doc/jzintv/kbdhackfile.txt"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "No persistent game-save files are written",
+          "status": "not_supported",
+          "naming": "JLP flash is emulated in session memory; no host save-file writer was found.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip src/jlp/jlp.c flash emulation without host persistence"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No save-state facility",
+          "status": "not_supported",
+          "naming": "No snapshot slots or state filename grammar in the reviewed source.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip src/ tree defines no snapshot writer"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "exec.bin plus grom.bin from the ROM directory (cwd or JZINTV_ROM_PATH)",
+          "status": "captured",
+          "naming": "Obtained from Intellivision Lives!; required before any game boot.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/jzintv.txt lines 59-68"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/jzintv.txt ROM requirements"
+          ]
+        }
       ]
     },
     "windows": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "No configuration file; environment variables plus command-line flags",
+          "status": "not_supported",
+          "naming": "JZINTV_ROM_PATH selects the ROM directory; all other setup is CLI flags (a Unix program compiled for Windows per the platform doc).",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/jzintv.txt ROM path and launch",
+            "source:jzintv-20200712-src.zip doc/platform/README-win32.txt env vars and flags"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "SDL JS0-JS9 enumeration plus .kbd keyboard files",
+          "status": "captured",
+          "naming": "Up to 10 joysticks become JS0-JS9 event prefixes; analog/digital adaptation and .kbd bindings documented.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/joystick.txt identification and analog/digital sections",
+            "source:jzintv-20200712-src.zip doc/jzintv/kbdhackfile.txt"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "No persistent game-save files are written",
+          "status": "not_supported",
+          "naming": "JLP flash is emulated in session memory; no host save-file writer was found.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip src/jlp/jlp.c flash emulation without host persistence"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No save-state facility",
+          "status": "not_supported",
+          "naming": "No snapshot slots or state filename grammar in the reviewed source.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip src/ tree defines no snapshot writer"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "exec.bin plus grom.bin from the ROM directory (cwd or JZINTV_ROM_PATH)",
+          "status": "captured",
+          "naming": "Obtained from Intellivision Lives!; required before any game boot.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/jzintv.txt lines 59-68"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/jzintv.txt ROM requirements"
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "No configuration file; environment variables plus command-line flags",
+          "status": "not_supported",
+          "naming": "JZINTV_ROM_PATH selects the ROM directory; all other setup is CLI flags (a Unix program compiled for Windows per the platform doc).",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/jzintv.txt ROM path and launch",
+            "source:jzintv-20200712-src.zip doc/platform/README-win32.txt env vars and flags"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "SDL JS0-JS9 enumeration plus .kbd keyboard files",
+          "status": "captured",
+          "naming": "Up to 10 joysticks become JS0-JS9 event prefixes; analog/digital adaptation and .kbd bindings documented.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/joystick.txt identification and analog/digital sections",
+            "source:jzintv-20200712-src.zip doc/jzintv/kbdhackfile.txt"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "No persistent game-save files are written",
+          "status": "not_supported",
+          "naming": "JLP flash is emulated in session memory; no host save-file writer was found.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip src/jlp/jlp.c flash emulation without host persistence"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No save-state facility",
+          "status": "not_supported",
+          "naming": "No snapshot slots or state filename grammar in the reviewed source.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip src/ tree defines no snapshot writer"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "exec.bin plus grom.bin from the ROM directory (cwd or JZINTV_ROM_PATH)",
+          "status": "captured",
+          "naming": "Obtained from Intellivision Lives!; required before any game boot.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/jzintv.txt lines 59-68"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:jzintv-20200712-src.zip doc/jzintv/jzintv.txt ROM requirements"
+          ]
+        }
+      ]
+    }
+  },
+  "platform_gaps": {
+    "linux-flatpak": {
       "status": "unresolved",
       "reason": "The official jzIntv source establishes project identity but does not provide a complete exact six-purpose contract (config, controller input, saves, states, BIOS/firmware, and keys) for this host.",
       "evidence": [
