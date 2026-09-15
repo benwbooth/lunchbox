@@ -467,7 +467,7 @@ pub fn report(selections: &HashMap<String, String>) -> Result<Value> {
                 } else if adamem {
                     "Native Linux ADAMEm SDL dispatch is connected for the single ColecoVision stick with a private adamem.joy. It stages fire/aim buttons, rechecks the exact SDL routes, and confirms the child loaded the declared SDL library. Other sticks, hosts, packages, and runtime input remain unverified."
                 } else if vector06sdl {
-                    "Native Linux vector06sdl dispatch is connected for the single Vector-06C stick with a private gamecontrollerdb.txt. It stages the six stick outputs, rechecks the exact SDL2 routes, and confirms the child loaded the declared SDL library. Other sticks, hosts, packages, and runtime input remain unverified."
+                    "Cross-platform vector06sdl dispatch is connected for the single Vector-06C stick with a private gamecontrollerdb.txt. It stages the six stick outputs, rechecks the exact SDL routes, and confirms child ownership (strongest on Linux via /proc maps; executable plus device re-probe elsewhere). Other sticks, packages, and runtime input remain unverified."
                 } else if simcoupe {
                     "Native Linux SimCoupe dispatch is connected for the single SAM joystick selected by exact SDL name. It stages a session SimCoupe.cfg under HOME, rechecks the exact SDL routes, and confirms the child loaded the declared SDL library. Other joysticks, hosts, packages, and runtime input remain unverified."
                 } else if pcem {

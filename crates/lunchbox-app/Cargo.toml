@@ -44,6 +44,7 @@ ureq.workspace = true
 url.workspace = true
 uuid.workspace = true
 walkdir.workspace = true
+sysinfo.workspace = true
 zip.workspace = true
 tempfile = "3.14"
 lunchbox-controller-probe = { path = "../lunchbox-controller-probe" }

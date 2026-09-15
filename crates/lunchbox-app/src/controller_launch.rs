@@ -18,7 +18,9 @@ mod mame_configuration;
 mod oracle;
 
 enum PreparedBizhawkLaunch {
+    #[cfg(target_os = "linux")]
     Configuration(crate::controller_bizhawk::PreparedConfig),
+    #[cfg(target_os = "linux")]
     #[cfg(target_os = "linux")]
     Captured(crate::controller_bizhawk::digital_session::PreparedCartridgeHandoff),
 }
@@ -26,6 +28,7 @@ enum PreparedBizhawkLaunch {
 enum RetainedLaunchDirectory {
     Plain(tempfile::TempDir),
     #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     FrontendAutoconfig(crate::retroarch_frontend_autoconfig::FrontendAutoconfigSession),
 }
 
@@ -52,6 +55,7 @@ impl RetainedLaunchDirectory {
                 "Private controller launch directory disappeared"
             ),
             #[cfg(any(target_os = "macos", target_os = "windows"))]
+            #[cfg(target_os = "linux")]
             Self::FrontendAutoconfig(session) => session.verify()?,
         }
         Ok(())
@@ -88,61 +92,108 @@ impl PreparedBizhawkLaunch {
     }
 }
 
-#[cfg(target_os = "linux")]
 enum PreparedJsonNativeLaunch {
+    #[cfg(target_os = "linux")]
     B2(crate::controller_b2_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Hypseus(crate::controller_hypseus_singe_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Jgenesis(crate::controller_jgenesis_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Gopher64(crate::controller_gopher64_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Gear(crate::controller_gear_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Xroar(crate::controller_xroar_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Zesarux(crate::controller_zesarux_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Oricutron(crate::controller_oricutron_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     AtariPlusPlus(crate::controller_atari_plus_plus_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Aranym(crate::controller_aranym_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Atari800(crate::controller_atari800_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     NanoBoyAdvance(crate::controller_nanoboyadvance_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     VbaM(crate::controller_vba_m_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     EightySixBox(crate::controller_86box_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     A7800(crate::controller_a7800_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Gambatte(crate::controller_gambatte_standalone::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     PicoDrive(crate::controller_picodrive_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     NestopiaUe(crate::controller_nestopia_ue_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     SkyEmu(crate::controller_skyemu_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     LinApple(crate::controller_linapple_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Fuse(crate::controller_fuse_standalone::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Amiberry(crate::controller_amiberry_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     GbePlus(crate::controller_gbe_plus_standalone::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     PokeMini(crate::controller_pokemini_standalone::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Uzem(crate::controller_uzem_standalone::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Eka2l1(crate::controller_eka2l1_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Cemu(crate::controller_cemu_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Azahar(crate::controller_azahar_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Shadps4(crate::controller_shadps4_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Ymir(crate::controller_ymir_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     DreamPotato(crate::controller_dreampotato_standalone::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Panda3ds(crate::controller_panda3ds_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Supermodel(crate::controller_supermodel_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Openbor(crate::controller_openbor_standalone::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Touchhle(crate::controller_touchhle_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Tsugaru(crate::controller_tsugaru_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Pcem(crate::controller_pcem_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Simcoupe(crate::controller_simcoupe_native::native_command::NativeSession),
     Vector06sdl(crate::controller_vector06sdl_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Adamem(crate::controller_adamem_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Ep128emu(crate::controller_ep128emu_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Play(crate::controller_play_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Vita3K(crate::controller_vita3k_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Caprice32(crate::controller_caprice32_standalone::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     YabaSanshiro(crate::controller_yaba_sanshiro_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Kronos(crate::controller_kronos_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Rmg(crate::controller_rmg_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Simple64(crate::controller_simple64_native::native_command::NativeSession),
+    #[cfg(target_os = "linux")]
     Nestopia(crate::controller_nestopia_ue_flatpak::PreparedLaunch),
+    #[cfg(target_os = "linux")]
     Punes(crate::controller_punes_flatpak::PreparedLaunch),
 }
 
-#[cfg(target_os = "linux")]
 impl PreparedJsonNativeLaunch {
     fn spawn(
         &mut self,
@@ -150,165 +201,312 @@ impl PreparedJsonNativeLaunch {
         cancel: &std::sync::atomic::AtomicBool,
     ) -> Result<std::process::Child> {
         match self {
+            #[cfg(target_os = "linux")]
             Self::B2(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Hypseus(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Jgenesis(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Gopher64(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Gear(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Xroar(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Zesarux(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Oricutron(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::AtariPlusPlus(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Aranym(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Atari800(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::NanoBoyAdvance(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::VbaM(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::EightySixBox(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::A7800(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Gambatte(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::PicoDrive(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::SkyEmu(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::LinApple(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Fuse(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::GbePlus(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::PokeMini(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Uzem(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Eka2l1(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Cemu(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Azahar(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Shadps4(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Ymir(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::DreamPotato(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Panda3ds(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Supermodel(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Openbor(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Touchhle(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Tsugaru(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Pcem(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Simcoupe(session) => session.spawn(plan, cancel),
             Self::Vector06sdl(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Adamem(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Ep128emu(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Play(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Vita3K(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Caprice32(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::YabaSanshiro(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Kronos(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Rmg(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Simple64(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Nestopia(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
             Self::Punes(session) => session.spawn(plan, cancel),
         }
     }
 
     fn verify(&self, cancel: &std::sync::atomic::AtomicBool) -> Result<()> {
         match self {
+            #[cfg(target_os = "linux")]
             Self::B2(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Hypseus(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Jgenesis(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Gopher64(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Gear(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Xroar(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Zesarux(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Oricutron(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::AtariPlusPlus(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Aranym(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Atari800(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::NanoBoyAdvance(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::VbaM(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::EightySixBox(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::A7800(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Gambatte(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::PicoDrive(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::SkyEmu(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::LinApple(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Fuse(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::GbePlus(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::PokeMini(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Uzem(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Eka2l1(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Cemu(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Azahar(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Shadps4(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Ymir(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::DreamPotato(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Panda3ds(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Supermodel(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Openbor(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Touchhle(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Tsugaru(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Pcem(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Simcoupe(session) => session.verify(cancel),
             Self::Vector06sdl(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Adamem(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Ep128emu(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Play(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Vita3K(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Caprice32(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::YabaSanshiro(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Kronos(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Rmg(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Simple64(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Nestopia(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
             Self::Punes(session) => session.verify(cancel),
         }
     }
 
     fn check_health(&self) -> Result<()> {
         match self {
+            #[cfg(target_os = "linux")]
             Self::B2(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Hypseus(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Jgenesis(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Gopher64(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Gear(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Xroar(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Zesarux(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Oricutron(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::AtariPlusPlus(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Aranym(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Atari800(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::NanoBoyAdvance(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::VbaM(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::EightySixBox(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::A7800(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Gambatte(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::PicoDrive(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::NestopiaUe(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::SkyEmu(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::LinApple(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Fuse(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Amiberry(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::GbePlus(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::PokeMini(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Uzem(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Eka2l1(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Cemu(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Azahar(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Shadps4(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Ymir(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::DreamPotato(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Panda3ds(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Supermodel(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Openbor(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Touchhle(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Tsugaru(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Pcem(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Simcoupe(session) => session.check_health(),
             Self::Vector06sdl(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Adamem(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Ep128emu(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Play(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Vita3K(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Caprice32(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::YabaSanshiro(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Kronos(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Rmg(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Simple64(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Nestopia(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
             Self::Punes(session) => session.check_health(),
         }
     }
@@ -342,7 +540,6 @@ pub struct CalibratedLaunch {
     xemu_native: Option<crate::controller_xemu_native::native_command::NativeSession>,
     #[cfg(target_os = "linux")]
     scummvm_native: Option<crate::controller_scummvm_native::native_command::NativeSession>,
-    #[cfg(target_os = "linux")]
     /// One launch-scoped standalone JSON/TOML configuration session.
     jgenesis_native: Option<PreparedJsonNativeLaunch>,
     #[cfg(target_os = "linux")]
@@ -3433,6 +3630,7 @@ pub(crate) fn mame_request_from_draft(
     inputs.extend(state);
     check_preparation_cancel(cancel)?;
     configuration.verify()?;
+    #[cfg(target_os = "linux")]
     Ok(crate::controller_mame::InspectionRequest {
         retroarch: runtime,
         core: context.core.canonicalize()?,
@@ -9343,7 +9541,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("vector06sdl")
     {
@@ -9371,7 +9568,7 @@ pub fn prepare_with_cancellation(
             *plan = native.plan.clone();
             return Ok(Some(CalibratedLaunch {
                 jgenesis_native: Some(PreparedJsonNativeLaunch::Vector06sdl(native)),
-                description: "vector06sdl: calibrated single Vector-06C stick with a private gamecontrollerdb.txt, with exact SDL2 routes, executable, and startup-ownership guards; partial native Linux support; runtime unverified".into(),
+                description: "vector06sdl: calibrated single Vector-06C stick with a private gamecontrollerdb.txt, with exact SDL routes, executable, and startup-ownership guards (strongest on Linux; executable plus device re-probe elsewhere); partial native support on Linux, Windows, and macOS; runtime unverified".into(),
                 ..Default::default()
             }));
         }

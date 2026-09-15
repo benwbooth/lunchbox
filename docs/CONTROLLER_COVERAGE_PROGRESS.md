@@ -14,6 +14,26 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 643: SCOPE CORRECTION. The native launch adapters were Linux-only
+(`PreparedJsonNativeLaunch` gated `cfg(target_os = "linux")`, sessions on
+`/proc`/sysfs/evdev) while the project records, RetroArch contracts, and
+`runtime_adapter` descriptors are four-host. New plan: keep the portable
+writers as-is, run every launch session through a host platform abstraction,
+and port all 76 adapters to it. Landed `controller_native_platform.rs`:
+`child_exe_matches` via `sysinfo` (all hosts), `child_maps_library`
+(Linux `/proc/maps`, explicit refusal elsewhere), `session_user_env` and
+`prepare_user_dirs` (HOME on Linux/macOS, USERPROFILE/APPDATA/LOCALAPPDATA
+on Windows), and `require_unique_device_path` (SDL path plus index pin;
+names and GUIDs are never identity). Piloted on vector06sdl: its session and
+launch dispatch are ungated, Linux keeps sysfs topology plus the path pin,
+other hosts pin path plus index with same-routing re-probes, and ownership
+is maps-based on Linux versus exe plus device re-probe elsewhere. The launch
+enum keeps per-variant `cfg(target_os = "linux")` gates that each ported
+adapter drops. Linux build plus focused/catalog gates pass; Windows/macOS
+compilation rides on CI (`native-packages.yml` builds windows-2025 and
+macos) until a foreign-target check exists locally. Counts unchanged:
+76/250 dispatches, 170/344 entries; vector06sdl is now 1/76 cross-platform.
+
 Step 642: connected the pinned ADAMEm SDL joystick table to a
 single-player native Linux launch adapter. Source review proved index-based
 `SDL_JoystickOpen(i)` selection, axes as directions, the `raw,cv` adamem.joy
@@ -359,6 +379,26 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 643: SCOPE CORRECTION. The native launch adapters were Linux-only
+(`PreparedJsonNativeLaunch` gated `cfg(target_os = "linux")`, sessions on
+`/proc`/sysfs/evdev) while the project records, RetroArch contracts, and
+`runtime_adapter` descriptors are four-host. New plan: keep the portable
+writers as-is, run every launch session through a host platform abstraction,
+and port all 76 adapters to it. Landed `controller_native_platform.rs`:
+`child_exe_matches` via `sysinfo` (all hosts), `child_maps_library`
+(Linux `/proc/maps`, explicit refusal elsewhere), `session_user_env` and
+`prepare_user_dirs` (HOME on Linux/macOS, USERPROFILE/APPDATA/LOCALAPPDATA
+on Windows), and `require_unique_device_path` (SDL path plus index pin;
+names and GUIDs are never identity). Piloted on vector06sdl: its session and
+launch dispatch are ungated, Linux keeps sysfs topology plus the path pin,
+other hosts pin path plus index with same-routing re-probes, and ownership
+is maps-based on Linux versus exe plus device re-probe elsewhere. The launch
+enum keeps per-variant `cfg(target_os = "linux")` gates that each ported
+adapter drops. Linux build plus focused/catalog gates pass; Windows/macOS
+compilation rides on CI (`native-packages.yml` builds windows-2025 and
+macos) until a foreign-target check exists locally. Counts unchanged:
+76/250 dispatches, 170/344 entries; vector06sdl is now 1/76 cross-platform.
 
 Step 642: connected the pinned ADAMEm SDL joystick table to a
 single-player native Linux launch adapter. Source review proved index-based
