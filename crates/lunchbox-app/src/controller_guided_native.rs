@@ -152,6 +152,7 @@ pub(crate) fn supports(profile: &EmulatorProfile) -> bool {
                 | "touchhle"
                 | "tsugaru"
                 | "pcem"
+                | "simcoupe"
                 | "ep128emu"
                 | "play"
                 | "vita3k"
@@ -686,6 +687,19 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.players = vec![crate::controller_ep128emu_native::settings::Player {
+                    player: 1,
+                    controller_id: ids[0].clone(),
+                }];
+                setup.review(&mapping.calibrations)?;
+            }
+        }
+        "simcoupe" => {
+            for setup in &mut mapping.simcoupe_native_launches {
+                if !matches(&setup.emulator_id, &setup.content) {
+                    continue;
+                }
+                found += 1;
+                setup.players = vec![crate::controller_simcoupe_native::settings::Player {
                     player: 1,
                     controller_id: ids[0].clone(),
                 }];

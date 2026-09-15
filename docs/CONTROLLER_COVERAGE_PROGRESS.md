@@ -14,6 +14,18 @@ compatible runtime because the inspected core is Windows-only. Nymashock belongs
 to the later native/BizHawk phase. See CONTROLLER_COMPLETION_ORDER.md. No tests,
 builds, database report execution or device access; formatting/whitespace only.
 
+Step 640: connected the pinned SimCoupe joystick options to a
+single-player native Linux launch adapter. Source review proved exact-SDL-
+name selection (`joydev1`), the SAM joystick-1 mapping, axes-0/1 plus hats
+as directions with any button as fire, `key=value` option persistence, and
+the positional disk slot. The session proves unique SDL names, verifies
+control shapes, and stages a session SimCoupe.cfg under HOME.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused writer
+tests and a full QML/C++ check passed; no SimCoupe executable, disk,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 74/250 partial standalone dispatches and 168/344
+catalog source entries (48.8%), not runtime completion.
+
 Step 639: connected the pinned ep128emu joystick event grammar to a
 single-player native Linux launch adapter. Source review proved the
 `SDL_JoystickOpen(i)` slot selection with capable-pad preference, the
@@ -322,6 +334,18 @@ are connected. Focused writer tests and a full QML/C++ check passed; no
 LinApple executable, disk, firmware, save, state, or controller runtime was
 exercised. This moves the source-backed inventory to 51/250 partial standalone
 dispatches and 145/344 catalog source entries (42.2%), not runtime completion.
+
+Step 640: connected the pinned SimCoupe joystick options to a
+single-player native Linux launch adapter. Source review proved exact-SDL-
+name selection (`joydev1`), the SAM joystick-1 mapping, axes-0/1 plus hats
+as directions with any button as fire, `key=value` option persistence, and
+the positional disk slot. The session proves unique SDL names, verifies
+control shapes, and stages a session SimCoupe.cfg under HOME.
+Catalog/settings/QML/guided/launch dispatch are connected. Focused writer
+tests and a full QML/C++ check passed; no SimCoupe executable, disk,
+firmware, save, state, or controller runtime was exercised. This moves the
+source-backed inventory to 74/250 partial standalone dispatches and 168/344
+catalog source entries (48.8%), not runtime completion.
 
 Step 639: connected the pinned ep128emu joystick event grammar to a
 single-player native Linux launch adapter. Source review proved the

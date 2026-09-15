@@ -365,6 +365,9 @@ pub struct ControllerMappingSettings {
     pub(crate) ep128emu_native_launches:
         Vec<crate::controller_ep128emu_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) simcoupe_native_launches:
+        Vec<crate::controller_simcoupe_native::settings::SavedSetup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) pcem_native_launches: Vec<crate::controller_pcem_native::settings::SavedSetup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) tsugaru_native_launches: Vec<crate::controller_tsugaru_native::settings::SavedSetup>,
@@ -570,6 +573,7 @@ impl Default for ControllerMappingSettings {
             cemu_native_launches: Vec::new(),
             play_native_launches: Vec::new(),
             ep128emu_native_launches: Vec::new(),
+            simcoupe_native_launches: Vec::new(),
             pcem_native_launches: Vec::new(),
             tsugaru_native_launches: Vec::new(),
             touchhle_native_launches: Vec::new(),
@@ -1618,6 +1622,9 @@ impl ControllerMappingSettings {
         crate::controller_play_native::settings::validate_setups(&self.play_native_launches)?;
         crate::controller_ep128emu_native::settings::validate_setups(
             &self.ep128emu_native_launches,
+        )?;
+        crate::controller_simcoupe_native::settings::validate_setups(
+            &self.simcoupe_native_launches,
         )?;
         crate::controller_pcem_native::settings::validate_setups(&self.pcem_native_launches)?;
         crate::controller_tsugaru_native::settings::validate_setups(&self.tsugaru_native_launches)?;

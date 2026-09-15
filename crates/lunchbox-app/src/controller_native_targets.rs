@@ -570,6 +570,39 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(ep128emu);
+    let mut simcoupe = db
+        .layout("atari7800")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    simcoupe.id = "simcoupe-sam".into();
+    simcoupe.name = "SAM Coupé — SimCoupe joystick".into();
+    simcoupe.family = "two-button".into();
+    simcoupe.source = "https://github.com/simonowen/simcoupe/tree/1f966036543991c05022ce4f95cfbfbb0014b187/SDL/Input.cpp".into();
+    simcoupe.notes =
+        "SimCoupe SAM joystick 1. Directions on axes or hats; any button is fire.".into();
+    simcoupe.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("fire", "Fire", 70.0, 50.0, "face", true),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(simcoupe);
     let mut amiberry = db
         .layout("atari7800")
         .context("Missing two-button stick reference layout")?
@@ -1393,6 +1426,13 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/sarah-walker-pcem/pcem/tree/a5a54ab5981902fc227b0afd1756ebe4660178d0",
         ),
         (
+            "simcoupe",
+            "simcoupe-sam",
+            1,
+            vec!["SAM Coupé"],
+            "https://github.com/simonowen/simcoupe/tree/1f966036543991c05022ce4f95cfbfbb0014b187",
+        ),
+        (
             "ep128emu",
             "ep128emu-joystick",
             1,
@@ -1722,6 +1762,14 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
     if (core, layout) == ("ep128emu", "ep128emu-joystick") {
         return Some(
             crate::controller_ep128emu_native::ROUTES
+                .iter()
+                .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
+                .collect(),
+        );
+    }
+    if (core, layout) == ("simcoupe", "simcoupe-sam") {
+        return Some(
+            crate::controller_simcoupe_native::ROUTES
                 .iter()
                 .map(|(target, label)| ((*target).to_owned(), (*label).to_owned()))
                 .collect(),
