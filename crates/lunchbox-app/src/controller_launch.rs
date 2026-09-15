@@ -96,11 +96,9 @@ enum PreparedJsonNativeLaunch {
     B2(crate::controller_b2_native::native_command::NativeSession),
     Hypseus(crate::controller_hypseus_singe_native::native_command::NativeSession),
     Jgenesis(crate::controller_jgenesis_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Gopher64(crate::controller_gopher64_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Gear(crate::controller_gear_native::native_command::NativeSession),
-    #[cfg(target_os = "linux")]
     Xroar(crate::controller_xroar_native::native_command::NativeSession),
     #[cfg(target_os = "linux")]
     Zesarux(crate::controller_zesarux_native::native_command::NativeSession),
@@ -181,11 +179,9 @@ impl PreparedJsonNativeLaunch {
             Self::B2(session) => session.spawn(plan, cancel),
             Self::Hypseus(session) => session.spawn(plan, cancel),
             Self::Jgenesis(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Gopher64(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Gear(session) => session.spawn(plan, cancel),
-            #[cfg(target_os = "linux")]
             Self::Xroar(session) => session.spawn(plan, cancel),
             #[cfg(target_os = "linux")]
             Self::Zesarux(session) => session.spawn(plan, cancel),
@@ -262,11 +258,9 @@ impl PreparedJsonNativeLaunch {
             Self::B2(session) => session.verify(cancel),
             Self::Hypseus(session) => session.verify(cancel),
             Self::Jgenesis(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Gopher64(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Gear(session) => session.verify(cancel),
-            #[cfg(target_os = "linux")]
             Self::Xroar(session) => session.verify(cancel),
             #[cfg(target_os = "linux")]
             Self::Zesarux(session) => session.verify(cancel),
@@ -343,11 +337,9 @@ impl PreparedJsonNativeLaunch {
             Self::B2(session) => session.check_health(),
             Self::Hypseus(session) => session.check_health(),
             Self::Jgenesis(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Gopher64(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Gear(session) => session.check_health(),
-            #[cfg(target_os = "linux")]
             Self::Xroar(session) => session.check_health(),
             #[cfg(target_os = "linux")]
             Self::Zesarux(session) => session.check_health(),
@@ -7837,7 +7829,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("Gopher64")
     {
@@ -7971,7 +7962,6 @@ pub fn prepare_with_cancellation(
         }
     }
 
-    #[cfg(target_os = "linux")]
     if option.runtime_kind == EmulatorRuntimeKind::Standalone
         && option.emulator_name.eq_ignore_ascii_case("xroar")
     {

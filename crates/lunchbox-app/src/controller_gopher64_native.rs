@@ -343,8 +343,8 @@ pub(crate) mod settings {
                     .get(&player.controller_id)
                     .context("Gopher64 controller has no saved calibration")?;
                 ensure!(
-                    calibration.os == "linux",
-                    "Gopher64 native mapping requires Linux calibration"
+                    ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+                    "Gopher64 native mapping requires a desktop calibration"
                 );
                 let mapping = calibration.plan_profile(profile)?;
                 ensure!(
@@ -382,11 +382,13 @@ pub(crate) mod settings {
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::Calibration,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
@@ -548,6 +550,7 @@ pub(crate) mod session {
         directory: tempfile::TempDir,
         pub(crate) config_home: PathBuf,
         runtime_paths: Vec<String>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         snapshot: Snapshot,
         setup: settings::SavedSetup,
@@ -575,19 +578,36 @@ pub(crate) mod session {
                 );
                 selected.push(found[0].device_path.clone());
             }
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(&selected)?;
             let initial = observe(setup, &[], cancel)?;
             let mut runtime_paths = Vec::new();
             for path in &selected {
-                runtime_paths.push(
-                    topology.resolve_runtime_path(
-                        path,
-                        initial
-                            .devices
-                            .iter()
-                            .filter_map(|device| device.path.as_deref()),
-                    )?,
-                );
+                // Linux resolves through the sysfs topology; other hosts
+                // match the SDL device-interface path and require uniqueness.
+                #[cfg(target_os = "linux")]
+                let runtime = topology.resolve_runtime_path(
+                    path,
+                    initial
+                        .devices
+                        .iter()
+                        .filter_map(|device| device.path.as_deref()),
+                )?;
+                #[cfg(not(target_os = "linux"))]
+                let runtime = {
+                    let path_string = path.to_string_lossy().into_owned();
+                    let candidates = initial
+                        .devices
+                        .iter()
+                        .filter(|device| device.path.as_deref() == Some(path_string.as_str()))
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        candidates.len() == 1,
+                        "Gopher64 physical controller is missing or ambiguous in SDL"
+                    );
+                    path_string
+                };
+                runtime_paths.push(runtime);
             }
             ensure!(
                 runtime_paths.iter().collect::<BTreeSet<_>>().len() == runtime_paths.len(),
@@ -649,6 +669,7 @@ pub(crate) mod session {
                 directory,
                 config_home,
                 runtime_paths,
+                #[cfg(target_os = "linux")]
                 topology,
                 snapshot,
                 setup: setup.clone(),
@@ -660,6 +681,7 @@ pub(crate) mod session {
 
         pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
             cancelled(cancel)?;
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             ensure!(
                 self.directory.path().is_dir(),
@@ -676,16 +698,47 @@ pub(crate) mod session {
                 comparable(&current, true)? == comparable(&self.snapshot, true)?,
                 "Gopher64 SDL routing or resolved bindings changed before launch"
             );
-            self.topology.verify()
+            #[cfg(not(target_os = "linux"))]
+            for path in &self.runtime_paths {
+                let count = current
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(path.as_str()))
+                    .count();
+                ensure!(
+                    count == 1,
+                    "Gopher64 SDL device path is missing or ambiguous"
+                );
+            }
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let current = observe(&self.setup, &self.runtime_paths, &AtomicBool::new(false))?;
+            ensure!(
+                comparable(&current, true)? == comparable(&self.snapshot, true)?,
+                "Gopher64 SDL routing or resolved bindings changed"
+            );
+            Ok(())
         }
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
     use crate::{
@@ -743,7 +796,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("Gopher64 calibrated launch requires native Linux, not Wine/Flatpak");
+            anyhow::bail!("Gopher64 calibrated launch requires a native build, not Wine/Flatpak");
         };
         ensure!(
             setup.emulator_id == option.emulator_id && original.environment.is_empty(),

@@ -246,9 +246,9 @@ pub(crate) mod settings {
                     .get(&player.controller_id)
                     .context("XRoar controller has no saved calibration")?;
                 ensure!(
-                    calibration.os == "linux"
+                    ["linux", "macos", "windows"].contains(&calibration.os.as_str())
                         && calibration.backend != crate::controller_sdl3::BACKEND,
-                    "XRoar mapping needs Linux physical calibration"
+                    "XRoar mapping needs a desktop physical calibration"
                 );
                 let mapping = calibration.plan_profile(profile)?;
                 ensure!(
@@ -293,11 +293,13 @@ pub(crate) mod settings {
     }
 }
 
-#[cfg(target_os = "linux")]
 mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::{Calibration, EmulatorProfile},
         controller_native_process::{cancelled, capture},
         controller_pcsx2::sdl::{AxisRange, Input as SdlInput},
@@ -536,6 +538,7 @@ mod session {
         directory: tempfile::TempDir,
         pub(crate) private_config: PathBuf,
         runtime_paths: Vec<String>,
+        #[cfg(target_os = "linux")]
         topology: InputTopology,
         snapshot: Snapshot,
         setup: settings::SavedSetup,
@@ -568,6 +571,7 @@ mod session {
                 );
                 selected.push(found[0].device_path.clone());
             }
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(&selected)?;
             let initial = observe(setup, &[], cancel)?;
             let visible_paths = initial
@@ -575,9 +579,29 @@ mod session {
                 .iter()
                 .filter_map(|device| device.path.as_deref())
                 .collect::<Vec<_>>();
+            // Linux resolves through the sysfs topology; other hosts
+            // match the SDL device-interface path and require uniqueness.
+            #[cfg(target_os = "linux")]
             let runtime_paths = selected
                 .iter()
                 .map(|path| topology.resolve_runtime_path(path, visible_paths.iter().copied()))
+                .collect::<Result<Vec<_>>>()?;
+            #[cfg(not(target_os = "linux"))]
+            let runtime_paths = selected
+                .iter()
+                .map(|path| {
+                    let path_string = path.to_string_lossy().into_owned();
+                    let candidates = initial
+                        .devices
+                        .iter()
+                        .filter(|device| device.path.as_deref() == Some(path_string.as_str()))
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        candidates.len() == 1,
+                        "XRoar physical controller is missing or ambiguous in SDL"
+                    );
+                    Ok(path_string)
+                })
                 .collect::<Result<Vec<_>>>()?;
             let snapshot = observe(setup, &runtime_paths, cancel)?;
             ensure!(
@@ -626,6 +650,7 @@ mod session {
                 directory,
                 private_config,
                 runtime_paths,
+                #[cfg(target_os = "linux")]
                 topology,
                 snapshot,
                 setup: setup.clone(),
@@ -641,6 +666,7 @@ mod session {
                 self.directory.path().is_dir() && self.private_config.is_file(),
                 "XRoar private configuration disappeared"
             );
+            #[cfg(target_os = "linux")]
             self.topology.verify()?;
             for (path, expected) in &self.hashes {
                 ensure!(file_hash(path)? == *expected, "XRoar launch input changed");
@@ -650,16 +676,44 @@ mod session {
                 comparable(&current)? == comparable(&self.snapshot)?,
                 "XRoar SDL3 routing or resolved bindings changed before launch"
             );
-            self.topology.verify()
+            #[cfg(not(target_os = "linux"))]
+            for path in &self.runtime_paths {
+                let count = current
+                    .devices
+                    .iter()
+                    .filter(|device| device.path.as_deref() == Some(path.as_str()))
+                    .count();
+                ensure!(count == 1, "XRoar SDL device path is missing or ambiguous");
+            }
+            #[cfg(target_os = "linux")]
+            {
+                return self.topology.verify();
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                return Ok(());
+            }
         }
 
         pub(crate) fn check_health(&self) -> Result<()> {
-            self.topology.verify()
+            #[cfg(target_os = "linux")]
+            return self.topology.verify();
+            #[cfg(not(target_os = "linux"))]
+            return self.verify_health_probe();
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        fn verify_health_probe(&self) -> Result<()> {
+            let current = observe(&self.setup, &self.runtime_paths, &AtomicBool::new(false))?;
+            ensure!(
+                comparable(&current)? == comparable(&self.snapshot)?,
+                "XRoar SDL3 routing or resolved bindings changed"
+            );
+            Ok(())
         }
     }
 }
 
-#[cfg(target_os = "linux")]
 pub(crate) mod native_command {
     use super::*;
     use crate::{
@@ -717,7 +771,7 @@ pub(crate) mod native_command {
         cancelled(cancel)?;
         setup.validate()?;
         let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("XRoar calibrated launch requires native Linux");
+            anyhow::bail!("XRoar calibrated launch requires a native build");
         };
         ensure!(
             option.emulator_name.eq_ignore_ascii_case("xroar")
