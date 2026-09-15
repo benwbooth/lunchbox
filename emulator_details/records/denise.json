@@ -37,13 +37,14 @@
         },
         {
           "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "~/.config/denise/settings.ini (portable: install folder)",
+          "naming": "One identifier:value record per line (CRLF); input assignments serialize as anded|device-id|group-id|input-id|qualifier with identifiers from emulated device name plus input index.",
           "evidence": [
-            "official:https://sourceforge.net/projects/deniseemu/",
-            "Windows/Linux/macOS/FreeBSD listed"
+            "source:piciji/denise guikit/gtk/tools.cpp getUserDataFolder .config @1cb7d45117893c76025d32260edb6008001344f9",
+            "source:piciji/denise program/program.cpp settingsFile/appFolder @1cb7d45117893c76025d32260edb6008001344f9",
+            "source:piciji/denise program/input/mapping.cpp mapping grammar @1cb7d45117893c76025d32260edb6008001344f9"
           ],
-          "status": "unresolved"
+          "status": "captured"
         },
         {
           "purpose": "saves",
@@ -77,13 +78,12 @@
         },
         {
           "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "No external cryptographic key material required",
+          "naming": "C64/Amiga need no keys.",
           "evidence": [
-            "official:https://sourceforge.net/projects/deniseemu/",
-            "Windows/Linux/macOS/FreeBSD listed"
+            "source:piciji/denise guikit/tools/setting.cpp carries no key fields @1cb7d45117893c76025d32260edb6008001344f9"
           ],
-          "status": "unresolved"
+          "status": "not_required"
         }
       ]
     },
@@ -101,13 +101,14 @@
         },
         {
           "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "%APPDATA%\\denise\\settings.ini (portable: install folder)",
+          "naming": "One identifier:value record per line (CRLF); input assignments serialize as anded|device-id|group-id|input-id|qualifier with identifiers from emulated device name plus input index.",
           "evidence": [
-            "official:https://sourceforge.net/projects/deniseemu/",
-            "Windows/Linux/macOS/FreeBSD listed"
+            "source:piciji/denise guikit/winapi/tools.cpp getUserDataFolder APPDATA @1cb7d45117893c76025d32260edb6008001344f9",
+            "source:piciji/denise program/program.cpp settingsFile/appFolder @1cb7d45117893c76025d32260edb6008001344f9",
+            "source:piciji/denise program/input/mapping.cpp mapping grammar @1cb7d45117893c76025d32260edb6008001344f9"
           ],
-          "status": "unresolved"
+          "status": "captured"
         },
         {
           "purpose": "saves",
@@ -141,13 +142,12 @@
         },
         {
           "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "No external cryptographic key material required",
+          "naming": "C64/Amiga need no keys.",
           "evidence": [
-            "official:https://sourceforge.net/projects/deniseemu/",
-            "Windows/Linux/macOS/FreeBSD listed"
+            "source:piciji/denise guikit/tools/setting.cpp carries no key fields @1cb7d45117893c76025d32260edb6008001344f9"
           ],
-          "status": "unresolved"
+          "status": "not_required"
         }
       ]
     },
@@ -165,13 +165,14 @@
         },
         {
           "purpose": "input",
-          "path": "Keyboard/joystick bindings are configured by the upstream UI; no stable persistent syntax is published.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "~/Library/Application Support/denise/settings.ini (portable: install folder)",
+          "naming": "One identifier:value record per line (CRLF); input assignments serialize as anded|device-id|group-id|input-id|qualifier with identifiers from emulated device name plus input index.",
           "evidence": [
-            "official:https://sourceforge.net/projects/deniseemu/",
-            "Windows/Linux/macOS/FreeBSD listed"
+            "source:piciji/denise guikit/cocoa/tools.cpp getUserDataFolder Library @1cb7d45117893c76025d32260edb6008001344f9",
+            "source:piciji/denise program/program.cpp settingsFile/appFolder @1cb7d45117893c76025d32260edb6008001344f9",
+            "source:piciji/denise program/input/mapping.cpp mapping grammar @1cb7d45117893c76025d32260edb6008001344f9"
           ],
-          "status": "unresolved"
+          "status": "captured"
         },
         {
           "purpose": "saves",
@@ -205,13 +206,12 @@
         },
         {
           "purpose": "keys",
-          "path": "No external cryptographic key file is documented.",
-          "naming": "Only upstream-documented naming is asserted; unknown details remain explicitly unverified.",
+          "path": "No external cryptographic key material required",
+          "naming": "C64/Amiga need no keys.",
           "evidence": [
-            "official:https://sourceforge.net/projects/deniseemu/",
-            "Windows/Linux/macOS/FreeBSD listed"
+            "source:piciji/denise guikit/tools/setting.cpp carries no key fields @1cb7d45117893c76025d32260edb6008001344f9"
           ],
-          "status": "unresolved"
+          "status": "not_required"
         }
       ]
     }
