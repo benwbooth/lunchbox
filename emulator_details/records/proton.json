@@ -26,15 +26,69 @@
       "role": "fail-closed compatibility-layer controller boundary"
     }
   ],
-  "platform_gaps": {
+  "platforms": {
     "linux": {
-      "status": "unresolved",
-      "reason": "Proton runs Windows games through Steam/Wine on Linux, but the pinned source does not define one Proton-owned six-purpose contract for game configuration, controller mappings, saves, states, BIOS/firmware, or keys. Those locations are title, Steam, and Wine-prefix specific.",
-      "evidence": [
-        "source:README.md Proton is a Steam tool for running Windows-exclusive games on Linux via Wine @5b89db9",
-        "source:user_settings.sample.py exposes Proton user settings but no universal game-controller/profile or save/state grammar @5b89db9"
+      "paths": [
+        {
+          "purpose": "config",
+          "path": "user_settings.py per Proton version dir plus <compatdata>/<appid>/pfx/*.reg prefix hives",
+          "status": "captured",
+          "naming": "user_settings.py takes effect for all games in that Proton version; prefix registry is title-local.",
+          "evidence": [
+            "source:ValveSoftware/Proton user_settings.sample.py PROTON_LOG/user settings model @5b89db940e0ebe3a137a6009a3589232fe084c09",
+            "source:ValveSoftware/Proton proton CompatData prefix_dir/version/config_info @5b89db940e0ebe3a137a6009a3589232fe084c09"
+          ]
+        },
+        {
+          "purpose": "input",
+          "path": "Steam Input per-title mapping with xinput passthrough (SteamVirtualGamepadInfo); Xalia gamepad UI optional",
+          "status": "captured",
+          "naming": "Controllers route through Steam Input; Proton bridges xinput DLLs and the Steam virtual gamepad.",
+          "evidence": [
+            "source:ValveSoftware/Proton proton SteamVirtualGamepadInfo/xinput handling @5b89db940e0ebe3a137a6009a3589232fe084c09",
+            "source:ValveSoftware/Proton README.md PROTON_USE_XALIA @5b89db940e0ebe3a137a6009a3589232fe084c09"
+          ]
+        },
+        {
+          "purpose": "saves",
+          "path": "<steam>/steamapps/compatdata/<appid>/pfx/drive_c/... (title-specific); Steam-cloud userdata/<id>/<appid>/ is Steam-client-owned",
+          "status": "captured",
+          "naming": "Game saves live inside the prefix drive_c tree or Steam userdata; both key off the title appid.",
+          "evidence": [
+            "source:ValveSoftware/Proton proton CompatData prefix_dir and drive_c/users/steamuser paths @5b89db940e0ebe3a137a6009a3589232fe084c09"
+          ]
+        },
+        {
+          "purpose": "states",
+          "path": "No snapshot facility in the Proton runtime",
+          "status": "not_supported",
+          "naming": "No snapshot slots or state filename grammar in the reviewed source.",
+          "evidence": [
+            "source:ValveSoftware/Proton proton script defines no snapshot writer @5b89db940e0ebe3a137a6009a3589232fe084c09"
+          ]
+        },
+        {
+          "purpose": "bios",
+          "path": "No BIOS or firmware file required",
+          "status": "not_required",
+          "naming": "Windows titles ship their own content; Proton supplies Wine/DXVK/vkd3d runtimes, not firmware.",
+          "evidence": [
+            "source:ValveSoftware/Proton README.md Proton as Wine-based Steam tool @5b89db940e0ebe3a137a6009a3589232fe084c09"
+          ]
+        },
+        {
+          "purpose": "keys",
+          "path": "No external cryptographic key material required",
+          "status": "not_required",
+          "naming": "No encrypted firmware or key files.",
+          "evidence": [
+            "source:ValveSoftware/Proton proton script defines no key store @5b89db940e0ebe3a137a6009a3589232fe084c09"
+          ]
+        }
       ]
-    },
+    }
+  },
+  "platform_gaps": {
     "linux-flatpak": {
       "status": "unresolved",
       "reason": "A Steam/Proton Flatpak sandbox is frontend- and game-specific; the pinned Proton source provides no Flatpak package manifest or sandbox path contract for the six catalog purposes.",
