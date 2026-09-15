@@ -33,13 +33,17 @@ impl SavedSetup {
             !self.emulator_id.trim().is_empty(),
             "FCEUX needs an emulator identity"
         );
-        for path in [
+        let mut path_vec = vec![
             &self.content,
             &self.base_directory,
             &self.probe_program,
             &self.sdl_library,
-            &self.bubblewrap_program,
-        ] {
+        ];
+        // bubblewrap is required only when a launch can actually sandbox;
+        // elsewhere the field is accepted and ignored.
+        #[cfg(target_os = "linux")]
+        path_vec.push(&self.bubblewrap_program);
+        for path in path_vec {
             ensure!(
                 path.is_absolute()
                     && !path
@@ -90,8 +94,8 @@ impl SavedSetup {
                 .get(&player.controller_id)
                 .context("FCEUX controller has no saved calibration")?;
             ensure!(
-                calibration.os == "linux",
-                "FCEUX native mapping requires Linux calibration"
+                ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+                "FCEUX native mapping requires a desktop calibration"
             );
             let mapping = calibration.plan_profile(profile)?;
             ensure!(

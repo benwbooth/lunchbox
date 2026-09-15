@@ -15,8 +15,8 @@ pub(crate) fn calibrated_profile(
         sdl2_physical::PhysicalMap,
     };
     ensure!(
-        calibration.os == "linux",
-        "FCEUX native calibration requires Linux"
+        ["linux", "macos", "windows"].contains(&calibration.os.as_str()),
+        "FCEUX native calibration requires a desktop host"
     );
     let device = snapshot.device_at_path(runtime_path)?;
     let counts = device

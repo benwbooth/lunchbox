@@ -71,7 +71,7 @@ pub(crate) fn prepare(
     cancelled(cancel)?;
     setup.validate()?;
     let EmulatorExecutable::Native(executable) = &option.executable else {
-        anyhow::bail!("FCEUX Qt calibrated launch requires native Linux");
+        anyhow::bail!("FCEUX Qt calibrated launch requires a native build");
     };
     ensure!(
         setup.emulator_id == option.emulator_id && original.environment.is_empty(),
@@ -86,16 +86,21 @@ pub(crate) fn prepare(
         original.arguments.len() == 1 && original.arguments[0] == setup.content.as_os_str(),
         "FCEUX calibrated launch requires exactly the saved ROM argument"
     );
+    let sandboxed = crate::controller_native_platform::use_bubblewrap_sandbox(&executable);
     let cwd = original.current_directory.canonicalize()?;
     let mut files = BTreeMap::new();
-    for path in [
+    let mut file_paths = vec![
         &original.program,
         &executable,
         &setup.probe_program,
         &setup.sdl_library,
-        &setup.bubblewrap_program,
         &setup.content,
-    ] {
+    ];
+    // bubblewrap is hashed only when the launch actually sandboxes.
+    if sandboxed {
+        file_paths.push(&setup.bubblewrap_program);
+    }
+    for path in file_paths {
         files.insert(path.clone(), file_hash(path)?);
     }
     ensure!(
@@ -104,26 +109,39 @@ pub(crate) fn prepare(
     );
     let inputs = PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
     let mut plan = original.clone();
-    plan.program = setup.bubblewrap_program.clone();
-    // Qt GetBaseDirectory gives FCEUX_CONFIG_DIR precedence over both
-    // FCEUX_HOME/.fceux and HOME/.fceux. Set it only inside the child sandbox.
-    plan.arguments = vec![
-        "--die-with-parent".into(),
-        "--bind".into(),
-        "/".into(),
-        "/".into(),
-        "--setenv".into(),
-        "FCEUX_CONFIG_DIR".into(),
-        setup.base_directory.as_os_str().to_owned(),
-    ];
-    inputs.append_mounts(&mut plan.arguments)?;
-    plan.arguments.extend([
-        "--chdir".into(),
-        cwd.into_os_string(),
-        "--".into(),
-        executable.as_os_str().to_owned(),
-    ]);
-    plan.arguments.extend_from_slice(&original.arguments);
+    // Sandbox or direct is a packaging decision, not an OS one. Qt
+    // GetBaseDirectory gives FCEUX_CONFIG_DIR precedence, so direct
+    // launches point it at the staged base directory instead of binding.
+    if sandboxed {
+        plan.program = setup.bubblewrap_program.clone();
+        // Qt GetBaseDirectory gives FCEUX_CONFIG_DIR precedence over both
+        // FCEUX_HOME/.fceux and HOME/.fceux. Set it only inside the child sandbox.
+        plan.arguments = vec![
+            "--die-with-parent".into(),
+            "--bind".into(),
+            "/".into(),
+            "/".into(),
+            "--setenv".into(),
+            "FCEUX_CONFIG_DIR".into(),
+            setup.base_directory.as_os_str().to_owned(),
+        ];
+        inputs.append_mounts(&mut plan.arguments)?;
+        plan.arguments.extend([
+            "--chdir".into(),
+            cwd.into_os_string(),
+            "--".into(),
+            executable.as_os_str().to_owned(),
+        ]);
+        plan.arguments.extend_from_slice(&original.arguments);
+    } else {
+        // No merged-tree staging exists for direct launches: the staged
+        // files are bubblewrap overlays over the user config, not complete
+        // configs, and copying the user tree is out of scope. Refuse
+        // instead of silently dropping the user's settings or mappings.
+        anyhow::bail!(
+            "FCEUX direct launch needs merged-tree staging, which is unsupported; use a sandboxable native Linux packaging"
+        );
+    }
     let session = NativeSession {
         inputs,
         executable,
