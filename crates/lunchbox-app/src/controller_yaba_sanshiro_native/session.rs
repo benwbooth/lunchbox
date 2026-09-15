@@ -1,8 +1,11 @@
 //! Native SDL2 probe for Yaba Sanshiro 2: enumerates the trusted runtime,
 //! disambiguates the saved controller, and translates its calibration into
 //! `yabause.ini` host key codes for a private-HOME config.
+#[cfg(target_os = "linux")]
 use crate::controller_bizhawk_guard::InputTopology;
 use crate::controller_catalog::Calibration;
+#[cfg(not(target_os = "linux"))]
+use crate::controller_native_platform as platform;
 use crate::controller_native_process::{cancelled, capture};
 use crate::controllers::ControllerDevice;
 use anyhow::{Context, Result, ensure};
@@ -228,6 +231,7 @@ pub(crate) struct PreparedSession {
     pub(crate) config_path: std::path::PathBuf,
     pub(crate) runtime_path: String,
     pub(crate) device_index: u32,
+    #[cfg(target_os = "linux")]
     pub(crate) topology: InputTopology,
     initial: Snapshot,
     setup: crate::controller_yaba_sanshiro_native::settings::SavedSetup,
@@ -254,18 +258,42 @@ impl PreparedSession {
             "Yaba Sanshiro 2 requires an unambiguous physical controller"
         );
         let selected = device.device_path.clone();
-        let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
         let initial = routing(observe(setup, None, cancel)?);
-        let runtime_path = topology
-            .resolve_runtime_path(
-                &selected,
-                initial.devices.iter().filter_map(|d| d.path.as_deref()),
-            )
-            .context("Yaba Sanshiro 2 device not found in SDL enumeration")?;
+        // Linux pins kernel input identity through the sysfs topology.
+        // Other hosts pin the SDL device-interface path and require
+        // uniqueness; names and GUIDs are never identity.
+        #[cfg(target_os = "linux")]
+        let (runtime_path, topology) = {
+            let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
+            let runtime_path = topology
+                .resolve_runtime_path(
+                    &selected,
+                    initial.devices.iter().filter_map(|d| d.path.as_deref()),
+                )
+                .context("Yaba Sanshiro 2 device not found in SDL enumeration")?;
+            (runtime_path, topology)
+        };
+        #[cfg(not(target_os = "linux"))]
+        let runtime_path = {
+            let selected_string = selected.to_string_lossy().into_owned();
+            let candidates = initial
+                .devices
+                .iter()
+                .filter(|d| d.path.as_deref() == Some(selected_string.as_str()))
+                .collect::<Vec<_>>();
+            ensure!(
+                candidates.len() == 1,
+                "Yaba Sanshiro 2 physical controller is missing or ambiguous in SDL"
+            );
+            selected_string
+        };
         let captured = observe(setup, Some(&runtime_path), cancel)?;
         initial.ensure_same_routing(&routing(captured.clone()))?;
+        #[cfg(target_os = "linux")]
         topology.verify()?;
         let dev = captured.device_at_path(&runtime_path)?;
+        #[cfg(not(target_os = "linux"))]
+        platform::require_unique_device_path(&captured.devices, &runtime_path, dev.device_index)?;
         let physical = PhysicalMap::from_device(dev)?;
         let device_index = dev.device_index;
         ensure!(
@@ -332,6 +360,7 @@ impl PreparedSession {
             config_path,
             runtime_path,
             device_index,
+            #[cfg(target_os = "linux")]
             topology,
             initial,
             setup: setup.clone(),
@@ -343,6 +372,7 @@ impl PreparedSession {
 
     pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
         cancelled(cancel)?;
+        #[cfg(target_os = "linux")]
         self.topology.verify()?;
         for (path, expected) in &self.hashes {
             ensure!(
@@ -356,10 +386,38 @@ impl PreparedSession {
             fresh.device_at_path(&self.runtime_path)?.device_index == self.device_index,
             "Yaba Sanshiro 2 controller routing changed"
         );
-        self.topology.verify()
+        #[cfg(not(target_os = "linux"))]
+        platform::require_unique_device_path(
+            &fresh.devices,
+            &self.runtime_path,
+            self.device_index,
+        )?;
+        #[cfg(target_os = "linux")]
+        {
+            return self.topology.verify();
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Ok(());
+        }
     }
 
     pub(crate) fn check_health(&self) -> Result<()> {
-        self.topology.verify()
+        #[cfg(target_os = "linux")]
+        return self.topology.verify();
+        #[cfg(not(target_os = "linux"))]
+        return self.verify_health_probe();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn verify_health_probe(&self) -> Result<()> {
+        let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+        self.initial.ensure_same_routing(&fresh)?;
+        platform::require_unique_device_path(
+            &fresh.devices,
+            &self.runtime_path,
+            self.device_index,
+        )?;
+        Ok(())
     }
 }

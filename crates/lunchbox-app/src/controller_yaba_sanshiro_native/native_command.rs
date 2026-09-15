@@ -56,7 +56,9 @@ pub(crate) fn prepare(
     cancelled(cancel)?;
     setup.validate()?;
     let EmulatorExecutable::Native(executable) = &option.executable else {
-        anyhow::bail!("Yaba Sanshiro 2 calibrated launch requires native Linux, not Wine/Flatpak");
+        anyhow::bail!(
+            "Yaba Sanshiro 2 calibrated launch requires a native build, not Wine/Flatpak"
+        );
     };
     ensure!(
         option.emulator_name.eq_ignore_ascii_case("Yaba Sanshiro 2")
@@ -78,6 +80,15 @@ pub(crate) fn prepare(
         "Yaba Sanshiro 2 executable differs from the saved trusted runtime"
     );
     let inputs = PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
+    // Sandbox or direct is a packaging decision, not an OS one. The staged
+    // yabause.ini shadows the source config through a bind mount; no
+    // environment variable redirects that resolution, so direct launches
+    // refuse instead of running unmapped.
+    if !crate::controller_native_platform::use_bubblewrap_sandbox(&executable) {
+        anyhow::bail!(
+            "Yaba Sanshiro 2 direct launch needs mount shadowing, which is unsupported; use a sandboxable native Linux packaging"
+        );
+    }
     let mut plan = original.clone();
     let cwd = original.current_directory.canonicalize()?;
     plan.program = setup.bubblewrap_program.clone();
