@@ -290,7 +290,10 @@ Dialog {
                 onClicked: dialog.configureRequested()
             }
             HeaderButton {
-                text: detailsModel.download_preflight_busy ? "CHECKING…" : "TRY AGAIN"
+                text: detailsModel.download_preflight_busy ? "CHECKING…"
+                      : detailsModel.download_preflight_ready ? "RE-CHECK"
+                      : detailsModel.download_preflight_status.length > 0 ? "TRY AGAIN"
+                      : "CHECK"
                 enabled: dialog.reviewIndex >= 0
                          && !detailsModel.download_preflight_busy
                          && !detailsModel.download_busy

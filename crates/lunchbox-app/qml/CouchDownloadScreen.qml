@@ -44,7 +44,9 @@ FocusScope {
                     ? "OPEN DOWNLOAD SETTINGS"
                     : details.download_preflight_ready
                       ? "DOWNLOAD"
-                      : "TRY AGAIN"
+                      : details.download_preflight_status.length > 0
+                        ? "TRY AGAIN"
+                        : "CHECK"
 
     signal closeRequested()
     signal configureRequested()
