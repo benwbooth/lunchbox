@@ -136,19 +136,13 @@ pub(crate) fn file_identity(path: &Path) -> Result<(u64, u64)> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::fs::MetadataExt;
-        use std::time::UNIX_EPOCH;
         // The volume/file-index pair needs an unstable feature, so pin
         // creation time plus size/attributes instead. This detects
         // replacement (a new file gets a new creation time), which is the
         // threat the identity guards against; it is weaker than the Unix
         // device/inode pair across timestamp-preserving copies, and call
         // sites must not equate the strengths.
-        let created = metadata
-            .creation_time()
-            .context("creation identity is unavailable")?
-            .duration_since(UNIX_EPOCH)
-            .map(|age| age.as_nanos() as u64)
-            .unwrap_or_default();
+        let created = metadata.creation_time();
         let packed =
             (metadata.file_size() << 32) | u64::from(metadata.file_attributes());
         Ok((created, packed))
