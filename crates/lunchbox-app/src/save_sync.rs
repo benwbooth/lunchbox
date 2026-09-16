@@ -567,38 +567,28 @@ pub fn scan_local(scope: SyncScope, roots: &[RouteRoot]) -> Result<LocalInventor
     Ok(inventory)
 }
 
+/// Root-owned OS indirections that are never attacker-planted: macOS makes
+/// /var and /tmp (plus /etc and /private) symlinks by design. Anything
+/// else in a save path must not be a symlink.
+const TOLERATED_ROOT_SYMLINKS: [&str; 4] = ["/var", "/tmp", "/etc", "/private"];
+
 fn ensure_existing_ancestors_without_symlink(path: &Path) -> Result<()> {
     ensure!(path.is_absolute(), "save path must be absolute");
-    // Resolve OS-level indirections above the route first: macOS makes
-    // /var and /tmp symlinks by design, so a raw walk from the filesystem
-    // root false-positives there. Canonicalize the nearest existing
-    // ancestor, then only check the remainder at and below it.
-    let mut existing = path;
-    while std::fs::symlink_metadata(existing).is_err() {
-        let Some(parent) = existing.parent() else {
-            break;
-        };
-        existing = parent;
-    }
-    let canonical_base = std::fs::canonicalize(existing).unwrap_or_else(|_| existing.to_path_buf());
-    let skip = canonical_base.components().count();
-    let remainder = path.strip_prefix(existing).unwrap_or(path);
     let mut current = PathBuf::new();
-    for (index, component) in canonical_base
-        .components()
-        .chain(remainder.components())
-        .enumerate()
-    {
+    for component in path.components() {
         current.push(component.as_os_str());
-        if index < skip {
-            continue;
-        }
         match std::fs::symlink_metadata(&current) {
-            Ok(metadata) => ensure!(
-                !metadata.file_type().is_symlink(),
-                "save path contains a symbolic link: {}",
-                current.display()
-            ),
+            Ok(metadata) => {
+                let is_tolerated = metadata.file_type().is_symlink()
+                    && TOLERATED_ROOT_SYMLINKS
+                        .iter()
+                        .any(|root| current == Path::new(root));
+                ensure!(
+                    !metadata.file_type().is_symlink() || is_tolerated,
+                    "save path contains a symbolic link: {}",
+                    current.display()
+                );
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
             Err(error) => return Err(error).context("reading save path ancestor metadata"),
         }
