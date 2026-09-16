@@ -3415,8 +3415,11 @@ del *.rom
 
     #[test]
     fn launch_template_replaces_argv_and_extra_arguments_augment_defaults() {
-        let temp = TempDir::new().unwrap();
-        let rom = temp.path().join("Game with spaces.rom");
+        let _temp = TempDir::new().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_temp.path()).unwrap();
+        let rom = base.as_path().join("Game with spaces.rom");
         fs::write(&rom, b"rom").unwrap();
         let option = RomEmulatorOption {
             emulator_id: "native-id".to_owned(),
@@ -3823,9 +3826,12 @@ del *.rom
 
     #[test]
     fn native_retroarch_plan_passes_exact_core_and_rom_without_a_shell() {
-        let temp = TempDir::new().unwrap();
-        let rom = temp.path().join("Game (USA).nes");
-        let core = temp.path().join("mesen_libretro.so");
+        let _temp = TempDir::new().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_temp.path()).unwrap();
+        let rom = base.as_path().join("Game (USA).nes");
+        let core = base.as_path().join("mesen_libretro.so");
         fs::write(&rom, b"rom").unwrap();
         fs::write(&core, b"core").unwrap();
         let option = RomEmulatorOption {
@@ -3892,8 +3898,11 @@ del *.rom
 
     #[test]
     fn duckstation_flatpak_launch_uses_sdl3_gamepad_workaround_before_app_id() {
-        let temp = TempDir::new().unwrap();
-        let rom = temp.path().join("Game with spaces.chd");
+        let _temp = TempDir::new().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_temp.path()).unwrap();
+        let rom = base.as_path().join("Game with spaces.chd");
         fs::write(&rom, b"rom").unwrap();
         let option = RomEmulatorOption {
             emulator_id: "duckstation-id".into(),
@@ -3913,7 +3922,7 @@ del *.rom
             plan.arguments,
             vec![
                 OsString::from("run"),
-                OsString::from(format!("--filesystem={}", temp.path().display())),
+                OsString::from(format!("--filesystem={}", base.as_path().display())),
                 OsString::from("--env=SDL_JOYSTICK_LINUX_CLASSIC=1"),
                 OsString::from("org.duckstation.DuckStation"),
                 rom.into_os_string(),
@@ -3924,9 +3933,12 @@ del *.rom
 
     #[test]
     fn flatpak_retroarch_plan_grants_only_the_rom_directory() {
-        let temp = TempDir::new().unwrap();
-        let rom = temp.path().join("Game.nes");
-        let core = temp.path().join("mesen_libretro.so");
+        let _temp = TempDir::new().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_temp.path()).unwrap();
+        let rom = base.as_path().join("Game.nes");
+        let core = base.as_path().join("mesen_libretro.so");
         fs::write(&rom, b"rom").unwrap();
         fs::write(&core, b"core").unwrap();
         let option = RomEmulatorOption {
@@ -3947,7 +3959,7 @@ del *.rom
         assert_eq!(plan.arguments[0], "run");
         assert_eq!(
             plan.arguments[1],
-            OsString::from(format!("--filesystem={}", temp.path().display()))
+            OsString::from(format!("--filesystem={}", base.as_path().display()))
         );
         assert_eq!(plan.arguments[2], "org.libretro.RetroArch");
         assert_eq!(plan.arguments[3], "--verbose");
@@ -4022,9 +4034,12 @@ del *.rom
 
     #[test]
     fn flatpak_playlist_mounts_each_external_disc_directory() {
-        let temp = TempDir::new().unwrap();
-        let playlist_directory = temp.path().join("playlists");
-        let disc_directory = temp.path().join("discs");
+        let _temp = TempDir::new().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_temp.path()).unwrap();
+        let playlist_directory = base.as_path().join("playlists");
+        let disc_directory = base.as_path().join("discs");
         fs::create_dir_all(&playlist_directory).unwrap();
         fs::create_dir_all(&disc_directory).unwrap();
         let disc = disc_directory.join("Game (Disc 1).chd");
@@ -4040,7 +4055,7 @@ del *.rom
                 command: PathBuf::from("/usr/bin/flatpak"),
                 app_id: "org.libretro.RetroArch".to_owned(),
             },
-            core_path: Some(temp.path().join("mednafen_psx_hw_libretro.so")),
+            core_path: Some(base.as_path().join("mednafen_psx_hw_libretro.so")),
             recommended: true,
         };
 
@@ -4093,9 +4108,12 @@ del *.rom
 
     #[test]
     fn hypseus_plan_validates_bundle_and_support_tree() {
-        let temp = TempDir::new().unwrap();
-        let support = temp.path().join("hypseus");
-        let bundle = temp.path().join("Laserdisc Collection/Hypseus Singe");
+        let _temp = TempDir::new().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_temp.path()).unwrap();
+        let support = base.as_path().join("hypseus");
+        let bundle = base.as_path().join("Laserdisc Collection/Hypseus Singe");
         let framefile = bundle.join("vldp/lair/lair.txt");
         let rom_directory = bundle.join("roms");
         fs::create_dir_all(support.join("pics")).unwrap();
@@ -4140,8 +4158,11 @@ del *.rom
 
     #[test]
     fn known_arcade_cli_emulator_receives_the_archive_path_directly() {
-        let temp = TempDir::new().unwrap();
-        let rom = temp.path().join("game.zip");
+        let _temp = TempDir::new().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_temp.path()).unwrap();
+        let rom = base.as_path().join("game.zip");
         fs::write(&rom, b"rom").unwrap();
         let option = RomEmulatorOption {
             emulator_id: "supermodel-id".to_owned(),

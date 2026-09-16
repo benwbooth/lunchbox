@@ -2890,16 +2890,19 @@ mod tests {
 
     #[test]
     fn supplemental_media_indexes_emumovies_soundtrack_sidecars() {
-        let directory = tempfile::tempdir().unwrap();
-        let audio = directory
-            .path()
+        let _directory = tempfile::tempdir().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_directory.path()).unwrap();
+        let audio = base
+            .as_path()
             .join("lb-140/emumovies/soundtrack-0123456789abcdef.mp3");
         touch(&audio);
         fs::write(audio.with_extension("title"), "Overworld Theme").unwrap();
 
         let media = scan_supplemental_directory(
-            directory.path(),
-            &directory.path().join("lb-140"),
+            base.as_path(),
+            &base.as_path().join("lb-140"),
             &default_provider_priority(),
         )
         .unwrap();
