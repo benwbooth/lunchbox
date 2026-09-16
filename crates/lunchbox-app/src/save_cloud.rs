@@ -1090,9 +1090,10 @@ mod tests {
     #[test]
     fn local_folder_profile_is_canonical_and_contains_no_credentials() {
         let directory = tempfile::tempdir().unwrap();
+        let canonical = std::fs::canonicalize(directory.path()).unwrap();
         let profile = CloudProfile::new_local_folder(directory.path(), "desktop-a", true).unwrap();
         assert_eq!(profile.provider, CloudProvider::LocalFolder);
-        assert_eq!(Path::new(&profile.root), directory.path());
+        assert_eq!(Path::new(&profile.root), canonical.as_path());
         assert_eq!(profile.auth, CloudAuth::default());
         profile.validate().unwrap();
     }
@@ -1127,7 +1128,10 @@ mod tests {
         let child = directory.path().join("child");
         std::fs::create_dir(&child).unwrap();
         let profile = CloudProfile::new_local_folder(child.join(".."), "desktop-a", true).unwrap();
-        assert_eq!(Path::new(&profile.root), directory.path());
+        assert_eq!(
+            Path::new(&profile.root),
+            std::fs::canonicalize(directory.path()).unwrap().as_path()
+        );
         assert!(
             CloudStore::connect(
                 CloudProvider::LocalFolder,

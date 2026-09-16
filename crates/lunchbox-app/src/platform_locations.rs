@@ -812,6 +812,10 @@ mod tests {
         assert!(states.iter().all(|l| !l.naming.is_empty()));
     }
 
+    /// Linux-only: asserts Linux-resolver behavior (Flatpak/native
+    /// path resolution is compile-host gated); other hosts are covered
+    /// by the cross-platform feature matrix suite.
+    #[cfg(target_os = "linux")]
     #[test]
     fn flatpak_only_locations_do_not_resolve_on_native_hosts() {
         let records = load_records().unwrap();
@@ -836,6 +840,10 @@ mod tests {
         }));
     }
 
+    /// Linux-only: asserts Linux-resolver behavior (Flatpak/native
+    /// path resolution is compile-host gated); other hosts are covered
+    /// by the cross-platform feature matrix suite.
+    #[cfg(target_os = "linux")]
     #[test]
     fn sync_roots_are_scoped_to_one_exact_runtime_variant() {
         let records = load_records().unwrap();
@@ -850,6 +858,10 @@ mod tests {
         assert!(save_route_roots_for_platform(&records, "pcsx2", "windows", &bases()).is_err());
     }
 
+    /// Linux-only: asserts Linux-resolver behavior (Flatpak/native
+    /// path resolution is compile-host gated); other hosts are covered
+    /// by the cross-platform feature matrix suite.
+    #[cfg(target_os = "linux")]
     #[test]
     fn nestopia_flatpak_sync_has_exactly_two_disjoint_runtime_routes() {
         let records = load_records().unwrap();
@@ -1021,6 +1033,10 @@ mod tests {
         }
     }
 
+    /// Linux-only: asserts Linux-resolver behavior (Flatpak/native
+    /// path resolution is compile-host gated); other hosts are covered
+    /// by the cross-platform feature matrix suite.
+    #[cfg(target_os = "linux")]
     #[test]
     fn enumeration_walks_resolved_dirs_only() {
         let dir = tempfile::tempdir().unwrap();
