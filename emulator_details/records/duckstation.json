@@ -30,32 +30,35 @@
         },
         {
           "purpose": "saves",
-          "path": "memcards/ under the user directory by default (configurable via [MemoryCards] Directory); per-game cards may be selected by the game serial/title and shared cards use configured filenames",
+          "path": "~/.local/share/duckstation/memcards/ ($XDG_CONFIG_HOME/duckstation/memcards/ when set; portable.txt selects the exe dir)",
           "naming": "Default card names are <serial>_1.mcd / <serial>_2.mcd for shared cards; legacy/imported card formats include .mcr, .srm and .mc. The exact active name is controlled by the MemoryCards settings and card type.",
           "evidence": [
             "source:src/core/settings.cpp EmuFolders::MemoryCards and GetMemoryCardPath",
             "source:src/core/system.cpp GetGameMemoryCardPath",
-            "docs:README.md User Directories"
+            "docs:README.md User Directories",
+            "source:stenzek/duckstation src/core/settings.cpp MemoryCards DataRoot/memcards @ed6720bbf59011b276faafb098ecc1c2407e74a3"
           ]
         },
         {
           "purpose": "states",
-          "path": "savestates/ in the user directory by default (configurable via [Folders] SaveStates)",
+          "path": "~/.local/share/duckstation/savestates/ ($XDG_CONFIG_HOME/duckstation/savestates/ when set; portable.txt selects the exe dir)",
           "naming": "<serial>_<slot>.sav for numbered slots and <serial>_resume.sav for resume; current source also creates backup/undo state data as part of save-state operations. Save-state screenshots are embedded in the .sav format, not a required sidecar.",
           "evidence": [
             "source:src/core/settings.cpp EmuFolders::SaveStates",
             "source:src/core/system.cpp GetGameSaveStatePath",
-            "docs:README.md save-state support"
+            "docs:README.md save-state support",
+            "source:stenzek/duckstation src/core/settings.cpp SaveStates DataRoot/savestates @ed6720bbf59011b276faafb098ecc1c2407e74a3"
           ]
         },
         {
           "purpose": "bios",
-          "path": "bios/ in the user directory by default (configurable via [BIOS] SearchDirectory); DuckStation's fast-boot/HLE options do not make a dumped BIOS universally unnecessary for all software",
+          "path": "~/.local/share/duckstation/bios/ ($XDG_CONFIG_HOME/duckstation/bios/ when set; portable.txt selects the exe dir)",
           "naming": "Canonical names in the source BIOS database include ps-10j.bin, ps-22a.bin, ps-22e.bin, ps-30a.bin, ps-30e.bin, ps-30j.bin, ps-41a.bin, ps-41e.bin, psone-44a.bin, psone-44e.bin and many PS2 BIOS names. Example authoritative MD5 values: ps-22a.bin 924e392ed05558ffdb115408c263dccf; ps-30a.bin 490f666e1afb15b7362b406ed1cea246; ps-30e.bin 32736f17079d0b2b7024407c39bd3050; ps-30j.bin 8dd7d5296a650fac7319bce665a6a53c. The database contains more regional/version-specific names and hashes; no single BIOS filename is valid for every region.",
           "evidence": [
             "source:src/core/bios.cpp BIOS::ImageInfo database and hash values",
             "source:src/core/settings.cpp EmuFolders::Bios",
-            "docs:README.md User Directories"
+            "docs:README.md User Directories",
+            "source:stenzek/duckstation BIOS SearchDirectory under DataRoot @ed6720bbf59011b276faafb098ecc1c2407e74a3"
           ]
         },
         {
@@ -112,12 +115,13 @@
         },
         {
           "purpose": "bios",
-          "path": "~/Library/Application Support/DuckStation/bios/ by default; [BIOS] SearchDirectory can override it",
+          "path": "~/Library/Application Support/DuckStation/bios/",
           "naming": "Use source database names such as ps-22a.bin, ps-30a.bin, ps-30e.bin and ps-30j.bin; source records MD5 hashes, including ps-30a 490f666e1afb15b7362b406ed1cea246, ps-30e 32736f17079d0b2b7024407c39bd3050 and ps-30j 8dd7d5296a650fac7319bce665a6a53c. No one filename suits all regions.",
           "evidence": [
             "source:src/core/bios.cpp",
             "source:src/core/settings.cpp",
-            "docs:README.md"
+            "docs:README.md",
+            "source:stenzek/duckstation BIOS SearchDirectory under DataRoot @ed6720bbf59011b276faafb098ecc1c2407e74a3"
           ]
         },
         {
@@ -173,12 +177,13 @@
         },
         {
           "purpose": "bios",
-          "path": "%LOCALAPPDATA%\\DuckStation\\bios\\ by default; [BIOS] SearchDirectory can override it",
+          "path": "%LOCALAPPDATA%\\DuckStation\\bios\\",
           "naming": "Use source database names such as ps-22a.bin, ps-30a.bin, ps-30e.bin and ps-30j.bin; source records MD5 hashes, including ps-30a 490f666e1afb15b7362b406ed1cea246, ps-30e 32736f17079d0b2b7024407c39bd3050 and ps-30j 8dd7d5296a650fac7319bce665a6a53c. No one filename suits all regions.",
           "evidence": [
             "source:src/core/bios.cpp",
             "source:src/core/settings.cpp",
-            "docs:README.md"
+            "docs:README.md",
+            "source:stenzek/duckstation BIOS SearchDirectory under DataRoot @ed6720bbf59011b276faafb098ecc1c2407e74a3"
           ]
         },
         {
