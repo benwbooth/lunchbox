@@ -1071,15 +1071,33 @@ mod tests {
 
     #[test]
     fn relative_prose_never_becomes_a_mutation_root() {
+        // Every resolved save location must be absolute: relative prose
+        // (bare "memcards/" style roots) stays documentation-only on all
+        // hosts, so sync can never write into a vague relative directory.
         let records = load_records().unwrap();
-        let locations = save_locations(&records, "duckstation", &bases());
-        assert!(locations.iter().any(|location| {
-            location.documented.starts_with("memcards/") && location.resolved.is_none()
-        }));
-        assert!(locations.iter().any(|location| {
-            location.documented.starts_with("savestates/") && location.resolved.is_none()
-        }));
-        assert!(save_route_roots_for_platform(&records, "duckstation", "linux", &bases()).is_err());
+        let slugs = record_slugs().unwrap();
+        assert!(!slugs.is_empty());
+        for slug in &slugs {
+            for location in save_locations(&records, slug, &bases()) {
+                if let Some(resolved) = &location.resolved {
+                    assert!(
+                        resolved.is_absolute(),
+                        "{slug} resolved a relative save root: {}",
+                        resolved.display()
+                    );
+                }
+            }
+        }
+        // The duckstation Linux roots that motivated this guard are now
+        // anchored absolute paths; spot-check they resolve.
+        let duckstation = save_locations(&records, "duckstation", &bases());
+        assert!(
+            duckstation.iter().any(|location| location
+                .resolved
+                .as_ref()
+                .is_some_and(|path| path.ends_with("duckstation/memcards"))),
+            "duckstation memcards root should resolve"
+        );
     }
 
     #[test]
