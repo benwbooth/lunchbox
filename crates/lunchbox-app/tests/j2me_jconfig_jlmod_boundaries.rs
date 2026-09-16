@@ -32,15 +32,20 @@ fn android_j2me_loaders_keep_four_host_refusal_and_android_boundary() {
 }
 
 #[test]
-fn jconfig_keeps_windows_only_unresolved_input_and_save_patch_boundary() {
+fn jconfig_keeps_windows_registry_and_save_patch_boundary() {
     let r = record("jconfig");
     assert_eq!(
         r["sources"][1]["sha256"],
         "3c475df3211bde59acd3bcfec30845e17829b50d16d6ced564bab83f95d75805"
     );
-    assert_eq!(
-        r["platforms"]["windows"]["paths"][1]["status"],
-        "unresolved"
+    let input = &r["platforms"]["windows"]["paths"][1];
+    assert_eq!(input["purpose"], "input");
+    assert_eq!(input["status"], "captured");
+    assert!(
+        input["path"]
+            .as_str()
+            .unwrap()
+            .contains("Regedit")
     );
     assert!(
         r["platforms"]["windows"]["paths"][2]["path"]
