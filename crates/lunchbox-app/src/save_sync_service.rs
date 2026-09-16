@@ -1186,9 +1186,25 @@ fn ensure_directory_without_symlink(directory: &Path) -> Result<()> {
 
 fn ensure_existing_ancestors_without_symlink(path: &Path) -> Result<()> {
     ensure!(path.is_absolute(), "save path must be absolute");
+    // Resolve OS-level indirections above the route first: macOS makes
+    // /var and /tmp symlinks by design, so a raw walk from the filesystem
+    // root false-positives there. Components strictly above the resolved
+    // base are platform indirections and tolerated; anything at or below
+    // the resolved base must not be a symlink.
+    let mut existing = path;
+    while std::fs::symlink_metadata(existing).is_err() {
+        let Some(parent) = existing.parent() else {
+            break;
+        };
+        existing = parent;
+    }
+    let canonical_base = std::fs::canonicalize(existing).unwrap_or_else(|_| existing.to_path_buf());
     let mut current = PathBuf::new();
     for component in path.components() {
         current.push(component.as_os_str());
+        if current != canonical_base && canonical_base.starts_with(&current) {
+            continue;
+        }
         match std::fs::symlink_metadata(&current) {
             Ok(metadata) => {
                 ensure!(
