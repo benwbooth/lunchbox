@@ -41,12 +41,7 @@ fn jconfig_keeps_windows_registry_and_save_patch_boundary() {
     let input = &r["platforms"]["windows"]["paths"][1];
     assert_eq!(input["purpose"], "input");
     assert_eq!(input["status"], "captured");
-    assert!(
-        input["path"]
-            .as_str()
-            .unwrap()
-            .contains("Regedit")
-    );
+    assert!(input["path"].as_str().unwrap().contains("Regedit"));
     assert!(
         r["platforms"]["windows"]["paths"][2]["path"]
             .as_str()

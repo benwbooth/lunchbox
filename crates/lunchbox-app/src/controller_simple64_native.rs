@@ -304,7 +304,9 @@ pub(crate) mod session {
         sdl2_mapping::{self, Input as LogicalInput},
         sdl2_physical::PhysicalMap,
     };
-    use std::{fs, os::unix::fs::symlink, process::Command, sync::atomic::AtomicBool};
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
+    use std::{fs, process::Command, sync::atomic::AtomicBool};
 
     fn observe(
         setup: &settings::SavedSetup,
@@ -490,6 +492,19 @@ pub(crate) mod session {
             "simple64 needs every N64 gameplay control"
         );
         Ok(result)
+    }
+
+    /// Windows has no single symlink entry point: link directories as
+    /// directories and everything else as files. Fails closed without
+    /// symlink privilege (e.g. Developer Mode) instead of copying, so a
+    /// staged tree never silently gains divergent bytes.
+    #[cfg(target_os = "windows")]
+    fn symlink(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+        if std::fs::symlink_metadata(from)?.file_type().is_dir() {
+            std::os::windows::fs::symlink_dir(from, to)
+        } else {
+            std::os::windows::fs::symlink_file(from, to)
+        }
     }
 
     fn stage_app(source: &Path, target: &Path, executable: &Path) -> Result<PathBuf> {
