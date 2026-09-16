@@ -123,8 +123,8 @@ pub(crate) fn use_bubblewrap_sandbox(executable: &Path) -> bool {
     cfg!(target_os = "linux") && linux_sandbox_available() && !is_appimage_target(executable)
 }
 /// Stable identity for a filesystem object across verify calls: Unix
-/// device/inode pairs, Windows volume/file-index pairs. Used to detect
-/// directory replacement; never persisted across reboots.
+/// device/inode pairs, Windows creation-time plus size/attribute packs.
+/// Used to detect directory replacement; never persisted across reboots.
 pub(crate) fn file_identity(path: &Path) -> Result<(u64, u64)> {
     let metadata = std::fs::metadata(path)
         .with_context(|| format!("identity metadata is missing: {}", path.display()))?;
@@ -149,7 +149,8 @@ pub(crate) fn file_identity(path: &Path) -> Result<(u64, u64)> {
             .duration_since(UNIX_EPOCH)
             .map(|age| age.as_nanos() as u64)
             .unwrap_or_default();
-        let packed = (metadata.file_size() << 32) | u64::from(metadata.file_attributes());
+        let packed =
+            (metadata.file_size() << 32) | u64::from(metadata.file_attributes());
         Ok((created, packed))
     }
     #[cfg(not(any(unix, target_os = "windows")))]
