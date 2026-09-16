@@ -1199,10 +1199,19 @@ fn ensure_existing_ancestors_without_symlink(path: &Path) -> Result<()> {
         existing = parent;
     }
     let canonical_base = std::fs::canonicalize(existing).unwrap_or_else(|_| existing.to_path_buf());
+    // Walk the resolved base (symlink-free by construction) plus the
+    // original remainder below it; only the remainder is checked, so
+    // pre-existing symlinks at or below the route still fail closed.
+    let skip = canonical_base.components().count();
+    let remainder = path.strip_prefix(existing).unwrap_or(path);
     let mut current = PathBuf::new();
-    for component in path.components() {
+    for (index, component) in canonical_base
+        .components()
+        .chain(remainder.components())
+        .enumerate()
+    {
         current.push(component.as_os_str());
-        if current != canonical_base && canonical_base.starts_with(&current) {
+        if index < skip {
             continue;
         }
         match std::fs::symlink_metadata(&current) {
