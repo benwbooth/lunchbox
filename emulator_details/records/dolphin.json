@@ -30,8 +30,8 @@
       "paths": [
         {
           "purpose": "config",
-          "path": "Dolphin.ini, GCPadNew.ini, WiimoteNew.ini, GCKeyNew.ini and Profiles/GCPad/*.ini + Profiles/Wiimote/*.ini under ~/.config/dolphin-emu/Config/ (XDG_CONFIG_HOME); the remaining user trees (GameSettings/<game id>[r<rev>].ini overlays, GC, Wii, StateSaves) root at ~/.local/share/dolphin-emu; a legacy monolithic ~/.dolphin-emu is used when it exists and /.flatpak-info is absent; portable.txt next to the binary or $DOLPHIN_EMU_USERPATH redirect the whole root (portable dir is named user)",
-          "naming": "Controller INI syntax: [GCPad1..4]/[Wiimote1..4] or Profiles/GCPad|Wiimote [Profile] sections with Device/Buttons/A/Triggers/L-Analog group-control keys; profile references are comma-separated PadProfileN values",
+          "path": "~/.config/dolphin-emu/Config/ ($XDG_CONFIG_HOME/dolphin-emu/Config/; portable.txt or $DOLPHIN_EMU_USERPATH redirect the root)",
+          "naming": "Dolphin.ini, GCPadNew.ini, WiimoteNew.ini, GCKeyNew.ini and Profiles/GCPad/*.ini + Profiles/Wiimote/*.ini; GameSettings/<game id>[r<rev>].ini overlays and GC/Wii/StateSaves trees live under ~/.local/share/dolphin-emu; legacy ~/.dolphin-emu when present.",
           "evidence": [
             "source:UICommon.cpp SetUserDirectory (portable.txt, DOLPHIN_EMU_USERPATH, legacy ~/.dolphin-emu, XDG data/config/cache split) @6094cfcf",
             "source:CommonPaths.h CONFIG_DIR, DOLPHIN_CONFIG, GCPAD_CONFIG=GCPadNew.ini, WIIPAD_CONFIG=WiimoteNew.ini @6094cfcf",
@@ -61,7 +61,7 @@
         },
         {
           "purpose": "bios",
-          "path": "optional GC IPL dumps at ~/.local/share/dolphin-emu/GC/<USA|EUR|JAP>/IPL.bin (region-specific file, not a single GC/IPL.bin; falls back to the shipped Sys/GC/<region>/IPL.bin); Wii requires no firmware dump",
+          "path": "~/.local/share/dolphin-emu/GC/<USA|EUR|JAP>/IPL.bin (region-specific; falls back to shipped Sys/GC/<region>/IPL.bin)",
           "naming": "Optional GameCube IPL dump is exactly IPL.bin under the region directory USA, EUR, or JAP; Wii has no external firmware filename and no canonical checksum is declared",
           "evidence": [
             "source:Core/Config/MainSettings.cpp GetBootROMPath = GC/<region>/IPL.bin with Sys fallback @6094cfcf",

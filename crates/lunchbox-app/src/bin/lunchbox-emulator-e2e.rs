@@ -237,7 +237,30 @@ fn check_firmware(
         let mut staged = 0;
         for candidate in &candidates {
             if let Some(name) = candidate.file_name().and_then(|n| n.to_str()) {
-                if !name.to_lowercase().is_empty() && haystack.contains(&name.to_lowercase()) {
+                // Token-boundary match: "IPL.bin" must not match
+                // "64DD_IPL.BIN". Delimiters are whitespace, path
+                // separators, and common punctuation — never [_.-] joins.
+                let needle = name.to_lowercase();
+                if needle.is_empty() {
+                    continue;
+                }
+                let mut matched = false;
+                let mut search = haystack.as_str();
+                while let Some(pos) = search.find(needle.as_str()) {
+                    let before = search[..pos].chars().next_back();
+                    let after = search[pos + needle.len()..].chars().next();
+                    let boundary = |c: Option<char>| {
+                        c.is_none_or(|c| {
+                            c.is_whitespace() || "/\\(),;:'\"[]<>|".contains(c)
+                        })
+                    };
+                    if boundary(before) && boundary(after) {
+                        matched = true;
+                        break;
+                    }
+                    search = &search[pos + 1..];
+                }
+                if matched {
                     let dest = root.join(name);
                     std::fs::copy(candidate, &dest).with_context(|| {
                         format!("staging {} into {}", candidate.display(), root.display())
