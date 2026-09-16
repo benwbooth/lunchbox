@@ -143,8 +143,7 @@ pub(crate) fn file_identity(path: &Path) -> Result<(u64, u64)> {
         // device/inode pair across timestamp-preserving copies, and call
         // sites must not equate the strengths.
         let created = metadata.creation_time();
-        let packed =
-            (metadata.file_size() << 32) | u64::from(metadata.file_attributes());
+        let packed = (metadata.file_size() << 32) | u64::from(metadata.file_attributes());
         Ok((created, packed))
     }
     #[cfg(not(any(unix, target_os = "windows")))]

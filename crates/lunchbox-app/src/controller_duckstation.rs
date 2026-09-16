@@ -599,12 +599,18 @@ mod tests {
     use super::*;
 
     fn setup() -> SavedSetup {
+        // Tempdir-joined fixtures stay absolute on every host; the guard
+        // lives until the end of each test through the returned paths.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("duckstation-fixture");
+        std::fs::create_dir_all(&root).unwrap();
+        let _guard = dir;
         SavedSetup {
             apply_selected_ports: false,
             runtime: None,
             emulator_id: "duckstation".to_owned(),
-            content: "/games/SLUS-00001.bin".into(),
-            data_root: "/var/lib/lunchbox/duckstation".into(),
+            content: root.join("SLUS-00001.bin"),
+            data_root: root.join("data"),
             serial: "SLUS-00001".to_owned(),
             first_disc_serial: None,
             players: vec![SavedPlayer {

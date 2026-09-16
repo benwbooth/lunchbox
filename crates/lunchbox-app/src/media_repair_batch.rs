@@ -97,9 +97,16 @@ pub fn try_acquire_media_repair_lease(store: &SettingsStore) -> Result<Option<Me
         .with_context(|| format!("opening missing-media repair lock {}", path.display()))?;
     match FileExt::try_lock_exclusive(&file) {
         Ok(()) => Ok(Some(MediaRepairLease { file })),
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+        Err(error) if lock_contention(&error) => Ok(None),
         Err(error) => Err(error).context("locking the missing-media repair service"),
     }
+}
+
+/// A held-by-another-process lock surfaces as `WouldBlock` on Unix but as
+/// raw lock-violation (os error 33) on Windows; both mean "busy", not broken.
+fn lock_contention(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::WouldBlock
+        || (cfg!(target_os = "windows") && error.raw_os_error() == Some(33))
 }
 
 fn media_repair_lock_path(store: &SettingsStore) -> PathBuf {

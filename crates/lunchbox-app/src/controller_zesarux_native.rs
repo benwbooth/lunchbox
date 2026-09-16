@@ -484,6 +484,9 @@ pub(crate) mod native_command {
 mod tests {
     use super::*;
 
+    /// Linux-only: asserts the stable /dev/input/by-id grammar; other
+    /// hosts pin SDL paths instead and never see joydev nodes.
+    #[cfg(target_os = "linux")]
     #[test]
     fn emits_source_option_grammar_for_stable_linux_path() {
         let mut map = std::collections::BTreeMap::new();

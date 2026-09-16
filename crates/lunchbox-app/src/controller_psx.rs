@@ -509,46 +509,56 @@ mod tests {
 
     #[test]
     fn final_arguments_must_retain_the_prepared_core_and_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = dir.path().join("cores/beetle.so");
+        let content = dir.path().join("cache/prepared.m3u");
+        let other_core = dir.path().join("cores/other.so");
+        let original = dir.path().join("original/game.zip");
+        let other_disc = dir.path().join("other/disc.chd");
         let prepared = PreparedRetroarchContent {
-            core: "/cores/beetle.so".into(),
-            content: "/cache/prepared.m3u".into(),
+            core: core.clone(),
+            content: content.clone(),
         };
         for values in [
             vec![
                 "--verbose",
                 "-L",
-                "/cores/beetle.so",
+                core.to_string_lossy().as_ref(),
                 "--device",
                 "1:517",
-                "/cache/prepared.m3u",
+                content.to_string_lossy().as_ref(),
             ],
             vec![
-                "--libretro=/cores/beetle.so",
+                &format!("--libretro={}", core.display()),
                 "-N2",
                 "--",
-                "/cache/prepared.m3u",
+                content.to_string_lossy().as_ref(),
             ],
         ] {
             let args = values.iter().map(OsString::from).collect::<Vec<_>>();
             validate_arguments(&args, &prepared).unwrap();
         }
         for values in [
-            vec!["-L", "/cores/other.so", "/cache/prepared.m3u"],
-            vec!["-L", "/cores/beetle.so", "/original/game.zip"],
             vec![
                 "-L",
-                "/cores/beetle.so",
-                "/cache/prepared.m3u",
-                "/other/disc.chd",
+                &*other_core.to_string_lossy(),
+                &*content.to_string_lossy(),
+            ],
+            vec!["-L", &*core.to_string_lossy(), &*original.to_string_lossy()],
+            vec![
+                "-L",
+                &*core.to_string_lossy(),
+                &*content.to_string_lossy(),
+                &*other_disc.to_string_lossy(),
             ],
             vec![
                 "-L",
-                "/cores/beetle.so",
+                &*core.to_string_lossy(),
                 "--subsystem",
                 "other",
-                "/cache/prepared.m3u",
+                &*content.to_string_lossy(),
             ],
-            vec!["--", "/cache/prepared.m3u"],
+            vec!["--", &*content.to_string_lossy()],
         ] {
             let args = values.iter().map(OsString::from).collect::<Vec<_>>();
             assert!(validate_arguments(&args, &prepared).is_err(), "{values:?}");

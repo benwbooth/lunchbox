@@ -305,7 +305,7 @@ fn main() -> Result<()> {
     let mut report = Report::default();
     for leg in &legs {
         println!("=== leg: {} ({}) ===", leg.name, leg.checkout);
-        report.legs.push(run_leg(leg, timeout, true));
+        report.legs.push(run_leg(leg, timeout, verbose));
     }
     report.overall = if report.legs.iter().all(|leg| leg.status == "passed") {
         "passed".to_owned()

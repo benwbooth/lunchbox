@@ -967,12 +967,15 @@ mod tests {
 
     #[test]
     fn setup_validation_rejects_traversal_and_duplicate_players() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let _guard = dir;
         let base = settings::SavedSetup {
             emulator_id: "gopher64".into(),
-            content: "/games/mario.n64".into(),
-            config_path: "/home/user/.config/gopher64/config.json".into(),
-            probe_program: "/opt/lunchbox-probe".into(),
-            sdl_library: "/usr/lib/libSDL3.so".into(),
+            content: root.join("mario.n64"),
+            config_path: root.join("config/gopher64/config.json"),
+            probe_program: root.join("opt/lunchbox-probe"),
+            sdl_library: root.join("usr/lib/libSDL3.so"),
             executable_sha256: "a".repeat(64),
             players: vec![settings::Player {
                 player: 1,
@@ -982,7 +985,7 @@ mod tests {
         assert!(base.validate().is_ok());
 
         let mut traversal = base.clone();
-        traversal.content = "/games/../secret.n64".into();
+        traversal.content = root.join("../secret.n64");
         assert!(traversal.validate().is_err());
 
         let mut duplicate = base;

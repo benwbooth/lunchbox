@@ -516,12 +516,15 @@ mod tests {
 
     #[test]
     fn setup_validation_allows_shared_controller_but_not_duplicate_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let _guard = dir;
         let base = settings::SavedSetup {
             emulator_id: "b2".into(),
-            content: "/tmp/game.ssd".into(),
-            config_path: "/tmp/b2.json".into(),
-            probe_program: "/tmp/probe".into(),
-            sdl_library: "/tmp/libSDL2.so".into(),
+            content: root.join("game.ssd"),
+            config_path: root.join("b2.json"),
+            probe_program: root.join("probe"),
+            sdl_library: root.join("libSDL2.so"),
             executable_sha256: "a".repeat(64),
             swap_joysticks_when_shared: false,
             slots: vec![

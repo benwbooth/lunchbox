@@ -4428,9 +4428,12 @@ fn write_options_file(options: &str, directory: &Path) -> Result<String> {
     let output = directory.join("core-options.cfg");
     let output_text = output.to_str().context("Core-options path must be UTF-8")?;
     ensure!(
-        !output_text.contains(['"', '\n', '\r', '\\']),
+        !output_text.contains(['"', '\n', '\r']),
         "Core-options path cannot be encoded"
     );
+    // RetroArch treats backslash as an escape, so Windows separators are
+    // doubled; other hosts never produce them, leaving text unchanged.
+    let output_text = output_text.replace('\\', "\\\\");
     std::fs::write(&output, options)?;
     // RetroArch may save a per-core .opt under this directory even with
     // game_specific_options disabled. Keep that exit-time write private too.
@@ -4438,7 +4441,8 @@ fn write_options_file(options: &str, directory: &Path) -> Result<String> {
     std::fs::create_dir_all(&private_config)?;
     let private_config = private_config
         .to_str()
-        .context("Private config path must be UTF-8")?;
+        .context("Private config path must be UTF-8")?
+        .replace('\\', "\\\\");
     Ok(format!(
         "game_specific_options = \"false\"\nglobal_core_options = \"false\"\ncore_options_path = \"{output_text}\"\nrgui_config_directory = \"{private_config}\"\n"
     ))
@@ -11878,9 +11882,12 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+        let dir = tempfile::tempdir().unwrap();
+        let core = dir.path().join("cores/mednafen_psx_libretro.so");
+        let content = dir.path().join("games/title.cue");
         let prepared = crate::emulator::PreparedRetroarchContent {
-            core: "/cores/mednafen_psx_libretro.so".into(),
-            content: "/games/title.cue".into(),
+            core: core.clone(),
+            content: content.clone(),
         };
         assert!(
             beetle_launch_content("swanstation", &arguments, Some(&prepared))

@@ -3480,7 +3480,11 @@ del *.rom
             ExoCollection::Dos,
             "eXoDOS/!dos/TEST/dosbox_linux.conf",
         );
-        let shared = temp.path().join("emulators/dosbox/options_linux.conf");
+        let shared = temp
+            .path()
+            .join("emulators")
+            .join("dosbox")
+            .join("options_linux.conf");
         fs::create_dir_all(shared.parent().unwrap()).unwrap();
         fs::write(&shared, b"options").unwrap();
         let choice = EmulatorChoice {
@@ -3866,7 +3870,11 @@ del *.rom
             ExoCollection::Dos,
             "eXoDOS/!dos/TEST/dosbox_linux.conf",
         );
-        let shared = temp.path().join("emulators/dosbox/options_linux.conf");
+        let shared = temp
+            .path()
+            .join("emulators")
+            .join("dosbox")
+            .join("options_linux.conf");
         fs::create_dir_all(shared.parent().unwrap()).unwrap();
         fs::write(&shared, b"options").unwrap();
         let choice = EmulatorChoice {
@@ -4205,7 +4213,11 @@ del *.rom
             ExoCollection::Dos,
             "eXoDOS/!dos/TEST/dosbox_linux.conf",
         );
-        let options = temp.path().join("emulators/dosbox/options_linux.conf");
+        let options = temp
+            .path()
+            .join("emulators")
+            .join("dosbox")
+            .join("options_linux.conf");
         fs::create_dir_all(options.parent().unwrap()).unwrap();
         fs::write(&options, b"options").unwrap();
         let kind = classify_prepared_install(&prepared).unwrap();
@@ -4238,6 +4250,9 @@ del *.rom
         assert_eq!(plan.arguments[6], prepared.launch_config_path.as_os_str());
     }
 
+    /// Not Windows: Wine prefix mapping only exists off-Windows, where a
+    /// Unix path becomes Z:\.... On Windows the mapping is identity.
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn wine_launch_maps_only_absolute_paths_and_sets_an_isolated_prefix() {
         let executable = EmulatorExecutable::Wine {

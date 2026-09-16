@@ -808,8 +808,20 @@ mod tests {
             .filter(|l| l.purpose == Purpose::States)
             .collect();
         assert!(!states.is_empty());
-        assert!(states.iter().all(|location| location.resolved.is_none()));
+        // Relative (unprefixed) state dirs never resolve; anchored ones
+        // (home, XDG, AppData, profile roots) resolve to local paths.
+        assert!(
+            states.iter().any(|location| location.resolved.is_none()),
+            "expected a documentation-only relative states entry"
+        );
         assert!(states.iter().all(|l| !l.naming.is_empty()));
+        assert!(
+            states.iter().all(|location| location
+                .resolved
+                .as_ref()
+                .is_none_or(|path| path.is_absolute())),
+            "resolved states must be absolute local paths"
+        );
     }
 
     /// Linux-only: asserts Linux-resolver behavior (Flatpak/native
@@ -1077,6 +1089,9 @@ mod tests {
         assert!(count > 0 && count <= records.len());
     }
 
+    /// Linux-only: asserts Linux-resolver behavior for firmware dispositions;
+    /// other hosts are covered by the cross-platform feature matrix suite.
+    #[cfg(target_os = "linux")]
     #[test]
     fn adapter_locations_cover_controller_firmware_and_keys() {
         let records = load_records().unwrap();

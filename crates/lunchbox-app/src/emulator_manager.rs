@@ -733,9 +733,16 @@ fn try_acquire_emulator_operation_lease(
         .with_context(|| format!("opening emulator lifecycle lock {}", path.display()))?;
     match FileExt::try_lock_exclusive(&file) {
         Ok(()) => Ok(Some(EmulatorOperationLease { file })),
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+        Err(error) if lock_contention(&error) => Ok(None),
         Err(error) => Err(error).context("locking the emulator lifecycle service"),
     }
+}
+
+/// A held-by-another-process lock surfaces as `WouldBlock` on Unix but as
+/// raw lock-violation (os error 33) on Windows; both mean "busy", not broken.
+fn lock_contention(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::WouldBlock
+        || (cfg!(target_os = "windows") && error.raw_os_error() == Some(33))
 }
 
 pub fn recover_interrupted_emulator_operations() -> Result<Vec<EmulatorLifecycleOperation>> {
