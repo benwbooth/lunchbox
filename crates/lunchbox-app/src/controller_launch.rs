@@ -12469,6 +12469,12 @@ mod tests {
             assert_eq!(
                 supports_profile(profile),
                 (cfg!(target_os = "linux") && profile.retroarch_launch.is_some())
+                    || (cfg!(any(target_os = "macos", target_os = "windows"))
+                        && matches!(
+                            profile.id.as_str(),
+                            crate::retroarch_frontend_autoconfig::NESTOPIA_NES_TWO_PLAYER_PROFILE
+                                | crate::retroarch_frontend_autoconfig::NESTOPIA_NES_FOUR_PLAYER_PROFILE
+                        ))
                     || profile.transport == "ares-settings"
             );
             if let Some(launch) = &profile.retroarch_launch {
