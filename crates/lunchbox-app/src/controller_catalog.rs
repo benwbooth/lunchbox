@@ -2814,6 +2814,9 @@ value"
         );
     }
 
+    /// Linux-only: validates evdev physical-identity semantics; other hosts
+    /// pin identity through SDL paths instead.
+    #[cfg(target_os = "linux")]
     #[test]
     fn measured_axis_roundtrips_and_cannot_change_physical_identity() {
         use crate::controller_axis::AxisMeasurement;

@@ -2779,6 +2779,9 @@ mod tests {
         assert_eq!(rules[0].rule_key, "standalone");
     }
 
+    /// Linux-only: the exact FDS launch predicate requires the Linux Flatpak
+    /// runtime; other hosts refuse before reaching it.
+    #[cfg(target_os = "linux")]
     #[test]
     fn nestopia_fds_launch_predicate_is_exact_and_uses_the_emulator_uuid() {
         let option = nestopia_option(EmulatorExecutable::Flatpak {

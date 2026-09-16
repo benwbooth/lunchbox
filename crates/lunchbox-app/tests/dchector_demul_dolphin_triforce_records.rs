@@ -31,12 +31,7 @@ fn demul_keeps_plugin_numeric_input_boundary() {
     let input = &r["platforms"]["windows"]["paths"][1];
     assert_eq!(input["purpose"], "input");
     assert_eq!(input["status"], "captured");
-    assert!(
-        input["path"]
-            .as_str()
-            .unwrap()
-            .contains("padDemul.ini")
-    );
+    assert!(input["path"].as_str().unwrap().contains("padDemul.ini"));
 }
 
 #[test]
