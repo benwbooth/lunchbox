@@ -568,9 +568,31 @@ pub fn scan_local(scope: SyncScope, roots: &[RouteRoot]) -> Result<LocalInventor
 }
 
 fn ensure_existing_ancestors_without_symlink(path: &Path) -> Result<()> {
+    ensure!(path.is_absolute(), "save path must be absolute");
+    // Resolve OS-level indirections above the route first: macOS makes
+    // /var and /tmp symlinks by design, so a raw walk from the filesystem
+    // root false-positives there. Canonicalize the nearest existing
+    // ancestor, then only check the remainder at and below it.
+    let mut existing = path;
+    while std::fs::symlink_metadata(existing).is_err() {
+        let Some(parent) = existing.parent() else {
+            break;
+        };
+        existing = parent;
+    }
+    let canonical_base = std::fs::canonicalize(existing).unwrap_or_else(|_| existing.to_path_buf());
+    let skip = canonical_base.components().count();
+    let remainder = path.strip_prefix(existing).unwrap_or(path);
     let mut current = PathBuf::new();
-    for component in path.components() {
+    for (index, component) in canonical_base
+        .components()
+        .chain(remainder.components())
+        .enumerate()
+    {
         current.push(component.as_os_str());
+        if index < skip {
+            continue;
+        }
         match std::fs::symlink_metadata(&current) {
             Ok(metadata) => ensure!(
                 !metadata.file_type().is_symlink(),
