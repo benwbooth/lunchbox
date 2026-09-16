@@ -194,7 +194,7 @@ fn check_firmware(
     slug: &str,
     platform: &str,
     bases: &LocationBases,
-    bios_dir: &Path,
+    bios_dir: Option<&Path>,
     report: &mut FeatureResult,
 ) -> Result<()> {
     let records = load_records()?;
@@ -212,7 +212,15 @@ fn check_firmware(
             .push("no bios/keys purposes captured for this host".to_owned());
         return Ok(());
     }
-    let candidates = collect_files(bios_dir, 3)?;
+    let candidates = match bios_dir {
+        Some(dir) => collect_files(dir, 3)?,
+        None => {
+            report.detail.push(
+                "no BIOS library available on this host; roots verified, staging skipped".to_owned(),
+            );
+            Vec::new()
+        }
+    };
     for entry in &found {
         if entry.status != "captured" {
             report.detail.push(format!(
@@ -270,12 +278,20 @@ fn check_firmware(
             }
         }
         if staged == 0 {
-            report.status = "failed".to_owned();
-            report.detail.push(format!(
-                "{} resolved to {} but no --bios-dir file is named by the record",
-                entry.purpose.as_str(),
-                root.display()
-            ));
+            if bios_dir.is_none() {
+                report.detail.push(format!(
+                    "{} root {} verified (no library to stage from)",
+                    entry.purpose.as_str(),
+                    root.display()
+                ));
+            } else {
+                report.status = "failed".to_owned();
+                report.detail.push(format!(
+                    "{} resolved to {} but no --bios-dir file is named by the record",
+                    entry.purpose.as_str(),
+                    root.display()
+                ));
+            }
         } else {
             report.detail.push(format!(
                 "{} staged {staged} file(s) into {}",
@@ -467,10 +483,19 @@ fn main() -> Result<()> {
         }
         return Ok(());
     }
-    let (Some(slug), Some(bios_dir)) = (slug, bios_dir) else {
+    let (Some(slug), mut bios_dir) = (slug, bios_dir) else {
         print_usage(&program);
-        bail!("--emulator and --bios-dir are required");
+        bail!("--emulator is required");
     };
+    // Remote hosts may not mount the shared BIOS library; without it the
+    // firmware step reports what it can (resolved roots, documented
+    // stores) and skips staging.
+    let bios_available = bios_dir
+        .as_ref()
+        .is_some_and(|dir| dir.is_dir() && collect_files(dir, 1).is_ok_and(|v| !v.is_empty()));
+    if !bios_available {
+        bios_dir = None;
+    }
     let mut guard = Some(
         tempfile::Builder::new()
             .prefix("lunchbox-e2e-")

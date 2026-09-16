@@ -34,6 +34,8 @@ struct Leg {
 #[derive(Debug, Clone)]
 enum Target {
     Local,
+    /// Explicit shell script run locally (used for e2e legs).
+    LocalScript(String),
     /// `ssh [ssh_opts...] target <command>`
     Ssh {
         target: String,
@@ -71,10 +73,22 @@ fn mac_command() -> String {
     .join(" && ")
 }
 
+fn mac_e2e_command(slug: &str, bios_dir: &str) -> String {
+    format!(
+        "cd ~/lunchbox-mac && git pull --ff-only -q && CMAKE_PREFIX_PATH=$HOME/qt/6.8.3/macos rustup run stable cargo build --locked -q -p lunchbox-app --bin lunchbox-emulator-e2e && ./target/debug/lunchbox-emulator-e2e --emulator {slug} --bios-dir {bios_dir} --json"
+    )
+}
+
 fn windows_command() -> String {
     // C:\\tools\\run-lunchbox-tests.bat is provisioned on the VM (outside
     // the repo): it loads the VS slug, pulls main, and runs the suites.
     "C:\\tools\\run-lunchbox-tests.bat".to_owned()
+}
+
+fn windows_e2e_command(slug: &str, bios_dir: &str) -> String {
+    format!(
+        "cd /d C:\\lunchbox && git pull --ff-only && cargo build --locked -q -p lunchbox-app --bin lunchbox-emulator-e2e && target\\debug\\lunchbox-emulator-e2e.exe --emulator {slug} --bios-dir {bios_dir} --json"
+    )
 }
 
 fn local_command() -> String {
@@ -85,6 +99,12 @@ fn local_command() -> String {
             .map(|package| format!("-p {package}"))
             .collect::<Vec<_>>()
             .join(" ")
+    )
+}
+
+fn local_e2e_command(slug: &str, bios_dir: &str) -> String {
+    format!(
+        "cargo build --locked -q -p lunchbox-app --bin lunchbox-emulator-e2e && ./target/debug/lunchbox-emulator-e2e --emulator {slug} --bios-dir {bios_dir} --json"
     )
 }
 
@@ -133,7 +153,53 @@ fn summarize_libtest_json(output: &[u8]) -> (u64, u64, u64, Vec<String>) {
     (passed, failed, ignored, failures)
 }
 
-fn run_leg(leg: &Leg, timeout: Duration, verbose: bool) -> LegReport {
+fn summarize_e2e_json(output: &[u8]) -> (String, Vec<String>) {
+    // The e2e binary prints one JSON report; find the last object block.
+    let text = String::from_utf8_lossy(output);
+    let mut start = None;
+    for (index, _) in text.match_indices('{') {
+        start = Some(index);
+    }
+    let Some(begin) = start else {
+        return ("error".to_owned(), vec!["no JSON report in e2e output".to_owned()]);
+    };
+    // Balance from the last opening brace to the end of output.
+    let fragment = &text[begin..];
+    let Ok(report) = serde_json::from_str::<serde_json::Value>(fragment.trim()) else {
+        return ("error".to_owned(), vec!["e2e report is not valid JSON".to_owned()]);
+    };
+    let overall = report
+        .get("overall")
+        .and_then(|value| value.as_str())
+        .unwrap_or("error")
+        .to_owned();
+    let mut failures = Vec::new();
+    if let Some(map) = report.as_object() {
+        for feature in ["controller", "firmware", "save_sync"] {
+            let entry = &map[feature];
+            let status = entry.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            if status != "passed" && status != "skipped" {
+                failures.push(format!(
+                    "{feature}: {}",
+                    entry
+                        .get("detail")
+                        .and_then(|d| d.as_array())
+                        .map(|details| {
+                            details
+                                .iter()
+                                .filter_map(|d| d.as_str())
+                                .collect::<Vec<_>>()
+                                .join("; ")
+                        })
+                        .unwrap_or_default()
+                ));
+            }
+        }
+    }
+    (overall, failures)
+}
+
+fn run_leg(leg: &Leg, timeout: Duration, verbose: bool, e2e_mode: bool) -> LegReport {
     let started = Instant::now();
     let mut report = LegReport {
         name: leg.name.to_owned(),
@@ -143,8 +209,15 @@ fn run_leg(leg: &Leg, timeout: Duration, verbose: bool) -> LegReport {
     let (target_text, mut command) = match &leg.target {
         Target::Local => {
             report.target = "local".to_owned();
+            let script = local_command();
             let mut command = Command::new("bash");
-            command.args(["-c", &local_command()]);
+            command.args(["-c", &script]);
+            ("local".to_owned(), command)
+        }
+        Target::LocalScript(script) => {
+            report.target = "local".to_owned();
+            let mut command = Command::new("bash");
+            command.args(["-c", script]);
             ("local".to_owned(), command)
         }
         Target::Ssh {
@@ -161,6 +234,18 @@ fn run_leg(leg: &Leg, timeout: Duration, verbose: bool) -> LegReport {
     match run_with_timeout(command, timeout) {
         Ok(output) => {
             let combined = [output.stdout.clone(), output.stderr.clone()].concat();
+            if e2e_mode {
+                let (overall, failures) = summarize_e2e_json(&combined);
+                report.failed = if overall == "passed" { 0 } else { 1 };
+                report.passed = 1 - report.failed;
+                report.failures = failures;
+                report.status = overall;
+                report.duration_secs = started.elapsed().as_secs();
+                if verbose {
+                    println!("[{target_text}] e2e {} ({}s)", report.status, report.duration_secs);
+                }
+                return report;
+            }
             let (passed, failed, ignored, failures) = summarize_libtest_json(&combined);
             report.passed = passed;
             report.failed = failed;
@@ -213,7 +298,7 @@ fn run_leg(leg: &Leg, timeout: Duration, verbose: bool) -> LegReport {
 
 fn print_usage(program: &str) {
     println!(
-        "usage: {program} [--report PATH] [--timeout-secs N] [--skip-macos] [--skip-windows] [--mac-target SSH] [--win-target SSH] [--verbose]"
+        "usage: {program} [--report PATH] [--timeout-secs N] [--skip-macos] [--skip-windows] [--mac-target SSH] [--win-target SSH] [--e2e SLUG] [--e2e-bios-dir DIR] [--verbose]"
     );
 }
 
@@ -227,6 +312,8 @@ fn main() -> Result<()> {
     let mut mac_target = "bbooth@m1.local".to_owned();
     let mut win_target = "oracle@192.168.122.207".to_owned();
     let mut verbose = false;
+    let mut e2e: Option<String> = None;
+    let mut e2e_bios_dir = "/mnt/roms/emudeck/Emulation/bios".to_owned();
     let mut index = 1;
     while index < args.len() {
         match args[index].as_str() {
@@ -257,6 +344,16 @@ fn main() -> Result<()> {
                 }
             }
             "--verbose" => verbose = true,
+            "--e2e" => {
+                index += 1;
+                e2e = args.get(index).cloned();
+            }
+            "--e2e-bios-dir" => {
+                index += 1;
+                if let Some(dir) = args.get(index) {
+                    e2e_bios_dir = dir.clone();
+                }
+            }
             "--help" | "-h" => {
                 print_usage(&program);
                 return Ok(());
@@ -302,10 +399,28 @@ fn main() -> Result<()> {
             checkout: "C:\\lunchbox",
         });
     }
+    let e2e_mode = e2e.is_some();
+    if let Some(slug) = e2e.as_deref() {
+        for leg in &mut legs {
+            let script = match leg.name {
+                "macos" => mac_e2e_command(slug, &e2e_bios_dir),
+                "windows" => windows_e2e_command(slug, &e2e_bios_dir),
+                _ => local_e2e_command(slug, &e2e_bios_dir),
+            };
+            leg.target = match &leg.target {
+                Target::Ssh { target, ssh_opts, .. } => Target::Ssh {
+                    target: target.clone(),
+                    ssh_opts: ssh_opts.clone(),
+                    command: script,
+                },
+                Target::Local | Target::LocalScript(_) => Target::LocalScript(script),
+            };
+        }
+    }
     let mut report = Report::default();
     for leg in &legs {
         println!("=== leg: {} ({}) ===", leg.name, leg.checkout);
-        report.legs.push(run_leg(leg, timeout, verbose));
+        report.legs.push(run_leg(leg, timeout, verbose, e2e_mode));
     }
     report.overall = if report.legs.iter().all(|leg| leg.status == "passed") {
         "passed".to_owned()
