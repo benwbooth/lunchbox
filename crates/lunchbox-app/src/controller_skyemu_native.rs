@@ -681,10 +681,11 @@ mod session {
             let fresh = routing(observe(&self.setup, None, cancel)?);
             self.initial.ensure_same_routing(&fresh)?;
             let captured = observe(&self.setup, Some(&self.physical_path), cancel)?;
-            self.initial.ensure_same_routing(&routing(captured))?;
+            let routed = routing(captured);
+            self.initial.ensure_same_routing(&routed)?;
             #[cfg(not(target_os = "linux"))]
             platform::require_unique_device_path(
-                &captured.devices,
+                &routed.devices,
                 &self.physical_path,
                 self.device_index,
             )?;

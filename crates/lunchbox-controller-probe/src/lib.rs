@@ -108,6 +108,40 @@ impl Snapshot {
         ensure!(matches.next().is_none(), "Ambiguous SDL device path");
         Ok(device)
     }
+
+    /// Recheck immediately before launch on hosts without a kernel topology
+    /// guard. Compares library identity plus ordered device paths, mappings,
+    /// and gamepad positions; process-local instance IDs are excluded.
+    /// This detects observed changes, not hotplug occurring after the recheck.
+    pub fn ensure_same_routing(&self, fresh: &Self) -> Result<()> {
+        ensure!(
+            self.schema_version == fresh.schema_version
+                && self.library == fresh.library
+                && self.library_sha256 == fresh.library_sha256
+                && self.mapping_database_sha256 == fresh.mapping_database_sha256,
+            "SDL runtime changed during launch preparation"
+        );
+        let route = |snapshot: &Self| {
+            snapshot
+                .devices
+                .iter()
+                .map(|device| {
+                    (
+                        device.path.clone(),
+                        device.gamepad_index,
+                        device.mapping.clone(),
+                        device.is_gamepad,
+                        device.guid.clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        ensure!(
+            route(self) == route(fresh),
+            "SDL device routing changed during launch preparation"
+        );
+        Ok(())
+    }
 }
 
 #[repr(C)]

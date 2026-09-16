@@ -676,6 +676,7 @@ pub(crate) mod session {
             let session = Self {
                 directory,
                 staged_executable,
+                #[cfg(target_os = "linux")]
                 topology,
                 runtime_paths,
                 snapshot,

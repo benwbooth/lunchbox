@@ -766,17 +766,29 @@ mod session {
                     runtime_path,
                     physical,
                 } => {
-                    let fresh = observe_sdl3(setup, std::slice::from_ref(runtime_path), cancel)?;
-                    ensure!(
-                        comparable_sdl3(initial)? == comparable_sdl3(&fresh)?,
-                        "VBA-M SDL3 routing changed before launch"
-                    );
-                    fresh.device_at_path(runtime_path)?;
-                    ensure!(
-                        lunchbox_controller_probe::linux_classic::read(Path::new(runtime_path))?
-                            == *physical,
-                        "VBA-M SDL3 classic control numbering changed"
-                    );
+                    // SDL3 sessions only exist on Linux (classic backend);
+                    // other hosts bail during routing selection above.
+                    #[cfg(target_os = "linux")]
+                    {
+                        let fresh =
+                            observe_sdl3(setup, std::slice::from_ref(runtime_path), cancel)?;
+                        ensure!(
+                            comparable_sdl3(initial)? == comparable_sdl3(&fresh)?,
+                            "VBA-M SDL3 routing changed before launch"
+                        );
+                        fresh.device_at_path(runtime_path)?;
+                        ensure!(
+                            lunchbox_controller_probe::linux_classic::read(Path::new(
+                                runtime_path
+                            ))? == *physical,
+                            "VBA-M SDL3 classic control numbering changed"
+                        );
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        let _ = (initial, runtime_path, physical);
+                        anyhow::bail!("VBA-M SDL3 sessions need the classic Linux backend");
+                    }
                 }
             }
             Ok(())
@@ -815,6 +827,7 @@ mod session {
                 "VBA-M physical controller is missing or ambiguous"
             );
             let selected = found[0].device_path.clone();
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(std::slice::from_ref(&selected))?;
             let calibration = calibrations
                 .get(&player.controller_id)

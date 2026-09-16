@@ -421,8 +421,11 @@ pub(crate) mod settings {
 
 mod session {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::controller_bizhawk_guard::InputTopology;
+    #[cfg(not(target_os = "linux"))]
+    use crate::controller_native_platform as platform;
     use crate::{
-        controller_bizhawk_guard::InputTopology,
         controller_catalog::Calibration,
         controller_native_process::{cancelled, capture},
         controllers::ControllerDevice,
@@ -604,6 +607,7 @@ mod session {
                 );
                 selected.push(found[0].device_path.clone());
             }
+            #[cfg(target_os = "linux")]
             let topology = InputTopology::capture(&selected)?;
             let initial = comparable(&observe(setup, &[], cancel)?)?;
             let mut physical_paths = Vec::new();
@@ -614,6 +618,9 @@ mod session {
                 .prefix("lunchbox-amiberry-controllers-")
                 .tempdir()?;
             for (player, selected_path) in setup.players.iter().zip(&selected) {
+                // Linux resolves through the sysfs topology; other hosts
+                // match the SDL device-interface path and require uniqueness.
+                #[cfg(target_os = "linux")]
                 let path = topology.resolve_runtime_path(
                     selected_path,
                     observe(setup, &[], cancel)?
@@ -621,6 +628,20 @@ mod session {
                         .iter()
                         .filter_map(|device| device.path.as_deref()),
                 )?;
+                #[cfg(not(target_os = "linux"))]
+                let path = {
+                    let path_string = selected_path.to_string_lossy().into_owned();
+                    let candidates = observe(setup, &[], cancel)?
+                        .devices
+                        .iter()
+                        .filter(|device| device.path.as_deref() == Some(path_string.as_str()))
+                        .count();
+                    ensure!(
+                        candidates == 1,
+                        "Amiberry physical controller is missing or ambiguous in SDL"
+                    );
+                    path_string
+                };
                 ensure!(
                     !physical_paths.contains(&path),
                     "Amiberry players share a controller"

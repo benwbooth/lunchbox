@@ -934,24 +934,39 @@ mod tests {
 
     #[test]
     fn unresolved_dimensions_never_resolve_to_local_paths() {
-        let locations = adapter_locations(
-            &load_records().unwrap(),
-            "denise",
-            &[
-                Purpose::Config,
-                Purpose::Input,
-                Purpose::Saves,
-                Purpose::States,
-            ],
-            &bases(),
-        );
-        assert!(!locations.is_empty());
+        let records = load_records().unwrap();
+        let mut checked = 0;
+        for record in &records {
+            let locations = adapter_locations(
+                &records,
+                record.slug(),
+                &[
+                    Purpose::Config,
+                    Purpose::Input,
+                    Purpose::Saves,
+                    Purpose::States,
+                    Purpose::Bios,
+                    Purpose::Keys,
+                ],
+                &bases(),
+            );
+            for location in locations {
+                if location.status == "unresolved" {
+                    checked += 1;
+                    assert!(
+                        location.resolved.is_none(),
+                        "{}:{} {} unexpectedly resolved",
+                        record.slug(),
+                        location.platform,
+                        location.purpose.as_str()
+                    );
+                }
+            }
+        }
         assert!(
-            locations
-                .iter()
-                .all(|location| location.status == "unresolved")
+            checked > 0,
+            "no unresolved dimensions left to guard; drop this test"
         );
-        assert!(locations.iter().all(|location| location.resolved.is_none()));
     }
 
     #[test]

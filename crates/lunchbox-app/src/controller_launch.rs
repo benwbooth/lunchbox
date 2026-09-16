@@ -82,11 +82,17 @@ impl RetainedLaunchDirectory {
 
 impl PreparedBizhawkLaunch {
     fn verify(&self) -> Result<()> {
-        match self {
-            #[cfg(target_os = "linux")]
-            Self::Configuration(config) => config.verify_source(),
-            #[cfg(target_os = "linux")]
-            Self::Captured(handoff) => handoff.verify(),
+        #[cfg(target_os = "linux")]
+        {
+            return match self {
+                Self::Configuration(config) => config.verify_source(),
+                Self::Captured(handoff) => handoff.verify(),
+            };
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = self;
+            return Ok(());
         }
     }
 }

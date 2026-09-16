@@ -20,7 +20,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Component, Path, PathBuf};
 
-#[cfg(target_os = "linux")]
 use crate::controller_pcsx2::sdl::{AxisRange, Input as SdlInput};
 
 pub(crate) const PROFILE_ID: &str = "gopher64:standalone-n64";

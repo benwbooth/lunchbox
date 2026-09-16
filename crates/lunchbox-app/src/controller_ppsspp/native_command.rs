@@ -244,11 +244,24 @@ pub(crate) fn prepare(
     let mut plan = original.clone();
     let mut native_arguments = original.arguments.clone();
     native_arguments.insert(0, "--loglevel=4".into());
-    plan.arguments = input.configuration.overlay_arguments(
-        &executable.canonicalize()?,
-        &native_arguments,
-        &original.current_directory.canonicalize()?,
-    )?;
+    // The bubblewrap overlay only exists on Linux; other hosts bail out
+    // above through use_bubblewrap_sandbox, so this branch is unreachable
+    // there but must still typecheck.
+    #[cfg(target_os = "linux")]
+    {
+        plan.arguments = input.configuration.overlay_arguments(
+            &executable.canonicalize()?,
+            &native_arguments,
+            &original.current_directory.canonicalize()?,
+        )?;
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (&input, &executable, &native_arguments, &original);
+        anyhow::bail!(
+            "PPSSPP direct launch needs mount shadowing, which is unsupported; use a sandboxable native Linux packaging"
+        );
+    }
     plan.program = setup.bubblewrap_program.clone();
     plan.environment
         .push(("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS".into(), "1".into()));
