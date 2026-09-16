@@ -4230,6 +4230,9 @@ mod tests {
     }
 
     #[cfg(unix)]
+    /// Not macOS: APFS requires UTF-8 filenames, so non-UTF-8 roots
+    /// cannot exist there; Windows NTFS and Unix ext4/overlayfs allow them.
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn named_import_profiles_preserve_non_utf8_root_bytes() {
         use std::os::unix::ffi::OsStringExt;
@@ -4531,10 +4534,13 @@ mod tests {
 
     #[test]
     fn resumable_hash_cache_reuses_regular_and_archive_content_and_prunes_removed_files() {
-        let directory = tempfile::tempdir().unwrap();
-        let discovery = directory.path().join("games.db");
-        let state = directory.path().join("state.db");
-        let rom_root = directory.path().join("roms");
+        let _directory = tempfile::tempdir().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_directory.path()).unwrap();
+        let discovery = base.as_path().join("games.db");
+        let state = base.as_path().join("state.db");
+        let rom_root = base.as_path().join("roms");
         fs::create_dir(&rom_root).unwrap();
         discovery_fixture(&discovery, b"exact-rom");
         let regular_path = rom_root.join("Exact Game.nes");
@@ -4700,9 +4706,12 @@ mod tests {
 
     #[test]
     fn multi_rom_zip_members_are_reviewed_and_materialized_individually() {
-        let directory = tempfile::tempdir().unwrap();
-        let discovery = directory.path().join("games.db");
-        let rom_root = directory.path().join("roms");
+        let _directory = tempfile::tempdir().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_directory.path()).unwrap();
+        let discovery = base.as_path().join("games.db");
+        let rom_root = base.as_path().join("roms");
         fs::create_dir(&rom_root).unwrap();
         discovery_fixture(&discovery, b"exact-rom");
         zip_fixture(
@@ -4732,7 +4741,7 @@ mod tests {
             .results
             .iter_mut()
             .for_each(|result| result.selected = true);
-        let state = directory.path().join("state.db");
+        let state = base.as_path().join("state.db");
         SettingsStore::at(&state).unwrap();
         assert_eq!(commit_scan_to(&state, &output).unwrap(), 2);
         assert_eq!(commit_scan_to(&state, &output).unwrap(), 2);
@@ -4772,9 +4781,12 @@ mod tests {
 
     #[test]
     fn single_rom_seven_zip_member_receives_an_exact_checksum_identity() {
-        let directory = tempfile::tempdir().unwrap();
-        let discovery = directory.path().join("games.db");
-        let rom_root = directory.path().join("roms");
+        let _directory = tempfile::tempdir().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_directory.path()).unwrap();
+        let discovery = base.as_path().join("games.db");
+        let rom_root = base.as_path().join("roms");
         fs::create_dir(&rom_root).unwrap();
         discovery_fixture(&discovery, b"exact-rom");
         let archive_path = rom_root.join("Exact Game.7z");
@@ -4800,7 +4812,7 @@ mod tests {
         assert_eq!(result.platform, "Nintendo Entertainment System");
         assert_eq!(result.match_method, "7z archive member SHA-1 + MD5");
 
-        let state = directory.path().join("state.db");
+        let state = base.as_path().join("state.db");
         SettingsStore::at(&state).unwrap();
         assert_eq!(commit_scan_to(&state, &output).unwrap(), 1);
         let connection = Connection::open(state).unwrap();
@@ -4814,9 +4826,12 @@ mod tests {
 
     #[test]
     fn multi_rom_seven_zip_members_are_reviewed_and_materialized_individually() {
-        let directory = tempfile::tempdir().unwrap();
-        let discovery = directory.path().join("games.db");
-        let rom_root = directory.path().join("roms");
+        let _directory = tempfile::tempdir().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_directory.path()).unwrap();
+        let discovery = base.as_path().join("games.db");
+        let rom_root = base.as_path().join("roms");
         fs::create_dir(&rom_root).unwrap();
         discovery_fixture(&discovery, b"exact-rom");
         let archive_path = rom_root.join("Collection.7z");
@@ -4849,7 +4864,7 @@ mod tests {
             .results
             .iter_mut()
             .for_each(|result| result.selected = true);
-        let state = directory.path().join("state.db");
+        let state = base.as_path().join("state.db");
         SettingsStore::at(&state).unwrap();
         assert_eq!(commit_scan_to(&state, &output).unwrap(), 2);
         assert_eq!(commit_scan_to(&state, &output).unwrap(), 2);
@@ -4951,9 +4966,12 @@ mod tests {
 
     #[test]
     fn single_rom_rar_member_receives_an_exact_checksum_identity() {
-        let directory = tempfile::tempdir().unwrap();
-        let discovery = directory.path().join("games.db");
-        let rom_root = directory.path().join("roms");
+        let _directory = tempfile::tempdir().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_directory.path()).unwrap();
+        let discovery = base.as_path().join("games.db");
+        let rom_root = base.as_path().join("roms");
         fs::create_dir(&rom_root).unwrap();
         discovery_fixture(&discovery, b"exact-rom");
         let archive_path = rom_root.join("Exact Game.rar");
@@ -4979,7 +4997,7 @@ mod tests {
         assert_eq!(result.platform, "Nintendo Entertainment System");
         assert_eq!(result.match_method, "RAR archive member SHA-1 + MD5");
 
-        let state = directory.path().join("state.db");
+        let state = base.as_path().join("state.db");
         SettingsStore::at(&state).unwrap();
         assert_eq!(commit_scan_to(&state, &output).unwrap(), 1);
         let connection = Connection::open(state).unwrap();
@@ -4993,9 +5011,12 @@ mod tests {
 
     #[test]
     fn multi_rom_rar_members_are_reviewed_and_materialized_individually() {
-        let directory = tempfile::tempdir().unwrap();
-        let discovery = directory.path().join("games.db");
-        let rom_root = directory.path().join("roms");
+        let _directory = tempfile::tempdir().unwrap();
+        // Canonicalize: the app stores canonical paths, and macOS
+        // tempdirs live under symlinked /var.
+        let base = std::fs::canonicalize(_directory.path()).unwrap();
+        let discovery = base.as_path().join("games.db");
+        let rom_root = base.as_path().join("roms");
         fs::create_dir(&rom_root).unwrap();
         discovery_fixture(&discovery, b"exact-rom");
         let archive_path = rom_root.join("Collection.rar");
@@ -5026,7 +5047,7 @@ mod tests {
             .results
             .iter_mut()
             .for_each(|result| result.selected = true);
-        let state = directory.path().join("state.db");
+        let state = base.as_path().join("state.db");
         SettingsStore::at(&state).unwrap();
         assert_eq!(commit_scan_to(&state, &output).unwrap(), 2);
         assert_eq!(commit_scan_to(&state, &output).unwrap(), 2);

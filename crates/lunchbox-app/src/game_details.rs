@@ -2879,6 +2879,9 @@ mod tests {
     }
 
     #[cfg(unix)]
+    /// Not macOS: APFS requires UTF-8 filenames, so non-UTF-8 paths
+    /// cannot exist there.
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn managed_primary_file_loading_preserves_native_non_utf8_path_bytes() {
         use std::ffi::OsString;
