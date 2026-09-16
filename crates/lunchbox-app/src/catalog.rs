@@ -298,8 +298,7 @@ fn load_preview_from_sources(
     let mut list_metadata = ListMetadataBuilder::with_capacity(games.capacity());
     for row in rows {
         let (id, title, platform, status, database_id) = row?;
-        let local = (database_id > 0 && installed.database_ids.contains(&database_id))
-            || installed.game_uids.contains(&id);
+        let local = installed.is_local(&id, &title, &platform, database_id);
         let non_retail = is_non_retail_game(&title, None);
         let adult = is_adult_game(&title, None, None);
         let release_regions = release_region_membership(&title, None);
@@ -551,9 +550,76 @@ fn load_canonical_catalog(connection: &Connection) -> Result<Catalog> {
 struct InstalledGames {
     database_ids: HashSet<i64>,
     game_uids: HashSet<String>,
+    /// LaunchBox IDs from the native state database, scoped by the exact
+    /// installed platform. State rows record whichever discovery snapshot
+    /// the download was queued from, and a bare ID can drift across
+    /// platforms between snapshots, so it must never light a foreign card.
+    state_database_platforms: HashMap<i64, HashSet<String>>,
+    /// Exact (platform, title) pairs from the native state database. Both
+    /// sides are trimmed and case-folded only; no tag stripping or fuzzy
+    /// similarity is applied, so a pair can only relight its exact card.
+    state_exact_pairs: HashSet<(String, String)>,
     local_only_games: Vec<Game>,
     native_file_paths: HashSet<PathBuf>,
     file_count: usize,
+}
+
+fn installed_platform_key(platform: &str) -> String {
+    platform.trim().to_lowercase()
+}
+
+fn installed_title_key(title: &str) -> String {
+    title.trim().to_lowercase()
+}
+
+impl InstalledGames {
+    fn is_local(&self, id: &str, title: &str, platform: &str, database_id: i64) -> bool {
+        if self.game_uids.contains(id) {
+            return true;
+        }
+        let platform_key = installed_platform_key(platform);
+        if database_id > 0 {
+            // The canonical user database keeps stable IDs, so a bare match
+            // there is exact. State rows are snapshot-bound and stay scoped.
+            if self.database_ids.contains(&database_id) {
+                return true;
+            }
+            if self
+                .state_database_platforms
+                .get(&database_id)
+                .is_some_and(|platforms| platforms.contains(&platform_key))
+            {
+                return true;
+            }
+        }
+        self.state_exact_pairs
+            .contains(&(platform_key, installed_title_key(title)))
+    }
+
+    fn add_state_identity(
+        &mut self,
+        database_id: i64,
+        game_uid: Option<String>,
+        title: &str,
+        platform: &str,
+    ) {
+        self.file_count = self.file_count.saturating_add(1);
+        if let Some(game_uid) = game_uid.filter(|value| !value.is_empty()) {
+            self.game_uids.insert(game_uid);
+        }
+        let platform_key = installed_platform_key(platform);
+        let title_key = installed_title_key(title);
+        if platform_key.is_empty() || title_key.is_empty() {
+            return;
+        }
+        if database_id > 0 {
+            self.state_database_platforms
+                .entry(database_id)
+                .or_default()
+                .insert(platform_key.clone());
+        }
+        self.state_exact_pairs.insert((platform_key, title_key));
+    }
 }
 
 #[derive(Default)]
@@ -654,8 +720,7 @@ fn load_discovery_catalog_with_native_state(
         let genre = text_column(&row, 7);
         let region = text_column(&row, 17);
         let cooperative: Option<i64> = row.get(8)?;
-        let local = (database_id > 0 && installed.database_ids.contains(&database_id))
-            || installed.game_uids.contains(&id);
+        let local = installed.is_local(&id, &title, &platform, database_id);
         let (platform_lower, minerva_covered) = {
             let entry = platform_forms.entry(platform.clone());
             let (lower, covered) = entry.or_insert_with(|| {
@@ -1316,25 +1381,40 @@ fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -
     if !table_exists(&connection, "installed_games")? {
         return Ok(());
     }
-    let mut statement = connection.prepare(
-        "SELECT launchbox_db_id, game_uid, file_path, import_source FROM installed_games",
-    )?;
+    // Title and platform are NOT NULL in current schemas, but older state
+    // databases may predate them; fall back to ID-only identity then.
+    let has_title = column_exists(&connection, "installed_games", "title")?;
+    let has_platform = column_exists(&connection, "installed_games", "platform")?;
+    let title_select = if has_title { "title" } else { "NULL" };
+    let platform_select = if has_platform { "platform" } else { "NULL" };
+    let query = format!(
+        "SELECT launchbox_db_id, game_uid, file_path, import_source, {title_select}, {platform_select} \
+         FROM installed_games"
+    );
+    let mut statement = connection.prepare(&query)?;
     let rows = statement.query_map([], |row| {
         Ok((
             row.get::<_, i64>(0)?,
             row.get::<_, Option<String>>(1)?,
             row.get::<_, String>(2)?,
             row.get::<_, String>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, Option<String>>(5)?,
         ))
     })?;
     for row in rows {
-        let (database_id, game_uid, file_path, import_source) = row?;
+        let (database_id, game_uid, file_path, import_source, title, platform) = row?;
         let file_path = PathBuf::from(file_path);
         if import_source != "local"
             && file_path.is_file()
             && installed.native_file_paths.insert(file_path)
         {
-            add_installed_identity(installed, (database_id, game_uid));
+            installed.add_state_identity(
+                database_id,
+                game_uid,
+                title.as_deref().unwrap_or_default(),
+                platform.as_deref().unwrap_or_default(),
+            );
         }
     }
     drop(statement);
@@ -1368,8 +1448,15 @@ fn load_native_installed_games_at(installed: &mut InstalledGames, path: &Path) -
             continue;
         }
         installed.file_count = installed.file_count.saturating_add(1);
+        // ROM-scan matches can be fuzzy-derived, so the LaunchBox ID stays
+        // scoped to the scanned platform instead of lighting every platform
+        // that reuses the ID across snapshots.
         if database_id > 0 {
-            installed.database_ids.insert(database_id);
+            installed
+                .state_database_platforms
+                .entry(database_id)
+                .or_default()
+                .insert(installed_platform_key(&platform));
         }
         if let Some(game_uid) = game_uid.filter(|value| !value.is_empty()) {
             installed.game_uids.insert(game_uid);
@@ -2546,6 +2633,164 @@ mod tests {
         assert_eq!(catalog.games[downloadable[0]].title, "Download Game");
     }
 
+    fn mario_state_fixture(
+        directory: &tempfile::TempDir,
+    ) -> (Connection, std::path::PathBuf, std::path::PathBuf) {
+        let canonical_path = directory.path().join("canonical.db");
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+
+        let discovery_path = directory.path().join("games.db");
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (90, 'Nintendo 64');
+                 INSERT INTO platforms VALUES (91, 'Nintendo 64DD');
+                 INSERT INTO games VALUES
+                   ('n64-id', 'Super Mario 64', NULL, 'Released', 216, 90),
+                   ('n64dd-id', 'Super Mario 64', NULL, 'Unreleased', 126650, 91);",
+            )
+            .unwrap();
+        drop(discovery);
+        (canonical, discovery_path, canonical_path)
+    }
+
+    fn write_state_install(
+        directory: &tempfile::TempDir,
+        game_uid: &str,
+        launchbox_db_id: i64,
+        title: &str,
+        platform: &str,
+    ) -> std::path::PathBuf {
+        let rom_path = directory.path().join("Super Mario 64 (USA).zip");
+        std::fs::write(&rom_path, b"mario-bytes").unwrap();
+        let state_path = directory.path().join("state.db");
+        let state = Connection::open(&state_path).unwrap();
+        state
+            .execute_batch(
+                "CREATE TABLE installed_games (
+                   game_uid TEXT PRIMARY KEY, launchbox_db_id INTEGER NOT NULL,
+                   title TEXT NOT NULL, platform TEXT NOT NULL,
+                   file_path TEXT NOT NULL, file_size INTEGER,
+                   import_source TEXT NOT NULL, installed_at INTEGER NOT NULL
+                 );",
+            )
+            .unwrap();
+        state
+            .execute(
+                "INSERT INTO installed_games VALUES (?1, ?2, ?3, ?4, ?5, 11, 'minerva', 1)",
+                rusqlite::params![
+                    game_uid,
+                    launchbox_db_id,
+                    title,
+                    platform,
+                    rom_path.to_string_lossy()
+                ],
+            )
+            .unwrap();
+        drop(state);
+        state_path
+    }
+
+    #[test]
+    fn state_install_never_lights_a_foreign_platform_card() {
+        // The install was queued from a snapshot where LaunchBox ID 126650
+        // lived on Nintendo 64, while this discovery snapshot files it
+        // under Nintendo 64DD. The bare ID must not light the 64DD card.
+        let directory = tempfile::tempdir().unwrap();
+        let (canonical, discovery_path, _) = mario_state_fixture(&directory);
+        let state_path = write_state_install(
+            &directory,
+            "snapshot-uid",
+            126650,
+            "Super Mario 64",
+            "Nintendo 64",
+        );
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            Some(&state_path),
+        )
+        .unwrap();
+        assert_eq!(catalog.games.len(), 2);
+        let n64 = catalog
+            .games
+            .iter()
+            .find(|game| game.platform == "Nintendo 64")
+            .unwrap();
+        let n64dd = catalog
+            .games
+            .iter()
+            .find(|game| game.platform == "Nintendo 64DD")
+            .unwrap();
+        // The exact (title, platform) pair relights the true card even
+        // though neither the UID nor the platform-scoped ID matches it.
+        assert!(n64.local);
+        assert!(!n64dd.local);
+    }
+
+    #[test]
+    fn state_exact_pair_requires_the_same_platform() {
+        // Same install record, but the discovery snapshot only carries the
+        // 64DD card: no Nintendo 64 card may light, and the foreign card
+        // must not absorb the pair either.
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+        let discovery_path = directory.path().join("games.db");
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (91, 'Nintendo 64DD');
+                 INSERT INTO games VALUES
+                   ('n64dd-id', 'Super Mario 64', NULL, 'Unreleased', 126650, 91);",
+            )
+            .unwrap();
+        drop(discovery);
+        let state_path = write_state_install(
+            &directory,
+            "snapshot-uid",
+            126650,
+            "Super Mario 64",
+            "Nintendo 64",
+        );
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            Some(&state_path),
+        )
+        .unwrap();
+        assert_eq!(catalog.games.len(), 1);
+        assert!(!catalog.games[0].local);
+    }
+
     #[test]
     fn focused_preview_starts_with_the_exact_saved_game_and_platform() {
         let directory = tempfile::tempdir().unwrap();
@@ -2670,7 +2915,14 @@ mod tests {
         let mut installed = InstalledGames::default();
         load_native_installed_games_at(&mut installed, &state_path).unwrap();
         assert_eq!(installed.file_count, 2);
-        assert!(installed.database_ids.contains(&42));
+        // ROM-scan IDs stay scoped to the scanned platform instead of
+        // lighting every card that reuses the ID across snapshots.
+        assert!(installed
+            .state_database_platforms
+            .get(&42)
+            .is_some_and(|platforms| platforms.contains("system")));
+        assert!(installed.is_local("other-id", "Exact", "System", 42));
+        assert!(!installed.is_local("other-id", "Exact", "Foreign System", 42));
         assert!(installed.game_uids.contains("catalog-game"));
         assert_eq!(installed.local_only_games.len(), 1);
         assert_eq!(installed.local_only_games[0].title, "Unknown");

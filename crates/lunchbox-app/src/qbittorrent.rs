@@ -42,6 +42,11 @@ pub struct MagnetMetadataReview {
 pub struct DownloadPreflight {
     pub can_queue: bool,
     pub blocked_reason: String,
+    /// True when the block can never clear for this candidate (already
+    /// queued/downloaded/installed, or the exact destination exists), so
+    /// retrying the check is pointless. Storage and setup blocks stay
+    /// non-terminal because freeing space or configuring paths can clear them.
+    pub blocked_terminal: bool,
     pub selection_kind: String,
     pub selected_bytes: u64,
     pub required_download_bytes: u64,
@@ -1047,6 +1052,7 @@ pub fn inspect_enqueue(
     } else {
         None
     };
+    let blocked_terminal = duplicate.is_some() || destination_problem.is_some();
     let blocked_reason = duplicate
         .or(destination_problem)
         .or(storage_problem)
@@ -1062,6 +1068,7 @@ pub fn inspect_enqueue(
     Ok(DownloadPreflight {
         can_queue: blocked_reason.is_empty(),
         blocked_reason,
+        blocked_terminal,
         selection_kind: selection_kind.to_owned(),
         selected_bytes,
         required_download_bytes,

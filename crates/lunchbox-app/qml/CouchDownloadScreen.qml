@@ -44,9 +44,11 @@ FocusScope {
                     ? "OPEN DOWNLOAD SETTINGS"
                     : details.download_preflight_ready
                       ? "DOWNLOAD"
-                      : details.download_preflight_status.length > 0
-                        ? "TRY AGAIN"
-                        : "CHECK"
+                      : details.download_preflight_terminal
+                        ? "ALREADY IN LIBRARY"
+                        : details.download_preflight_status.length > 0
+                          ? "TRY AGAIN"
+                          : "CHECK"
 
     signal closeRequested()
     signal configureRequested()
@@ -105,6 +107,10 @@ FocusScope {
             configureRequested()
             return
         }
+        // Terminal blocks (already installed or the exact destination
+        // exists) cannot clear: never re-run the check or queue here.
+        if (details.download_preflight_terminal)
+            return
         if (!details.download_preflight_ready) {
             if (!details.download_preflight_busy && reviewIndex >= 0)
                 details.inspect_download(reviewIndex)

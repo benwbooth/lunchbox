@@ -16,6 +16,7 @@ pub mod qobject {
         #[qproperty(bool, download_busy)]
         #[qproperty(bool, download_preflight_busy)]
         #[qproperty(bool, download_preflight_ready)]
+        #[qproperty(bool, download_preflight_terminal)]
         #[qproperty(i32, download_review_index)]
         #[qproperty(QString, download_preflight_status)]
         #[qproperty(QString, download_preflight_storage)]
@@ -604,6 +605,7 @@ pub struct GameDetailsModelRust {
     download_busy: bool,
     download_preflight_busy: bool,
     download_preflight_ready: bool,
+    download_preflight_terminal: bool,
     download_review_index: i32,
     download_preflight_status: QString,
     download_preflight_storage: QString,
@@ -826,6 +828,7 @@ impl Default for GameDetailsModelRust {
             download_busy: false,
             download_preflight_busy: false,
             download_preflight_ready: false,
+            download_preflight_terminal: false,
             download_review_index: -1,
             download_preflight_status: QString::default(),
             download_preflight_storage: QString::default(),
@@ -2279,6 +2282,7 @@ impl qobject::GameDetailsModel {
             .wrapping_add(1);
         self.as_mut().set_download_preflight_busy(false);
         self.as_mut().set_download_preflight_ready(false);
+        self.as_mut().set_download_preflight_terminal(false);
         self.as_mut().set_download_review_index(-1);
         self.as_mut()
             .set_download_preflight_status(QString::default());
@@ -3585,6 +3589,7 @@ impl qobject::GameDetailsModel {
         }
         let Some(file) = self.as_ref().file(index).cloned() else {
             self.as_mut().set_download_preflight_ready(false);
+            self.as_mut().set_download_preflight_terminal(false);
             self.as_mut().set_download_preflight_status(qstring(
                 "The selected torrent file is no longer available. Inspect the source again.",
             ));
@@ -3593,6 +3598,7 @@ impl qobject::GameDetailsModel {
         let selected_bundle = *self.as_ref().selected_bundle();
         let Some(bundle) = self.as_ref().bundle(selected_bundle).cloned() else {
             self.as_mut().set_download_preflight_ready(false);
+            self.as_mut().set_download_preflight_terminal(false);
             self.as_mut().set_download_preflight_status(qstring(
                 "The selected torrent source is no longer available.",
             ));
@@ -3611,6 +3617,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_download_review_index(index);
         self.as_mut().set_download_preflight_busy(true);
         self.as_mut().set_download_preflight_ready(false);
+        self.as_mut().set_download_preflight_terminal(false);
         self.as_mut()
             .set_download_preflight_status(qstring("Checking storage and existing downloads…"));
         self.as_mut()
@@ -3677,6 +3684,8 @@ impl qobject::GameDetailsModel {
                 self.as_mut()
                     .set_download_preflight_ready(preflight.can_queue);
                 self.as_mut()
+                    .set_download_preflight_terminal(preflight.blocked_terminal);
+                self.as_mut()
                     .set_download_preflight_mode(qstring(preflight_mode_label(&preflight)));
                 self.as_mut()
                     .set_download_preflight_storage(qstring(preflight_storage_summary(&preflight)));
@@ -3703,6 +3712,7 @@ impl qobject::GameDetailsModel {
             }
             Err(error) => {
                 self.as_mut().set_download_preflight_ready(false);
+                self.as_mut().set_download_preflight_terminal(false);
                 let needs_setup = error.contains("native torrent library directory")
                     || error.contains("qBittorrent torrent-library path")
                     || error.contains("native ROM directory");

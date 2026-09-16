@@ -22,6 +22,7 @@ TestCase {
                 property bool download_busy: false
                 property bool download_preflight_busy: false
                 property bool download_preflight_ready: false
+                property bool download_preflight_terminal: false
                 property string download_preflight_action: ""
                 property string download_preflight_status: "Checking storage"
                 property string download_preflight_mode: "139 KiB exact file"
@@ -134,6 +135,31 @@ TestCase {
         compare(host.closeSpy.count, 0)
         verify(host.downloadScreen.handleNavigation("back"))
         compare(host.closeSpy.count, 1)
+    }
+
+    function test_terminal_block_never_retries_or_queues() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.downloadScreen.beginReview()
+        compare(host.downloadScreen.phase, "review")
+        compare(host.detailsState.inspectedIndex, 0)
+
+        // Already installed: the action turns into a terminal label and
+        // activating it neither re-checks nor queues.
+        host.detailsState.download_preflight_ready = false
+        host.detailsState.download_preflight_terminal = true
+        host.detailsState.download_preflight_status = "The exact destination already exists."
+        compare(host.downloadScreen.actionLabel, "ALREADY IN LIBRARY")
+        host.detailsState.inspectedIndex = -1
+        host.downloadScreen.activateReview()
+        compare(host.detailsState.inspectedIndex, -1)
+        compare(host.detailsState.queuedIndex, -1)
+        compare(host.downloadScreen.phase, "review")
+
+        // Transient blocks still retry the check.
+        host.detailsState.download_preflight_terminal = false
+        host.downloadScreen.activateReview()
+        compare(host.detailsState.inspectedIndex, 0)
     }
 
     function test_empty_download_state_imports_a_torrent() {

@@ -24,6 +24,7 @@ TestCase {
                 property bool download_busy: false
                 property bool download_preflight_busy: false
                 property bool download_preflight_ready: false
+                property bool download_preflight_terminal: false
                 property string download_preflight_action: "configure_qbittorrent"
                 property string download_preflight_status: "One-time download-folder setup"
                 property string download_preflight_mode: ""
@@ -79,6 +80,32 @@ TestCase {
         host.detailsState.registeredSource = true
         ++host.detailsState.detail_revision
         compare(host.review.selectiveOnly, true)
+        host.review.close()
+    }
+
+    function test_terminal_block_hides_retry_and_download_actions() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+
+        host.review.openFor(0)
+        const check = findChild(host.review, "downloadPreflightCheckButton")
+        const confirm = findChild(host.review, "downloadConfirmButton")
+        verify(check.visible)
+        verify(confirm.visible)
+
+        // Already queued/downloaded/installed (or the exact destination
+        // exists) can never clear: both actions hide instead of looping.
+        host.detailsState.download_preflight_ready = false
+        host.detailsState.download_preflight_terminal = true
+        host.detailsState.download_preflight_status = "This exact game download is already queued, downloaded, or installed."
+        verify(!check.visible)
+        verify(!confirm.visible)
+
+        // Transient blocks keep the retry action available.
+        host.detailsState.download_preflight_terminal = false
+        verify(check.visible)
+        verify(confirm.visible)
+        verify(!confirm.enabled)
         host.review.close()
     }
 }

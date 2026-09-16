@@ -290,6 +290,11 @@ Dialog {
                 onClicked: dialog.configureRequested()
             }
             HeaderButton {
+                // Terminal blocks (already queued/downloaded/installed, or
+                // the exact destination exists) cannot clear on retry, so the
+                // check button hides and the status text carries the outcome.
+                objectName: "downloadPreflightCheckButton"
+                visible: !detailsModel.download_preflight_terminal
                 text: detailsModel.download_preflight_busy ? "CHECKING…"
                       : detailsModel.download_preflight_ready ? "RE-CHECK"
                       : detailsModel.download_preflight_status.length > 0 ? "TRY AGAIN"
@@ -300,8 +305,10 @@ Dialog {
                 onClicked: detailsModel.inspect_download(dialog.reviewIndex)
             }
             Button {
+                objectName: "downloadConfirmButton"
                 width: 158
                 height: 40
+                visible: !detailsModel.download_preflight_terminal
                 text: settingsModel.download_entire_torrent && !dialog.selectiveOnly
                       ? "DOWNLOAD ALL" : "DOWNLOAD"
                 enabled: dialog.reviewIndex >= 0
