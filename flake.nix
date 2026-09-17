@@ -115,9 +115,13 @@
         # Iteration builds: identical frontend without the release test
         # suite. `nix run .#lunchbox-fast` launches in a fraction of the
         # time; the default package keeps full gates for CI and commits.
+        # The fast profile also drops release LTO/single-codegen (parallel
+        # codegen, no thin-LTO link) via pure env overrides.
         frontendFast = frontend.overrideAttrs (previous: {
           pname = "lunchbox-fast";
           doCheck = false;
+          CARGO_PROFILE_RELEASE_LTO = "false";
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "16";
         });
       in
       {
