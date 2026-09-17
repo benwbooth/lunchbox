@@ -7394,7 +7394,32 @@ pub fn prepare_with_cancellation(
             })
             .collect();
         ensure!(matches.len() <= 1, "Ambiguous Gopher64 saved setup");
-        if let Some(setup) = matches.first() {
+        // First launches synthesize a launch-scoped setup from the ROM,
+        // config, probe, and players instead of failing for a missing
+        // hand-written JSON entry.
+        let discovered;
+        let setup = match matches.first() {
+            Some(setup) => setup,
+            None => {
+                let profile = crate::controller_catalog::catalog()
+                    .emulator_profiles
+                    .iter()
+                    .find(|profile| {
+                        profile.id
+                            == crate::controller_gopher64_native::PROFILE_ID
+                    })
+                    .context("Missing native Gopher64 profile")?;
+                let ids = crate::controller_guided_native::player_ids(
+                    settings, profile, &inventory,
+                )?;
+                discovered =
+                    crate::controller_gopher64_native::guided::discover(
+                        option, plan, &ids, cancel,
+                    )?;
+                &discovered
+            }
+        };
+        {
             let native = crate::controller_gopher64_native::native_command::prepare(
                 setup,
                 &mapping.calibrations,
@@ -11433,6 +11458,80 @@ fn attach_config(
 
 #[cfg(test)]
 mod tests {
+    /// Live Gopher64 Flatpak launch preparation on the developer's desk:
+    /// needs Linux, the wired Xbox pad (linux:045e:028e:usb), the Gopher64
+    /// Flatpak, and the Mario ROM from the bug report. Run explicitly with
+    /// `cargo test -- --ignored`. Spawns nothing; the session guard
+    /// restores the live config on drop.
+    #[test]
+    #[ignore = "needs local Gopher64 Flatpak, controller hardware, and game ROM"]
+    fn live_gopher64_flatpak_prepare_restores_live_config() {
+        std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(|| {
+                use crate::emulator::{
+                    EmulatorExecutable, EmulatorRuntimeKind, LaunchPlan, RomEmulatorOption,
+                };
+                use std::sync::atomic::AtomicBool;
+                let flatpak = ["/usr/bin/flatpak", "/run/current-system/sw/bin/flatpak"]
+                    .into_iter()
+                    .map(std::path::PathBuf::from)
+                    .find(|path| path.is_file())
+                    .expect("live Gopher64 prepare needs a host flatpak CLI");
+                for path in [
+                    "/mnt/roms/Nintendo 64/Super Mario 64 (USA).zip",
+                ] {
+                    if !std::path::Path::new(path).is_file() {
+                        println!("SKIPPED live Gopher64 prepare: missing {path}");
+                        return;
+                    }
+                }
+                let settings = crate::settings::SettingsStore::open_default()
+                    .unwrap()
+                    .load()
+                    .unwrap();
+                let option = RomEmulatorOption::standalone(
+                    "eda098b4-a4bc-525e-a178-4ec760cb7f06".into(),
+                    "Gopher64".into(),
+                    EmulatorExecutable::Flatpak {
+                        command: flatpak.clone(),
+                        app_id: "io.github.gopher64.gopher64".into(),
+                    },
+                );
+                let mut plan = LaunchPlan {
+                    emulator_name: "Gopher64".into(),
+                    program: flatpak,
+                    arguments: vec![
+                        "run".into(),
+                        "io.github.gopher64.gopher64".into(),
+                        "/mnt/roms/Nintendo 64/Super Mario 64 (USA).zip".into(),
+                    ],
+                    current_directory: "/tmp".into(),
+                    environment: Vec::new(),
+                    cleanup_paths: Vec::new(),
+                    retroarch_content: None,
+                };
+                let _ = EmulatorRuntimeKind::Standalone;
+                let session = super::prepare_with_cancellation(
+                    &settings,
+                    "Nintendo 64",
+                    &option,
+                    &mut plan,
+                    &AtomicBool::new(false),
+                )
+                .expect("live Gopher64 prepare");
+                assert!(session.is_some(), "expected a calibrated session");
+                assert!(
+                    plan.arguments.iter().any(|arg| arg
+                        .to_string_lossy()
+                        .starts_with("--filesystem=")),
+                    "Flatpak session must mount its config and ROM roots"
+                );
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
     use super::*;
     use crate::controller_catalog::InputBinding;
 

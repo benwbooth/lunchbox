@@ -1481,7 +1481,7 @@ fn arcade_sources(
     Ok(choices)
 }
 
-fn player_ids(
+pub(crate) fn player_ids(
     settings: &AppSettings,
     profile: &EmulatorProfile,
     inventory: &[ControllerDevice],

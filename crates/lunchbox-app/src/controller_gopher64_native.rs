@@ -136,7 +136,22 @@ impl MappedInput {
     }
 }
 
-fn profile_json(mapped: &BTreeMap<String, MappedInput>) -> Result<serde_json::Value> {
+fn check_range(value: MappedInput) -> Result<()> {
+    match value {
+        MappedInput::Button(id) => {
+            ensure!(id < 26, "Gopher64 SDL gamepad button is out of range")
+        }
+        MappedInput::Axis { index, .. } => {
+            ensure!(index < 6, "Gopher64 SDL gamepad axis is out of range")
+        }
+    }
+    Ok(())
+}
+
+fn profile_json(
+    mapped: &BTreeMap<String, MappedInput>,
+    secondary: &BTreeMap<String, MappedInput>,
+) -> Result<serde_json::Value> {
     ensure!(
         mapped.len() == CONTROLS.len(),
         "Gopher64 needs every N64 gameplay control"
@@ -157,15 +172,22 @@ fn profile_json(mapped: &BTreeMap<String, MappedInput>) -> Result<serde_json::Va
             used.insert(value),
             "Gopher64 cannot assign one SDL output to multiple N64 controls"
         );
-        match value {
-            MappedInput::Button(id) => {
-                ensure!(id < 26, "Gopher64 SDL gamepad button is out of range")
-            }
-            MappedInput::Axis { index, .. } => {
-                ensure!(index < 6, "Gopher64 SDL gamepad axis is out of range")
-            }
-        }
+        check_range(value)?;
         inputs[index] = serde_json::json!([value.json(), null]);
+    }
+    // Twin inputs (N64 Z on twin-trigger pads) share their target through
+    // the profile's second slot instead of displacing the primary binding.
+    for (control, value) in secondary {
+        let (_, index) = CONTROLS
+            .iter()
+            .find(|(target, _)| target == control)
+            .context("Gopher64 twin target is outside the N64 contract")?;
+        ensure!(
+            mapped.contains_key(control.as_str()),
+            "Gopher64 twin needs its bound primary control"
+        );
+        check_range(*value)?;
+        inputs[*index] = serde_json::json!([mapped[control].json(), value.json()]);
     }
     let axis = |name: &str| match mapped.get(name) {
         Some(MappedInput::Axis { index, positive }) => Ok((*index, *positive)),
@@ -251,8 +273,270 @@ fn patched_config(
     serde_json::to_vec_pretty(&root).context("Serializing private Gopher64 config")
 }
 
-pub(crate) mod settings {
-    use super::*;
+/// Launch-time Gopher64 setup discovery. First launches work without a
+/// hand-written JSON setup: the ROM, config baseline, probe, SDL runtime,
+/// and executable trust are all resolved from the launch itself, following
+/// the mgba guided-discovery precedent. Nothing here persists; the setup
+/// lives only for the launch.
+pub(crate) mod guided {
+    use super::settings::SavedSetup;
+    use crate::{
+        controller_native_process::{cancelled, capture},
+        emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption},
+        platform_process,
+    };
+    use anyhow::{Context, Result, ensure};
+    use std::{
+        path::{Path, PathBuf},
+        process::Command,
+        sync::atomic::AtomicBool,
+    };
+
+    /// Probe helper: explicit override for integration tests, else the
+    /// sibling controller-probe binary beside the Lunchbox executable.
+    pub(crate) fn helper() -> Result<PathBuf> {
+        if let Some(path) = std::env::var_os("LUNCHBOX_CONTROLLER_PROBE") {
+            let path = PathBuf::from(path);
+            ensure!(
+                path.is_file(),
+                "LUNCHBOX_CONTROLLER_PROBE does not name a file"
+            );
+            return Ok(path);
+        }
+        let path = std::env::current_exe()?
+            .parent()
+            .context("Missing Lunchbox application directory")?
+            .join(if cfg!(windows) {
+                "lunchbox-controller-probe.exe"
+            } else {
+                "lunchbox-controller-probe"
+            });
+        ensure!(
+            path.is_file(),
+            "This Lunchbox installation is missing lunchbox-controller-probe; install the full package"
+        );
+        Ok(path)
+    }
+
+    pub(crate) fn flatpak_info(command: &Path, app_id: &str, flag: &str) -> Result<String> {
+        let (output, _) = capture(
+            Command::new(command).args(["info", flag, app_id]),
+            &AtomicBool::new(false),
+        )?;
+        Ok(String::from_utf8(output)
+            .context("Gopher64 Flatpak info was not UTF-8")?
+            .trim()
+            .to_owned())
+    }
+
+    /// Trust anchor: content hash for native builds, Flatpak commit for
+    /// sandboxed apps. Both are 64 lowercase hex characters.
+    pub(crate) fn executable_trust(
+        option: &RomEmulatorOption,
+        cancel: &AtomicBool,
+    ) -> Result<String> {
+        match &option.executable {
+            EmulatorExecutable::Native(program) => {
+                Ok(lunchbox_controller_probe::file_hash(program)?)
+            }
+            EmulatorExecutable::Flatpak { command, app_id } => {
+                let _ = cancel;
+                let commit = flatpak_info(command, app_id, "--show-commit")?;
+                ensure!(
+                    commit.len() == 64
+                        && commit.bytes().all(|byte| byte.is_ascii_hexdigit()),
+                    "Gopher64 Flatpak commit is not a trusted SHA-256"
+                );
+                Ok(commit)
+            }
+            EmulatorExecutable::Wine { .. } => {
+                anyhow::bail!("Gopher64 calibrated launch needs a native or Flatpak build, not Wine")
+            }
+        }
+    }
+
+    /// SDL3 library the emulator process will load, so the host probe
+    /// enumerates devices through the identical runtime.
+    pub(crate) fn sdl_library(
+        option: &RomEmulatorOption,
+        cancel: &AtomicBool,
+    ) -> Result<(PathBuf, PathBuf)> {
+        match &option.executable {
+            EmulatorExecutable::Native(program) => {
+                let directory = program
+                    .parent()
+                    .context("Missing Gopher64 executable directory")?;
+                let names = ["SDL3.dll", "libSDL3.dylib", "libSDL3.so.0"];
+                let mut candidates: Vec<_> = [
+                    directory.to_path_buf(),
+                    directory.join("../lib"),
+                    directory.join("../Frameworks"),
+                ]
+                .into_iter()
+                .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
+                .filter(|path| path.is_file())
+                .collect();
+                for relative in [
+                    "../Frameworks/SDL3.framework/SDL3",
+                    "../Frameworks/SDL3.framework/Versions/A/SDL3",
+                ] {
+                    let framework = directory.join(relative);
+                    if framework.is_file() {
+                        candidates.push(framework);
+                    }
+                }
+                #[cfg(target_os = "linux")]
+                if candidates.is_empty() {
+                    let (out, _) = capture(
+                        platform_process::host_command("ldd").arg(program),
+                        cancel,
+                    )?;
+                    let out = std::str::from_utf8(&out).context("ldd output was not UTF-8")?;
+                    for line in out.lines().filter(|line| line.contains("libSDL3.so")) {
+                        if let Some(path) = line.split_whitespace().find(|s| s.starts_with('/')) {
+                            candidates.push(path.into());
+                        }
+                    }
+                }
+                let library = candidates
+                    .into_iter()
+                    .find(|path| path.is_file())
+                    .context("Could not locate the SDL3 library used by Gopher64")?;
+                let dir = library.parent().unwrap_or(Path::new(".")).to_path_buf();
+                Ok((library, dir))
+            }
+            EmulatorExecutable::Flatpak { command, app_id } => {
+                let runtime = flatpak_info(command, app_id, "--show-runtime")?;
+                let root =
+                    PathBuf::from(flatpak_info(command, &runtime, "--show-location")?).join("files");
+                let mut dirs = vec![root.join("lib")];
+                if let Ok(entries) = std::fs::read_dir(root.join("lib")) {
+                    dirs.extend(
+                        entries
+                            .filter_map(Result::ok)
+                            .map(|entry| entry.path())
+                            .filter(|path| path.is_dir()),
+                    );
+                }
+                let library = dirs
+                    .iter()
+                    .map(|dir| dir.join("libSDL3.so.0"))
+                    .find(|path| path.is_file())
+                    .context("Gopher64's Flatpak SDL3 library could not be located")?;
+                let dir = library.parent().unwrap_or(Path::new(".")).to_path_buf();
+                Ok((library, dir))
+            }
+            EmulatorExecutable::Wine { .. } => {
+                anyhow::bail!("Gopher64 calibrated launch needs a native or Flatpak build, not Wine")
+            }
+        }
+    }
+
+    /// Live user config backing the private session. Flatpak forces
+    /// XDG_CONFIG_HOME inside the sandbox (verified), so the session patches
+    /// the real per-app config with backup/restore instead of a private dir.
+    pub(crate) fn config_base(option: &RomEmulatorOption) -> Result<PathBuf> {
+        let dirs = directories::BaseDirs::new().context("Missing user directories")?;
+        match &option.executable {
+            EmulatorExecutable::Native(_) => {
+                Ok(dirs.config_dir().join("gopher64/config.json"))
+            }
+            EmulatorExecutable::Flatpak { app_id, .. } => {
+                ensure!(
+                    !app_id.is_empty()
+                        && !app_id.contains('/')
+                        && !app_id.contains(".."),
+                    "Gopher64 Flatpak app identity is not a plain app id"
+                );
+                Ok(dirs
+                    .home_dir()
+                    .join(".var/app")
+                    .join(app_id)
+                    .join("config/gopher64/config.json"))
+            }
+            EmulatorExecutable::Wine { .. } => {
+                anyhow::bail!("Gopher64 calibrated launch needs a native or Flatpak build, not Wine")
+            }
+        }
+    }
+
+    /// The single ROM argument, skipping launcher wrappers and flags.
+    /// Anything else is a guess about which file to play: fail instead.
+    pub(crate) fn content_argument(
+        plan: &LaunchPlan,
+        option: &RomEmulatorOption,
+    ) -> Result<PathBuf> {
+        let args: Vec<&std::ffi::OsString> = match &option.executable {
+            EmulatorExecutable::Native(_) => {
+                ensure!(
+                    plan.arguments.len() == 1,
+                    "Gopher64 native launch needs exactly the game argument"
+                );
+                plan.arguments.iter().collect()
+            }
+            EmulatorExecutable::Flatpak { app_id, .. } => {
+                let files: Vec<&std::ffi::OsString> = plan
+                    .arguments
+                    .iter()
+                    .filter(|arg| {
+                        *arg != "run"
+                            && !arg.to_string_lossy().starts_with("--")
+                            && arg.to_string_lossy() != *app_id
+                    })
+                    .collect();
+                ensure!(
+                    files.len() == 1,
+                    "Gopher64 Flatpak launch needs exactly one game argument"
+                );
+                files
+            }
+            EmulatorExecutable::Wine { .. } => {
+                anyhow::bail!("Gopher64 calibrated launch needs a native or Flatpak build, not Wine")
+            }
+        };
+        let content = PathBuf::from(args[0]);
+        ensure!(
+            content.is_absolute() && content.is_file(),
+            "Gopher64 needs the selected ROM's absolute file path"
+        );
+        Ok(content)
+    }
+
+    pub(crate) fn discover(
+        option: &RomEmulatorOption,
+        plan: &LaunchPlan,
+        ids: &[String],
+        cancel: &AtomicBool,
+    ) -> Result<SavedSetup> {
+        cancelled(cancel)?;
+        ensure!(
+            !ids.is_empty() && ids.len() <= 4,
+            "Gopher64 supports one to four controller ports; assign players in Controller setup"
+        );
+        let content = content_argument(plan, option)?;
+        let setup = SavedSetup {
+            emulator_id: option.emulator_id.clone(),
+            content,
+            config_path: config_base(option)?,
+            probe_program: helper()?,
+            sdl_library: sdl_library(option, cancel)?.0,
+            executable_sha256: executable_trust(option, cancel)?,
+            players: ids
+                .iter()
+                .enumerate()
+                .map(|(index, id)| super::settings::Player {
+                    player: (index + 1) as u8,
+                    controller_id: id.clone(),
+                })
+                .collect(),
+        };
+        setup.validate()?;
+        cancelled(cancel)?;
+        Ok(setup)
+    }
+}
+
+pub(crate) mod settings {    use super::*;
     use crate::controller_catalog::{Calibration, catalog};
 
     #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -399,12 +683,27 @@ pub(crate) mod session {
         paths: &[String],
         cancel: &AtomicBool,
     ) -> Result<Snapshot> {
-        let mut command = Command::new(&setup.probe_program);
+        // Load the emulator's own SDL and its runtime dependencies, not
+        // Lunchbox's potentially different SDL version (ares precedent).
+        let mut command = crate::platform_process::host_command("env");
+        #[cfg(target_os = "linux")]
+        if let Some(dir) = setup.sdl_library.parent() {
+            command.arg(format!("LD_LIBRARY_PATH={}", dir.display()));
+        }
+        command.arg(&setup.probe_program);
         command
             .arg("--sdl-library")
             .arg(&setup.sdl_library)
             .arg("--hint")
             .arg("SDL_JOYSTICK_LINUX_CLASSIC=1");
+        if cfg!(target_os = "linux")
+            && let Some(dir) = setup.sdl_library.parent()
+            && dir.join("libudev.so.1").is_file()
+        {
+            command
+                .arg("--runtime-library")
+                .arg(dir.join("libudev.so.1"));
+        }
         for path in paths {
             command.arg("--bindings-for-path").arg(path);
         }
@@ -474,8 +773,9 @@ pub(crate) mod session {
             .iter()
             .find(|profile| profile.id == PROFILE_ID)
             .context("Missing native Gopher64 profile")?;
+        let rows = calibration.plan_profile(profile)?.rows;
         let mut mapped = BTreeMap::new();
-        for row in calibration.plan_profile(profile)?.rows {
+        for row in &rows {
             let binding = row
                 .input
                 .as_ref()
@@ -489,28 +789,23 @@ pub(crate) mod session {
                 pressed: axis.pressed,
             });
             let raw = physical.digital_input(native.code, endpoints)?;
-            let translated = if row.target_id.starts_with("stick_") {
-                let lunchbox_controller_probe::duckstation::DigitalInput::Axis {
+            // Proportional axes (sticks, analog triggers) resolve through
+            // the analog path; buttons and hats through the digital path.
+            let translated = match &raw {
+                lunchbox_controller_probe::duckstation::DigitalInput::Axis {
                     index,
                     released,
                     pressed,
-                } = raw
-                else {
-                    anyhow::bail!(
-                        "Gopher64 analog-stick directions require proportional physical axes"
-                    );
-                };
-                crate::controller_pcsx2::physical::analog(
+                } => crate::controller_pcsx2::physical::analog(
                     gamepad,
                     true,
                     lunchbox_controller_probe::duckstation::AnalogInput {
-                        index,
-                        released,
-                        extent: pressed,
+                        index: *index,
+                        released: *released,
+                        extent: *pressed,
                     },
-                )?
-            } else {
-                crate::controller_pcsx2::physical::digital(gamepad, true, raw)?
+                )?,
+                _ => crate::controller_pcsx2::physical::digital(gamepad, true, raw)?,
             };
             ensure!(
                 CONTROLS
@@ -520,12 +815,57 @@ pub(crate) mod session {
             );
             ensure!(
                 mapped
-                    .insert(row.target_id, MappedInput::from_sdl(translated)?)
+                    .insert(row.target_id.clone(), MappedInput::from_sdl(translated)?)
                     .is_none(),
                 "Gopher64 target appears twice"
             );
         }
-        profile_json(&mapped)
+        let mut secondary = BTreeMap::new();
+        for twin in crate::controller_ares::twin_routes(calibration, profile, &rows) {
+            let twin_binding = calibration
+                .bindings
+                .get(&twin.physical_id)
+                .context("Gopher64 twin input disappeared")?;
+            let twin_native = twin_binding
+                .native
+                .as_ref()
+                .context("Gopher64 twin needs a measured native control")?;
+            let twin_endpoints =
+                twin_binding
+                    .axis
+                    .as_ref()
+                    .map(|axis| AxisEndpoints {
+                        released: axis.released,
+                        pressed: axis.pressed,
+                    });
+            let twin_raw = physical.digital_input(twin_native.code, twin_endpoints)?;
+            let twin_translated = match &twin_raw {
+                lunchbox_controller_probe::duckstation::DigitalInput::Axis {
+                    index,
+                    released,
+                    pressed,
+                } => crate::controller_pcsx2::physical::analog(
+                    gamepad,
+                    true,
+                    lunchbox_controller_probe::duckstation::AnalogInput {
+                        index: *index,
+                        released: *released,
+                        extent: *pressed,
+                    },
+                )?,
+                _ => crate::controller_pcsx2::physical::digital(gamepad, true, twin_raw)?,
+            };
+            ensure!(
+                secondary
+                    .insert(
+                        twin.target_id,
+                        MappedInput::from_sdl(twin_translated)?
+                    )
+                    .is_none(),
+                "Gopher64 twin target appears twice"
+            );
+        }
+        profile_json(&mapped, &secondary)
     }
 
     fn copy_companion(source_dir: &Path, target_dir: &Path, name: &str) -> Result<Option<PathBuf>> {
@@ -544,8 +884,101 @@ pub(crate) mod session {
         Ok(Some(target))
     }
 
+    /// Backup/restore guard for the live Flatpak config. Flatpak forces
+    /// XDG_CONFIG_HOME inside the sandbox (verified: --env is ignored), so a
+    /// private config dir can never reach the app. The session instead swaps
+    /// the live config file aside, runs with the patched file in place, and
+    /// restores on drop. The backup always refreshes from the live file at
+    /// prepare time, so no edit path can lose user data; a lock file refuses
+    /// concurrent sessions, treating dead PIDs as stale.
+    struct LiveConfigGuard {
+        live: PathBuf,
+        backup: PathBuf,
+        lock: PathBuf,
+    }
+
+    impl LiveConfigGuard {
+        fn lock_path(live: &Path) -> PathBuf {
+            live.parent()
+                .unwrap_or(Path::new("."))
+                .join(".lunchbox-gopher64-session.lock")
+        }
+
+        fn backup_path(live: &Path) -> PathBuf {
+            let mut backup = live.as_os_str().to_owned();
+            backup.push(".lunchbox-backup");
+            PathBuf::from(backup)
+        }
+
+        fn acquire(live: &Path) -> Result<Self> {
+            let lock = Self::lock_path(live);
+            if let Ok(contents) = std::fs::read_to_string(&lock) {
+                let mut parts = contents.split_whitespace();
+                let pid = parts.next().and_then(|pid| pid.parse::<u32>().ok());
+                let exe = parts.next().map(PathBuf::from).unwrap_or_default();
+                let alive = match (pid, exe.as_os_str().is_empty()) {
+                    (Some(pid), false) => {
+                        crate::controller_native_platform::child_exe_matches(pid, &exe)
+                            .unwrap_or(true)
+                    }
+                    _ => false,
+                };
+                ensure!(
+                    !alive,
+                    "Another Lunchbox Gopher64 session is active; refusing to swap its live config (lock {})",
+                    lock.display()
+                );
+            }
+            let me = format!(
+                "{} {}",
+                std::process::id(),
+                std::env::current_exe()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_default()
+            );
+            if let Some(parent) = lock.parent() {
+                std::fs::create_dir_all(parent).context("Preparing the Gopher64 session lock")?;
+            }
+            std::fs::write(&lock, me).context("Recording the Gopher64 session lock")?;
+            let backup = Self::backup_path(live);
+            if live.is_file() {
+                std::fs::copy(live, &backup).context("Backing up the live Gopher64 config")?;
+            } else if backup.is_file() {
+                std::fs::remove_file(&backup).ok();
+            }
+            Ok(Self {
+                live: live.to_path_buf(),
+                backup,
+                lock,
+            })
+        }
+    }
+
+    impl Drop for LiveConfigGuard {
+        fn drop(&mut self) {
+            if self.backup.is_file() {
+                let _ = std::fs::copy(&self.backup, &self.live);
+                let _ = std::fs::remove_file(&self.backup);
+            } else {
+                let _ = std::fs::remove_file(&self.live);
+            }
+            let _ = std::fs::remove_file(&self.lock);
+        }
+    }
+
+    fn sessions_dir() -> Result<PathBuf> {
+        // Home-backed storage is visible to both Lunchbox and an emulator
+        // Flatpak; /tmp is private in each sandbox and cannot stage handoffs.
+        let sessions = directories::BaseDirs::new()
+            .context("Missing application data directory")?
+            .data_local_dir()
+            .join("lunchbox/controller-sessions");
+        std::fs::create_dir_all(&sessions)?;
+        Ok(sessions)
+    }
+
     pub(crate) struct PreparedSession {
-        directory: tempfile::TempDir,
+        directory: Option<tempfile::TempDir>,
         pub(crate) config_home: PathBuf,
         runtime_paths: Vec<String>,
         #[cfg(target_os = "linux")]
@@ -553,6 +986,7 @@ pub(crate) mod session {
         snapshot: Snapshot,
         setup: settings::SavedSetup,
         hashes: BTreeMap<PathBuf, String>,
+        live_guard: Option<LiveConfigGuard>,
     }
 
     impl PreparedSession {
@@ -560,6 +994,7 @@ pub(crate) mod session {
             setup: &settings::SavedSetup,
             calibrations: &HashMap<String, Calibration>,
             inventory: &[ControllerDevice],
+            flatpak_app_id: Option<&str>,
             cancel: &AtomicBool,
         ) -> Result<Self> {
             cancelled(cancel)?;
@@ -629,15 +1064,53 @@ pub(crate) mod session {
                     )?,
                 ));
             }
-            let baseline = std::fs::read(&setup.config_path)
-                .context("Reading the declared Gopher64 config.json")?;
-            let directory = tempfile::Builder::new()
-                .prefix("lunchbox-gopher64-")
-                .tempdir()?;
-            let config_home = directory.path().join("config-home");
-            let target_dir = config_home.join("gopher64");
+            let baseline = match std::fs::read(&setup.config_path) {
+                Ok(bytes) => bytes,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    // First runs have no user config yet. The patched file
+                    // carries the complete validated input subtree, which
+                    // Gopher64 explicitly accepts as a fallback shape.
+                    b"{}".to_vec()
+                }
+                Err(error) => {
+                    return Err(error).context("Reading the declared Gopher64 config.json");
+                }
+            };
+            // Flatpak forces XDG_CONFIG_HOME inside the sandbox (verified),
+            // so the session patches the live per-app config with
+            // backup/restore instead of an invisible private dir. Native
+            // builds keep an auto-cleaned tempdir session.
+            let (directory, config_home, live_guard) = match flatpak_app_id {
+                Some(_) => {
+                    let live = &setup.config_path;
+                    let guard = LiveConfigGuard::acquire(live)?;
+                    (
+                        None,
+                        live.parent()
+                            .context("Gopher64 config path has no parent")?
+                            .to_path_buf(),
+                        Some(guard),
+                    )
+                }
+                None => {
+                    let directory: tempfile::TempDir = tempfile::Builder::new()
+                        .prefix("lunchbox-gopher64-")
+                        .tempdir()?;
+                    let config_home = directory.path().join("config-home");
+                    (Some(directory), config_home, None)
+                }
+            };
+            // Flatpak sessions patch the declared live file in place (the
+            // sandbox mounts this exact path); native sessions stage a
+            // private copy under the tempdir config home.
+            let (target_dir, private_config) = match flatpak_app_id {
+                Some(_) => (config_home.clone(), setup.config_path.clone()),
+                None => {
+                    let staged = config_home.join("gopher64");
+                    (staged.clone(), staged.join("config.json"))
+                }
+            };
             std::fs::create_dir_all(&target_dir)?;
-            let private_config = target_dir.join("config.json");
             std::fs::write(&private_config, patched_config(&baseline, &profiles)?)?;
             let source_dir = setup
                 .config_path
@@ -645,6 +1118,11 @@ pub(crate) mod session {
                 .context("Gopher64 config path has no parent")?;
             let mut companions = Vec::new();
             for name in ["cheats.json", "retroachievements.json"] {
+                // Flatpak sessions already live in place; copying a file
+                // onto itself only risks permission noise.
+                if source_dir == target_dir {
+                    break;
+                }
                 if let Some(path) = copy_companion(source_dir, &target_dir, name)? {
                     companions.push(path);
                 }
@@ -672,6 +1150,7 @@ pub(crate) mod session {
                 snapshot,
                 setup: setup.clone(),
                 hashes,
+                live_guard,
             };
             session.verify(cancel)?;
             Ok(session)
@@ -681,10 +1160,12 @@ pub(crate) mod session {
             cancelled(cancel)?;
             #[cfg(target_os = "linux")]
             self.topology.verify()?;
-            ensure!(
-                self.directory.path().is_dir(),
-                "Gopher64 session disappeared"
-            );
+            if let Some(directory) = &self.directory {
+                ensure!(
+                    directory.path().is_dir(),
+                    "Gopher64 session disappeared"
+                );
+            }
             for (path, expected) in &self.hashes {
                 ensure!(
                     file_hash(path)? == *expected,
@@ -751,6 +1232,7 @@ pub(crate) mod native_command {
     pub(crate) struct NativeSession {
         pub(crate) inputs: session::PreparedSession,
         executable: PathBuf,
+        flatpak_app_id: Option<String>,
         setup: settings::SavedSetup,
         pub(crate) plan: LaunchPlan,
     }
@@ -762,10 +1244,19 @@ pub(crate) mod native_command {
 
         pub(crate) fn verify(&self, cancel: &AtomicBool) -> Result<()> {
             cancelled(cancel)?;
-            ensure!(
-                file_hash(&self.executable)? == self.setup.executable_sha256,
-                "Gopher64 executable differs from the saved trusted runtime"
-            );
+            match &self.flatpak_app_id {
+                None => ensure!(
+                    file_hash(&self.executable)? == self.setup.executable_sha256,
+                    "Gopher64 executable differs from the saved trusted runtime"
+                ),
+                Some(app_id) => {
+                    let commit = super::guided::flatpak_info(&self.executable, app_id, "--show-commit")?;
+                    ensure!(
+                        commit == self.setup.executable_sha256,
+                        "Gopher64 Flatpak runtime changed; review the controller setup again"
+                    );
+                }
+            }
             self.inputs.verify(cancel)
         }
 
@@ -793,45 +1284,94 @@ pub(crate) mod native_command {
     ) -> Result<NativeSession> {
         cancelled(cancel)?;
         setup.validate()?;
-        let EmulatorExecutable::Native(executable) = &option.executable else {
-            anyhow::bail!("Gopher64 calibrated launch requires a native build, not Wine/Flatpak");
-        };
         ensure!(
             setup.emulator_id == option.emulator_id && original.environment.is_empty(),
             "Gopher64 identity differs or custom environment needs resolution"
         );
-        let executable = executable.canonicalize()?;
+        let (executable, flatpak_app_id) = match &option.executable {
+            EmulatorExecutable::Native(program) => {
+                let executable = program.canonicalize()?;
+                ensure!(
+                    executable == original.program.canonicalize()?,
+                    "Gopher64 launch executable differs from selection"
+                );
+                ensure!(
+                    !executable
+                        .parent()
+                        .context("Gopher64 executable has no parent")?
+                        .join("portable.txt")
+                        .exists(),
+                    "Gopher64 portable mode overrides XDG_CONFIG_HOME and is not safely supported"
+                );
+                ensure!(
+                    file_hash(&executable)? == setup.executable_sha256,
+                    "Gopher64 executable differs from the saved trusted runtime"
+                );
+                (executable, None)
+            }
+            EmulatorExecutable::Flatpak { command, app_id } => {
+                let commit = super::guided::flatpak_info(command, app_id, "--show-commit")?;
+                ensure!(
+                    commit == setup.executable_sha256,
+                    "Gopher64 Flatpak runtime changed; review the controller setup again"
+                );
+                (command.clone(), Some(app_id.clone()))
+            }
+            EmulatorExecutable::Wine { .. } => {
+                anyhow::bail!("Gopher64 calibrated launch needs a native or Flatpak build, not Wine")
+            }
+        };
+        let content = super::guided::content_argument(original, option)?;
         ensure!(
-            executable == original.program.canonicalize()?,
-            "Gopher64 launch executable differs from selection"
-        );
-        ensure!(
-            original.arguments.len() == 1 && original.arguments[0] == setup.content.as_os_str(),
+            content == setup.content,
             "Gopher64 calibrated launch currently requires exactly the saved game argument"
         );
-        ensure!(
-            !executable
-                .parent()
-                .context("Gopher64 executable has no parent")?
-                .join("portable.txt")
-                .exists(),
-            "Gopher64 portable mode overrides XDG_CONFIG_HOME and is not safely supported"
-        );
-        ensure!(
-            file_hash(&executable)? == setup.executable_sha256,
-            "Gopher64 executable differs from the saved trusted runtime"
-        );
-        let inputs = session::PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
+        let inputs = session::PreparedSession::prepare(
+            setup,
+            calibrations,
+            inventory,
+            flatpak_app_id.as_deref(),
+            cancel,
+        )?;
         let mut plan = original.clone();
-        plan.environment.push((
-            "XDG_CONFIG_HOME".into(),
-            inputs.config_home.as_os_str().to_owned(),
-        ));
-        plan.environment
-            .push(("SDL_JOYSTICK_LINUX_CLASSIC".into(), "1".into()));
+        if let Some(app_id) = &flatpak_app_id {
+            // The sandbox sees neither /tmp sessions nor the ROM library by
+            // default: bind the live config home plus the ROM directory
+            // read-only, and repeat the probe's SDL backend hint. XDG paths
+            // inside resolve identically because mounts keep host paths.
+            let position = plan
+                .arguments
+                .iter()
+                .position(|arg| arg == app_id.as_str())
+                .context("Missing Gopher64 Flatpak app argument")?;
+            let rom_parent = setup
+                .content
+                .parent()
+                .context("Gopher64 game argument has no parent directory")?;
+            ensure!(
+                rom_parent != Path::new("/"),
+                "Gopher64 Flatpak launch refuses to expose the filesystem root"
+            );
+            plan.arguments.splice(
+                position..position,
+                [
+                    format!("--filesystem={}", inputs.config_home.display()).into(),
+                    format!("--filesystem={}:ro", rom_parent.display()).into(),
+                    "--env=SDL_JOYSTICK_LINUX_CLASSIC=1".into(),
+                ],
+            );
+        } else {
+            plan.environment.push((
+                "XDG_CONFIG_HOME".into(),
+                inputs.config_home.as_os_str().to_owned(),
+            ));
+            plan.environment
+                .push(("SDL_JOYSTICK_LINUX_CLASSIC".into(), "1".into()));
+        }
         let session = NativeSession {
             inputs,
             executable,
+            flatpak_app_id,
             setup: setup.clone(),
             plan,
         };
@@ -843,6 +1383,10 @@ pub(crate) mod native_command {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn empty_secondary() -> BTreeMap<String, MappedInput> {
+        BTreeMap::new()
+    }
 
     fn complete_profile() -> BTreeMap<String, MappedInput> {
         CONTROLS
@@ -875,7 +1419,7 @@ mod tests {
 
     #[test]
     fn renders_pinned_profile_order_and_axis_schema() {
-        let profile = profile_json(&complete_profile()).unwrap();
+        let profile = profile_json(&complete_profile(), &empty_secondary()).unwrap();
         serde_json::from_value::<Gopher64InputProfile>(profile.clone()).unwrap();
         let inputs = profile["inputs"].as_array().unwrap();
         assert_eq!(inputs.len(), 19);
@@ -888,8 +1432,79 @@ mod tests {
     }
 
     #[test]
+    fn twin_trigger_occupies_the_profile_second_slot() {
+        let mut secondary = BTreeMap::new();
+        secondary.insert("z".into(), MappedInput::Button(9));
+        let profile = profile_json(&complete_profile(), &secondary).unwrap();
+        let inputs = profile["inputs"].as_array().unwrap();
+        assert_eq!(inputs[5][0]["ControllerButton"]["id"], 7);
+        assert_eq!(inputs[5][1]["ControllerButton"]["id"], 9);
+        assert!(inputs[18][0].is_null() && inputs[18][1].is_null());
+        serde_json::from_value::<Gopher64InputProfile>(profile).unwrap();
+
+        let mut orphan = BTreeMap::new();
+        orphan.insert("not_n64".into(), MappedInput::Button(0));
+        assert!(profile_json(&complete_profile(), &orphan).is_err());
+    }
+
+    #[test]
+    fn discover_extracts_exact_rom_arguments_without_guessing() {
+        use crate::emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption};
+        fn launch_plan(arguments: Vec<&str>) -> LaunchPlan {
+            LaunchPlan {
+                emulator_name: "Gopher64".into(),
+                program: "/usr/bin/flatpak".into(),
+                arguments: arguments.into_iter().map(Into::into).collect(),
+                current_directory: "/tmp".into(),
+                environment: Vec::new(),
+                cleanup_paths: Vec::new(),
+                retroarch_content: None,
+            }
+        }
+        fn option() -> RomEmulatorOption {
+            RomEmulatorOption::standalone(
+                "gopher64".into(),
+                "Gopher64".into(),
+                EmulatorExecutable::Flatpak {
+                    command: "/usr/bin/flatpak".into(),
+                    app_id: "io.github.gopher64.gopher64".into(),
+                },
+            )
+        }
+        let rom = std::path::PathBuf::from("/games/mario.n64");
+        let plan = launch_plan(vec![
+            "run",
+            "--filesystem=/home/u/.var/app/x",
+            "--env=A=1",
+            "io.github.gopher64.gopher64",
+            rom.to_str().unwrap(),
+        ]);
+        // Path must exist for discovery; missing files fail closed.
+        assert!(guided::content_argument(&plan, &option()).is_err());
+        let _ = rom;
+        let existing = std::env::current_exe().unwrap();
+        let plan = launch_plan(vec![
+            "run",
+            "io.github.gopher64.gopher64",
+            existing.to_str().unwrap(),
+        ]);
+        assert_eq!(
+            guided::content_argument(&plan, &option()).unwrap(),
+            existing
+        );
+        // Two game files is ambiguous, never a guess.
+        let plan = launch_plan(vec![
+            "run",
+            "io.github.gopher64.gopher64",
+            existing.to_str().unwrap(),
+            existing.to_str().unwrap(),
+        ]);
+        assert!(guided::content_argument(&plan, &option()).is_err());
+    }
+
+    #[test]
     fn private_patch_preserves_unowned_config_and_transfer_pak() {
-        let mut custom = profile_json(&complete_profile()).unwrap();
+        let mut custom = profile_json(&complete_profile(), &empty_secondary()).unwrap();
         custom["future"] = serde_json::json!(1);
         let baseline = serde_json::to_vec(&serde_json::json!({
           "input":{"input_profiles":{"custom":custom},
@@ -904,7 +1519,7 @@ mod tests {
         let players = vec![(
             1,
             "/dev/input/js0".into(),
-            profile_json(&complete_profile()).unwrap(),
+            profile_json(&complete_profile(), &empty_secondary()).unwrap(),
         )];
         let value: serde_json::Value =
             serde_json::from_slice(&patched_config(&baseline, &players).unwrap()).unwrap();
@@ -925,7 +1540,7 @@ mod tests {
     fn rejects_duplicate_or_mismatched_stick_outputs() {
         let mut duplicate = complete_profile();
         duplicate.insert("b".into(), duplicate["a"]);
-        assert!(profile_json(&duplicate).is_err());
+        assert!(profile_json(&duplicate, &empty_secondary()).is_err());
         let mut mismatched = complete_profile();
         mismatched.insert(
             "stick_right".into(),
@@ -934,7 +1549,7 @@ mod tests {
                 positive: true,
             },
         );
-        assert!(profile_json(&mismatched).is_err());
+        assert!(profile_json(&mismatched, &empty_secondary()).is_err());
     }
 
     #[test]
@@ -942,11 +1557,11 @@ mod tests {
         let mut unknown = complete_profile();
         unknown.remove("a");
         unknown.insert("not_n64".into(), MappedInput::Button(0));
-        assert!(profile_json(&unknown).is_err());
+        assert!(profile_json(&unknown, &empty_secondary()).is_err());
 
         let mut button = complete_profile();
         button.insert("a".into(), MappedInput::Button(26));
-        assert!(profile_json(&button).is_err());
+        assert!(profile_json(&button, &empty_secondary()).is_err());
 
         let mut axis = complete_profile();
         axis.insert(
@@ -956,7 +1571,7 @@ mod tests {
                 positive: false,
             },
         );
-        assert!(profile_json(&axis).is_err());
+        assert!(profile_json(&axis, &empty_secondary()).is_err());
     }
 
     #[test]

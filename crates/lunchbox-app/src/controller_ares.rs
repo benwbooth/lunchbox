@@ -358,9 +358,12 @@ pub fn twin_routes(
     if profile.target_layout != "n64" {
         return Vec::new();
     }
+    // Twins share the N64 Z target identity, not any one profile's output
+    // vocabulary: ares calls it R-Trigger while other writers key the same
+    // target id directly.
     let Some(primary) = rows
         .iter()
-        .find(|row| row.output == "R-Trigger" && row.input.is_some())
+        .find(|row| row.target_id == "z" && row.input.is_some())
     else {
         return Vec::new();
     };
