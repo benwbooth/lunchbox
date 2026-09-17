@@ -23,6 +23,25 @@ Rectangle {
     required property int firmwareMissingCount
     required property string firmwareSetupLabel
     required property var emulatorLabelAt
+    required property var emulatorOptionKindAt
+    required property var emulatorOptionStarredAt
+    readonly property var standaloneIndices: {
+        const out = []
+        for (let i = 0; i < emulatorOptionCount; ++i)
+            if (emulatorOptionKindAt(i) === "standalone") out.push(i)
+        return out
+    }
+    readonly property var retroarchIndices: {
+        const out = []
+        for (let i = 0; i < emulatorOptionCount; ++i)
+            if (emulatorOptionKindAt(i) === "retroarch") out.push(i)
+        return out
+    }
+    readonly property bool hasStarredOption: {
+        for (let i = 0; i < emulatorOptionCount; ++i)
+            if (emulatorOptionStarredAt(i)) return true
+        return false
+    }
     required property color ink
     required property color muted
     required property color line
@@ -130,20 +149,29 @@ Rectangle {
                 font.weight: Font.Bold
                 font.letterSpacing: 0.8
             }
+            Text {
+                visible: standaloneIndices.length > 0 && retroarchIndices.length > 0
+                text: "STANDALONE"
+                color: hero.muted
+                font.pixelSize: 8
+                font.weight: Font.Bold
+                font.letterSpacing: 0.8
+            }
             ComboBox {
                 id: emulatorPicker
                 width: parent.width
                 height: 40
-                model: hero.emulatorOptionCount
-                currentIndex: hero.selectedEmulatorOption
+                visible: standaloneIndices.length > 0
+                model: standaloneIndices.length
+                currentIndex: standaloneIndices.indexOf(hero.selectedEmulatorOption)
                 displayText: currentIndex >= 0
-                             ? hero.emulatorLabelAt(currentIndex)
+                             ? hero.emulatorLabelAt(standaloneIndices[currentIndex])
                              : "Choose an emulator"
-                onActivated: function(index) { hero.emulatorSelected(index) }
+                onActivated: function(index) { hero.emulatorSelected(standaloneIndices[index]) }
                 delegate: ItemDelegate {
                     required property int index
                     width: emulatorPicker.width
-                    text: hero.emulatorLabelAt(index)
+                    text: hero.emulatorLabelAt(standaloneIndices[index])
                     font.pixelSize: 10
                     highlighted: emulatorPicker.highlightedIndex === index
                 }
@@ -163,7 +191,59 @@ Rectangle {
                     border.width: 2
                     border.color: "#43a876"
                 }
-                Accessible.name: "Select emulator"
+                Accessible.name: "Select standalone emulator"
+            }
+            Text {
+                visible: retroarchIndices.length > 0
+                text: "RETROARCH CORES"
+                color: hero.muted
+                font.pixelSize: 8
+                font.weight: Font.Bold
+                font.letterSpacing: 0.8
+            }
+            ComboBox {
+                id: corePicker
+                width: parent.width
+                height: 40
+                visible: retroarchIndices.length > 0
+                model: retroarchIndices.length
+                currentIndex: retroarchIndices.indexOf(hero.selectedEmulatorOption)
+                displayText: currentIndex >= 0
+                             ? hero.emulatorLabelAt(retroarchIndices[currentIndex])
+                             : "Choose a RetroArch core"
+                onActivated: function(index) { hero.emulatorSelected(retroarchIndices[index]) }
+                delegate: ItemDelegate {
+                    required property int index
+                    width: corePicker.width
+                    text: hero.emulatorLabelAt(retroarchIndices[index])
+                    font.pixelSize: 10
+                    highlighted: corePicker.highlightedIndex === index
+                }
+                contentItem: Text {
+                    leftPadding: 11
+                    rightPadding: 30
+                    text: corePicker.displayText
+                    color: hero.ink
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+                background: Rectangle {
+                    radius: 8
+                    color: "#0d211a"
+                    border.width: 2
+                    border.color: "#43a876"
+                }
+                Accessible.name: "Select RetroArch core"
+            }
+            Text {
+                visible: hero.hasStarredOption
+                width: parent.width
+                text: "★ Recommended · emulator order: Emulation General Wiki (CC BY-SA)"
+                color: hero.muted
+                font.pixelSize: 8
+                wrapMode: Text.WordWrap
             }
             Text {
                 width: parent.width

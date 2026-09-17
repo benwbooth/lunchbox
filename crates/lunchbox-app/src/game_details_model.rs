@@ -568,6 +568,12 @@ pub mod qobject {
 
         #[qinvokable]
         fn emulator_option_label_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn emulator_option_kind_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn emulator_option_starred_at(self: &GameDetailsModel, index: i32) -> bool;
     }
 
     impl cxx_qt::Threading for GameDetailsModel {}
@@ -6586,6 +6592,21 @@ impl qobject::GameDetailsModel {
             .and_then(|index| self.rust().rom_emulator_options.get(index))
             .map(|option| qstring(option.label()))
             .unwrap_or_default()
+    }
+
+    pub fn emulator_option_kind_at(&self, index: i32) -> QString {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().rom_emulator_options.get(index))
+            .map(|option| qstring(option.runtime_kind.key()))
+            .unwrap_or_default()
+    }
+
+    pub fn emulator_option_starred_at(&self, index: i32) -> bool {
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.rust().rom_emulator_options.get(index))
+            .is_some_and(|option| option.wiki_starred())
     }
 
     fn bundle(&self, index: i32) -> Option<&MinervaBundle> {

@@ -16,6 +16,7 @@ const SCHEMA: &str = include_str!("../../../schema/001_initial.sql");
 const MIGRATION_3: &str = include_str!("../../../schema/003_local_collection.sql");
 const MIGRATION_4: &str = include_str!("../../../schema/004_emulator_install_sources.sql");
 const MIGRATION_5: &str = include_str!("../../../schema/005_firmware_rules.sql");
+const MIGRATION_6: &str = include_str!("../../../schema/006_wiki_recommendations.sql");
 const PROVIDER_REGISTRY_JSON: &str = include_str!("../../../sources/metadata-providers.json");
 
 #[derive(Debug, Deserialize)]
@@ -119,6 +120,9 @@ fn migrate_connection(connection: &Connection) -> Result<()> {
             connection
                 .execute_batch(MIGRATION_5)
                 .context("applying schema migration 5")?;
+            connection
+                .execute_batch(MIGRATION_6)
+                .context("applying schema migration 6")?;
         }
         3 => {
             connection
@@ -127,11 +131,22 @@ fn migrate_connection(connection: &Connection) -> Result<()> {
             connection
                 .execute_batch(MIGRATION_5)
                 .context("applying schema migration 5")?;
+            connection
+                .execute_batch(MIGRATION_6)
+                .context("applying schema migration 6")?;
         }
-        4 => connection
-            .execute_batch(MIGRATION_5)
-            .context("applying schema migration 5")?,
-        5 => {}
+        4 => {
+            connection
+                .execute_batch(MIGRATION_5)
+                .context("applying schema migration 5")?;
+            connection
+                .execute_batch(MIGRATION_6)
+                .context("applying schema migration 6")?;
+        }
+        5 => connection
+            .execute_batch(MIGRATION_6)
+            .context("applying schema migration 6")?,
+        6 => {}
         0..=1 => bail!(
             "database schema version {current_version} is too old for an in-place migration; rebuild it from declared inputs"
         ),
@@ -226,6 +241,7 @@ pub fn build(
         "PRAGMA journal_mode = OFF;\nPRAGMA synchronous = OFF;\nPRAGMA locking_mode = EXCLUSIVE;\nPRAGMA cache_size = -1048576;",
     )?;
     initialize_connection(&connection, timestamp)?;
+    migrate_connection(&connection)?;
     seed_providers(&connection)?;
 
     let emulator_import = emulators::import(&mut connection, emulator_source, timestamp)?;
@@ -443,6 +459,23 @@ mod tests {
             connection.query_row(
                 "SELECT count(*) FROM pragma_table_info('emulator_packages')
                  WHERE name IN ('host_system_slug','metadata_json')",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+            2
+        );
+        assert_eq!(
+            connection.query_row(
+                "SELECT count(*) FROM schema_migrations WHERE version=6",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+            1
+        );
+        assert_eq!(
+            connection.query_row(
+                "SELECT count(*) FROM pragma_table_info('emulator_platforms')
+                 WHERE name IN ('wiki_rank','wiki_verdict')",
                 [],
                 |row| row.get::<_, i64>(0),
             )?,

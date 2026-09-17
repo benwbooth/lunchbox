@@ -12167,6 +12167,12 @@ ApplicationWindow {
                         emulatorLabelAt: function(index) {
                             return gameDetails.emulator_option_label_at(index)
                         }
+                        emulatorOptionKindAt: function(index) {
+                            return gameDetails.emulator_option_kind_at(index)
+                        }
+                        emulatorOptionStarredAt: function(index) {
+                            return gameDetails.emulator_option_starred_at(index)
+                        }
                         ink: root.ink
                         muted: root.muted
                         line: root.line

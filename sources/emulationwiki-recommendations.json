@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "retrieved_at": "2026-09-17",
+  "license": "CC BY-SA (version as published on the wiki; attribution + share-alike). See DATA_LICENSES.md.",
+  "entries": [
+    {
+      "platform": "Nintendo 64",
+      "emulator": "Gopher64",
+      "core": "",
+      "rank": 1,
+      "verdict": "recommended",
+      "note": "Wiki overall pick; high accuracy; ships Windows, macOS, and Linux builds.",
+      "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
+    },
+    {
+      "platform": "Nintendo 64",
+      "emulator": "RMG",
+      "core": "",
+      "rank": 2,
+      "verdict": "recommended",
+      "note": "Wiki overall pick; bundled GLideN64/Angrylion/ParaLLEl video and mupen64plus-hle-rsp/CXD4/ParaLLEl RSP plugins.",
+      "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
+    },
+    {
+      "platform": "Nintendo 64",
+      "emulator": "ares",
+      "core": "",
+      "rank": 3,
+      "verdict": "recommended",
+      "note": "Curated as recommended: cited as the accuracy reference set and a 2026 top pick for no-plugin accuracy-focused setup; the wiki Talk page holds an open thread on its verdict.",
+      "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
+    },
+    {
+      "platform": "Nintendo 64",
+      "emulator": "Mupen64Plus-Next",
+      "core": "mupen64plus_next",
+      "rank": 4,
+      "verdict": "partial",
+      "note": "Core family is frontend/plugin-dependent per the wiki, which recommends RMG over bare Mupen64Plus builds.",
+      "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
+    }
+  ]
+}

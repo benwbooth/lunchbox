@@ -30,6 +30,12 @@ TestCase {
             emulatorLabelAt: function(index) {
                 return index === 0 ? "RetroArch · Mesen" : "Mesen"
             }
+            emulatorOptionKindAt: function(index) {
+                return index === 0 ? "retroarch" : "standalone"
+            }
+            emulatorOptionStarredAt: function(index) {
+                return index === 1
+            }
             ink: "#f4f7fb"
             muted: "#94a0b3"
             line: "#2b384b"
@@ -45,6 +51,16 @@ TestCase {
         compare(hero.emulatorOptionCount, 2)
         compare(hero.emulatorLabelAt(1), "Mesen")
         verify(hero.implicitHeight > 100)
+    }
+
+    function test_emulator_picker_splits_standalone_and_core_sections() {
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        compare(hero.standaloneIndices.length, 1)
+        compare(hero.standaloneIndices[0], 1)
+        compare(hero.retroarchIndices.length, 1)
+        compare(hero.retroarchIndices[0], 0)
+        verify(hero.hasStarredOption)
     }
 
     function test_non_local_game_hides_play_section() {

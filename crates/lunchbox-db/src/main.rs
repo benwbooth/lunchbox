@@ -10,6 +10,7 @@ mod libretro;
 mod local_collection;
 mod minerva;
 mod source;
+mod wiki;
 
 use std::path::PathBuf;
 
@@ -77,6 +78,15 @@ enum Command {
         database: PathBuf,
         #[arg(long)]
         catalog: PathBuf,
+        #[arg(long, default_value = "1970-01-01T00:00:00Z")]
+        import_timestamp: String,
+    },
+    /// Import a curated EmulationWiki recommendation ranking snapshot.
+    ImportWikiRanks {
+        #[arg(long)]
+        database: PathBuf,
+        #[arg(long)]
+        source: PathBuf,
         #[arg(long, default_value = "1970-01-01T00:00:00Z")]
         import_timestamp: String,
     },
@@ -205,6 +215,16 @@ fn main() -> Result<()> {
             let mut connection = database::open_existing(&database)?;
             database::seed_providers(&connection)?;
             let stats = minerva::import(&mut connection, &catalog, &import_timestamp)?;
+            println!("{}", serde_json::to_string_pretty(&stats)?);
+        }
+        Command::ImportWikiRanks {
+            database,
+            source,
+            import_timestamp,
+        } => {
+            let mut connection = database::open_existing(&database)?;
+            database::seed_providers(&connection)?;
+            let stats = wiki::import(&mut connection, &source, &import_timestamp)?;
             println!("{}", serde_json::to_string_pretty(&stats)?);
         }
         Command::ScanLocal {

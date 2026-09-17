@@ -80,8 +80,16 @@ struct EmulatorDefinition {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PlatformEmulatorDefinition {
     emulator: EmulatorDefinition,
-    cores: Vec<String>,
+    cores: Vec<CoreDefinition>,
     recommended: bool,
+    wiki_rank: Option<i32>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CoreDefinition {
+    name: String,
+    wiki_rank: Option<i32>,
+    wiki_recommended: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -146,6 +154,8 @@ pub struct RomEmulatorOption {
     pub executable: EmulatorExecutable,
     core_path: Option<PathBuf>,
     recommended: bool,
+    wiki_rank: Option<i32>,
+    wiki_recommended: bool,
 }
 
 impl RomEmulatorOption {
@@ -162,6 +172,8 @@ impl RomEmulatorOption {
             core_name: String::new(),
             core_path: None,
             recommended: false,
+            wiki_rank: None,
+            wiki_recommended: false,
         }
     }
     pub(crate) fn retroarch(
@@ -180,15 +192,26 @@ impl RomEmulatorOption {
             executable,
             core_path: Some(core_path),
             recommended,
+            wiki_rank: None,
+            wiki_recommended: false,
         }
     }
 
+    pub(crate) fn wiki_starred(&self) -> bool {
+        self.wiki_recommended
+    }
+
     pub fn label(&self) -> String {
-        match self.runtime_kind {
+        let base = match self.runtime_kind {
             EmulatorRuntimeKind::Standalone => self.emulator_name.clone(),
             EmulatorRuntimeKind::RetroArch => {
                 format!("RetroArch · {} ({})", self.emulator_name, self.core_name)
             }
+        };
+        if self.wiki_recommended {
+            format!("★ {base}")
+        } else {
+            base
         }
     }
 
@@ -946,6 +969,15 @@ pub fn inspect_rom_launch_availability(
             &managed_executables,
         ) && standalone_rom_profile_supported(&choice, platform, rom_path)
         {
+            let standalone = definition.cores.iter().find(|core| core.name.is_empty());
+            // Without a standalone-specific row, the emulator still sorts
+            // with its best core rank but earns no recommendation star.
+            let wiki_rank = standalone
+                .and_then(|core| core.wiki_rank)
+                .or(definition.wiki_rank);
+            let wiki_recommended = standalone
+                .map(|core| core.wiki_recommended)
+                .unwrap_or(false);
             options.push(RomEmulatorOption {
                 emulator_id: choice.id,
                 emulator_name: choice.name,
@@ -954,6 +986,8 @@ pub fn inspect_rom_launch_availability(
                 executable: choice.executable,
                 core_path: None,
                 recommended: definition.recommended,
+                wiki_rank,
+                wiki_recommended,
             });
         }
         // BizHawk's catalog core names describe native managed cores, not
@@ -963,40 +997,31 @@ pub fn inspect_rom_launch_availability(
             continue;
         }
         for core in &definition.cores {
+            if core.name.is_empty() {
+                continue;
+            }
             if is_arcade_family_platform(platform) && !is_arcade_archive(rom_path) {
                 continue;
             }
             if let Some((executable, core_path)) =
-                discover_retroarch_core(core, host, &path_entries, &flatpak_apps)
+                discover_retroarch_core(&core.name, host, &path_entries, &flatpak_apps)
             {
-                options.push(RomEmulatorOption::retroarch(
+                let mut option = RomEmulatorOption::retroarch(
                     definition.emulator.id.clone(),
                     definition.emulator.name.clone(),
-                    core,
+                    &core.name,
                     executable,
                     core_path,
                     definition.recommended,
-                ));
+                );
+                option.wiki_rank = core.wiki_rank;
+                option.wiki_recommended = core.wiki_recommended;
+                options.push(option);
             }
         }
     }
 
-    options.sort_by(|left, right| {
-        right
-            .recommended
-            .cmp(&left.recommended)
-            .then_with(|| {
-                left.runtime_kind
-                    .sort_key()
-                    .cmp(&right.runtime_kind.sort_key())
-            })
-            .then_with(|| {
-                left.emulator_name
-                    .to_ascii_lowercase()
-                    .cmp(&right.emulator_name.to_ascii_lowercase())
-            })
-            .then_with(|| left.core_name.cmp(&right.core_name))
-    });
+    sort_rom_emulator_options(&mut options);
     options.dedup_by(|left, right| {
         left.emulator_id == right.emulator_id
             && left.runtime_kind == right.runtime_kind
@@ -1495,7 +1520,7 @@ fn load_platform_emulator_definitions(
     }
     let connection = crate::catalog::open_read_only(database, "Lunchbox emulator catalog")?;
     let mut statement = connection.prepare(
-        "SELECT e.id, e.name, ep.core_name, ep.recommended
+        "SELECT e.id, e.name, ep.core_name, ep.recommended, ep.wiki_rank, ep.wiki_verdict
          FROM emulator_platforms ep
          JOIN emulators e ON e.id=ep.emulator_id
          JOIN platforms p ON p.id=ep.platform_id
@@ -1517,12 +1542,15 @@ fn load_platform_emulator_definitions(
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, bool>(3)?,
+                row.get::<_, Option<i32>>(4)?,
+                row.get::<_, Option<String>>(5)?,
             ))
         },
     )?;
     let mut definitions = BTreeMap::<String, PlatformEmulatorDefinition>::new();
     for row in rows {
-        let (id, name, core_names, recommended) = row?;
+        let (id, name, core_names, recommended, wiki_rank, wiki_verdict) = row?;
+        let wiki_recommended = wiki_verdict.as_deref() == Some("recommended");
         let definition =
             definitions
                 .entry(id.clone())
@@ -1534,24 +1562,74 @@ fn load_platform_emulator_definitions(
                     },
                     cores: Vec::new(),
                     recommended: false,
+                    wiki_rank: None,
                 });
         definition.recommended |= recommended;
-        definition.cores.extend(
-            core_names
-                .split(';')
-                .map(str::trim)
-                .filter(|core| !core.is_empty())
-                .map(canonical_retroarch_core_name)
-                .map(ToOwned::to_owned),
-        );
+        definition.wiki_rank = match (definition.wiki_rank, wiki_rank) {
+            (Some(current), Some(next)) => Some(current.min(next)),
+            (current, next) => current.or(next),
+        };
+        // An empty core name marks a standalone-capable row and rides along
+        // so the standalone option keeps its exact rank and verdict.
+        let mut pieces: Vec<String> = core_names
+            .split(';')
+            .map(str::trim)
+            .filter(|core| !core.is_empty())
+            .map(canonical_retroarch_core_name)
+            .map(ToOwned::to_owned)
+            .collect();
+        if pieces.is_empty() {
+            pieces.push(String::new());
+        }
+        for core in pieces {
+            if !definition
+                .cores
+                .iter()
+                .any(|existing| existing.name == core)
+            {
+                definition.cores.push(CoreDefinition {
+                    name: core,
+                    wiki_rank,
+                    wiki_recommended,
+                });
+            }
+        }
     }
 
     for definition in definitions.values_mut() {
-        definition.cores.sort();
-        definition.cores.dedup();
+        definition.cores.sort_by(|left, right| {
+            rank_sort_key(left.wiki_rank)
+                .cmp(&rank_sort_key(right.wiki_rank))
+                .then_with(|| left.name.cmp(&right.name))
+        });
         load_emulator_packages(&connection, host, &mut definition.emulator)?;
     }
     Ok(definitions.into_values().collect())
+}
+
+/// Wiki ranks sort ascending with unranked entries last; every other
+/// ordering key stays exactly as before on unranked platforms.
+fn rank_sort_key(rank: Option<i32>) -> (bool, i32) {
+    rank.map(|rank| (false, rank)).unwrap_or((true, 0))
+}
+
+fn sort_rom_emulator_options(options: &mut [RomEmulatorOption]) {
+    options.sort_by(|left, right| {
+        rank_sort_key(left.wiki_rank)
+            .cmp(&rank_sort_key(right.wiki_rank))
+            .then_with(|| right.recommended.cmp(&left.recommended))
+            .then_with(|| {
+                left.runtime_kind
+                    .sort_key()
+                    .cmp(&right.runtime_kind.sort_key())
+            })
+            .then_with(|| {
+                left.emulator_name
+                    .to_ascii_lowercase()
+                    .cmp(&right.emulator_name.to_ascii_lowercase())
+            })
+            .then_with(|| left.core_name.cmp(&right.core_name))
+    });
 }
 
 fn load_emulator_packages(
@@ -3429,6 +3507,8 @@ del *.rom
             executable: EmulatorExecutable::Native(PathBuf::from("/bin/emulator")),
             core_path: None,
             recommended: true,
+            wiki_rank: None,
+            wiki_recommended: false,
         };
 
         let augmented = build_rom_launch_plan_with_customization(
@@ -3698,7 +3778,8 @@ del *.rom
                  CREATE TABLE platforms(id TEXT PRIMARY KEY, normalized_name TEXT);
                  CREATE TABLE platform_aliases(platform_id TEXT, normalized_alias TEXT);
                  CREATE TABLE emulator_platforms(
-                   emulator_id TEXT, platform_id TEXT, core_name TEXT, recommended INTEGER
+                   emulator_id TEXT, platform_id TEXT, core_name TEXT, recommended INTEGER,
+                   wiki_rank INTEGER, wiki_verdict TEXT
                  );
                  INSERT INTO emulators VALUES('mesen-id','Mesen');
                  INSERT INTO emulator_host_systems VALUES('mesen-id','linux');
@@ -3707,7 +3788,7 @@ del *.rom
                  );
                  INSERT INTO platforms VALUES('nes-id','nintendo entertainment system');
                  INSERT INTO platform_aliases VALUES('nes-id','nes');
-                 INSERT INTO emulator_platforms VALUES('mesen-id','nes-id','mesen',1);",
+                 INSERT INTO emulator_platforms VALUES('mesen-id','nes-id','mesen',1,NULL,NULL);",
             )
             .unwrap();
         drop(connection);
@@ -3716,7 +3797,14 @@ del *.rom
             load_platform_emulator_definitions(&database, HostPlatform::Linux, "NES").unwrap();
         assert_eq!(definitions.len(), 1);
         assert_eq!(definitions[0].emulator.id, "mesen-id");
-        assert_eq!(definitions[0].cores, ["mesen"]);
+        assert_eq!(
+            definitions[0]
+                .cores
+                .iter()
+                .map(|core| core.name.as_str())
+                .collect::<Vec<_>>(),
+            ["mesen"]
+        );
         assert!(definitions[0].recommended);
         assert_eq!(
             definitions[0].emulator.packages["flatpak"],
@@ -3738,19 +3826,26 @@ del *.rom
              CREATE TABLE emulator_packages(emulator_id TEXT, host_system_slug TEXT, manager TEXT, package_id TEXT);
              CREATE TABLE platforms(id TEXT PRIMARY KEY, normalized_name TEXT);
              CREATE TABLE platform_aliases(platform_id TEXT, normalized_alias TEXT);
-             CREATE TABLE emulator_platforms(emulator_id TEXT, platform_id TEXT, core_name TEXT, recommended INTEGER);
+             CREATE TABLE emulator_platforms(emulator_id TEXT, platform_id TEXT, core_name TEXT, recommended INTEGER, wiki_rank INTEGER, wiki_verdict TEXT);
              INSERT INTO emulators VALUES('retroarch','RetroArch');
              INSERT INTO emulator_host_systems VALUES('retroarch','linux');
              INSERT INTO platforms VALUES('psx','sony-playstation');
-             INSERT INTO emulator_platforms VALUES('retroarch','psx',' beetle_psx ;mednafen_psx;;beetle_psx_hw ',1);
-             INSERT INTO emulator_platforms VALUES('retroarch','psx','mednafen_psx_hw',0);"
+             INSERT INTO emulator_platforms VALUES('retroarch','psx',' beetle_psx ;mednafen_psx;;beetle_psx_hw ',1,NULL,NULL);
+             INSERT INTO emulator_platforms VALUES('retroarch','psx','mednafen_psx_hw',0,NULL,NULL);"
         ).unwrap();
         drop(connection);
         let definitions =
             load_platform_emulator_definitions(&database, HostPlatform::Linux, "Sony PlayStation")
                 .unwrap();
         assert_eq!(definitions.len(), 1);
-        assert_eq!(definitions[0].cores, ["mednafen_psx", "mednafen_psx_hw"]);
+        assert_eq!(
+            definitions[0]
+                .cores
+                .iter()
+                .map(|core| core.name.as_str())
+                .collect::<Vec<_>>(),
+            ["mednafen_psx", "mednafen_psx_hw"]
+        );
         assert!(definitions[0].recommended);
     }
 
@@ -3800,6 +3895,48 @@ del *.rom
     }
 
     #[test]
+    fn wiki_ranks_order_options_before_legacy_keys() {
+        fn option(
+            name: &str,
+            kind: EmulatorRuntimeKind,
+            rank: Option<i32>,
+            starred: bool,
+        ) -> RomEmulatorOption {
+            RomEmulatorOption {
+                emulator_id: name.to_lowercase().into(),
+                emulator_name: name.into(),
+                runtime_kind: kind,
+                core_name: String::new(),
+                executable: EmulatorExecutable::Native(PathBuf::from("/bin/emu")),
+                core_path: None,
+                recommended: true,
+                wiki_rank: rank,
+                wiki_recommended: starred,
+            }
+        }
+        let mut options = vec![
+            option("Zeta", EmulatorRuntimeKind::Standalone, None, false),
+            option("Alpha", EmulatorRuntimeKind::Standalone, Some(2), true),
+            option("Beta", EmulatorRuntimeKind::Standalone, Some(1), true),
+            option(
+                "Core",
+                EmulatorRuntimeKind::RetroArch,
+                Some(3),
+                false,
+            ),
+        ];
+        sort_rom_emulator_options(&mut options);
+        let names: Vec<_> = options
+            .iter()
+            .map(|option| option.emulator_name.as_str())
+            .collect();
+        assert_eq!(names, ["Beta", "Alpha", "Core", "Zeta"]);
+        assert_eq!(options[0].label(), "★ Beta");
+        assert_eq!(options[1].label(), "★ Alpha");
+        assert_eq!(options[3].label(), "Zeta");
+    }
+
+    #[test]
     fn saved_beetle_preference_matches_only_its_canonical_runtime() {
         let mut option = RomEmulatorOption {
             emulator_id: "psx".into(),
@@ -3809,6 +3946,8 @@ del *.rom
             executable: EmulatorExecutable::Native(PathBuf::from("retroarch")),
             core_path: None,
             recommended: false,
+            wiki_rank: None,
+            wiki_recommended: false,
         };
         let mut preference = crate::settings::EmulatorPreference {
             emulator_id: "psx".into(),
@@ -3846,6 +3985,8 @@ del *.rom
             executable: EmulatorExecutable::Native(PathBuf::from("/usr/bin/retroarch")),
             core_path: Some(core.clone()),
             recommended: true,
+            wiki_rank: None,
+            wiki_recommended: false,
         };
 
         let plan = build_rom_launch_plan(&rom, "Nintendo Entertainment System", &option).unwrap();
@@ -3923,6 +4064,8 @@ del *.rom
             },
             core_path: None,
             recommended: true,
+            wiki_rank: None,
+            wiki_recommended: false,
         };
         let plan = build_rom_launch_plan(&rom, "Sony Playstation", &option).unwrap();
         assert_eq!(plan.program, Path::new("/usr/bin/flatpak"));
@@ -3960,6 +4103,8 @@ del *.rom
             },
             core_path: Some(core.clone()),
             recommended: true,
+            wiki_rank: None,
+            wiki_recommended: false,
         };
 
         let plan = build_rom_launch_plan(&rom, "Nintendo Entertainment System", &option).unwrap();
@@ -4009,6 +4154,8 @@ del *.rom
             executable: EmulatorExecutable::Native(PathBuf::from("/bin/emulator")),
             core_path: None,
             recommended: true,
+            wiki_rank: None,
+            wiki_recommended: false,
         };
 
         let plan = build_rom_launch_plan(&playlist, "Sony PlayStation", &option).unwrap();
@@ -4065,6 +4212,8 @@ del *.rom
             },
             core_path: Some(base.as_path().join("mednafen_psx_hw_libretro.so")),
             recommended: true,
+            wiki_rank: None,
+            wiki_recommended: false,
         };
 
         let plan = build_rom_launch_plan(&playlist, "Sony PlayStation", &option).unwrap();
@@ -4094,6 +4243,8 @@ del *.rom
             },
             core_path: None,
             recommended: true,
+            wiki_rank: None,
+            wiki_recommended: false,
         };
 
         let plan = build_rom_launch_plan(&rom, "Arcade Laserdisc", &option).unwrap();
@@ -4140,6 +4291,8 @@ del *.rom
             executable: EmulatorExecutable::Native(support.join("hypseus")),
             core_path: None,
             recommended: true,
+            wiki_rank: None,
+            wiki_recommended: false,
         };
 
         let plan = build_rom_launch_plan(&framefile, "Arcade Laserdisc", &option).unwrap();
@@ -4180,6 +4333,8 @@ del *.rom
             executable: EmulatorExecutable::Native(PathBuf::from("/usr/bin/supermodel")),
             core_path: None,
             recommended: true,
+            wiki_rank: None,
+            wiki_recommended: false,
         };
 
         let plan = build_rom_launch_plan(&rom, "Arcade", &option).unwrap();
@@ -4199,6 +4354,8 @@ del *.rom
             executable: EmulatorExecutable::Native(PathBuf::from("/usr/bin/teknoparrot")),
             core_path: None,
             recommended: true,
+            wiki_rank: None,
+            wiki_recommended: false,
         };
 
         let error = build_rom_launch_plan(&rom, "Arcade", &option).unwrap_err();

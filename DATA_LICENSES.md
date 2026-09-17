@@ -15,6 +15,15 @@ Any redistributed database containing Libretro-derived records must retain attri
 the pinned revision, link the license, indicate that Lunchbox normalized the data, and be shared
 under terms compatible with CC BY-SA 4.0.
 
+- **EmulationWiki recommendation order** — per-system emulator comparison tables published under
+  Creative Commons Attribution Share Alike (version as published on the wiki; "Content is available
+  under Creative Commons Attribution Share Alike unless otherwise noted"). Lunchbox imports only a
+  bounded, hand-curated ranking snapshot (`sources/emulationwiki-recommendations.json`, one entry
+  per supported emulator with the source page URL and retrieval date); each import records a
+  `source_snapshots` row, and the app credits the wiki wherever rankings are displayed. Curated
+  ranks and verdicts are Lunchbox's reading of the tables, not a copy of their prose. Upstream
+  project: <https://emulation.gametechwiki.com/>.
+
 ## Approved for future redistributable use, but not imported
 
 - **Wikidata structured data** — made available under CC0 1.0. Lunchbox may import a bounded,

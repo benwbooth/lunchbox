@@ -131,6 +131,16 @@
       "redistribution_policy": "runtime_only",
       "role": "acquisition_offers",
       "decision": "Treat torrent and package records as acquisition offers, never canonical game identity."
+    },
+    {
+      "slug": "emulationwiki",
+      "name": "Emulation General Wiki",
+      "homepage": "https://emulation.gametechwiki.com/",
+      "terms_url": "https://emulation.gametechwiki.com/index.php/Main_Page",
+      "data_license": "CC BY-SA (version as published; attribution + share-alike)",
+      "redistribution_policy": "allowed",
+      "role": "emulator_recommendations",
+      "decision": "Import only the hand-curated per-system recommendation ranking snapshot; record source_snapshots rows and credit the wiki wherever rankings display."
     }
   ]
 }
