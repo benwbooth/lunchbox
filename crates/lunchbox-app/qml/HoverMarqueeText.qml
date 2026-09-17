@@ -8,15 +8,19 @@ Item {
     property bool hovered: false
     property int pauseDuration: 650
     property real pixelsPerSecond: 35
+    // Native-rendered bold glyph ink can overshoot the layout box by a
+    // pixel top and bottom; at exactly implicitHeight with clip enabled
+    // that reads as cut-off caps and descenders. The +4 above is that air.
     readonly property real overflow: Math.max(0, label.implicitWidth - width)
     readonly property bool scrolling: hovered && visible && overflow > 1
     property real progress: 0
-    implicitHeight: label.implicitHeight
+    implicitHeight: label.implicitHeight + 4
     clip: true
 
     Text {
         id: label
         objectName: "marqueeText"
+        anchors.verticalCenter: parent.verticalCenter
         x: marquee.scrolling ? -marquee.overflow * marquee.progress : 0
         width: marquee.scrolling ? implicitWidth : marquee.width
         elide: marquee.scrolling ? Text.ElideNone : Text.ElideRight
