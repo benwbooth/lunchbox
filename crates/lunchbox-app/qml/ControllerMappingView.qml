@@ -21,9 +21,15 @@ ColumnLayout {
     // selectedIndex. -1 restores the normal all/selected rendering.
     property int hoveredIndex: -1
     onHoveredIndexChanged: connections.requestPaint()
+    // Raw twin routes ({target_id, physical_id, output}) from the preview
+    // payload: recorded inputs that share a target instead of owning a row.
+    property var twinRoutes: []
+    property int hoveredTwinIndex: -1
+    onHoveredTwinIndexChanged: connections.requestPaint()
+    onTwinRoutesChanged: { hoveredTwinIndex = -1; connections.requestPaint() }
     property string focusedSourceControl: ""
     readonly property var selected: rows.length && selectedIndex >= 0 ? rows[Math.min(selectedIndex, rows.length - 1)] : null
-    onRowsChanged: { focusedSourceControl = ""; selectedIndex = 0; hoveredIndex = -1; connections.requestPaint() }
+    onRowsChanged: { focusedSourceControl = ""; selectedIndex = 0; hoveredIndex = -1; hoveredTwinIndex = -1; connections.requestPaint() }
     onSelectedChanged: { focusedSourceControl = ""; connections.requestPaint() }
     onPhysicalGapsChanged: connections.requestPaint()
     onSourceLayoutChanged: { focusedSourceControl = ""; Qt.callLater(() => connections.requestPaint()) }
@@ -87,12 +93,15 @@ ColumnLayout {
         const BAD = "#e57474"
         const paint = (text, color) => "<font color=\"" + color + "\"><b>" + escTooltip(text) + "</b></font>"
         const matches = rows.filter(row => rowMatchesControl(row, side, control.id))
+        const twinMatches = secondaryRows.filter(row => side === 0
+            ? sourceOwner(row.physical_id) === sourceOwner(control.id)
+            : row.target_id === control.id)
         const owner = side === 0 ? sourceOwner(control.id) : control.id
         const repeat = side === 0 && owner !== control.id
             ? "<br><font color=\"" + DIM + "\">Hardware repeat of " + escTooltip(sourceLayout.controls.find(entry => entry.id === owner).label) + "; shares its input.</font>"
             : ""
         const plain = text => String(text).replace(/<[^>]*>/g, "")
-        if (!matches.length) {
+        if (!matches.length && !twinMatches.length) {
             const label = paint(control.label, side === 0 ? SOURCE : DEST)
             return { rich: label + "<br><font color=\"" + DIM + "\">No assignment in this view</font>" + repeat,
                      plain: plain(label) + "\nNo assignment in this view" }
@@ -106,12 +115,33 @@ ColumnLayout {
             if (gapReason(row)) line += " <font color=\"" + BAD + "\">· NEEDS CALIBRATION: " + escTooltip(gapReason(row)) + "</font>"
             return line
         })
-        const tail = matches.length > 1
+        const tail = matches.length + twinMatches.length > 1
             ? "<br><font color=\"" + DIM + "\">Click repeatedly to cycle through these assignments.</font>"
             : ""
-        const rich = lines.join("<br>") + tail + repeat
+        const twinLines = twinMatches.map(row => {
+            const from = paint(row.physical, SOURCE)
+            const to = paint(row.target, DEST)
+            let line = side === 0 ? from + " also drives " + to : to + " also driven by " + from
+            if (row.output) line += " <font color=\"" + DIM + "\">[emulator: " + escTooltip(row.output) + "]</font>"
+            return line + " <font color=\"" + DIM + "\">· shares one input</font>"
+        })
+        const rich = lines.concat(twinLines).join("<br>") + tail + repeat
         return { rich: rich, plain: plain(rich).replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">") }
     }
+    function layoutLabel(layout, id) {
+        const matches = layout ? layout.controls.filter(control => control.id === id) : []
+        return matches.length === 1 ? matches[0].label : id
+    }
+    // Display rows for twin inputs: same wire style family, dashed.
+    readonly property var secondaryRows: twinRoutes.map(twin => ({
+        target_id: twin.target_id,
+        physical_id: twin.physical_id,
+        physical: layoutLabel(sourceLayout, twin.physical_id),
+        target: layoutLabel(destinationLayout, twin.target_id),
+        output: twin.output || "",
+        reason: "Shares its input with another control",
+        twin: true
+    }))
     function targetLabel(row) {
         const names = []
         for (const route of nativeRoutes) {
@@ -244,6 +274,10 @@ ColumnLayout {
                             }
                             onClicked: { view.chooseControl(panel.index, modelData.id); view.controlActivated(panel.index, modelData.id) }
                             onHoveredChanged: {
+                                const twinAt = (id) => view.secondaryRows.findIndex(
+                                    s => panel.index === 0
+                                        ? view.sourceOwner(s.physical_id) === view.sourceOwner(id)
+                                        : s.target_id === id)
                                 if (!hovered) {
                                     // Clear only when the hover still belongs
                                     // to this control: a neighbor hotspot may
@@ -255,18 +289,28 @@ ColumnLayout {
                                         ? view.rows[view.hoveredIndex] : null
                                     if (current && view.rowMatchesControl(current, panel.index, modelData.id))
                                         view.hoveredIndex = -1
+                                    if (view.hoveredTwinIndex >= 0
+                                        && twinAt(modelData.id) === view.hoveredTwinIndex)
+                                        view.hoveredTwinIndex = -1
                                     return
                                 }
-                                view.hoveredIndex = view.rows.findIndex(
+                                const found = view.rows.findIndex(
                                     row => view.rowMatchesControl(row, panel.index, modelData.id))
+                                if (found >= 0) {
+                                    view.hoveredIndex = found
+                                    view.hoveredTwinIndex = -1
+                                    return
+                                }
+                                view.hoveredIndex = -1
+                                view.hoveredTwinIndex = twinAt(modelData.id)
                             }
                             ToolTip {
                                 visible: controlHotspot.hovered || controlHotspot.activeFocus
                                 text: view.controlTooltip(panel.index, controlHotspot.modelData).plain
                                 contentItem: Text {
-                                    // Constrain the popup so long mappings
-                                    // wrap inside it instead of overflowing.
-                                    width: Math.min(implicitWidth, 420)
+                                    // Fixed width: proportional measuring lets
+                                    // long mappings spill past the popup.
+                                    width: 380
                                     wrapMode: Text.Wrap
                                     text: view.controlTooltip(panel.index, controlHotspot.modelData).rich
                                     textFormat: Text.RichText
@@ -296,10 +340,11 @@ ColumnLayout {
                 // Flowchart routing: exit horizontally, share no vertical
                 // trunk (one lane per wire, ordered by midpoint), enter
                 // horizontally. Reads as a circuit, not a nest.
-                function traceWire(row, laneX, laneY) {
+                function traceWire(row, laneX, laneY, dashed) {
                     const ends = endpoints(row)
                     if (!ends) return
                     ctx.beginPath()
+                    ctx.setLineDash(dashed ? [5, 4] : [])
                     ctx.moveTo(ends.from.x, ends.from.y)
                     if (stage.stacked) {
                         ctx.lineTo(ends.from.x, laneY)
@@ -315,12 +360,13 @@ ColumnLayout {
                     ctx.beginPath(); ctx.arc(point.x, point.y, radius, 0, Math.PI * 2); ctx.fill()
                 }
                 const order = view.rows
-                    .map((row, index) => ({row: row, index: index}))
+                    .map((row, index) => ({row: row, twin: false, index: index}))
+                    .concat(view.secondaryRows.map((row, index) => ({row: row, twin: true, index: index})))
                     .filter(entry => endpoints(entry.row))
                     .sort((a, b) => {
                         const ay = (endpoints(a.row).from.y + endpoints(a.row).to.y) / 2
                         const by = (endpoints(b.row).from.y + endpoints(b.row).to.y) / 2
-                        return ay - by || a.index - b.index
+                        return ay - by || (a.twin - b.twin) || a.index - b.index
                     })
                 const leftPanel = diagrams.itemAt(0)
                 const rightPanel = diagrams.itemAt(1)
@@ -336,31 +382,37 @@ ColumnLayout {
                     }
                     return {entry: entry, lane: lane}
                 })
-                const focus = view.hoveredIndex >= 0 && view.hoveredIndex < view.rows.length
-                    ? view.hoveredIndex
-                    : (view.selectedIndex >= 0 && view.selectedIndex < view.rows.length
-                       ? view.selectedIndex : -1)
+                function isFocus(entry) {
+                    if (entry.twin)
+                        return entry.index === view.hoveredTwinIndex
+                    if (view.hoveredIndex >= 0 && view.hoveredIndex < view.rows.length)
+                        return entry.index === view.hoveredIndex
+                    return entry.index === view.selectedIndex
+                }
+                function focusColor(entry) {
+                    if (!entry.twin && view.gapReason(entry.row)) return "#e57474"
+                    return "#ffb454"
+                }
                 ctx.strokeStyle = "#5b6b7c"
                 ctx.globalAlpha = 0.45
                 ctx.lineWidth = 1.2
                 for (const item of lanes) {
-                    if (item.entry.index === focus) continue
-                    traceWire(item.entry.row, item.lane, item.lane)
+                    if (isFocus(item.entry)) continue
+                    traceWire(item.entry.row, item.lane, item.lane, item.entry.twin)
                     const ends = endpoints(item.entry.row)
                     if (ends) { ctx.fillStyle = ctx.strokeStyle; dotAt(ends.from, 3); dotAt(ends.to, 3) }
                 }
-                if (focus >= 0) {
-                    const item = lanes.find(item => item.entry.index === focus)
-                    if (item) {
-                        ctx.strokeStyle = view.gapReason(view.rows[focus]) ? "#e57474" : "#ffb454"
-                        ctx.globalAlpha = 1
-                        ctx.lineWidth = 3
-                        traceWire(item.entry.row, item.lane, item.lane)
-                        const ends = endpoints(item.entry.row)
-                        if (ends) { ctx.fillStyle = ctx.strokeStyle; dotAt(ends.from, 5); dotAt(ends.to, 5) }
-                    }
+                for (const item of lanes) {
+                    if (!isFocus(item.entry)) continue
+                    ctx.strokeStyle = focusColor(item.entry)
+                    ctx.globalAlpha = 1
+                    ctx.lineWidth = 3
+                    traceWire(item.entry.row, item.lane, item.lane, false)
+                    const ends = endpoints(item.entry.row)
+                    if (ends) { ctx.fillStyle = ctx.strokeStyle; dotAt(ends.from, 5); dotAt(ends.to, 5) }
                 }
                 ctx.globalAlpha = 1
+                ctx.setLineDash([])
             }
         }
     }
@@ -370,8 +422,10 @@ ColumnLayout {
         textFormat: Text.PlainText
         text: {
             const assigned = view.rows.filter(row => !!row.physical_id).length
+            const shared = view.secondaryRows.length
             return view.rows.length ? "Displayed assignments: " + assigned + "/" + view.rows.length
                 + " have a source · " + (view.rows.length - assigned) + " unmapped."
+                + (shared ? " " + shared + " shared input" + (shared === 1 ? "" : "s") + " drawn dashed." : "")
                 + " Hover a control to isolate its wire; click to pin it. This counts only this view, not whole-game coverage or runtime readiness."
                 : "No assignments in this view."
         }

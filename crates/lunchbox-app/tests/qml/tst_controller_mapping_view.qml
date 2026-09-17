@@ -93,6 +93,20 @@ TestCase {
         verify(flipped.rich.indexOf("driven by") >= 0)
     }
 
+    function test_twin_inputs_render_as_shared_wires() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        compare(host.mapping.secondaryRows.length, 0)
+        host.mapping.twinRoutes = [{target_id: "x", physical_id: "b2", output: "X..West"}]
+        compare(host.mapping.secondaryRows.length, 1)
+        compare(host.mapping.secondaryRows[0].physical, "b2")
+        compare(host.mapping.secondaryRows[0].target, "X")
+        const tip = host.mapping.controlTooltip(0, {id: "b2", label: "B2"})
+        verify(tip.rich.indexOf("also drives") >= 0)
+        verify(tip.rich.indexOf("shares one input") >= 0)
+        verify(tip.rich.indexOf("X..West") >= 0)
+    }
+
     function test_lane_helper_spreads_wires_across_the_channel() {
         const host = createTemporaryObject(hostComponent, testCase)
         verify(host)

@@ -21,7 +21,7 @@ ColumnLayout {
     property var calibration: ({})
     property string calibrationBaseline: "{}"
     property var choices: ({})
-    property var preview: ({rows: [], error: ""})
+    property var preview: ({rows: [], twins: [], error: ""})
     property string status: ""
     property bool dirty: false
     property bool initialized: false
@@ -408,7 +408,7 @@ ColumnLayout {
             currentIndex: setup.selectedPlayer; enabled: !setup.dirty
             onActivated: { setup.selectedPlayer = currentIndex; setup.selectDevice(setup.playerDevices[currentIndex]) }
         }
-        ControllerMappingView { id: mapping; Layout.fillWidth: true; settingsModel: setup.settingsModel; sourceLayout: setup.sourceLayout; destinationLayout: setup.targetLayout; rows: setup.preview.rows || []; simple: true }
+        ControllerMappingView { id: mapping; Layout.fillWidth: true; settingsModel: setup.settingsModel; sourceLayout: setup.sourceLayout; destinationLayout: setup.targetLayout; rows: setup.preview.rows || []; twinRoutes: setup.preview.twins || []; simple: true }
         Label {
             Layout.fillWidth: true; wrapMode: Text.WordWrap
             text: setup.preview.error || (setup.missing ? setup.missing + " required controls need an assignment." : "All required target controls have an assignment.")

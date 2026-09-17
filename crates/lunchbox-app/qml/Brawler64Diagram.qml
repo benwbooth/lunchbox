@@ -9,7 +9,7 @@ Item {
     readonly property real sy: height / 500
     implicitWidth: 900
     implicitHeight: 500
-    Rectangle { anchors.fill: parent; radius: 16; color: "#0e141b"; border.color: "#27333f" }
+    Rectangle { anchors.fill: parent; radius: 16; color: "transparent"; border.color: "#232f3a" }
 
     // Only vector paths are transformed. Text is laid out at its final UI size.
     Shape {

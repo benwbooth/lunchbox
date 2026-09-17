@@ -9794,8 +9794,18 @@ impl qobject::SettingsModel {
                 .target_mappings
                 .insert(profile.clone(), serde_json::from_str(&choices.to_string())?);
             let plan = calibration.plan(&profile)?;
+            // Recorded inputs that share a target (N64 twin Z) ride along
+            // for display; labels resolve from the layouts in QML.
+            let twins = crate::controller_catalog::catalog()
+                .emulator_profiles
+                .iter()
+                .find(|candidate| candidate.id == profile)
+                .map(|emulator| {
+                    crate::controller_ares::twin_routes(&calibration, emulator, &plan.rows)
+                })
+                .unwrap_or_default();
             Ok(
-                serde_json::json!({"rows":plan.rows,"error":"", "launch_ready":plan.automatic_launch_ready}),
+                serde_json::json!({"rows":plan.rows,"twins":twins,"error":"", "launch_ready":plan.automatic_launch_ready}),
             )
         })();
         qstring(match result {

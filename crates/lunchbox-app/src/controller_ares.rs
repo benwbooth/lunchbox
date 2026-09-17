@@ -4,6 +4,7 @@
 //! are deliberately distinct from gamepad enums and kernel evdev codes.
 use crate::controller_catalog::{Calibration, Catalog, EmulatorProfile, InputBinding};
 use anyhow::{Context, Result, ensure};
+use serde::Serialize;
 use lunchbox_controller_probe::{
     Device, Snapshot,
     bindings::{Input, Output},
@@ -339,6 +340,47 @@ pub fn player_bindings(
     Ok(result)
 }
 
+/// A recorded input that shares its target with another physical control
+/// instead of owning a plan row (N64 twin Z triggers). Device-free so both
+/// the launch writer and the mapping preview share one rule.
+#[derive(Debug, Clone, Serialize)]
+pub struct TwinRoute {
+    pub target_id: String,
+    pub physical_id: String,
+    pub output: String,
+}
+
+pub fn twin_routes(
+    calibration: &Calibration,
+    profile: &EmulatorProfile,
+    rows: &[crate::controller_catalog::MappingRow],
+) -> Vec<TwinRoute> {
+    if profile.target_layout != "n64" {
+        return Vec::new();
+    }
+    let Some(primary) = rows
+        .iter()
+        .find(|row| row.output == "R-Trigger" && row.input.is_some())
+    else {
+        return Vec::new();
+    };
+    ["z", "z_left", "z_right"]
+        .into_iter()
+        .filter(|secondary| {
+            Some(*secondary) != primary.physical_id.as_deref()
+                && !rows.iter().any(|row| {
+                    row.input.is_some() && row.physical_id.as_deref() == Some(*secondary)
+                })
+                && calibration.bindings.contains_key(*secondary)
+        })
+        .map(|secondary| TwinRoute {
+            target_id: primary.target_id.clone(),
+            physical_id: secondary.to_owned(),
+            output: primary.output.clone(),
+        })
+        .collect()
+}
+
 /// Nintendo 64 hardware exposes a single Z trigger while twin-trigger pads
 /// (Brawler64 Z plus Z right) record two distinct inputs. The plan binds one;
 /// an unassigned recorded twin is appended to the same R-Trigger list so
@@ -352,16 +394,8 @@ fn append_twin_z(
     profile: &EmulatorProfile,
     result: &mut BTreeMap<String, String>,
 ) -> Result<()> {
-    if profile.target_layout != "n64" || !result.contains_key("R-Trigger") {
-        return Ok(());
-    }
-    for secondary in ["z", "z_left", "z_right"] {
-        if rows.iter().any(|row| {
-            row.input.is_some() && row.physical_id.as_deref() == Some(secondary)
-        }) {
-            continue;
-        }
-        let Some(recorded) = calibration.bindings.get(secondary) else {
+    for twin in twin_routes(calibration, profile, rows) {
+        let Some(recorded) = calibration.bindings.get(twin.physical_id.as_str()) else {
             continue;
         };
         let (group, index, direction) = resolve(recorded)?;
@@ -372,9 +406,9 @@ fn append_twin_z(
         };
         let combined = format!(
             "{};{identity}/{group}/{index}{suffix}",
-            result["R-Trigger"]
+            result[twin.output.as_str()]
         );
-        result.insert("R-Trigger".into(), combined);
+        result.insert(twin.output, combined);
     }
     Ok(())
 }
@@ -698,6 +732,62 @@ mod tests {
             trigger.contains(';'),
             "twin binding uses the ';' list grammar, got {trigger}"
         );
+    }
+
+    #[test]
+    fn twin_routes_cover_an_unassigned_recorded_twin_only() {
+        use crate::controller_catalog::{Calibration, InputBinding, MappingRow};
+        fn input() -> InputBinding {
+            InputBinding {
+                code: 1,
+                kind: "button".into(),
+                direction: 0,
+                logical: "X".into(),
+                native: None,
+                axis: None,
+            }
+        }
+        fn row(target: &str, physical: Option<&str>, output: &str) -> MappingRow {
+            MappingRow {
+                target_id: target.into(),
+                target: target.into(),
+                physical_id: physical.map(str::to_owned),
+                physical: physical.unwrap_or_default().into(),
+                input: physical.map(|_| input()),
+                output: output.into(),
+                reason: String::new(),
+            }
+        }
+        fn calibration() -> Calibration {
+            Calibration {
+                target_mappings: Default::default(),
+                layout: "brawler64".into(),
+                os: std::env::consts::OS.into(),
+                backend: "gilrs-0.11".into(),
+                bindings: BTreeMap::from([
+                    ("z".into(), input()),
+                    ("z_right".into(), input()),
+                ]),
+            }
+        }
+        let n64 = profile("Nintendo 64").expect("ares n64 profile");
+        let rows = vec![row("z", Some("z"), "R-Trigger")];
+        let twins = twin_routes(&calibration(), n64, &rows);
+        assert_eq!(twins.len(), 1);
+        assert_eq!(twins[0].target_id, "z");
+        assert_eq!(twins[0].physical_id, "z_right");
+        assert_eq!(twins[0].output, "R-Trigger");
+
+        // An already-consumed twin stays out.
+        let rows = vec![
+            row("z", Some("z"), "R-Trigger"),
+            row("z2", Some("z_right"), "R-Trigger"),
+        ];
+        assert!(twin_routes(&calibration(), n64, &rows).is_empty());
+
+        // Other systems never twin.
+        let snes = profile("Super Nintendo Entertainment System").expect("ares snes profile");
+        assert!(twin_routes(&calibration(), snes, &rows).is_empty());
     }
 
     #[test]

@@ -2304,11 +2304,12 @@ pub fn svg(layout: &Layout, active: &str) -> String {
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 900 500\"><title>{}</title><defs>\
         <linearGradient id=\"bodyGrad\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#3d4d5e\"/><stop offset=\"0.55\" stop-color=\"#2c3947\"/><stop offset=\"1\" stop-color=\"#202b37\"/></linearGradient>\
+        <linearGradient id=\"edgeGrad\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#a9bccd\"/><stop offset=\"0.5\" stop-color=\"#71808d\"/><stop offset=\"1\" stop-color=\"#46545f\"/></linearGradient>\
         <radialGradient id=\"capGrad\" cx=\"0.38\" cy=\"0.32\" r=\"0.95\"><stop offset=\"0\" stop-color=\"#5b6e81\"/><stop offset=\"0.7\" stop-color=\"#3a4a59\"/><stop offset=\"1\" stop-color=\"#28333f\"/></radialGradient>\
         <radialGradient id=\"capHot\" cx=\"0.38\" cy=\"0.32\" r=\"0.95\"><stop offset=\"0\" stop-color=\"#ffd9a0\"/><stop offset=\"0.7\" stop-color=\"#ffb454\"/><stop offset=\"1\" stop-color=\"#d98f2e\"/></radialGradient>\
         <radialGradient id=\"amberGrad\" cx=\"0.38\" cy=\"0.32\" r=\"0.95\"><stop offset=\"0\" stop-color=\"#b28e42\"/><stop offset=\"0.7\" stop-color=\"#8a6d2f\"/><stop offset=\"1\" stop-color=\"#5f4a20\"/></radialGradient>\
         <radialGradient id=\"stickGrad\" cx=\"0.4\" cy=\"0.35\" r=\"0.9\"><stop offset=\"0\" stop-color=\"#66798b\"/><stop offset=\"0.75\" stop-color=\"#3c4c5c\"/><stop offset=\"1\" stop-color=\"#27313d\"/></radialGradient>\
-        </defs><rect width=\"900\" height=\"500\" rx=\"24\" fill=\"#0e141b\"/><path d=\"{outline}\" fill=\"url(#bodyGrad)\" stroke=\"#71808d\" stroke-width=\"3\"/>",
+        </defs><path d=\"{outline}\" fill=\"url(#bodyGrad)\" stroke=\"url(#edgeGrad)\" stroke-width=\"3\"/><path d=\"{outline}\" fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.10\" stroke-width=\"1\"/>",
         xml(&layout.name)
     );
     // Stick wells sit behind their direction caps; cluster by proximity so
