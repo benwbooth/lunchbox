@@ -16,9 +16,13 @@ ColumnLayout {
     property var physicalGaps: []
     signal controlActivated(int side, string controlId)
     property int selectedIndex: 0
+    // Hovered wire (list row or diagram hotspot). While set, the canvas
+    // isolates that single connection circuit-style; clicks pin it via
+    // selectedIndex. -1 restores the normal all/selected rendering.
+    property int hoveredIndex: -1
     property string focusedSourceControl: ""
     readonly property var selected: rows.length && selectedIndex >= 0 ? rows[Math.min(selectedIndex, rows.length - 1)] : null
-    onRowsChanged: { focusedSourceControl = ""; selectedIndex = 0; connections.requestPaint() }
+    onRowsChanged: { focusedSourceControl = ""; selectedIndex = 0; hoveredIndex = -1; connections.requestPaint() }
     onSelectedChanged: { focusedSourceControl = ""; connections.requestPaint() }
     onPhysicalGapsChanged: connections.requestPaint()
     onSourceLayoutChanged: { focusedSourceControl = ""; Qt.callLater(() => connections.requestPaint()) }
@@ -204,6 +208,14 @@ ColumnLayout {
                                 border.color: controlHotspot.activeFocus ? "#ffb454" : "#e57474"
                             }
                             onClicked: { view.chooseControl(panel.index, modelData.id); view.controlActivated(panel.index, modelData.id) }
+                            onHoveredChanged: {
+                                if (!hovered) {
+                                    if (view.hoveredIndex >= 0) view.hoveredIndex = -1
+                                    return
+                                }
+                                view.hoveredIndex = view.rows.findIndex(
+                                    row => view.rowMatchesControl(row, panel.index, modelData.id))
+                            }
                             ToolTip {
                                 visible: controlHotspot.hovered || controlHotspot.activeFocus
                                 text: view.controlTooltip(panel.index, controlHotspot.modelData)
@@ -248,10 +260,55 @@ ColumnLayout {
                     }
                     ctx.globalAlpha = 1
                 }
-                if (allConnections.checked) {
+                if (view.hoveredIndex >= 0 && view.hoveredIndex < view.rows.length) {
+                    drawConnection(view.rows[view.hoveredIndex], true)
+                } else if (allConnections.checked) {
                     for (const row of view.rows) drawConnection(row, false)
+                    drawConnection(view.selected, true)
+                } else {
+                    drawConnection(view.selected, true)
                 }
-                drawConnection(view.selected, true)
+            }
+        }
+    }
+    ListView {
+        id: wireList
+        objectName: "mappingWireList"
+        Layout.fillWidth: true
+        Layout.preferredHeight: Math.min(210, Math.max(64, count * 32))
+        clip: true
+        cacheBuffer: 10000
+        model: view.rows
+        currentIndex: view.selectedIndex
+        Accessible.role: Accessible.List
+        Accessible.name: "Mapping connections"
+        ScrollBar.vertical: ScrollBar {}
+        delegate: ItemDelegate {
+            id: wireRow
+            required property int index
+            required property var modelData
+            width: wireList.width
+            hoverEnabled: true
+            highlighted: view.selectedIndex === index
+            Accessible.name: modelData.physical + " to " + view.targetLabel(modelData)
+            onHoveredChanged: {
+                if (hovered) view.hoveredIndex = index
+                else if (view.hoveredIndex === index) view.hoveredIndex = -1
+            }
+            onClicked: view.selectedIndex = index
+            contentItem: Text {
+                text: wireRow.modelData.physical + " → " + view.targetLabel(wireRow.modelData)
+                    + (wireRow.modelData.physical_id ? "" : " · UNMAPPED")
+                    + (view.diagramGap(wireRow.modelData) ? " · DIAGRAM INCOMPLETE" : "")
+                    + (view.gapReason(wireRow.modelData) ? " · NEEDS CALIBRATION" : "")
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                color: wireRow.highlighted ? "#ffb454" : "#dfe7ee"
+                font.pixelSize: 12
+            }
+            background: Rectangle {
+                color: wireRow.highlighted ? "#233141" : wireRow.hovered ? "#1b2634" : "transparent"
+                radius: 6
             }
         }
     }
@@ -272,19 +329,9 @@ ColumnLayout {
             const assigned = view.rows.filter(row => !!row.physical_id).length
             return view.rows.length ? "Displayed assignments: " + assigned + "/" + view.rows.length
                 + " have a source · " + (view.rows.length - assigned) + " unmapped."
-                + " This counts only this view, not whole-game coverage or runtime readiness."
+                + " Hover a connection to isolate its wire; click to pin it. This counts only this view, not whole-game coverage or runtime readiness."
                 : "No assignments in this view."
         }
-    }
-    ComboBox {
-        Layout.fillWidth: true
-        model: view.rows.map(row => row.physical + " → " + view.targetLabel(row)
-            + (row.physical_id ? "" : " · UNMAPPED")
-            + (view.diagramGap(row) ? " · DIAGRAM INCOMPLETE" : "")
-            + (view.gapReason(row) ? " · NEEDS CALIBRATION" : ""))
-        currentIndex: view.rows.length ? view.selectedIndex : -1
-        onActivated: view.selectedIndex = currentIndex
-        Accessible.name: "Mapping connection to highlight"
     }
     Label {
         Layout.fillWidth: true

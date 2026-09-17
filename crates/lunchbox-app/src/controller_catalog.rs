@@ -2285,6 +2285,8 @@ fn xml(value: &str) -> String {
 }
 
 /// Original vector schematics, generated from the same IDs as calibration.
+/// Control coordinates are the calibration contract and never move here;
+/// only the presentation (depth, materials, consistent palette) lives below.
 pub fn svg(layout: &Layout, active: &str) -> String {
     let outline = match layout.shape.as_str() {
         "grid" => "M45 25H855Q875 25 875 45V430Q875 450 855 450H45Q25 450 25 430V45Q25 25 45 25Z",
@@ -2300,27 +2302,110 @@ pub fn svg(layout: &Layout, active: &str) -> String {
         }
     };
     let mut svg = format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 900 500\"><title>{}</title><rect width=\"900\" height=\"500\" rx=\"24\" fill=\"#101822\"/><path d=\"{outline}\" fill=\"#273646\" stroke=\"#54697e\" stroke-width=\"3\"/>",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 900 500\"><title>{}</title><defs>\
+        <linearGradient id=\"bodyGrad\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#3d4d5e\"/><stop offset=\"0.55\" stop-color=\"#2c3947\"/><stop offset=\"1\" stop-color=\"#202b37\"/></linearGradient>\
+        <radialGradient id=\"capGrad\" cx=\"0.38\" cy=\"0.32\" r=\"0.95\"><stop offset=\"0\" stop-color=\"#5b6e81\"/><stop offset=\"0.7\" stop-color=\"#3a4a59\"/><stop offset=\"1\" stop-color=\"#28333f\"/></radialGradient>\
+        <radialGradient id=\"capHot\" cx=\"0.38\" cy=\"0.32\" r=\"0.95\"><stop offset=\"0\" stop-color=\"#ffd9a0\"/><stop offset=\"0.7\" stop-color=\"#ffb454\"/><stop offset=\"1\" stop-color=\"#d98f2e\"/></radialGradient>\
+        <radialGradient id=\"amberGrad\" cx=\"0.38\" cy=\"0.32\" r=\"0.95\"><stop offset=\"0\" stop-color=\"#b28e42\"/><stop offset=\"0.7\" stop-color=\"#8a6d2f\"/><stop offset=\"1\" stop-color=\"#5f4a20\"/></radialGradient>\
+        <radialGradient id=\"stickGrad\" cx=\"0.4\" cy=\"0.35\" r=\"0.9\"><stop offset=\"0\" stop-color=\"#66798b\"/><stop offset=\"0.75\" stop-color=\"#3c4c5c\"/><stop offset=\"1\" stop-color=\"#27313d\"/></radialGradient>\
+        </defs><rect width=\"900\" height=\"500\" rx=\"24\" fill=\"#0e141b\"/><path d=\"{outline}\" fill=\"url(#bodyGrad)\" stroke=\"#71808d\" stroke-width=\"3\"/>",
         xml(&layout.name)
     );
+    // Stick wells sit behind their direction caps; cluster by proximity so
+    // one well serves each physical stick. Click buttons (non-analog stick
+    // controls) and crowded spots get no well to avoid ring collisions.
+    let mut wells: Vec<(f64, f64)> = Vec::new();
+    for control in &layout.controls {
+        if control.group != "stick" || !control.analog {
+            continue;
+        }
+        let x = control.x * 8.0 + 50.0;
+        let y = control.y * 4.0 + 35.0;
+        if wells.iter().any(|(wx, wy)| (wx - x).hypot(wy - y) < 70.0) {
+            continue;
+        }
+        wells.push((x, y));
+    }
+    // Recentroid wells on their cluster so the ring stays centered.
+    for (x, y) in &mut wells {
+        let mut sum_x = 0.0;
+        let mut sum_y = 0.0;
+        let mut count = 0;
+        for control in &layout.controls {
+            if control.group != "stick" || !control.analog {
+                continue;
+            }
+            let cx = control.x * 8.0 + 50.0;
+            let cy = control.y * 4.0 + 35.0;
+            if (*x - cx).hypot(*y - cy) < 70.0 {
+                sum_x += cx;
+                sum_y += cy;
+                count += 1;
+            }
+        }
+        if count > 0 {
+            *x = sum_x / f64::from(count);
+            *y = sum_y / f64::from(count);
+        }
+    }
+    for (x, y) in &wells {
+        // Crowded wells would swallow neighboring controls; the caps alone
+        // still mark the stick.
+        let crowded = layout.controls.iter().any(|control| {
+            if control.group == "stick" {
+                return false;
+            }
+            let cx = control.x * 8.0 + 50.0;
+            let cy = control.y * 4.0 + 35.0;
+            (*x - cx).hypot(*y - cy) < 40.0
+        });
+        if crowded {
+            continue;
+        }
+        let _ = write!(
+            svg,
+            "<circle cx=\"{x}\" cy=\"{y}\" r=\"27\" fill=\"#10161d\" stroke=\"#05090d\" stroke-width=\"2\"/>\
+             <circle cx=\"{x}\" cy=\"{y}\" r=\"23\" fill=\"none\" stroke=\"#3d4c5a\" stroke-width=\"1.5\"/>"
+        );
+    }
+    // D-pad cross plates sit behind their direction caps.
+    let mut dpad = std::collections::BTreeMap::<&str, (f64, f64)>::new();
+    for control in &layout.controls {
+        if control.group == "dpad"
+            && matches!(control.id.as_str(), "up" | "down" | "left" | "right")
+        {
+            dpad.insert(
+                control.id.as_str(),
+                (control.x * 8.0 + 50.0, control.y * 4.0 + 35.0),
+            );
+        }
+    }
+    if let (Some(up), Some(down), Some(left), Some(right)) = (
+        dpad.get("up"),
+        dpad.get("down"),
+        dpad.get("left"),
+        dpad.get("right"),
+    ) {
+        let _ = write!(
+            svg,
+            "<rect x=\"{}\" y=\"{}\" width=\"34\" height=\"{}\" rx=\"9\" fill=\"#1a2530\" stroke=\"#46555f\" stroke-width=\"2\"/>\
+             <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"34\" rx=\"9\" fill=\"#1a2530\" stroke=\"#46555f\" stroke-width=\"2\"/>",
+            up.0 - 17.0,
+            up.1 - 15.0,
+            down.1 - up.1 + 30.0,
+            left.0 - 15.0,
+            left.1 - 17.0,
+            right.0 - left.0 + 30.0,
+        );
+    }
     for control in &layout.controls {
         let x = control.x * 8.0 + 50.0;
         let y = control.y * 4.0 + 35.0;
         let lit = control.id == active;
-        let fill = if lit {
-            "#ffb454"
-        } else if control.id.starts_with("c_") {
-            "#776529"
-        } else {
-            "#18232f"
-        };
-        let stroke = if lit { "#fff1d5" } else { "#8395a7" };
-        let radius = if control.group == "dpad" || control.group == "stick" {
-            15
-        } else {
-            25
-        };
-        let label = if control.group == "dpad" || control.analog {
+        let amber = control.id.starts_with("c_");
+        let rear_label;
+        let click_label;
+        let label: &str = if control.group == "dpad" || control.analog {
             if control.id.ends_with("up") {
                 "↑"
             } else if control.id.ends_with("down") {
@@ -2332,20 +2417,88 @@ pub fn svg(layout: &Layout, active: &str) -> String {
             } else {
                 &control.label
             }
+        } else if control.group == "rear" {
+            // Rear wells are small; the full label stays in the tooltip.
+            rear_label = control.id.to_uppercase();
+            &rear_label
+        } else if control.group == "stick" {
+            // Stick-click buttons use standard L3/R3 notation; the full
+            // label stays in the tooltip.
+            click_label = control.id.to_uppercase();
+            &click_label
         } else {
             &control.label
         };
-        let _ = write!(
-            svg,
-            "<g id=\"{}\"><title>{}</title><circle cx=\"{x}\" cy=\"{y}\" r=\"{radius}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{}\"/><text x=\"{x}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text></g>",
-            xml(&control.id),
-            xml(&control.label),
-            if lit { 4 } else { 2 },
-            y + 5.0,
-            if label.len() > 7 { 11 } else { 15 },
-            if lit { "#16212b" } else { "#f0f4f8" },
-            xml(label)
-        );
+        let cap = if lit {
+            "url(#capHot)"
+        } else if amber {
+            "url(#amberGrad)"
+        } else {
+            "url(#capGrad)"
+        };
+        let (stroke, stroke_width, text_fill) = if lit {
+            ("#fff1d5", 4, "#16212b")
+        } else if amber {
+            ("#d8c084", 2, "#14100a")
+        } else {
+            ("#8395a7", 2, "#eef3f7")
+        };
+        match control.group.as_str() {
+            // Shoulders and menu pills read as their hardware shape.
+            "shoulder" => {
+                let _ = write!(
+                    svg,
+                    "<g id=\"{}\"><title>{}</title><rect x=\"{}\" y=\"{}\" width=\"68\" height=\"28\" rx=\"14\" fill=\"{cap}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"/><text x=\"{x}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"13\" fill=\"{text_fill}\">{}</text></g>",
+                    xml(&control.id),
+                    xml(&control.label),
+                    x - 34.0,
+                    y - 14.0,
+                    y + 4.5,
+                    xml(&control.label)
+                );
+            }
+            "menu" => {
+                let _ = write!(
+                    svg,
+                    "<g id=\"{}\"><title>{}</title><rect x=\"{}\" y=\"{}\" width=\"58\" height=\"26\" rx=\"13\" fill=\"{cap}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"/><text x=\"{x}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{text_fill}\">{}</text></g>",
+                    xml(&control.id),
+                    xml(&control.label),
+                    x - 29.0,
+                    y - 13.0,
+                    y + 4.0,
+                    xml(label)
+                );
+            }
+            _ => {
+                let (radius, cap) = match control.group.as_str() {
+                    "dpad" => (13, "url(#capGrad)"),
+                    "stick" => (14, "url(#stickGrad)"),
+                    "rear" | "auxiliary" | "pointer" | "turbo" => (16, "url(#capGrad)"),
+                    _ => (25, cap),
+                };
+                let (cap, stroke) = if lit {
+                    ("url(#capHot)", "#fff1d5")
+                } else {
+                    (cap, stroke)
+                };
+                let font_size = if label.len() > 7 {
+                    9
+                } else if radius <= 14 {
+                    13
+                } else {
+                    15
+                };
+                let _ = write!(
+                    svg,
+                    "<g id=\"{}\"><title>{}</title><circle cx=\"{x}\" cy=\"{y}\" r=\"{}\" fill=\"#10161d\" stroke=\"#05090d\" stroke-width=\"2\"/><circle cx=\"{x}\" cy=\"{y}\" r=\"{radius}\" fill=\"{cap}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"/><text x=\"{x}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"{font_size}\" fill=\"{text_fill}\">{}</text></g>",
+                    xml(&control.id),
+                    xml(&control.label),
+                    radius + 5,
+                    y + 5.0,
+                    xml(label)
+                );
+            }
+        }
     }
     let caption = if layout.id.starts_with("mame-")
         || matches!(
