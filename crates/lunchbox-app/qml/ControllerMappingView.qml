@@ -77,18 +77,40 @@ ColumnLayout {
     function controlHasGap(side, id) {
         return rows.some(row => rowMatchesControl(row, side, id) && gapReason(row).length > 0)
     }
+    function escTooltip(text) {
+        return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    }
     function controlTooltip(side, control) {
+        const SOURCE = "#ffb454"
+        const DEST = "#62dac8"
+        const DIM = "#8a93a3"
+        const BAD = "#e57474"
+        const paint = (text, color) => "<font color=\"" + color + "\"><b>" + escTooltip(text) + "</b></font>"
         const matches = rows.filter(row => rowMatchesControl(row, side, control.id))
         const owner = side === 0 ? sourceOwner(control.id) : control.id
-        const heading = control.label + (owner !== control.id
-            ? " · Hardware repeat of " + sourceLayout.controls.find(entry => entry.id === owner).label
-                + "; not an independent input. Connection lines use the base control."
-            : "")
-        if (!matches.length) return heading + " · No assignment in this view"
-        return heading + "\n" + matches.map(row => row.physical + " → " + targetLabel(row)
-            + (row.physical_id ? "" : " · UNMAPPED")
-            + (gapReason(row) ? " · NEEDS CALIBRATION: " + gapReason(row) : "")).join("\n")
-            + (matches.length > 1 ? "\nClick repeatedly to cycle through these assignments." : "")
+        const repeat = side === 0 && owner !== control.id
+            ? "<br><font color=\"" + DIM + "\">Hardware repeat of " + escTooltip(sourceLayout.controls.find(entry => entry.id === owner).label) + "; shares its input.</font>"
+            : ""
+        const plain = text => String(text).replace(/<[^>]*>/g, "")
+        if (!matches.length) {
+            const label = paint(control.label, side === 0 ? SOURCE : DEST)
+            return { rich: label + "<br><font color=\"" + DIM + "\">No assignment in this view</font>" + repeat,
+                     plain: plain(label) + "\nNo assignment in this view" }
+        }
+        const lines = matches.map(row => {
+            const from = paint(row.physical_id ? row.physical : "—", SOURCE)
+            const to = paint(targetLabel(row), DEST)
+            let line = side === 0 ? from + " drives " + to : to + " driven by " + from
+            if (row.output) line += " <font color=\"" + DIM + "\">[emulator: " + escTooltip(row.output) + "]</font>"
+            if (!row.physical_id) line += " <font color=\"" + BAD + "\">· UNMAPPED</font>"
+            if (gapReason(row)) line += " <font color=\"" + BAD + "\">· NEEDS CALIBRATION: " + escTooltip(gapReason(row)) + "</font>"
+            return line
+        })
+        const tail = matches.length > 1
+            ? "<br><font color=\"" + DIM + "\">Click repeatedly to cycle through these assignments.</font>"
+            : ""
+        const rich = lines.join("<br>") + tail + repeat
+        return { rich: rich, plain: plain(rich).replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">") }
     }
     function targetLabel(row) {
         const names = []
@@ -204,13 +226,15 @@ ColumnLayout {
                             readonly property var position: panel.modelData.id === "brawler64" ? brawlerGeometry.point(modelData.id) : {x: modelData.x * 8 + 50, y: modelData.y * 4 + 35}
                             x: position.x * panel.width / 900 - width / 2
                             y: stage.titleHeight + 8 + position.y * stage.diagramHeight / 500 - height / 2
-                            width: Math.max(20, panel.width * 55 / 900)
-                            height: Math.max(20, stage.diagramHeight * 55 / 500)
+                            // Smaller than the drawn control so dense clusters
+                            // (C buttons sit ~26px apart) stop flickering.
+                            width: Math.max(16, panel.width * 40 / 900)
+                            height: Math.max(16, stage.diagramHeight * 40 / 500)
                             hoverEnabled: true
                             activeFocusOnTab: true
                             Accessible.role: Accessible.Button
                             Accessible.name: (panel.index === 0 ? "Source: " : "Destination: ") + modelData.label
-                            Accessible.description: view.controlTooltip(panel.index, modelData)
+                            Accessible.description: view.controlTooltip(panel.index, modelData).plain
                             Accessible.onPressAction: controlHotspot.clicked()
                             background: Rectangle {
                                 color: "transparent"
@@ -221,7 +245,16 @@ ColumnLayout {
                             onClicked: { view.chooseControl(panel.index, modelData.id); view.controlActivated(panel.index, modelData.id) }
                             onHoveredChanged: {
                                 if (!hovered) {
-                                    if (view.hoveredIndex >= 0) view.hoveredIndex = -1
+                                    // Clear only when the hover still belongs
+                                    // to this control: a neighbor hotspot may
+                                    // have claimed it first, and overlapping
+                                    // hotspots must not steal it back and
+                                    // cause flicker.
+                                    const current = view.hoveredIndex >= 0
+                                        && view.hoveredIndex < view.rows.length
+                                        ? view.rows[view.hoveredIndex] : null
+                                    if (current && view.rowMatchesControl(current, panel.index, modelData.id))
+                                        view.hoveredIndex = -1
                                     return
                                 }
                                 view.hoveredIndex = view.rows.findIndex(
@@ -229,10 +262,14 @@ ColumnLayout {
                             }
                             ToolTip {
                                 visible: controlHotspot.hovered || controlHotspot.activeFocus
-                                text: view.controlTooltip(panel.index, controlHotspot.modelData)
+                                text: view.controlTooltip(panel.index, controlHotspot.modelData).plain
                                 contentItem: Text {
-                                    text: view.controlTooltip(panel.index, controlHotspot.modelData)
-                                    textFormat: Text.PlainText
+                                    // Constrain the popup so long mappings
+                                    // wrap inside it instead of overflowing.
+                                    width: Math.min(implicitWidth, 420)
+                                    wrapMode: Text.Wrap
+                                    text: view.controlTooltip(panel.index, controlHotspot.modelData).rich
+                                    textFormat: Text.RichText
                                     color: controlHotspot.palette.toolTipText
                                 }
                             }

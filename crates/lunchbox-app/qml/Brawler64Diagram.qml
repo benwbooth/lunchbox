@@ -136,7 +136,7 @@ Item {
                 horizontalAlignment: Text.AlignHCenter
                 text: controlBody.modelData.label
                 color: controlBody.glyph
-                font.pixelSize: Math.max(9, Math.round((controlBody.modelData.kind === "face" ? 17 : 12) * diagram.sx))
+                font.pixelSize: Math.max(9, Math.round((controlBody.modelData.kind === "face" ? 17 : controlBody.modelData.kind === "menu" ? 10 : 12) * diagram.sx))
             }
         }
     }

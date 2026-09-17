@@ -79,6 +79,20 @@ TestCase {
         verify(!host.mapping.selected)
     }
 
+    function test_tooltip_names_both_ends_with_emulator_output() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        const tip = host.mapping.controlTooltip(0, {id: "a", label: "A"})
+        verify(tip.rich.indexOf("drives") >= 0)
+        verify(tip.rich.indexOf("#ffb454") >= 0)
+        verify(tip.rich.indexOf("#62dac8") >= 0)
+        verify(tip.rich.indexOf("X..West") >= 0)
+        verify(tip.plain.indexOf("<") < 0)
+        verify(tip.plain.indexOf("X..West") >= 0)
+        const flipped = host.mapping.controlTooltip(1, {id: "y", label: "Y"})
+        verify(flipped.rich.indexOf("driven by") >= 0)
+    }
+
     function test_lane_helper_spreads_wires_across_the_channel() {
         const host = createTemporaryObject(hostComponent, testCase)
         verify(host)
