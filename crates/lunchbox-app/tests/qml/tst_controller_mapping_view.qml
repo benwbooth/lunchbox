@@ -51,40 +51,31 @@ TestCase {
         }
     }
 
-    function test_wire_list_shows_every_connection_at_once() {
+    function test_diagram_selects_connections_without_any_list() {
         const host = createTemporaryObject(hostComponent, testCase)
         verify(host)
-        const wires = findChild(host.mapping, "mappingWireList")
-        verify(wires)
-        compare(wires.count, 2)
+        compare(host.mapping.rows.length, 2)
         compare(host.mapping.hoveredIndex, -1)
         compare(host.mapping.selected.target_id, "x")
-    }
 
-    function test_clicking_a_wire_pins_its_connection() {
-        const host = createTemporaryObject(hostComponent, testCase)
-        verify(host)
-        const wires = findChild(host.mapping, "mappingWireList")
-        verify(wires)
-        let second = null
-        for (let attempt = 0; attempt < 200 && !(second && second.visible); ++attempt) {
-            wait(10)
-            second = wires.itemAtIndex(1)
-        }
-        verify(second)
-        mouseClick(second, second.width / 2, second.height / 2)
+        // Clicking a diagram control pins its connection.
+        host.mapping.chooseControl(1, "y")
         compare(host.mapping.selectedIndex, 1)
         compare(host.mapping.selected.target_id, "y")
         compare(host.mapping.selected.output, "A..South")
+
+        // Hover state isolates a wire while the stored pin stays put.
+        host.mapping.hoveredIndex = 0
+        compare(host.mapping.hoveredIndex, 0)
+        compare(host.mapping.selected.target_id, "y")
+        host.mapping.hoveredIndex = -1
     }
 
-    function test_hover_state_is_available_for_wire_isolation() {
+    function test_unmapped_control_clears_the_pin() {
         const host = createTemporaryObject(hostComponent, testCase)
         verify(host)
-        host.mapping.hoveredIndex = 1
-        compare(host.mapping.hoveredIndex, 1)
-        // Pinning still wins for the stored selection.
-        compare(host.mapping.selected.target_id, "x")
-        host.mapping.hoveredIndex = -1
+        host.mapping.chooseControl(0, "missing")
+        compare(host.mapping.selectedIndex, -1)
+        verify(!host.mapping.selected)
     }
 }

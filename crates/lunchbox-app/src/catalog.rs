@@ -1135,6 +1135,10 @@ fn apply_release_families(
         .collect::<Vec<_>>();
     let mut canonical_title_owners = HashMap::<String, i64>::new();
     let mut strict_title_owners = HashMap::<String, i64>::new();
+    // LaunchBox ID to the strict key of its exact-titled row. An ID claimed
+    // by several strict keys (snapshot drift across platforms) stays out:
+    // alias-linked rows only follow unambiguous IDs into strict families.
+    let mut lbid_strict_keys = HashMap::<i64, Option<String>>::new();
     for (index, game) in games.iter().enumerate() {
         if game.launchbox_db_id <= 0 {
             continue;
@@ -1149,6 +1153,14 @@ fn apply_release_families(
             strict_keys[index].clone(),
             game.launchbox_db_id,
         );
+        lbid_strict_keys
+            .entry(game.launchbox_db_id)
+            .and_modify(|existing| {
+                if existing.as_deref() != Some(strict_keys[index].as_str()) {
+                    *existing = None;
+                }
+            })
+            .or_insert_with(|| Some(strict_keys[index].clone()));
     }
 
     let family_ids = games
@@ -1177,15 +1189,27 @@ fn apply_release_families(
     for (index, title_key) in title_keys.into_iter().enumerate() {
         // record_unique_family_owner marks contested strict titles with 0,
         // which is exactly the provider-duplicate signal: one platform, one
-        // identical title, several IDs.
-        let strict_contested = games[index].launchbox_db_id > 0
-            && strict_title_owners
+        // identical title, several IDs. Rows linked to a contested ID by an
+        // explicit provider alias follow it into the strict family.
+        let contested_key = if games[index].launchbox_db_id > 0 {
+            (strict_title_owners
                 .get(&strict_keys[index])
                 .copied()
                 .unwrap_or_default()
-                == 0;
-        let key = if strict_contested {
-            format!("strict:{}", strict_keys[index])
+                == 0)
+            .then(|| strict_keys[index].clone())
+        } else if family_ids[index] > 0 {
+            lbid_strict_keys
+                .get(&family_ids[index])
+                .and_then(|key| key.clone())
+                .filter(|key| {
+                    strict_title_owners.get(key).copied().unwrap_or_default() == 0
+                })
+        } else {
+            None
+        };
+        let key = if let Some(strict_key) = contested_key {
+            format!("strict:{strict_key}")
         } else if family_ids[index] > 0 {
             format!("linked:{}", family_ids[index])
         } else {
@@ -1198,6 +1222,7 @@ fn apply_release_families(
     }
 
     let mut retained = Vec::with_capacity(family_order.len());
+    let mut full_titles = Vec::with_capacity(family_order.len());
     for key in &family_order {
         let Some(members) = family_members.get(key) else {
             continue;
@@ -1223,6 +1248,7 @@ fn apply_release_families(
                     .search_key
                     .push_str(&display_title.to_lowercase());
             }
+            full_titles.push(games[representative].title.clone());
             games[representative].title = display_title;
             retained.push(representative);
             continue;
@@ -1275,6 +1301,7 @@ fn apply_release_families(
             .cloned()
             .collect();
         let variant_count = distinct_titles.len();
+        full_titles.push(games[representative].title.clone());
         let representative_game = &mut games[representative];
         representative_game.local = local;
         representative_game.downloadable = downloadable;
@@ -1305,7 +1332,45 @@ fn apply_release_families(
         collapsed.push(std::mem::take(&mut games[*index]));
     }
     metadata.retain_rows(&retained);
+    disambiguate_display_titles(&mut collapsed, &full_titles);
     *games = collapsed;
+}
+
+/// Region stripping can render two different releases identically (a base
+/// game and its "(USA)" regional row). Two cards on one platform must never
+/// share a display title, so colliding cards fall back to their full source
+/// titles. Nothing is invented: the qualifier was always in the row.
+fn disambiguate_display_titles(games: &mut [Game], full_titles: &[String]) {
+    let mut groups = HashMap::<(String, String), Vec<usize>>::new();
+    for (position, game) in games.iter().enumerate() {
+        groups
+            .entry((
+                game.platform.trim().to_lowercase(),
+                game.title.trim().to_lowercase(),
+            ))
+            .or_default()
+            .push(position);
+    }
+    for positions in groups.into_values().filter(|group| group.len() > 1) {
+        for position in positions {
+            let full = full_titles
+                .get(position)
+                .map(String::as_str)
+                .unwrap_or_default()
+                .trim();
+            if full.is_empty() || full.eq_ignore_ascii_case(games[position].title.trim()) {
+                continue;
+            }
+            games[position].title = full.to_owned();
+            if !games[position]
+                .search_key
+                .contains(&full.to_lowercase())
+            {
+                games[position].search_key.push('\n');
+                games[position].search_key.push_str(&full.to_lowercase());
+            }
+        }
+    }
 }
 
 fn representative_rank(game: &Game) -> (u8, u8, u8, String, String) {
@@ -2915,6 +2980,63 @@ mod tests {
             load_discovery_catalog_with_native_state(&canonical, &discovery_path, None, None, None)
                 .unwrap();
         assert_eq!(catalog.games.len(), 2);
+    }
+
+    #[test]
+    fn alias_linked_row_follows_its_id_into_the_strict_family() {
+        // The provider asserts "Super Mario 64 Disk Version" is an alternate
+        // name of 126650, so the No-Intro disk-proto row joins the strict
+        // base family instead of standing alone under the base title.
+        let directory = tempfile::tempdir().unwrap();
+        let (canonical, discovery_path) = strict_dupe_discovery(&directory);
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE game_alternate_names (
+                   launchbox_db_id INTEGER NOT NULL, alternate_name TEXT NOT NULL
+                 );
+                 INSERT INTO game_alternate_names VALUES
+                   (126650, 'Super Mario 64 Disk Version');
+                 INSERT INTO games VALUES
+                   ('disk-id', 'Super Mario 64 - Disk Version (Japan) (Proto)',
+                    NULL, 'Unreleased', NULL, 90);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        let catalog =
+            load_discovery_catalog_with_native_state(&canonical, &discovery_path, None, None, None)
+                .unwrap();
+        assert_eq!(catalog.games.len(), 1);
+        assert_eq!(catalog.games[0].title, "Super Mario 64");
+    }
+
+    #[test]
+    fn regional_row_keeps_its_qualifier_when_the_base_title_collides() {
+        // No alias links the "(USA)" row, so it stays its own card, but it
+        // must not render identically to the base card on the same platform.
+        let directory = tempfile::tempdir().unwrap();
+        let (canonical, discovery_path) = strict_dupe_discovery(&directory);
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "INSERT INTO games VALUES
+                   ('usa-id', 'Super Mario 64 (USA)', NULL, 'Released', NULL, 90);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        let catalog =
+            load_discovery_catalog_with_native_state(&canonical, &discovery_path, None, None, None)
+                .unwrap();
+        assert_eq!(catalog.games.len(), 2);
+        let mut titles = catalog
+            .games
+            .iter()
+            .map(|game| game.title.clone())
+            .collect::<Vec<_>>();
+        titles.sort();
+        assert_eq!(titles, ["Super Mario 64", "Super Mario 64 (USA)"]);
     }
 
     #[test]

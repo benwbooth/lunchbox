@@ -262,64 +262,14 @@ ColumnLayout {
                 }
                 if (view.hoveredIndex >= 0 && view.hoveredIndex < view.rows.length) {
                     drawConnection(view.rows[view.hoveredIndex], true)
-                } else if (allConnections.checked) {
-                    for (const row of view.rows) drawConnection(row, false)
-                    drawConnection(view.selected, true)
                 } else {
+                    // The diagram is the selector: every wire stays visible so
+                    // hovering or clicking any control isolates its circuit.
+                    for (const row of view.rows) drawConnection(row, false)
                     drawConnection(view.selected, true)
                 }
             }
         }
-    }
-    ListView {
-        id: wireList
-        objectName: "mappingWireList"
-        Layout.fillWidth: true
-        Layout.preferredHeight: Math.min(210, Math.max(64, count * 32))
-        clip: true
-        cacheBuffer: 10000
-        model: view.rows
-        currentIndex: view.selectedIndex
-        Accessible.role: Accessible.List
-        Accessible.name: "Mapping connections"
-        ScrollBar.vertical: ScrollBar {}
-        delegate: ItemDelegate {
-            id: wireRow
-            required property int index
-            required property var modelData
-            width: wireList.width
-            hoverEnabled: true
-            highlighted: view.selectedIndex === index
-            Accessible.name: modelData.physical + " to " + view.targetLabel(modelData)
-            onHoveredChanged: {
-                if (hovered) view.hoveredIndex = index
-                else if (view.hoveredIndex === index) view.hoveredIndex = -1
-            }
-            onClicked: view.selectedIndex = index
-            contentItem: Text {
-                text: wireRow.modelData.physical + " → " + view.targetLabel(wireRow.modelData)
-                    + (wireRow.modelData.physical_id ? "" : " · UNMAPPED")
-                    + (view.diagramGap(wireRow.modelData) ? " · DIAGRAM INCOMPLETE" : "")
-                    + (view.gapReason(wireRow.modelData) ? " · NEEDS CALIBRATION" : "")
-                textFormat: Text.PlainText
-                elide: Text.ElideRight
-                color: wireRow.highlighted ? "#ffb454" : "#dfe7ee"
-                font.pixelSize: 12
-            }
-            background: Rectangle {
-                color: wireRow.highlighted ? "#233141" : wireRow.hovered ? "#1b2634" : "transparent"
-                radius: 6
-            }
-        }
-    }
-    ColumnLayout {
-    visible: !view.simple
-    Layout.fillWidth: true
-    CheckBox {
-        id: allConnections
-        text: "Show all mapping connections"
-        checked: !view.simple
-        onCheckedChanged: connections.requestPaint()
     }
     Label {
         Layout.fillWidth: true
@@ -329,10 +279,13 @@ ColumnLayout {
             const assigned = view.rows.filter(row => !!row.physical_id).length
             return view.rows.length ? "Displayed assignments: " + assigned + "/" + view.rows.length
                 + " have a source · " + (view.rows.length - assigned) + " unmapped."
-                + " Hover a connection to isolate its wire; click to pin it. This counts only this view, not whole-game coverage or runtime readiness."
+                + " Hover a control to isolate its wire; click to pin it. This counts only this view, not whole-game coverage or runtime readiness."
                 : "No assignments in this view."
         }
     }
+    ColumnLayout {
+        visible: !view.simple
+        Layout.fillWidth: true
     Label {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
