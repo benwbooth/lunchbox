@@ -184,6 +184,16 @@ fn main() {
     .build();
 }
 
+/// Write generated build output only when its bytes changed. Cargo keys
+/// build-script freshness off output mtimes, so an unconditional rewrite
+/// invalidates the whole crate below on every single build.
+fn write_if_changed(path: &Path, contents: &str, what: &str) {
+    if fs::read_to_string(path).is_ok_and(|current| current == contents) {
+        return;
+    }
+    fs::write(path, contents).unwrap_or_else(|error| panic!("failed to write {what}: {error}"));
+}
+
 fn generate_platform_record_index() {
     let manifest_directory =
         PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
@@ -216,7 +226,7 @@ fn generate_platform_record_index() {
 
     let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"))
         .join("platform_records.rs");
-    fs::write(output, generated).expect("failed to write platform-record index");
+    write_if_changed(&output, &generated, "platform-record index");
 }
 
 /// Embed every RetroArch core record so adapter logic can serve per-core
@@ -253,7 +263,7 @@ fn generate_retroarch_core_index() {
 
     let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"))
         .join("retroarch_core_records.rs");
-    fs::write(output, generated).expect("failed to write retroarch-core index");
+    write_if_changed(&output, &generated, "retroarch-core index");
 }
 
 fn generate_platform_resources() -> PathBuf {
@@ -304,7 +314,7 @@ fn generate_platform_resources() -> PathBuf {
 
     let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"))
         .join("platform_icons.qrc");
-    fs::write(&output, qrc).expect("failed to write platform icon resource manifest");
+    write_if_changed(&output, &qrc, "platform icon resource manifest");
     output
 }
 
@@ -328,11 +338,11 @@ fn generate_arcade_lookup() {
     let output_path = Path::new(&out_dir).join("arcade_lookup.rs");
 
     let Ok(file) = fs::File::open(&source_path) else {
-        fs::write(
+        write_if_changed(
             &output_path,
             "pub static ARCADE_LOOKUP: &[ArcadeLookupEntry] = &[];\n",
-        )
-        .expect("failed to write empty arcade lookup");
+            "empty arcade lookup",
+        );
         return;
     };
 
@@ -434,7 +444,7 @@ fn generate_arcade_lookup() {
         ));
     }
     generated.push_str("];\n");
-    fs::write(&output_path, generated).expect("failed to write arcade lookup");
+    write_if_changed(&output_path, &generated, "arcade lookup");
 }
 
 fn choose_arcade_lookup(game: &GameFields) -> Option<(u8, String, String)> {
