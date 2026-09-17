@@ -216,7 +216,8 @@ fn check_firmware(
         Some(dir) => collect_files(dir, 3)?,
         None => {
             report.detail.push(
-                "no BIOS library available on this host; roots verified, staging skipped".to_owned(),
+                "no BIOS library available on this host; roots verified, staging skipped"
+                    .to_owned(),
             );
             Vec::new()
         }
@@ -258,9 +259,7 @@ fn check_firmware(
                     let before = search[..pos].chars().next_back();
                     let after = search[pos + needle.len()..].chars().next();
                     let boundary = |c: Option<char>| {
-                        c.is_none_or(|c| {
-                            c.is_whitespace() || "/\\(),;:'\"[]<>|".contains(c)
-                        })
+                        c.is_none_or(|c| c.is_whitespace() || "/\\(),;:'\"[]<>|".contains(c))
                     };
                     if boundary(before) && boundary(after) {
                         matched = true;
@@ -522,7 +521,13 @@ fn main() -> Result<()> {
         report.controller.status = "failed".to_owned();
         report.controller.detail.push(format!("{error:#}"));
     }
-    if let Err(error) = check_firmware(&slug, platform, &bases, &bios_dir, &mut report.firmware) {
+    if let Err(error) = check_firmware(
+        &slug,
+        platform,
+        &bases,
+        bios_dir.as_deref(),
+        &mut report.firmware,
+    ) {
         report.firmware.status = "failed".to_owned();
         report.firmware.detail.push(format!("{error:#}"));
     }

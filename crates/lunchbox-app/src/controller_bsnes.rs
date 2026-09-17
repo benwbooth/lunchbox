@@ -21,9 +21,97 @@
 use anyhow::{Result, ensure};
 use std::collections::BTreeMap;
 
+#[cfg(target_os = "linux")]
+pub(crate) mod flatpak;
+#[cfg(target_os = "linux")]
+pub(crate) mod guided;
 pub(crate) mod native_command;
 pub(crate) mod session;
 pub(crate) mod settings;
+
+/// Calibrated bsnes session across runtimes. Native keeps the private staged
+/// tree; Flatpak serves a home-backed copy of it to the sandbox.
+pub(crate) enum Session {
+    Native(native_command::NativeSession),
+    #[cfg(target_os = "linux")]
+    Flatpak(flatpak::FlatpakSession),
+}
+
+impl Session {
+    pub(crate) fn plan(&self) -> &crate::emulator::LaunchPlan {
+        match self {
+            Self::Native(session) => &session.plan,
+            #[cfg(target_os = "linux")]
+            Self::Flatpak(session) => &session.plan,
+        }
+    }
+
+    pub(crate) fn verify(&self, cancel: &std::sync::atomic::AtomicBool) -> Result<()> {
+        match self {
+            Self::Native(session) => session.verify(cancel),
+            #[cfg(target_os = "linux")]
+            Self::Flatpak(session) => session.verify(cancel),
+        }
+    }
+
+    pub(crate) fn spawn(
+        &mut self,
+        plan: &crate::emulator::LaunchPlan,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<std::process::Child> {
+        match self {
+            Self::Native(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
+            Self::Flatpak(session) => session.spawn(plan, cancel),
+        }
+    }
+
+    pub(crate) fn check_health(&self) -> Result<()> {
+        match self {
+            Self::Native(session) => session.check_health(),
+            #[cfg(target_os = "linux")]
+            Self::Flatpak(session) => session.check_health(),
+        }
+    }
+}
+
+/// Dispatch preparation across runtimes, preserving each namespace contract.
+pub(crate) fn prepare(
+    setup: &settings::SavedSetup,
+    calibrations: &std::collections::HashMap<String, crate::controller_catalog::Calibration>,
+    inventory: &[crate::controllers::ControllerDevice],
+    option: &crate::emulator::RomEmulatorOption,
+    plan: &mut crate::emulator::LaunchPlan,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<Session> {
+    use crate::emulator::EmulatorExecutable;
+    match &option.executable {
+        EmulatorExecutable::Native(_) => Ok(Session::Native(native_command::prepare(
+            setup,
+            calibrations,
+            inventory,
+            option,
+            plan,
+            cancel,
+        )?)),
+        #[cfg(target_os = "linux")]
+        EmulatorExecutable::Flatpak { .. } => Ok(Session::Flatpak(flatpak::prepare(
+            setup,
+            calibrations,
+            inventory,
+            option,
+            plan,
+            cancel,
+        )?)),
+        #[cfg(not(target_os = "linux"))]
+        EmulatorExecutable::Flatpak { .. } => {
+            anyhow::bail!("bsnes Flatpak preparation needs Linux namespaces")
+        }
+        EmulatorExecutable::Wine { .. } => {
+            anyhow::bail!("bsnes calibrated launch needs a native or Flatpak build, not Wine")
+        }
+    }
+}
 
 /// Standard SNES gamepad controls: target layout id -> settings.bml node name.
 pub(crate) const CONTROLS: [(&str, &str); 12] = [

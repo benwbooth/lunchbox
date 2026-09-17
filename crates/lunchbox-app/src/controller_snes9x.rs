@@ -6,6 +6,8 @@ use anyhow::{Result, ensure};
 pub(crate) mod configuration;
 #[cfg(target_os = "linux")]
 pub(crate) mod flatpak;
+#[cfg(target_os = "linux")]
+pub(crate) mod guided;
 pub(crate) mod isolation;
 pub(crate) mod native_command;
 pub(crate) mod physical;

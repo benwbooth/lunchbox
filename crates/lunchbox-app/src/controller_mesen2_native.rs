@@ -1,5 +1,5 @@
-//! Mesen2 native `settings.json` NES controller mappings for the Linux
-//! frontend, not libretro bindings.
+//! Mesen2 native `settings.json` NES and PC Engine controller mappings for the
+//! Linux frontend, not libretro bindings.
 //!
 //! Functional contract pinned to SourMesen/Mesen2
 //! b9fa69ddc6d0a331fb103fdb5eef6904305703c2:
@@ -23,9 +23,15 @@
 //! - `UI/Utilities/JsonHelper.cs` — settings serialize with PascalCase
 //!   properties, indented output and string enums; `UI/Config/InputConfig.cs`
 //!   holds one UInt16 per control; `Core/Shared/SettingTypes.h` names the NES
-//!   standard controller `NesController` and `ControllerType.None` for unset
+//!   standard controller `NesController`, the PC Engine standard controller
+//!   `PceController` and `ControllerType.None` for unset
 //!   ports; `$XDG_DATA_HOME/Mesen2/settings.json` (ApplicationData) is the
 //!   configuration file selected by an isolated XDG_DATA_HOME.
+//! - `Core/PCE/Input/PceController.h` — the PCE pad reads I from
+//!   `KeyMapping.A`, II from `KeyMapping.B`, Run from `KeyMapping.Start`,
+//!   Select from `KeyMapping.Select` and the dpad from the matching
+//!   directions; `UI/Config/Configuration.cs` serializes the PCE section as
+//!   `PcEngine` with `Port1`/`Port2` slots, mirroring the `Nes` section.
 use anyhow::{Result, ensure};
 
 #[cfg(target_os = "linux")]
@@ -51,6 +57,23 @@ pub(crate) const CONTROLS: [(&str, &str); 8] = [
     ("left", "Left"),
     ("right", "Right"),
 ];
+
+/// PC Engine target controls: layout id -> KeyMapping field name. The PCE
+/// pad reads the same KeyMapping fields as NES (A=I, B=II, Start=Run).
+pub(crate) const PCE_CONTROLS: [(&str, &str); 8] = [
+    ("a", "A"),
+    ("b", "B"),
+    ("select", "Select"),
+    ("start", "Start"),
+    ("up", "Up"),
+    ("down", "Down"),
+    ("left", "Left"),
+    ("right", "Right"),
+];
+
+/// System key selecting the settings section and controller type.
+pub(crate) const SYSTEM_NES: &str = "nes";
+pub(crate) const SYSTEM_PCE: &str = "pce";
 
 /// One native KeyMapping UInt16.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd)]
@@ -97,22 +120,53 @@ impl Binding {
     }
 }
 
-/// Render the private settings.json. Only the two NES ports are expressed;
-/// every other value keeps Mesen2's defaults.
+/// Render the private settings.json NES section. Only the two NES ports are
+/// expressed; every other value keeps Mesen2's defaults.
 pub(crate) fn settings_json(mapping: &[(String, Binding)]) -> Result<String> {
+    settings_section(
+        "Nes",
+        "NesController",
+        &CONTROLS,
+        mapping,
+        "Mesen2 needs every standard NES control",
+    )
+}
+
+/// Render the private settings.json PC Engine section. Only the two PCE
+/// ports are expressed; every other value keeps Mesen2's defaults.
+pub(crate) fn settings_json_pce(mapping: &[(String, Binding)]) -> Result<String> {
+    settings_section(
+        "PcEngine",
+        "PceController",
+        &PCE_CONTROLS,
+        mapping,
+        "Mesen2 needs every standard PCE control",
+    )
+}
+
+/// Render one system section (`Nes`/`PcEngine`) with Port1 mapped and Port2
+/// unset. Both systems share the KeyMapping field grammar; only the section
+/// and controller type names differ.
+fn settings_section(
+    section: &str,
+    controller: &str,
+    controls: &[(&str, &str); 8],
+    mapping: &[(String, Binding)],
+    missing: &str,
+) -> Result<String> {
     use std::fmt::Write;
     ensure!(
-        mapping.len() == CONTROLS.len()
-            && CONTROLS
+        mapping.len() == controls.len()
+            && controls
                 .iter()
                 .all(|(_, field)| mapping.iter().any(|(name, _)| name == field)),
-        "Mesen2 needs every standard NES control"
+        "{missing}"
     );
     let mut inputs = std::collections::BTreeSet::new();
-    let mut result = String::from(
-        "{\n  \"Nes\": {\n    \"Port1\": {\n      \"Type\": \"NesController\",\n      \"Mapping1\": {\n",
-    );
-    for (index, (control, field)) in CONTROLS.iter().enumerate() {
+    let mut result = String::from(format!(
+        "{{\n  \"{section}\": {{\n    \"Port1\": {{\n      \"Type\": \"{controller}\",\n      \"Mapping1\": {{\n"
+    ));
+    for (index, (control, field)) in controls.iter().enumerate() {
         let code = mapping
             .iter()
             .find(|(name, _)| name == *field)
@@ -122,7 +176,7 @@ pub(crate) fn settings_json(mapping: &[(String, Binding)]) -> Result<String> {
             inputs.insert(code),
             "Mesen2 physical input has multiple gameplay owners"
         );
-        let comma = if index + 1 < CONTROLS.len() { "," } else { "" };
+        let comma = if index + 1 < controls.len() { "," } else { "" };
         let control_comment = control;
         let _ = control_comment;
         writeln!(result, "        \"{field}\": {code}{comma}").expect("in-memory write");
@@ -202,5 +256,27 @@ mod tests {
             .map(|(_, field)| ((*field).to_owned(), Binding(0x1000)))
             .collect::<Vec<_>>();
         assert!(settings_json(&mapping).is_err());
+    }
+
+    #[test]
+    fn settings_json_pce_uses_the_pcengine_section() {
+        let mapping = PCE_CONTROLS
+            .iter()
+            .enumerate()
+            .map(|(i, (_, field))| {
+                (
+                    (*field).to_owned(),
+                    Binding::button_index(0, i as u32 + 2).unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let text = settings_json_pce(&mapping).unwrap();
+        assert!(text.starts_with("{\n  \"PcEngine\": {\n    \"Port1\": {\n      \"Type\": \"PceController\",\n      \"Mapping1\": {\n"));
+        assert!(text.contains("        \"A\": 4098,\n"));
+        assert!(text.contains("        \"Start\": 4101,\n"));
+        assert!(text.ends_with(
+            "      }\n    },\n    \"Port2\": {\n      \"Type\": \"None\"\n    }\n  }\n}\n"
+        ));
+        assert!(settings_json_pce(&mapping[..3].to_vec()).is_err());
     }
 }

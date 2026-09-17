@@ -515,11 +515,17 @@ impl LaunchConfig {
     /// Checks the installed emulator's Dev log, not just our generated INI.
     /// This covers data-folder routing at startup, not game input interpretation.
     pub fn verify_startup_routing(&self, log: &str) -> Result<()> {
+        self.verify_startup_routing_for(log, &self.settings_path())
+    }
+
+    /// Same proof against an explicit settings path. Flatpak sessions swap
+    /// the staged documents over the live configuration (the sandbox remaps
+    /// XDG_CONFIG_HOME, so a private staged path can never reach the app);
+    /// the emulator then logs the live path while every folder value still
+    /// comes from the staged global settings.
+    pub fn verify_startup_routing_for(&self, log: &str, settings_path: &Path) -> Result<()> {
         ensure!(
-            log.contains(&format!(
-                "Loading config from {}.",
-                self.settings_path().display()
-            )),
+            log.contains(&format!("Loading config from {}.", settings_path.display())),
             "DuckStation did not confirm the private settings path"
         );
         let labels = [
@@ -563,6 +569,43 @@ impl LaunchConfig {
             fs::write(path, &ini.text)?;
         }
         Ok(())
+    }
+
+    /// Staged document paths and their exact flushed bytes, for namespace
+    /// swaps that move private configuration over live files with
+    /// backup/restore.
+    pub fn document_bytes(&self) -> BTreeMap<PathBuf, Vec<u8>> {
+        self.documents
+            .iter()
+            .map(|(path, ini)| (path.clone(), ini.text.as_bytes().to_vec()))
+            .collect()
+    }
+
+    /// Point the staged per-game and input-profile folders at live
+    /// directories and flush. Flatpak sessions swap the staged copies into
+    /// those live directories (the sandbox cannot see the private staged
+    /// tree); every other folder already references live paths.
+    pub fn redirect_folders_for_swap(&mut self, live_root: &Path) -> Result<()> {
+        let path = self.settings_path();
+        let global = self
+            .documents
+            .get_mut(&path)
+            .context("Staged global settings disappeared")?;
+        for key in ["GameSettings", "InputProfiles"] {
+            let live = live_root.join(
+                FOLDERS
+                    .iter()
+                    .find(|(_, k, _)| *k == key)
+                    .map(|(_, _, default)| *default)
+                    .context("DuckStation folder contract changed")?,
+            );
+            global.set(
+                "Folders",
+                key,
+                live.to_str().context("Non-UTF8 DuckStation folder")?,
+            )?;
+        }
+        self.flush()
     }
 }
 

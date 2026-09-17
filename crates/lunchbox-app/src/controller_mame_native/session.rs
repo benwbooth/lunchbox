@@ -15,8 +15,18 @@ use lunchbox_controller_probe::{
 };
 use std::{collections::HashMap, process::Command, sync::atomic::AtomicBool};
 
-fn observe(runtime: &Runtime, path: Option<&str>, cancel: &AtomicBool) -> Result<Snapshot> {
+fn observe(
+    runtime: &Runtime,
+    path: Option<&str>,
+    // `LD_LIBRARY_PATH` for the probe when its SDL needs sibling runtime
+    // libraries (sdl2-compat's SDL3). Native host SDL resolves without it.
+    probe_library_path: Option<&std::ffi::OsStr>,
+    cancel: &AtomicBool,
+) -> Result<Snapshot> {
     let mut command = Command::new(&runtime.probe_program);
+    if let Some(library_path) = probe_library_path {
+        command.env("LD_LIBRARY_PATH", library_path);
+    }
     command
         .arg("--sdl2-inventory")
         .arg("--sdl-library")
@@ -53,12 +63,14 @@ pub(crate) struct InputSession {
     initial: Snapshot,
     runtime: Runtime,
     probe_hash: String,
+    probe_library_path: Option<std::ffi::OsString>,
 }
 
 impl InputSession {
     pub(crate) fn capture(
         setup: &SavedSetup,
         inventory: &[ControllerDevice],
+        probe_library_path: Option<&std::ffi::OsStr>,
         cancel: &AtomicBool,
     ) -> Result<Self> {
         cancelled(cancel)?;
@@ -82,7 +94,7 @@ impl InputSession {
         }
         #[cfg(target_os = "linux")]
         let topology = InputTopology::capture(&selected)?;
-        let initial = routing(observe(runtime, None, cancel)?);
+        let initial = routing(observe(runtime, None, probe_library_path, cancel)?);
         let mut devices = initial.devices.clone();
         let mut physical_paths = HashMap::new();
         for (player, selected) in setup.players.iter().zip(&selected) {
@@ -110,7 +122,7 @@ impl InputSession {
                 );
                 selected_string
             };
-            let captured = observe(runtime, Some(&path), cancel)?;
+            let captured = observe(runtime, Some(&path), probe_library_path, cancel)?;
             initial.ensure_same_routing(&routing(captured.clone()))?;
             #[cfg(target_os = "linux")]
             topology.verify()?;
@@ -141,6 +153,7 @@ impl InputSession {
             initial,
             runtime: runtime.clone(),
             probe_hash,
+            probe_library_path: probe_library_path.map(|path| path.to_owned()),
         };
         session.verify(cancel)?;
         Ok(session)
@@ -154,10 +167,19 @@ impl InputSession {
             file_hash(&self.runtime.probe_program)? == self.probe_hash,
             "MAME probe changed during preparation"
         );
-        self.initial
-            .ensure_same_routing(&routing(observe(&self.runtime, None, cancel)?))?;
+        self.initial.ensure_same_routing(&routing(observe(
+            &self.runtime,
+            None,
+            self.probe_library_path.as_deref(),
+            cancel,
+        )?))?;
         // Stored capture devices pin their SDL index alongside the path.
-        let fresh = routing(observe(&self.runtime, None, cancel)?);
+        let fresh = routing(observe(
+            &self.runtime,
+            None,
+            self.probe_library_path.as_deref(),
+            cancel,
+        )?);
         for stored in &self.devices {
             let Some(path) = stored.path.as_deref() else {
                 continue;
@@ -189,7 +211,12 @@ impl InputSession {
 
     #[cfg(not(target_os = "linux"))]
     fn verify_health_probe(&self) -> Result<()> {
-        let fresh = routing(observe(&self.runtime, None, &AtomicBool::new(false))?);
+        let fresh = routing(observe(
+            &self.runtime,
+            None,
+            self.probe_library_path.as_deref(),
+            &AtomicBool::new(false),
+        )?);
         self.initial.ensure_same_routing(&fresh)?;
         for stored in &self.devices {
             let Some(path) = stored.path.as_deref() else {

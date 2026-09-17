@@ -26,8 +26,8 @@ use std::{
     sync::atomic::AtomicBool,
 };
 
-const APP_ID: &str = "com.snes9x.Snes9x";
-const APP_EXECUTABLE: &str = "bin/snes9x-gtk";
+pub(crate) const APP_ID: &str = "com.snes9x.Snes9x";
+pub(crate) const APP_EXECUTABLE: &str = "bin/snes9x-gtk";
 const OUTPUT_LIMIT: u64 = 8 * 1024 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -196,6 +196,18 @@ fn controller_cache() -> Result<PathBuf> {
     Ok(cache)
 }
 
+/// Nix-built probes resolve their own libraries from the host store, which the
+/// reset sandbox hides, so the target sandbox loader cannot start them.
+/// Re-expose the world-readable store read-only for probe commands; hosts
+/// without one skip the mount and non-Nix probes ignore it.
+fn store_mounts() -> Vec<OsString> {
+    if Path::new("/nix/store").is_dir() {
+        vec![OsString::from("--filesystem=/nix/store:ro")]
+    } else {
+        Vec::new()
+    }
+}
+
 impl PreparedFlatpak {
     pub(crate) fn prepare(
         setup: &SavedSetup,
@@ -325,14 +337,31 @@ impl PreparedFlatpak {
             .staged_probe
             .parent()
             .context("Staged Snes9x probe has no directory")?;
+        // sdl2-compat resolves its SDL3 library with a bare dlopen, which a
+        // direct loader invocation does not route to the runtime library
+        // directory without an explicit search path. Host probe libraries
+        // come first so a host-newer toolchain keeps its own loader closure.
+        let library_dir = self
+            .sandbox_loader
+            .parent()
+            .context("Snes9x sandbox loader has no library directory")?;
+        let library_path = crate::controller_native_process::sandbox_library_path(
+            &self.staged_probe,
+            &library_dir.to_string_lossy(),
+        );
         let mut command = host_command(&self.command);
         command
             .arg("run")
             .arg("--die-with-parent")
             .arg("--nofilesystem=host:reset")
             .arg("--nofilesystem=home")
+            .args(store_mounts())
             .arg(format!("--filesystem={}:ro", probe_root.display()))
             .arg("--env=SDL_LINUX_JOYSTICK_CLASSIC=1")
+            .arg(format!(
+                "--env=LD_LIBRARY_PATH={}",
+                library_path.to_string_lossy()
+            ))
             .arg(format!("--command={}", self.sandbox_loader.display()))
             .arg(&self.app_id)
             .arg(&self.staged_probe)
@@ -415,6 +444,14 @@ impl PreparedFlatpak {
             .staged_probe
             .parent()
             .context("Staged Snes9x probe has no directory")?;
+        let library_dir = self
+            .sandbox_loader
+            .parent()
+            .context("Snes9x sandbox loader has no library directory")?;
+        let library_path = crate::controller_native_process::sandbox_library_path(
+            &self.staged_probe,
+            &library_dir.to_string_lossy(),
+        );
         let mut arguments = vec![
             original.arguments[0].clone(),
             OsString::from("--die-with-parent"),
@@ -422,6 +459,11 @@ impl PreparedFlatpak {
             OsString::from("--nofilesystem=home"),
             original.arguments[1].clone(),
         ];
+        arguments.extend(store_mounts());
+        arguments.push(OsString::from(format!(
+            "--env=LD_LIBRARY_PATH={}",
+            library_path.to_string_lossy()
+        )));
         arguments.extend([
             OsString::from(format!("--filesystem={}:ro", probe_root.display())),
             OsString::from(format!("--filesystem={}", configuration.root().display())),

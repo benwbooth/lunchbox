@@ -75,7 +75,7 @@ pub(crate) fn prepare(
         file_hash(&executable)? == setup.executable_sha256,
         "bsnes executable differs from the saved trusted runtime"
     );
-    let inputs = PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
+    let inputs = PreparedSession::prepare(setup, calibrations, inventory, None, cancel)?;
     let mut plan = original.clone();
     plan.arguments = inputs.overlay_arguments(&original.arguments)?;
     let session = NativeSession {

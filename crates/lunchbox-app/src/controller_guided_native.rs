@@ -23,7 +23,10 @@ fn apply_nestopia_players(
     plan: &LaunchPlan,
     ids: &[String],
 ) -> Result<usize> {
-    ensure!(ids.len() == 2, "Nestopia UE requires exactly two players");
+    ensure!(
+        (1..=2).contains(&ids.len()),
+        "Nestopia UE supports one or two players"
+    );
     let mut found = 0;
     for setup in &mut mapping.nestopia_ue_flatpak_launches {
         if setup.emulator_id != emulator_id
@@ -35,16 +38,16 @@ fn apply_nestopia_players(
             continue;
         }
         found += 1;
-        setup.players = [
-            crate::controller_nestopia_ue_flatpak::settings::Player {
-                player: 1,
-                controller_id: ids[0].clone(),
-            },
-            crate::controller_nestopia_ue_flatpak::settings::Player {
-                player: 2,
-                controller_id: ids[1].clone(),
-            },
-        ];
+        setup.players = ids
+            .iter()
+            .enumerate()
+            .map(
+                |(index, id)| crate::controller_nestopia_ue_flatpak::settings::Player {
+                    player: u8::try_from(index + 1).unwrap(),
+                    controller_id: id.clone(),
+                },
+            )
+            .collect();
         setup.review(&mapping.calibrations)?;
     }
     Ok(found)
@@ -291,6 +294,30 @@ pub(crate) fn settings_for_launch<'a>(
                     })
                     .collect::<Result<_>>()?;
                 setup.validate()?;
+            }
+            // First Flatpak launches synthesize a launch-scoped setup instead
+            // of failing for a missing hand-written entry (mgba precedent).
+            // Native builds keep explicit setups: their executable, cfg and
+            // SDL paths cannot be discovered without a trusted local scan.
+            #[cfg(target_os = "linux")]
+            if found == 0
+                && matches!(
+                    &option.executable,
+                    crate::emulator::EmulatorExecutable::Flatpak { .. }
+                )
+            {
+                mapping
+                    .mame_native_launches
+                    .push(crate::controller_mame_native::guided::discover(
+                        option,
+                        plan,
+                        panel,
+                        profile,
+                        &ids,
+                        &mapping.calibrations,
+                        cancel,
+                    )?);
+                found += 1;
             }
         }
         "flycast" => {
@@ -1309,6 +1336,18 @@ pub(crate) fn settings_for_launch<'a>(
                     .collect();
                 setup.review(&mapping.calibrations)?;
             }
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written entry (mgba precedent).
+            // Linux only: discovery resolves host executable/SDL paths.
+            #[cfg(target_os = "linux")]
+            if found == 0 {
+                mapping
+                    .bsnes_launches
+                    .push(crate::controller_bsnes::guided::discover(
+                        option, plan, &ids, cancel,
+                    )?);
+                found += 1;
+            }
         }
         "snes9x" => {
             for setup in &mut mapping.snes9x_launches {
@@ -1326,10 +1365,33 @@ pub(crate) fn settings_for_launch<'a>(
                     .collect();
                 setup.review(&mapping.calibrations)?;
             }
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written entry (mgba precedent).
+            // Linux only: native discovery uses host Unix probing and the
+            // Flatpak branch needs Linux namespaces.
+            #[cfg(target_os = "linux")]
+            if found == 0 {
+                mapping
+                    .snes9x_launches
+                    .push(crate::controller_snes9x::guided::discover(
+                        option, plan, &ids, cancel,
+                    )?);
+                found += 1;
+            }
         }
         #[cfg(target_os = "linux")]
         "nestopia" => {
             found += apply_nestopia_players(mapping, &option.emulator_id, plan, &ids)?;
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written entry (mgba precedent).
+            if found == 0 {
+                mapping.nestopia_ue_flatpak_launches.push(
+                    crate::controller_nestopia_ue_flatpak::guided::discover(
+                        option, plan, &ids, cancel,
+                    )?,
+                );
+                found += 1;
+            }
         }
         #[cfg(target_os = "linux")]
         "punes" => {
@@ -1387,6 +1449,28 @@ pub(crate) fn settings_for_launch<'a>(
                     .collect();
                 setup.apply_selected_ports = true;
                 setup.review(&mapping.calibrations)?;
+            }
+            // First Flatpak launches synthesize a launch-scoped setup instead
+            // of failing for a missing hand-written entry (mgba precedent).
+            // Native builds keep explicit setups: their helper and SDL paths
+            // cannot be discovered without a trusted local installation scan.
+            #[cfg(target_os = "linux")]
+            if found == 0
+                && matches!(
+                    &option.executable,
+                    crate::emulator::EmulatorExecutable::Flatpak { .. }
+                )
+            {
+                mapping
+                    .duckstation_launches
+                    .push(crate::controller_duckstation::guided::discover(
+                        option,
+                        plan,
+                        profile.target_layout != "playstation-digital",
+                        &ids,
+                        cancel,
+                    )?);
+                found += 1;
             }
         }
         "mednafen" => {
@@ -1474,7 +1558,7 @@ fn source_choices(
         .collect()
 }
 
-fn arcade_sources(
+pub(crate) fn arcade_sources(
     calibration: &crate::controller_catalog::Calibration,
     profile: &EmulatorProfile,
 ) -> Result<BTreeMap<String, String>> {
@@ -1582,7 +1666,7 @@ mod tests {
                 probe_program: "/tmp/lunchbox-controller-probe".into(),
                 sdl_library: "/tmp/libSDL2.so".into(),
                 executable_sha256: "a".repeat(64),
-                players: [
+                players: vec![
                     crate::controller_nestopia_ue_flatpak::settings::Player {
                         player: 1,
                         controller_id: "old-a".into(),

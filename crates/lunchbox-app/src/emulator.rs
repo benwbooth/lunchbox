@@ -2805,21 +2805,26 @@ fn flatpak_mount_point(path: &Path) -> Result<PathBuf> {
 }
 
 fn map_path_for_flatpak(path: &Path) -> PathBuf {
+    // The sandbox grant (flatpak_mount_point) resolves symlinks, so the
+    // argument must resolve identically: a display path through a symlink
+    // outside the grant dangles inside the sandbox even though the mount
+    // covers the real file. Fall back to the input when it cannot resolve.
+    let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     if !Path::new("/var/home").is_dir() {
-        return path.to_path_buf();
+        return path;
     }
     let Some(base_dirs) = directories::BaseDirs::new() else {
-        return path.to_path_buf();
+        return path;
     };
     let home = base_dirs.home_dir();
     if home.starts_with("/var/home") {
-        return path.to_path_buf();
+        return path;
     }
     let Ok(relative) = path.strip_prefix(home) else {
-        return path.to_path_buf();
+        return path;
     };
     let Some(user) = home.file_name() else {
-        return path.to_path_buf();
+        return path;
     };
     PathBuf::from("/var/home").join(user).join(relative)
 }
@@ -3925,12 +3930,7 @@ del *.rom
             option("Zeta", EmulatorRuntimeKind::Standalone, None, false),
             option("Alpha", EmulatorRuntimeKind::Standalone, Some(2), true),
             option("Beta", EmulatorRuntimeKind::Standalone, Some(1), true),
-            option(
-                "Core",
-                EmulatorRuntimeKind::RetroArch,
-                Some(3),
-                false,
-            ),
+            option("Core", EmulatorRuntimeKind::RetroArch, Some(3), false),
         ];
         sort_rom_emulator_options(&mut options);
         let names: Vec<_> = options
@@ -4087,6 +4087,48 @@ del *.rom
                 OsString::from("--env=SDL_JOYSTICK_LINUX_CLASSIC=1"),
                 OsString::from("org.duckstation.DuckStation"),
                 rom.into_os_string(),
+            ]
+        );
+        assert!(plan.environment.is_empty());
+    }
+
+    #[test]
+    fn flatpak_arguments_resolve_symlinks_to_match_the_sandbox_grant() {
+        let _temp = TempDir::new().unwrap();
+        let base = std::fs::canonicalize(_temp.path()).unwrap();
+        let real_dir = base.as_path().join("real roms");
+        std::fs::create_dir(&real_dir).unwrap();
+        let real_rom = real_dir.join("Game with spaces.chd");
+        fs::write(&real_rom, b"rom").unwrap();
+        let link_dir = base.as_path().join("linked roms");
+        std::fs::create_dir(&link_dir).unwrap();
+        let link_rom = link_dir.join("Game with spaces.chd");
+        std::os::unix::fs::symlink(&real_rom, &link_rom).unwrap();
+        let option = RomEmulatorOption {
+            emulator_id: "duckstation-id".into(),
+            emulator_name: "DuckStation".into(),
+            runtime_kind: EmulatorRuntimeKind::Standalone,
+            core_name: String::new(),
+            executable: EmulatorExecutable::Flatpak {
+                command: PathBuf::from("/usr/bin/flatpak"),
+                app_id: "org.duckstation.DuckStation".into(),
+            },
+            core_path: None,
+            recommended: true,
+            wiki_rank: None,
+            wiki_recommended: false,
+        };
+        let plan = build_rom_launch_plan(&link_rom, "Sony Playstation", &option).unwrap();
+        // The grant covers the canonical directory; the game argument must
+        // name the same resolved file or it dangles inside the sandbox.
+        assert_eq!(
+            plan.arguments,
+            vec![
+                OsString::from("run"),
+                OsString::from(format!("--filesystem={}", real_dir.display())),
+                OsString::from("--env=SDL_JOYSTICK_LINUX_CLASSIC=1"),
+                OsString::from("org.duckstation.DuckStation"),
+                real_rom.into_os_string(),
             ]
         );
         assert!(plan.environment.is_empty());

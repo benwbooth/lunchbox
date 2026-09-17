@@ -1023,7 +1023,7 @@ mod tests {
             probe_program: PathBuf::from("/tmp/lunchbox-controller-probe"),
             sdl_library: PathBuf::from("/tmp/libSDL2.so"),
             executable_sha256: "a".repeat(64),
-            players: [
+            players: vec![
                 NestopiaPlayer {
                     player: 1,
                     controller_id: "controller-a".into(),

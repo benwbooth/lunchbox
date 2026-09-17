@@ -27,7 +27,10 @@ pub(crate) struct SavedSetup {
     pub(crate) probe_program: PathBuf,
     pub(crate) sdl_library: PathBuf,
     pub(crate) executable_sha256: String,
-    pub(crate) players: [Player; 2],
+    /// One entry per connected player, in port order. A single-controller
+    /// setup binds port one only; port two stays connected but unbound so
+    /// one-player games work without a second physical controller.
+    pub(crate) players: Vec<Player>,
 }
 
 impl SavedSetup {
@@ -81,13 +84,20 @@ impl SavedSetup {
             "Nestopia needs a trusted executable SHA-256"
         );
         ensure!(
-            self.players[0].player == 1
-                && self.players[1].player == 2
-                && !self.players[0].controller_id.trim().is_empty()
-                && !self.players[1].controller_id.trim().is_empty()
-                && self.players[0].controller_id != self.players[1].controller_id,
-            "Nestopia needs distinct physical controllers for players one and two"
+            (1..=2).contains(&self.players.len())
+                && self.players.iter().enumerate().all(|(index, player)| {
+                    player.player == u8::try_from(index + 1).unwrap_or(u8::MAX)
+                        && !player.controller_id.trim().is_empty()
+                }),
+            "Nestopia needs one or two players in port order"
         );
+        let mut controllers = BTreeSet::new();
+        for player in &self.players {
+            ensure!(
+                controllers.insert(&player.controller_id),
+                "Nestopia needs distinct physical controllers for each player"
+            );
+        }
         Ok(())
     }
 

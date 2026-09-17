@@ -56,6 +56,13 @@ impl Scope {
             canonical_retroarch_core_name(&core)
         } else if core == "nestopia ue" {
             "nestopia"
+        } else if core == "mesen" {
+            // The standalone "Mesen" record is Mesen2 (multi-system; its Linux
+            // home is ~/.config/Mesen2). The original single-system Mesen has
+            // no native controller writer, so the bare name unambiguously
+            // selects the Mesen2 contract. RetroArch "mesen" cores keep their
+            // canonical core name via the branch above.
+            "mesen2"
         } else {
             &core
         }
@@ -253,6 +260,29 @@ mod tests {
                 .core,
             "nestopia"
         );
+    }
+
+    #[test]
+    fn standalone_mesen_name_uses_the_mesen2_contract() {
+        for platform in [
+            "Nintendo Entertainment System",
+            "NEC TurboGrafx-16",
+            "NEC TurboGrafx-CD",
+            "PC Engine SuperGrafx",
+        ] {
+            let scope = Scope::from_label("Mesen", platform).unwrap();
+            assert!(!scope.retroarch);
+            assert_eq!(scope.core, "mesen2");
+        }
+        let scope = Scope::from_label("Mesen", "NEC TurboGrafx-CD").unwrap();
+        let profile = scope.profile(catalog(), "mesen2:standalone-pce-2").unwrap();
+        assert_eq!(profile.core, "mesen2");
+        assert_eq!(profile.target_layout, "pce-2");
+        // RetroArch mesen cores keep their canonical core name.
+        let retro =
+            Scope::from_label("RetroArch (mesen)", "Nintendo Entertainment System").unwrap();
+        assert!(retro.retroarch);
+        assert_eq!(retro.core, "mesen");
     }
 
     #[test]

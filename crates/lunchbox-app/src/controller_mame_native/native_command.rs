@@ -37,7 +37,7 @@ pub(crate) fn prepare(
     cancel: &AtomicBool,
 ) -> Result<NativeSession> {
     cancelled(cancel)?;
-    let inputs = InputSession::capture(setup, inventory, cancel)?;
+    let inputs = InputSession::capture(setup, inventory, None, cancel)?;
     let resolved = super::prepared::resolve_guided(
         setup,
         calibrations,

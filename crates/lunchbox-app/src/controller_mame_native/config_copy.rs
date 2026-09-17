@@ -40,6 +40,16 @@ pub(crate) struct PreparedConfigs {
 }
 
 impl PreparedConfigs {
+    /// Prepared cfg copies (filename-flat: `default.cfg`, `<machine>.cfg`)
+    /// with their exact bytes, for namespace ports that re-home them.
+    pub(crate) fn copies(&self) -> &[(PathBuf, Vec<u8>)] {
+        &self.copies
+    }
+
+    /// Staging directory holding the private copies.
+    pub(crate) fn directory(&self) -> &Path {
+        self.directory.path()
+    }
     pub(crate) fn create(
         setup: &SavedSetup,
         source_directory: &Path,

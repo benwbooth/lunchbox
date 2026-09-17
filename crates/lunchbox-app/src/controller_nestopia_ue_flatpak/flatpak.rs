@@ -28,12 +28,12 @@ pub(crate) const APP_EXECUTABLE_SHA256: &str =
     "1b63638f9e19e007900ac7c81451dbaa734661f79e3033d7013dbec2509543ea";
 pub(crate) const RUNTIME_REF: &str = "org.freedesktop.Platform/x86_64/25.08";
 pub(crate) const RUNTIME_COMMIT: &str =
-    "bd44a6230581917d04f89812a4c21090c304d390edb73995af1c2f9fd8abf4e8";
+    "d27f7a6a974e40b061070bec1be9e1b52a7a6872b271e6a45c2c34a48bf6fedf";
 pub(crate) const SDL_RELATIVE: &str = "lib/x86_64-linux-gnu/libSDL2-2.0.so.0.3200.70";
 pub(crate) const SDL_SHA256: &str =
     "6a2edbdfb43cea4c8e8d44033f05a626336123e426793f34a43d8d9576f9068d";
 const LOADER_RELATIVE: &str = "lib/x86_64-linux-gnu/ld-linux-x86-64.so.2";
-const LOADER_SHA256: &str = "a3b79fc634bbfdc51b5f1c6dc0013b14a7ceb98068efbd1f0055d9ca96d27cf6";
+const LOADER_SHA256: &str = "5e78d59b8fafd94184e7d7eaea12d260a8cf09bfd7adb082759a4acd38147f94";
 const OUTPUT_LIMIT: u64 = 8 * 1024 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -175,6 +175,25 @@ fn controller_cache() -> Result<PathBuf> {
     Ok(cache)
 }
 
+/// Nix-built probes resolve their own libraries from the host store, which the
+/// reset sandbox hides, so the audited sandbox loader cannot start them.
+/// Re-expose the world-readable store read-only for probe commands; hosts
+/// without one skip the mount and non-Nix probes ignore it.
+fn store_mounts() -> Vec<OsString> {
+    if Path::new("/nix/store").is_dir() {
+        vec![OsString::from("--filesystem=/nix/store:ro")]
+    } else {
+        Vec::new()
+    }
+}
+
+/// The audited SDL2 is sdl2-compat, which resolves its SDL3 library with a
+/// bare dlopen. A direct loader invocation does not inherit the Flatpak
+/// runtime library path, so name it explicitly. The reference is pinned to
+/// the audited x86_64 runtime layout; host probe library directories are
+/// prepended by the caller (see `sandbox_library_path`).
+const SANDBOX_RUNTIME_LIBDIR: &str = "/usr/lib/x86_64-linux-gnu";
+
 impl PreparedFlatpak {
     pub(crate) fn prepare(
         setup: &SavedSetup,
@@ -302,10 +321,19 @@ impl PreparedFlatpak {
             .arg("--nofilesystem=home")
             .arg("--nosocket=wayland")
             .arg("--socket=x11")
+            .args(store_mounts())
             .arg(format!("--filesystem={}:ro", probe_root.display()))
             .arg("--env=FLTK_BACKEND=x11")
             .arg("--env=SDL_LINUX_JOYSTICK_CLASSIC=1")
             .arg("--env=SDL_JOYSTICK_LINUX_CLASSIC=1")
+            .arg(format!(
+                "--env=LD_LIBRARY_PATH={}",
+                crate::controller_native_process::sandbox_library_path(
+                    &self.staged_probe,
+                    SANDBOX_RUNTIME_LIBDIR
+                )
+                .to_string_lossy()
+            ))
             .arg("--command=/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2")
             .arg(APP_ID)
             .arg(&self.staged_probe)
@@ -406,6 +434,18 @@ impl PreparedFlatpak {
             "--socket=x11".into(),
             original.arguments[1].clone(),
         ];
+        arguments.extend(store_mounts());
+        arguments.push(
+            format!(
+                "--env=LD_LIBRARY_PATH={}",
+                crate::controller_native_process::sandbox_library_path(
+                    &self.staged_probe,
+                    SANDBOX_RUNTIME_LIBDIR
+                )
+                .to_string_lossy()
+            )
+            .into(),
+        );
         arguments.extend([
             format!("--filesystem={}:ro", probe_root.display()).into(),
             format!("--filesystem={}", configuration.root().display()).into(),

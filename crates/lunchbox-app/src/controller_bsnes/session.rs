@@ -17,9 +17,15 @@ use std::{collections::HashMap, process::Command, sync::atomic::AtomicBool};
 fn observe(
     setup: &settings::SavedSetup,
     path: Option<&str>,
+    // `LD_LIBRARY_PATH` for the probe when its SDL needs sibling runtime
+    // libraries (sdl2-compat's SDL3). Native host SDL resolves without it.
+    probe_library_path: Option<&std::ffi::OsStr>,
     cancel: &AtomicBool,
 ) -> Result<Snapshot> {
     let mut command = Command::new(&setup.probe_program);
+    if let Some(library_path) = probe_library_path {
+        command.env("LD_LIBRARY_PATH", library_path);
+    }
     command
         .arg("--sdl2-inventory")
         .arg("--sdl-library")
@@ -197,6 +203,7 @@ pub(crate) struct PreparedSession {
     initial: Snapshot,
     setup: settings::SavedSetup,
     hashes: std::collections::BTreeMap<std::path::PathBuf, String>,
+    probe_library_path: Option<std::ffi::OsString>,
 }
 
 impl PreparedSession {
@@ -204,6 +211,7 @@ impl PreparedSession {
         setup: &settings::SavedSetup,
         calibrations: &HashMap<String, Calibration>,
         inventory: &[ControllerDevice],
+        probe_library_path: Option<&std::ffi::OsStr>,
         cancel: &AtomicBool,
     ) -> Result<Self> {
         cancelled(cancel)?;
@@ -224,7 +232,7 @@ impl PreparedSession {
         }
         #[cfg(target_os = "linux")]
         let topology = InputTopology::capture(&selected)?;
-        let initial = routing(observe(setup, None, cancel)?);
+        let initial = routing(observe(setup, None, probe_library_path, cancel)?);
         let mut players = Vec::new();
         let mut runtime_paths = Vec::new();
         let mut device_indices = Vec::new();
@@ -257,7 +265,7 @@ impl PreparedSession {
                 !runtime_paths.contains(&path),
                 "bsnes players resolved to the same native controller"
             );
-            let captured = observe(setup, Some(&path), cancel)?;
+            let captured = observe(setup, Some(&path), probe_library_path, cancel)?;
             initial.ensure_same_routing(&routing(captured.clone()))?;
             #[cfg(target_os = "linux")]
             topology.verify()?;
@@ -298,6 +306,7 @@ impl PreparedSession {
             initial,
             setup: setup.clone(),
             hashes,
+            probe_library_path: probe_library_path.map(|path| path.to_owned()),
         };
         session.verify(cancel)?;
         Ok(session)
@@ -310,7 +319,12 @@ impl PreparedSession {
         for (path, expected) in &self.hashes {
             ensure!(file_hash(path)? == *expected, "bsnes launch input changed");
         }
-        let fresh = routing(observe(&self.setup, None, cancel)?);
+        let fresh = routing(observe(
+            &self.setup,
+            None,
+            self.probe_library_path.as_deref(),
+            cancel,
+        )?);
         self.initial.ensure_same_routing(&fresh)?;
         for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
             let device = fresh.device_at_path(path)?;
@@ -340,7 +354,12 @@ impl PreparedSession {
 
     #[cfg(not(target_os = "linux"))]
     fn verify_health_probe(&self) -> Result<()> {
-        let fresh = routing(observe(&self.setup, None, &AtomicBool::new(false))?);
+        let fresh = routing(observe(
+            &self.setup,
+            None,
+            self.probe_library_path.as_deref(),
+            &AtomicBool::new(false),
+        )?);
         self.initial.ensure_same_routing(&fresh)?;
         for (path, index) in self.runtime_paths.iter().zip(&self.device_indices) {
             platform::require_unique_device_path(&fresh.devices, path, *index)?;

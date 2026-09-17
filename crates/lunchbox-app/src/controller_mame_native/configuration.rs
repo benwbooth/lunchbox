@@ -56,6 +56,12 @@ impl PreparedProfile {
         &self.profile
     }
 
+    /// Staging directory holding the private profile, for namespace ports
+    /// that re-home the file without touching the verified bytes.
+    pub(crate) fn directory(&self) -> &Path {
+        self.directory.path()
+    }
+
     pub(crate) fn verify(&self) -> Result<()> {
         let metadata = std::fs::symlink_metadata(&self.profile)?;
         ensure!(

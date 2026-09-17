@@ -106,8 +106,216 @@ pub fn launch_binding_modes(
     binding_modes(&prepared.content, requested, compatibility)
 }
 
+/// Exact single-disc serial for standalone PlayStation launchers
+/// (DuckStation settings layers). Accepts directly readable cue/chd media
+/// plus single-cue Redump zips; playlists and executables need explicit
+/// multi-disc or no-disc declarations instead of an inferred serial.
+pub fn single_disc_serial(content: &Path) -> Result<String> {
+    let extension = content
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if extension == "zip" {
+        return zip_disc_serial(content);
+    }
+    let serials = content_serials(content, &mut BTreeSet::new(), 0)?;
+    ensure!(
+        serials.len() == 1,
+        "PlayStation standalone launch needs exactly one disc, not a playlist"
+    );
+    serials
+        .into_iter()
+        .next()
+        .flatten()
+        .context("PlayStation disc has no serial; declare its identity explicitly")
+}
+
 trait CookedSectorReader {
     fn sector(&mut self, lba: u32) -> Result<[u8; 2048]>;
+}
+
+/// Exact PlayStation disc serial (`SLUS-00067` form) from a Redump-style zip
+/// holding one CUE sheet and its track files. Reads only the CUE sheet, the
+/// volume descriptors and the ISO directory: SYSTEM.CNF almost always sits
+/// within the first megabytes, and total streamed bytes stay bounded.
+/// Anything else (multi-cue archives, cue-less bins, missing serials) fails
+/// instead of guessing identity from filenames.
+pub fn zip_disc_serial(path: &Path) -> Result<String> {
+    use std::io::Read;
+    let file = File::open(path)?;
+    ensure!(
+        file.metadata()?.len() <= 4 * 1024 * 1024 * 1024,
+        "PlayStation zip exceeds the readable media bound"
+    );
+    let mut archive = zip::ZipArchive::new(file)?;
+    let cues: Vec<String> = archive
+        .file_names()
+        .filter(|name| name.to_ascii_lowercase().ends_with(".cue"))
+        .map(str::to_owned)
+        .collect();
+    ensure!(
+        cues.len() == 1,
+        "PlayStation zip needs exactly one CUE sheet, not {}",
+        cues.len()
+    );
+    let mut cue_text = String::new();
+    archive
+        .by_name(&cues[0])?
+        .take(1024 * 1024)
+        .read_to_string(&mut cue_text)?;
+    ensure!(
+        cue_text.len() < 1024 * 1024,
+        "PlayStation CUE sheet is too large"
+    );
+    // Same strict grammar as loose CUE sheets; track files resolve to sibling
+    // archive entries instead of host paths.
+    struct CueTrack {
+        entry: String,
+        mode: String,
+        one: Option<u64>,
+    }
+    let mut tracks: Vec<CueTrack> = Vec::new();
+    let mut current: Option<(String, String)> = None;
+    for line in cue_text.lines() {
+        let words = cue_fields(line)?;
+        let Some(command) = words.first() else {
+            continue;
+        };
+        match command.to_ascii_uppercase().as_str() {
+            "FILE" => {
+                ensure!(words.len() == 3, "Malformed CUE FILE");
+                current = Some((words[1].clone(), words[2].clone()));
+            }
+            "TRACK" => {
+                ensure!(words.len() == 3, "Malformed CUE TRACK");
+                let number = words[1].parse::<usize>()?;
+                ensure!(
+                    number == tracks.len() + 1,
+                    "CUE tracks must begin at 1 and be consecutive"
+                );
+                let (file, _) = current.as_ref().context("CUE TRACK precedes FILE")?;
+                tracks.push(CueTrack {
+                    entry: file.clone(),
+                    mode: words[2].to_ascii_uppercase(),
+                    one: None,
+                });
+            }
+            "INDEX" => {
+                ensure!(words.len() == 3, "Malformed CUE INDEX");
+                let track = tracks.last_mut().context("CUE INDEX precedes TRACK")?;
+                if words[1] == "01" {
+                    ensure!(track.one.is_none(), "Duplicate CUE index");
+                    track.one = Some(cue_frame(&words[2])?);
+                }
+            }
+            _ => {}
+        }
+    }
+    let first = tracks.first().context("CUE has no tracks")?;
+    let (stride, payload) = match first.mode.as_str() {
+        "MODE1/2048" => (2048u64, 0u64),
+        "MODE1/2352" => (2352, 16),
+        "MODE2/2352" => (2352, 24),
+        _ => bail!("Unsupported first CUE data track mode"),
+    };
+    let names: Vec<String> = archive.file_names().map(str::to_owned).collect();
+    ensure!(
+        names.iter().any(|name| name == &first.entry),
+        "CUE data track is missing from its zip"
+    );
+    let size = archive.by_name(&first.entry)?.size();
+    let start = first.one.context("First CUE track has no INDEX 01")?;
+    let end = size / stride;
+    ensure!(
+        start < end && end.checked_mul(stride).is_some(),
+        "CUE data track extends outside its file"
+    );
+    let mut track = ZipTrack {
+        path: path.to_path_buf(),
+        entry: first.entry.clone(),
+        first: start,
+        end,
+        stride,
+        payload,
+        streamed: 0,
+    };
+    read_iso_serial(&mut track)?.context("PlayStation zip has no disc serial")
+}
+
+/// Cooked-sector view over one compressed archive entry. Entries stream
+/// forward; a backward seek re-opens the entry and skips ahead, keeping
+/// total streamed bytes bounded for identity reads.
+struct ZipTrack {
+    path: PathBuf,
+    entry: String,
+    first: u64,
+    end: u64,
+    stride: u64,
+    payload: u64,
+    streamed: u64,
+}
+
+impl ZipTrack {
+    const STREAM_BOUND: u64 = 64 * 1024 * 1024;
+}
+
+impl CookedSectorReader for ZipTrack {
+    fn sector(&mut self, lba: u32) -> Result<[u8; 2048]> {
+        use std::io::Read;
+        let position = self
+            .first
+            .checked_add(u64::from(lba))
+            .context("CD sector overflow")?;
+        ensure!(
+            position < self.end,
+            "ISO directory points outside the data track"
+        );
+        let mut offset = position
+            .checked_mul(self.stride)
+            .context("CD file offset overflow")?;
+        // Re-open when rewinding; compressed entries cannot seek backward.
+        // Each open re-reads from the entry start, so keep a global bound.
+        let file = File::open(&self.path)?;
+        let mut archive = zip::ZipArchive::new(file)?;
+        let mut entry = archive.by_name(&self.entry)?;
+        let mut to_skip = offset;
+        let mut discard = [0u8; 64 * 1024];
+        while to_skip > 0 {
+            let chunk = to_skip.min(discard.len() as u64) as usize;
+            entry.read_exact(&mut discard[..chunk])?;
+            to_skip -= chunk as u64;
+            self.streamed = self
+                .streamed
+                .checked_add(chunk as u64)
+                .context("CD stream overflow")?;
+            ensure!(
+                self.streamed <= Self::STREAM_BOUND,
+                "PlayStation identity read exceeds its stream bound"
+            );
+        }
+        if self.stride == 2352 {
+            let mut raw = [0; 2352];
+            entry.read_exact(&mut raw)?;
+            self.streamed = self
+                .streamed
+                .checked_add(2352)
+                .context("CD stream overflow")?;
+            return cooked_raw(&raw);
+        }
+        offset = offset
+            .checked_add(self.payload)
+            .context("CD file offset overflow")?;
+        // Payload is nonzero only with the 2352 stride, which returns above;
+        // the addition documents the cooked-sector layout for the 2048 case.
+        let mut bytes = [0; 2048];
+        entry.read_exact(&mut bytes)?;
+        self.streamed = self
+            .streamed
+            .checked_add(2048)
+            .context("CD stream overflow")?;
+        Ok(bytes)
+    }
 }
 
 fn sector_edc(bytes: &[u8]) -> u32 {
@@ -479,11 +687,15 @@ fn boot_serial(bytes: &[u8]) -> Option<String> {
     let value = value.strip_prefix(b"=")?;
     let skipped = value.iter().take_while(|b| whitespace(b)).count();
     let value = &value[skipped..];
-    let prefix = value.get(..7)?;
-    if !prefix.eq_ignore_ascii_case(b"cdrom:\\") {
+    // Pressed discs use both `cdrom:\SLUS_000.67;1` and `cdrom:SLUS_000.67;1`
+    // spellings (e.g. the Redump-verified US Castlevania: Symphony of the
+    // Night master has no backslash). Accept exactly those two forms.
+    let device = value.get(..6)?;
+    if !device.eq_ignore_ascii_case(b"cdrom:") {
         return None;
     }
-    let serial = value.get(7..)?;
+    let serial = value.get(6..)?;
+    let serial = serial.strip_prefix(b"\\").unwrap_or(serial);
     let suffix = if serial.get(8) == Some(&b'.') { 9 } else { 8 };
     if serial.len() < suffix + 2
         || !serial[..4].iter().all(u8::is_ascii_alphabetic)
@@ -691,6 +903,66 @@ mod tests {
         )
         .unwrap();
         cue
+    }
+
+    #[test]
+    fn boot_spellings_with_and_without_device_separator_resolve() {
+        let mut sector = [0u8; 2048];
+        let backslash = b"BOOT = cdrom:\\SLUS_000.67;1\r\n";
+        sector[..backslash.len()].copy_from_slice(backslash);
+        assert_eq!(boot_serial(&sector).as_deref(), Some("SLUS-00067"));
+        let mut sector = [0u8; 2048];
+        let bare = b"BOOT = cdrom:SLUS_000.67;1\r\n";
+        sector[..bare.len()].copy_from_slice(bare);
+        assert_eq!(boot_serial(&sector).as_deref(), Some("SLUS-00067"));
+        let mut sector = [0u8; 2048];
+        let double = b"BOOT = cdrom:\\\\SLUS_000.67;1\r\n";
+        sector[..double.len()].copy_from_slice(double);
+        assert_eq!(boot_serial(&sector), None);
+    }
+
+    #[test]
+    fn zip_archive_resolves_the_pressed_disc_serial() {
+        use std::io::Write;
+        let directory = tempfile::tempdir().unwrap();
+        let cue = disc(
+            directory.path(),
+            "disc with spaces",
+            "SLUS_000.67",
+            "MODE2/2352",
+            0,
+        );
+        let bin = directory.path().join("disc with spaces.bin");
+        let zip_path = directory.path().join("game.zip");
+        let file = std::fs::File::create(&zip_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        for source in [&cue, &bin] {
+            zip.start_file(
+                source.file_name().unwrap().to_str().unwrap(),
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+            zip.write_all(&std::fs::read(source).unwrap()).unwrap();
+        }
+        zip.finish().unwrap();
+        assert_eq!(zip_disc_serial(&zip_path).unwrap(), "SLUS-00067");
+    }
+
+    #[test]
+    fn zip_archive_rejects_ambiguous_cue_sheets() {
+        use std::io::Write;
+        let directory = tempfile::tempdir().unwrap();
+        let zip_path = directory.path().join("game.zip");
+        let file = std::fs::File::create(&zip_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        for name in ["one.cue", "two.cue"] {
+            zip.start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(b"FILE \"x.bin\" BINARY\nTRACK 01 MODE1/2048\nINDEX 01 00:00:00\n")
+                .unwrap();
+        }
+        zip.finish().unwrap();
+        assert!(zip_disc_serial(&zip_path).is_err());
     }
 
     #[test]

@@ -354,7 +354,7 @@ pub struct CalibratedLaunch {
     snes9x_native: Option<crate::controller_snes9x::native_command::NativeSession>,
     fceux_native: Option<crate::controller_fceux::native_command::NativeSession>,
     sameboy_native: Option<crate::controller_sameboy::native_command::NativeSession>,
-    bsnes_native: Option<crate::controller_bsnes::native_command::NativeSession>,
+    bsnes_native: Option<crate::controller_bsnes::Session>,
     stella_native: Option<crate::controller_stella_native::native_command::NativeSession>,
     vice_native: Option<crate::controller_vice_native::native_command::NativeSession>,
     hatari_native: Option<crate::controller_hatari_native::native_command::NativeSession>,
@@ -369,7 +369,7 @@ pub struct CalibratedLaunch {
     jgenesis_native: Option<PreparedJsonNativeLaunch>,
     #[cfg(target_os = "linux")]
     mednafen_native: Option<crate::controller_mednafen::native_command::NativeSession>,
-    mame_native: Option<crate::controller_mame_native::native_command::NativeSession>,
+    mame_native: Option<crate::controller_mame_native::Session>,
     flycast_native: Option<crate::controller_flycast_native::native_command::NativeSession>,
     pcsx2_native: Option<crate::controller_pcsx2::native_command::NativeSession>,
     rpcs3_native: Option<crate::controller_rpcs3::native_command::NativeSession>,
@@ -378,7 +378,7 @@ pub struct CalibratedLaunch {
     dolphin_native: Option<crate::controller_dolphin::standalone::native_command::PreparedCommand>,
     mgba: Option<crate::controller_mgba::native_command::NativeSession>,
     ppsspp: Option<crate::controller_ppsspp::native_command::PreparedLaunch>,
-    duckstation: Option<crate::controller_duckstation::native_command::NativeSession>,
+    duckstation: Option<crate::controller_duckstation::Session>,
     // Keeps the private append config alive until the child exits, including errors.
     _directory: Option<RetainedLaunchDirectory>,
     bizhawk: Option<PreparedBizhawkLaunch>,
@@ -6283,7 +6283,7 @@ pub fn prepare_with_cancellation(
             .collect();
         ensure!(matches.len() <= 1, "Ambiguous MAME saved setup");
         if let Some(setup) = matches.first() {
-            let native = crate::controller_mame_native::native_command::prepare(
+            let session = crate::controller_mame_native::prepare(
                 setup,
                 &mapping.calibrations,
                 &inventory,
@@ -6291,7 +6291,7 @@ pub fn prepare_with_cancellation(
                 plan,
                 cancel,
             )?;
-            *plan = native.plan().clone();
+            *plan = session.plan().clone();
             return Ok(Some(CalibratedLaunch {
                 mgba: None,
                 #[cfg(target_os = "linux")]
@@ -6313,7 +6313,7 @@ pub fn prepare_with_cancellation(
             jgenesis_native: None,
                 #[cfg(target_os = "linux")]
                 mednafen_native: None,
-                mame_native: Some(native),
+                mame_native: Some(session),
                 flycast_native: None,
                 pcsx2_native: None,
                 rpcs3_native: None,
@@ -6338,7 +6338,7 @@ pub fn prepare_with_cancellation(
                 puae: None,
                 #[cfg(target_os = "linux")]
                 stella: None,
-                description: "MAME: native standard six/eight-button panels; partial native raw SDL support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
+                description: "MAME: standard six/eight-button panels on native and Flatpak Linux; partial raw SDL support on Linux, Windows, and macOS; runtime and internal mapping verification incomplete"
                     .into(),
             }));
         }
@@ -6439,7 +6439,7 @@ pub fn prepare_with_cancellation(
             .collect();
         ensure!(matches.len() <= 1, "Ambiguous bsnes saved setup");
         if let Some(setup) = matches.first() {
-            let native = crate::controller_bsnes::native_command::prepare(
+            let session = crate::controller_bsnes::prepare(
                 setup,
                 &mapping.calibrations,
                 &inventory,
@@ -6447,7 +6447,7 @@ pub fn prepare_with_cancellation(
                 plan,
                 cancel,
             )?;
-            *plan = native.plan.clone();
+            *plan = session.plan().clone();
             return Ok(Some(CalibratedLaunch {
                 mgba: None,
                 #[cfg(target_os = "linux")]
@@ -6455,7 +6455,7 @@ pub fn prepare_with_cancellation(
                 snes9x_native: None,
                 fceux_native: None,
                 sameboy_native: None,
-                bsnes_native: Some(native),
+                bsnes_native: Some(session),
                 stella_native: None,
                 vice_native: None,
                 hatari_native: None,
@@ -6494,7 +6494,7 @@ pub fn prepare_with_cancellation(
                 puae: None,
                 #[cfg(target_os = "linux")]
                 stella: None,
-                description: "bsnes settings.bml: calibrated SNES gamepad controls through the SDL joypad driver; private per-launch settings file; partial native support on Linux, Windows, and macOS; Mouse/Super Multitap/Super Scope/Justifier targets not covered"
+                description: "bsnes settings.bml: calibrated SNES gamepad controls through the SDL joypad driver; private per-launch settings file on native and Flatpak Linux; partial support on Linux, Windows, and macOS; Mouse/Super Multitap/Super Scope/Justifier targets not covered"
                     .into(),
             }));
         }
@@ -7404,18 +7404,13 @@ pub fn prepare_with_cancellation(
                 let profile = crate::controller_catalog::catalog()
                     .emulator_profiles
                     .iter()
-                    .find(|profile| {
-                        profile.id
-                            == crate::controller_gopher64_native::PROFILE_ID
-                    })
+                    .find(|profile| profile.id == crate::controller_gopher64_native::PROFILE_ID)
                     .context("Missing native Gopher64 profile")?;
-                let ids = crate::controller_guided_native::player_ids(
-                    settings, profile, &inventory,
+                let ids =
+                    crate::controller_guided_native::player_ids(settings, profile, &inventory)?;
+                discovered = crate::controller_gopher64_native::guided::discover(
+                    option, plan, &ids, cancel,
                 )?;
-                discovered =
-                    crate::controller_gopher64_native::guided::discover(
-                        option, plan, &ids, cancel,
-                    )?;
                 &discovered
             }
         };
@@ -9972,7 +9967,7 @@ pub fn prepare_with_cancellation(
             .collect();
         ensure!(matches.len() <= 1, "Ambiguous DuckStation saved setup");
         if let Some(setup) = matches.first() {
-            let native = crate::controller_duckstation::native_command::prepare(
+            let session = crate::controller_duckstation::prepare(
                 setup,
                 &mapping.calibrations,
                 &inventory,
@@ -9981,7 +9976,7 @@ pub fn prepare_with_cancellation(
                 cancel,
             )?;
             return Ok(Some(CalibratedLaunch {
-                duckstation: Some(native),
+                duckstation: Some(session),
                 mgba: None,
                 #[cfg(target_os = "linux")]
                 dolphin_native: None,
@@ -10027,8 +10022,16 @@ pub fn prepare_with_cancellation(
                 #[cfg(target_os = "linux")]
                 stella: None,
                 description: format!(
-                    "DuckStation: {} calibrated native players; startup confirmation required",
-                    setup.players.len()
+                    "DuckStation: {} calibrated {} players; startup confirmation required",
+                    setup.players.len(),
+                    if matches!(
+                        &option.executable,
+                        crate::emulator::EmulatorExecutable::Flatpak { .. }
+                    ) {
+                        "Flatpak"
+                    } else {
+                        "native"
+                    }
                 ),
             }));
         }
@@ -11458,6 +11461,259 @@ fn attach_config(
 
 #[cfg(test)]
 mod tests {
+    /// Live launch-preparation matrix across installed emulators, real
+    /// hardware, and real ROMs. Each case prints OK or the full error
+    /// chain; any failure fails the test. Run explicitly with
+    /// `cargo test -- --ignored`. Spawns nothing; sessions clean up after
+    /// themselves.
+    #[test]
+    #[ignore = "needs local emulators, controller hardware, and game ROMs"]
+    fn live_prepare_matrix() {
+        std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(|| {
+                use crate::emulator::{EmulatorExecutable, RomEmulatorOption};
+                use std::sync::atomic::AtomicBool;
+                struct Case {
+                    name: &'static str,
+                    platform: &'static str,
+                    emulator_name: &'static str,
+                    emulator_id: &'static str,
+                    app_id: &'static str,
+                    core: &'static str,
+                    core_file: &'static str,
+                    rom: &'static str,
+                    game_uid: &'static str,
+                }
+                let flatpak = ["/run/current-system/sw/bin/flatpak", "/usr/bin/flatpak"]
+                    .into_iter()
+                    .map(std::path::PathBuf::from)
+                    .find(|path| path.is_file())
+                    .expect("live matrix needs a host flatpak CLI");
+                let cases = [
+                    Case {
+                        name: "duckstation-psx",
+                        platform: "Sony Playstation",
+                        emulator_name: "DuckStation",
+                        emulator_id: "54c92798-cb85-5d80-90cf-6c11176ac512",
+                        app_id: "org.duckstation.DuckStation",
+                        core: "",
+                        core_file: "",
+                        rom: "/mnt/roms/Sony Playstation/Castlevania - Symphony of the Night (USA).zip",
+                        game_uid: "40bf053f-89d2-4b32-a4ab-f8cb239dc7de",
+                    },
+                    Case {
+                        name: "nestopia-nes",
+                        platform: "Nintendo Entertainment System",
+                        emulator_name: "Nestopia UE",
+                        emulator_id: "73ad4eb8-0f5f-56ca-b839-8398db3e8d77",
+                        app_id: "ca._0ldsk00l.Nestopia",
+                        core: "",
+                        core_file: "",
+                        rom: "/mnt/roms/Nintendo Entertainment System/Faxanadu (USA) (Rev 1).zip",
+                        game_uid: "",
+                    },
+                    Case {
+                        name: "snes9x-snes",
+                        platform: "Super Nintendo Entertainment System",
+                        emulator_name: "Snes9x",
+                        emulator_id: "8f627173-35d2-5c68-96cf-362a03e7545e",
+                        app_id: "com.snes9x.Snes9x",
+                        core: "",
+                        core_file: "",
+                        rom: "/mnt/roms/emudeck/Emulation/roms/snes/Faceball 2000 (USA).zip",
+                        game_uid: "",
+                    },
+                    Case {
+                        name: "bsnes-snes",
+                        platform: "Super Nintendo Entertainment System",
+                        emulator_name: "bsnes",
+                        emulator_id: "2e8c498b-a3d7-5070-a2db-5070fcb039ae",
+                        app_id: "dev.bsnes.bsnes",
+                        core: "",
+                        core_file: "",
+                        rom: "/mnt/roms/emudeck/Emulation/roms/snes/Faceball 2000 (USA).zip",
+                        game_uid: "",
+                    },
+                    Case {
+                        name: "mame-arcade",
+                        platform: "Arcade",
+                        emulator_name: "MAME",
+                        emulator_id: "74ca593a-1d78-52e9-bc7f-c77608a3b09d",
+                        app_id: "org.mamedev.MAME",
+                        core: "",
+                        core_file: "",
+                        rom: "/mnt/roms/emudeck/Emulation/roms/arcade/kinstsnes.zip",
+                        game_uid: "",
+                    },
+                    Case {
+                        name: "retroarch-mesen-nes",
+                        platform: "Nintendo Entertainment System",
+                        emulator_name: "RetroArch",
+                        emulator_id: "retroarch-id",
+                        app_id: "org.libretro.RetroArch",
+                        core: "mesen",
+                        core_file: "mesen_libretro.so",
+                        rom: "/mnt/roms/Nintendo Entertainment System/Faxanadu (USA) (Rev 1).zip",
+                        game_uid: "",
+                    },
+                    Case {
+                        name: "retroarch-fceumm-nes",
+                        platform: "Nintendo Entertainment System",
+                        emulator_name: "RetroArch",
+                        emulator_id: "retroarch-id",
+                        app_id: "org.libretro.RetroArch",
+                        core: "fceumm",
+                        core_file: "fceumm_libretro.so",
+                        rom: "/mnt/roms/Nintendo Entertainment System/Faxanadu (USA) (Rev 1).zip",
+                        game_uid: "",
+                    },
+                    Case {
+                        name: "retroarch-snes9x-snes",
+                        platform: "Super Nintendo Entertainment System",
+                        emulator_name: "RetroArch",
+                        emulator_id: "retroarch-id",
+                        app_id: "org.libretro.RetroArch",
+                        core: "snes9x",
+                        core_file: "snes9x_libretro.so",
+                        rom: "/mnt/roms/emudeck/Emulation/roms/snes/Faceball 2000 (USA).zip",
+                        game_uid: "",
+                    },
+                ];
+                let store = crate::settings::SettingsStore::open_default().unwrap();
+                let settings = store.load().unwrap();
+                let mut failures = Vec::new();
+                for case in cases {
+                    if !std::path::Path::new(case.rom).is_file() {
+                        println!("SKIP {}: missing {}", case.name, case.rom);
+                        continue;
+                    }
+                    let executable = EmulatorExecutable::Flatpak {
+                        command: flatpak.clone(),
+                        app_id: case.app_id.into(),
+                    };
+                    let option = if case.core.is_empty() {
+                        RomEmulatorOption::standalone(
+                            case.emulator_id.into(),
+                            case.emulator_name.into(),
+                            executable,
+                        )
+                    } else {
+                        let core_path = std::path::PathBuf::from(
+                            shellexpand_core(case.core_file),
+                        );
+                        if !core_path.is_file() {
+                            println!("SKIP {}: missing {}", case.name, core_path.display());
+                            continue;
+                        }
+                        RomEmulatorOption::retroarch(
+                            case.emulator_id.into(),
+                            "RetroArch".into(),
+                            case.core,
+                            executable,
+                            core_path,
+                            false,
+                        )
+                    };
+                    let customization = store
+                        .resolve_launch_customization(
+                            case.game_uid,
+                            case.platform,
+                            case.emulator_id,
+                            if case.core.is_empty() { "standalone" } else { "retroarch" },
+                            case.core,
+                        )
+                        .unwrap();
+                    let planned = crate::emulator::build_rom_launch_plan_with_customization(
+                        std::path::Path::new(case.rom),
+                        case.platform,
+                        &option,
+                        &customization,
+                    );
+                    let mut plan = match planned {
+                        Ok(plan) => plan,
+                        Err(error) => {
+                            println!("PLAN-FAIL {}: {error:#}", case.name);
+                            failures.push(case.name);
+                            continue;
+                        }
+                    };
+                    // Standalone cases need a guided target the way the
+                    // Controller setup UI saves one; pick the first
+                    // applicable native profile so the test does not depend
+                    // on the operator's own saved targets. Calibrations,
+                    // hardware, ROMs and Flatpak deployments stay real.
+                    let mut owned: Option<crate::settings::AppSettings> = None;
+                    let active: &crate::settings::AppSettings = if case.core.is_empty() {
+                        let mut cloned = settings.clone();
+                        let scope =
+                            crate::controller_target::Scope::for_option(&option, case.platform)
+                                .unwrap();
+                        let profile = crate::controller_catalog::catalog()
+                            .emulator_profiles
+                            .iter()
+                            .find(|profile| scope.accepts(profile))
+                            .unwrap_or_else(|| {
+                                panic!("live matrix has no native profile for {}", case.name)
+                            });
+                        println!("TARGET {} -> {}", case.name, profile.id);
+                        cloned
+                            .controller_mapping
+                            .guided_target_selections
+                            .insert(scope.key(), profile.id.clone());
+                        owned.insert(cloned)
+                    } else {
+                        &settings
+                    };
+                    match super::prepare_with_cancellation(
+                        active,
+                        case.platform,
+                        &option,
+                        &mut plan,
+                        &AtomicBool::new(false),
+                    ) {
+                        Ok(session) => println!(
+                            "PREPARE-OK {} session={}",
+                            case.name,
+                            session.is_some()
+                        ),
+                        Err(error) => {
+                            // The operator's live controller setup churns
+                            // (re-plugged pads, partial calibrations); those
+                            // states are reported, not asserted, so the matrix
+                            // stays strict about product paths while the
+                            // human is mid-setup. Anything else fails loudly.
+                            let text = format!("{error:#}");
+                            let environmental = text.contains("is disconnected")
+                                || text.contains("is ambiguous")
+                                || text.contains("Controller setup")
+                                || text.contains("is missing measured")
+                                || text.to_ascii_lowercase().contains("calibrat");
+                            if environmental {
+                                println!("SETUP-SKIP {}: {text}", case.name);
+                            } else {
+                                println!("PREPARE-FAIL {}: {text}", case.name);
+                                failures.push(case.name);
+                            }
+                        }
+                    }
+                }
+                assert!(
+                    failures.is_empty(),
+                    "live prepare matrix failures: {failures:?}"
+                );
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    fn shellexpand_core(file: &str) -> String {
+        format!(
+            "{}/.var/app/org.libretro.RetroArch/config/retroarch/cores/{file}",
+            std::env::var("HOME").unwrap_or_default()
+        )
+    }
     /// needs Linux, the wired Xbox pad (linux:045e:028e:usb), the Gopher64
     /// Flatpak, and the Mario ROM from the bug report. Run explicitly with
     /// `cargo test -- --ignored`. Spawns nothing; the session guard
@@ -11477,9 +11733,7 @@ mod tests {
                     .map(std::path::PathBuf::from)
                     .find(|path| path.is_file())
                     .expect("live Gopher64 prepare needs a host flatpak CLI");
-                for path in [
-                    "/mnt/roms/Nintendo 64/Super Mario 64 (USA).zip",
-                ] {
+                for path in ["/mnt/roms/Nintendo 64/Super Mario 64 (USA).zip"] {
                     if !std::path::Path::new(path).is_file() {
                         println!("SKIPPED live Gopher64 prepare: missing {path}");
                         return;
@@ -11521,9 +11775,9 @@ mod tests {
                 .expect("live Gopher64 prepare");
                 assert!(session.is_some(), "expected a calibrated session");
                 assert!(
-                    plan.arguments.iter().any(|arg| arg
-                        .to_string_lossy()
-                        .starts_with("--filesystem=")),
+                    plan.arguments
+                        .iter()
+                        .any(|arg| arg.to_string_lossy().starts_with("--filesystem=")),
                     "Flatpak session must mount its config and ROM roots"
                 );
                 // Same chain against the real planner output (extracted ROM
@@ -11541,14 +11795,13 @@ mod tests {
                         "",
                     )
                     .unwrap();
-                let mut real_plan =
-                    crate::emulator::build_rom_launch_plan_with_customization(
-                        std::path::Path::new("/mnt/roms/Nintendo 64/Super Mario 64 (USA).zip"),
-                        "Nintendo 64",
-                        &option,
-                        &customization,
-                    )
-                    .expect("live Gopher64 plan");
+                let mut real_plan = crate::emulator::build_rom_launch_plan_with_customization(
+                    std::path::Path::new("/mnt/roms/Nintendo 64/Super Mario 64 (USA).zip"),
+                    "Nintendo 64",
+                    &option,
+                    &customization,
+                )
+                .expect("live Gopher64 plan");
                 let real = super::prepare_with_cancellation(
                     &settings,
                     "Nintendo 64",

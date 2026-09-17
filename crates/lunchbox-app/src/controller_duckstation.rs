@@ -13,8 +13,86 @@ use lunchbox_controller_probe::{
 };
 
 use crate::controller_catalog::{Calibration, catalog};
+use crate::emulator::LaunchPlan;
 
+#[cfg(target_os = "linux")]
+pub(crate) mod flatpak;
+#[cfg(target_os = "linux")]
+pub(crate) mod guided;
 pub(crate) mod native_command;
+
+/// Calibrated DuckStation session across runtimes. Native keeps the private
+/// staged tree; Flatpak swaps the staged documents over the live profile
+/// (the sandbox remaps XDG_CONFIG_HOME).
+pub(crate) enum Session {
+    Native(native_command::NativeSession),
+    #[cfg(target_os = "linux")]
+    Flatpak(flatpak::FlatpakSession),
+}
+
+impl Session {
+    pub(crate) fn verify(&self) -> Result<()> {
+        match self {
+            Self::Native(session) => session.verify(),
+            #[cfg(target_os = "linux")]
+            Self::Flatpak(session) => session.verify(),
+        }
+    }
+
+    pub(crate) fn spawn(
+        &mut self,
+        plan: &LaunchPlan,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<std::process::Child> {
+        match self {
+            Self::Native(session) => session.spawn(plan, cancel),
+            #[cfg(target_os = "linux")]
+            Self::Flatpak(session) => session.spawn(plan, cancel),
+        }
+    }
+
+    pub(crate) fn check_health(&self) -> Result<()> {
+        self.verify()
+    }
+}
+
+/// Dispatch preparation across runtimes, preserving each namespace contract.
+pub(crate) fn prepare(
+    setup: &SavedSetup,
+    calibrations: &std::collections::HashMap<String, Calibration>,
+    inventory: &[crate::controllers::ControllerDevice],
+    option: &crate::emulator::RomEmulatorOption,
+    plan: &mut LaunchPlan,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<Session> {
+    use crate::emulator::EmulatorExecutable;
+    match &option.executable {
+        EmulatorExecutable::Native(_) => Ok(Session::Native(native_command::prepare(
+            setup,
+            calibrations,
+            inventory,
+            option,
+            plan,
+            cancel,
+        )?)),
+        #[cfg(target_os = "linux")]
+        EmulatorExecutable::Flatpak { .. } => Ok(Session::Flatpak(flatpak::prepare(
+            setup,
+            calibrations,
+            inventory,
+            option,
+            plan,
+            cancel,
+        )?)),
+        #[cfg(not(target_os = "linux"))]
+        EmulatorExecutable::Flatpak { .. } => {
+            anyhow::bail!("DuckStation Flatpak preparation needs Linux namespaces")
+        }
+        EmulatorExecutable::Wine { .. } => {
+            anyhow::bail!("DuckStation calibrated launch needs a native or Flatpak build, not Wine")
+        }
+    }
+}
 
 /// Owns the configuration and projection across preparation and actual startup.
 /// A prepared projection is not permission to report the controller connected:

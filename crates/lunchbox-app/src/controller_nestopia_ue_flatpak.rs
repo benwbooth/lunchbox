@@ -7,6 +7,7 @@
 
 pub(crate) mod configuration;
 mod flatpak;
+pub(crate) mod guided;
 mod isolation;
 mod physical;
 mod session;
@@ -759,7 +760,7 @@ mod tests {
             probe_program: probe,
             sdl_library,
             executable_sha256: flatpak::APP_EXECUTABLE_SHA256.into(),
-            players: [
+            players: vec![
                 settings::Player {
                     player: 1,
                     controller_id: "nestopia-flatpak-oracle-p1".into(),

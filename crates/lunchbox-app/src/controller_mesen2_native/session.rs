@@ -54,8 +54,9 @@ fn qualifies(device: &evdev_catalog::EvdevDevice) -> bool {
 }
 
 /// Translate the calibrated controls into KeyMapping codes for the sole
-/// qualifying device's pad slot.
+/// qualifying device's pad slot, using the setup's system contract.
 pub(super) fn calibrated_bindings(
+    setup: &settings::SavedSetup,
     calibration: &Calibration,
     device: &evdev_catalog::EvdevDevice,
 ) -> Result<Vec<(String, Binding)>> {
@@ -63,21 +64,35 @@ pub(super) fn calibrated_bindings(
         calibration.os == "linux",
         "Mesen2 native calibration requires Linux"
     );
+    let pce = setup.system == super::SYSTEM_PCE;
     let profile = crate::controller_catalog::catalog()
         .emulator_profiles
         .iter()
-        .find(|profile| profile.id == settings::PROFILE_ID)
+        .find(|profile| {
+            profile.id
+                == if pce {
+                    settings::PCE_PROFILE_ID
+                } else {
+                    settings::PROFILE_ID
+                }
+        })
         .context("Missing native Mesen2 profile")?;
+    let controls = if pce {
+        super::PCE_CONTROLS
+    } else {
+        super::CONTROLS
+    };
     let mut bindings = Vec::new();
     for row in calibration.plan_profile(profile)?.rows {
-        let field = super::CONTROLS
+        let field = controls
             .iter()
             .find(|(control, _)| *control == row.target_id)
             .map(|(_, field)| (*field).to_owned())
             .with_context(|| {
                 format!(
-                    "Mesen2 target {} is outside the NES contract",
-                    row.target_id
+                    "Mesen2 target {} is outside the {} contract",
+                    row.target_id,
+                    if pce { "PCE" } else { "NES" }
                 )
             })?;
         let input = row
@@ -172,6 +187,7 @@ impl PreparedSession {
             "Mesen2 pad slots follow directory order; exactly one qualifying gamepad (the selected controller) is required"
         );
         let bindings = calibrated_bindings(
+            setup,
             calibrations
                 .get(&setup.controller_id)
                 .context("Mesen2 calibration disappeared")?,
@@ -183,7 +199,12 @@ impl PreparedSession {
         let data_root = directory.path().join("data");
         std::fs::create_dir_all(data_root.join("Mesen2"))?;
         let keyfile = data_root.join("Mesen2").join("settings.json");
-        std::fs::write(&keyfile, super::settings_json(&bindings)?)?;
+        let text = if setup.system == super::SYSTEM_PCE {
+            super::settings_json_pce(&bindings)?
+        } else {
+            super::settings_json(&bindings)?
+        };
+        std::fs::write(&keyfile, text)?;
         let mut hashes = std::collections::BTreeMap::new();
         for path in [&setup.content, &setup.probe_program] {
             hashes.insert(path.clone(), file_hash(path)?);

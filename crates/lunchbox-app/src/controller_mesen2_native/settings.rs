@@ -17,9 +17,18 @@ pub(crate) struct SavedSetup {
     pub controller_id: String,
     pub probe_program: PathBuf,
     pub executable_sha256: String,
+    /// Mapped system: `nes` (default for setups written before systems were
+    /// distinguished) or `pce` for the PC Engine/TurboGrafx pad.
+    #[serde(default = "default_system")]
+    pub system: String,
+}
+
+fn default_system() -> String {
+    super::SYSTEM_NES.into()
 }
 
 pub(crate) const PROFILE_ID: &str = "mesen2:standalone-nes";
+pub(crate) const PCE_PROFILE_ID: &str = "mesen2:standalone-pce-2";
 
 impl SavedSetup {
     pub(crate) fn validate(&self) -> Result<()> {
@@ -48,6 +57,10 @@ impl SavedSetup {
                     .all(|byte| byte.is_ascii_hexdigit()),
             "Mesen2 needs a trusted executable SHA-256"
         );
+        ensure!(
+            self.system == super::SYSTEM_NES || self.system == super::SYSTEM_PCE,
+            "Mesen2 setup names an unsupported system"
+        );
         Ok(())
     }
 
@@ -56,10 +69,11 @@ impl SavedSetup {
         calibrations: &HashMap<String, Calibration>,
     ) -> Result<serde_json::Value> {
         self.validate()?;
+        let pce = self.system == super::SYSTEM_PCE;
         let profile = catalog()
             .emulator_profiles
             .iter()
-            .find(|profile| profile.id == PROFILE_ID)
+            .find(|profile| profile.id == if pce { PCE_PROFILE_ID } else { PROFILE_ID })
             .context("Missing native Mesen2 profile")?;
         let calibration = calibrations
             .get(&self.controller_id)
@@ -75,14 +89,22 @@ impl SavedSetup {
                     .input
                     .as_ref()
                     .is_some_and(|input| input.native.is_some())),
-            "Mesen2 needs native calibration for every standard NES control"
+            if pce {
+                "Mesen2 needs native calibration for every standard PCE control"
+            } else {
+                "Mesen2 needs native calibration for every standard NES control"
+            }
         );
         Ok(
             serde_json::json!({"players":[{"controller_id":self.controller_id,
             "source_layout":calibration.layout,"target_layout":profile.target_layout,"mapping":mapping}],
             "launch_ready":false,
             "launch_integration":"partial",
-            "detail":"Mesen2 settings.json native dispatch is connected but untested. Launch isolates XDG_DATA_HOME and writes the NES Port1 mapping for the single qualifying event device (pad slot 0). Zapper, Power Pad, Four Score, multitaps, SNES and every other system's controllers are not covered; runtime testing remains deferred."}),
+            "detail": if pce {
+                "Mesen2 settings.json native dispatch is connected but untested. Launch isolates XDG_DATA_HOME and writes the PcEngine Port1 mapping for the single qualifying event device (pad slot 0). TurboTap, Avenue Pad 6 and SNES/GB/GBA systems are not covered; runtime testing remains deferred."
+            } else {
+                "Mesen2 settings.json native dispatch is connected but untested. Launch isolates XDG_DATA_HOME and writes the NES Port1 mapping for the single qualifying event device (pad slot 0). Zapper, Power Pad, Four Score, multitaps, SNES and every other system's controllers are not covered; runtime testing remains deferred."
+            }}),
         )
     }
 }

@@ -172,13 +172,15 @@ fn joystick_code(value: &str) -> Result<Option<&str>> {
     Ok(Some(value))
 }
 
-/// Build the complete private `input.conf`. The selected pad sections own all
+/// Build the complete private `input.conf`. Each selected pad section owns all
 /// eight standard controls and clear turbo. Any unrelated binding which would
 /// compete for one of those exact native events is cleared only in this copy.
+/// With a single player, port two stays connected but its managed bindings are
+/// cleared so no stale route can drive player two.
 pub(crate) fn render_input(original: &str, pads: &[Pad]) -> Result<String> {
     ensure!(
-        pads.len() == 2,
-        "Nestopia production mapping needs exactly two pads"
+        (1..=2).contains(&pads.len()),
+        "Nestopia production mapping needs one or two pads"
     );
     let mut players = BTreeSet::new();
     let mut joysticks = BTreeSet::new();
@@ -215,11 +217,25 @@ pub(crate) fn render_input(original: &str, pads: &[Pad]) -> Result<String> {
         }
     }
     ensure!(
-        players == BTreeSet::from([1, 2]),
-        "Nestopia needs players one and two"
+        players == BTreeSet::from([1]) || players == BTreeSet::from([1, 2]),
+        "Nestopia needs player one, optionally plus player two"
     );
 
     let mut ini = Ini::parse(original, "Nestopia input.conf")?;
+    // A connected-but-unbound player two must not keep stale bindings: clear
+    // exactly the managed keys, leaving unknown keys untouched.
+    for port in [1u8, 2u8] {
+        if players.contains(&port) {
+            continue;
+        }
+        if let Some(values) = ini.sections.get_mut(&format!("nespad{port}j")) {
+            for (_, native_name) in CONTROLS {
+                values.insert(native_name.to_ascii_lowercase(), String::new());
+            }
+            values.insert("turboa".into(), String::new());
+            values.insert("turbob".into(), String::new());
+        }
+    }
     // Validate every effective joystick value before indexing it the way the
     // pinned C++ frontend does, and clear exact conflicts outside owned pads.
     for (section, values) in &mut ini.sections {
@@ -291,6 +307,19 @@ mod tests {
         assert!(output.contains("[other]\nx = keep\n"));
         assert!(output.contains("[nespad1j]\na = j0b6\n"));
         assert!(output.contains("turboa = \n"));
+    }
+
+    #[test]
+    fn single_player_clears_unowned_port_two_bindings() {
+        let source = "[nespad1j]\na = j0b7\n[nespad2j]\na = j1b7\nb = j1b6\nturboa = j1b0\n[other]\ncustom = keep\n";
+        let output = render_input(source, &[pad(1, 0)]).unwrap();
+        assert!(output.contains("[nespad1j]\na = j0b6\n"));
+        assert!(output.contains("[nespad2j]\na = \n"));
+        assert!(output.contains("b = \n"));
+        assert!(output.contains("turboa = \n"));
+        assert!(output.contains("[other]\ncustom = keep\n"));
+        assert!(render_input(source, &[]).is_err());
+        assert!(render_input(source, &[pad(2, 1)]).is_err());
     }
 
     #[test]

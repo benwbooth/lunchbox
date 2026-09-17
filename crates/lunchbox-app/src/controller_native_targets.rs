@@ -1153,6 +1153,26 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             "https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/Linux/LinuxGameController.cpp",
         ),
         (
+            "mesen2",
+            "pce-2",
+            1,
+            vec![
+                "NEC TurboGrafx-16",
+                "TurboGrafx-16",
+                "NEC TurboGrafx-CD",
+                "TurboGrafx-CD",
+                "NEC TurboGrafx-16 CD",
+                "NEC PC Engine",
+                "PC Engine",
+                "PC Engine SuperGrafx",
+                "NEC PC Engine SuperGrafx",
+                "NEC SuperGrafx",
+                "NEC PC Engine CD",
+                "PC Engine CD",
+            ],
+            "https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/Linux/LinuxGameController.cpp",
+        ),
+        (
             "openmsx",
             "openmsx-native-joystick",
             2,
@@ -2075,6 +2095,10 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             .copied()
             .collect::<BTreeMap<&str, &str>>(),
         ("mesen2", "nes") => crate::controller_mesen2_native::CONTROLS
+            .iter()
+            .copied()
+            .collect::<BTreeMap<&str, &str>>(),
+        ("mesen2", "pce-2") => crate::controller_mesen2_native::PCE_CONTROLS
             .iter()
             .copied()
             .collect::<BTreeMap<&str, &str>>(),
