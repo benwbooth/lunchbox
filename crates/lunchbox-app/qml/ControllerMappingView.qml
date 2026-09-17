@@ -20,6 +20,7 @@ ColumnLayout {
     // isolates that single connection circuit-style; clicks pin it via
     // selectedIndex. -1 restores the normal all/selected rendering.
     property int hoveredIndex: -1
+    onHoveredIndexChanged: connections.requestPaint()
     property string focusedSourceControl: ""
     readonly property var selected: rows.length && selectedIndex >= 0 ? rows[Math.min(selectedIndex, rows.length - 1)] : null
     onRowsChanged: { focusedSourceControl = ""; selectedIndex = 0; hoveredIndex = -1; connections.requestPaint() }
@@ -112,6 +113,16 @@ ColumnLayout {
     }
     readonly property var diagramGaps: rows.map(row => ({row: row, reason: diagramGap(row)}))
         .filter(entry => entry.reason.length > 0)
+    // Flowchart lane for the wire at sort position `order` of `count`
+    // wires across the channel [x0, x1]. Distinct lanes keep vertical
+    // trunks from overlapping; deterministic in row order.
+    function laneXFor(order, count, x0, x1) {
+        if (count <= 1) return (x0 + x1) / 2
+        const lo = Math.min(x0, x1) + 14
+        const hi = Math.max(x0, x1) - 14
+        if (hi <= lo) return (x0 + x1) / 2
+        return lo + (hi - lo) * order / (count - 1)
+    }
     function point(side, id) {
         const layout = side === 0 ? sourceLayout : destinationLayout
         const resolvedId = side === 0 ? sourceOwner(id) : id
@@ -236,38 +247,83 @@ ColumnLayout {
             onPaint: {
                 const ctx = getContext("2d")
                 ctx.clearRect(0, 0, width, height)
-                function drawConnection(row, highlighted) {
-                    if (!row || !row.physical_id) return
+                ctx.lineJoin = "round"
+                ctx.lineCap = "round"
+                function endpoints(row) {
+                    if (!row || !row.physical_id) return null
                     const from = view.point(0, row.physical_id)
                     const to = view.point(1, row.target_id)
-                    if (!from || !to) return
-                    ctx.strokeStyle = view.gapReason(row) ? "#e57474" : highlighted ? "#ffb454" : "#708090"
-                    ctx.globalAlpha = highlighted ? 1 : 0.4
-                    ctx.lineWidth = highlighted ? 2.5 : 1
+                    if (!from || !to) return null
+                    return {from: from, to: to}
+                }
+                // Flowchart routing: exit horizontally, share no vertical
+                // trunk (one lane per wire, ordered by midpoint), enter
+                // horizontally. Reads as a circuit, not a nest.
+                function traceWire(row, laneX, laneY) {
+                    const ends = endpoints(row)
+                    if (!ends) return
                     ctx.beginPath()
-                    ctx.moveTo(from.x, from.y)
+                    ctx.moveTo(ends.from.x, ends.from.y)
                     if (stage.stacked) {
-                        const middle = (from.y + to.y) / 2
-                        ctx.bezierCurveTo(from.x, middle, to.x, middle, to.x, to.y)
+                        ctx.lineTo(ends.from.x, laneY)
+                        ctx.lineTo(ends.to.x, laneY)
                     } else {
-                        const middle = (from.x + to.x) / 2
-                        ctx.bezierCurveTo(middle, from.y, middle, to.y, to.x, to.y)
+                        ctx.lineTo(laneX, ends.from.y)
+                        ctx.lineTo(laneX, ends.to.y)
                     }
+                    ctx.lineTo(ends.to.x, ends.to.y)
                     ctx.stroke()
-                    ctx.fillStyle = ctx.strokeStyle
-                    for (const point of [from, to]) {
-                        ctx.beginPath(); ctx.arc(point.x, point.y, 4, 0, Math.PI * 2); ctx.fill()
+                }
+                function dotAt(point, radius) {
+                    ctx.beginPath(); ctx.arc(point.x, point.y, radius, 0, Math.PI * 2); ctx.fill()
+                }
+                const order = view.rows
+                    .map((row, index) => ({row: row, index: index}))
+                    .filter(entry => endpoints(entry.row))
+                    .sort((a, b) => {
+                        const ay = (endpoints(a.row).from.y + endpoints(a.row).to.y) / 2
+                        const by = (endpoints(b.row).from.y + endpoints(b.row).to.y) / 2
+                        return ay - by || a.index - b.index
+                    })
+                const leftPanel = diagrams.itemAt(0)
+                const rightPanel = diagrams.itemAt(1)
+                const lanes = order.map((entry, position) => {
+                    let lane = 0
+                    if (stage.stacked && leftPanel && rightPanel) {
+                        const y0 = leftPanel.y + leftPanel.height
+                        const y1 = rightPanel.y
+                        lane = view.laneXFor(position, order.length, y0, y1)
+                    } else if (leftPanel && rightPanel) {
+                        lane = view.laneXFor(position, order.length,
+                                             leftPanel.x + leftPanel.width, rightPanel.x)
                     }
-                    ctx.globalAlpha = 1
+                    return {entry: entry, lane: lane}
+                })
+                const focus = view.hoveredIndex >= 0 && view.hoveredIndex < view.rows.length
+                    ? view.hoveredIndex
+                    : (view.selectedIndex >= 0 && view.selectedIndex < view.rows.length
+                       ? view.selectedIndex : -1)
+                ctx.strokeStyle = "#5b6b7c"
+                ctx.globalAlpha = 0.45
+                ctx.lineWidth = 1.2
+                for (const item of lanes) {
+                    if (item.entry.index === focus) continue
+                    traceWire(item.entry.row, item.lane, item.lane)
+                    const ends = endpoints(item.entry.row)
+                    if (ends) { ctx.fillStyle = ctx.strokeStyle; dotAt(ends.from, 3); dotAt(ends.to, 3) }
                 }
-                if (view.hoveredIndex >= 0 && view.hoveredIndex < view.rows.length) {
-                    drawConnection(view.rows[view.hoveredIndex], true)
-                } else {
-                    // The diagram is the selector: every wire stays visible so
-                    // hovering or clicking any control isolates its circuit.
-                    for (const row of view.rows) drawConnection(row, false)
-                    drawConnection(view.selected, true)
+                if (focus >= 0) {
+                    const item = lanes.find(item => item.entry.index === focus)
+                    if (item) {
+                        ctx.strokeStyle = view.gapReason(view.rows[focus]) ? "#e57474" : "#ffb454"
+                        ctx.globalAlpha = 1
+                        ctx.lineWidth = 3
+                        traceWire(item.entry.row, item.lane, item.lane)
+                        const ends = endpoints(item.entry.row)
+                        if (ends) { ctx.fillStyle = ctx.strokeStyle; dotAt(ends.from, 5); dotAt(ends.to, 5) }
+                    }
                 }
+                ctx.globalAlpha = 1
             }
         }
     }
@@ -359,7 +415,7 @@ ColumnLayout {
     Label {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        text: "Click a control or Tab to it and press Space to highlight its assignment. Activate a shared control repeatedly to cycle through its connections. You can also choose an assignment from the list. Schematics show catalog geometry; they are not product photographs or runtime verification."
+        text: "Click a control or Tab to it and press Space to highlight its assignment. Hover any control to isolate its wire. Activate a shared control repeatedly to cycle through its connections. Schematics show catalog geometry; they are not product photographs or runtime verification."
         opacity: 0.7
     }
     }

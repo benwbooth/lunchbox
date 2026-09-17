@@ -306,9 +306,17 @@ pub fn player_bindings(
     let layout = crate::controller_catalog::catalog()
         .layout(&profile.target_layout)
         .unwrap();
+    let rows = calibration.plan(&profile.id)?.rows;
+    let resolve = |input: &InputBinding| {
+        if calibration.backend == crate::controller_sdl3::BACKEND {
+            sdl_input(input, device)
+        } else {
+            physical_input(input, device)
+        }
+    };
     let mut result = BTreeMap::new();
-    for row in calibration.plan(&profile.id)?.rows {
-        let Some(input) = row.input else {
+    for row in &rows {
+        let Some(input) = row.input.as_ref() else {
             ensure!(
                 layout
                     .controls
@@ -319,19 +327,56 @@ pub fn player_bindings(
             );
             continue;
         };
-        let (group, index, direction) = if calibration.backend == crate::controller_sdl3::BACKEND {
-            sdl_input(&input, device)?
-        } else {
-            physical_input(&input, device)?
-        };
+        let (group, index, direction) = resolve(input)?;
         let suffix = match direction {
             -1 => "/Lo",
             1 => "/Hi",
             _ => "",
         };
-        result.insert(row.output, format!("{identity}/{group}/{index}{suffix}"));
+        result.insert(row.output.clone(), format!("{identity}/{group}/{index}{suffix}"));
     }
+    append_twin_z(calibration, &rows, &resolve, &identity, profile, &mut result)?;
     Ok(result)
+}
+
+/// Nintendo 64 hardware exposes a single Z trigger while twin-trigger pads
+/// (Brawler64 Z plus Z right) record two distinct inputs. The plan binds one;
+/// an unassigned recorded twin is appended to the same R-Trigger list so
+/// both triggers stay live. ares values are ';'-separated binding lists;
+/// ares's own settings files store empty slots as ";;".
+fn append_twin_z(
+    calibration: &Calibration,
+    rows: &[crate::controller_catalog::MappingRow],
+    resolve: &dyn Fn(&InputBinding) -> Result<(u32, u32, i8)>,
+    identity: &str,
+    profile: &EmulatorProfile,
+    result: &mut BTreeMap<String, String>,
+) -> Result<()> {
+    if profile.target_layout != "n64" || !result.contains_key("R-Trigger") {
+        return Ok(());
+    }
+    for secondary in ["z", "z_left", "z_right"] {
+        if rows.iter().any(|row| {
+            row.input.is_some() && row.physical_id.as_deref() == Some(secondary)
+        }) {
+            continue;
+        }
+        let Some(recorded) = calibration.bindings.get(secondary) else {
+            continue;
+        };
+        let (group, index, direction) = resolve(recorded)?;
+        let suffix = match direction {
+            -1 => "/Lo",
+            1 => "/Hi",
+            _ => "",
+        };
+        let combined = format!(
+            "{};{identity}/{group}/{index}{suffix}",
+            result["R-Trigger"]
+        );
+        result.insert("R-Trigger".into(), combined);
+    }
+    Ok(())
 }
 
 /// Small BML editing primitive: preserve all untouched lines verbatim, including
@@ -431,7 +476,7 @@ pub fn configuration(base: &str, players: &[BTreeMap<String, String>]) -> Result
                 .and_then(|p| p.get(*key))
                 .map_or("", String::as_str);
             ensure!(
-                !value.contains(['\n', '\r', '\0', ';']),
+                !value.contains(['\n', '\r', '\0']),
                 "Invalid ares binding value"
             );
             result.push_str(&format!(" {key}: {value}\n"));
@@ -560,6 +605,99 @@ mod tests {
             (1, 1, -1)
         );
         assert!(sdl_input(&crate::controller_sdl3::binding(5, 0), device).is_err());
+    }
+
+    #[test]
+    fn twin_z_triggers_share_one_n64_z_output() {
+        use crate::controller_sdl3;
+        use lunchbox_controller_probe::bindings::{
+            Binding, ResolvedGamepad, Input as ProbeInput, Output as ProbeOutput,
+        };
+
+        let layout = crate::controller_catalog::catalog()
+            .layout("brawler64")
+            .expect("brawler64 layout");
+        // Every recorded control gets a distinct canonical SDL input; the
+        // stick directions get distinct axes so resolution stays unambiguous.
+        let mut axis = 0;
+        let mut button = 0;
+        let mut bindings = BTreeMap::new();
+        for control in &layout.controls {
+            let binding = if control.analog {
+                let binding = controller_sdl3::binding(axis, if axis % 2 == 0 { -1 } else { 1 });
+                axis += 1;
+                binding
+            } else {
+                let binding = controller_sdl3::binding(button, 0);
+                button += 1;
+                binding
+            };
+            bindings.insert(control.id.clone(), binding);
+        }
+        let mut choices = BTreeMap::new();
+        for target in [
+            "a", "b", "c_down", "c_left", "c_right", "c_up", "down", "l", "left", "r",
+            "right", "start", "up", "z", "stick_down", "stick_left", "stick_right",
+            "stick_up",
+        ] {
+            choices.insert(target.to_owned(), target.to_owned());
+        }
+        let calibration = Calibration {
+            target_mappings: BTreeMap::from([("ares-n64".to_owned(), choices)]),
+            layout: "brawler64".into(),
+            os: std::env::consts::OS.into(),
+            backend: controller_sdl3::BACKEND.into(),
+            bindings,
+        };
+        let profile = profile("Nintendo 64").expect("ares n64 profile");
+        assert_eq!(profile.id, "ares-n64");
+
+        let mut resolved = Vec::new();
+        for index in 0..button {
+            let index = u32::try_from(index).unwrap();
+            resolved.push(Binding {
+                input: ProbeInput::Button { index: 100 + index },
+                output: ProbeOutput::Button { index },
+            });
+        }
+        for index in 0..axis {
+            let index = u32::try_from(index).unwrap();
+            resolved.push(Binding {
+                input: ProbeInput::Axis {
+                    index: 100 + index,
+                    min: -32767,
+                    max: 32767,
+                },
+                output: ProbeOutput::Axis {
+                    index,
+                    min: -32768,
+                    max: 32767,
+                },
+            });
+        }
+        let mut snapshot = snapshot();
+        snapshot.devices[0].resolved = Some(ResolvedGamepad {
+            joystick_axes: 8,
+            joystick_buttons: 200,
+            joystick_hats: 0,
+            bindings: resolved,
+        });
+        let bindings = player_bindings(&calibration, profile, &snapshot, "/first").unwrap();
+        let trigger = &bindings["R-Trigger"];
+        let guid = "0123456789abcdef0123456789abcdef/0";
+        assert!(
+            trigger.starts_with(&format!("{guid}/3/")),
+            "primary Z binding first, got {trigger}"
+        );
+        assert_eq!(
+            trigger.split(';').count(),
+            2,
+            "both Z triggers live on one output, got {trigger}"
+        );
+        assert!(
+            trigger.contains(';'),
+            "twin binding uses the ';' list grammar, got {trigger}"
+        );
     }
 
     #[test]

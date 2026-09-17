@@ -78,4 +78,15 @@ TestCase {
         compare(host.mapping.selectedIndex, -1)
         verify(!host.mapping.selected)
     }
+
+    function test_lane_helper_spreads_wires_across_the_channel() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        const first = host.mapping.laneXFor(0, 3, 100, 400)
+        const middle = host.mapping.laneXFor(1, 3, 100, 400)
+        const last = host.mapping.laneXFor(2, 3, 100, 400)
+        verify(first < middle && middle < last)
+        verify(first >= 100 && last <= 400)
+        compare(host.mapping.laneXFor(0, 1, 100, 400), 250)
+    }
 }
