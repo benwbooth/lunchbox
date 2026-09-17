@@ -15,7 +15,9 @@ ColumnLayout {
     // means no gap evidence supplied, not verified runtime readiness.
     property var physicalGaps: []
     signal controlActivated(int side, string controlId)
-    property int selectedIndex: 0
+    // Pinned wire via click. -1 means nothing pinned: hover alone drives the
+    // highlight, so no row looks pre-selected on load.
+    property int selectedIndex: -1
     // Hovered wire (list row or diagram hotspot). While set, the canvas
     // isolates that single connection circuit-style; clicks pin it via
     // selectedIndex. -1 restores the normal all/selected rendering.
@@ -29,7 +31,7 @@ ColumnLayout {
     onTwinRoutesChanged: { hoveredTwinIndex = -1; connections.requestPaint() }
     property string focusedSourceControl: ""
     readonly property var selected: rows.length && selectedIndex >= 0 ? rows[Math.min(selectedIndex, rows.length - 1)] : null
-    onRowsChanged: { focusedSourceControl = ""; selectedIndex = 0; hoveredIndex = -1; hoveredTwinIndex = -1; connections.requestPaint() }
+    onRowsChanged: { focusedSourceControl = ""; selectedIndex = -1; hoveredIndex = -1; hoveredTwinIndex = -1; connections.requestPaint() }
     onSelectedChanged: { focusedSourceControl = ""; connections.requestPaint() }
     onPhysicalGapsChanged: connections.requestPaint()
     onSourceLayoutChanged: { focusedSourceControl = ""; Qt.callLater(() => connections.requestPaint()) }
@@ -67,6 +69,28 @@ ColumnLayout {
         if (!row) return ""
         const gap = physicalGaps.find(entry => entry.target_id === row.target_id)
         return gap ? gap.reason || "Saved physical calibration needs attention" : ""
+    }
+    // Row under the pointer, if any: hovered main row wins, else hovered twin
+    // (shared-input) row. Null restores pinned/empty rendering.
+    function hoveredRow() {
+        if (hoveredIndex >= 0 && hoveredIndex < rows.length)
+            return rows[hoveredIndex]
+        if (hoveredTwinIndex >= 0 && hoveredTwinIndex < secondaryRows.length)
+            return secondaryRows[hoveredTwinIndex]
+        return null
+    }
+    // Artwork highlight follows the pointer first, then keyboard-chosen or
+    // pinned state: exactly one control ever looks active.
+    function highlightedSourceId() {
+        const row = hoveredRow()
+        if (row && row.physical_id) return sourceOwner(row.physical_id)
+        if (focusedSourceControl) return focusedSourceControl
+        return selected ? sourceOwner(selected.physical_id || "") : ""
+    }
+    function highlightedDestId() {
+        const row = hoveredRow()
+        if (row && row.target_id) return row.target_id
+        return selected ? selected.target_id : ""
     }
     readonly property var setupGapIndices: {
         const indices = []
@@ -238,15 +262,14 @@ ColumnLayout {
                         sourceSize.width: Math.max(1, Math.ceil(width * Screen.devicePixelRatio))
                         sourceSize.height: Math.max(1, Math.ceil(height * Screen.devicePixelRatio))
                         source: panel.modelData ? view.settingsModel.controller_diagram(panel.modelData.id,
-                            panel.index === 0 ? view.focusedSourceControl || (view.selected ? view.sourceOwner(view.selected.physical_id || "") : "")
-                                : (view.selected ? view.selected.target_id : "")) : ""
+                            panel.index === 0 ? view.highlightedSourceId() : view.highlightedDestId()) : ""
                         Accessible.name: (panel.index === 0 ? "Source " : "Destination ") + (panel.modelData ? panel.modelData.name : "layout")
                     }
                     Brawler64Diagram {
                         visible: !!panel.modelData && panel.modelData.id === "brawler64"
                         y: stage.titleHeight + 8
                         width: parent.width; height: stage.diagramHeight
-                        activeControl: panel.index === 0 ? view.focusedSourceControl || (view.selected ? view.sourceOwner(view.selected.physical_id || "") : "") : (view.selected ? view.selected.target_id : "")
+                        activeControl: panel.index === 0 ? view.highlightedSourceId() : view.highlightedDestId()
                     }
                     Repeater {
                         model: panel.modelData ? panel.modelData.controls : []

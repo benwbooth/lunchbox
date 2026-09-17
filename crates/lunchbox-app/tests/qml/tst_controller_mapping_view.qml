@@ -56,7 +56,11 @@ TestCase {
         verify(host)
         compare(host.mapping.rows.length, 2)
         compare(host.mapping.hoveredIndex, -1)
-        compare(host.mapping.selected.target_id, "x")
+        // Nothing is pinned on load: no row looks pre-selected.
+        compare(host.mapping.selectedIndex, -1)
+        verify(!host.mapping.selected)
+        compare(host.mapping.highlightedSourceId(), "")
+        compare(host.mapping.highlightedDestId(), "")
 
         // Clicking a diagram control pins its connection.
         host.mapping.chooseControl(1, "y")
@@ -69,6 +73,21 @@ TestCase {
         compare(host.mapping.hoveredIndex, 0)
         compare(host.mapping.selected.target_id, "y")
         host.mapping.hoveredIndex = -1
+    }
+
+    function test_artwork_highlight_follows_the_pointer_not_the_pin() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        // Pin the second row, then hover the first: artwork follows hover.
+        host.mapping.chooseControl(1, "y")
+        compare(host.mapping.selectedIndex, 1)
+        host.mapping.hoveredIndex = 0
+        compare(host.mapping.highlightedSourceId(), "a")
+        compare(host.mapping.highlightedDestId(), "x")
+        // Clearing the hover falls back to the pin, never to a third row.
+        host.mapping.hoveredIndex = -1
+        compare(host.mapping.highlightedSourceId(), "b")
+        compare(host.mapping.highlightedDestId(), "y")
     }
 
     function test_unmapped_control_clears_the_pin() {
