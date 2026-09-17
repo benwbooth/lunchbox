@@ -16,6 +16,13 @@ pub(crate) struct Scope {
 
 impl Scope {
     pub(crate) fn from_label(emulator: &str, platform: &str) -> Result<Self> {
+        // Display decorations (recommendation stars, section prefixes) must
+        // never reach identity matching: fail loudly instead of resolving
+        // the wrong emulator. See the Gopher64 ★ incident.
+        anyhow::ensure!(
+            !emulator.contains('★'),
+            "Unexpected badge in emulator name; pass the plain emulator name"
+        );
         let label = emulator.trim().to_lowercase();
         let retroarch = label.starts_with("retroarch");
         let core = if retroarch {
@@ -246,5 +253,11 @@ mod tests {
                 .core,
             "nestopia"
         );
+    }
+
+    #[test]
+    fn display_badges_never_reach_identity_matching() {
+        assert!(Scope::from_label("★ Gopher64", "Nintendo 64").is_err());
+        assert!(Scope::from_label("Gopher64", "Nintendo 64").is_ok());
     }
 }
