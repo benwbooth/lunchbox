@@ -1107,6 +1107,13 @@ fn record_unique_family_owner(owners: &mut HashMap<String, i64>, key: String, da
 /// Groups release families (same game across regions/versions) in a single
 /// pass, records each family's distinct-title variant count on its
 /// representative row, and collapses the family to that representative.
+///
+/// Rows that share a platform and a byte-identical title (modulo trimming
+/// and case) are the same game even when the provider attached distinct
+/// LaunchBox IDs, so they collapse into one card too. Near-matches that
+/// only agree after tag stripping ("3-D Maze" vs "3D Maze") stay separate:
+/// those can be genuinely different games, and guessing would invent
+/// identity links.
 fn apply_release_families(
     games: &mut Vec<Game>,
     metadata: &mut ListMetadata,
@@ -1116,7 +1123,18 @@ fn apply_release_families(
         .iter()
         .map(|game| release_family_title_key(&game.platform, &game.title))
         .collect::<Vec<_>>();
+    let strict_keys = games
+        .iter()
+        .map(|game| {
+            format!(
+                "{}\0{}",
+                game.platform.trim().to_lowercase(),
+                game.title.trim().to_lowercase()
+            )
+        })
+        .collect::<Vec<_>>();
     let mut canonical_title_owners = HashMap::<String, i64>::new();
+    let mut strict_title_owners = HashMap::<String, i64>::new();
     for (index, game) in games.iter().enumerate() {
         if game.launchbox_db_id <= 0 {
             continue;
@@ -1124,6 +1142,11 @@ fn apply_release_families(
         record_unique_family_owner(
             &mut canonical_title_owners,
             title_keys[index].clone(),
+            game.launchbox_db_id,
+        );
+        record_unique_family_owner(
+            &mut strict_title_owners,
+            strict_keys[index].clone(),
             game.launchbox_db_id,
         );
     }
@@ -1152,7 +1175,18 @@ fn apply_release_families(
     let mut family_order = Vec::<String>::new();
     let mut family_members = HashMap::<String, Vec<usize>>::new();
     for (index, title_key) in title_keys.into_iter().enumerate() {
-        let key = if family_ids[index] > 0 {
+        // record_unique_family_owner marks contested strict titles with 0,
+        // which is exactly the provider-duplicate signal: one platform, one
+        // identical title, several IDs.
+        let strict_contested = games[index].launchbox_db_id > 0
+            && strict_title_owners
+                .get(&strict_keys[index])
+                .copied()
+                .unwrap_or_default()
+                == 0;
+        let key = if strict_contested {
+            format!("strict:{}", strict_keys[index])
+        } else if family_ids[index] > 0 {
             format!("linked:{}", family_ids[index])
         } else {
             title_key
@@ -2789,6 +2823,98 @@ mod tests {
         .unwrap();
         assert_eq!(catalog.games.len(), 1);
         assert!(!catalog.games[0].local);
+    }
+
+    fn strict_dupe_discovery(directory: &tempfile::TempDir) -> (Connection, std::path::PathBuf) {
+        let canonical_path = directory.path().join("canonical.db");
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+        let discovery_path = directory.path().join("games.db");
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (90, 'Nintendo 64');
+                 INSERT INTO games VALUES
+                   ('released-id', 'Super Mario 64', NULL, 'Released', 216, 90),
+                   ('installed-id', 'Super Mario 64', NULL, 'Unreleased', 126650, 90);",
+            )
+            .unwrap();
+        drop(discovery);
+        (canonical, discovery_path)
+    }
+
+    #[test]
+    fn strict_same_system_duplicates_collapse_to_the_installed_card() {
+        // One platform, one identical title, two provider IDs: a single
+        // card survives, keeping the installed row's identity so library
+        // state, media, and launch keep working.
+        let directory = tempfile::tempdir().unwrap();
+        let (canonical, discovery_path) = strict_dupe_discovery(&directory);
+        let state_path = write_state_install(
+            &directory,
+            "installed-id",
+            126650,
+            "Super Mario 64",
+            "Nintendo 64",
+        );
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            Some(&state_path),
+        )
+        .unwrap();
+        assert_eq!(catalog.games.len(), 1);
+        assert_eq!(catalog.games[0].id, "installed-id");
+        assert!(catalog.games[0].local);
+    }
+
+    #[test]
+    fn near_match_titles_with_distinct_ids_stay_split() {
+        // "3-D Maze" vs "3D Maze" only agree after tag stripping and carry
+        // distinct IDs, so they can be different games: never merge them.
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+        let discovery_path = directory.path().join("games.db");
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (20, 'Atari 2600');
+                 INSERT INTO games VALUES
+                   ('maze-a', '3-D Maze', NULL, 'Released', 127492, 20),
+                   ('maze-b', '3D Maze', NULL, 'Released', 456144, 20);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        let catalog =
+            load_discovery_catalog_with_native_state(&canonical, &discovery_path, None, None, None)
+                .unwrap();
+        assert_eq!(catalog.games.len(), 2);
     }
 
     #[test]
