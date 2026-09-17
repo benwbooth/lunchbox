@@ -11947,9 +11947,21 @@ ApplicationWindow {
                         autoTransform: true
                         fillMode: root.selectedFanartUrl.toString().length > 0
                                   ? Image.PreserveAspectCrop : Image.PreserveAspectFit
-                        sourceSize.width: Math.max(1, Math.round(width * 2))
-                        sourceSize.height: Math.max(1, Math.round(height * 2))
-                        opacity: status === Image.Ready ? 1 : 0
+                        // Never bind decode size to live pane geometry.
+                        // Changing sourceSize on every drag-resize frame makes
+                        // Qt discard and reload the texture, flashing the
+                        // fallback tile (grid cards decode once for a fixed
+                        // maximum for the same reason). Decode once at a
+                        // generous fixed budget and retain the texture.
+                        sourceSize.width: 2048
+                        sourceSize.height: 1024
+                        // Latch readiness: hiding on every transitional
+                        // status would flash the fallback during reloads even
+                        // with retainWhileLoading. Only URL changes reset.
+                        property bool everReady: false
+                        onSourceChanged: everReady = false
+                        onStatusChanged: if (status === Image.Ready) everReady = true
+                        opacity: everReady && status !== Image.Error ? 1 : 0
                         visible: !root.selectedBox3d
                         Behavior on opacity {
                             enabled: root.automatedProbeRun || root.startupFirstFrameReported
@@ -11979,7 +11991,7 @@ ApplicationWindow {
                         font.pixelSize: 118
                         font.weight: Font.Black
                         visible: !root.selectedBox3d
-                                 && detailImage.status !== Image.Ready
+                                 && !detailImage.everReady
                     }
                     Rectangle {
                         visible: !root.selectedBox3d
@@ -13685,16 +13697,22 @@ ApplicationWindow {
                                         mipmap: true
                                         autoTransform: true
                                         fillMode: Image.PreserveAspectFit
-                                        sourceSize.width: Math.max(1, Math.round(width * 2))
-                                        sourceSize.height: Math.max(1, Math.round(height * 2))
-                                        opacity: status === Image.Ready ? 1 : 0
+                                        // Fixed decode budget (see detailImage):
+                                        // live-geometry sourceSize reloads per
+                                        // resize frame and flashes the fallback.
+                                        sourceSize.width: 512
+                                        sourceSize.height: 512
+                                        property bool everReady: false
+                                        onSourceChanged: everReady = false
+                                        onStatusChanged: if (status === Image.Ready) everReady = true
+                                        opacity: everReady && status !== Image.Error ? 1 : 0
                                         Behavior on opacity {
                                             NumberAnimation { duration: 140 }
                                         }
                                     }
                                     Text {
                                         anchors.centerIn: parent
-                                        visible: relatedImage.status !== Image.Ready
+                                        visible: !relatedImage.everReady
                                         text: relatedCard.relatedTitle.length > 0
                                               ? relatedCard.relatedTitle.charAt(0).toUpperCase()
                                               : "?"
