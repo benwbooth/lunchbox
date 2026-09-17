@@ -1,43 +1,3355 @@
 {
-  "schema_version": 1,
-  "retrieved_at": "2026-09-17",
-  "license": "CC BY-SA (version as published on the wiki; attribution + share-alike). See DATA_LICENSES.md.",
-  "entries": [
-    {
-      "platform": "Nintendo 64",
-      "emulator": "Gopher64",
-      "core": "",
-      "rank": 1,
-      "verdict": "recommended",
-      "note": "Wiki overall pick; high accuracy; ships Windows, macOS, and Linux builds.",
-      "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
-    },
-    {
-      "platform": "Nintendo 64",
-      "emulator": "RMG",
-      "core": "",
-      "rank": 2,
-      "verdict": "recommended",
-      "note": "Wiki overall pick; bundled GLideN64/Angrylion/ParaLLEl video and mupen64plus-hle-rsp/CXD4/ParaLLEl RSP plugins.",
-      "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
-    },
-    {
-      "platform": "Nintendo 64",
-      "emulator": "ares",
-      "core": "",
-      "rank": 3,
-      "verdict": "recommended",
-      "note": "Curated as recommended: cited as the accuracy reference set and a 2026 top pick for no-plugin accuracy-focused setup; the wiki Talk page holds an open thread on its verdict.",
-      "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
-    },
-    {
-      "platform": "Nintendo 64",
-      "emulator": "Mupen64Plus-Next",
-      "core": "mupen64plus_next",
-      "rank": 4,
-      "verdict": "partial",
-      "note": "Core family is frontend/plugin-dependent per the wiki, which recommends RMG over bare Mupen64Plus builds.",
-      "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
-    }
-  ]
+ "schema_version": 1,
+ "retrieved_at": "2026-09-17",
+ "license": "CC BY-SA (version as published on the wiki; attribution + share-alike). See DATA_LICENSES.md.",
+ "entries": [
+  {
+   "platform": "Nintendo 64",
+   "emulator": "Gopher64",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Wiki overall pick; high accuracy; ships Windows, macOS, and Linux builds.",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
+  },
+  {
+   "platform": "Nintendo 64",
+   "emulator": "RMG",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Wiki overall pick; bundled GLideN64/Angrylion/ParaLLEl video and mupen64plus-hle-rsp/CXD4/ParaLLEl RSP plugins.",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
+  },
+  {
+   "platform": "Nintendo 64",
+   "emulator": "ares",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "Curated as recommended: cited as the accuracy reference set and a 2026 top pick for no-plugin accuracy-focused setup; the wiki Talk page holds an open thread on its verdict.",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
+  },
+  {
+   "platform": "Nintendo 64",
+   "emulator": "Mupen64Plus-Next",
+   "core": "mupen64plus_next",
+   "rank": 4,
+   "verdict": "partial",
+   "note": "Core family is frontend/plugin-dependent per the wiki, which recommends RMG over bare Mupen64Plus builds.",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
+  },
+  {
+   "platform": "3DO Interactive Multiplayer",
+   "emulator": "Opera",
+   "core": "opera",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "top of PC table; outside Windows only via libretro core; opera core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/3DO_emulators"
+  },
+  {
+   "platform": "APF Imagination Machine",
+   "emulator": "APF_EMUW",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "catalog name APF_EMUW matches APFEmu; wiki row 'APFEmu'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/APF_MP1000_emulators"
+  },
+  {
+   "platform": "APF Imagination Machine",
+   "emulator": "Virtual APF",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/APF_MP1000_emulators"
+  },
+  {
+   "platform": "APF Imagination Machine",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "flagged preliminary driver; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/APF_MP1000_emulators"
+  },
+  {
+   "platform": "Acorn Archimedes",
+   "emulator": "Arculator",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Archimedes table, x86 PC section",
+   "page_url": "https://emulation.gametechwiki.com/index.php/RISC_OS_emulators"
+  },
+  {
+   "platform": "Acorn Atom",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Multi table, Atom column \u2713; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/BBC_Micro_emulators"
+  },
+  {
+   "platform": "Acorn Electron",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Electron x86 PC table; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/BBC_Micro_emulators"
+  },
+  {
+   "platform": "Amstrad CPC",
+   "emulator": "Arnold",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amstrad_CPC"
+  },
+  {
+   "platform": "Amstrad CPC",
+   "emulator": "Caprice32 (libretro)",
+   "core": "cap32",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "covers Caprice32 (libretro), cap32 core; cap32 core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amstrad_CPC"
+  },
+  {
+   "platform": "Amstrad CPC",
+   "emulator": "CaPriCe Forever",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amstrad_CPC"
+  },
+  {
+   "platform": "Amstrad CPC",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amstrad_CPC"
+  },
+  {
+   "platform": "Amstrad CPC",
+   "emulator": "Retro Virtual Machine",
+   "core": "",
+   "rank": 5,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amstrad_CPC"
+  },
+  {
+   "platform": "Amstrad GX4000",
+   "emulator": "Arnold",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "GX4000 has no dedicated table; shared Amstrad CPC table",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amstrad_CPC"
+  },
+  {
+   "platform": "Amstrad GX4000",
+   "emulator": "Caprice32",
+   "core": "cap32",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "cap32 core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amstrad_CPC"
+  },
+  {
+   "platform": "Amstrad GX4000",
+   "emulator": "CaPriCe Forever",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amstrad_CPC"
+  },
+  {
+   "platform": "Amstrad GX4000",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amstrad_CPC"
+  },
+  {
+   "platform": "Amstrad GX4000",
+   "emulator": "Retro Virtual Machine",
+   "core": "",
+   "rank": 5,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amstrad_CPC"
+  },
+  {
+   "platform": "Android",
+   "emulator": "Genymotion",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "not for gaming, decent compat",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Android_emulators"
+  },
+  {
+   "platform": "Android",
+   "emulator": "Google Play Games",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "selected titles only, beta",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Android_emulators"
+  },
+  {
+   "platform": "Android",
+   "emulator": "Waydroid",
+   "core": "",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "container, no virtualization, Wayland",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Android_emulators"
+  },
+  {
+   "platform": "Android",
+   "emulator": "Trinity",
+   "core": "",
+   "rank": 4,
+   "verdict": "partial",
+   "note": "repackaged QEMU, faster than GPG",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Android_emulators"
+  },
+  {
+   "platform": "Apple II",
+   "emulator": "AppleWin",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Apple_II"
+  },
+  {
+   "platform": "Apple II",
+   "emulator": "LinApple",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Apple_II"
+  },
+  {
+   "platform": "Apple II",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "full II/II+/IIe/IIc/IIGS coverage; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Apple_II"
+  },
+  {
+   "platform": "Apple II",
+   "emulator": "CLK (Clock Signal)",
+   "core": "",
+   "rank": 4,
+   "verdict": "not",
+   "note": "wiki row 'CLK'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Apple_II"
+  },
+  {
+   "platform": "Apple IIGS",
+   "emulator": "KEGS",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Apple_IIGS_emulators"
+  },
+  {
+   "platform": "Apple Mac OS",
+   "emulator": "Basilisk II",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "single combined row covering both emus; shared wiki row with SheepShaver",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Classic_Mac_OS_emulators"
+  },
+  {
+   "platform": "Apple Mac OS",
+   "emulator": "SheepShaver",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "single combined row covering both emus; shared wiki row with Basilisk II",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Classic_Mac_OS_emulators"
+  },
+  {
+   "platform": "Apple Mac OS",
+   "emulator": "Mini vMac",
+   "core": "minivmac",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "libretro core named in row, no libretro column; minivmac core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Classic_Mac_OS_emulators"
+  },
+  {
+   "platform": "Apple Mac OS",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 4,
+   "verdict": "partial",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Classic_Mac_OS_emulators"
+  },
+  {
+   "platform": "Apple Mac OS",
+   "emulator": "Clock Signal",
+   "core": "",
+   "rank": 5,
+   "verdict": "not",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Classic_Mac_OS_emulators"
+  },
+  {
+   "platform": "Apple iOS",
+   "emulator": "touchHLE",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "398/879 apps per compat list",
+   "page_url": "https://emulation.gametechwiki.com/index.php/IOS_emulators"
+  },
+  {
+   "platform": "Arcade",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Thousands boards; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Arcade",
+   "emulator": "FinalBurn Neo",
+   "core": "fbneo",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Hundreds (2D only); fbneo core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Arcade",
+   "emulator": "Hypseus Singe",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "LaserDisc",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Arcade",
+   "emulator": "TeknoParrot",
+   "core": "",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "Various PC-based boards",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Arcade",
+   "emulator": "Supermodel",
+   "core": "",
+   "rank": 5,
+   "verdict": "recommended",
+   "note": "Sega Model 3; libretro WIP",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Arcade",
+   "emulator": "Flycast",
+   "core": "flycast",
+   "rank": 6,
+   "verdict": "recommended",
+   "note": "Dreamcast-based; flycast core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Arduboy",
+   "emulator": "Ardens",
+   "core": "ardens",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "most games; Arduous ranks below as not recommended; ardens core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arduboy"
+  },
+  {
+   "platform": "Atari 2600",
+   "emulator": "Stella",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "covers Stella (libretro); stella/stella2014 cores",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_2600"
+  },
+  {
+   "platform": "Atari 2600",
+   "emulator": "Stella (libretro)",
+   "core": "stella",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "covers Stella (libretro); stella/stella2014 cores; stella core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_2600"
+  },
+  {
+   "platform": "Atari 2600",
+   "emulator": "Z64K",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_2600"
+  },
+  {
+   "platform": "Atari 5200",
+   "emulator": "Atari800",
+   "core": "atari800",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "atari800 core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_5200"
+  },
+  {
+   "platform": "Atari 7800",
+   "emulator": "BupSystem",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "only emu officially reported to support Rikki & Vikki",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_7800"
+  },
+  {
+   "platform": "Atari 7800",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_7800"
+  },
+  {
+   "platform": "Atari 7800",
+   "emulator": "A7800",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "MAME fork, accurate Maria DMA",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_7800"
+  },
+  {
+   "platform": "Atari 7800",
+   "emulator": "ProSystem",
+   "core": "prosystem",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "standalone inactive, libretro core active; prosystem core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_7800"
+  },
+  {
+   "platform": "Atari 800",
+   "emulator": "Altirra",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_8-bit_emulators"
+  },
+  {
+   "platform": "Atari 800",
+   "emulator": "Atari800",
+   "core": "atari800",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "atari800 core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_8-bit_emulators"
+  },
+  {
+   "platform": "Atari 800",
+   "emulator": "Atari++",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_8-bit_emulators"
+  },
+  {
+   "platform": "Atari Jaguar",
+   "emulator": "BigPEmu",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "100% compatibility",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_Jaguar"
+  },
+  {
+   "platform": "Atari Jaguar",
+   "emulator": "Virtual Jaguar",
+   "core": "virtual_jaguar",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "virtualjaguar_libretro; virtual_jaguar core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_Jaguar"
+  },
+  {
+   "platform": "Atari Jaguar CD",
+   "emulator": "BigPEmu",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "no dedicated Jaguar CD table; parent-table verdict, full CD support",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_Jaguar"
+  },
+  {
+   "platform": "Atari Jaguar CD",
+   "emulator": "BizHawk",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "no dedicated Jaguar CD table; partial CD support per hw table",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_Jaguar"
+  },
+  {
+   "platform": "Atari Lynx",
+   "emulator": "Mednafen",
+   "core": "beetle_lynx",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "beetle_lynx core; beetle_lynx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_Lynx_emulators"
+  },
+  {
+   "platform": "Atari Lynx",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_Lynx_emulators"
+  },
+  {
+   "platform": "Atari Lynx",
+   "emulator": "Felix",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "cycle-exact",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_Lynx_emulators"
+  },
+  {
+   "platform": "Atari Lynx",
+   "emulator": "Gearlynx",
+   "core": "gearlynx",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "gearlynx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_Lynx_emulators"
+  },
+  {
+   "platform": "Atari ST",
+   "emulator": "Hatari",
+   "core": "hatari",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "hatari core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_ST_emulators"
+  },
+  {
+   "platform": "Atari ST",
+   "emulator": "Steem SSE",
+   "core": "steemsse",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "steemsse core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_ST_emulators"
+  },
+  {
+   "platform": "Atari ST",
+   "emulator": "ARAnyM",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_ST_emulators"
+  },
+  {
+   "platform": "Atari XEGS",
+   "emulator": "Altirra",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_8-bit_emulators"
+  },
+  {
+   "platform": "Atari XEGS",
+   "emulator": "Atari800",
+   "core": "atari800",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "atari800 core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_8-bit_emulators"
+  },
+  {
+   "platform": "Atari XEGS",
+   "emulator": "Atari++",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "models cell lists 400/800/XL/XE only",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Atari_8-bit_emulators"
+  },
+  {
+   "platform": "BBC Microcomputer System",
+   "emulator": "BeebEm",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "B, B+, M128",
+   "page_url": "https://emulation.gametechwiki.com/index.php/BBC_Micro_emulators"
+  },
+  {
+   "platform": "BBC Microcomputer System",
+   "emulator": "B-em",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "A, B, B+, M128, MC",
+   "page_url": "https://emulation.gametechwiki.com/index.php/BBC_Micro_emulators"
+  },
+  {
+   "platform": "BBC Microcomputer System",
+   "emulator": "b2",
+   "core": "b2",
+   "rank": 3,
+   "verdict": "not",
+   "note": "B, B+, M128; b2 core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/BBC_Micro_emulators"
+  },
+  {
+   "platform": "Bally Astrocade",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "only PC emulator listed; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Astrocade"
+  },
+  {
+   "platform": "Bandai Super Vision 8000",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Only emulator listed; active; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Vision_8000"
+  },
+  {
+   "platform": "Benesse - Pocket Challenge V2",
+   "emulator": "ares",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "PCv2 column partial",
+   "page_url": "https://emulation.gametechwiki.com/index.php/WonderSwan_emulators"
+  },
+  {
+   "platform": "Benesse - Pocket Challenge V2",
+   "emulator": "Mednafen",
+   "core": "beetle_cygne",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "listed with Beetle Cygne core; PCv2 column N/A; beetle_cygne core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/WonderSwan_emulators"
+  },
+  {
+   "platform": "Camputers Lynx",
+   "emulator": "Jynx",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "48K/96K models",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Camputers_Lynx"
+  },
+  {
+   "platform": "Camputers Lynx",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "tape support improved 0.200; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Camputers_Lynx"
+  },
+  {
+   "platform": "Casio PV-1000",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Active; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Casio_PV-1000_emulators"
+  },
+  {
+   "platform": "ColecoVision",
+   "emulator": "FinalBurn Neo",
+   "core": "fbneo",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Confirmed better compatibility than MAME/MESS, blueMSX, openMSX, CoolCV; fbneo core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ColecoVision_emulators"
+  },
+  {
+   "platform": "ColecoVision",
+   "emulator": "JollyCV",
+   "core": "jollycv",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "jollycv core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ColecoVision_emulators"
+  },
+  {
+   "platform": "ColecoVision",
+   "emulator": "BizHawk",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ColecoVision_emulators"
+  },
+  {
+   "platform": "ColecoVision",
+   "emulator": "ColEm",
+   "core": "",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ColecoVision_emulators"
+  },
+  {
+   "platform": "ColecoVision",
+   "emulator": "ares",
+   "core": "",
+   "rank": 5,
+   "verdict": "recommended",
+   "note": "145/152 compatibility",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ColecoVision_emulators"
+  },
+  {
+   "platform": "Commodore 128",
+   "emulator": "VICE",
+   "core": "vice_x128",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "vice_x128 core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Commodore_128"
+  },
+  {
+   "platform": "Commodore 64",
+   "emulator": "Denise",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Commodore_64_emulators"
+  },
+  {
+   "platform": "Commodore 64",
+   "emulator": "VICE",
+   "core": "vice_x64sc",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "vice_x64sc core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Commodore_64_emulators"
+  },
+  {
+   "platform": "Commodore 64",
+   "emulator": "Hoxs64",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Commodore_64_emulators"
+  },
+  {
+   "platform": "Commodore 64",
+   "emulator": "Z64K",
+   "core": "",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Commodore_64_emulators"
+  },
+  {
+   "platform": "Commodore 64",
+   "emulator": "VirtualC64",
+   "core": "",
+   "rank": 5,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Commodore_64_emulators"
+  },
+  {
+   "platform": "Commodore 64",
+   "emulator": "Kernal64",
+   "core": "",
+   "rank": 6,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Commodore_64_emulators"
+  },
+  {
+   "platform": "Commodore Amiga",
+   "emulator": "Amiberry",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore Amiga",
+   "emulator": "FS-UAE",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore Amiga",
+   "emulator": "vAmiga",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore Amiga",
+   "emulator": "WinUAE",
+   "core": "",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "most accurate, Windows-only",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore Amiga",
+   "emulator": "PUAE",
+   "core": "puae",
+   "rank": 5,
+   "verdict": "recommended",
+   "note": "frontend-cores table; wiki libretro row; core only",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore Amiga",
+   "emulator": "Denise",
+   "core": "",
+   "rank": 6,
+   "verdict": "partial",
+   "note": "multi-system table",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore Amiga CD32",
+   "emulator": "FS-UAE",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "CD32 support confirmed",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore Amiga CD32",
+   "emulator": "WinUAE",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "CD32 support untested (?)",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore Amiga CD32",
+   "emulator": "PUAE (RetroArch)",
+   "core": "puae",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "CD32 support untested (?); wiki libretro row; core only",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore CDTV",
+   "emulator": "FS-UAE",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "CDTV support confirmed",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore CDTV",
+   "emulator": "WinUAE",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "CDTV support untested (?)",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore CDTV",
+   "emulator": "PUAE",
+   "core": "puae",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "CDTV support untested (?); wiki libretro row; core only",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Amiga_emulators"
+  },
+  {
+   "platform": "Commodore PET",
+   "emulator": "VICE (xpet)",
+   "core": "vice_xpet",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "vice_xpet core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Commodore_PET"
+  },
+  {
+   "platform": "Commodore VIC-20",
+   "emulator": "VICE (xvic)",
+   "core": "vice_xvic",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "vice_xvic core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/VIC-20"
+  },
+  {
+   "platform": "Commodore VIC-20",
+   "emulator": "Z64K",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/VIC-20"
+  },
+  {
+   "platform": "Emerson Arcadia 2001",
+   "emulator": "WinArcadia",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "High accuracy; RetroAchievements supported",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Emerson_Arcadia_2001_emulators"
+  },
+  {
+   "platform": "Emerson Arcadia 2001",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "Mid accuracy; no RetroAchievements; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Emerson_Arcadia_2001_emulators"
+  },
+  {
+   "platform": "Epoch Super Cassette Vision",
+   "emulator": "eSCV",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Covers EmuSCV (emuscv libretro core)",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Cassette_Vision_emulators"
+  },
+  {
+   "platform": "Epoch Super Cassette Vision",
+   "emulator": "EmuSCV",
+   "core": "emuscv",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Covers EmuSCV (emuscv libretro core); emuscv core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Cassette_Vision_emulators"
+  },
+  {
+   "platform": "Epoch Super Cassette Vision",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Cassette_Vision_emulators"
+  },
+  {
+   "platform": "Fairchild Channel F",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Fairchild_Channel_F_emulators"
+  },
+  {
+   "platform": "Fairchild Channel F",
+   "emulator": "FreeChaF",
+   "core": "freechaf",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "libretro core; freechaf core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Fairchild_Channel_F_emulators"
+  },
+  {
+   "platform": "Fujitsu FM Towns Marty",
+   "emulator": "Tsugaru",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "98.5% compatibility; wiki row 'Tsugaru (\u6d25\u8efd)'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/FM_Towns_emulators"
+  },
+  {
+   "platform": "Fujitsu FM Towns Marty",
+   "emulator": "UNZ",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "high compat but inactive since 2010",
+   "page_url": "https://emulation.gametechwiki.com/index.php/FM_Towns_emulators"
+  },
+  {
+   "platform": "Fujitsu FM Towns Marty",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 3,
+   "verdict": "not",
+   "note": "flagged preliminary/not working; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/FM_Towns_emulators"
+  },
+  {
+   "platform": "Fujitsu FM-7",
+   "emulator": "XM7",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "wiki row 'XM7 / XM7 TypeR'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Fujitsu_FM-7_emulators"
+  },
+  {
+   "platform": "Fujitsu FM-7",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "flagged preliminary driver; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Fujitsu_FM-7_emulators"
+  },
+  {
+   "platform": "Funtech Super Acan",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "preliminary driver, preliminary sound; Bcan above is recommended but not ours; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_A%27Can"
+  },
+  {
+   "platform": "GCE Vectrex",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Hardware perfectly emulated; 1984 clone not emulated yet; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Vectrex_emulators"
+  },
+  {
+   "platform": "GCE Vectrex",
+   "emulator": "vecx",
+   "core": "vecx",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Original branch stale (2016); libretro core updated 2020; vecx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Vectrex_emulators"
+  },
+  {
+   "platform": "GamePark GP32",
+   "emulator": "GeePee32",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "inactive",
+   "page_url": "https://emulation.gametechwiki.com/index.php/GP32_emulators"
+  },
+  {
+   "platform": "GamePark GP32",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "not",
+   "note": "preliminary driver; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/GP32_emulators"
+  },
+  {
+   "platform": "Hartung Game Master",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "only PC emulator listed; page is Hartung Game Master; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Master"
+  },
+  {
+   "platform": "Interton VC 4000",
+   "emulator": "WinArcadia",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "via Arcadia 2001 family table; no dedicated Interton page exists",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Emerson_Arcadia_2001_emulators"
+  },
+  {
+   "platform": "Interton VC 4000",
+   "emulator": "AmiArcadia",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "listed in PC section despite AmigaOS platform",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Emerson_Arcadia_2001_emulators"
+  },
+  {
+   "platform": "Interton VC 4000",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Emerson_Arcadia_2001_emulators"
+  },
+  {
+   "platform": "Linux",
+   "emulator": "Wine",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Windows applications",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Compatibility_layers"
+  },
+  {
+   "platform": "Linux",
+   "emulator": "Proton",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Valve Steam games, Wine-based",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Compatibility_layers"
+  },
+  {
+   "platform": "MS-DOS",
+   "emulator": "86Box",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "full system, accurate",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "MS-DOS",
+   "emulator": "DOSBox Pure",
+   "core": "dosbox_pure",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "simple, libretro-origin; dosbox_pure core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "MS-DOS",
+   "emulator": "DOSBox-X",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "complete DOS/Win3.x-9x package",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "MS-DOS",
+   "emulator": "DREAMM",
+   "core": "",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "curated games only",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "MUGEN",
+   "emulator": "MUGEN",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "original engine, inactive since 2013; Implementations table; wiki row 'M.U.G.E.N'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Mugen"
+  },
+  {
+   "platform": "MUGEN",
+   "emulator": "Ikemen GO",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Mugen"
+  },
+  {
+   "platform": "Magnavox Odyssey",
+   "emulator": "Odyemu",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Cycle accuracy; playable online via Internet Archive",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Magnavox_Odyssey_emulators"
+  },
+  {
+   "platform": "Magnavox Odyssey",
+   "emulator": "Odyssey Now: HAL",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Cycle accuracy (matches Odyssey Now: HAL); wiki row 'Odyssey Now'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Magnavox_Odyssey_emulators"
+  },
+  {
+   "platform": "Magnavox Odyssey",
+   "emulator": "Magnavody",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "Active",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Magnavox_Odyssey_emulators"
+  },
+  {
+   "platform": "Magnavox Odyssey",
+   "emulator": "OdySim",
+   "core": "",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "Simulator (not full emulator); active",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Magnavox_Odyssey_emulators"
+  },
+  {
+   "platform": "Magnavox Odyssey",
+   "emulator": "OdyWeb",
+   "core": "",
+   "rank": 5,
+   "verdict": "recommended",
+   "note": "Simulator (not full emulator); active",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Magnavox_Odyssey_emulators"
+  },
+  {
+   "platform": "Magnavox Odyssey 2",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "High accuracy; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Magnavox_Odyssey\u00b2_emulators"
+  },
+  {
+   "platform": "Magnavox Odyssey 2",
+   "emulator": "O2EM",
+   "core": "o2em",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "High accuracy; libretro core available; o2em core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Magnavox_Odyssey\u00b2_emulators"
+  },
+  {
+   "platform": "Mattel Aquarius",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Only usable PC row; AqEmu/Virtual Aquarius untested ?; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Aquarius"
+  },
+  {
+   "platform": "Mattel HyperScan",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "5/5 compatibility; sound not implemented; RetroArch core cannot load games; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/HyperScan"
+  },
+  {
+   "platform": "Mattel Intellivision",
+   "emulator": "jzIntv",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "High accuracy; most complete per Comparisons (GUI: jzIntvImGui)",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intellivision_emulators"
+  },
+  {
+   "platform": "Mattel Intellivision",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Mid accuracy; good ECS/Intellivoice support; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intellivision_emulators"
+  },
+  {
+   "platform": "Mattel Intellivision",
+   "emulator": "FreeIntv",
+   "core": "freeintv",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "Libretro-only (matches FreeIntv); wiki libretro row; core only",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intellivision_emulators"
+  },
+  {
+   "platform": "Mega Duck",
+   "emulator": "SameDuck",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "wiki libretro row; same program",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Mega_Duck"
+  },
+  {
+   "platform": "Mega Duck",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Mega_Duck"
+  },
+  {
+   "platform": "Microsoft - XBOX 360 (Games on Demand)",
+   "emulator": "Xenia",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "leading build, Linux builds; wiki recommends the Canary fork",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Xbox_360_emulators"
+  },
+  {
+   "platform": "Microsoft - XBOX 360 (Title Updates)",
+   "emulator": "Xenia",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "leading build, Linux builds; wiki recommends the Canary fork",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Xbox_360_emulators"
+  },
+  {
+   "platform": "Microsoft - Xbox 360 (Digital)",
+   "emulator": "Xenia",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "leading build, Linux builds; wiki recommends the Canary fork",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Xbox_360_emulators"
+  },
+  {
+   "platform": "Microsoft MSX",
+   "emulator": "openMSX",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft MSX",
+   "emulator": "blueMSX",
+   "core": "bluemsx",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "bluemsx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft MSX",
+   "emulator": "fMSX",
+   "core": "fmsx",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "fmsx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft MSX2",
+   "emulator": "openMSX",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "MSX2 confirmed",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft MSX2",
+   "emulator": "blueMSX",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "covers blueMSX (libretro); MSX2 confirmed",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft MSX2",
+   "emulator": "blueMSX (libretro)",
+   "core": "bluemsx",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "covers blueMSX (libretro); MSX2 confirmed; bluemsx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft MSX2",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "MSX2 confirmed; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft MSX2",
+   "emulator": "fMSX (libretro)",
+   "core": "fmsx",
+   "rank": 5,
+   "verdict": "partial",
+   "note": "covers fMSX (libretro); fmsx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft MSX2+",
+   "emulator": "openMSX",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "MSX2+ confirmed",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft MSX2+",
+   "emulator": "blueMSX",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "covers blueMSX (libretro); MSX2+ confirmed",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft MSX2+",
+   "emulator": "blueMSX (libretro)",
+   "core": "bluemsx",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "covers blueMSX (libretro); MSX2+ confirmed; bluemsx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft MSX2+",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "MSX2+ confirmed; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Microsoft Xbox",
+   "emulator": "xemu",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "87.5% playable, LLE",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Xbox_emulators"
+  },
+  {
+   "platform": "Microsoft Xbox",
+   "emulator": "Cxbx-Reloaded",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "16% playable, HLE",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Xbox_emulators"
+  },
+  {
+   "platform": "Microsoft Xbox 360",
+   "emulator": "Xenia",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "leading build, master Xenia not recommended; wiki recommends the Canary fork",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Xbox_360_emulators"
+  },
+  {
+   "platform": "Mobile - J2ME",
+   "emulator": "FreeJ2ME-Plus",
+   "core": "freej2me",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "730/769 compatibility; Standalone PC table; freej2me core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/J2ME_emulators"
+  },
+  {
+   "platform": "Mobile - J2ME",
+   "emulator": "KEmulator nnmod",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "wiki row 'KEmulator nnmod / nnx64'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/J2ME_emulators"
+  },
+  {
+   "platform": "Mobile - Palm OS",
+   "emulator": "Mu",
+   "core": "mu",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "mu core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Palm_OS_emulators"
+  },
+  {
+   "platform": "Mobile - Palm OS",
+   "emulator": "CloudpilotEmu",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "web-based, in PC section",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Palm_OS_emulators"
+  },
+  {
+   "platform": "Mobile - Symbian",
+   "emulator": "EKA2L1",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "58/259 compatibility",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Symbian_emulators"
+  },
+  {
+   "platform": "Mobile - Zeebo",
+   "emulator": "Infuse",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "WIP; MAME row is skeleton N/A",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Zeebo"
+  },
+  {
+   "platform": "NEC PC-8801",
+   "emulator": "M88kai",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Matches M88kai; wiki row 'M88\u6539+ (M88 Kai Plus)'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PC-8800_series_emulators"
+  },
+  {
+   "platform": "NEC PC-8801",
+   "emulator": "ePC-8801MA",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Matches ePC-8801MA; wiki row 'ePC-8801'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PC-8800_series_emulators"
+  },
+  {
+   "platform": "NEC PC-8801",
+   "emulator": "XM8",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PC-8800_series_emulators"
+  },
+  {
+   "platform": "NEC PC-8801",
+   "emulator": "MAME",
+   "core": "",
+   "rank": 4,
+   "verdict": "partial",
+   "note": "PC-8801MA/MH/mkIISR playable since 0.251 but incomplete",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PC-8800_series_emulators"
+  },
+  {
+   "platform": "NEC PC-9801",
+   "emulator": "Neko Project 21/W",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Best per Comparisons; covers NP2kai kai fork and Neko Project 21/W; wiki row covers Neko Project II and forks",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PC-98_emulators"
+  },
+  {
+   "platform": "NEC PC-9801",
+   "emulator": "DOSBox-X",
+   "core": "dosbox_pure",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "Easy setup but PC-98 system incomplete; matches dosbox_pure core; dosbox_pure core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PC-98_emulators"
+  },
+  {
+   "platform": "NEC PC-FX",
+   "emulator": "Mednafen",
+   "core": "mednafen_pcfx",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Mid-High accuracy; RetroAchievements supported (matches mednafen_pcfx); mednafen_pcfx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PC-FX_emulators"
+  },
+  {
+   "platform": "NEC TurboGrafx-16",
+   "emulator": "Mednafen",
+   "core": "beetle_pce_fast;beetle_supergrafx",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Cycle-accurate pce core plus pce_fast speed fork (matches beetle_pce_fast/beetle_supergrafx); beetle cores",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PC_Engine_(TurboGrafx-16)_emulators"
+  },
+  {
+   "platform": "NEC TurboGrafx-16",
+   "emulator": "ares",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Cycle accuracy with Pixel Accuracy option (v127+)",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PC_Engine_(TurboGrafx-16)_emulators"
+  },
+  {
+   "platform": "NEC TurboGrafx-CD",
+   "emulator": "Mednafen",
+   "core": "beetle_pce_fast",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Cycle-accurate (matches beetle_pce_fast); beetle_pce_fast core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PC_Engine_(TurboGrafx-16)_emulators"
+  },
+  {
+   "platform": "NEC TurboGrafx-CD",
+   "emulator": "ares",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Cycle accuracy with Pixel Accuracy option",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PC_Engine_(TurboGrafx-16)_emulators"
+  },
+  {
+   "platform": "Nintendo - New Nintendo 3DS",
+   "emulator": "Azahar",
+   "core": "citra",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "covers Azahar (Citra fork) and citra libretro core (obsolete); citra core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_3DS_emulators"
+  },
+  {
+   "platform": "Nintendo - New Nintendo 3DS",
+   "emulator": "Panda3DS",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "New 3DS \u2713",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_3DS_emulators"
+  },
+  {
+   "platform": "Nintendo - New Nintendo 3DS (Digital)",
+   "emulator": "Azahar",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "covers Azahar; wiki row 'Citra and forks'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_3DS_emulators"
+  },
+  {
+   "platform": "Nintendo - New Nintendo 3DS (Digital)",
+   "emulator": "Panda3DS",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "New 3DS \u2713",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_3DS_emulators"
+  },
+  {
+   "platform": "Nintendo - Nintendo 3DS (Digital)",
+   "emulator": "Azahar",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "covers Azahar; wiki row 'Citra and forks'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_3DS_emulators"
+  },
+  {
+   "platform": "Nintendo - Nintendo 3DS (Digital)",
+   "emulator": "Panda3DS",
+   "core": "panda3ds",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "covers Panda3DS emu and panda3ds libretro core; panda3ds core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_3DS_emulators"
+  },
+  {
+   "platform": "Nintendo - Nintendo 3DS (Digital)",
+   "emulator": "Tanuki3DS",
+   "core": "",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_3DS_emulators"
+  },
+  {
+   "platform": "Nintendo - Nintendo DS (Download Play)",
+   "emulator": "melonDS",
+   "core": "melonds_ds",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Download Play \u2713; melonds_ds core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_DS_emulators"
+  },
+  {
+   "platform": "Nintendo - Nintendo DSi",
+   "emulator": "melonDS",
+   "core": "melonds_ds",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "DSi \u2713; melonds_ds core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_DS_emulators"
+  },
+  {
+   "platform": "Nintendo - Nintendo DSi",
+   "emulator": "No$GBA",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "DSi \u2713; only for DSi games not working elsewhere",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_DS_emulators"
+  },
+  {
+   "platform": "Nintendo - Sufami Turbo",
+   "emulator": "ares",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "SuFami Turbo \u2713",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo - Sufami Turbo",
+   "emulator": "bsnes",
+   "core": "bsnes",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "SuFami Turbo \u2713; covers bsnes emu and bsnes core; bsnes core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo - Sufami Turbo",
+   "emulator": "Snes9x",
+   "core": "snes9x",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "SuFami Turbo \u2713; covers Snes9x emu and snes9x core; snes9x core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo - Wii (Digital)",
+   "emulator": "Dolphin",
+   "core": "dolphin",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "only option; covers emu and dolphin libretro core; WiiWare \u2713; dolphin core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Wii_emulators"
+  },
+  {
+   "platform": "Nintendo - Wii U (Digital)",
+   "emulator": "Cemu",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Wii_U_emulators"
+  },
+  {
+   "platform": "Nintendo 3DS",
+   "emulator": "Azahar",
+   "core": "citra",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "covers Azahar and citra libretro core (obsolete); citra core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_3DS_emulators"
+  },
+  {
+   "platform": "Nintendo 3DS",
+   "emulator": "Panda3DS",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_3DS_emulators"
+  },
+  {
+   "platform": "Nintendo 3DS",
+   "emulator": "Tanuki3DS",
+   "core": "",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_3DS_emulators"
+  },
+  {
+   "platform": "Nintendo 64DD",
+   "emulator": "ares",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "most accurate 64DD per LuigiBlood; disc swapping v134+",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
+  },
+  {
+   "platform": "Nintendo 64DD",
+   "emulator": "Mupen64Plus-Next (RetroArch)",
+   "core": "mupen64plus_next",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "covers emu and mupen64plus_next core; 64DD via Subsystems, IPL.n64 required; mupen64plus_next core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
+  },
+  {
+   "platform": "Nintendo 64DD",
+   "emulator": "RMG",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "Mupen64Plus-based; 64DD supported",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_64_emulators"
+  },
+  {
+   "platform": "Nintendo DS",
+   "emulator": "melonDS",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_DS_emulators"
+  },
+  {
+   "platform": "Nintendo DS",
+   "emulator": "melonDS DS",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "libretro core remake with standalone parity",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_DS_emulators"
+  },
+  {
+   "platform": "Nintendo DS",
+   "emulator": "DeSmuME",
+   "core": "desmume",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "covers emu and desmume libretro core; DSi \u2717; desmume core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_DS_emulators"
+  },
+  {
+   "platform": "Nintendo DS",
+   "emulator": "BizHawk",
+   "core": "",
+   "rank": 4,
+   "verdict": "partial",
+   "note": "melonDS 0.9.5 core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_DS_emulators"
+  },
+  {
+   "platform": "Nintendo Entertainment System",
+   "emulator": "Nestopia UE",
+   "core": "nestopia",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "standalone; also covers nestopia libretro core (\u2713); nestopia core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Entertainment System",
+   "emulator": "puNES",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "second most compatible cycle-accurate",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Entertainment System",
+   "emulator": "FCEUX",
+   "core": "fceumm",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "High accuracy, less accurate than Mesen/puNES/Nestopia; fceumm core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Entertainment System",
+   "emulator": "Mesen",
+   "core": "mesen",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "multi-system emu; most compatible cycle-accurate; mesen core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Entertainment System",
+   "emulator": "ares",
+   "core": "",
+   "rank": 5,
+   "verdict": "recommended",
+   "note": "multi-system; NES core on par with Mesen",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Famicom Disk System",
+   "emulator": "Nestopia UE",
+   "core": "nestopia",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "NES/FDS cycle-accurate; covers nestopia core; nestopia core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Famicom Disk System",
+   "emulator": "puNES",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "NES/FDS cycle-accurate",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Famicom Disk System",
+   "emulator": "FCEUX",
+   "core": "",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "NES/FDS highly-accurate",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Famicom Disk System",
+   "emulator": "Mesen",
+   "core": "mesen",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "multi-system NES/FDS; most compatible; mesen core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Famicom Disk System",
+   "emulator": "ares",
+   "core": "",
+   "rank": 5,
+   "verdict": "recommended",
+   "note": "multi-system NES/FDS",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Game & Watch",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "1st G&W emulator; all models; covers mame core; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_&_Watch"
+  },
+  {
+   "platform": "Nintendo Game & Watch",
+   "emulator": "GW (MADrigal's Simulators)",
+   "core": "gw",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "simulators not emulator; GW libretro core; covers gw core; gw core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_&_Watch"
+  },
+  {
+   "platform": "Nintendo Game Boy",
+   "emulator": "SameBoy",
+   "core": "sameboy",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "covers emu and sameboy libretro core; sameboy core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_(Color)_emulators"
+  },
+  {
+   "platform": "Nintendo Game Boy",
+   "emulator": "BGB",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "closed-source, excellent accuracy and link support",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_(Color)_emulators"
+  },
+  {
+   "platform": "Nintendo Game Boy",
+   "emulator": "Emulicious",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_(Color)_emulators"
+  },
+  {
+   "platform": "Nintendo Game Boy",
+   "emulator": "Gambatte",
+   "core": "gambatte",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "covers emu and gambatte libretro core; upstream inactive; gambatte core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_(Color)_emulators"
+  },
+  {
+   "platform": "Nintendo Game Boy Advance",
+   "emulator": "mGBA",
+   "core": "mgba",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "covers emu and mgba libretro core; mgba core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_Advance_emulators"
+  },
+  {
+   "platform": "Nintendo Game Boy Advance",
+   "emulator": "NanoBoyAdvance",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "cycle-accurate focus; dev stepping down after next major",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_Advance_emulators"
+  },
+  {
+   "platform": "Nintendo Game Boy Advance",
+   "emulator": "SkyEmu",
+   "core": "skyemu",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "covers emu and skyemu; low-level, 2nd to pass AGS aging tests; skyemu core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_Advance_emulators"
+  },
+  {
+   "platform": "Nintendo Game Boy Color",
+   "emulator": "SameBoy",
+   "core": "sameboy",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "covers emu and sameboy libretro core; sameboy core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_(Color)_emulators"
+  },
+  {
+   "platform": "Nintendo Game Boy Color",
+   "emulator": "BGB",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_(Color)_emulators"
+  },
+  {
+   "platform": "Nintendo Game Boy Color",
+   "emulator": "Emulicious",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_(Color)_emulators"
+  },
+  {
+   "platform": "Nintendo Game Boy Color",
+   "emulator": "Gambatte",
+   "core": "gambatte",
+   "rank": 4,
+   "verdict": "partial",
+   "note": "covers emu and gambatte libretro core; gambatte core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game_Boy_(Color)_emulators"
+  },
+  {
+   "platform": "Nintendo GameCube",
+   "emulator": "Dolphin",
+   "core": "dolphin",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "covers emu and dolphin libretro core (standalone preferred); dolphin core; standalone preferred per wiki",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_GameCube_emulators"
+  },
+  {
+   "platform": "Nintendo Pokemon Mini",
+   "emulator": "GBE+",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "100% compat; only IR support",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Pok%C3%A9mon_Mini_emulators"
+  },
+  {
+   "platform": "Nintendo Pokemon Mini",
+   "emulator": "PokeMini",
+   "core": "pokemini",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "covers emu and pokemini libretro core; 100% compat via FreeBIOS fallback; pokemini core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Pok%C3%A9mon_Mini_emulators"
+  },
+  {
+   "platform": "Nintendo Satellaview",
+   "emulator": "ares",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "BS-X \u2713",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Satellaview",
+   "emulator": "bsnes",
+   "core": "bsnes",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "BS-X \u2713; covers bsnes emu and bsnes core; bsnes core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Satellaview",
+   "emulator": "Snes9x",
+   "core": "snes9x",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "BS-X \u2713; covers Snes9x emu and snes9x core; snes9x core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Satellaview",
+   "emulator": "Mesen",
+   "core": "mesen-s",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "BS-X \u2713; covers Mesen emu and mesen-s core; mesen-s core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Nintendo Switch",
+   "emulator": "Ryubing (Ryujinx fork)",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "covers Ryubing (Ryujinx fork, \u2713 in Ryujinx forks x86 table); wiki row 'Ryujinx and forks'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Switch_emulators"
+  },
+  {
+   "platform": "Nintendo Switch",
+   "emulator": "Eden",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "covers Eden \u2713 and Citron (Citron Neo) \u2713; Torzu \u2717 in Yuzu forks x86 table; wiki yuzu-forks row marks Eden \u2713",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Switch_emulators"
+  },
+  {
+   "platform": "Nintendo Switch",
+   "emulator": "Citron Neo",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "covers Eden \u2713 and Citron (Citron Neo) \u2713; Torzu \u2717 in Yuzu forks x86 table; wiki yuzu-forks row marks Citron \u2713",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Switch_emulators"
+  },
+  {
+   "platform": "Nintendo Virtual Boy",
+   "emulator": "Mednafen",
+   "core": "beetle_vb",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "covers Mednafen emu, RetroArch (Beetle VB) emu and beetle_vb core; 100% compat; beetle_vb core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Virtual_Boy_emulators"
+  },
+  {
+   "platform": "Nintendo Wii",
+   "emulator": "Dolphin",
+   "core": "dolphin",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "only option; covers emu and dolphin libretro core; dolphin core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Wii_emulators"
+  },
+  {
+   "platform": "Nintendo Wii U",
+   "emulator": "Cemu",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Wii_U_emulators"
+  },
+  {
+   "platform": "Nokia N-Gage",
+   "emulator": "EKA2L1",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "N-Gage emulators redirects to Symbian emulators Comparison table",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Symbian_emulators"
+  },
+  {
+   "platform": "Nuon",
+   "emulator": "Nuance Resurrection",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "only serious NUON attempt",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nuon_emulators"
+  },
+  {
+   "platform": "Othello Multivision",
+   "emulator": "MasterGear",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "via SG-1000 table; Othello Multivision is SG-1000-compatible, no dedicated page",
+   "page_url": "https://emulation.gametechwiki.com/index.php/SG-1000"
+  },
+  {
+   "platform": "Othello Multivision",
+   "emulator": "MEKA",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/SG-1000"
+  },
+  {
+   "platform": "Philips CD-i",
+   "emulator": "SAME_CDI",
+   "core": "same_cdi",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "MAME-derived single-system libretro core; same_cdi core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/CD-i"
+  },
+  {
+   "platform": "Philips CD-i",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "no DVC emulation; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/CD-i"
+  },
+  {
+   "platform": "Pinball",
+   "emulator": "Visual Pinball",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Simulators table; works with PinMAME",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Pinball"
+  },
+  {
+   "platform": "SNK Neo Geo AES",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "AES console mode via Universe BIOS (Select button not emulated); mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_and_variants"
+  },
+  {
+   "platform": "SNK Neo Geo AES",
+   "emulator": "FinalBurn Neo",
+   "core": "fbneo",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "fbneo core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_and_variants"
+  },
+  {
+   "platform": "SNK Neo Geo AES",
+   "emulator": "Geolith",
+   "core": "geolith",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "100% compatibility per README (matches geolith); geolith core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_and_variants"
+  },
+  {
+   "platform": "SNK Neo Geo AES",
+   "emulator": "ares",
+   "core": "",
+   "rank": 4,
+   "verdict": "partial",
+   "note": "156/219 compatibility; NG-CD unsupported",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_and_variants"
+  },
+  {
+   "platform": "SNK Neo Geo CD",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_and_variants"
+  },
+  {
+   "platform": "SNK Neo Geo CD",
+   "emulator": "FinalBurn Neo",
+   "core": "fbneo",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "fbneo core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_and_variants"
+  },
+  {
+   "platform": "SNK Neo Geo CD",
+   "emulator": "NeoCD",
+   "core": "neocd",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "MAME-derived single-system libretro fork (neocd); plug-and-play CD loading; neocd core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_and_variants"
+  },
+  {
+   "platform": "SNK Neo Geo MVS",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_and_variants"
+  },
+  {
+   "platform": "SNK Neo Geo MVS",
+   "emulator": "FinalBurn Neo",
+   "core": "fbneo",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "fbneo core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_and_variants"
+  },
+  {
+   "platform": "SNK Neo Geo MVS",
+   "emulator": "Geolith",
+   "core": "geolith",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "100% compatibility per README (matches geolith); geolith core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_and_variants"
+  },
+  {
+   "platform": "SNK Neo Geo Pocket",
+   "emulator": "ares",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Most accurate NGP core per Comparisons (93/101)",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_Pocket"
+  },
+  {
+   "platform": "SNK Neo Geo Pocket",
+   "emulator": "Mednafen",
+   "core": "mednafen_ngp",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Netplay via RetroArch/NullDC-BEAR; RA libretro-only (matches mednafen_ngp); mednafen_ngp core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_Pocket"
+  },
+  {
+   "platform": "SNK Neo Geo Pocket",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_Pocket"
+  },
+  {
+   "platform": "SNK Neo Geo Pocket Color",
+   "emulator": "ares",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Most accurate NGPC core per Comparisons (93/101)",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_Pocket"
+  },
+  {
+   "platform": "SNK Neo Geo Pocket Color",
+   "emulator": "Mednafen",
+   "core": "beetle_ngp",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Netplay via RetroArch/NullDC-BEAR (matches beetle_ngp); beetle_ngp core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_Pocket"
+  },
+  {
+   "platform": "SNK Neo Geo Pocket Color",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Neo_Geo_Pocket"
+  },
+  {
+   "platform": "Sega - Beena",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "Only Beena emulator in hardware-variations matrix; MAME compat list marks Beena driver Imperfect; Genesis overall ~; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega 32X",
+   "emulator": "ares",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "95% 32X compat; best 32X option",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega 32X",
+   "emulator": "PicoDrive",
+   "core": "picodrive",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "32X \u2713; irixxxx fork improved accuracy; picodrive core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega 32X",
+   "emulator": "BizHawk",
+   "core": "",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "32X via PicoDrive core; overall ~",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega CD",
+   "emulator": "Genesis Plus GX",
+   "core": "genesis_plus_gx",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Sega CD \u2713; ~100% commercial compat; genesis_plus_gx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega CD",
+   "emulator": "ares",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Sega CD \u2713; v132 boots all, ~86% playable",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega CD",
+   "emulator": "PicoDrive",
+   "core": "picodrive",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "Sega CD \u2713; best on weak hardware; picodrive core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega CD 32X",
+   "emulator": "ares",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "CD32X \u2713 in add-on matrix",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega CD 32X",
+   "emulator": "PicoDrive",
+   "core": "picodrive",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "CD32X \u2713 in add-on matrix; picodrive core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega Dreamcast",
+   "emulator": "Flycast",
+   "core": "flycast",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "reicast fork; CE/NAOMI/Atomiswave; table has no libretro column; flycast core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Dreamcast_emulators"
+  },
+  {
+   "platform": "Sega Dreamcast",
+   "emulator": "redream",
+   "core": "redream",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Detail PC table \u2713 (List page says ~); closed-source, easy, 96.14%; redream core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Dreamcast_emulators"
+  },
+  {
+   "platform": "Sega Dreamcast VMU",
+   "emulator": "DreamPotato",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "100% 10/10; Flycast connectivity",
+   "page_url": "https://emulation.gametechwiki.com/index.php/VMU_emulators"
+  },
+  {
+   "platform": "Sega Dreamcast VMU",
+   "emulator": "VeMUlator",
+   "core": "vemulator",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "Freemium; libretro core still active; wiki libretro row; core only",
+   "page_url": "https://emulation.gametechwiki.com/index.php/VMU_emulators"
+  },
+  {
+   "platform": "Sega Game Gear",
+   "emulator": "Genesis Plus GX",
+   "core": "genesis_plus_gx",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Very high accuracy; x86 table \u2713; genesis_plus_gx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Master_System/Game_Gear_emulators"
+  },
+  {
+   "platform": "Sega Game Gear",
+   "emulator": "Snepulator",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "x86 table \u2713",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Master_System/Game_Gear_emulators"
+  },
+  {
+   "platform": "Sega Game Gear",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "x86 table \u2713; System E works well; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Master_System/Game_Gear_emulators"
+  },
+  {
+   "platform": "Sega Game Gear",
+   "emulator": "ares",
+   "core": "",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "High accuracy; 98.18% reported",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Master_System/Game_Gear_emulators"
+  },
+  {
+   "platform": "Sega Genesis",
+   "emulator": "Genesis Plus GX",
+   "core": "genesis_plus_gx",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Solid; ~100% commercial compat; libretro cell not captured; genesis_plus_gx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega Genesis",
+   "emulator": "ares",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Highly accurate; 98.39% reported",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega Genesis",
+   "emulator": "PicoDrive",
+   "core": "picodrive",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "Speed over accuracy; toaster-friendly; picodrive core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega Genesis",
+   "emulator": "BlastEm",
+   "core": "blastem",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "Cycle-accuracy goal; use nightly over 0.6.2; blastem core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega Master System",
+   "emulator": "Genesis Plus GX",
+   "core": "genesis_plus_gx",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Very high accuracy; x86 table \u2713; genesis_plus_gx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Master_System/Game_Gear_emulators"
+  },
+  {
+   "platform": "Sega Master System",
+   "emulator": "Snepulator",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "x86 table \u2713",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Master_System/Game_Gear_emulators"
+  },
+  {
+   "platform": "Sega Master System",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "x86 table \u2713; quite good driver; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Master_System/Game_Gear_emulators"
+  },
+  {
+   "platform": "Sega Master System",
+   "emulator": "ares",
+   "core": "",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "High accuracy; 98.18% reported",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Master_System/Game_Gear_emulators"
+  },
+  {
+   "platform": "Sega Model 1",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "General Arcade table \u2713; Model 1 (Virtua Fighter/Racing) works; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Sega Model 2",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Arcade-table order, not Model-2-specific; actively developed; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Sega Model 2",
+   "emulator": "Model 2 Emulator",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "Best Model 2 compat but overall ~; Windows-only, stale since 2014",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Sega Pico",
+   "emulator": "PicoDrive",
+   "core": "picodrive",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Overall \u2713; Pico support ~ per matrix; only RetroArch Pico option; picodrive core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Genesis_emulators"
+  },
+  {
+   "platform": "Sega SC-3000",
+   "emulator": "MasterGear",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "SC-3000 \u2713 per table; x86 \u2713",
+   "page_url": "https://emulation.gametechwiki.com/index.php/SG-1000_emulators"
+  },
+  {
+   "platform": "Sega SC-3000",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "SC-3000 \u2713 per table; x86 \u2713; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/SG-1000_emulators"
+  },
+  {
+   "platform": "Sega SG-1000",
+   "emulator": "MasterGear",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "PC/x86 table \u2713",
+   "page_url": "https://emulation.gametechwiki.com/index.php/SG-1000_emulators"
+  },
+  {
+   "platform": "Sega SG-1000",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Nearly perfect SG-1000; x86 \u2713; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/SG-1000_emulators"
+  },
+  {
+   "platform": "Sega ST-V",
+   "emulator": "Mednafen",
+   "core": "mednafen_saturn",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Overall \u2713; ST-V experimental, no-decryption titles only; mednafen_saturn core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Saturn_emulators"
+  },
+  {
+   "platform": "Sega ST-V",
+   "emulator": "Kronos",
+   "core": "kronos",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "Overall ~; ST-V supported v1.30+, Linux best; kronos core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Saturn_emulators"
+  },
+  {
+   "platform": "Sega ST-V",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 3,
+   "verdict": "not",
+   "note": "Saturn overall \u2717; ST-V imperfect, ~50/70 playable; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Saturn_emulators"
+  },
+  {
+   "platform": "Sega Saturn",
+   "emulator": "Mednafen",
+   "core": "mednafen_saturn",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Most accurate; CLI/frontends; demanding; mednafen_saturn core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Saturn_emulators"
+  },
+  {
+   "platform": "Sega Saturn",
+   "emulator": "Yaba Sanshiro 2",
+   "core": "yabasanshiro",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "Overall ~; libretro core noted outdated; yabasanshiro core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Saturn_emulators"
+  },
+  {
+   "platform": "Sega Saturn",
+   "emulator": "Ymir",
+   "core": "",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "Overall ~ (WIP); ease-of-use, catching up",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sega_Saturn_emulators"
+  },
+  {
+   "platform": "Sega System 16",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "Arcade PC order; System 16 mostly works, some imperfect GFX; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Sega System 16",
+   "emulator": "FinalBurn Neo",
+   "core": "fbneo",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "68k-based incl. System 16/18; speed-coded; fbneo core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Sega System 32",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "ROMS decrypted; virtually all imperfect GFX; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Arcade_emulators"
+  },
+  {
+   "platform": "Sharp X1",
+   "emulator": "eX1",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "full X1/X1T/X1TZ/X1Tw support",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sharp_X1"
+  },
+  {
+   "platform": "Sharp X1",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "X1TZ/X1Tw partial; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Sharp_X1"
+  },
+  {
+   "platform": "Sharp X68000",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/X68000"
+  },
+  {
+   "platform": "Sharp X68000",
+   "emulator": "PX68k",
+   "core": "px68k",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "catalog name PX68k matches px68k-libretro; px68k core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/X68000"
+  },
+  {
+   "platform": "Sinclair - ZX Spectrum +3",
+   "emulator": "FUSE",
+   "core": "fuse",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "no dedicated +3 table; shared Spectrum table; fuse core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ZX_Spectrum_emulators"
+  },
+  {
+   "platform": "Sinclair - ZX Spectrum +3",
+   "emulator": "Speccy",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ZX_Spectrum_emulators"
+  },
+  {
+   "platform": "Sinclair - ZX Spectrum +3",
+   "emulator": "ZEsarUX",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ZX_Spectrum_emulators"
+  },
+  {
+   "platform": "Sinclair ZX Spectrum",
+   "emulator": "EightyOne",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "libretro core WIP",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ZX_Spectrum_emulators"
+  },
+  {
+   "platform": "Sinclair ZX Spectrum",
+   "emulator": "FUSE",
+   "core": "fuse",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "fuse core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ZX_Spectrum_emulators"
+  },
+  {
+   "platform": "Sinclair ZX Spectrum",
+   "emulator": "Speccy",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ZX_Spectrum_emulators"
+  },
+  {
+   "platform": "Sinclair ZX Spectrum",
+   "emulator": "ZEsarUX",
+   "core": "",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ZX_Spectrum_emulators"
+  },
+  {
+   "platform": "Sinclair ZX-81",
+   "emulator": "Clock Signal (CLK)",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "wiki row 'CLK'",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ZX81"
+  },
+  {
+   "platform": "Sinclair ZX-81",
+   "emulator": "ZEsarUX",
+   "core": "",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/ZX81"
+  },
+  {
+   "platform": "Sony - PlayStation 3 (PSN)",
+   "emulator": "RPCS3",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "76% reported titles",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_3_emulators"
+  },
+  {
+   "platform": "Sony - PlayStation Portable (PSN)",
+   "emulator": "PPSSPP",
+   "core": "ppsspp",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "84% reported titles; ppsspp core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_Portable_emulators"
+  },
+  {
+   "platform": "Sony - PlayStation Portable (PSX2PSP)",
+   "emulator": "DuckStation",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "top PS1 contender",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_emulators"
+  },
+  {
+   "platform": "Sony - PlayStation Portable (UMD Music)",
+   "emulator": "PPSSPP",
+   "core": "ppsspp",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "84% reported titles; ppsspp core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_Portable_emulators"
+  },
+  {
+   "platform": "Sony - PlayStation Portable (UMD Video)",
+   "emulator": "JPCSP",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "LLE, slower, debug-focused",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_Portable_emulators"
+  },
+  {
+   "platform": "Sony - PlayStation Vita (PSN)",
+   "emulator": "Vita3K",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "only Vita emulator",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_Vita_emulators"
+  },
+  {
+   "platform": "Sony PSP",
+   "emulator": "PPSSPP",
+   "core": "ppsspp",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "84% reported titles; ppsspp core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_Portable_emulators"
+  },
+  {
+   "platform": "Sony PSP Minis",
+   "emulator": "PPSSPP",
+   "core": "ppsspp",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "84% reported titles; ppsspp core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_Portable_emulators"
+  },
+  {
+   "platform": "Sony Playstation",
+   "emulator": "DuckStation",
+   "core": "swanstation",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "99% reported titles; swanstation core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_emulators"
+  },
+  {
+   "platform": "Sony Playstation",
+   "emulator": "Mednafen",
+   "core": "beetle_psx;beetle_psx_hw",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "accuracy-focused, Beetle port; Beetle/Beetle HW cores",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_emulators"
+  },
+  {
+   "platform": "Sony Playstation",
+   "emulator": "XEBRA",
+   "core": "",
+   "rank": 3,
+   "verdict": "partial",
+   "note": "accurate, no subchannel",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_emulators"
+  },
+  {
+   "platform": "Sony Playstation",
+   "emulator": "BizHawk",
+   "core": "nymashock",
+   "rank": 4,
+   "verdict": "partial",
+   "note": "Nymashock/Octoshock, TAS; nymashock core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_emulators"
+  },
+  {
+   "platform": "Sony Playstation",
+   "emulator": "PCSX-ReARMed",
+   "core": "pcsx_rearmed",
+   "rank": 5,
+   "verdict": "partial",
+   "note": "libretro-only, low-end fallback; wiki marks libretro-only; core row only",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_emulators"
+  },
+  {
+   "platform": "Sony Playstation 2",
+   "emulator": "PCSX2",
+   "core": "pcsx2",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "99.6% reported titles; pcsx2 core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_2_emulators"
+  },
+  {
+   "platform": "Sony Playstation 2",
+   "emulator": "Play!",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "HLE, no BIOS, 48% titles",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_2_emulators"
+  },
+  {
+   "platform": "Sony Playstation 2",
+   "emulator": "NetherSX2",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "AetherSX2 patch, ad-free",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_2_emulators"
+  },
+  {
+   "platform": "Sony Playstation 3",
+   "emulator": "RPCS3",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "76% reported titles",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_3_emulators"
+  },
+  {
+   "platform": "Sony Playstation 4",
+   "emulator": "shadPS4",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "best compat ~15-19%",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_4_emulators"
+  },
+  {
+   "platform": "Sony Playstation Vita",
+   "emulator": "Vita3K",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "only Vita emulator",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PlayStation_Vita_emulators"
+  },
+  {
+   "platform": "Sony PocketStation",
+   "emulator": "PK201",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "PS connectivity via XEBRA",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PocketStation_emulators"
+  },
+  {
+   "platform": "Sony PocketStation",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "high accuracy, few games boot; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/PocketStation_emulators"
+  },
+  {
+   "platform": "Spectravideo",
+   "emulator": "openMSX",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "via MSX table; SVI-328 is MSX-compatible, no dedicated Spectravideo page",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Spectravideo",
+   "emulator": "blueMSX",
+   "core": "bluemsx",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "bluemsx core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/MSX_emulators"
+  },
+  {
+   "platform": "Super Nintendo Entertainment System",
+   "emulator": "ares",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "full cycle-accurate",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Super Nintendo Entertainment System",
+   "emulator": "bsnes",
+   "core": "bsnes",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "covers bsnes emu and bsnes core; bsnes core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Super Nintendo Entertainment System",
+   "emulator": "Snes9x",
+   "core": "snes9x",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "covers Snes9x emu and snes9x core; snes9x core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Super Nintendo Entertainment System",
+   "emulator": "Mesen",
+   "core": "mesen-s",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "covers Mesen emu and mesen-s core (Mesen S libretro); mesen-s core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Super Nintendo Entertainment System",
+   "emulator": "bsnes-hd",
+   "core": "bsnes_hd_beta",
+   "rank": 5,
+   "verdict": "recommended",
+   "note": "covers bsnes-hd emu and bsnes_hd_beta core; libretro-only fork (Bsnes forks table); libretro-only fork; core row only",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Super_Nintendo_Entertainment_System_emulators"
+  },
+  {
+   "platform": "Tiger Game.com",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Game.com"
+  },
+  {
+   "platform": "VTech CreatiVision",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/CreatiVision"
+  },
+  {
+   "platform": "VTech CreatiVision",
+   "emulator": "JollyCV",
+   "core": "jollycv",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "100% compatibility claim; jollycv core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/CreatiVision"
+  },
+  {
+   "platform": "VTech Socrates",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "very early driver footnote; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/V.Smile"
+  },
+  {
+   "platform": "VTech V.Smile",
+   "emulator": "MAME",
+   "core": "mame",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "limited; incompatible romsets for some games; mame core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/V.Smile"
+  },
+  {
+   "platform": "Watara Supervision",
+   "emulator": "Potator",
+   "core": "potator",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "libretro + SDL2 versions; potator core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Supervision"
+  },
+  {
+   "platform": "Watara Supervision",
+   "emulator": "Wataroo",
+   "core": "",
+   "rank": 2,
+   "verdict": "partial",
+   "note": "",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Supervision"
+  },
+  {
+   "platform": "Windows",
+   "emulator": "86Box",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "full system, accurate",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "Windows",
+   "emulator": "DOSBox Pure",
+   "core": "dosbox_pure",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "simple, libretro-origin; dosbox_pure core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "Windows",
+   "emulator": "DOSBox-X",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "complete DOS/Win3.x-9x package",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "Windows",
+   "emulator": "DREAMM",
+   "core": "",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "curated games only",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "Windows",
+   "emulator": "PCem",
+   "core": "",
+   "rank": 5,
+   "verdict": "partial",
+   "note": "older, 86Box preferred",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "Windows 3.X",
+   "emulator": "86Box",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "full system, accurate",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "Windows 3.X",
+   "emulator": "DOSBox Pure",
+   "core": "dosbox_pure",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "simple, libretro-origin; dosbox_pure core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "Windows 3.X",
+   "emulator": "DOSBox Staging",
+   "core": "",
+   "rank": 3,
+   "verdict": "recommended",
+   "note": "ease of use, modern",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "Windows 3.X",
+   "emulator": "DOSBox-X",
+   "core": "",
+   "rank": 4,
+   "verdict": "recommended",
+   "note": "complete DOS/Win3.x-9x package",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "Windows 3.X",
+   "emulator": "PCem",
+   "core": "",
+   "rank": 5,
+   "verdict": "partial",
+   "note": "older, 86Box preferred",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Intel-based_PC_emulator_comparisons"
+  },
+  {
+   "platform": "WoW Action Max",
+   "emulator": "Hypseus Singe",
+   "core": "",
+   "rank": 1,
+   "verdict": "partial",
+   "note": "only option for VHS-based console",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Action_Max"
+  },
+  {
+   "platform": "WonderSwan",
+   "emulator": "ares",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "High accuracy; 227/228 compatibility",
+   "page_url": "https://emulation.gametechwiki.com/index.php/WonderSwan_emulators"
+  },
+  {
+   "platform": "WonderSwan Color",
+   "emulator": "ares",
+   "core": "",
+   "rank": 1,
+   "verdict": "recommended",
+   "note": "High accuracy; 227/228 compatibility",
+   "page_url": "https://emulation.gametechwiki.com/index.php/WonderSwan_emulators"
+  },
+  {
+   "platform": "WonderSwan Color",
+   "emulator": "Mednafen",
+   "core": "beetle_cygne",
+   "rank": 2,
+   "verdict": "recommended",
+   "note": "Mid accuracy; Beetle Cygne libretro (matches beetle_cygne); beetle_cygne core",
+   "page_url": "https://emulation.gametechwiki.com/index.php/WonderSwan_emulators"
+  },
+  {
+   "platform": "Nintendo Switch",
+   "emulator": "Torzu (yuzu fork)",
+   "core": "",
+   "rank": 4,
+   "verdict": "not",
+   "note": "\u2717 in the wiki Yuzu-forks x86 table",
+   "page_url": "https://emulation.gametechwiki.com/index.php/Nintendo_Switch_emulators"
+  }
+ ]
 }
