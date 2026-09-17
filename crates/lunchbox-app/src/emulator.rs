@@ -202,12 +202,19 @@ impl RomEmulatorOption {
     }
 
     pub fn label(&self) -> String {
-        let base = match self.runtime_kind {
+        match self.runtime_kind {
             EmulatorRuntimeKind::Standalone => self.emulator_name.clone(),
             EmulatorRuntimeKind::RetroArch => {
                 format!("RetroArch · {} ({})", self.emulator_name, self.core_name)
             }
-        };
+        }
+    }
+
+    /// Display label with the wiki recommendation star. Identity paths
+    /// (emulator names matched across models) must use label() instead:
+    /// the star would poison exact matching.
+    pub fn display_label(&self) -> String {
+        let base = self.label();
         if self.wiki_recommended {
             format!("★ {base}")
         } else {
@@ -1057,7 +1064,7 @@ pub fn inspect_rom_launch_availability(
             "Detected {} compatible emulator option{}; {} is selected automatically.",
             options.len(),
             if options.len() == 1 { "" } else { "s" },
-            option.label()
+            option.display_label()
         ),
         Some(option) => format!("Using the {preference_scope} default: {}.", option.label()),
         None if definitions.is_empty() => {
@@ -3931,9 +3938,12 @@ del *.rom
             .map(|option| option.emulator_name.as_str())
             .collect();
         assert_eq!(names, ["Beta", "Alpha", "Core", "Zeta"]);
-        assert_eq!(options[0].label(), "★ Beta");
-        assert_eq!(options[1].label(), "★ Alpha");
-        assert_eq!(options[3].label(), "Zeta");
+        assert_eq!(options[0].display_label(), "★ Beta");
+        assert_eq!(options[1].display_label(), "★ Alpha");
+        assert_eq!(options[3].display_label(), "Zeta");
+        // Identity labels never carry the star: exact matching across
+        // models (mapping filter, manager lookups) depends on it.
+        assert_eq!(options[0].label(), "Beta");
     }
 
     #[test]

@@ -4514,7 +4514,7 @@ impl qobject::GameDetailsModel {
                 self.as_mut().set_emulator_preference_scope(qstring("game"));
                 self.as_mut().set_launch_status(qstring(format!(
                     "{} is now the default for this game.",
-                    option.label()
+                    option.display_label()
                 )));
                 self.as_mut().bump_revision();
             }
@@ -4545,7 +4545,7 @@ impl qobject::GameDetailsModel {
                     .set_emulator_preference_scope(qstring("platform"));
                 self.as_mut().set_launch_status(qstring(format!(
                     "{} is now the default for {platform}.",
-                    option.label()
+                    option.display_label()
                 )));
                 self.as_mut().bump_revision();
             }
@@ -4940,7 +4940,7 @@ impl qobject::GameDetailsModel {
             }
             return Ok(LaunchProfileTarget {
                 emulator_id: option.emulator_id.clone(),
-                emulator_label: option.label(),
+                emulator_label: option.display_label(),
                 runtime_kind: option.runtime_kind.key(),
                 core_name: option.core_name.clone(),
                 default_template,
@@ -6590,7 +6590,7 @@ impl qobject::GameDetailsModel {
         usize::try_from(index)
             .ok()
             .and_then(|index| self.rust().rom_emulator_options.get(index))
-            .map(|option| qstring(option.label()))
+            .map(|option| qstring(option.display_label()))
             .unwrap_or_default()
     }
 
