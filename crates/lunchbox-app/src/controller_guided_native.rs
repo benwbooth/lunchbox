@@ -458,6 +458,16 @@ pub(crate) fn settings_for_launch<'a>(
                     .collect();
                 setup.review(&mapping.calibrations)?;
             }
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written JSON entry (mgba precedent).
+            if found == 0 {
+                mapping.gopher64_native_launches.push(
+                    crate::controller_gopher64_native::guided::discover(
+                        option, plan, &ids, cancel,
+                    )?,
+                );
+                found += 1;
+            }
         }
         "gearsystem" | "gearcoleco" => {
             for setup in &mut mapping.gear_native_launches {

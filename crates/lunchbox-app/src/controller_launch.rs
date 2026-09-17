@@ -11458,7 +11458,6 @@ fn attach_config(
 
 #[cfg(test)]
 mod tests {
-    /// Live Gopher64 Flatpak launch preparation on the developer's desk:
     /// needs Linux, the wired Xbox pad (linux:045e:028e:usb), the Gopher64
     /// Flatpak, and the Mario ROM from the bug report. Run explicitly with
     /// `cargo test -- --ignored`. Spawns nothing; the session guard
@@ -11527,6 +11526,48 @@ mod tests {
                         .starts_with("--filesystem=")),
                     "Flatpak session must mount its config and ROM roots"
                 );
+                // Same chain against the real planner output (extracted ROM
+                // plus launcher mounts) instead of hand-built arguments.
+                // The first session must drop first: its live-config lock
+                // correctly refuses concurrent swaps.
+                drop(session);
+                let customization = crate::settings::SettingsStore::open_default()
+                    .unwrap()
+                    .resolve_launch_customization(
+                        "2dd27ec2-24df-4572-961a-dc4a957bf76e",
+                        "Nintendo 64",
+                        "eda098b4-a4bc-525e-a178-4ec760cb7f06",
+                        "standalone",
+                        "",
+                    )
+                    .unwrap();
+                let mut real_plan =
+                    crate::emulator::build_rom_launch_plan_with_customization(
+                        std::path::Path::new("/mnt/roms/Nintendo 64/Super Mario 64 (USA).zip"),
+                        "Nintendo 64",
+                        &option,
+                        &customization,
+                    )
+                    .expect("live Gopher64 plan");
+                let real = super::prepare_with_cancellation(
+                    &settings,
+                    "Nintendo 64",
+                    &option,
+                    &mut real_plan,
+                    &AtomicBool::new(false),
+                );
+                match &real {
+                    Ok(session) => println!(
+                        "SCRATCH-FULL-OK session={} args={:?}",
+                        session.is_some(),
+                        real_plan
+                            .arguments
+                            .iter()
+                            .map(|a| a.to_string_lossy().into_owned())
+                            .collect::<Vec<_>>()
+                    ),
+                    Err(error) => println!("SCRATCH-FULL-ERR: {error:#}"),
+                }
             })
             .unwrap()
             .join()

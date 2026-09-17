@@ -1352,14 +1352,21 @@ pub(crate) mod native_command {
                 rom_parent != Path::new("/"),
                 "Gopher64 Flatpak launch refuses to expose the filesystem root"
             );
-            plan.arguments.splice(
-                position..position,
-                [
-                    format!("--filesystem={}", inputs.config_home.display()).into(),
-                    format!("--filesystem={}:ro", rom_parent.display()).into(),
-                    "--env=SDL_JOYSTICK_LINUX_CLASSIC=1".into(),
-                ],
-            );
+            let mut grants: Vec<std::ffi::OsString> = vec![
+                std::ffi::OsString::from(format!("--filesystem={}", inputs.config_home.display())),
+                std::ffi::OsString::from("--env=SDL_JOYSTICK_LINUX_CLASSIC=1"),
+            ];
+            // The planner usually mounts the ROM root already; only add a
+            // read-only grant when it is missing.
+            let rom_grant = format!("--filesystem={}:ro", rom_parent.display());
+            let covered = plan.arguments.iter().any(|arg| {
+                let text = arg.to_string_lossy();
+                text == format!("--filesystem={}", rom_parent.display()) || text == rom_grant
+            });
+            if !covered {
+                grants.push(std::ffi::OsString::from(rom_grant));
+            }
+            plan.arguments.splice(position..position, grants);
         } else {
             plan.environment.push((
                 "XDG_CONFIG_HOME".into(),
