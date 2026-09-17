@@ -61,9 +61,9 @@
           ];
           buildInputs = qtModules
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
-              dwarfs
-              pkgs.systemd
-            ];
+            dwarfs
+            pkgs.systemd
+          ];
           dontUseCmakeConfigure = true;
           dontUseNinjaBuild = true;
           dontUseNinjaInstall = true;
@@ -112,12 +112,20 @@
             platforms = platforms.linux ++ platforms.darwin;
           };
         };
+        # Iteration builds: identical frontend without the release test
+        # suite. `nix run .#lunchbox-fast` launches in a fraction of the
+        # time; the default package keeps full gates for CI and commits.
+        frontendFast = frontend.overrideAttrs (previous: {
+          pname = "lunchbox-fast";
+          doCheck = false;
+        });
       in
       {
         checks.controller-probe = controllerProbe;
         packages = {
           default = frontend;
           lunchbox = frontend;
+          lunchbox-fast = frontendFast;
           lunchbox-db = databaseTool;
           lunchbox-controller-probe = controllerProbe;
         } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
@@ -141,6 +149,11 @@
           program = "${controllerProbe}/bin/lunchbox-controller-probe";
         };
 
+        apps.lunchbox-fast = {
+          type = "app";
+          program = "${frontendFast}/bin/lunchbox";
+        };
+
         devShells.default = pkgs.mkShell {
           LUNCHBOX_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
           packages = (with pkgs; [
@@ -155,10 +168,11 @@
             rustfmt
             sqlite
           ]) ++ qtModules
-            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
-              dwarfs
-              pkgs.systemd
-            ];
+          ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+            dwarfs
+            pkgs.mold
+            pkgs.systemd
+          ];
 
           QMAKE = "${qtEnv}/bin/qmake";
           QT_QPA_PLATFORM = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "wayland;xcb";
@@ -168,6 +182,11 @@
             export QMAKE="${qtEnv}/bin/qmake"
             export QT_INCLUDE_PATH="${qtEnv}/include"
             export QT_LIBEXEC_PATH="${qtEnv}/libexec"
+            # mold only exists in the dev shell (Linux); nix builds use the
+            # default linker so sandboxed derivations stay reproducible.
+            ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+              export RUSTFLAGS="''${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"
+            ''}
           '';
         };
 
