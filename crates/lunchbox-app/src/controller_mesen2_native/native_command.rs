@@ -90,6 +90,15 @@ pub(crate) fn prepare(
         "XDG_DATA_HOME".into(),
         inputs.config_home.join("data").into_os_string(),
     ));
+    // A compressed disc image is loaded from the session's staged cue/bin
+    // copy, so the game argument names that file instead.
+    if inputs.content != setup.content {
+        ensure!(
+            plan.arguments.len() == 1,
+            "Mesen2 content substitution needs exactly the game argument"
+        );
+        plan.arguments[0] = inputs.content.clone().into_os_string();
+    }
     let session = NativeSession {
         inputs,
         executable,

@@ -77,6 +77,67 @@ pub(crate) const PCE_CONTROLS: [(&str, &str); 8] = [
 pub(crate) const SYSTEM_NES: &str = "nes";
 pub(crate) const SYSTEM_PCE: &str = "pce";
 
+/// PC Engine content Mesen2 can actually boot, from its own loader:
+/// - `Core/PCE/PceConsole.cpp` loads a disc only when the extension is
+///   exactly `.cue` (`CdReader::LoadCue` parses the sheet), treats `HESM`
+///   files as HES music, and reads everything else as a raw HuCard image.
+/// - It has no CHD/CDZ/CCD/ISO reader at all, so those containers are read as
+///   a card and fail. They must be converted first.
+pub(crate) const PCE_CARD_EXTENSIONS: &[&str] = &["pce", "bin", "sgx", "hes"];
+pub(crate) const PCE_DISC_EXTENSIONS: &[&str] = &["cue"];
+
+/// Compressed disc containers Mesen2 has no reader for but `chdman` can turn
+/// into the cue/bin set it boots. Staged per launch from the user's own file.
+pub(crate) const PCE_CONVERTIBLE_DISC_EXTENSIONS: &[&str] = &["chd", "cdz"];
+
+/// Disc containers Mesen2 cannot read directly. CHD/CDZ are staged as a
+/// cue/bin copy at launch; the rest need a manual conversion because no
+/// bundled tool turns them into a cue sheet.
+pub(crate) const PCE_UNSUPPORTED_DISC_EXTENSIONS: &[&str] =
+    &["ccd", "iso", "img", "toc", "m3u", "mds", "gdi", "sub"];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PceContent {
+    /// A cue sheet; the Super CD-ROM² BIOS is required to boot it.
+    Disc,
+    /// A HuCard or HES image; no CD BIOS needed.
+    Card,
+    /// A compressed disc container Mesen2 has no reader for. Launch stages a
+    /// cue/bin copy of the user's own image first (chdman), so the library
+    /// entry they already have works without a manual conversion.
+    ConvertibleDisc,
+}
+
+/// Classify PC Engine content by the format Mesen2's loader would use. Fails
+/// closed for containers Mesen2 has no reader for instead of handing it a
+/// file it will misread as a HuCard.
+pub(crate) fn pce_content_kind(content: &std::path::Path) -> Result<PceContent> {
+    let extension = content
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if PCE_DISC_EXTENSIONS.contains(&extension.as_str()) {
+        return Ok(PceContent::Disc);
+    }
+    if PCE_CARD_EXTENSIONS.contains(&extension.as_str()) {
+        return Ok(PceContent::Card);
+    }
+    if matches!(extension.as_str(), "chd" | "cdz") {
+        return Ok(PceContent::ConvertibleDisc);
+    }
+    if PCE_UNSUPPORTED_DISC_EXTENSIONS.contains(&extension.as_str()) {
+        anyhow::bail!(
+            "Mesen 2.1.1 boots PC Engine discs from a .cue sheet only (Core/PCE/PceConsole.cpp, CdReader::LoadCue), and .{extension} is not a container this adapter can stage. Convert {name} to cue/bin (chdman extractcd for CHD sources) and add the .cue to your library.",
+            name = content.display()
+        );
+    }
+    anyhow::bail!(
+        "Mesen 2.1.1 reads PC Engine content as a .cue disc or a raw HuCard ({}) image; .{extension} is neither",
+        PCE_CARD_EXTENSIONS.join("/")
+    )
+}
+
 /// `target_layout` selects the system contract: the NES pad or the PC
 /// Engine/TurboGrafx pad. Anything else has no authored writer yet. Pure
 /// catalog logic, so it lives outside the Linux-only session module.
@@ -287,5 +348,35 @@ mod tests {
             .map(|(_, field)| ((*field).to_owned(), Binding(0x1000)))
             .collect::<Vec<_>>();
         assert!(mapping_codes(&mapping, &CONTROLS, "nes").is_err());
+    }
+
+    /// Mesen2 2.1.1 boots PC Engine discs from a `.cue` sheet only; CHD/CDZ
+    /// and other containers have no reader and are read as a HuCard, so the
+    /// adapter must refuse them with a conversion path instead of handing one
+    /// over to fail.
+    #[test]
+    fn pce_content_accepts_cue_and_cards_and_refuses_other_containers() {
+        use std::path::Path;
+        let kind = |name: &str| pce_content_kind(Path::new(name));
+        assert_eq!(kind("Game.cue").unwrap(), PceContent::Disc);
+        assert_eq!(kind("Game.CUE").unwrap(), PceContent::Disc);
+        assert_eq!(kind("Game.pce").unwrap(), PceContent::Card);
+        assert_eq!(kind("Game.bin").unwrap(), PceContent::Card);
+        assert_eq!(kind("Game.sgx").unwrap(), PceContent::Card);
+        assert_eq!(kind("Game.hes").unwrap(), PceContent::Card);
+        // Compressed containers Mesen2 cannot read are staged as cue/bin.
+        assert_eq!(kind("Game.chd").unwrap(), PceContent::ConvertibleDisc);
+        assert_eq!(kind("Game.cdz").unwrap(), PceContent::ConvertibleDisc);
+        for name in [
+            "Game.ccd", "Game.iso", "Game.img", "Game.toc", "Game.m3u", "Game.mds", "Game.gdi",
+            "Game.sub",
+        ] {
+            let error = kind(name).unwrap_err().to_string();
+            assert!(
+                error.contains("cue") && error.contains("Mesen 2.1.1"),
+                "{name} must name the cue requirement: {error}"
+            );
+        }
+        assert!(kind("Game.rom").is_err());
     }
 }

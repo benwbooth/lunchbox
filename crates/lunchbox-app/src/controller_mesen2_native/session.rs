@@ -208,6 +208,9 @@ pub(crate) struct PreparedSession {
     /// Private `XDG_CONFIG_HOME`; Mesen2's home is `<config_home>/Mesen2`.
     pub(crate) config_home: PathBuf,
     pub(crate) home: PathBuf,
+    /// The file Mesen2 should load: the setup's own content, or the cue/bin
+    /// copy staged inside this session for a compressed disc image.
+    pub(crate) content: PathBuf,
     topology: InputTopology,
     setup: settings::SavedSetup,
     hashes: std::collections::BTreeMap<PathBuf, String>,
@@ -323,20 +326,16 @@ pub(crate) fn require_cd_bios(setup: &settings::SavedSetup) -> Result<()> {
     if setup.system != super::SYSTEM_PCE {
         return Ok(());
     }
-    let extension = setup
-        .content
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let cd_media = matches!(
-        extension.as_str(),
-        "chd" | "cue" | "ccd" | "toc" | "zip" | "7z"
-    );
-    if !cd_media {
-        // Ordinary HuCard content needs no CD BIOS.
-        return Ok(());
+    match super::pce_content_kind(&setup.content)? {
+        // A staged cue/bin copy needs the same BIOS as the image it came from.
+        super::PceContent::Disc | super::PceContent::ConvertibleDisc => require_disc_bios(),
+        super::PceContent::Card => Ok(()),
     }
+}
+
+/// The BIOS check itself: Super CD-ROM² discs cannot boot without it and
+/// Mesen2 answers a missing one with its own dialog.
+pub(crate) fn require_disc_bios() -> Result<()> {
     let firmware = real_home()?.join("Firmware");
     let found = ["syscard3.pce", "gecard.pce"]
         .into_iter()
@@ -347,6 +346,110 @@ pub(crate) fn require_cd_bios(setup: &settings::SavedSetup) -> Result<()> {
         firmware.display()
     );
     Ok(())
+}
+
+/// A `chdman` that can turn a compressed disc image into the cue/bin set
+/// Mesen2 boots. Prefers a native executable, then MAME's Flatpak build,
+/// which ships the same tool.
+pub(crate) enum Chdman {
+    Native(PathBuf),
+    Flatpak { command: PathBuf, app_id: String },
+}
+
+impl Chdman {
+    /// Discover the tool. `LUNCHBOX_CHDMAN` overrides discovery for tests and
+    /// unusual installs.
+    pub(crate) fn discover(cancel: &AtomicBool) -> Result<Self> {
+        if let Some(path) = std::env::var_os("LUNCHBOX_CHDMAN") {
+            let path = PathBuf::from(path);
+            ensure!(
+                path.is_file(),
+                "LUNCHBOX_CHDMAN does not name a chdman executable"
+            );
+            return Ok(Self::Native(path));
+        }
+        if let Some(path) = ["chdman", "/usr/bin/chdman", "/usr/local/bin/chdman"]
+            .into_iter()
+            .map(PathBuf::from)
+            .find(|path| path.is_absolute() && path.is_file())
+            .or_else(|| {
+                std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+                    .map(|dir| dir.join("chdman"))
+                    .find(|path| path.is_file())
+            })
+        {
+            return Ok(Self::Native(path));
+        }
+        let command = ["/run/current-system/sw/bin/flatpak", "/usr/bin/flatpak"]
+            .into_iter()
+            .map(PathBuf::from)
+            .find(|path| path.is_file())
+            .context(
+                "Staging a compressed disc image needs chdman: install chdman or MAME (Flatpak) first",
+            )?;
+        let app_id = "org.mamedev.MAME".to_owned();
+        let mut probe = crate::platform_process::host_command(&command);
+        probe.args(["info", &app_id]);
+        let (_, _) = capture(&mut probe, cancel).context(
+            "Staging a compressed disc image needs chdman: install MAME (Flatpak) or chdman first",
+        )?;
+        Ok(Self::Flatpak { command, app_id })
+    }
+
+    /// Extract `source` into `destination` as a cue/bin pair and return the
+    /// cue. `destination` must already exist; chdman writes both files
+    /// beside the cue, which is where Mesen resolves them from.
+    fn extract(&self, source: &Path, destination: &Path, cancel: &AtomicBool) -> Result<PathBuf> {
+        let stem = source
+            .file_stem()
+            .filter(|stem| !stem.is_empty())
+            .context("Disc image has no usable file name")?
+            .to_string_lossy()
+            .into_owned();
+        let cue = destination.join(format!("{stem}.cue"));
+        let bin = destination.join(format!("{stem}.bin"));
+        let mut command = match self {
+            Self::Native(program) => {
+                let mut command = crate::platform_process::host_command(program);
+                command.args(["extractcd", "-i"]).arg(source);
+                command
+            }
+            Self::Flatpak { command, app_id } => {
+                let mut process = crate::platform_process::host_command(command);
+                process
+                    .arg("run")
+                    .arg("--command=chdman")
+                    .arg(format!("--filesystem={}", destination.display()))
+                    .arg(format!(
+                        "--filesystem={}:ro",
+                        source
+                            .parent()
+                            .context("Disc image has no containing directory")?
+                            .display()
+                    ))
+                    .arg(app_id)
+                    .args(["extractcd", "-i"])
+                    .arg(source);
+                process
+            }
+        };
+        command.arg("-o").arg(&cue).arg("-ob").arg(&bin);
+        cancelled(cancel)?;
+        let (_, stderr) = capture(&mut command, cancel).with_context(|| {
+            format!(
+                "Mesen needs a cue/bin copy of {} and chdman failed",
+                source.display()
+            )
+        })?;
+        cancelled(cancel)?;
+        ensure!(
+            cue.is_file() && bin.is_file(),
+            "chdman did not produce a cue/bin pair for {}: {}",
+            source.display(),
+            String::from_utf8_lossy(&stderr).trim()
+        );
+        Ok(cue)
+    }
 }
 
 impl PreparedSession {
@@ -394,6 +497,23 @@ impl PreparedSession {
         let directory = tempfile::Builder::new()
             .prefix("lunchbox-mesen2-")
             .tempdir()?;
+        // A compressed disc image is staged as cue/bin inside this session's
+        // own temp dir, so it disappears with the session and the user's
+        // library file is never rewritten.
+        let content = match super::pce_content_kind(&setup.content)? {
+            super::PceContent::ConvertibleDisc => {
+                let media = directory.path().join("media");
+                std::fs::create_dir_all(&media)?;
+                let cue = Chdman::discover(cancel)?.extract(&setup.content, &media, cancel)?;
+                require_disc_bios()?;
+                cue
+            }
+            super::PceContent::Disc => {
+                require_cd_bios(setup)?;
+                setup.content.clone()
+            }
+            super::PceContent::Card => setup.content.clone(),
+        };
         let config_home = directory.path().join("config");
         let document = seed_private_home(&source, &config_home, &bindings, &setup.system)?;
         let home = config_home.join("Mesen2");
@@ -403,7 +523,9 @@ impl PreparedSession {
             serde_json::to_vec_pretty(&document).context("Serializing Mesen2 settings")?,
         )?;
         let mut hashes = std::collections::BTreeMap::new();
-        for path in [&setup.content, &setup.probe_program] {
+        // The setup's own content is a launch input even when a staged cue is
+        // what Mesen2 loads, so a changed library file is caught either way.
+        for path in [&setup.content, &setup.probe_program, &content] {
             hashes.insert(path.clone(), file_hash(path)?);
         }
         hashes.insert(keyfile.clone(), file_hash(&keyfile)?);
@@ -411,6 +533,7 @@ impl PreparedSession {
             directory,
             config_home,
             home,
+            content,
             topology,
             setup: setup.clone(),
             hashes,

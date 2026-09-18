@@ -95,16 +95,23 @@ impl SavedSetup {
                 "Mesen2 needs native calibration for every standard NES control"
             }
         );
+        let (section, content_note) = if pce {
+            let note = match super::pce_content_kind(&self.content) {
+                Ok(super::PceContent::Disc) => "Content is a cue sheet; launch also needs the Super CD-ROM² BIOS (syscard3.pce or gecard.pce) in Mesen's Firmware folder.".to_owned(),
+                Ok(super::PceContent::Card) => "Content is a HuCard image.".to_owned(),
+                Ok(super::PceContent::ConvertibleDisc) => "Content is a compressed disc image; launch stages a cue/bin copy with chdman (MAME's tool) before starting Mesen.".to_owned(),
+                Err(error) => format!("{error:#}"),
+            };
+            ("PcEngine", note)
+        } else {
+            ("Nes", "Content is a NES cartridge image.".to_owned())
+        };
         Ok(
             serde_json::json!({"players":[{"controller_id":self.controller_id,
             "source_layout":calibration.layout,"target_layout":profile.target_layout,"mapping":mapping}],
             "launch_ready":false,
             "launch_integration":"partial",
-            "detail": if pce {
-                "Mesen2 settings.json native dispatch is connected but untested. Launch isolates XDG_DATA_HOME and writes the PcEngine Port1 mapping for the single qualifying event device (pad slot 0). TurboTap, Avenue Pad 6 and SNES/GB/GBA systems are not covered; runtime testing remains deferred."
-            } else {
-                "Mesen2 settings.json native dispatch is connected but untested. Launch isolates XDG_DATA_HOME and writes the NES Port1 mapping for the single qualifying event device (pad slot 0). Zapper, Power Pad, Four Score, multitaps, SNES and every other system's controllers are not covered; runtime testing remains deferred."
-            }}),
+            "detail": format!("Mesen2 settings.json native dispatch is connected but untested. Launch gives Mesen a private XDG_CONFIG_HOME seeded from your settings.json, patches only its Port1 mapping ({section}) for the selected gamepad's real pad slot, and shares Firmware/Saves/saves states by symlink. TurboTap, Avenue Pad 6 and SNES/GB/GBA systems are not covered; runtime testing remains deferred. {content_note}")}),
         )
     }
 }

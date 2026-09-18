@@ -11763,6 +11763,7 @@ mod tests {
         )
         .unwrap();
         println!("CONFIG_HOME {}", session.config_home.display());
+        println!("CONTENT {}", session.content.display());
         std::mem::forget(session);
     }
 
