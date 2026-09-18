@@ -349,21 +349,24 @@ fn generate_build_identity() {
     };
     println!("cargo:rustc-env=LUNCHBOX_BUILD_HASH={revision}");
 
-    let built = std::env::var("LUNCHBOX_BUILT_UNIX")
-        .ok()
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .or_else(|| {
-            std::env::var("SOURCE_DATE_EPOCH")
-                .ok()
-                .and_then(|value| value.trim().parse::<u64>().ok())
-        })
-        .unwrap_or_else(|| {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|elapsed| elapsed.as_secs())
-                .unwrap_or(0)
-        });
+    let built = match std::env::var("LUNCHBOX_BUILT_UNIX") {
+        // The dev shell sets `now` so local builds show the real time even
+        // though nixpkgs exports a reproducible `SOURCE_DATE_EPOCH`.
+        Ok(value) if value.trim() == "now" => unix_now(),
+        Ok(value) => value.trim().parse::<u64>().unwrap_or_else(|_| unix_now()),
+        Err(_) => std::env::var("SOURCE_DATE_EPOCH")
+            .ok()
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .unwrap_or_else(unix_now),
+    };
     println!("cargo:rustc-env=LUNCHBOX_BUILT_UNIX={built}");
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0)
 }
 
 fn rerun_on_source_changes(directory: &Path) {

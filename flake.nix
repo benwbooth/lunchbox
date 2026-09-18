@@ -212,6 +212,9 @@
           QMAKE = "${qtEnv}/bin/qmake";
           LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
           QT_QPA_PLATFORM = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "wayland;xcb";
+          # Local dev builds show the real build time; release builds set the
+          # pinned flake time instead.
+          LUNCHBOX_BUILT_UNIX = "now";
 
           shellHook = ''
             export PATH="${qtEnv}/bin:${qtEnv}/libexec:$PATH"
