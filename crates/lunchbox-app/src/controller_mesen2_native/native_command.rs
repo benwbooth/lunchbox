@@ -75,13 +75,20 @@ pub(crate) fn prepare(
         file_hash(&executable)? == setup.executable_sha256,
         "Mesen2 executable differs from the saved trusted runtime"
     );
+    super::session::require_cd_bios(setup)?;
     let inputs = PreparedSession::prepare(setup, calibrations, inventory, cancel)?;
     let mut plan = original.clone();
-    // A private XDG_DATA_HOME keeps Mesen2's settings, saves and screenshots
-    // isolated from the user's own files.
+    // Mesen2's home folder is `$XDG_CONFIG_HOME/Mesen2` (ApplicationData on
+    // non-Windows hosts), so the private config root goes there; the session
+    // symlinks the user's own data folders back in. `XDG_DATA_HOME` is kept
+    // private too so Mesen's shared-MIME cache cannot touch user files.
+    plan.environment.push((
+        "XDG_CONFIG_HOME".into(),
+        inputs.config_home.as_os_str().to_owned(),
+    ));
     plan.environment.push((
         "XDG_DATA_HOME".into(),
-        inputs.data_root.as_os_str().to_owned(),
+        inputs.config_home.join("data").into_os_string(),
     ));
     let session = NativeSession {
         inputs,

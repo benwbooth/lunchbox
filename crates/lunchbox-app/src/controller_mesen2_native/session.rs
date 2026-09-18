@@ -168,13 +168,148 @@ pub(super) fn calibrated_bindings(
 
 pub(crate) struct PreparedSession {
     directory: tempfile::TempDir,
-    pub(crate) data_root: PathBuf,
+    /// Private `XDG_CONFIG_HOME`; Mesen2's home is `<config_home>/Mesen2`.
+    pub(crate) config_home: PathBuf,
+    pub(crate) home: PathBuf,
     topology: InputTopology,
     setup: settings::SavedSetup,
     hashes: std::collections::BTreeMap<PathBuf, String>,
     /// Kernel event node and pinned Mesen2 pad slot for the selected pad.
     event: PathBuf,
     slot: u32,
+}
+
+/// Mesen2 keeps everything beside `settings.json` in its home folder. These
+/// child directories hold user data, not configuration we author, so they are
+/// shared with the private home rather than copied.
+const SHARED_HOME_DIRECTORIES: &[&str] = &[
+    "Firmware",
+    "Saves",
+    "SaveStates",
+    "Cheats",
+    "GameConfig",
+    "RecentGames",
+    "Satellaview",
+    "Debugger",
+    "HdPacks",
+    "Screenshots",
+    "Avi",
+    "Movies",
+    "Wave",
+    "Tests",
+    "Backups",
+];
+
+/// The user's real Mesen2 home. `ConfigManager.DefaultDocumentsFolder` uses
+/// ApplicationData on non-Windows hosts, which .NET maps to `XDG_CONFIG_HOME`
+/// (falling back to `~/.config`), not `XDG_DATA_HOME`.
+pub(crate) fn real_home() -> Result<PathBuf> {
+    let base = directories::BaseDirs::new().context("Missing user directories")?;
+    Ok(base.config_dir().join("Mesen2"))
+}
+
+/// Seed the private home from the user's own Mesen2 home and patch only the
+/// target system's controller contract.
+///
+/// Two properties matter and are both tested:
+/// - nothing outside the target system changes, so the user's video, audio,
+///   input and per-system preferences (and their completed first-run state)
+///   are exactly what Mesen2 already had;
+/// - every data folder Mesen2 keeps beside its settings is shared by symlink,
+///   so the PCE CD BIOS, saves, states, per-game configs and captures remain
+///   the user's own files. Only `settings.json` is private.
+fn seed_private_home(
+    source: &Path,
+    config_home: &Path,
+    bindings: &[(String, Binding)],
+    system: &str,
+) -> Result<serde_json::Value> {
+    let home = config_home.join("Mesen2");
+    std::fs::create_dir_all(&home)?;
+    for name in SHARED_HOME_DIRECTORIES {
+        let source_dir = source.join(name);
+        if !source_dir.is_dir() {
+            continue;
+        }
+        std::os::unix::fs::symlink(&source_dir, home.join(name))?;
+    }
+    let source_settings = source.join("settings.json");
+    // Mesen2 writes this file as UTF-8 with a BOM; serde rejects the BOM, and
+    // .NET reads either form, so strip it before parsing.
+    let raw = std::fs::read(&source_settings)?;
+    let text = std::str::from_utf8(raw.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&raw))
+        .context("Mesen2 settings.json is not UTF-8")?;
+    let mut document: serde_json::Value =
+        serde_json::from_str(text).context("Invalid Mesen2 settings.json")?;
+    let (section, controller, controls) = super::patch_settings(&document, system)?;
+    let codes = super::mapping_codes(
+        bindings,
+        controls,
+        if system == super::SYSTEM_PCE {
+            "Mesen2 needs every standard PCE control"
+        } else {
+            "Mesen2 needs every standard NES control"
+        },
+    )?;
+    let root = document
+        .as_object_mut()
+        .context("Mesen2 settings.json is not an object")?;
+    let system_section = root
+        .entry(section)
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .with_context(|| format!("Mesen2 {section} section is not an object"))?;
+    let port1 = system_section
+        .entry("Port1")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .context("Mesen2 Port1 is not an object")?;
+    port1.insert("Type".into(), serde_json::json!(controller));
+    let mapping = port1
+        .entry("Mapping1")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .context("Mesen2 Mapping1 is not an object")?;
+    for (field, code) in &codes {
+        mapping.insert((*field).into(), serde_json::json!(code));
+    }
+    // A stale expansion device on port two would compete for the same keys;
+    // this contract covers one standard pad per system.
+    system_section.insert("Port2".into(), serde_json::json!({"Type": "None"}));
+    Ok(document)
+}
+
+/// Super CD-ROM² games (TurboGrafx-CD) cannot boot without the CD BIOS.
+/// Mesen2 raises its own dialog when it is missing, so fail here instead with
+/// the exact folder and file names.
+pub(crate) fn require_cd_bios(setup: &settings::SavedSetup) -> Result<()> {
+    if setup.system != super::SYSTEM_PCE {
+        return Ok(());
+    }
+    let extension = setup
+        .content
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let cd_media = matches!(
+        extension.as_str(),
+        "chd" | "cue" | "ccd" | "toc" | "zip" | "7z"
+    );
+    if !cd_media {
+        // Ordinary HuCard content needs no CD BIOS.
+        return Ok(());
+    }
+    let firmware = real_home()?.join("Firmware");
+    let found = ["syscard3.pce", "gecard.pce"]
+        .into_iter()
+        .any(|name| firmware.join(name).is_file());
+    ensure!(
+        found,
+        "Mesen needs a Super CD-ROM² BIOS to boot this disc. Put syscard3.pce (or gecard.pce) in {}, then launch again. HuCard games do not need it.",
+        firmware.display()
+    );
+    Ok(())
 }
 
 impl PreparedSession {
@@ -212,18 +347,24 @@ impl PreparedSession {
             selected,
             slot,
         )?;
+        let source = real_home()?;
+        let source_settings = source.join("settings.json");
+        ensure!(
+            source_settings.is_file(),
+            "Open Mesen once to create {}, then launch through Lunchbox again",
+            source_settings.display()
+        );
         let directory = tempfile::Builder::new()
             .prefix("lunchbox-mesen2-")
             .tempdir()?;
-        let data_root = directory.path().join("data");
-        std::fs::create_dir_all(data_root.join("Mesen2"))?;
-        let keyfile = data_root.join("Mesen2").join("settings.json");
-        let text = if setup.system == super::SYSTEM_PCE {
-            super::settings_json_pce(&bindings)?
-        } else {
-            super::settings_json(&bindings)?
-        };
-        std::fs::write(&keyfile, text)?;
+        let config_home = directory.path().join("config");
+        let document = seed_private_home(&source, &config_home, &bindings, &setup.system)?;
+        let home = config_home.join("Mesen2");
+        let keyfile = home.join("settings.json");
+        std::fs::write(
+            &keyfile,
+            serde_json::to_vec_pretty(&document).context("Serializing Mesen2 settings")?,
+        )?;
         let mut hashes = std::collections::BTreeMap::new();
         for path in [&setup.content, &setup.probe_program] {
             hashes.insert(path.clone(), file_hash(path)?);
@@ -231,7 +372,8 @@ impl PreparedSession {
         hashes.insert(keyfile.clone(), file_hash(&keyfile)?);
         let session = Self {
             directory,
-            data_root,
+            config_home,
+            home,
             topology,
             setup: setup.clone(),
             hashes,
@@ -273,5 +415,117 @@ impl PreparedSession {
                 self.slot
             )
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn nes_bindings() -> Vec<(String, Binding)> {
+        crate::controller_mesen2_native::CONTROLS
+            .iter()
+            .enumerate()
+            .map(|(index, (_, field))| {
+                (
+                    (*field).to_owned(),
+                    Binding::button_index(0, index as u32 + 2).unwrap(),
+                )
+            })
+            .collect()
+    }
+
+    /// The user's real home is the source of truth: their other systems, video
+    /// and audio settings survive, the target port is authored, and every data
+    /// folder is shared rather than copied. This is what keeps the PCE CD BIOS
+    /// and the user's saves reachable from the private home.
+    #[test]
+    fn private_home_seeds_the_users_config_and_shares_their_data() {
+        let source = tempfile::tempdir().unwrap();
+        let home = source.path();
+        std::fs::create_dir_all(home.join("Firmware")).unwrap();
+        std::fs::write(home.join("Firmware/syscard3.pce"), b"bios").unwrap();
+        std::fs::create_dir_all(home.join("Saves")).unwrap();
+        std::fs::write(home.join("Saves/game.sav"), b"save").unwrap();
+        std::fs::write(
+            home.join("settings.json"),
+            serde_json::json!({
+                "Version": "2.1.1",
+                "ConfigUpgrade": 5,
+                "Video": {"AspectRatio": "NoStretching"},
+                "Nes": {"Port1": {"Type": "NesController", "Mapping1": {"A": 1, "TurboA": 7}}, "Port2": {"Type": "FourScore"}},
+                "PcEngine": {"Port1": {"Type": "PceController", "Mapping1": {"A": 1, "TurboA": 9}}},
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let config_home = source.path().join("private/config");
+        let document = seed_private_home(
+            home,
+            &config_home,
+            &nes_bindings(),
+            crate::controller_mesen2_native::SYSTEM_NES,
+        )
+        .unwrap();
+        let private = config_home.join("Mesen2");
+
+        // Unrelated sections and Mesen's own first-run state are preserved.
+        assert_eq!(document["Version"], "2.1.1");
+        assert_eq!(document["ConfigUpgrade"], 5);
+        assert_eq!(document["Video"]["AspectRatio"], "NoStretching");
+        // The other system is untouched.
+        assert_eq!(document["PcEngine"]["Port1"]["Mapping1"]["TurboA"], 9);
+        // The target system's port one is authored, including its unmapped
+        // turbo field, and port two is disconnected.
+        assert_eq!(document["Nes"]["Port1"]["Mapping1"]["A"], 4098);
+        assert_eq!(document["Nes"]["Port1"]["Mapping1"]["TurboA"], 7);
+        assert_eq!(document["Nes"]["Port2"]["Type"], "None");
+        // Data folders are symlinks to the user's own directories, so the CD
+        // BIOS and saves stay live.
+        for name in ["Firmware", "Saves"] {
+            let shared = private.join(name);
+            let metadata = std::fs::symlink_metadata(&shared).unwrap();
+            assert!(metadata.file_type().is_symlink(), "{name} must be shared");
+            assert_eq!(std::fs::read_link(&shared).unwrap(), home.join(name));
+        }
+        assert_eq!(
+            std::fs::read(private.join("Firmware/syscard3.pce")).unwrap(),
+            b"bios"
+        );
+    }
+
+    /// A missing source config must fail with the actionable instruction, not
+    /// write a half-empty file that would make Mesen2 run its setup wizard.
+    #[test]
+    fn private_home_refuses_a_missing_source_config() {
+        let source = tempfile::tempdir().unwrap();
+        assert!(
+            seed_private_home(
+                source.path(),
+                &source.path().join("private/config"),
+                &nes_bindings(),
+                crate::controller_mesen2_native::SYSTEM_NES,
+            )
+            .is_err()
+        );
+    }
+
+    /// Mesen2 writes settings.json as UTF-8 with a BOM, which serde rejects.
+    #[test]
+    fn private_home_reads_a_bom_prefixed_config() {
+        let source = tempfile::tempdir().unwrap();
+        let mut bytes = b"\xEF\xBB\xBF".to_vec();
+        bytes.extend_from_slice(br#"{"Version":"2.1.1","Nes":{"Port1":{"Type":"NesController"}}}"#);
+        std::fs::write(source.path().join("settings.json"), bytes).unwrap();
+        let document = seed_private_home(
+            source.path(),
+            &source.path().join("private/config"),
+            &nes_bindings(),
+            crate::controller_mesen2_native::SYSTEM_NES,
+        )
+        .unwrap();
+        assert_eq!(document["Version"], "2.1.1");
+        assert_eq!(document["Nes"]["Port1"]["Mapping1"]["A"], 4098);
     }
 }

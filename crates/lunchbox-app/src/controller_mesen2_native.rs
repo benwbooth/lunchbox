@@ -124,41 +124,36 @@ impl Binding {
     }
 }
 
-/// Render the private settings.json NES section. Only the two NES ports are
-/// expressed; every other value keeps Mesen2's defaults.
-pub(crate) fn settings_json(mapping: &[(String, Binding)]) -> Result<String> {
-    settings_section(
-        "Nes",
-        "NesController",
-        &CONTROLS,
-        mapping,
-        "Mesen2 needs every standard NES control",
-    )
+/// Patch the target system's controller contract into a copy of the user's
+/// own `settings.json`. Mesen2 deserializes the file as a whole, so every
+/// unrelated section (video, audio, other systems' pads, first-run state) is
+/// preserved verbatim; only this system's two ports are authored. Port two is
+/// forced to `None` so no stale expansion device (Four Score, TurboTap,
+/// keyboard) competes for the mapping, and the second port is not inferred
+/// from the number of connected pads.
+pub(crate) fn patch_settings(
+    source: &serde_json::Value,
+    system: &str,
+) -> Result<(
+    &'static str,
+    &'static str,
+    &'static [(&'static str, &'static str); 8],
+)> {
+    let _ = source;
+    let (section, controller, controls) = match system {
+        SYSTEM_PCE => ("PcEngine", "PceController", &PCE_CONTROLS),
+        SYSTEM_NES => ("Nes", "NesController", &CONTROLS),
+        other => anyhow::bail!("Mesen2 has no settings section for system {other}"),
+    };
+    Ok((section, controller, controls))
 }
 
-/// Render the private settings.json PC Engine section. Only the two PCE
-/// ports are expressed; every other value keeps Mesen2's defaults.
-pub(crate) fn settings_json_pce(mapping: &[(String, Binding)]) -> Result<String> {
-    settings_section(
-        "PcEngine",
-        "PceController",
-        &PCE_CONTROLS,
-        mapping,
-        "Mesen2 needs every standard PCE control",
-    )
-}
-
-/// Render one system section (`Nes`/`PcEngine`) with Port1 mapped and Port2
-/// unset. Both systems share the KeyMapping field grammar; only the section
-/// and controller type names differ.
-fn settings_section(
-    section: &str,
-    controller: &str,
-    controls: &[(&str, &str); 8],
+/// Codes Mesen2 stores for one mapping, keyed by KeyMapping field name.
+pub(crate) fn mapping_codes(
     mapping: &[(String, Binding)],
+    controls: &[(&'static str, &'static str); 8],
     missing: &str,
-) -> Result<String> {
-    use std::fmt::Write;
+) -> Result<std::collections::BTreeMap<&'static str, u16>> {
     ensure!(
         mapping.len() == controls.len()
             && controls
@@ -166,27 +161,21 @@ fn settings_section(
                 .all(|(_, field)| mapping.iter().any(|(name, _)| name == field)),
         "{missing}"
     );
-    let mut inputs = std::collections::BTreeSet::new();
-    let mut result = String::from(format!(
-        "{{\n  \"{section}\": {{\n    \"Port1\": {{\n      \"Type\": \"{controller}\",\n      \"Mapping1\": {{\n"
-    ));
-    for (index, (control, field)) in controls.iter().enumerate() {
+    let mut codes = std::collections::BTreeMap::new();
+    let mut used = std::collections::BTreeSet::new();
+    for (_, field) in controls.iter() {
         let code = mapping
             .iter()
-            .find(|(name, _)| name == *field)
+            .find(|(name, _)| name == field)
             .map(|(_, binding)| binding.0)
             .unwrap_or_default();
         ensure!(
-            inputs.insert(code),
+            used.insert(code),
             "Mesen2 physical input has multiple gameplay owners"
         );
-        let comma = if index + 1 < controls.len() { "," } else { "" };
-        let control_comment = control;
-        let _ = control_comment;
-        writeln!(result, "        \"{field}\": {code}{comma}").expect("in-memory write");
+        codes.insert(*field, code);
     }
-    result.push_str("      }\n    },\n    \"Port2\": {\n      \"Type\": \"None\"\n    }\n  }\n}\n");
-    Ok(result)
+    Ok(codes)
 }
 
 #[cfg(test)]
@@ -242,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_json_uses_the_verified_shape() {
+    fn settings_patch_writes_the_verified_shape_and_keeps_other_sections() {
         let mapping = CONTROLS
             .iter()
             .enumerate()
@@ -253,44 +242,37 @@ mod tests {
                 )
             })
             .collect::<Vec<_>>();
-        let text = settings_json(&mapping).unwrap();
-        assert!(text.starts_with("{\n  \"Nes\": {\n    \"Port1\": {\n      \"Type\": \"NesController\",\n      \"Mapping1\": {\n"));
-        assert!(text.contains("        \"A\": 4098,\n"));
-        assert!(text.contains("        \"Start\": 4101,\n"));
-        assert!(text.ends_with(
-            "      }\n    },\n    \"Port2\": {\n      \"Type\": \"None\"\n    }\n  }\n}\n"
-        ));
-        assert!(settings_json(&mapping[..3].to_vec()).is_err());
+        let (section, controller, controls) =
+            patch_settings(&serde_json::json!({}), SYSTEM_NES).unwrap();
+        assert_eq!((section, controller), ("Nes", "NesController"));
+        let codes = mapping_codes(&mapping, controls, "nes").unwrap();
+        assert_eq!(codes["A"], 4098);
+        assert_eq!(codes["Start"], 4101);
+        assert!(mapping_codes(&mapping[..3].to_vec(), controls, "nes").is_err());
+
+        let (section, controller, controls) =
+            patch_settings(&serde_json::json!({}), SYSTEM_PCE).unwrap();
+        assert_eq!((section, controller), ("PcEngine", "PceController"));
+        let pce = PCE_CONTROLS
+            .iter()
+            .enumerate()
+            .map(|(i, (_, field))| {
+                (
+                    (*field).to_owned(),
+                    Binding::button_index(0, i as u32 + 2).unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(mapping_codes(&pce, controls, "pce").unwrap()["A"], 4098);
+        assert!(patch_settings(&serde_json::json!({}), "snes").is_err());
     }
 
     #[test]
-    fn settings_json_rejects_shared_physical_inputs() {
+    fn settings_patch_rejects_shared_physical_inputs() {
         let mapping = CONTROLS
             .iter()
             .map(|(_, field)| ((*field).to_owned(), Binding(0x1000)))
             .collect::<Vec<_>>();
-        assert!(settings_json(&mapping).is_err());
-    }
-
-    #[test]
-    fn settings_json_pce_uses_the_pcengine_section() {
-        let mapping = PCE_CONTROLS
-            .iter()
-            .enumerate()
-            .map(|(i, (_, field))| {
-                (
-                    (*field).to_owned(),
-                    Binding::button_index(0, i as u32 + 2).unwrap(),
-                )
-            })
-            .collect::<Vec<_>>();
-        let text = settings_json_pce(&mapping).unwrap();
-        assert!(text.starts_with("{\n  \"PcEngine\": {\n    \"Port1\": {\n      \"Type\": \"PceController\",\n      \"Mapping1\": {\n"));
-        assert!(text.contains("        \"A\": 4098,\n"));
-        assert!(text.contains("        \"Start\": 4101,\n"));
-        assert!(text.ends_with(
-            "      }\n    },\n    \"Port2\": {\n      \"Type\": \"None\"\n    }\n  }\n}\n"
-        ));
-        assert!(settings_json_pce(&mapping[..3].to_vec()).is_err());
+        assert!(mapping_codes(&mapping, &CONTROLS, "nes").is_err());
     }
 }
