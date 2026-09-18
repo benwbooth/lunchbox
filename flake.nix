@@ -95,15 +95,18 @@
           QMAKE = "${qtEnv}/bin/qmake";
           LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
           LUNCHBOX_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
-          # Release builds embed the exact flake revision and commit time for the
-          # UI build label.
+          # Release builds embed the exact flake revision for the UI build
+          # label; the build time is stamped in preBuild.
           LUNCHBOX_BUILD_HASH = self.shortRev or self.dirtyShortRev or "";
-          LUNCHBOX_BUILT_UNIX = toString self.lastModified;
           preBuild = ''
             export PATH="${qtEnv}/bin:${qtEnv}/libexec:$PATH"
             export QMAKE="${qtEnv}/bin/qmake"
             export QT_INCLUDE_PATH="${qtEnv}/include"
             export QT_LIBEXEC_PATH="${qtEnv}/libexec"
+            # Stamp the real build time into the binary for the window's build
+            # label. Nix caches by derivation, so an unchanged input keeps the
+            # existing build; a source change produces the new timestamp.
+            export LUNCHBOX_BUILT_UNIX="$(date +%s)"
           '';
           cargoBuildFlags = [ "--package" "lunchbox-app" "--package" "lunchbox-controller-probe" "--bin" "lunchbox" "--bin" "lunchbox-controller-probe" ];
           doCheck = true;
