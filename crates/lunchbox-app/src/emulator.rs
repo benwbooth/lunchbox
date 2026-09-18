@@ -15,6 +15,11 @@ use rusqlite::params_from_iter;
 use crate::exo_install::{ExoCollection, PreparedInstall};
 use crate::platform_process::{host_command, is_flatpak};
 
+/// Flathub app id for DOSBox-X. Its launcher is a shell wrapper that changes
+/// the working directory to `$HOME`, so prepared eXoDOS installs must run the
+/// binary directly with the install root as the working directory.
+const DOSBOX_X_FLATPAK_APP_ID: &str = "com.dosbox_x.DOSBox-X";
+
 const DEFAULT_SCUMMVM_CONFIG: &str = r#"[scummvm]
 filtering=false
 autosave_period=300
@@ -2258,15 +2263,29 @@ fn build_plan_for_choice(
     let (program, mut prefix_arguments) =
         command_prefix(&emulator.executable, &prepared.install_root)?;
     if dosbox_launch
-        && let EmulatorExecutable::Flatpak { .. } = emulator.executable
-        && let Some(app_id) = prefix_arguments.pop()
+        && let EmulatorExecutable::Flatpak { app_id, .. } = &emulator.executable
+        && let Some(app_argument) = prefix_arguments.pop()
     {
+        if app_id == DOSBOX_X_FLATPAK_APP_ID {
+            // Flathub wraps DOSBox-X in a `dosbox-x-flatpak` script that does
+            // `cd "$HOME"` before exec, which discards the plan's working
+            // directory. eXoDOS autoexec files mount relative host paths
+            // (`mount c ./eXoDOS/<game>`), so a $HOME working directory makes
+            // every mount fail, the game command fails, and the session exits
+            // immediately. Run the real binary and give it the prepared
+            // install as its working directory.
+            prefix_arguments.push(OsString::from("--command=/app/bin/dosbox-x"));
+            prefix_arguments.push(OsString::from(format!(
+                "--cwd={}",
+                map_path_for_flatpak(&flatpak_mount_point(&prepared.install_root)?).display()
+            )));
+        }
         // DOSBox-X's Wayland window does not rescale its contents, so run
         // the sandbox on the X11 socket only, where resizing scales the
         // GPU-rendered game surface.
         prefix_arguments.push(OsString::from("--socket=x11"));
         prefix_arguments.push(OsString::from("--nosocket=wayland"));
-        prefix_arguments.push(app_id);
+        prefix_arguments.push(app_argument);
     }
     prefix_arguments.extend(arguments);
     Ok(LaunchPlan {
@@ -4053,6 +4072,25 @@ del *.rom
             .expect("flatpak app id in the launch arguments");
         assert_eq!(plan.arguments[app_position - 2], "--socket=x11");
         assert_eq!(plan.arguments[app_position - 1], "--nosocket=wayland");
+        // Flathub's launcher `cd`s to $HOME, so a prepared install must run
+        // the binary directly with the install root as the working directory.
+        // Otherwise the eXoDOS autoexec's relative mounts fail and the game
+        // exits immediately.
+        assert!(
+            plan.arguments
+                .iter()
+                .any(|argument| argument == "--command=/app/bin/dosbox-x"),
+            "the $HOME-changing Flatpak wrapper must be bypassed: {:?}",
+            plan.arguments
+        );
+        let expected_cwd = format!("--cwd={}", fs::canonicalize(temp.path()).unwrap().display());
+        assert!(
+            plan.arguments
+                .iter()
+                .any(|argument| argument.to_string_lossy() == expected_cwd.as_str()),
+            "DOSBox-X must start in the prepared install ({expected_cwd}): {:?}",
+            plan.arguments
+        );
     }
 
     #[test]
@@ -4452,11 +4490,18 @@ del *.rom
                 .to_string_lossy()
                 .starts_with("--filesystem=")
         );
-        assert_eq!(plan.arguments[2], "--socket=x11");
-        assert_eq!(plan.arguments[3], "--nosocket=wayland");
-        assert_eq!(plan.arguments[4], "com.dosbox_x.DOSBox-X");
-        assert_eq!(plan.arguments[5], "-conf");
-        assert_eq!(plan.arguments[6], prepared.launch_config_path.as_os_str());
+        let app_position = plan
+            .arguments
+            .iter()
+            .position(|argument| argument == "com.dosbox_x.DOSBox-X")
+            .expect("flatpak app id");
+        assert_eq!(plan.arguments[app_position - 2], "--socket=x11");
+        assert_eq!(plan.arguments[app_position - 1], "--nosocket=wayland");
+        assert_eq!(plan.arguments[app_position + 1], "-conf");
+        assert_eq!(
+            plan.arguments[app_position + 2],
+            prepared.launch_config_path.as_os_str()
+        );
     }
 
     /// Not Windows: Wine prefix mapping only exists off-Windows, where a
