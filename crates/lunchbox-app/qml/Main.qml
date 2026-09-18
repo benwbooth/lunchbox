@@ -11185,6 +11185,7 @@ ApplicationWindow {
             spacing: 3
             model: library.filtered_platform_count
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            AcceleratedWheelHandler { scroller: platformList }
             delegate: SidebarNavButton {
                 required property int index
                 property int revision: library.platform_revision
