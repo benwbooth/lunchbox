@@ -83,6 +83,25 @@ TestCase {
         // An identity declared for a core that has no profile is inert.
         compare(filter.emulators(nativeProfiles, identities).indexOf("Mesen2 aliased"), -1)
     }
+
+    // A resolution-only alias reaches its core without renaming it: the
+    // browse list still shows the declared identity (or the core key).
+    function test_resolution_only_aliases_do_not_rename_cores() {
+        const identities = [{name: "Mesen", core: "mesen2"}]
+        const aliases = [{name: "VICE (xvic)", core: "vice"}]
+        const profiles = [
+            {id: "vice-64", core: "vice", transport: "vice-native-settings", target_layout: "vice-joystick",
+             native_launch: {platforms: ["Commodore 64", "Commodore VIC-20"], max_players: 2}}
+        ]
+        compare(filter.applicable(profiles, "VICE (xvic)", "Commodore VIC-20", identities, aliases).map(p => p.id),
+                ["vice-64"])
+        compare(filter.applicable(profiles, "vice", "Commodore VIC-20", identities, aliases).map(p => p.id),
+                ["vice-64"])
+        compare(filter.systems(profiles, "VICE (xvic)", identities, aliases),
+                ["Commodore 64", "Commodore VIC-20"])
+        // The alias never becomes the display name for its core.
+        compare(filter.emulators(profiles, identities), ["vice"])
+    }
     function test_player_limits() {
         compare(filter.playerLimit(profiles[0]), 2)
         compare(filter.playerLimit({target_layout: "psp"}), 1)

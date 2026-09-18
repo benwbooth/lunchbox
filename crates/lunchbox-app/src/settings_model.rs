@@ -2493,8 +2493,13 @@ impl qobject::SettingsModel {
             .iter()
             .map(|(name, core)| serde_json::json!({"name": name, "core": core}))
             .collect();
+        // Resolution-only labels: they never rename an emulator in the UI.
+        let aliases: Vec<_> = crate::controller_target::NATIVE_EMULATOR_ALIASES
+            .iter()
+            .map(|(name, core)| serde_json::json!({"name": name, "core": core}))
+            .collect();
         qstring(
-            serde_json::json!({"layouts":catalog.layouts,"emulator_profiles":catalog.emulator_profiles,"emulator_identities":identities,"host_os":std::env::consts::OS})
+            serde_json::json!({"layouts":catalog.layouts,"emulator_profiles":catalog.emulator_profiles,"emulator_identities":identities,"emulator_aliases":aliases,"host_os":std::env::consts::OS})
                 .to_string(),
         )
     }

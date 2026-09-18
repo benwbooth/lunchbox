@@ -11,13 +11,14 @@ QtObject {
         return aliases[core] || core
     }
     /// Catalog core key for a standalone emulator label. `identities` is the
-    /// declared display-name -> core table from the catalog JSON; the launch
-    /// path resolves the same table, so the dialog can never claim an emulator
-    /// is unsupported while its adapter exists.
-    function nativeCore(value, identities) {
+    /// declared display-name -> core table from the catalog JSON and
+    /// `aliases` holds resolution-only labels (VICE's per-machine frontend
+    /// names); the launch path resolves the same tables, so the dialog can
+    /// never claim an emulator is unsupported while its adapter exists.
+    function nativeCore(value, identities, aliases) {
         const k = key(value)
-        if (!identities) return k
-        const hit = identities.find(entry => key(entry.name) === k)
+        const tables = (identities || []).concat(aliases || [])
+        const hit = tables.find(entry => key(entry.name) === k)
         return hit ? key(hit.core) : k
     }
     /// Display name for a native profile: the declared emulator name when the
@@ -28,17 +29,17 @@ QtObject {
         const hit = identities.find(entry => key(entry.core) === k)
         return hit ? hit.name : k
     }
-    function applicable(profiles, emulator, platform, identities) {
+    function applicable(profiles, emulator, platform, identities, aliases) {
         const host = key(emulator)
         const system = key(platform)
         if (!host || !system) return []
         const retroarch = host.startsWith("retroarch")
         const coreMatch = host.match(/\(([^()]+)\)$/)
         const rawCore = retroarch && coreMatch ? key(coreMatch[1]).replace(/_libretro$/, "") : host
-        const core = retroarch ? canonicalCore(rawCore) : nativeCore(rawCore, identities)
+        const core = retroarch ? canonicalCore(rawCore) : nativeCore(rawCore, identities, aliases)
         return profiles.filter(function(profile) {
             if ((profile.transport === "retropad") !== retroarch) return false
-            if ((retroarch ? canonicalCore(profile.core) : nativeCore(profile.core, identities)) !== core
+            if ((retroarch ? canonicalCore(profile.core) : nativeCore(profile.core, identities, aliases)) !== core
                     && !(retroarch && canonicalCore(profile.retroarch_library) === core)) return false
             if (!platformsFor(profile).some(value => key(value) === system)) return false
             if (["arcade", "sega naomi", "sega naomi 2", "sammy atomiswave"].indexOf(system) >= 0)
@@ -71,8 +72,19 @@ QtObject {
     function emulators(profiles, identities) {
         return Array.from(new Set(profiles.filter(p => platformsFor(p).length > 0).map(p => emulatorFor(p, identities)))).sort()
     }
-    function systems(profiles, emulator, identities) {
-        return Array.from(new Set(profiles.filter(p => emulatorFor(p, identities) === emulator).reduce((all, p) => all.concat(platformsFor(p)), []))).sort()
+    /// Systems this emulator label can map, resolved through the same
+    /// identity tables as `applicable`. Accepts a declared display name or a
+    /// raw core key.
+    function systems(profiles, emulator, identities, aliases) {
+        const host = key(emulator)
+        if (!host) return []
+        const retroarch = host.startsWith("retroarch")
+        const coreMatch = host.match(/\(([^()]+)\)$/)
+        const rawCore = retroarch && coreMatch ? key(coreMatch[1]).replace(/_libretro$/, "") : host
+        const core = retroarch ? canonicalCore(rawCore) : nativeCore(rawCore, identities, aliases)
+        const rows = profiles.filter(profile => (profile.transport === "retropad") === retroarch
+            && (retroarch ? canonicalCore(profile.core) : nativeCore(profile.core, identities, aliases)) === core)
+        return Array.from(new Set(rows.reduce((all, profile) => all.concat(platformsFor(profile)), []))).sort()
     }
     function playerLimit(profile) {
         if (!profile) return 0

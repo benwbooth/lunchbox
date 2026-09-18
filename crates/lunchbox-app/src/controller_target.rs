@@ -12,7 +12,8 @@ use anyhow::{Context, Result, ensure};
 /// `emulators.name`), while native profiles declare the core key used on the
 /// wire. This one table feeds both the resolver below and the QML target
 /// filter (`controller_catalog_json`), so the dialog and the launch path can
-/// never disagree about which profiles an emulator owns.
+/// never disagree about which profiles an emulator owns. Each entry is also
+/// the canonical display name for its core.
 pub(crate) const NATIVE_EMULATOR_IDENTITIES: &[(&str, &str)] = &[
     ("Mesen", "mesen2"),
     ("Nestopia UE", "nestopia"),
@@ -23,13 +24,26 @@ pub(crate) const NATIVE_EMULATOR_IDENTITIES: &[(&str, &str)] = &[
     ("Yaba Sanshiro 2", "yaba-sanshiro"),
 ];
 
+/// Additional accepted labels for a core that already has a canonical display
+/// name. Resolution only: the mapping dialog keeps showing the identity name
+/// above, so a second label can never rename an emulator in the UI.
+pub(crate) const NATIVE_EMULATOR_ALIASES: &[(&str, &str)] = &[
+    // The launch path splits VICE by machine; VIC-20 play selects the xvic
+    // frontend while the catalog core stays `vice`.
+    ("VICE (xvic)", "vice"),
+];
+
+fn matches_label(name: &str, label: &str) -> bool {
+    name.trim().to_lowercase() == label.trim().to_lowercase()
+}
+
 /// Catalog core key for a standalone emulator label. Labels already written as
 /// a core key pass through unchanged.
 pub(crate) fn native_core_for(label: &str) -> Option<&'static str> {
-    let key = label.trim().to_lowercase();
     NATIVE_EMULATOR_IDENTITIES
         .iter()
-        .find(|(name, _)| name.trim().to_lowercase() == key)
+        .chain(NATIVE_EMULATOR_ALIASES.iter())
+        .find(|(name, _)| matches_label(name, label))
         .map(|(_, core)| *core)
 }
 
@@ -333,14 +347,36 @@ mod tests {
                 "identity names must be exact, trimmed and non-empty"
             );
         }
+        let mut aliases = BTreeSet::new();
+        for (name, core) in NATIVE_EMULATOR_ALIASES {
+            assert!(
+                aliases.insert(name.trim().to_lowercase()),
+                "duplicate native emulator alias: {name}"
+            );
+            assert!(
+                native_cores.contains(core),
+                "native emulator alias {name} names an unknown core {core}"
+            );
+            assert!(
+                !names.contains(&name.trim().to_lowercase()),
+                "alias {name} duplicates an identity"
+            );
+            assert_ne!(
+                &name.trim().to_lowercase(),
+                core,
+                "alias {name} is redundant: the label is already the core key"
+            );
+        }
     }
 
     #[test]
     fn every_native_emulator_resolves_to_its_own_profiles() {
         // The launch path receives `option.emulator_name` (the database display
-        // name), so each declared identity must reach profiles for the systems
-        // that emulator actually ships.
-        for (name, core) in NATIVE_EMULATOR_IDENTITIES {
+        // name), so each declared identity and alias must reach profiles.
+        for (name, core) in NATIVE_EMULATOR_IDENTITIES
+            .iter()
+            .chain(NATIVE_EMULATOR_ALIASES.iter())
+        {
             let scope = Scope::from_label(name, "Nintendo Entertainment System").unwrap();
             assert!(!scope.retroarch);
             assert_eq!(scope.core, *core, "{name} resolved to the wrong core");
@@ -350,6 +386,9 @@ mod tests {
             let scope = Scope::from_label(name, "Nintendo Entertainment System").unwrap();
             assert_eq!(Scope::from_key(&scope.key()).unwrap().core, *core);
         }
+        // A core key is never rewritten by an alias entry.
+        let scope = Scope::from_label("vice", "Commodore VIC-20").unwrap();
+        assert_eq!(scope.core, "vice");
     }
 
     #[test]
