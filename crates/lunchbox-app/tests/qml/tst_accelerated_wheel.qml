@@ -30,6 +30,8 @@ TestCase {
         handler.lastDirection = 0
         handler.lastNotchAt = 0
         handler.burstCount = 0
+        handler.minimumPageDistance = 2200
+        handler.maximumPageDistance = 5200
         scroller.contentY = 0
     }
 
@@ -50,6 +52,15 @@ TestCase {
         wait(160)
         verify(scroller.contentY > firstPosition + 650,
                "viewport should retain momentum after input ends")
+    }
+
+    function test_page_distance_bounds_limit_travel() {
+        handler.minimumPageDistance = 100
+        handler.maximumPageDistance = 150
+        handler.scrollNotches(1)
+        wait(400)
+        verify(scroller.contentY < 400,
+               "a bounded page should stay short, got " + scroller.contentY)
     }
 
     function test_real_wheel_event_reaches_the_handler() {

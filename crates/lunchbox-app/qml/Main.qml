@@ -11185,7 +11185,15 @@ ApplicationWindow {
             spacing: 3
             model: library.filtered_platform_count
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-            AcceleratedWheelHandler { scroller: platformList }
+            AcceleratedWheelHandler {
+                scroller: platformList
+                // A sidebar row is 43px, so the large-grid page defaults would
+                // fling dozens of rows per notch. Keep a short, light glide.
+                wheelPageFactor: 0.18
+                minimumPageDistance: 100
+                maximumPageDistance: 150
+                frictionPerSecond: 6.0
+            }
             delegate: SidebarNavButton {
                 required property int index
                 property int revision: library.platform_revision

@@ -22,6 +22,10 @@ MouseArea {
     // The velocity model lets quick successive notches accumulate naturally,
     // while the friction value keeps a single notch predictable.
     property real wheelPageFactor: 3.2
+    // Page travel bounds. Large grids want a big page; a compact sidebar row
+    // list wants a short one, so the bounds are configurable per scroller.
+    property real minimumPageDistance: 2200
+    property real maximumPageDistance: 5200
     property real frictionPerSecond: 3.8
     property real maximumVelocity: 120000
     property real minimumVelocity: 70
@@ -94,8 +98,8 @@ MouseArea {
         lastNotchAt = now
 
         const acceleration = Math.min(9.0, 1 + burstCount * 0.7)
-        const pageDistance = Math.max(2200,
-                                      Math.min(5200,
+        const pageDistance = Math.max(minimumPageDistance,
+                                      Math.min(maximumPageDistance,
                                                scroller.height * wheelPageFactor))
         // Give each physical notch an immediate response before the kinetic
         // tail takes over. This keeps a large, image-heavy grid feeling
