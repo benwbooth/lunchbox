@@ -177,6 +177,7 @@ fn main() {
     .file("src/screenscraper_model.rs")
     .file("src/save_sync_model.rs")
     .file("src/settings_model.rs")
+    .file("src/single_instance.rs")
     .file("src/steamgriddb_model.rs")
     .file("src/web_artwork_model.rs")
     .file("src/watched_torrent_model.rs")

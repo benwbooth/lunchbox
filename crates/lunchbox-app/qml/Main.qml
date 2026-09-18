@@ -67,6 +67,9 @@ ApplicationWindow {
     property bool librarySessionFullRestored: false
     property bool startupInitializationRequested: false
     property bool startupFirstFrameReported: false
+    /// Set when a later launch asked this instance to raise before the window
+    /// was presented; the presentation hook then brings it to the front.
+    property bool pendingRaise: false
     readonly property bool startupPresented: root.automatedProbeRun || startupPresentation.presented
     readonly property bool startupDataReady: root.startupInitializationRequested
                                             && !library.loading && !library.filtering
@@ -594,6 +597,8 @@ ApplicationWindow {
         prepare: root.prepareStartupPresentation
         onPresent: {
             windowPlacement.showRestored()
+            if (root.pendingRaise)
+                root.raiseWindow()
             console.log("LUNCHBOX_WINDOW_PRESENTED elapsed_ms=" + (Date.now() - root.startupCreatedAt)
                         + " platform=" + root.selectedPlatform + " game=" + root.selectedGameId
                         + " view=" + library.view_mode
@@ -614,6 +619,18 @@ ApplicationWindow {
             root.restoreLibrarySession()
         }
     }
+    function raiseWindow() {
+        // Bring an already-running library to the front; the process guard
+        // prevented a second copy from starting.
+        if (!root.startupPresented)
+            windowPlacement.showRestored()
+        root.show()
+        root.raise()
+        root.requestActivate()
+        console.log("LUNCHBOX_INSTANCE_RAISED startup_presented=" + root.startupPresented)
+        root.pendingRaise = false
+    }
+
     onWidthChanged: root.settleStartupResize()
     onHeightChanged: root.settleStartupResize()
     Timer {
@@ -2683,6 +2700,26 @@ ApplicationWindow {
 
     SettingsModel {
         id: appSettings
+    }
+
+    SingleInstance {
+        id: singleInstance
+    }
+
+    // A later launch asks this instance to raise instead of starting a second
+    // copy. The process guard delivers the request; consume it here.
+    Timer {
+        interval: 200
+        repeat: true
+        running: true
+        onTriggered: {
+            if (!singleInstance.take_raise_request())
+                return
+            if (root.startupPresented)
+                root.raiseWindow()
+            else
+                root.pendingRaise = true
+        }
     }
 
     GameWindowBehavior {

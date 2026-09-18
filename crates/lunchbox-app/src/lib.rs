@@ -268,6 +268,7 @@ mod screenscraper;
 pub mod screenscraper_model;
 mod settings;
 pub mod settings_model;
+mod single_instance;
 mod steamgriddb;
 pub mod steamgriddb_model;
 mod tags;
@@ -692,6 +693,23 @@ pub fn run() -> i32 {
             }
         };
     }
+
+    // One Lunchbox owns the library, settings and running emulator sessions. A
+    // later launch raises the running window and exits instead of starting a
+    // second copy. Automated UI probes use isolated state databases and run
+    // alongside a developer's instance, so they bypass the guard.
+    let _instance_guard = if std::env::args().any(|argument| argument.contains("ui-probe")) {
+        None
+    } else {
+        match single_instance::request_or_own() {
+            Ok(Some(guard)) => Some(guard),
+            Ok(None) => return 0,
+            Err(error) => {
+                eprintln!("LUNCHBOX_INSTANCE_FAILED error={error:#}");
+                None
+            }
+        }
+    };
 
     initialize_qt();
 
