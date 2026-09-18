@@ -77,6 +77,19 @@ pub(crate) const PCE_CONTROLS: [(&str, &str); 8] = [
 pub(crate) const SYSTEM_NES: &str = "nes";
 pub(crate) const SYSTEM_PCE: &str = "pce";
 
+/// `target_layout` selects the system contract: the NES pad or the PC
+/// Engine/TurboGrafx pad. Anything else has no authored writer yet. Pure
+/// catalog logic, so it lives outside the Linux-only session module.
+pub(crate) fn system_for_layout(target_layout: &str) -> Result<&'static str> {
+    match target_layout {
+        "nes" => Ok(SYSTEM_NES),
+        "pce-2" => Ok(SYSTEM_PCE),
+        other => {
+            anyhow::bail!("Mesen2 has no native controller writer for target layout {other} yet")
+        }
+    }
+}
+
 /// One native KeyMapping UInt16.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) struct Binding(pub(crate) u16);

@@ -2,7 +2,6 @@
 //! launch-scoped saved setup instead of failing for a missing hand-written
 //! entry (mgba/gopher64 precedent). Settings review never calls this.
 use super::settings::SavedSetup;
-use super::{SYSTEM_NES, SYSTEM_PCE};
 use crate::{
     controller_native_process::cancelled,
     emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption},
@@ -12,7 +11,6 @@ use std::{
     path::{Component, PathBuf},
     sync::atomic::AtomicBool,
 };
-
 /// Probe helper: explicit override for integration tests, else the sibling
 /// controller-probe binary beside the Lunchbox executable.
 fn helper() -> Result<PathBuf> {
@@ -36,15 +34,10 @@ fn helper() -> Result<PathBuf> {
 }
 
 /// `target_layout` selects the system contract: the NES pad or the PC
-/// Engine/TurboGrafx pad. Anything else has no authored writer yet.
+/// Engine/TurboGrafx pad. The mapping itself lives with the catalog system
+/// keys so non-Linux hosts can resolve it without this module.
 pub(crate) fn system_for_layout(target_layout: &str) -> Result<&'static str> {
-    match target_layout {
-        "nes" => Ok(SYSTEM_NES),
-        "pce-2" => Ok(SYSTEM_PCE),
-        other => {
-            anyhow::bail!("Mesen2 has no native controller writer for target layout {other} yet")
-        }
-    }
+    super::system_for_layout(target_layout)
 }
 
 pub(crate) fn discover(

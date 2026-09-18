@@ -1233,10 +1233,9 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.controller_id = ids[0].clone();
-                setup.system = crate::controller_mesen2_native::guided::system_for_layout(
-                    &profile.target_layout,
-                )?
-                .into();
+                setup.system =
+                    crate::controller_mesen2_native::system_for_layout(&profile.target_layout)?
+                        .into();
                 setup.review(&mapping.calibrations)?;
             }
             // First launches synthesize a launch-scoped setup instead of
