@@ -1815,7 +1815,10 @@ fn validate_allowlisted_profile(
             && profile.target_layout == "nes"
             && profile.transport == "retropad"
             && profile.retroarch_library.as_deref() == Some("Nestopia")
-            && profile.explicit_selection
+            // Selection mode is a catalog concern, not part of the pad
+            // contract: the two-player profile is now the automatic default
+            // while the four-player variant stays an explicit mode.
+            && (profile.id == NESTOPIA_NES_TWO_PLAYER_PROFILE || profile.explicit_selection)
             && profile.platforms
                 == BTreeSet::from([
                     "NES".to_owned(),

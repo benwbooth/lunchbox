@@ -1111,7 +1111,9 @@ fn excluded_and_drifted_profiles_fail_closed() {
     let mut profile = baseline.clone();
     profile.retroarch_library = Some("Nestopia UE".to_owned());
     cases.push(profile);
-    let mut profile = baseline.clone();
+    let mut profile = nestopia_profile(NESTOPIA_NES_FOUR_PLAYER_PROFILE, 4);
+    // The two-player contract is the automatic default, but the four-player
+    // variant must stay an explicitly selected mode.
     profile.explicit_selection = false;
     cases.push(profile);
     let mut profile = baseline.clone();
