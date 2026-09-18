@@ -234,11 +234,9 @@ jobs:
           cache: true
       - name: Fetch the pinned MAME CHD archive
         run: |
-          ARCH="$(uname -m)"
-          if [ "$ARCH" = "arm64" ]; then NAME=aarch64-apple-darwin; SUM=5e1e58f6797882859dbc784516120e740e178539b81802d36383894cd347ec6c; else NAME=x86_64-apple-darwin; SUM=bcbba685a725c8e846d334bfa6de93a3ee2b1debd052d5565bce7a501cfe8be8; fi
           ARCHIVE="$RUNNER_TEMP/libchdman_rs.a"
-          curl -sSL -o "$ARCHIVE" "https://github.com/danifunker/libchdman-rs/releases/download/v0.289.0/libchdman_rs-$NAME.a"
-          echo "$SUM  $ARCHIVE" | shasum -a 256 -c -
+          curl -sSL -o "$ARCHIVE" "https://github.com/danifunker/libchdman-rs/releases/download/v0.289.0/libchdman_rs-x86_64-unknown-linux-gnu-glibc2.35.a"
+          echo "5340f4e65d0fd0c40d5b1dd3c6ad1d5daa653ddb7f93affb70f0480cbc781a17  $ARCHIVE" | sha256sum -c -
           echo "LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
       - name: Build release executable
         run: cargo build --locked --release --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe

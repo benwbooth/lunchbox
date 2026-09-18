@@ -42,6 +42,9 @@ modules:
         CARGO_NET_OFFLINE: 'true'
         QMAKE: /usr/bin/qmake6
         LUNCHBOX_SDL3_LIBRARY: /app/lib/libSDL3.so.0
+        # MAME's CHD core is linked from a pinned prebuilt archive (declared
+        # below), so no target downloads anything at build time.
+        LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE: /run/build/lunchbox/chdman/libchdman_rs.a
     build-commands:
       - cargo build --locked --offline --release --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - cargo run --locked --offline --release --package lunchbox-db -- extract --archive artifacts/lunchbox.db.7z --output database
@@ -61,3 +64,7 @@ modules:
           - result
           - target
       - cargo-sources.json
+      - type: file
+        url: https://github.com/danifunker/libchdman-rs/releases/download/v0.289.0/libchdman_rs-x86_64-unknown-linux-gnu-glibc2.35.a
+        sha256: 5340f4e65d0fd0c40d5b1dd3c6ad1d5daa653ddb7f93affb70f0480cbc781a17
+        dest: chdman/libchdman_rs.a
