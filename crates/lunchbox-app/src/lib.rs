@@ -1,5 +1,6 @@
 mod arcade;
 mod arcade_download;
+mod build_info;
 mod catalog;
 mod collection_identity;
 pub mod collection_identity_model;

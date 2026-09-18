@@ -53,6 +53,7 @@ fn main() {
     generate_arcade_lookup();
     generate_platform_record_index();
     generate_retroarch_core_index();
+    generate_build_identity();
     let platform_resources = generate_platform_resources();
 
     CxxQtBuilder::new_qml_module(
@@ -157,6 +158,7 @@ fn main() {
     .qt_module("QuickControls2")
     .qt_module("Quick3D")
     .qt_module("Multimedia")
+    .file("src/build_info.rs")
     .file("src/collection_identity_model.rs")
     .file("src/download_queue_model.rs")
     .file("src/emumovies_model.rs")
@@ -317,6 +319,88 @@ fn generate_platform_resources() -> PathBuf {
         .join("platform_icons.qrc");
     write_if_changed(&output, &qrc, "platform icon resource manifest");
     output
+}
+
+/// Embed the identity of the running build: its short git revision and the
+/// time it was compiled, so a dev build is identifiable in the UI.
+fn generate_build_identity() {
+    let manifest_directory =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    // Re-run whenever any crate source changes, so the embedded identity
+    // describes this build rather than an earlier one.
+    rerun_on_source_changes(&manifest_directory.join("src"));
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_directory.join("../../.git/HEAD").display()
+    );
+
+    let configured = std::env::var("LUNCHBOX_BUILD_HASH").unwrap_or_default();
+    let configured = configured.trim();
+    let revision = if configured.is_empty() {
+        git_revision(&manifest_directory).unwrap_or_else(|| "unknown".to_string())
+    } else {
+        configured.to_string()
+    };
+    println!("cargo:rustc-env=LUNCHBOX_BUILD_HASH={revision}");
+
+    let built = std::env::var("LUNCHBOX_BUILT_UNIX")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .or_else(|| {
+            std::env::var("SOURCE_DATE_EPOCH")
+                .ok()
+                .and_then(|value| value.trim().parse::<u64>().ok())
+        })
+        .unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_secs())
+                .unwrap_or(0)
+        });
+    println!("cargo:rustc-env=LUNCHBOX_BUILT_UNIX={built}");
+}
+
+fn rerun_on_source_changes(directory: &Path) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        match entry.file_type() {
+            Ok(kind) if kind.is_dir() => rerun_on_source_changes(&path),
+            Ok(kind) if kind.is_file() => {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+            _ => {}
+        }
+    }
+}
+
+fn git_revision(directory: &Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .current_dir(directory)
+        .args(["rev-parse", "--short=12", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let revision = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if revision.is_empty() {
+        return None;
+    }
+    let dirty = std::process::Command::new("git")
+        .current_dir(directory)
+        .args(["status", "--porcelain", "--untracked-files=no"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .is_some_and(|output| !output.stdout.is_empty());
+    Some(if dirty {
+        format!("{revision}+")
+    } else {
+        revision
+    })
 }
 
 fn arcade_source_path() -> PathBuf {

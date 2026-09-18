@@ -2706,6 +2706,10 @@ ApplicationWindow {
         id: singleInstance
     }
 
+    BuildInfo {
+        id: buildInfo
+    }
+
     // A later launch asks this instance to raise instead of starting a second
     // copy. The process guard delivers the request; consume it here.
     Timer {
@@ -10871,6 +10875,27 @@ ApplicationWindow {
                     font.letterSpacing: 1.1
                 }
             }
+        }
+
+        // Quiet build identity: which revision is running and when it was
+        // compiled. Especially useful while iterating with `dev.sh`.
+        Text {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.leftMargin: 8
+            anchors.topMargin: 4
+            text: {
+                const seconds = Number(buildInfo.built_unix)
+                const when = isFinite(seconds) && seconds > 0
+                    ? Qt.formatDateTime(new Date(seconds * 1000), "yyyy-MM-dd HH:mm")
+                    : ""
+                return "build " + buildInfo.build_hash
+                    + (when.length > 0 ? " · " + when : "")
+            }
+            color: root.muted
+            font.pixelSize: 9
+            opacity: 0.75
+            z: 5
         }
 
         ClearableSearchField {

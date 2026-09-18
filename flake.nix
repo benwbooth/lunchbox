@@ -95,6 +95,10 @@
           QMAKE = "${qtEnv}/bin/qmake";
           LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
           LUNCHBOX_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
+          # Release builds embed the exact flake revision and commit time for the
+          # UI build label.
+          LUNCHBOX_BUILD_HASH = self.shortRev or self.dirtyShortRev or "";
+          LUNCHBOX_BUILT_UNIX = toString self.lastModified;
           preBuild = ''
             export PATH="${qtEnv}/bin:${qtEnv}/libexec:$PATH"
             export QMAKE="${qtEnv}/bin/qmake"
@@ -219,17 +223,16 @@
             ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
               export RUSTFLAGS="''${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"
             ''}
-            # Incremental dev loop: rebuild the app on Rust/QML/data changes and
-            # restart it, instead of waiting on a release build or CI. The first
-            # debug link takes a few minutes; later one-file rebuilds are around
-            # twenty seconds.
+            # Incremental dev loop: rebuild the app on any code change and
+            # restart it, instead of waiting on a release build or CI. The
+            # first debug link takes a few minutes; later one-file Rust
+            # rebuilds are around twenty seconds.
             lunchbox-dev() {
               watchexec --restart --shell=none \
-                --watch crates/lunchbox-app/src \
-                --watch crates/lunchbox-app/qml \
-                --watch crates/lunchbox-app/data \
-                --watch crates/lunchbox-controller-probe/src \
-                --exts rs,qml,json \
+                --watch crates \
+                --watch Cargo.toml \
+                --watch Cargo.lock \
+                --exts rs,qml,json,toml,lock \
                 -- cargo run -p lunchbox-app --bin lunchbox
             }
             export -f lunchbox-dev 2>/dev/null || true
