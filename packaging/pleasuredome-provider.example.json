@@ -1,0 +1,33 @@
+{
+  "format": "lunchbox-local-torrent-provider",
+  "schema_version": 1,
+  "provider": {
+    "id": "pleasuredome",
+    "name": "PleasureDome",
+    "catalog_version": "2026-07-15",
+    "authorization": "user-managed",
+    "terms_url": "https://pleasuredome.github.io/pleasuredome/"
+  },
+  "offers": [
+    {
+      "id": "visual-pinball",
+      "platform": "Pinball",
+      "torrent_path": "pinball/Visual Pinball (2026-07-15).torrent"
+    },
+    {
+      "id": "future-pinball",
+      "platform": "Pinball",
+      "torrent_path": "pinball/Future Pinball (2026-07-15).torrent"
+    },
+    {
+      "id": "pinmame-roms",
+      "platform": "Pinball",
+      "torrent_path": "pinball/PinMAME 3.6.0-1227 ROMs (split).torrent"
+    },
+    {
+      "id": "openbor-games",
+      "platform": "OpenBOR",
+      "torrent_path": "openbor/OpenBOR game modules.torrent"
+    }
+  ]
+}

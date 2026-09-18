@@ -1,0 +1,4 @@
+platform,source_name,url,content_type,set_format,download_method,size,requires_login,requires_bios,bios_included,bios_source,recommended,notes
+OpenBOR,ChronoCrash - OpenBOR community,https://www.chronocrash.com/,individual,,direct,,yes,no,no,,yes,"Official OpenBOR community and the largest curated library of .pak game modules in its Downloads section; free account required; no single canonical set exists"
+OpenBOR,Internet Archive - OpenBOR,https://archive.org/search?query=openbor,mixed,mixed,direct;torrent,,no,no,no,,no,"Community-uploaded engine builds and .pak collections; completeness and provenance vary by upload"
+OpenBOR,SourceForge - OpenBOR engine,https://sourceforge.net/projects/openbor/,individual,,direct,,no,no,no,,no,"OpenBOR engine source and release builds; game .pak modules are released separately by their authors, so the platform stays catalog-only until .pak files are supplied"

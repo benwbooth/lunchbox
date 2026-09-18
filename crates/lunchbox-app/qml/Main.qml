@@ -12220,7 +12220,7 @@ ApplicationWindow {
                             Text {
                                 id: stateText
                                 anchors.centerIn: parent
-                                text: gameDetails.local ? "INSTALLED" : gameDetails.downloadable ? "MINERVA" : "CATALOG"
+                                text: gameDetails.local ? "INSTALLED" : gameDetails.downloadable ? "DOWNLOAD" : "CATALOG"
                                 color: gameDetails.local ? root.accentCool : gameDetails.downloadable ? root.accent : root.muted
                                 font.pixelSize: 9
                                 font.weight: Font.Bold

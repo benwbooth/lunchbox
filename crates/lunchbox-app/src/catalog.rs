@@ -267,7 +267,10 @@ fn load_preview_from_sources(
     let discovery = open_read_only(&discovery_path, "Lunchbox discovery database")?;
     validate_discovery_schema(&discovery)?;
     let installed = load_installed_games_with_native_state(user_path, native_state_path)?;
-    let minerva = load_minerva_coverage(minerva_path)?;
+    let mut minerva = load_minerva_coverage(minerva_path)?;
+    minerva
+        .platform_names
+        .extend(load_registered_torrent_platforms(native_state_path)?);
     let total_game_count =
         count(&discovery, "games", "1")?.saturating_add(installed.local_only_games.len());
     let order = if column_exists(&discovery, "games", "sort_title")? {
@@ -665,7 +668,10 @@ fn load_discovery_catalog_with_native_state(
     let discovery = open_read_only(discovery_path, "Lunchbox discovery database")?;
     validate_discovery_schema(&discovery)?;
     let installed = load_installed_games_with_native_state(user_path, native_state_path)?;
-    let minerva = load_minerva_coverage(minerva_path)?;
+    let mut minerva = load_minerva_coverage(minerva_path)?;
+    minerva
+        .platform_names
+        .extend(load_registered_torrent_platforms(native_state_path)?);
 
     let game_capacity = count(&discovery, "games", "1")?;
     let mut games = Vec::with_capacity(game_capacity);
@@ -1455,7 +1461,13 @@ pub(crate) fn game_availability_flags(
     identities: &[(String, i64, String)],
 ) -> Result<Vec<(bool, bool)>> {
     let installed = load_installed_games(requested_user_database_path().as_deref())?;
-    let minerva = load_minerva_coverage(requested_minerva_database_path().as_deref())?;
+    let mut minerva = load_minerva_coverage(requested_minerva_database_path().as_deref())?;
+    let state_path = crate::settings::state_database_path().ok();
+    minerva
+        .platform_names
+        .extend(load_registered_torrent_platforms(
+            state_path.as_deref().filter(|path| path.is_file()),
+        )?);
     Ok(identities
         .iter()
         .map(|(game_uid, launchbox_db_id, platform)| {
@@ -1650,6 +1662,27 @@ fn load_minerva_coverage(path: Option<&Path>) -> Result<MinervaCoverage> {
     }
 
     Ok(coverage)
+}
+
+/// Normalized platform keys covered by a user-registered local torrent catalog,
+/// whether it came from a provider manifest (for example PleasureDome) or a
+/// single manual torrent. Registration is always an explicit user action with
+/// an exact platform key, so an ad-hoc torrent cannot silently make an
+/// unrelated platform look downloadable.
+fn load_registered_torrent_platforms(state_path: Option<&Path>) -> Result<HashSet<String>> {
+    let Some(state_path) = state_path.filter(|path| path.is_file()) else {
+        return Ok(HashSet::new());
+    };
+    let connection = open_read_only(state_path, "Lunchbox state database")?;
+    if !table_exists(&connection, "registered_torrent_catalogs")? {
+        return Ok(HashSet::new());
+    }
+    let mut statement = connection.prepare(
+        "SELECT DISTINCT platform_key FROM registered_torrent_catalogs
+         WHERE platform_key IS NOT NULL AND platform_key <> ''",
+    )?;
+    let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+    Ok(rows.collect::<rusqlite::Result<HashSet<_>>>()?)
 }
 
 pub(crate) fn normalize_platform_key(value: &str) -> String {
@@ -2725,6 +2758,83 @@ mod tests {
         );
         assert_eq!(downloadable.len(), 1);
         assert_eq!(catalog.games[downloadable[0]].title, "Download Game");
+    }
+
+    #[test]
+    fn declared_local_provider_platforms_light_downloadable_cards() {
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let discovery_path = directory.path().join("games.db");
+        let state_path = directory.path().join("state.db");
+
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (1, 'Pinball');
+                 INSERT INTO platforms VALUES (2, 'OpenBOR');
+                 INSERT INTO platforms VALUES (3, 'Uncovered System');
+                 INSERT INTO games VALUES
+                   ('pinball-id', 'Medieval Madness', NULL, 'Released', 1, 1),
+                   ('openbor-id', 'Beats of Rage', NULL, 'Released', 2, 2),
+                   ('uncovered-id', 'Uncovered Game', NULL, 'Released', 3, 3);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        // A user-registered local catalog owns Pinball and OpenBOR. A platform
+        // with no registered catalog stays catalog-only.
+        let state = Connection::open(&state_path).unwrap();
+        state
+            .execute_batch(
+                "CREATE TABLE installed_games (
+                   launchbox_db_id INTEGER NOT NULL, game_uid TEXT,
+                   file_path TEXT NOT NULL, import_source TEXT NOT NULL,
+                   title TEXT, platform TEXT
+                 );
+                 CREATE TABLE registered_torrent_catalogs (
+                   id TEXT PRIMARY KEY, platform TEXT NOT NULL,
+                   platform_key TEXT NOT NULL, managed_by_provider_id TEXT
+                 );
+                 INSERT INTO registered_torrent_catalogs VALUES
+                   ('a', 'Pinball', 'pinball', 'pleasuredome'),
+                   ('b', 'OpenBOR', 'openbor', 'pleasuredome');",
+            )
+            .unwrap();
+        drop(state);
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            Some(&state_path),
+        )
+        .unwrap();
+
+        let downloadable = filter_indices(
+            &catalog,
+            &Filter {
+                availability: "downloadable".into(),
+                ..Filter::default()
+            },
+        )
+        .into_iter()
+        .map(|index| catalog.games[index].title.as_str())
+        .collect::<Vec<_>>();
+        assert_eq!(downloadable, ["Beats of Rage", "Medieval Madness"]);
     }
 
     fn mario_state_fixture(
