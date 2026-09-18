@@ -75,9 +75,15 @@ pub fn import(
             bail!("wiki recommendation row {row} has no positive rank");
         }
         if !matches!(entry.verdict.as_str(), "recommended" | "partial" | "not") {
-            bail!("wiki recommendation row {row} has verdict {:?}", entry.verdict);
+            bail!(
+                "wiki recommendation row {row} has verdict {:?}",
+                entry.verdict
+            );
         }
-        if !entry.page_url.starts_with("https://emulation.gametechwiki.com/") {
+        if !entry
+            .page_url
+            .starts_with("https://emulation.gametechwiki.com/")
+        {
             bail!("wiki recommendation row {row} links outside the wiki");
         }
         if !ranks_by_platform

@@ -210,6 +210,16 @@ pub struct RetroArchLaunch {
     pub player_topology: Option<PlayerTopology>,
 }
 
+impl RetroArchLaunch {
+    /// True when the frontend port count follows a core option rather than a
+    /// fixed device mode. Such a contract cannot be seeded automatically: the
+    /// launcher resolves an automatic profile before it reads the user's
+    /// effective options.
+    pub fn device_count_is_option_dependent(&self) -> bool {
+        self.player_topology.is_some()
+    }
+}
+
 impl EmulatorProfile {
     pub fn launch_device_for_port(&self, port: usize) -> Option<u32> {
         let launch = self.retroarch_launch.as_ref()?;
@@ -1248,13 +1258,16 @@ impl Catalog {
                             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())),
                 "Invalid controller profile content extension"
             );
+            // An option-dependent topology may be the *only* entry for a core;
+            // listing it as explicit is then what stops `launch_modes()` from
+            // handing back a contract that needs an option value nobody chose.
             ensure!(
                 !profile.explicit_selection
-                    || profile
-                        .retroarch_launch
-                        .as_ref()
-                        .is_some_and(|launch| launch.player_topology.is_none()),
-                "Explicit controller modes must declare a fixed topology"
+                    || profile.retroarch_launch.as_ref().is_some_and(|launch| {
+                        launch.player_topology.is_none()
+                            || launch.device_count_is_option_dependent()
+                    }),
+                "Explicit controller modes must declare a fixed topology other than an option-dependent device count"
             );
             ensure!(
                 profile.frontend_ports.is_none() || profile.retroarch_launch.is_some(),
@@ -1585,6 +1598,19 @@ impl Catalog {
                     "launch contract requires platform aliases and 1-16 player ports"
                 );
                 if let Some(topology) = &launch.player_topology {
+                    // `max_players` is the widest mode this contract can
+                    // reach; the entries below describe every value the option
+                    // may take. An automatic contract additionally has to seed
+                    // a port count on its own, because the launcher resolves it
+                    // before it can read the user's effective options, so its
+                    // declared default must be a mode that exists. A profile
+                    // whose default is narrower than the maximum but still
+                    // valid (SameBoy's `Auto`) is fine: `topology_snapshot`
+                    // widens it from the options file once the contract is
+                    // chosen. What would fail closed is a default the option
+                    // cannot produce, or an automatic contract whose maximum
+                    // is unreachable from every listed value.
+                    let seeded_default = topology.values.get(&topology.default).copied();
                     ensure!(
                         valid_id(&topology.option)
                             && profile.retroarch_library.is_some()
@@ -1595,7 +1621,8 @@ impl Catalog {
                                 !value.is_empty()
                                     && !value.chars().any(|c| c.is_control() || "\"\\".contains(c))
                                     && (1..=launch.max_players).contains(ports)
-                            }),
+                            })
+                            && seeded_default.is_some(),
                         "invalid option-dependent controller topology"
                     );
                 }

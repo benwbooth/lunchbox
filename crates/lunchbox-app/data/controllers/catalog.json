@@ -35230,7 +35230,7 @@
       "status": "documented",
       "source": "https://github.com/inolen/redream/blob/ffb7302245ff40515cb9f0f0b0e233a4b39342d3/src/host/retro_host.c#L29-L131",
       "retroarch_library": "redream",
-      "explicit_selection": true,
+      "explicit_selection": false,
       "content_extensions": [
         "cdi",
         "chd",
@@ -36781,7 +36781,7 @@
       "status": "documented",
       "source": "https://github.com/libretro/jollycv/blob/eb14292005d51e2bef954cb75145981037ee9988/libretro/libretro.c#L216-L293",
       "retroarch_library": "JollyCV",
-      "explicit_selection": true,
+      "explicit_selection": false,
       "content_extensions": [
         "col"
       ],
@@ -36890,7 +36890,7 @@
       "status": "documented",
       "source": "https://github.com/libretro/FreeChaF/blob/76c7a84f1f7e80f3e6f2bba96fe100cb24e99124/src/libretro.c#L292-L390",
       "retroarch_library": "FreeChaF",
-      "explicit_selection": true,
+      "explicit_selection": false,
       "content_extensions": [
         "bin",
         "rom",
@@ -36934,7 +36934,7 @@
       "status": "documented",
       "source": "https://github.com/drhelius/Gearcoleco/blob/ec93e2e1e4364d6b0320cee0dcd53dc2abcf732e/platforms/libretro/libretro.cpp#L574-L624",
       "retroarch_library": "Gearcoleco",
-      "explicit_selection": true,
+      "explicit_selection": false,
       "content_extensions": [
         "col",
         "cv",
@@ -37831,7 +37831,7 @@
       "status": "documented",
       "source": "https://github.com/JesseTG/melonds-ds/blob/bc4e4b67d2d470d7c682810a1e892cafd6f9082b/src/libretro/input/joypad.cpp#L64-L151",
       "retroarch_library": "melonDS DS",
-      "explicit_selection": true,
+      "explicit_selection": false,
       "content_extensions": [
         "nds",
         "ids"
@@ -37951,7 +37951,7 @@
       "status": "documented",
       "source": "https://github.com/libretro/desmume/blob/8f6b32cb9a5e310bd38520e7087ce7fa14765f15/desmume/src/frontend/libretro/libretro.cpp#L1670-L2015",
       "retroarch_library": "DeSmuME",
-      "explicit_selection": true,
+      "explicit_selection": false,
       "content_extensions": [
         "nds",
         "ids",
@@ -39309,7 +39309,8 @@
         "r": "RightBumper",
         "start": "Start",
         "select": "Select"
-      }
+      },
+      "explicit_selection": false
     },
     {
       "id": "retroarch:mednafen_supergrafx:pce2",
@@ -39365,7 +39366,8 @@
         "b": "South",
         "start": "Start",
         "select": "Select"
-      }
+      },
+      "explicit_selection": false
     },
     {
       "id": "retroarch:wasm4:gamepads",
@@ -39623,7 +39625,7 @@
         "max_players": 1
       },
       "frontend_ports": 2,
-      "explicit_selection": true,
+      "explicit_selection": false,
       "content_extensions": [
         "gg"
       ],
@@ -39830,7 +39832,7 @@
         "start": "Start",
         "select": "Select"
       },
-      "explicit_selection": true,
+      "explicit_selection": false,
       "frontend_ports": 4,
       "content_extensions": [
         "nes",
@@ -41083,7 +41085,8 @@
         "select": "Select",
         "a": "East",
         "b": "South"
-      }
+      },
+      "explicit_selection": false
     },
     {
       "id": "retroarch:sameboy:gameboy-subclass",
@@ -41141,7 +41144,8 @@
         "select": "Select",
         "a": "East",
         "b": "South"
-      }
+      },
+      "explicit_selection": false
     },
     {
       "id": "mgba:standalone-gba",

@@ -397,6 +397,176 @@ mod tests {
         assert!(Scope::from_label("Gopher64", "Nintendo 64").is_ok());
     }
 
+    /// The promise this whole module exists to keep: if a core has a fixed
+    /// device mode, the launch path must be able to pick one without the user
+    /// choosing a mode first. A core whose every fixed-topology profile
+    /// demands explicit selection fails closed with "No automatic controller
+    /// contract", which is what produced "Could not launch this game:
+    /// applying calibrated controller mappings" for RetroArch · Nestopia UE.
+    ///
+    /// Option-resolved cores (their device count follows a core option) are
+    /// not gaps: the launcher seeds the contract and then widens the port
+    /// count from the user's own effective options. They are asserted to stay
+    /// automatic here, so nobody can quiet this test by flipping one to
+    /// explicit.
+    #[test]
+    fn every_core_with_a_fixed_topology_has_an_automatic_contract() {
+        use std::collections::{BTreeMap, BTreeSet};
+        // Cores whose device count follows a core option. They must remain
+        // automatic: their profile is the one the launcher seeds before it
+        // resolves the option value.
+        const OPTION_DRIVEN_CORES: &[(&str, &str)] = &[
+            ("opera", "opera_active_devices selects 1-8 pads"),
+            ("sameboy", "sameboy_model selects 1 or 4 pads (SGB)"),
+            ("mednafen_supergrafx", "sgx_multitap selects 1 or 5 pads"),
+        ];
+        // Cores that cannot be automatic until their catalog data changes,
+        // each with the reason the validator or launcher would reject them.
+        // These are *modes*, not gaps: the user picks one deliberately and the
+        // mapping dialog lists them.
+        const KNOWN_EXPLICIT_ONLY_CORES: &[(&str, &str)] = &[
+            ("81", "only keyboard cursor/QAOP profiles exist"),
+            ("atari800", "machine-specific memory models are the mode"),
+            ("b2", "keyboard mapping variants only"),
+            ("bk", "BK model guard needs an explicit machine"),
+            ("bluemsx", "machine profile is the mode"),
+            ("cap32", "keyboard/joystick scheme is the mode"),
+            ("citra", "new3ds vs 3ds hardware profile"),
+            ("crocods", "single keyboard-plus-joystick profile"),
+            ("dolphin", "fixed mixed-trigger topology declared explicit"),
+            ("dosbox_pure", "device-direct modes are the choice"),
+            ("emuscv", "profile declares per-port devices"),
+            ("ep128emu-core", "machine adapter is the mode"),
+            ("fmsx", "machine profile is the mode"),
+            (
+                "freeintv",
+                "needs a fresh start before device type is fixed",
+            ),
+            ("freej2me", "phone keypad layouts are the choice"),
+            ("fuse", "joystick interface is the mode"),
+            (
+                "geolith",
+                "cartridge guard requires an explicit AES/MVS mode",
+            ),
+            ("gw", "single Game & Watch profile"),
+            ("hatari", "ST joystick interface is the mode"),
+            ("minivmac", "mouse emulation style is the mode"),
+            ("mu", "stylus/stick choice"),
+            ("np2kai", "machine and mouse handling are the choice"),
+            ("o2em", "console/videopac variant is the mode"),
+            (
+                "panda3ds",
+                "needs a fresh start before device type is fixed",
+            ),
+            ("pcsx2", "needs a fresh start before device type is fixed"),
+            ("puae", "machine model is the mode"),
+            ("px68k", "machine and joystick scheme are the choice"),
+            ("quasi88", "machine model is the mode"),
+            ("same_cdi", "pointer mode must be chosen deliberately"),
+            (
+                "scummvm",
+                "single RetroPad-to-cursor contract declared explicit",
+            ),
+            ("simcp", "patched one/two player interface is the mode"),
+            ("skyemu", "GBA vs GB profile"),
+            ("steemsse", "embedded ROM joystick mode"),
+            ("stella", "detected-joystick variants"),
+            ("vice_x128", "joystick port is the mode"),
+            ("vice_x64", "joystick port is the mode"),
+            ("vice_x64sc", "joystick port is the mode"),
+            ("vice_xpet", "virtual keyboard profile"),
+            ("vice_xplus4", "joystick port is the mode"),
+            ("vice_xvic", "single keyboard-profile joystick port"),
+            ("virtual_jaguar", "full keypad layout declared explicit"),
+        ];
+        let option_driven: BTreeSet<&str> =
+            OPTION_DRIVEN_CORES.iter().map(|(core, _)| *core).collect();
+        let known: BTreeSet<&str> = KNOWN_EXPLICIT_ONLY_CORES
+            .iter()
+            .map(|(core, _)| *core)
+            .collect();
+        let catalog = catalog();
+        let mut automatic: BTreeMap<&str, Vec<&EmulatorProfile>> = BTreeMap::new();
+        let mut everything: BTreeMap<&str, Vec<&EmulatorProfile>> = BTreeMap::new();
+        for profile in catalog
+            .emulator_profiles
+            .iter()
+            .filter(|profile| profile.retroarch_launch.is_some())
+        {
+            everything
+                .entry(profile.core.as_str())
+                .or_default()
+                .push(profile);
+            if !profile.explicit_selection {
+                automatic
+                    .entry(profile.core.as_str())
+                    .or_default()
+                    .push(profile);
+            }
+        }
+        let mut unexplained = Vec::new();
+        for (core, profiles) in &everything {
+            let fixed_topology: Vec<&&EmulatorProfile> = profiles
+                .iter()
+                .filter(|profile| {
+                    profile
+                        .retroarch_launch
+                        .as_ref()
+                        .is_some_and(|launch| launch.player_topology.is_none())
+                })
+                .collect();
+            let Some(auto) = automatic.get(core) else {
+                if !known.contains(core) {
+                    unexplained.push(format!(
+                        "{core} has {} fixed-topology profile(s) but no automatic contract",
+                        fixed_topology.len()
+                    ));
+                }
+                continue;
+            };
+            // An option-driven core must stay automatic: its profile is what
+            // the launcher seeds before resolving the option value.
+            if option_driven.contains(core) {
+                assert!(
+                    profiles.iter().any(|profile| profile
+                        .retroarch_launch
+                        .as_ref()
+                        .is_some_and(|launch| launch.player_topology.is_some())),
+                    "{core} is listed as option-driven but declares no player topology"
+                );
+            }
+            // An automatic entry must really be defaultable.
+            for profile in auto {
+                let launch = profile.retroarch_launch.as_ref().unwrap();
+                assert!(
+                    profile.content_guard.is_none(),
+                    "{} is automatic but guards content",
+                    profile.id
+                );
+                assert!(
+                    profile.port_devices.is_empty() && profile.port_layouts.is_empty(),
+                    "{} is automatic but overrides per-port topology",
+                    profile.id
+                );
+            }
+        }
+        assert!(
+            unexplained.is_empty(),
+            "cores that would fail a launch with \"No automatic controller contract\":\n  {}",
+            unexplained.join("\n  ")
+        );
+        // Every listed exception must still exist, so stale entries are caught.
+        for (core, _) in KNOWN_EXPLICIT_ONLY_CORES
+            .iter()
+            .chain(OPTION_DRIVEN_CORES.iter())
+        {
+            assert!(
+                everything.contains_key(core),
+                "listed exception {core} has no profiles any more"
+            );
+        }
+    }
+
     /// Prints every native profile's core so the checked-in catalog can be
     /// audited against the emulator display names this UI receives. Run
     /// explicitly with `cargo test -- --ignored --nocapture`.
