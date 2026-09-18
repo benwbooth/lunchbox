@@ -262,4 +262,16 @@ impl PreparedSession {
     pub(crate) fn check_health(&self) -> Result<()> {
         self.topology.verify()
     }
+
+    /// Uncertainty note for the launch banner. Mesen2's own enumeration order
+    /// is not observable, so a non-zero slot is our best reading of
+    /// `/dev/input` order; the user should know when it applies.
+    pub(crate) fn slot_note(&self) -> Option<String> {
+        (self.slot != 0).then(|| {
+            format!(
+                "Mesen2 pad slot {} (gamepads register in /dev/input order; unplug other gamepads if input does not respond)",
+                self.slot
+            )
+        })
+    }
 }

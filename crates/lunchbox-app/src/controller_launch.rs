@@ -6918,6 +6918,18 @@ pub fn prepare_with_cancellation(
                 cancel,
             )?;
             *plan = native.plan.clone();
+            let mut description = format!(
+                "Mesen2: calibrated {} controller through a private XDG_DATA_HOME settings.json using the evdev-keyed KeyMapping codes; partial Linux support; Zapper, Power Pad, Four Score and other systems' controllers are not covered",
+                if setup.system == crate::controller_mesen2_native::SYSTEM_PCE {
+                    "PC Engine/TurboGrafx"
+                } else {
+                    "NES"
+                }
+            );
+            if let Some(note) = native.inputs.slot_note() {
+                description.push_str(" · ");
+                description.push_str(&note);
+            }
             return Ok(Some(CalibratedLaunch {
                 mgba: None,
                 #[cfg(target_os = "linux")]
@@ -6964,8 +6976,7 @@ pub fn prepare_with_cancellation(
                 puae: None,
                 #[cfg(target_os = "linux")]
                 stella: None,
-                description: "Mesen2: calibrated NES controller through a private XDG_DATA_HOME settings.json using the evdev-keyed KeyMapping codes; the selected controller must be the sole qualifying gamepad; partial Linux support; Zapper, Power Pad, Four Score and non-NES systems not covered"
-                    .into(),
+                description,
             }));
         }
     }
