@@ -17,6 +17,20 @@ nix develop
 cargo run -p lunchbox-app -- --database build/lunchbox.db
 ```
 
+For UI iteration, use the watch loop. It rebuilds on Rust, QML and
+controller-data changes and restarts the app, so a change does not wait on a
+release build or on CI:
+
+```console
+nix develop
+lunchbox-dev
+```
+
+The first debug link takes a few minutes and the app presents in roughly
+fifteen seconds afterward; later one-file Rust rebuilds take about
+twenty-five seconds. QML edits regenerate the CXX-Qt module and take a couple
+of minutes.
+
 Normal startup prepares the window while hidden, then reveals the restored
 library view once the full catalog, saved filters, selection, scroll position,
 layout, and visible cached/indexed artwork decoding have settled. Network artwork

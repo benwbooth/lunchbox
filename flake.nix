@@ -197,6 +197,7 @@
             rustc
             rustfmt
             sqlite
+            watchexec
           ]) ++ qtModules
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             dwarfs
@@ -218,6 +219,20 @@
             ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
               export RUSTFLAGS="''${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"
             ''}
+            # Incremental dev loop: rebuild the app on Rust/QML/data changes and
+            # restart it, instead of waiting on a release build or CI. The first
+            # debug link takes a few minutes; later one-file rebuilds are around
+            # twenty seconds.
+            lunchbox-dev() {
+              watchexec --restart --shell=none \
+                --watch crates/lunchbox-app/src \
+                --watch crates/lunchbox-app/qml \
+                --watch crates/lunchbox-app/data \
+                --watch crates/lunchbox-controller-probe/src \
+                --exts rs,qml,json \
+                -- cargo run -p lunchbox-app --bin lunchbox
+            }
+            export -f lunchbox-dev 2>/dev/null || true
           '';
         };
 
