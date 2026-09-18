@@ -1362,6 +1362,14 @@ pub fn supports_profile(profile: &EmulatorProfile) -> bool {
                     | crate::retroarch_frontend_autoconfig::NESTOPIA_NES_FOUR_PLAYER_PROFILE
             ))
         || profile.transport == "ares-settings"
+        // The DOSBox mapper is generated from the measured controller and the
+        // Linux joystick numbering, so the calibrated launch adapter is
+        // available on Linux.
+        || (cfg!(target_os = "linux")
+            && matches!(
+                profile.transport.as_str(),
+                "dosbox-x-native-settings" | "dosbox-staging-native-settings"
+            ))
 }
 
 pub fn selection_key(core: &str, platform: &str) -> String {
@@ -10308,6 +10316,117 @@ pub fn prepare_with_cancellation(
             ..Default::default()
         }));
     }
+    #[cfg(target_os = "linux")]
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && (option.emulator_name.eq_ignore_ascii_case("DOSBox-X")
+            || option.emulator_name.eq_ignore_ascii_case("DOSBox Staging"))
+    {
+        let profile = match crate::controller_target::selected(
+            &settings.controller_mapping,
+            option,
+            platform,
+        )? {
+            Some(profile) => Some(profile),
+            // DOSBox has a single unambiguous mapper profile per core, and its
+            // own default already maps the first pad. Fall back to that profile
+            // so enabling calibrated launch never blocks a DOS launch before
+            // the guided target has been saved.
+            None => {
+                let scope = crate::controller_target::Scope::for_option(option, platform)?;
+                catalog().emulator_profiles.iter().find(|candidate| {
+                    candidate.core == scope.core
+                        && matches!(
+                            candidate.transport.as_str(),
+                            "dosbox-x-native-settings" | "dosbox-staging-native-settings"
+                        )
+                        && candidate.native_launch.as_ref().is_some_and(|native| {
+                            native
+                                .platforms
+                                .iter()
+                                .any(|value| value.eq_ignore_ascii_case(platform))
+                        })
+                })
+            }
+        };
+        if let Some(profile) = profile
+            && matches!(
+                profile.transport.as_str(),
+                "dosbox-x-native-settings" | "dosbox-staging-native-settings"
+            )
+        {
+            let max_players = profile
+                .native_launch
+                .as_ref()
+                .context("Missing DOSBox player limit")?
+                .max_players;
+            ensure!(
+                devices.len() <= max_players,
+                "DOSBox supports up to {max_players} emulated joysticks"
+            );
+            let mut events = Vec::new();
+            for (index, device) in devices.iter().enumerate() {
+                let calibration = settings
+                    .controller_mapping
+                    .calibrations
+                    .get(&device.stable_id)
+                    .context("Finish calibrating this controller for DOSBox")?;
+                let numbering = JoydevMap::read(&device.device_path)?;
+                events.extend(crate::controller_dosbox_native::player_events(
+                    index,
+                    profile,
+                    calibration,
+                    &numbering,
+                )?);
+            }
+            // A mapper file replaces DOSBox's built-in binds, so start from the
+            // complete mapper the install already provides when it exists and
+            // fall back to the shipped default baseline. Only the emulated
+            // joystick events are replaced; the guest keyboard stays mapped.
+            let baseline =
+                std::fs::read(plan.current_directory.join("mapper.map")).unwrap_or_else(|_| {
+                    crate::controller_dosbox_native::DEFAULT_MAPPER
+                        .as_bytes()
+                        .to_vec()
+                });
+            let mapper =
+                crate::controller_dosbox_native::mapper(&profile.core, &baseline, &events)?;
+            let cache = directories::BaseDirs::new()
+                .context("Finding controller launch cache")?
+                .cache_dir()
+                .join("lunchbox/controller-launch");
+            std::fs::create_dir_all(&cache)?;
+            let directory = tempfile::Builder::new()
+                .prefix("dosbox-")
+                .tempdir_in(&cache)?;
+            let mapper_path = directory.path().join("mapper.map");
+            std::fs::write(&mapper_path, mapper)?;
+            if profile.core == "dosbox-staging" {
+                plan.arguments.push(OsString::from("--set"));
+                plan.arguments.push(OsString::from(format!(
+                    "mapperfile={}",
+                    mapper_path.display()
+                )));
+            } else {
+                for key in ["sdl mapperfile_sdl2", "sdl mapperfile"] {
+                    plan.arguments.push(OsString::from("-set"));
+                    plan.arguments
+                        .push(OsString::from(format!("{key}={}", mapper_path.display())));
+                }
+            }
+            plan.environment.push((
+                OsString::from("SDL_LINUX_JOYSTICK_CLASSIC"),
+                OsString::from("1"),
+            ));
+            return Ok(Some(CalibratedLaunch {
+                _directory: Some(directory.into()),
+                description: format!(
+                    "DOSBox: bound {} calibrated player(s) to the emulated PC joystick through a private mapper; keyboard defaults preserved",
+                    devices.len()
+                ),
+                ..Default::default()
+            }));
+        }
+    }
     ensure!(
         option.runtime_kind == EmulatorRuntimeKind::RetroArch,
         "Calibrated launch adapter for {} is not implemented yet. Disable Apply saved calibrations to keep its native setup.",
@@ -12149,6 +12268,76 @@ mod tests {
             .join()
             .unwrap();
     }
+
+    #[test]
+    #[ignore = "scratch diagnostic; needs local settings, controller hardware and the eXoDOS install"]
+    fn scratch_live_dosbox_x_mapper() {
+        std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(|| {
+                use crate::emulator::{EmulatorExecutable, LaunchPlan, RomEmulatorOption};
+                use std::sync::atomic::AtomicBool;
+                let install_root = std::path::PathBuf::from(
+                    "/mnt/roms/.lunchbox-pc-cache/installs/exodos/8c843d31-9f82-4823-83b5-fd4fb6380e32/3c4f4860c780685cd7fe",
+                );
+                let conf = install_root.join("eXoDOS/!dos/JazzCD/dosbox_linux.conf");
+                let executable = std::path::PathBuf::from(
+                    "/nix/store/wxaa67qwc0xbn2dp0z51iar56l7wkfvi-dosbox-x-2026.05.02/bin/dosbox-x",
+                );
+                if !conf.is_file() || !executable.is_file() {
+                    println!("SKIPPED live DOSBox-X mapper: missing content or executable");
+                    return;
+                }
+                let settings = crate::settings::SettingsStore::open_default()
+                    .unwrap()
+                    .load()
+                    .unwrap();
+                println!(
+                    "SETTINGS calibrated_launch={} explicit_players={}",
+                    settings.controller_mapping.calibrated_launch,
+                    settings.controller_mapping.explicit_player_selection
+                );
+                let option = RomEmulatorOption::standalone(
+                    "dosbox-x-id".into(),
+                    "DOSBox-X".into(),
+                    EmulatorExecutable::Native(executable.clone()),
+                );
+                let mut plan = LaunchPlan {
+                    emulator_name: "DOSBox-X".into(),
+                    program: executable,
+                    arguments: vec!["-conf".into(), conf.into_os_string()],
+                    current_directory: install_root,
+                    environment: Vec::new(),
+                    cleanup_paths: Vec::new(),
+                    retroarch_content: None,
+                };
+                match super::prepare_with_cancellation(
+                    &settings,
+                    "MS-DOS",
+                    &option,
+                    &mut plan,
+                    &AtomicBool::new(false),
+                ) {
+                    Ok(session) => {
+                        let args = plan
+                            .arguments
+                            .iter()
+                            .map(|a| a.to_string_lossy().into_owned())
+                            .collect::<Vec<_>>();
+                        println!("DOSBOX-SESSION {}", session.is_some());
+                        println!("DOSBOX-ARGS {args:?}");
+                        if let Some(session) = session {
+                            println!("DOSBOX-DESC {}", session.description);
+                        }
+                        assert!(args.iter().any(|a| a.contains("mapperfile_sdl2=")));
+                    }
+                    Err(error) => println!("DOSBOX-ERR: {error:#}"),
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
     use super::*;
     use crate::controller_catalog::InputBinding;
 
@@ -13199,6 +13388,11 @@ mod tests {
                                 | crate::retroarch_frontend_autoconfig::NESTOPIA_NES_FOUR_PLAYER_PROFILE
                         ))
                     || profile.transport == "ares-settings"
+                    || (cfg!(target_os = "linux")
+                        && matches!(
+                            profile.transport.as_str(),
+                            "dosbox-x-native-settings" | "dosbox-staging-native-settings"
+                        ))
             );
             if let Some(launch) = &profile.retroarch_launch {
                 // Explicit-selection profiles are deliberately unreachable as a

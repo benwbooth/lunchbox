@@ -19,6 +19,19 @@ terms of its provider; the code license does not replace those terms.
   This is linked code only: no MAME ROM, BIOS or other provider data is
   redistributed with it.
 
+- **DOSBox default controller mapper (derived runtime data)** — the baseline at
+  `crates/lunchbox-app/data/controllers/dosbox-default-mapper.map` is generated
+  from the pinned DOSBox-X `CreateDefaultBinds`/`DefaultKeys` tables
+  (`src/gui/mapper.cpp`, commit
+  `532909c4e84160a5ac2185fbf9c4c97dbe07f85d`) together with SDL's public
+  scancode values (`include/SDL_scancode.h`, zlib license). It contains only
+  functional keyboard/joystick event names and numeric scancodes; no game,
+  firmware or provider data. DOSBox-X is GPL-2.0-or-later
+  (<https://github.com/joncampbell123/dosbox-x>); the derived table is used to
+  preserve the emulator's own default keyboard bindings when Lunchbox patches
+  only the emulated joystick events. DOSBox Staging shares the same mapper
+  grammar (<https://github.com/dosbox-staging/dosbox-staging>).
+
 - **Lunchbox emulator catalog** — maintained in this repository and distributed under MIT.
 - **Libretro Database** — distributed under CC BY-SA 4.0. The exact upstream revision, source URL,
   archive SHA-256, and license are recorded in `sources/libretro.json` and in every generated

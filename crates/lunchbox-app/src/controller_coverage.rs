@@ -86,6 +86,8 @@ const NATIVE_ADAPTERS: &[&str] = &[
     "Hypseus Singe",
     "Kronos",
     "Yaba Sanshiro 2",
+    "DOSBox-X",
+    "DOSBox Staging",
 ];
 
 pub fn report(selections: &HashMap<String, String>) -> Result<Value> {

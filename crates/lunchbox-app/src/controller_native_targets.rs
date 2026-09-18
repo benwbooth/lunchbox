@@ -83,6 +83,43 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
     )
     .collect();
     db.layouts.push(caprice32);
+    let mut dosbox = db
+        .layout("caprice32-cpc")
+        .context("Missing two-button stick reference layout")?
+        .clone();
+    dosbox.id = "dosbox-joystick".into();
+    dosbox.name = "MS-DOS — standard PC joystick".into();
+    dosbox.family = "two-button".into();
+    dosbox.source =
+        "https://github.com/joncampbell123/dosbox-x/blob/532909c4e84160a5ac2185fbf9c4c97dbe07f85d/src/gui/mapper.cpp"
+            .into();
+    dosbox.notes = "The standard emulated PC joystick (X/Y axes, buttons 1-4). DOSBox's own default mapper binds the first physical stick to this device; this target rebinds the measured controller to the selected emulated joystick. Games that read the keyboard or mouse only are not redirected.".into();
+    dosbox.controls = [
+        ("up", "Up", 30.0, 30.0, "dpad", true),
+        ("down", "Down", 30.0, 70.0, "dpad", true),
+        ("left", "Left", 10.0, 50.0, "dpad", true),
+        ("right", "Right", 50.0, 50.0, "dpad", true),
+        ("a", "Button 1", 70.0, 60.0, "face", true),
+        ("b", "Button 2", 80.0, 45.0, "face", true),
+        ("x", "Button 3", 60.0, 75.0, "face", false),
+        ("y", "Button 4", 90.0, 30.0, "face", false),
+    ]
+    .into_iter()
+    .map(
+        |(id, label, x, y, group, required)| crate::controller_catalog::Control {
+            id: id.into(),
+            label: label.into(),
+            x,
+            y,
+            group: group.into(),
+            optional: !required,
+            analog: false,
+            pressure: false,
+            repeat_of: None,
+        },
+    )
+    .collect();
+    db.layouts.push(dosbox);
     let mut vita3k = db
         .layout("vita")
         .context("Missing Vita reference layout")?
@@ -1547,6 +1584,20 @@ pub(crate) fn add_profiles(db: &mut Catalog) -> Result<()> {
             vec!["Sony Playstation 2"],
             "https://github.com/jpd002/Play-/tree/83700b2c31e593bc94e845b4b31b797be84dda59",
         ),
+        (
+            "dosbox-x",
+            "dosbox-joystick",
+            2,
+            vec!["MS-DOS", "Windows", "Windows 3.X", "NEC PC-9801"],
+            "https://github.com/joncampbell123/dosbox-x/blob/532909c4e84160a5ac2185fbf9c4c97dbe07f85d/src/gui/mapper.cpp",
+        ),
+        (
+            "dosbox-staging",
+            "dosbox-joystick",
+            2,
+            vec!["MS-DOS", "Windows 3.X"],
+            "https://github.com/dosbox-staging/dosbox-staging/blob/d9135010ea56c2faa0bb8062aaf30a8541bf22f3/src/gui/mapper.cpp",
+        ),
     ] {
         add(db, core, layout, players, &platforms, source)?;
     }
@@ -2129,6 +2180,12 @@ fn routes(core: &str, layout: &str) -> Option<BTreeMap<String, String>> {
             .iter()
             .copied()
             .collect::<BTreeMap<&str, &str>>(),
+        ("dosbox-x" | "dosbox-staging", "dosbox-joystick") => {
+            crate::controller_dosbox_native::ROUTES
+                .iter()
+                .copied()
+                .collect::<BTreeMap<&str, &str>>()
+        }
         _ => return None,
     };
     Some(

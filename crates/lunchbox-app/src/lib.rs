@@ -47,6 +47,7 @@ mod controller_denise_native;
 mod controller_desmume_native;
 mod controller_devector_standalone;
 mod controller_dolphin;
+mod controller_dosbox_native;
 mod controller_dosbox_staging_native;
 mod controller_dosbox_x_native;
 mod controller_dreamm_standalone;

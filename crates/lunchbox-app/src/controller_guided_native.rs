@@ -189,6 +189,15 @@ pub(crate) fn settings_for_launch<'a>(
     if profile.transport == "ares-settings" {
         return Ok(Cow::Borrowed(settings));
     }
+    // DOSBox-X and DOSBox Staging consume the measured controller directly at
+    // launch: the private mapper is generated from the calibration and the
+    // running joystick numbering, so there is no per-content saved runtime.
+    if matches!(
+        profile.transport.as_str(),
+        "dosbox-x-native-settings" | "dosbox-staging-native-settings"
+    ) {
+        return Ok(Cow::Borrowed(settings));
+    }
     if !supports(profile) {
         anyhow::bail!(
             "{} still needs its native setup connected to guided target selection. The saved target was not applied; no game was started.",

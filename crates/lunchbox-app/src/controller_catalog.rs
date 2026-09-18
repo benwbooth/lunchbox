@@ -1433,6 +1433,8 @@ impl Catalog {
                             | "bizhawk-native-settings"
                             | "yaba-sanshiro-native-settings"
                             | "kronos-native-settings"
+                            | "dosbox-x-native-settings"
+                            | "dosbox-staging-native-settings"
                     ),
                 "unsupported profile contract"
             );
@@ -1768,7 +1770,9 @@ impl Catalog {
                         | "rmg-native-settings"
                         | "simple64-native-settings"
                         | "yaba-sanshiro-native-settings"
-                        | "kronos-native-settings" => {
+                        | "kronos-native-settings"
+                        | "dosbox-x-native-settings"
+                        | "dosbox-staging-native-settings" => {
                             crate::controller_native_targets::valid_output(profile, target, output)
                         }
                         "retropad" => {
@@ -2134,6 +2138,11 @@ impl Calibration {
             "ares 148+: saved player assignments and button choices are applied to a private settings file. The emulator's SDL device identities are checked at launch."
         } else if profile.transport == "mgba-settings" {
             "Native mGBA SDL discovers runtime paths at launch and applies guided Player 1. An existing config.ini and physical calibration are required; this plan does not establish runtime readiness."
+        } else if matches!(
+            profile.transport.as_str(),
+            "dosbox-x-native-settings" | "dosbox-staging-native-settings"
+        ) {
+            "DOSBox binds the measured controller to the emulated PC joystick through a private mapper and preserves the emulator's keyboard defaults. The preview does not establish runtime readiness; games that read the keyboard or mouse only are not redirected."
         } else if crate::controller_guided_native::supports(profile) {
             "Guided players and target choices are connected to this native adapter. A matching native runtime setup and physical calibration are still required; the preview does not establish runtime readiness."
         } else if frontend_autoconfig {

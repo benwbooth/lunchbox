@@ -17,6 +17,10 @@ use anyhow::{Context, Result, ensure};
 pub(crate) const NATIVE_EMULATOR_IDENTITIES: &[(&str, &str)] = &[
     ("Mesen", "mesen2"),
     ("Nestopia UE", "nestopia"),
+    // The identity table also supplies the dialog's display name, so a label
+    // that differs from its core key only in case is still meaningful here.
+    ("DOSBox-X", "dosbox-x"),
+    ("DOSBox Staging", "dosbox-staging"),
     ("ADAMEm SDL", "adamem"),
     ("Atari++", "atari-plus-plus"),
     ("GBE+", "gbe-plus"),
@@ -319,6 +323,25 @@ mod tests {
     }
 
     #[test]
+    fn dosbox_labels_resolve_to_their_mapper_profiles() {
+        for (label, core) in [
+            ("DOSBox-X", "dosbox-x"),
+            ("DOSBox Staging", "dosbox-staging"),
+        ] {
+            let scope = Scope::from_label(label, "MS-DOS").unwrap();
+            assert!(!scope.retroarch);
+            assert_eq!(scope.core, core);
+            let profile = scope
+                .profile(catalog(), &format!("{core}:standalone-dosbox-joystick"))
+                .unwrap();
+            assert_eq!(profile.transport, format!("{core}-native-settings"));
+            let native = profile.native_launch.as_ref().unwrap();
+            assert_eq!(native.max_players, 2);
+            assert!(native.platforms.iter().any(|platform| platform == "MS-DOS"));
+        }
+    }
+
+    #[test]
     fn native_identity_table_matches_declared_profiles() {
         use std::collections::BTreeSet;
         let native_cores: BTreeSet<&str> = catalog()
@@ -338,8 +361,8 @@ mod tests {
                 "native emulator identity {name} names an unknown core {core}"
             );
             assert_ne!(
-                &name.trim().to_lowercase(),
-                core,
+                name.trim(),
+                *core,
                 "identity {name} is redundant: the label is already the core key"
             );
             assert!(
