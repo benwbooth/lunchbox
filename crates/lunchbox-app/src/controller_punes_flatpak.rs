@@ -6,6 +6,8 @@
 
 pub(crate) mod configuration;
 mod flatpak;
+#[cfg(target_os = "linux")]
+pub(crate) mod guided;
 mod isolation;
 mod session;
 pub(crate) mod settings;

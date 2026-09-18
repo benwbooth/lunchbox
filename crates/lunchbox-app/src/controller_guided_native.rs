@@ -1420,6 +1420,14 @@ pub(crate) fn settings_for_launch<'a>(
         #[cfg(target_os = "linux")]
         "punes" => {
             found += apply_punes_players(mapping, &option.emulator_id, plan, &ids)?;
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written entry (nestopia precedent).
+            if found == 0 {
+                mapping.punes_flatpak_launches.push(
+                    crate::controller_punes_flatpak::guided::discover(option, plan, &ids, cancel)?,
+                );
+                found += 1;
+            }
         }
         "fceux" => {
             for setup in &mut mapping.fceux_launches {

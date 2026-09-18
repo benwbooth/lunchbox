@@ -11723,6 +11723,79 @@ mod tests {
     /// + TurboGrafx-CD through the operator's real settings. Prints each
     /// stage (target scope, profile, players, setup, prepare) with the exact
     /// error. Run explicitly with `cargo test -- --ignored`.
+    /// Scratch reproduction for the puNES first-launch path: NES content
+    /// through the operator's real settings and the installed puNES Flatpak.
+    #[test]
+    #[ignore = "scratch reproduction; needs local settings, the puNES Flatpak and an NES ROM"]
+    fn scratch_punes_nes() {
+        std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(|| {
+                use crate::emulator::{EmulatorExecutable, RomEmulatorOption};
+                use std::sync::atomic::AtomicBool;
+                let flatpak = ["/run/current-system/sw/bin/flatpak", "/usr/bin/flatpak"]
+                    .into_iter()
+                    .map(std::path::PathBuf::from)
+                    .find(|path| path.is_file())
+                    .expect("needs a host flatpak CLI");
+                let rom = "/mnt/roms/Nintendo Entertainment System/Faxanadu (USA) (Rev 1).zip";
+                if !std::path::Path::new(rom).is_file() {
+                    println!("SKIP: no local NES ROM");
+                    return;
+                }
+                let store = crate::settings::SettingsStore::open_default().unwrap();
+                let settings = store.load().unwrap();
+                let platform = "Nintendo Entertainment System";
+                let option = RomEmulatorOption::standalone(
+                    "punes-id".into(),
+                    "puNES".into(),
+                    EmulatorExecutable::Flatpak {
+                        command: flatpak,
+                        app_id: "io.github.punesemu.puNES".into(),
+                    },
+                );
+                let scope = crate::controller_target::Scope::for_option(&option, platform).unwrap();
+                let profiles: Vec<_> = crate::controller_catalog::catalog()
+                    .emulator_profiles
+                    .iter()
+                    .filter(|profile| scope.accepts(profile))
+                    .map(|profile| profile.id.clone())
+                    .collect();
+                println!("SCOPE retroarch={} core={}", scope.retroarch, scope.core);
+                println!("PROFILES {profiles:?}");
+                let customization = store
+                    .resolve_launch_customization("", platform, "punes-id", "standalone", "")
+                    .unwrap();
+                let mut plan = crate::emulator::build_rom_launch_plan_with_customization(
+                    std::path::Path::new(rom),
+                    platform,
+                    &option,
+                    &customization,
+                )
+                .unwrap();
+                let mut cloned = settings.clone();
+                if let Some(first) = profiles.first() {
+                    cloned
+                        .controller_mapping
+                        .guided_target_selections
+                        .insert(scope.key(), first.clone());
+                }
+                match super::prepare_with_cancellation(
+                    &cloned,
+                    platform,
+                    &option,
+                    &mut plan,
+                    &AtomicBool::new(false),
+                ) {
+                    Ok(session) => println!("PREPARE-OK session={}", session.is_some()),
+                    Err(error) => println!("PREPARE-FAIL {error:#}", error = error),
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
     #[test]
     #[ignore = "scratch reproduction; needs local settings, a Mesen2 build and Rondo CHD"]
     fn scratch_mesen_tgcd() {
