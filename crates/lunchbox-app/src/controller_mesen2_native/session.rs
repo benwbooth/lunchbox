@@ -19,8 +19,15 @@ use std::{
 const BTN_GAMEPAD: u16 = 0x130;
 const ABS_X: u16 = 0x00;
 
+/// Every `/dev/input/eventN` node in **readdir order**.
+///
+/// `LinuxKeyManager.cpp CheckForGamepads` iterates
+/// `FolderUtilities::GetFilesInFolder("/dev/input/", …)`, a
+/// `std::filesystem::directory_iterator`: no sorting anywhere. Lexicographic
+/// order is a different sequence on devtmpfs (event10 sorts between event1
+/// and event2), so sorting here would assign the wrong Mesen2 pad slot.
 fn event_nodes() -> Result<Vec<PathBuf>> {
-    let mut nodes: Vec<PathBuf> = std::fs::read_dir("/dev/input")?
+    Ok(std::fs::read_dir("/dev/input")?
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
         .filter(|path| {
@@ -32,9 +39,7 @@ fn event_nodes() -> Result<Vec<PathBuf>> {
                     })
                 })
         })
-        .collect();
-    nodes.sort();
-    Ok(nodes)
+        .collect())
 }
 
 fn catalog(probe: &Path, cancel: &AtomicBool) -> Result<evdev_catalog::EvdevCatalog> {
@@ -53,11 +58,43 @@ fn qualifies(device: &evdev_catalog::EvdevDevice) -> bool {
     device.buttons.contains(&BTN_GAMEPAD) || device.axes.iter().any(|axis| axis.code == ABS_X)
 }
 
-/// The selected node's Mesen2 pad slot: its position among the qualifying
-/// gamepads in `/dev/input` directory order, which is the order
-/// `LinuxKeyManager.cpp CheckForGamepads` registers pads in. Other gamepads
-/// simply occupy the slots before it, so a second controller on the host is
-/// not an error; only a device Mesen2 would never open is.
+/// Mesen2 opens each candidate `O_RDWR | O_NONBLOCK` and drops it when the
+/// open fails, so a node that only its owner can read consumes no pad slot.
+/// The catalog reads devices read-only, so this reproduces the other half of
+/// the acceptance test before counting slots.
+fn mesen_would_open(path: &Path) -> bool {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .is_ok()
+}
+
+/// Slot index of `selected` among the devices Mesen2 would register, given
+/// the catalog's readdir order. Kept separate from the device scan so the
+/// counting rule is testable without devices.
+fn slot_position<'a>(
+    devices: impl IntoIterator<Item = &'a evdev_catalog::EvdevDevice>,
+    selected: &Path,
+    usable: impl Fn(&Path) -> bool,
+) -> Option<u32> {
+    let mut slot = 0u32;
+    for device in devices {
+        if !qualifies(device) || !usable(&device.event) {
+            continue;
+        }
+        if device.event == selected {
+            return Some(slot);
+        }
+        slot += 1;
+    }
+    None
+}
+
+/// The selected node's Mesen2 pad slot: its position among the gamepads
+/// Mesen2 registers in `/dev/input` readdir order. Other gamepads simply
+/// occupy the slots before it, so a second controller on the host is not an
+/// error; only a device Mesen2 would never open is.
 fn qualifying_slot<'a>(
     catalog: &'a evdev_catalog::EvdevCatalog,
     event: &Path,
@@ -67,13 +104,13 @@ fn qualifying_slot<'a>(
         qualifies(selected),
         "Mesen2 only opens gamepads (EV_KEY+BTN_GAMEPAD or EV_ABS+ABS_X); the selected controller is not one"
     );
-    let slot = catalog
-        .devices
-        .iter()
-        .filter(|device| qualifies(device))
-        .position(|device| device.event == selected.event)
+    ensure!(
+        mesen_would_open(event),
+        "Mesen2 opens controllers read-write and cannot open {}; fix its device permissions first",
+        event.display()
+    );
+    let slot = slot_position(catalog.devices.iter(), event, mesen_would_open)
         .context("Mesen2 selected gamepad is missing from its own catalog")?;
-    let slot = u32::try_from(slot).context("Mesen2 pad slot overflow")?;
     ensure!(slot < 20, "Mesen2 addresses twenty pad slots");
     Ok((selected, slot))
 }
@@ -492,6 +529,78 @@ mod tests {
         assert_eq!(
             std::fs::read(private.join("Firmware/syscard3.pce")).unwrap(),
             b"bios"
+        );
+    }
+
+    /// Mesen2 registers pads in readdir order and skips anything it cannot
+    /// open read-write, so slot counting must skip exactly the same devices.
+    #[test]
+    fn slot_position_matches_mesens_registration_rule() {
+        use lunchbox_controller_probe::evdev_catalog::EvdevDevice;
+        let device = |name: &str, gamepad: bool| EvdevDevice {
+            event: std::path::PathBuf::from(format!("/dev/input/{name}")),
+            buttons: if gamepad { vec![0x130] } else { vec![] },
+            axes: if gamepad {
+                vec![]
+            } else {
+                vec![lunchbox_controller_probe::evdev_catalog::AbsAxis {
+                    // ABS_Y only: no ABS_X, so Mesen2's acceptance test
+                    // rejects this node and it holds no slot.
+                    code: 0x01,
+                    info: lunchbox_controller_probe::evdev_catalog::AbsInfo {
+                        value: 0,
+                        minimum: -32768,
+                        maximum: 32767,
+                        fuzz: 16,
+                        flat: 128,
+                        resolution: 0,
+                    },
+                }]
+            },
+            hats: vec![],
+            uniq: String::new(),
+            identity: lunchbox_controller_probe::evdev_catalog::SysfsIdentity {
+                input: std::path::PathBuf::from("/sys/class/input/event0"),
+                bustype: "0003".into(),
+                vendor: "045e".into(),
+                product: "028e".into(),
+                version: "0114".into(),
+                usb_root: None,
+            },
+        };
+        let devices = vec![
+            device("event0", false), // no gamepad buttons and no axes
+            device("event1", true),
+            device("event2", true),
+            device("event3", true),
+        ];
+        let selected = std::path::Path::new("/dev/input/event3");
+        // Every candidate usable: event3 is the third registered pad.
+        assert_eq!(slot_position(devices.iter(), selected, |_| true), Some(2));
+        // event1 is unusable, exactly as an unopenable node is for Mesen2:
+        // event3 shifts down one slot.
+        assert_eq!(
+            slot_position(devices.iter(), selected, |path| path
+                != std::path::Path::new("/dev/input/event1")),
+            Some(1)
+        );
+        // A device Mesen2 would not register is not in the catalog space.
+        assert_eq!(
+            slot_position(
+                devices.iter(),
+                std::path::Path::new("/dev/input/event9"),
+                |_| true
+            ),
+            None
+        );
+        // A non-gamepad node never holds a slot.
+        assert_eq!(
+            slot_position(
+                devices.iter(),
+                std::path::Path::new("/dev/input/event0"),
+                |_| true
+            ),
+            None
         );
     }
 

@@ -11723,6 +11723,49 @@ mod tests {
     /// + TurboGrafx-CD through the operator's real settings. Prints each
     /// stage (target scope, profile, players, setup, prepare) with the exact
     /// error. Run explicitly with `cargo test -- --ignored`.
+    /// Materialize the exact private Mesen2 home this adapter writes, so the
+    /// real emulator can be pointed at it and observed. Leaks the temp dir on
+    /// purpose (scratch diagnostic) and prints its path.
+    #[test]
+    #[ignore = "scratch diagnostic; materializes a Mesen2 private home"]
+    fn scratch_mesen_materialize_home() {
+        use std::sync::atomic::AtomicBool;
+        let store = crate::settings::SettingsStore::open_default().unwrap();
+        let settings = store.load().unwrap();
+        let mut warnings = Vec::new();
+        let inventory = crate::controllers::list_local_controllers(&mut warnings);
+        let player = settings
+            .controller_mapping
+            .player_mappings
+            .first()
+            .and_then(|player| player.controller_id.clone())
+            .expect("no player assigned");
+        let probe = std::env::var_os("LUNCHBOX_CONTROLLER_PROBE")
+            .map(std::path::PathBuf::from)
+            .expect("set LUNCHBOX_CONTROLLER_PROBE");
+        let program =
+            std::path::PathBuf::from("/home/ben/.cache/starfox-hd-tools/mesen-2.2.1/Mesen");
+        let setup = crate::controller_mesen2_native::settings::SavedSetup {
+            emulator_id: "336cbf7b-aa17-5b3a-8142-0a004efac86e".into(),
+            content: std::path::PathBuf::from(
+                "/mnt/roms/NEC TurboGrafx-CD/Akumajou Dracula X - Chi no Rondo (Japan).chd",
+            ),
+            controller_id: player,
+            probe_program: probe,
+            executable_sha256: lunchbox_controller_probe::file_hash(&program).unwrap(),
+            system: crate::controller_mesen2_native::SYSTEM_PCE.into(),
+        };
+        let session = crate::controller_mesen2_native::session::PreparedSession::prepare(
+            &setup,
+            &settings.controller_mapping.calibrations,
+            &inventory,
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        println!("CONFIG_HOME {}", session.config_home.display());
+        std::mem::forget(session);
+    }
+
     /// Scratch reproduction for the puNES first-launch path: NES content
     /// through the operator's real settings and the installed puNES Flatpak.
     #[test]
