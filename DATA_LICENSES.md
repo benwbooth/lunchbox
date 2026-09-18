@@ -5,6 +5,20 @@ terms of its provider; the code license does not replace those terms.
 
 ## Currently imported redistributable sources
 
+- **MAME CHD core (linked)** — `libchdman-rs` 0.289.0 wraps MAME's
+  `chd_file` implementation (`src/lib/util/chd.cpp` plus the CD/DVD/HD format
+  readers) and is statically linked into the application so that compressed
+  disc images (CHD) can be unpacked into the cue/bin set an emulator expects.
+  License: BSD-3-Clause (MAME's own terms), copyright the MAME development
+  team and the `libchdman-rs` author. Upstream:
+  <https://github.com/mamedev/mame> and
+  <https://github.com/danifunker/libchdman-rs>. The pinned static archives are
+  release assets of `libchdman-rs` v0.289.0, referenced by URL and SHA-256 in
+  `flake.nix` and `.github/workflows/native-packages.yml`. Their outputs are
+  compared against `chdman extractcd` for byte-identical cue/bin results.
+  This is linked code only: no MAME ROM, BIOS or other provider data is
+  redistributed with it.
+
 - **Lunchbox emulator catalog** — maintained in this repository and distributed under MIT.
 - **Libretro Database** — distributed under CC BY-SA 4.0. The exact upstream revision, source URL,
   archive SHA-256, and license are recorded in `sources/libretro.json` and in every generated

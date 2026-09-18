@@ -15,6 +15,28 @@
         pkgs = import nixpkgs { inherit system; };
         dwarfsPkgs = import nixpkgs-dwarfs { inherit system; };
         dwarfs = dwarfsPkgs.dwarfs;
+        # MAME's CHD core, linked so compressed disc images (CHD) work on every
+        # host without a chdman install. libchdman-rs ships its static archives
+        # as release assets; the URLs and hashes below are the pinned inputs,
+        # and build.rs links whichever one matches the target triple.
+        chdmanArchives = {
+          x86_64-linux = {
+            name = "libchdman_rs-x86_64-unknown-linux-gnu-glibc2.35.a";
+            hash = "sha256-U0D05l0P0MQNWx3Txq0dXaplPdt/k6/7cPBIDLx4Ghc=";
+          };
+          aarch64-linux = {
+            name = "libchdman_rs-aarch64-unknown-linux-gnu-glibc2.35.a";
+            hash = "sha256-Xh5Y9nl4goWdvHhFFhIOdA4XhTm4GALTY4OJTNNH7Gw=";
+          };
+          aarch64-darwin = {
+            name = "libchdman_rs-aarch64-apple-darwin.a";
+            hash = "sha256-vLumhaclyOhG0zS/pt6To+4rHevQUtVWW856UBz+i+g=";
+          };
+        };
+        chdmanArchive = pkgs.fetchurl {
+          url = "https://github.com/danifunker/libchdman-rs/releases/download/v0.289.0/${chdmanArchives.${system}.name}";
+          hash = chdmanArchives.${system}.hash;
+        };
         qtModules = with pkgs.qt6; [
           qtbase
           qtdeclarative
@@ -30,6 +52,9 @@
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
           LUNCHBOX_7Z = "${pkgs.p7zip}/bin/7z";
+          # Link the pinned MAME CHD archive instead of compiling MAME or
+          # downloading an asset inside the sandbox.
+          LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
           cargoBuildFlags = [ "--package" "lunchbox-db" ];
           cargoTestFlags = [ "--package" "lunchbox-db" ];
         };
@@ -68,6 +93,7 @@
           dontUseNinjaBuild = true;
           dontUseNinjaInstall = true;
           QMAKE = "${qtEnv}/bin/qmake";
+          LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
           LUNCHBOX_SDL3_LIBRARY = "${pkgs.lib.getLib pkgs.sdl3}/lib/${if pkgs.stdenv.hostPlatform.isDarwin then "libSDL3.dylib" else "libSDL3.so.0"}";
           preBuild = ''
             export PATH="${qtEnv}/bin:${qtEnv}/libexec:$PATH"
@@ -179,6 +205,7 @@
           ];
 
           QMAKE = "${qtEnv}/bin/qmake";
+          LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE = "${chdmanArchive}";
           QT_QPA_PLATFORM = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux "wayland;xcb";
 
           shellHook = ''

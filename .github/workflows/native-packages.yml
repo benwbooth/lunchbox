@@ -55,6 +55,14 @@ jobs:
           arch: win64_msvc2022_64
           modules: qtimageformats qtmultimedia qtquick3d qtshadertools
           cache: true
+      - name: Fetch the pinned MAME CHD archive
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/danifunker/libchdman-rs/releases/download/v0.289.0/libchdman_rs-x86_64-pc-windows-msvc.lib'
+          $archive = Join-Path $env:RUNNER_TEMP 'libchdman_rs.lib'
+          Invoke-WebRequest $url -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLower() -ne '52bab595cf1efa4d218f11b9cffa5961c56cfb1b5813071b194b2f46f3ffedb9') { throw 'MAME CHD archive checksum mismatch' }
+          "LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Build release executable
         run: cargo build --locked --release --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - name: Stage Qt runtime and database
@@ -105,6 +113,14 @@ jobs:
           arch: clang_64
           modules: qtimageformats qtmultimedia qtquick3d qtshadertools
           cache: true
+      - name: Fetch the pinned MAME CHD archive
+        run: |
+          ARCH="$(uname -m)"
+          if [ "$ARCH" = "arm64" ]; then NAME=aarch64-apple-darwin; SUM=5e1e58f6797882859dbc784516120e740e178539b81802d36383894cd347ec6c; else NAME=x86_64-apple-darwin; SUM=bcbba685a725c8e846d334bfa6de93a3ee2b1debd052d5565bce7a501cfe8be8; fi
+          ARCHIVE="$RUNNER_TEMP/libchdman_rs.a"
+          curl -sSL -o "$ARCHIVE" "https://github.com/danifunker/libchdman-rs/releases/download/v0.289.0/libchdman_rs-$NAME.a"
+          echo "$SUM  $ARCHIVE" | shasum -a 256 -c -
+          echo "LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
       - name: Build release executable
         run: cargo build --locked --release --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - name: Assemble application bundle
@@ -216,6 +232,14 @@ jobs:
           arch: linux_gcc_64
           modules: qtimageformats qtmultimedia qtquick3d qtshadertools
           cache: true
+      - name: Fetch the pinned MAME CHD archive
+        run: |
+          ARCH="$(uname -m)"
+          if [ "$ARCH" = "arm64" ]; then NAME=aarch64-apple-darwin; SUM=5e1e58f6797882859dbc784516120e740e178539b81802d36383894cd347ec6c; else NAME=x86_64-apple-darwin; SUM=bcbba685a725c8e846d334bfa6de93a3ee2b1debd052d5565bce7a501cfe8be8; fi
+          ARCHIVE="$RUNNER_TEMP/libchdman_rs.a"
+          curl -sSL -o "$ARCHIVE" "https://github.com/danifunker/libchdman-rs/releases/download/v0.289.0/libchdman_rs-$NAME.a"
+          echo "$SUM  $ARCHIVE" | shasum -a 256 -c -
+          echo "LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
       - name: Build release executable
         run: cargo build --locked --release --package lunchbox-app --package lunchbox-controller-probe --bin lunchbox --bin lunchbox-controller-probe
       - name: Stage AppDir

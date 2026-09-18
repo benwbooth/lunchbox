@@ -2089,6 +2089,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
+name = "libchdman-rs"
+version = "0.289.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec5f94daaaaf7a08bddf8327125783cedbf80dab4754bdd7f2cdc09990c98cc1"
+dependencies = [
+ "cc",
+ "hex",
+ "libc",
+ "sha2 0.11.0",
+ "tempfile",
+ "ureq",
+]
+
+[[package]]
 name = "libloading"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2188,6 +2202,7 @@ dependencies = [
  "keyring",
  "lava_torrent",
  "libc",
+ "libchdman-rs",
  "lunchbox-controller-probe",
  "md-5 0.10.6",
  "opendal",

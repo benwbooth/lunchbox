@@ -46,6 +46,9 @@ uuid.workspace = true
 walkdir.workspace = true
 sysinfo.workspace = true
 zip.workspace = true
+# MAME's own CHD reader: linked so compressed disc images (CHD/CDZ) work on
+# every host without a chdman install.
+libchdman-rs.workspace = true
 tempfile = "3.14"
 lunchbox-controller-probe = { path = "../lunchbox-controller-probe" }
 

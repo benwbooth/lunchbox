@@ -42,6 +42,8 @@ pub(crate) mod native_command;
 #[cfg(target_os = "linux")]
 pub(crate) mod guided;
 #[cfg(target_os = "linux")]
+pub(crate) mod media;
+#[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
 
@@ -86,15 +88,12 @@ pub(crate) const SYSTEM_PCE: &str = "pce";
 pub(crate) const PCE_CARD_EXTENSIONS: &[&str] = &["pce", "bin", "sgx", "hes"];
 pub(crate) const PCE_DISC_EXTENSIONS: &[&str] = &["cue"];
 
-/// Compressed disc containers Mesen2 has no reader for but `chdman` can turn
-/// into the cue/bin set it boots. Staged per launch from the user's own file.
-pub(crate) const PCE_CONVERTIBLE_DISC_EXTENSIONS: &[&str] = &["chd", "cdz"];
-
-/// Disc containers Mesen2 cannot read directly. CHD/CDZ are staged as a
-/// cue/bin copy at launch; the rest need a manual conversion because no
-/// bundled tool turns them into a cue sheet.
-pub(crate) const PCE_UNSUPPORTED_DISC_EXTENSIONS: &[&str] =
-    &["ccd", "iso", "img", "toc", "m3u", "mds", "gdi", "sub"];
+/// Disc containers Mesen2 cannot read directly. CHD is staged as a cue/bin
+/// copy at launch; the rest need a manual conversion because no bundled
+/// reader turns them into a cue sheet.
+pub(crate) const PCE_UNSUPPORTED_DISC_EXTENSIONS: &[&str] = &[
+    "cdz", "ccd", "iso", "img", "toc", "m3u", "mds", "gdi", "sub",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PceContent {
@@ -123,7 +122,7 @@ pub(crate) fn pce_content_kind(content: &std::path::Path) -> Result<PceContent> 
     if PCE_CARD_EXTENSIONS.contains(&extension.as_str()) {
         return Ok(PceContent::Card);
     }
-    if matches!(extension.as_str(), "chd" | "cdz") {
+    if extension == "chd" {
         return Ok(PceContent::ConvertibleDisc);
     }
     if PCE_UNSUPPORTED_DISC_EXTENSIONS.contains(&extension.as_str()) {
@@ -364,12 +363,11 @@ mod tests {
         assert_eq!(kind("Game.bin").unwrap(), PceContent::Card);
         assert_eq!(kind("Game.sgx").unwrap(), PceContent::Card);
         assert_eq!(kind("Game.hes").unwrap(), PceContent::Card);
-        // Compressed containers Mesen2 cannot read are staged as cue/bin.
+        // CHDs Mesen2 cannot read are staged as cue/bin by the linked core.
         assert_eq!(kind("Game.chd").unwrap(), PceContent::ConvertibleDisc);
-        assert_eq!(kind("Game.cdz").unwrap(), PceContent::ConvertibleDisc);
         for name in [
-            "Game.ccd", "Game.iso", "Game.img", "Game.toc", "Game.m3u", "Game.mds", "Game.gdi",
-            "Game.sub",
+            "Game.cdz", "Game.ccd", "Game.iso", "Game.img", "Game.toc", "Game.m3u", "Game.mds",
+            "Game.gdi", "Game.sub",
         ] {
             let error = kind(name).unwrap_err().to_string();
             assert!(

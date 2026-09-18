@@ -24,6 +24,10 @@ encoding_rs = "=0.8.35"
 flate2 = "1.1"
 fs2 = "0.4.3"
 gilrs = "0.11.2"
+# MAME's CHD core. The `prebuilt` feature only gates build.rs: with
+# LIBCHDMAN_PREBUILT_LOCAL_ARCHIVE (Nix) or a downloaded asset it links a
+# pinned static archive instead of compiling the ~900 MB MAME tree.
+libchdman-rs = { version = "0.289.0", default-features = false, features = ["prebuilt"] }
 hex = "0.4"
 keyring = "4.1.6"
 lava_torrent = "0.7"

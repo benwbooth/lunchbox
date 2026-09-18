@@ -99,7 +99,7 @@ impl SavedSetup {
             let note = match super::pce_content_kind(&self.content) {
                 Ok(super::PceContent::Disc) => "Content is a cue sheet; launch also needs the Super CD-ROM² BIOS (syscard3.pce or gecard.pce) in Mesen's Firmware folder.".to_owned(),
                 Ok(super::PceContent::Card) => "Content is a HuCard image.".to_owned(),
-                Ok(super::PceContent::ConvertibleDisc) => "Content is a compressed disc image; launch stages a cue/bin copy with chdman (MAME's tool) before starting Mesen.".to_owned(),
+                Ok(super::PceContent::ConvertibleDisc) => "Content is a CHD; launch unpacks it to a cue/bin copy with the linked MAME CHD core before starting Mesen.".to_owned(),
                 Err(error) => format!("{error:#}"),
             };
             ("PcEngine", note)
