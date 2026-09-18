@@ -161,12 +161,18 @@ fn summarize_e2e_json(output: &[u8]) -> (String, Vec<String>) {
         start = Some(index);
     }
     let Some(begin) = start else {
-        return ("error".to_owned(), vec!["no JSON report in e2e output".to_owned()]);
+        return (
+            "error".to_owned(),
+            vec!["no JSON report in e2e output".to_owned()],
+        );
     };
     // Balance from the last opening brace to the end of output.
     let fragment = &text[begin..];
     let Ok(report) = serde_json::from_str::<serde_json::Value>(fragment.trim()) else {
-        return ("error".to_owned(), vec!["e2e report is not valid JSON".to_owned()]);
+        return (
+            "error".to_owned(),
+            vec!["e2e report is not valid JSON".to_owned()],
+        );
     };
     let overall = report
         .get("overall")
@@ -242,7 +248,10 @@ fn run_leg(leg: &Leg, timeout: Duration, verbose: bool, e2e_mode: bool) -> LegRe
                 report.status = overall;
                 report.duration_secs = started.elapsed().as_secs();
                 if verbose {
-                    println!("[{target_text}] e2e {} ({}s)", report.status, report.duration_secs);
+                    println!(
+                        "[{target_text}] e2e {} ({}s)",
+                        report.status, report.duration_secs
+                    );
                 }
                 return report;
             }
@@ -408,7 +417,9 @@ fn main() -> Result<()> {
                 _ => local_e2e_command(slug, &e2e_bios_dir),
             };
             leg.target = match &leg.target {
-                Target::Ssh { target, ssh_opts, .. } => Target::Ssh {
+                Target::Ssh {
+                    target, ssh_opts, ..
+                } => Target::Ssh {
                     target: target.clone(),
                     ssh_opts: ssh_opts.clone(),
                     command: script,

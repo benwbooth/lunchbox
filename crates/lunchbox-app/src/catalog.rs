@@ -1197,14 +1197,12 @@ fn apply_release_families(
                 .copied()
                 .unwrap_or_default()
                 == 0)
-            .then(|| strict_keys[index].clone())
+                .then(|| strict_keys[index].clone())
         } else if family_ids[index] > 0 {
             lbid_strict_keys
                 .get(&family_ids[index])
                 .and_then(|key| key.clone())
-                .filter(|key| {
-                    strict_title_owners.get(key).copied().unwrap_or_default() == 0
-                })
+                .filter(|key| strict_title_owners.get(key).copied().unwrap_or_default() == 0)
         } else {
             None
         };
@@ -1362,10 +1360,7 @@ fn disambiguate_display_titles(games: &mut [Game], full_titles: &[String]) {
                 continue;
             }
             games[position].title = full.to_owned();
-            if !games[position]
-                .search_key
-                .contains(&full.to_lowercase())
-            {
+            if !games[position].search_key.contains(&full.to_lowercase()) {
                 games[position].search_key.push('\n');
                 games[position].search_key.push_str(&full.to_lowercase());
             }
@@ -3165,10 +3160,12 @@ mod tests {
         assert_eq!(installed.file_count, 2);
         // ROM-scan IDs stay scoped to the scanned platform instead of
         // lighting every card that reuses the ID across snapshots.
-        assert!(installed
-            .state_database_platforms
-            .get(&42)
-            .is_some_and(|platforms| platforms.contains("system")));
+        assert!(
+            installed
+                .state_database_platforms
+                .get(&42)
+                .is_some_and(|platforms| platforms.contains("system"))
+        );
         assert!(installed.is_local("other-id", "Exact", "System", 42));
         assert!(!installed.is_local("other-id", "Exact", "Foreign System", 42));
         assert!(installed.game_uids.contains("catalog-game"));

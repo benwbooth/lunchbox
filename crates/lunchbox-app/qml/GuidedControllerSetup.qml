@@ -35,7 +35,7 @@ ColumnLayout {
     readonly property var sourceLayout: catalog.layouts.find(item => item.id === calibration.layout) || null
     readonly property var targetLayout: profile ? catalog.layouts.find(item => item.id === profile.target_layout) || null : null
     readonly property int playerLimit: profile ? targetFilter.playerLimit(profile) : 16
-    readonly property var applicableTargets: targetFilter.applicable(catalog.emulator_profiles, gameEmulator, gamePlatform)
+    readonly property var applicableTargets: targetFilter.applicable(catalog.emulator_profiles, gameEmulator, gamePlatform, catalog.emulator_identities)
     readonly property var connectedControllers: {
         settingsModel.controller_revision
         const rows = []
@@ -353,19 +353,19 @@ ColumnLayout {
             visible: !setup.gameTitle; Layout.fillWidth: true
             Label { text: "Emulator or RetroArch core" }
             ComboBox {
-                Layout.fillWidth: true; model: targetFilter.emulators(setup.catalog.emulator_profiles)
+                Layout.fillWidth: true; model: targetFilter.emulators(setup.catalog.emulator_profiles, setup.catalog.emulator_identities)
                 currentIndex: model.indexOf(setup.gameEmulator)
                 displayText: currentIndex < 0 ? "Choose an emulator or core" : currentText
                 onActivated: {
                     setup.gameEmulator = currentText
-                    const systems = targetFilter.systems(setup.catalog.emulator_profiles, currentText)
+                    const systems = targetFilter.systems(setup.catalog.emulator_profiles, currentText, setup.catalog.emulator_identities)
                     setup.gamePlatform = systems.length === 1 ? systems[0] : ""
                     setup.chooseTarget()
                 }
             }
             Label { text: "System" }
             ComboBox {
-                Layout.fillWidth: true; model: targetFilter.systems(setup.catalog.emulator_profiles, setup.gameEmulator)
+                Layout.fillWidth: true; model: targetFilter.systems(setup.catalog.emulator_profiles, setup.gameEmulator, setup.catalog.emulator_identities)
                 currentIndex: model.indexOf(setup.gamePlatform)
                 displayText: currentIndex < 0 ? "Choose a system" : currentText
                 enabled: model.length > 0

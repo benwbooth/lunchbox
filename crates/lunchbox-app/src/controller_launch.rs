@@ -11708,6 +11708,94 @@ mod tests {
             .unwrap();
     }
 
+    /// Scratch reproduction for a reported mapping failure: Mesen standalone
+    /// + TurboGrafx-CD through the operator's real settings. Prints each
+    /// stage (target scope, profile, players, setup, prepare) with the exact
+    /// error. Run explicitly with `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "scratch reproduction; needs local settings, a Mesen2 build and Rondo CHD"]
+    fn scratch_mesen_tgcd() {
+        // Any real Mesen2 Linux build works for discovery; the operator's own
+        // install is preferred so the hash matches what the launcher selects.
+        let program = [
+            "/home/ben/.cache/starfox-hd-tools/mesen-2.2.1/Mesen",
+            "/home/ben/.cache/starfox-hd-tools/mesen/Mesen",
+        ]
+        .into_iter()
+        .map(std::path::PathBuf::from)
+        .find(|path| path.is_file());
+        let Some(program) = program else {
+            println!("SKIP: no local Mesen2 build to probe");
+            return;
+        };
+        std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(move || {
+                use crate::emulator::{EmulatorExecutable, RomEmulatorOption};
+                use std::sync::atomic::AtomicBool;
+                let store = crate::settings::SettingsStore::open_default().unwrap();
+                let settings = store.load().unwrap();
+                let platform = "NEC TurboGrafx-CD";
+                let option = RomEmulatorOption::standalone(
+                    "336cbf7b-aa17-5b3a-8142-0a004efac86e".into(),
+                    "Mesen".into(),
+                    EmulatorExecutable::Native(program),
+                );
+                let scope = crate::controller_target::Scope::for_option(&option, platform).unwrap();
+                println!("SCOPE retroarch={} core={}", scope.retroarch, scope.core);
+                let profiles: Vec<_> = crate::controller_catalog::catalog()
+                    .emulator_profiles
+                    .iter()
+                    .filter(|profile| scope.accepts(profile))
+                    .map(|profile| profile.id.clone())
+                    .collect();
+                println!("PROFILES {profiles:?}");
+                let customization = store
+                    .resolve_launch_customization(
+                        "0c9249c1-0b2a-42f7-9a8d-851118a81ec8",
+                        platform,
+                        "336cbf7b-aa17-5b3a-8142-0a004efac86e",
+                        "standalone",
+                        "",
+                    )
+                    .unwrap();
+                let rom =
+                    "/mnt/roms/NEC TurboGrafx-CD/Akumajou Dracula X - Chi no Rondo (Japan).chd";
+                let mut plan = crate::emulator::build_rom_launch_plan_with_customization(
+                    std::path::Path::new(rom),
+                    platform,
+                    &option,
+                    &customization,
+                )
+                .unwrap();
+                println!(
+                    "PLAN program={} args={:?}",
+                    plan.program.display(),
+                    plan.arguments
+                );
+                let mut cloned = settings.clone();
+                if let Some(first) = profiles.first() {
+                    cloned
+                        .controller_mapping
+                        .guided_target_selections
+                        .insert(scope.key(), first.clone());
+                }
+                match super::prepare_with_cancellation(
+                    &cloned,
+                    platform,
+                    &option,
+                    &mut plan,
+                    &AtomicBool::new(false),
+                ) {
+                    Ok(session) => println!("PREPARE-OK session={}", session.is_some()),
+                    Err(error) => println!("PREPARE-FAIL {error:#}", error = error),
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
     fn shellexpand_core(file: &str) -> String {
         format!(
             "{}/.var/app/org.libretro.RetroArch/config/retroarch/cores/{file}",

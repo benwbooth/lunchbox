@@ -26,16 +26,22 @@ const ABS_MISC: u16 = 0x28;
 /// ABS_HAT0X..=ABS_HAT3Y; the hat window inside the scanned axis range.
 const ABS_HAT_WINDOW: std::ops::RangeInclusive<u16> = 0x10..=0x1b;
 
-// Linux input UAPI ioctl requests, byte-for-byte as defined by evdev's ABI:
-// EVIOCGBIT(ev, len) = _IOR('E', 0x20 + ev, len) and
-// EVIOCGABS(ev) = _IOR('E', 0x40 + ev, sizeof(struct input_absinfo)).
-const EVIOCGBIT_EV: libc::c_ulong = 0x8000_4520;
-const EVIOCGBIT_KEY: libc::c_ulong = 0x8000_4521;
-const EVIOCGBIT_ABS: libc::c_ulong = 0x8000_4523;
+// Linux input UAPI ioctl requests. EVIOCGABS and EVIOCGUNIQ encode the exact
+// struct/buffer size the kernel writes, so their constants are literal;
+// EVIOCGBIT(ev, len) must encode the caller's buffer length too, because a
+// zero-length request silently returns no bits at all.
 const EVIOCGABS: libc::c_ulong = 0x8018_4540;
-/// EVIOCGUNIQ(len) = _IOR('E', 0x44, len); 256 bytes cover the kernel's
-/// 255-character uniq limit plus its NUL terminator.
-const EVIOCGUNIQ: libc::c_ulong = 0x8100_4544;
+/// EVIOCGUNIQ(len) = _IOC(_IOC_READ, 'E', 0x08, len); 256 bytes cover the
+/// kernel's 255-character uniq limit plus its NUL terminator.
+const EVIOCGUNIQ: libc::c_ulong = 0x8100_4508;
+
+/// `EVIOCGBIT(ev, len) = _IOR('E', 0x20 + ev, len)`. `len` is the number of
+/// bytes the caller wants, so it must always match the destination buffer.
+const fn eviocgbit(ev: u32, len: usize) -> libc::c_ulong {
+    ((0x2_u32 << 30) | ((len as u32 & 0x3fff) << 16) | (0x45_u32 << 8) | (0x20 + ev))
+        as libc::c_ulong
+}
+
 const EV_KEY: u16 = 0x01;
 const KEY_CNT: usize = 0x300;
 const ABS_CNT: usize = 0x40;
@@ -196,27 +202,33 @@ pub fn read_event(event: &Path) -> Result<EvdevDevice> {
         "Evdev path is not a character device"
     );
     let mut evbit = [0u8; 4];
-    ioctl_bits(&file, EVIOCGBIT_EV, &mut evbit)?;
-    ensure!(test_bit(&evbit, EV_KEY), "Evdev node reports no keys");
+    ioctl_bits(&file, eviocgbit(0, evbit.len()), &mut evbit)?;
     let mut keybit = [0u8; KEY_CNT / 8];
-    ioctl_bits(&file, EVIOCGBIT_KEY, &mut keybit)?;
+    ioctl_bits(&file, eviocgbit(1, keybit.len()), &mut keybit)?;
     let mut absbit = [0u8; ABS_CNT / 8];
-    ioctl_bits(&file, EVIOCGBIT_ABS, &mut absbit)?;
+    ioctl_bits(&file, eviocgbit(3, absbit.len()), &mut absbit)?;
     // Re-read the primary capability words; a concurrent node swap between
     // the two reads must not blend two devices into one catalog entry.
     let mut verify_evbit = [0u8; 4];
-    ioctl_bits(&file, EVIOCGBIT_EV, &mut verify_evbit)?;
+    ioctl_bits(&file, eviocgbit(0, verify_evbit.len()), &mut verify_evbit)?;
     let mut verify_keybit = [0u8; KEY_CNT / 8];
-    ioctl_bits(&file, EVIOCGBIT_KEY, &mut verify_keybit)?;
+    ioctl_bits(&file, eviocgbit(1, verify_keybit.len()), &mut verify_keybit)?;
     ensure!(
         evbit == verify_evbit && keybit == verify_keybit,
         "Evdev capabilities changed while reading"
     );
+    // Nodes without EV_KEY (video buses, HDMI jacks, LED controllers) are
+    // still catalogued: a consumer that needs a gamepad filters on its own
+    // contract, and refusing here would break callers that enumerate every
+    // /dev/input/event node on an ordinary desktop.
+    let has_keys = test_bit(&evbit, EV_KEY);
 
     let mut buttons = Vec::new();
-    for code in (BTN_JOYSTICK..KEY_MAX).chain(BTN_MISC..BTN_JOYSTICK) {
-        if test_bit(&keybit, code) {
-            buttons.push(code);
+    if has_keys {
+        for code in (BTN_JOYSTICK..KEY_MAX).chain(BTN_MISC..BTN_JOYSTICK) {
+            if test_bit(&keybit, code) {
+                buttons.push(code);
+            }
         }
     }
     let mut axes = Vec::new();
@@ -255,11 +267,19 @@ fn ioctl_uniq(file: &File) -> Result<String> {
             raw.as_mut_ptr().cast::<libc::c_void>(),
         )
     };
-    ensure!(
-        result >= 0,
-        "Reading evdev uniq: {}",
-        std::io::Error::last_os_error()
-    );
+    // A device without a uniq (most wired pads) makes the kernel return
+    // ENOENT/EINVAL; only a genuine surprise (bad request, no permission)
+    // propagates.
+    if result < 0 {
+        let error = std::io::Error::last_os_error();
+        if matches!(
+            error.raw_os_error(),
+            Some(libc::ENOENT) | Some(libc::EINVAL) | Some(libc::ENOTTY)
+        ) {
+            return Ok(String::new());
+        }
+        return Err(error).context("Reading evdev uniq");
+    }
     let end = raw.iter().position(|byte| *byte == 0).unwrap_or(raw.len());
     ensure!(end <= 255, "Evdev uniq exceeds the kernel size limit");
     String::from_utf8(raw[..end].to_vec()).context("Evdev uniq is not UTF-8")
@@ -410,6 +430,39 @@ mod tests {
         let ordered = button_order(&[0x130, 0x101, 0x121, 0x2a2]);
         assert_eq!(ordered, [0x121, 0x130, 0x2a2, 0x101]);
         assert!(button_order(&[0x2ff, 0xff]).is_empty());
+    }
+
+    /// A zero-length `EVIOCGBIT` request returns no bits at all, which reads
+    /// as "the device reports nothing" on every host. The length field must
+    /// therefore always match the destination buffer.
+    #[test]
+    fn capability_requests_encode_the_caller_buffer_length() {
+        assert_eq!(eviocgbit(0, 4), 0x8004_4520);
+        assert_eq!(eviocgbit(1, KEY_CNT / 8), 0x8060_4521);
+        assert_eq!(eviocgbit(3, ABS_CNT / 8), 0x8008_4523);
+        for (ev, len) in [(0_u32, 4_usize), (1, KEY_CNT / 8), (3, ABS_CNT / 8)] {
+            let request = eviocgbit(ev, len);
+            assert_eq!((request >> 16) & 0x3fff, len as libc::c_ulong);
+            assert_eq!(request & 0xff, 0x20 + u64::from(ev));
+            assert_eq!((request >> 30) & 0x3, 0x2, "must be a read request");
+        }
+    }
+
+    /// The request numbers are the kernel's, not local inventions: an
+    /// EVIOCGABS number reused as EVIOCGUNIQ silently returns absinfo bytes
+    /// instead of the uniq string.
+    #[test]
+    fn request_numbers_match_the_kernel_uapi() {
+        // _IOC(_IOC_READ, 'E', nr, size)
+        fn request(nr: u32, size: u32) -> u64 {
+            ((0x2_u64 << 30) | (u64::from(size) << 16) | (0x45 << 8) | u64::from(nr)) as u64
+        }
+        assert_eq!(EVIOCGUNIQ as u64, request(0x08, 256));
+        assert_eq!(EVIOCGABS as u64, request(0x40, 24));
+        assert!(
+            !(0x40..0x60).contains(&(EVIOCGUNIQ as u64 & 0xff)),
+            "uniq must not collide with the EVIOCGABS range"
+        );
     }
 
     #[test]

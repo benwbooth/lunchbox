@@ -10,17 +10,35 @@ QtObject {
         const core = key(value).replace(/_libretro$/, "")
         return aliases[core] || core
     }
-    function applicable(profiles, emulator, platform) {
+    /// Catalog core key for a standalone emulator label. `identities` is the
+    /// declared display-name -> core table from the catalog JSON; the launch
+    /// path resolves the same table, so the dialog can never claim an emulator
+    /// is unsupported while its adapter exists.
+    function nativeCore(value, identities) {
+        const k = key(value)
+        if (!identities) return k
+        const hit = identities.find(entry => key(entry.name) === k)
+        return hit ? key(hit.core) : k
+    }
+    /// Display name for a native profile: the declared emulator name when the
+    /// core has one, else the core key itself.
+    function nativeDisplayName(core, identities) {
+        const k = key(core)
+        if (!identities) return k
+        const hit = identities.find(entry => key(entry.core) === k)
+        return hit ? hit.name : k
+    }
+    function applicable(profiles, emulator, platform, identities) {
         const host = key(emulator)
         const system = key(platform)
         if (!host || !system) return []
         const retroarch = host.startsWith("retroarch")
         const coreMatch = host.match(/\(([^()]+)\)$/)
         const rawCore = retroarch && coreMatch ? key(coreMatch[1]).replace(/_libretro$/, "") : host
-        const core = retroarch ? canonicalCore(rawCore) : rawCore
+        const core = retroarch ? canonicalCore(rawCore) : nativeCore(rawCore, identities)
         return profiles.filter(function(profile) {
             if ((profile.transport === "retropad") !== retroarch) return false
-            if ((retroarch ? canonicalCore(profile.core) : key(profile.core)) !== core
+            if ((retroarch ? canonicalCore(profile.core) : nativeCore(profile.core, identities)) !== core
                     && !(retroarch && canonicalCore(profile.retroarch_library) === core)) return false
             if (!platformsFor(profile).some(value => key(value) === system)) return false
             if (["arcade", "sega naomi", "sega naomi 2", "sammy atomiswave"].indexOf(system) >= 0)
@@ -46,14 +64,15 @@ QtObject {
         }
         return nativeSystems[profile.target_layout] || []
     }
-    function emulatorFor(profile) {
-        return profile.transport === "retropad" ? "RetroArch · " + (profile.retroarch_library || profile.core) + " (" + profile.core + ")" : profile.core
+    function emulatorFor(profile, identities) {
+        return profile.transport === "retropad" ? "RetroArch · " + (profile.retroarch_library || profile.core) + " (" + profile.core + ")"
+            : nativeDisplayName(profile.core, identities)
     }
-    function emulators(profiles) {
-        return Array.from(new Set(profiles.filter(p => platformsFor(p).length > 0).map(p => emulatorFor(p)))).sort()
+    function emulators(profiles, identities) {
+        return Array.from(new Set(profiles.filter(p => platformsFor(p).length > 0).map(p => emulatorFor(p, identities)))).sort()
     }
-    function systems(profiles, emulator) {
-        return Array.from(new Set(profiles.filter(p => emulatorFor(p) === emulator).reduce((all, p) => all.concat(platformsFor(p)), []))).sort()
+    function systems(profiles, emulator, identities) {
+        return Array.from(new Set(profiles.filter(p => emulatorFor(p, identities) === emulator).reduce((all, p) => all.concat(platformsFor(p)), []))).sort()
     }
     function playerLimit(profile) {
         if (!profile) return 0

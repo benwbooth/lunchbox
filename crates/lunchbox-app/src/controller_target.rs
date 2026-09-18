@@ -7,6 +7,32 @@ use crate::{
 };
 use anyhow::{Context, Result, ensure};
 
+/// Standalone emulators whose user-facing name differs from their catalog core
+/// key. A launch option carries the emulator's display name (the database
+/// `emulators.name`), while native profiles declare the core key used on the
+/// wire. This one table feeds both the resolver below and the QML target
+/// filter (`controller_catalog_json`), so the dialog and the launch path can
+/// never disagree about which profiles an emulator owns.
+pub(crate) const NATIVE_EMULATOR_IDENTITIES: &[(&str, &str)] = &[
+    ("Mesen", "mesen2"),
+    ("Nestopia UE", "nestopia"),
+    ("ADAMEm SDL", "adamem"),
+    ("Atari++", "atari-plus-plus"),
+    ("GBE+", "gbe-plus"),
+    ("Play!", "play"),
+    ("Yaba Sanshiro 2", "yaba-sanshiro"),
+];
+
+/// Catalog core key for a standalone emulator label. Labels already written as
+/// a core key pass through unchanged.
+pub(crate) fn native_core_for(label: &str) -> Option<&'static str> {
+    let key = label.trim().to_lowercase();
+    NATIVE_EMULATOR_IDENTITIES
+        .iter()
+        .find(|(name, _)| name.trim().to_lowercase() == key)
+        .map(|(_, core)| *core)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Scope {
     pub retroarch: bool,
@@ -53,20 +79,13 @@ impl Scope {
     fn new(retroarch: bool, core: &str, platform: &str) -> Result<Self> {
         let core = core.trim().to_lowercase();
         let core = if retroarch {
-            canonical_retroarch_core_name(&core)
-        } else if core == "nestopia ue" {
-            "nestopia"
-        } else if core == "mesen" {
-            // The standalone "Mesen" record is Mesen2 (multi-system; its Linux
-            // home is ~/.config/Mesen2). The original single-system Mesen has
-            // no native controller writer, so the bare name unambiguously
-            // selects the Mesen2 contract. RetroArch "mesen" cores keep their
-            // canonical core name via the branch above.
-            "mesen2"
+            canonical_retroarch_core_name(&core).to_owned()
         } else {
-            &core
-        }
-        .to_owned();
+            // The bare name "Mesen", for example, selects the Mesen2 contract:
+            // its Linux home is ~/.config/Mesen2 and it is the only Mesen with
+            // a native controller writer. RetroArch cores never pass here.
+            native_core_for(&core).map(str::to_owned).unwrap_or(core)
+        };
         let scope = Self {
             retroarch,
             core,
@@ -286,8 +305,80 @@ mod tests {
     }
 
     #[test]
+    fn native_identity_table_matches_declared_profiles() {
+        use std::collections::BTreeSet;
+        let native_cores: BTreeSet<&str> = catalog()
+            .emulator_profiles
+            .iter()
+            .filter(|profile| profile.transport != "retropad")
+            .map(|profile| profile.core.as_str())
+            .collect();
+        let mut names = BTreeSet::new();
+        for (name, core) in NATIVE_EMULATOR_IDENTITIES {
+            assert!(
+                names.insert(name.trim().to_lowercase()),
+                "duplicate native emulator identity: {name}"
+            );
+            assert!(
+                native_cores.contains(core),
+                "native emulator identity {name} names an unknown core {core}"
+            );
+            assert_ne!(
+                &name.trim().to_lowercase(),
+                core,
+                "identity {name} is redundant: the label is already the core key"
+            );
+            assert!(
+                name.trim() == *name && !name.is_empty(),
+                "identity names must be exact, trimmed and non-empty"
+            );
+        }
+    }
+
+    #[test]
+    fn every_native_emulator_resolves_to_its_own_profiles() {
+        // The launch path receives `option.emulator_name` (the database display
+        // name), so each declared identity must reach profiles for the systems
+        // that emulator actually ships.
+        for (name, core) in NATIVE_EMULATOR_IDENTITIES {
+            let scope = Scope::from_label(name, "Nintendo Entertainment System").unwrap();
+            assert!(!scope.retroarch);
+            assert_eq!(scope.core, *core, "{name} resolved to the wrong core");
+        }
+        // Identity keys round-trip through persistence unchanged.
+        for (name, core) in NATIVE_EMULATOR_IDENTITIES {
+            let scope = Scope::from_label(name, "Nintendo Entertainment System").unwrap();
+            assert_eq!(Scope::from_key(&scope.key()).unwrap().core, *core);
+        }
+    }
+
+    #[test]
     fn display_badges_never_reach_identity_matching() {
         assert!(Scope::from_label("★ Gopher64", "Nintendo 64").is_err());
         assert!(Scope::from_label("Gopher64", "Nintendo 64").is_ok());
+    }
+
+    /// Prints every native profile's core so the checked-in catalog can be
+    /// audited against the emulator display names this UI receives. Run
+    /// explicitly with `cargo test -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "audit helper; prints the native core contract"]
+    fn audit_native_cores() {
+        use std::collections::BTreeSet;
+        let mut pairs = BTreeSet::new();
+        for profile in &catalog().emulator_profiles {
+            if profile.transport == "retropad" {
+                continue;
+            }
+            let platforms = profile
+                .native_launch
+                .as_ref()
+                .map(|launch| launch.platforms.join("|"))
+                .unwrap_or_default();
+            pairs.insert((profile.core.clone(), platforms));
+        }
+        for (core, platforms) in pairs {
+            println!("NATIVE-CORE {core}\t{platforms}");
+        }
     }
 }

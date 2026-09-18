@@ -2487,7 +2487,16 @@ impl qobject::SettingsModel {
 
     pub fn controller_catalog_json(&self) -> QString {
         let catalog = crate::controller_catalog::catalog();
-        qstring(serde_json::json!({"layouts":catalog.layouts,"emulator_profiles":catalog.emulator_profiles,"host_os":std::env::consts::OS}).to_string())
+        // Emulator display name -> catalog core key, the same table the Rust
+        // resolver uses. The mapping dialog must not re-derive identity.
+        let identities: Vec<_> = crate::controller_target::NATIVE_EMULATOR_IDENTITIES
+            .iter()
+            .map(|(name, core)| serde_json::json!({"name": name, "core": core}))
+            .collect();
+        qstring(
+            serde_json::json!({"layouts":catalog.layouts,"emulator_profiles":catalog.emulator_profiles,"emulator_identities":identities,"host_os":std::env::consts::OS})
+                .to_string(),
+        )
     }
 
     pub fn use_sdl3_controller_mapping(mut self: Pin<&mut Self>, device: QString) -> QString {

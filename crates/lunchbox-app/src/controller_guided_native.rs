@@ -1233,7 +1233,31 @@ pub(crate) fn settings_for_launch<'a>(
                 }
                 found += 1;
                 setup.controller_id = ids[0].clone();
+                setup.system = crate::controller_mesen2_native::guided::system_for_layout(
+                    &profile.target_layout,
+                )?
+                .into();
                 setup.review(&mapping.calibrations)?;
+            }
+            // First launches synthesize a launch-scoped setup instead of
+            // failing for a missing hand-written entry (mgba precedent).
+            // Linux only: the session verifies through evdev device nodes.
+            #[cfg(target_os = "linux")]
+            if found == 0 {
+                ensure!(
+                    ids.len() == 1,
+                    "Mesen2 maps a single controller; assign exactly one player in Controller setup"
+                );
+                mapping.mesen2_native_launches.push(
+                    crate::controller_mesen2_native::guided::discover(
+                        option,
+                        plan,
+                        &profile.target_layout,
+                        &ids[0],
+                        cancel,
+                    )?,
+                );
+                found += 1;
             }
         }
         "openmsx" => {

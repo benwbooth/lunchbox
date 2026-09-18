@@ -53,12 +53,38 @@ fn qualifies(device: &evdev_catalog::EvdevDevice) -> bool {
     device.buttons.contains(&BTN_GAMEPAD) || device.axes.iter().any(|axis| axis.code == ABS_X)
 }
 
-/// Translate the calibrated controls into KeyMapping codes for the sole
-/// qualifying device's pad slot, using the setup's system contract.
+/// The selected node's Mesen2 pad slot: its position among the qualifying
+/// gamepads in `/dev/input` directory order, which is the order
+/// `LinuxKeyManager.cpp CheckForGamepads` registers pads in. Other gamepads
+/// simply occupy the slots before it, so a second controller on the host is
+/// not an error; only a device Mesen2 would never open is.
+fn qualifying_slot<'a>(
+    catalog: &'a evdev_catalog::EvdevCatalog,
+    event: &Path,
+) -> Result<(&'a evdev_catalog::EvdevDevice, u32)> {
+    let selected = catalog.device_at_event(event)?;
+    ensure!(
+        qualifies(selected),
+        "Mesen2 only opens gamepads (EV_KEY+BTN_GAMEPAD or EV_ABS+ABS_X); the selected controller is not one"
+    );
+    let slot = catalog
+        .devices
+        .iter()
+        .filter(|device| qualifies(device))
+        .position(|device| device.event == selected.event)
+        .context("Mesen2 selected gamepad is missing from its own catalog")?;
+    let slot = u32::try_from(slot).context("Mesen2 pad slot overflow")?;
+    ensure!(slot < 20, "Mesen2 addresses twenty pad slots");
+    Ok((selected, slot))
+}
+
+/// Translate the calibrated controls into KeyMapping codes for the selected
+/// device's Mesen2 pad slot, using the setup's system contract.
 pub(super) fn calibrated_bindings(
     setup: &settings::SavedSetup,
     calibration: &Calibration,
     device: &evdev_catalog::EvdevDevice,
+    pad: u32,
 ) -> Result<Vec<(String, Binding)>> {
     ensure!(
         calibration.os == "linux",
@@ -104,7 +130,7 @@ pub(super) fn calibrated_bindings(
             .context("Mesen2 requires measured native controls")?;
         let code = native.code & 0xffff;
         let binding = match native.code >> 16 {
-            1 => Binding::from_key(u32::from(code))
+            1 => Binding::from_key(pad, u32::from(code))
                 .with_context(|| format!("Mesen2 has no buttonIndex for kernel key {code:#x}"))?,
             3 => {
                 let endpoints = input
@@ -129,7 +155,7 @@ pub(super) fn calibrated_bindings(
                     (pressed - released).abs() > super::RANGE_FRACTION,
                     "Mesen2's default 40% axis dead zone cannot represent the measured travel"
                 );
-                Binding::from_axis(u32::from(code), positive).with_context(|| {
+                Binding::from_axis(pad, u32::from(code), positive).with_context(|| {
                     format!("Mesen2 has no buttonIndex for kernel axis {code:#x}")
                 })?
             }
@@ -146,6 +172,9 @@ pub(crate) struct PreparedSession {
     topology: InputTopology,
     setup: settings::SavedSetup,
     hashes: std::collections::BTreeMap<PathBuf, String>,
+    /// Kernel event node and pinned Mesen2 pad slot for the selected pad.
+    event: PathBuf,
+    slot: u32,
 }
 
 impl PreparedSession {
@@ -174,24 +203,14 @@ impl PreparedSession {
             .context("Mesen2 needs the controller's event node")?;
         let topology = InputTopology::capture(std::slice::from_ref(&device.device_path))?;
         let catalog = catalog(&setup.probe_program, cancel)?;
-        // Mesen2 registers pads in directory-iteration order; with exactly
-        // one qualifying device the slot is deterministically zero.
-        let qualifying: Vec<_> = catalog
-            .devices
-            .iter()
-            .filter(|device| qualifies(device))
-            .collect();
-        let selected = catalog.device_at_event(&event)?;
-        ensure!(
-            qualifying.len() == 1 && qualifying[0].event == selected.event,
-            "Mesen2 pad slots follow directory order; exactly one qualifying gamepad (the selected controller) is required"
-        );
+        let (selected, slot) = qualifying_slot(&catalog, &event)?;
         let bindings = calibrated_bindings(
             setup,
             calibrations
                 .get(&setup.controller_id)
                 .context("Mesen2 calibration disappeared")?,
             selected,
+            slot,
         )?;
         let directory = tempfile::Builder::new()
             .prefix("lunchbox-mesen2-")
@@ -216,6 +235,8 @@ impl PreparedSession {
             topology,
             setup: setup.clone(),
             hashes,
+            event,
+            slot,
         };
         session.verify(cancel)?;
         Ok(session)
@@ -227,15 +248,13 @@ impl PreparedSession {
         for (path, expected) in &self.hashes {
             ensure!(file_hash(path)? == *expected, "Mesen2 launch input changed");
         }
+        // The pad slot was pinned at preparation: another gamepad plugging in
+        // ahead of ours would renumber it, so the slot must still match.
         let catalog = catalog(&self.setup.probe_program, cancel)?;
+        let (_, slot) = qualifying_slot(&catalog, &self.event)?;
         ensure!(
-            catalog
-                .devices
-                .iter()
-                .filter(|device| qualifies(device))
-                .count()
-                == 1,
-            "Mesen2 requires the sole qualifying gamepad at launch"
+            slot == self.slot,
+            "Mesen2 pad slot moved before launch; review the controller setup again"
         );
         self.topology.verify()
     }

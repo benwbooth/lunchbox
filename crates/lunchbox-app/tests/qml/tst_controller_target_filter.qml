@@ -32,6 +32,57 @@ TestCase {
         compare(filter.applicable(profiles, "duckstation", filter.systems(profiles, "duckstation")[0]).length, 2)
         compare(filter.systems(profiles, "RetroArch · flycast (flycast)"), ["Arcade", "Sega Dreamcast"])
     }
+
+    // The launch path receives the emulator's database display name, which does
+    // not always equal its catalog core key. The dialog must resolve the same
+    // declared table Rust does, or it reports a working adapter as unsupported.
+    property var identities: [
+        {name: "Mesen", core: "mesen2"},
+        {name: "Nestopia UE", core: "nestopia"},
+        {name: "Atari++", core: "atari-plus-plus"},
+        {name: "Play!", core: "play"},
+        {name: "Mesen2 aliased", core: "mesen2x"}
+    ]
+    property var nativeProfiles: [
+        {id: "mesen-nes", core: "mesen2", transport: "mesen2-native-settings", target_layout: "nes",
+         native_launch: {platforms: ["Nintendo Entertainment System"], max_players: 1}},
+        {id: "mesen-pce", core: "mesen2", transport: "mesen2-native-settings", target_layout: "pce-2",
+         native_launch: {platforms: ["NEC TurboGrafx-CD"], max_players: 1}},
+        {id: "nestopia-n", core: "nestopia", transport: "nestopia-native-settings", target_layout: "nes",
+         native_launch: {platforms: ["Nintendo Entertainment System"], max_players: 2}},
+        {id: "nestopia-ue-n", core: "nestopia-ue", transport: "nestopia-ue-native-settings", target_layout: "nes",
+         native_launch: {platforms: ["Nintendo Entertainment System"], max_players: 2}},
+        {id: "ataripp", core: "atari-plus-plus", transport: "atari-plus-plus-native-settings", target_layout: "atari800-native-joystick",
+         native_launch: {platforms: ["Atari 800"], max_players: 4}}
+    ]
+
+    function test_declared_display_names_reach_their_profiles() {
+        compare(filter.applicable(nativeProfiles, "Mesen", "NEC TurboGrafx-CD", identities).map(p => p.id),
+                ["mesen-pce"])
+        compare(filter.applicable(nativeProfiles, "Mesen", "Nintendo Entertainment System", identities).map(p => p.id),
+                ["mesen-nes"])
+        compare(filter.applicable(nativeProfiles, "Nestopia UE", "Nintendo Entertainment System", identities).map(p => p.id),
+                ["nestopia-n"])
+        compare(filter.applicable(nativeProfiles, "Atari++", "Atari 800", identities).map(p => p.id),
+                ["ataripp"])
+        // Core keys keep working, and unaudited names still resolve to nothing.
+        compare(filter.applicable(nativeProfiles, "nestopia-ue", "Nintendo Entertainment System", identities).map(p => p.id),
+                ["nestopia-ue-n"])
+        compare(filter.applicable(nativeProfiles, "mesen", "Nintendo Entertainment System").map(p => p.id),
+                [])
+    }
+
+    function test_browse_list_shows_declared_names_not_core_keys() {
+        const names = filter.emulators(nativeProfiles, identities)
+        verify(names.indexOf("Mesen") >= 0)
+        verify(names.indexOf("Nestopia UE") >= 0)
+        // Every core keeps its own entry: aliasing must not hide an adapter.
+        verify(names.indexOf("nestopia-ue") >= 0)
+        compare(filter.systems(nativeProfiles, "Mesen", identities),
+                ["NEC TurboGrafx-CD", "Nintendo Entertainment System"])
+        // An identity declared for a core that has no profile is inert.
+        compare(filter.emulators(nativeProfiles, identities).indexOf("Mesen2 aliased"), -1)
+    }
     function test_player_limits() {
         compare(filter.playerLimit(profiles[0]), 2)
         compare(filter.playerLimit({target_layout: "psp"}), 1)

@@ -343,14 +343,15 @@ pub(crate) mod guided {
                 let _ = cancel;
                 let commit = flatpak_info(command, app_id, "--show-commit")?;
                 ensure!(
-                    commit.len() == 64
-                        && commit.bytes().all(|byte| byte.is_ascii_hexdigit()),
+                    commit.len() == 64 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()),
                     "Gopher64 Flatpak commit is not a trusted SHA-256"
                 );
                 Ok(commit)
             }
             EmulatorExecutable::Wine { .. } => {
-                anyhow::bail!("Gopher64 calibrated launch needs a native or Flatpak build, not Wine")
+                anyhow::bail!(
+                    "Gopher64 calibrated launch needs a native or Flatpak build, not Wine"
+                )
             }
         }
     }
@@ -387,10 +388,8 @@ pub(crate) mod guided {
                 }
                 #[cfg(target_os = "linux")]
                 if candidates.is_empty() {
-                    let (out, _) = capture(
-                        platform_process::host_command("ldd").arg(program),
-                        cancel,
-                    )?;
+                    let (out, _) =
+                        capture(platform_process::host_command("ldd").arg(program), cancel)?;
                     let out = std::str::from_utf8(&out).context("ldd output was not UTF-8")?;
                     for line in out.lines().filter(|line| line.contains("libSDL3.so")) {
                         if let Some(path) = line.split_whitespace().find(|s| s.starts_with('/')) {
@@ -407,8 +406,8 @@ pub(crate) mod guided {
             }
             EmulatorExecutable::Flatpak { command, app_id } => {
                 let runtime = flatpak_info(command, app_id, "--show-runtime")?;
-                let root =
-                    PathBuf::from(flatpak_info(command, &runtime, "--show-location")?).join("files");
+                let root = PathBuf::from(flatpak_info(command, &runtime, "--show-location")?)
+                    .join("files");
                 let mut dirs = vec![root.join("lib")];
                 if let Ok(entries) = std::fs::read_dir(root.join("lib")) {
                     dirs.extend(
@@ -427,7 +426,9 @@ pub(crate) mod guided {
                 Ok((library, dir))
             }
             EmulatorExecutable::Wine { .. } => {
-                anyhow::bail!("Gopher64 calibrated launch needs a native or Flatpak build, not Wine")
+                anyhow::bail!(
+                    "Gopher64 calibrated launch needs a native or Flatpak build, not Wine"
+                )
             }
         }
     }
@@ -438,14 +439,10 @@ pub(crate) mod guided {
     pub(crate) fn config_base(option: &RomEmulatorOption) -> Result<PathBuf> {
         let dirs = directories::BaseDirs::new().context("Missing user directories")?;
         match &option.executable {
-            EmulatorExecutable::Native(_) => {
-                Ok(dirs.config_dir().join("gopher64/config.json"))
-            }
+            EmulatorExecutable::Native(_) => Ok(dirs.config_dir().join("gopher64/config.json")),
             EmulatorExecutable::Flatpak { app_id, .. } => {
                 ensure!(
-                    !app_id.is_empty()
-                        && !app_id.contains('/')
-                        && !app_id.contains(".."),
+                    !app_id.is_empty() && !app_id.contains('/') && !app_id.contains(".."),
                     "Gopher64 Flatpak app identity is not a plain app id"
                 );
                 Ok(dirs
@@ -455,7 +452,9 @@ pub(crate) mod guided {
                     .join("config/gopher64/config.json"))
             }
             EmulatorExecutable::Wine { .. } => {
-                anyhow::bail!("Gopher64 calibrated launch needs a native or Flatpak build, not Wine")
+                anyhow::bail!(
+                    "Gopher64 calibrated launch needs a native or Flatpak build, not Wine"
+                )
             }
         }
     }
@@ -491,7 +490,9 @@ pub(crate) mod guided {
                 files
             }
             EmulatorExecutable::Wine { .. } => {
-                anyhow::bail!("Gopher64 calibrated launch needs a native or Flatpak build, not Wine")
+                anyhow::bail!(
+                    "Gopher64 calibrated launch needs a native or Flatpak build, not Wine"
+                )
             }
         };
         let content = PathBuf::from(args[0]);
@@ -536,7 +537,8 @@ pub(crate) mod guided {
     }
 }
 
-pub(crate) mod settings {    use super::*;
+pub(crate) mod settings {
+    use super::*;
     use crate::controller_catalog::{Calibration, catalog};
 
     #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -830,14 +832,10 @@ pub(crate) mod session {
                 .native
                 .as_ref()
                 .context("Gopher64 twin needs a measured native control")?;
-            let twin_endpoints =
-                twin_binding
-                    .axis
-                    .as_ref()
-                    .map(|axis| AxisEndpoints {
-                        released: axis.released,
-                        pressed: axis.pressed,
-                    });
+            let twin_endpoints = twin_binding.axis.as_ref().map(|axis| AxisEndpoints {
+                released: axis.released,
+                pressed: axis.pressed,
+            });
             let twin_raw = physical.digital_input(twin_native.code, twin_endpoints)?;
             let twin_translated = match &twin_raw {
                 lunchbox_controller_probe::duckstation::DigitalInput::Axis {
@@ -857,10 +855,7 @@ pub(crate) mod session {
             };
             ensure!(
                 secondary
-                    .insert(
-                        twin.target_id,
-                        MappedInput::from_sdl(twin_translated)?
-                    )
+                    .insert(twin.target_id, MappedInput::from_sdl(twin_translated)?)
                     .is_none(),
                 "Gopher64 twin target appears twice"
             );
@@ -1161,10 +1156,7 @@ pub(crate) mod session {
             #[cfg(target_os = "linux")]
             self.topology.verify()?;
             if let Some(directory) = &self.directory {
-                ensure!(
-                    directory.path().is_dir(),
-                    "Gopher64 session disappeared"
-                );
+                ensure!(directory.path().is_dir(), "Gopher64 session disappeared");
             }
             for (path, expected) in &self.hashes {
                 ensure!(
@@ -1250,7 +1242,8 @@ pub(crate) mod native_command {
                     "Gopher64 executable differs from the saved trusted runtime"
                 ),
                 Some(app_id) => {
-                    let commit = super::guided::flatpak_info(&self.executable, app_id, "--show-commit")?;
+                    let commit =
+                        super::guided::flatpak_info(&self.executable, app_id, "--show-commit")?;
                     ensure!(
                         commit == self.setup.executable_sha256,
                         "Gopher64 Flatpak runtime changed; review the controller setup again"
@@ -1318,7 +1311,9 @@ pub(crate) mod native_command {
                 (command.clone(), Some(app_id.clone()))
             }
             EmulatorExecutable::Wine { .. } => {
-                anyhow::bail!("Gopher64 calibrated launch needs a native or Flatpak build, not Wine")
+                anyhow::bail!(
+                    "Gopher64 calibrated launch needs a native or Flatpak build, not Wine"
+                )
             }
         };
         let content = super::guided::content_argument(original, option)?;

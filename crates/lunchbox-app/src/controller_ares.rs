@@ -4,11 +4,11 @@
 //! are deliberately distinct from gamepad enums and kernel evdev codes.
 use crate::controller_catalog::{Calibration, Catalog, EmulatorProfile, InputBinding};
 use anyhow::{Context, Result, ensure};
-use serde::Serialize;
 use lunchbox_controller_probe::{
     Device, Snapshot,
     bindings::{Input, Output},
 };
+use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
 mod runtime;
@@ -334,9 +334,19 @@ pub fn player_bindings(
             1 => "/Hi",
             _ => "",
         };
-        result.insert(row.output.clone(), format!("{identity}/{group}/{index}{suffix}"));
+        result.insert(
+            row.output.clone(),
+            format!("{identity}/{group}/{index}{suffix}"),
+        );
     }
-    append_twin_z(calibration, &rows, &resolve, &identity, profile, &mut result)?;
+    append_twin_z(
+        calibration,
+        &rows,
+        &resolve,
+        &identity,
+        profile,
+        &mut result,
+    )?;
     Ok(result)
 }
 
@@ -648,7 +658,7 @@ mod tests {
     fn twin_z_triggers_share_one_n64_z_output() {
         use crate::controller_sdl3;
         use lunchbox_controller_probe::bindings::{
-            Binding, ResolvedGamepad, Input as ProbeInput, Output as ProbeOutput,
+            Binding, Input as ProbeInput, Output as ProbeOutput, ResolvedGamepad,
         };
 
         let layout = crate::controller_catalog::catalog()
@@ -673,8 +683,23 @@ mod tests {
         }
         let mut choices = BTreeMap::new();
         for target in [
-            "a", "b", "c_down", "c_left", "c_right", "c_up", "down", "l", "left", "r",
-            "right", "start", "up", "z", "stick_down", "stick_left", "stick_right",
+            "a",
+            "b",
+            "c_down",
+            "c_left",
+            "c_right",
+            "c_up",
+            "down",
+            "l",
+            "left",
+            "r",
+            "right",
+            "start",
+            "up",
+            "z",
+            "stick_down",
+            "stick_left",
+            "stick_right",
             "stick_up",
         ] {
             choices.insert(target.to_owned(), target.to_owned());
@@ -767,10 +792,7 @@ mod tests {
                 layout: "brawler64".into(),
                 os: std::env::consts::OS.into(),
                 backend: "gilrs-0.11".into(),
-                bindings: BTreeMap::from([
-                    ("z".into(), input()),
-                    ("z_right".into(), input()),
-                ]),
+                bindings: BTreeMap::from([("z".into(), input()), ("z_right".into(), input())]),
             }
         }
         let n64 = profile("Nintendo 64").expect("ares n64 profile");

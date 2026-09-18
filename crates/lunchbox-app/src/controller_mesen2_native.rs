@@ -40,6 +40,8 @@ pub(crate) mod native_command;
 // (`--evdev-catalog` captures) and needs the controller's event node.
 // Other hosts have no evdev nodes, so no port is staged.
 #[cfg(target_os = "linux")]
+pub(crate) mod guided;
+#[cfg(target_os = "linux")]
 pub(crate) mod session;
 pub(crate) mod settings;
 
@@ -87,8 +89,9 @@ impl Binding {
         Ok(Self((0x1000 + pad * 0x100 + index) as u16))
     }
 
-    /// Kernel KEY_* code -> buttonIndex (LinuxGameController.cpp table).
-    pub(crate) fn from_key(code: u32) -> Option<Self> {
+    /// Kernel KEY_* code -> buttonIndex (LinuxGameController.cpp table) on the
+    /// slot Mesen2 assigns to this pad.
+    pub(crate) fn from_key(pad: u32, code: u32) -> Option<Self> {
         let index = match code {
             0x130..=0x13b => code - 0x130,
             0x13d => 12,
@@ -99,12 +102,13 @@ impl Binding {
             0x220 => 29,
             _ => return None,
         };
-        Some(Self((0x1000 + index) as u16))
+        Self::button_index(pad, index).ok()
     }
 
-    /// Kernel ABS_* code and direction -> buttonIndex. LinuxGameController
-    /// assigns the lower index to the positive half (`CheckAxis(code, true)`).
-    pub(crate) fn from_axis(code: u32, positive: bool) -> Option<Self> {
+    /// Kernel ABS_* code and direction -> buttonIndex on the pad's slot.
+    /// LinuxGameController assigns the lower index to the positive half
+    /// (`CheckAxis(code, true)`).
+    pub(crate) fn from_axis(pad: u32, code: u32, positive: bool) -> Option<Self> {
         let base = match code {
             0x00 => 14,
             0x01 => 16,
@@ -116,7 +120,7 @@ impl Binding {
             0x11 => 28,
             _ => return None,
         };
-        Some(Self((0x1000 + base + u32::from(!positive)) as u16))
+        Self::button_index(pad, base + u32::from(!positive)).ok()
     }
 }
 
@@ -191,32 +195,32 @@ mod tests {
 
     #[test]
     fn key_codes_map_through_the_pinned_table() {
-        assert_eq!(Binding::from_key(0x130).unwrap().0, 0x1000); // BTN_A
-        assert_eq!(Binding::from_key(0x131).unwrap().0, 0x1001); // BTN_B
-        assert_eq!(Binding::from_key(0x13a).unwrap().0, 0x100a); // BTN_SELECT
-        assert_eq!(Binding::from_key(0x13b).unwrap().0, 0x100b); // BTN_START
-        assert_eq!(Binding::from_key(0x13d).unwrap().0, 0x100c); // BTN_THUMBL
-        assert_eq!(Binding::from_key(0x13e).unwrap().0, 0x100d); // BTN_THUMBR
-        assert_eq!(Binding::from_key(0x223).unwrap().0, 0x101a); // DPAD right
-        assert_eq!(Binding::from_key(0x222).unwrap().0, 0x101b); // left
-        assert_eq!(Binding::from_key(0x221).unwrap().0, 0x101c); // down
-        assert_eq!(Binding::from_key(0x220).unwrap().0, 0x101d); // up
-        assert!(Binding::from_key(0x13c).is_none()); // BTN_MODE is unhandled
-        assert!(Binding::from_key(0x101).is_none());
+        assert_eq!(Binding::from_key(0, 0x130).unwrap().0, 0x1000); // BTN_A
+        assert_eq!(Binding::from_key(0, 0x131).unwrap().0, 0x1001); // BTN_B
+        assert_eq!(Binding::from_key(0, 0x13a).unwrap().0, 0x100a); // BTN_SELECT
+        assert_eq!(Binding::from_key(0, 0x13b).unwrap().0, 0x100b); // BTN_START
+        assert_eq!(Binding::from_key(0, 0x13d).unwrap().0, 0x100c); // BTN_THUMBL
+        assert_eq!(Binding::from_key(0, 0x13e).unwrap().0, 0x100d); // BTN_THUMBR
+        assert_eq!(Binding::from_key(0, 0x223).unwrap().0, 0x101a); // DPAD right
+        assert_eq!(Binding::from_key(0, 0x222).unwrap().0, 0x101b); // left
+        assert_eq!(Binding::from_key(0, 0x221).unwrap().0, 0x101c); // down
+        assert_eq!(Binding::from_key(0, 0x220).unwrap().0, 0x101d); // up
+        assert!(Binding::from_key(0, 0x13c).is_none()); // BTN_MODE is unhandled
+        assert!(Binding::from_key(0, 0x101).is_none());
     }
 
     #[test]
     fn axis_codes_map_to_half_indices() {
-        assert_eq!(Binding::from_axis(0x00, true).unwrap().0, 0x100e);
-        assert_eq!(Binding::from_axis(0x00, false).unwrap().0, 0x100f);
-        assert_eq!(Binding::from_axis(0x01, true).unwrap().0, 0x1010);
-        assert_eq!(Binding::from_axis(0x01, false).unwrap().0, 0x1011);
-        assert_eq!(Binding::from_axis(0x03, false).unwrap().0, 0x1015);
-        assert_eq!(Binding::from_axis(0x05, true).unwrap().0, 0x1018);
-        assert_eq!(Binding::from_axis(0x10, true).unwrap().0, 0x101a);
-        assert_eq!(Binding::from_axis(0x11, false).unwrap().0, 0x101d);
-        assert!(Binding::from_axis(0x06, true).is_none());
-        assert!(Binding::from_axis(0x12, true).is_none());
+        assert_eq!(Binding::from_axis(0, 0x00, true).unwrap().0, 0x100e);
+        assert_eq!(Binding::from_axis(0, 0x00, false).unwrap().0, 0x100f);
+        assert_eq!(Binding::from_axis(0, 0x01, true).unwrap().0, 0x1010);
+        assert_eq!(Binding::from_axis(0, 0x01, false).unwrap().0, 0x1011);
+        assert_eq!(Binding::from_axis(0, 0x03, false).unwrap().0, 0x1015);
+        assert_eq!(Binding::from_axis(0, 0x05, true).unwrap().0, 0x1018);
+        assert_eq!(Binding::from_axis(0, 0x10, true).unwrap().0, 0x101a);
+        assert_eq!(Binding::from_axis(0, 0x11, false).unwrap().0, 0x101d);
+        assert!(Binding::from_axis(0, 0x06, true).is_none());
+        assert!(Binding::from_axis(0, 0x12, true).is_none());
     }
 
     #[test]
@@ -225,6 +229,16 @@ mod tests {
         assert_eq!(Binding::button_index(2, 1).unwrap().0, 0x1201);
         assert!(Binding::button_index(20, 0).is_err());
         assert!(Binding::button_index(0, 0x100).is_err());
+    }
+
+    /// A pad Mesen2 registers after another qualifying gamepad keeps its own
+    /// slot; the binding must not stay on slot zero.
+    #[test]
+    fn bindings_follow_the_pad_slot() {
+        assert_eq!(Binding::from_key(3, 0x130).unwrap().0, 0x1300);
+        assert_eq!(Binding::from_axis(3, 0x00, true).unwrap().0, 0x130e);
+        assert_eq!(Binding::from_key(2, 0x220).unwrap().0, 0x121d);
+        assert!(Binding::from_key(20, 0x130).is_none());
     }
 
     #[test]
