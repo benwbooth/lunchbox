@@ -3514,6 +3514,7 @@ pub(crate) fn prepare_mame_calibrated_session(
             normalized.as_ref().unwrap_or(calibration),
             &profile,
             &transport.numbering,
+            Some(device),
             *port,
             1,
             &transport.pressure_codes,
@@ -5212,6 +5213,7 @@ fn player_config_requested(
         calibration,
         profile,
         device,
+        None,
         player,
         requested_mode,
         &pressure_codes,
@@ -5222,6 +5224,7 @@ fn player_config_transport(
     calibration: &Calibration,
     profile: &EmulatorProfile,
     device: &JoydevMap,
+    device_identity: Option<&crate::controllers::ControllerDevice>,
     player: usize,
     requested_mode: u32,
     pressure_codes: &std::collections::BTreeSet<u16>,
@@ -5314,6 +5317,24 @@ fn player_config_transport(
         format!("input_player{player}_joypad_index"),
         device.index.to_string(),
     );
+    if let Some(identity) = device_identity
+        && let (Some(vendor), Some(product)) = (&identity.vendor_id, &identity.product_id)
+    {
+        let vendor = vendor.trim_start_matches("0x");
+        let product = product.trim_start_matches("0x");
+        if !vendor.is_empty() && !product.is_empty() {
+            values.insert(
+                format!("input_player{player}_reserved_device"),
+                format!("{vendor}:{product}"),
+            );
+            values.insert(
+                format!("input_player{player}_device_reservation_type"),
+                // Reserved mode keeps this port for the measured device class
+                // instead of accepting whichever pad arrives next.
+                "1".into(),
+            );
+        }
+    }
     values.insert(format!("input_player{player}_analog_dpad_mode"), "0".into());
     values.insert(
         format!("input_libretro_device_p{player}"),
@@ -10714,7 +10735,11 @@ pub fn prepare_with_cancellation(
         .prefix("session-")
         .tempdir_in(cache)?;
     let mut config = String::from(
-        "# Lunchbox per-launch physical calibration. User config is never rewritten.\ninput_joypad_driver = \"linuxraw\"\ninput_autodetect_enable = \"false\"\nauto_remaps_enable = \"false\"\nauto_overrides_enable = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\n",
+        "# Lunchbox per-launch physical calibration. User config is never rewritten.\n\
+         # The calibrated players below are the whole input layer: RetroArch's own\n\
+         # autoconfig must not seat unrelated /dev/input nodes (mice, virtual\n\
+         # keyboards, HDMI jacks) into player slots this launch already owns.\n\
+         input_joypad_driver = \"linuxraw\"\ninput_autodetect_enable = \"false\"\nauto_remaps_enable = \"false\"\nauto_overrides_enable = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\n",
     );
     let mut transports = Vec::new();
     for (port, port_profile, device) in &players {
@@ -10725,6 +10750,7 @@ pub fn prepare_with_cancellation(
             calibration,
             &port_profile,
             &transport.numbering,
+            Some(device),
             *port,
             port_profile
                 .launch_device_for_port(*port)
@@ -11189,7 +11215,10 @@ fn prepare_mode_aware(
         .prefix("session-")
         .tempdir_in(cache)?;
     let mut output = String::from(
-        "# Lunchbox per-launch physical calibration; original configuration is unchanged.\ninput_joypad_driver = \"linuxraw\"\ninput_autodetect_enable = \"false\"\nauto_remaps_enable = \"false\"\nauto_overrides_enable = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\n",
+        "# Lunchbox per-launch physical calibration; original configuration is unchanged.\n\
+         # This launch owns the input layer, so RetroArch autoconfig must not\n\
+         # seat unrelated /dev/input nodes into the player slots below.\n\
+         input_joypad_driver = \"linuxraw\"\ninput_autodetect_enable = \"false\"\nauto_remaps_enable = \"false\"\nauto_overrides_enable = \"false\"\nconfig_save_on_exit = \"false\"\nremap_save_on_exit = \"false\"\n",
     );
     let highest_port = players.iter().map(|(port, _, _)| *port).max().unwrap();
     // Disabled gaps must not inherit a joystick already assigned to another port.
@@ -11214,6 +11243,7 @@ fn prepare_mode_aware(
             calibration,
             &profile,
             &transport.numbering,
+            Some(device),
             *port,
             modes[*port - 1],
             &transport.pressure_codes,
@@ -11787,6 +11817,61 @@ mod tests {
         println!("CONFIG_HOME {}", session.config_home.display());
         println!("CONTENT {}", session.content.display());
         std::mem::forget(session);
+    }
+
+    /// Scratch diagnostic: materialize the RetroArch append config for one
+    /// calibrated player and print the reservation keys it contains. Verifies
+    /// the ownership contract against the operator's real pad.
+    #[test]
+    #[ignore = "scratch diagnostic; needs local settings and controller hardware"]
+    fn scratch_retroarch_reservation_config() {
+        use std::sync::atomic::AtomicBool;
+        let store = crate::settings::SettingsStore::open_default().unwrap();
+        let settings = store.load().unwrap();
+        let mut warnings = Vec::new();
+        let inventory = crate::controllers::list_local_controllers(&mut warnings);
+        let device = inventory
+            .iter()
+            .find(|device| {
+                settings
+                    .controller_mapping
+                    .calibrations
+                    .contains_key(&device.stable_id)
+            })
+            .expect("no calibrated controller is connected");
+        println!(
+            "DEVICE {} vendor={:?} product={:?}",
+            device.stable_id, device.vendor_id, device.product_id
+        );
+        let calibration = &settings.controller_mapping.calibrations[&device.stable_id];
+        let profile = crate::controller_catalog::catalog()
+            .emulator_profiles
+            .iter()
+            .find(|profile| profile.id == "retroarch:nestopia:nes-2player")
+            .unwrap();
+        let transport =
+            prepare_player_transport(calibration, profile, device, &AtomicBool::new(false))
+                .unwrap();
+        let text = player_config_transport(
+            calibration,
+            profile,
+            &transport.numbering,
+            Some(device),
+            1,
+            257,
+            &transport.pressure_codes,
+        )
+        .unwrap();
+        for line in text
+            .lines()
+            .filter(|line| line.contains("reserv") || line.contains("autodetect"))
+        {
+            println!("CONFIG {line}");
+        }
+        assert!(
+            text.contains("input_player1_reserved_device"),
+            "the calibrated port must reserve its own measured device"
+        );
     }
 
     /// Scratch reproduction for the puNES first-launch path: NES content
