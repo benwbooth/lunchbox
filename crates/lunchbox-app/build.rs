@@ -329,10 +329,16 @@ fn generate_build_identity() {
     // Re-run whenever any crate source changes, so the embedded identity
     // describes this build rather than an earlier one.
     rerun_on_source_changes(&manifest_directory.join("src"));
-    println!(
-        "cargo:rerun-if-changed={}",
-        manifest_directory.join("../../.git/HEAD").display()
-    );
+    for shared in [
+        "../../.git/HEAD",
+        "../../.git/packed-refs",
+        "../../.git/refs/heads",
+    ] {
+        println!(
+            "cargo:rerun-if-changed={}",
+            manifest_directory.join(shared).display()
+        );
+    }
 
     let configured = std::env::var("LUNCHBOX_BUILD_HASH").unwrap_or_default();
     let configured = configured.trim();
