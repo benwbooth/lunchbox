@@ -361,16 +361,14 @@ fn load_preview_from_sources(
     })?;
     let mut platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
     for local_game in &installed.local_only_games {
-        if let Some(platform) = platforms
-            .iter_mut()
-            .find(|platform| platform.name == local_game.platform)
-        {
+        let name = canonical_platform_name(&local_game.platform);
+        if let Some(platform) = platforms.iter_mut().find(|platform| platform.name == name) {
             platform.game_count = platform.game_count.saturating_add(1);
         } else {
             platforms.push(Platform {
-                name: local_game.platform.clone(),
+                name: name.to_owned(),
                 game_count: 1,
-                search_key: platform_search_key(&local_game.platform, None),
+                search_key: platform_search_key(name, None),
             });
         }
     }
@@ -815,16 +813,14 @@ fn load_discovery_catalog_with_native_state(
     })?;
     let mut platforms = platform_rows.collect::<rusqlite::Result<Vec<_>>>()?;
     for local_game in &installed.local_only_games {
-        if let Some(platform) = platforms
-            .iter_mut()
-            .find(|platform| platform.name == local_game.platform)
-        {
+        let name = canonical_platform_name(&local_game.platform);
+        if let Some(platform) = platforms.iter_mut().find(|platform| platform.name == name) {
             platform.game_count = platform.game_count.saturating_add(1);
         } else {
             platforms.push(Platform {
-                name: local_game.platform.clone(),
+                name: name.to_owned(),
                 game_count: 1,
-                search_key: platform_search_key(&local_game.platform, None),
+                search_key: platform_search_key(name, None),
             });
         }
     }
@@ -1386,11 +1382,36 @@ fn representative_rank(game: &Game) -> (u8, u8, u8, String, String) {
     )
 }
 
-fn apply_grouped_platform_counts(games: &[Game], platforms: &mut [Platform]) {
+/// Platform names that describe the same system are one shelf. The launch
+/// database regions its Atari 400/800/XL/XE 8-bit line as `Atari 800`, while
+/// the Libretro database names the same hardware `Atari - 8-bit Family`; both
+/// cover the same machines (and the same `.atr`/`.xex`/`.xfd` software), so
+/// games declared under a variant must group and count under the canonical
+/// name instead of creating a second platform entry. Only source-declared
+/// equivalences belong here, and the canonical name must be the base system
+/// users see in the platform list.
+const PLATFORM_EQUIVALENTS: &[(&str, &str)] = &[("Atari - 8-bit Family", "Atari 800")];
+
+fn canonical_platform_name(name: &str) -> &str {
+    PLATFORM_EQUIVALENTS
+        .iter()
+        .find(|(variant, _)| variant.eq_ignore_ascii_case(name))
+        .map_or(name, |(_, canonical)| *canonical)
+}
+
+fn apply_grouped_platform_counts(games: &[Game], platforms: &mut Vec<Platform>) {
     let mut counts = HashMap::<String, usize>::new();
     for game in games {
-        *counts.entry(game.platform.to_lowercase()).or_default() += 1;
+        *counts
+            .entry(canonical_platform_name(&game.platform).to_lowercase())
+            .or_default() += 1;
     }
+    // A variant never survives as its own shelf once its games group into the
+    // canonical platform; otherwise the sidebar would list the same system
+    // twice, one empty.
+    platforms.retain(|platform| {
+        canonical_platform_name(&platform.name).eq_ignore_ascii_case(&platform.name)
+    });
     for platform in platforms {
         platform.game_count = counts
             .get(&platform.name.to_lowercase())
@@ -2758,6 +2779,24 @@ mod tests {
         );
         assert_eq!(downloadable.len(), 1);
         assert_eq!(catalog.games[downloadable[0]].title, "Download Game");
+    }
+
+    #[test]
+    fn platform_variants_group_under_their_canonical_system() {
+        use super::{PLATFORM_EQUIVALENTS, canonical_platform_name};
+        // Declared equivalences only, and each variant maps to a different
+        // canonical name.
+        for (variant, canonical) in PLATFORM_EQUIVALENTS {
+            assert_eq!(canonical_platform_name(variant), *canonical);
+            assert_ne!(variant, canonical);
+        }
+        // The Libretro 8-bit family name groups under the launch database's
+        // Atari 800 shelf, with no case sensitivity.
+        assert_eq!(canonical_platform_name("Atari - 8-bit Family"), "Atari 800");
+        assert_eq!(canonical_platform_name("atari - 8-bit family"), "Atari 800");
+        // Every other platform keeps its own name.
+        assert_eq!(canonical_platform_name("Atari 2600"), "Atari 2600");
+        assert_eq!(canonical_platform_name("Atari XEGS"), "Atari XEGS");
     }
 
     #[test]
