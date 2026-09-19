@@ -1118,8 +1118,9 @@ fn retained_or_recovered_torrent_bytes(
     if let Some(bytes) = store.retained_torrent_bytes(&job.info_hash)? {
         return Ok(bytes);
     }
-    let can_recover_source =
-        job.source_kind == "minerva" || job.torrent_url.starts_with("registered-torrent:");
+    let can_recover_source = job.source_kind == "minerva"
+        || job.source_kind == "pleasuredome"
+        || job.torrent_url.starts_with("registered-torrent:");
     if !can_recover_source {
         bail!(
             "this older download record predates retained torrent metadata; review its exact source once to bring it under Lunchbox lifecycle management"

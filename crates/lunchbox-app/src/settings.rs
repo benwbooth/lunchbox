@@ -6353,7 +6353,7 @@ fn migrate(connection: &Connection) -> Result<()> {
              title TEXT NOT NULL,
              platform TEXT NOT NULL,
              source_kind TEXT NOT NULL DEFAULT 'minerva' CHECK (
-                 source_kind IN ('minerva', 'manual_torrent')
+                 source_kind IN ('minerva', 'manual_torrent', 'pleasuredome')
              ),
              torrent_url TEXT NOT NULL,
              torrent_file_index INTEGER,
@@ -6491,7 +6491,7 @@ fn migrate(connection: &Connection) -> Result<()> {
                  length(torrent_bytes) BETWEEN 1 AND 67108864
              ),
              source_kind TEXT NOT NULL CHECK (
-                 source_kind IN ('minerva', 'manual_torrent')
+                 source_kind IN ('minerva', 'manual_torrent', 'pleasuredome')
              ),
              source_locator TEXT NOT NULL CHECK (
                  length(source_locator) BETWEEN 1 AND 8192
@@ -7333,7 +7333,7 @@ fn migrate(connection: &Connection) -> Result<()> {
     }
     if !column_exists(connection, "download_jobs", "source_kind")? {
         connection.execute(
-            "ALTER TABLE download_jobs ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'minerva' CHECK (source_kind IN ('minerva', 'manual_torrent'))",
+            "ALTER TABLE download_jobs ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'minerva' CHECK (source_kind IN ('minerva', 'manual_torrent', 'pleasuredome'))",
             [],
         )?;
     }
@@ -7536,6 +7536,105 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !metadata_overrides_schema_is_current(connection)? {
         migrate_metadata_overrides_schema(connection)?;
     }
+    if !download_source_kinds_are_current(connection)? {
+        migrate_download_source_kinds(connection)?;
+    }
+    Ok(())
+}
+
+/// The download source kind gained `pleasuredome`, and SQLite cannot widen an
+/// existing `CHECK` in place, so both tables that constrain it are rebuilt. The
+/// guard inspects the stored DDL, which keeps the rebuild idempotent.
+fn download_source_kinds_are_current(connection: &Connection) -> Result<bool> {
+    let mut statement = connection.prepare(
+        "SELECT sql FROM sqlite_schema WHERE type='table'
+         AND name IN ('download_jobs', 'retained_torrent_metadata')",
+    )?;
+    let schemas = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(schemas.len() == 2
+        && schemas
+            .iter()
+            .all(|schema| schema.contains("'pleasuredome'")))
+}
+
+/// Rebuild the two tables that constrain the download source kind so they accept
+/// `pleasuredome` alongside `minerva` and `manual_torrent`. Column lists are
+/// written out explicitly so an added column cannot silently shift values.
+fn migrate_download_source_kinds(connection: &Connection) -> Result<()> {
+    let transaction = connection.unchecked_transaction()?;
+    transaction.execute_batch(
+        "DROP TABLE IF EXISTS download_jobs_v2;
+         CREATE TABLE download_jobs_v2 (
+             id TEXT PRIMARY KEY,
+             game_id TEXT NOT NULL,
+             launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+             title TEXT NOT NULL,
+             platform TEXT NOT NULL,
+             source_kind TEXT NOT NULL DEFAULT 'minerva' CHECK (
+                 source_kind IN ('minerva', 'manual_torrent', 'pleasuredome')
+             ),
+             torrent_url TEXT NOT NULL,
+             torrent_file_index INTEGER,
+             torrent_file_path TEXT NOT NULL,
+             info_hash TEXT NOT NULL,
+             client_save_path TEXT NOT NULL,
+             local_download_path TEXT NOT NULL,
+             local_target_path TEXT NOT NULL,
+             state TEXT NOT NULL,
+             progress REAL NOT NULL CHECK (progress BETWEEN 0.0 AND 1.0),
+             download_speed INTEGER NOT NULL,
+             downloaded_bytes INTEGER NOT NULL,
+             total_bytes INTEGER NOT NULL,
+             message TEXT NOT NULL,
+             updated_at INTEGER NOT NULL,
+             post_import_action TEXT NOT NULL DEFAULT 'none' CHECK (
+                 post_import_action IN ('none', 'pause_pending', 'pause_applied')
+             ),
+             download_plan TEXT NOT NULL DEFAULT ''
+         );
+         INSERT INTO download_jobs_v2 (
+             id, game_id, launchbox_db_id, title, platform, source_kind,
+             torrent_url, torrent_file_index, torrent_file_path, info_hash,
+             client_save_path, local_download_path, local_target_path, state,
+             progress, download_speed, downloaded_bytes, total_bytes, message,
+             updated_at, post_import_action, download_plan
+         )
+         SELECT id, game_id, launchbox_db_id, title, platform, source_kind,
+                torrent_url, torrent_file_index, torrent_file_path, info_hash,
+                client_save_path, local_download_path, local_target_path, state,
+                progress, download_speed, downloaded_bytes, total_bytes, message,
+                updated_at, post_import_action, download_plan
+         FROM download_jobs;
+         DROP TABLE download_jobs;
+         ALTER TABLE download_jobs_v2 RENAME TO download_jobs;
+         DROP TABLE IF EXISTS retained_torrent_metadata_v2;
+         CREATE TABLE retained_torrent_metadata_v2 (
+             info_hash TEXT PRIMARY KEY CHECK (length(info_hash)=40),
+             torrent_sha256 TEXT NOT NULL CHECK (length(torrent_sha256)=64),
+             torrent_bytes BLOB NOT NULL CHECK (
+                 length(torrent_bytes) BETWEEN 1 AND 67108864
+             ),
+             source_kind TEXT NOT NULL CHECK (
+                 source_kind IN ('minerva', 'manual_torrent', 'pleasuredome')
+             ),
+             source_locator TEXT NOT NULL CHECK (
+                 length(source_locator) BETWEEN 1 AND 8192
+             ),
+             retained_at INTEGER NOT NULL CHECK (retained_at >= 0)
+         );
+         INSERT INTO retained_torrent_metadata_v2 (
+             info_hash, torrent_sha256, torrent_bytes, source_kind,
+             source_locator, retained_at
+         )
+         SELECT info_hash, torrent_sha256, torrent_bytes, source_kind,
+                source_locator, retained_at
+         FROM retained_torrent_metadata;
+         DROP TABLE retained_torrent_metadata;
+         ALTER TABLE retained_torrent_metadata_v2 RENAME TO retained_torrent_metadata;",
+    )?;
+    transaction.commit()?;
     Ok(())
 }
 
@@ -8544,7 +8643,7 @@ fn upsert_registered_torrent_catalog(
 }
 
 fn validate_download_source_kind(source_kind: &str) -> Result<()> {
-    if matches!(source_kind, "minerva" | "manual_torrent") {
+    if matches!(source_kind, "minerva" | "manual_torrent" | "pleasuredome") {
         Ok(())
     } else {
         bail!("unsupported download source kind {source_kind}")
@@ -11519,6 +11618,143 @@ identity"
                 .presentations
                 .get(&manual.id)
                 .is_none_or(HashMap::is_empty)
+        );
+    }
+
+    #[test]
+    fn legacy_download_source_kinds_accept_pleasuredome_after_migration() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("legacy-state.db");
+        let connection = Connection::open(&path).unwrap();
+        // A database created before PleasureDome existed: both CHECK constraints
+        // only allow minerva/manual_torrent, and neither table has the columns
+        // added by later migrations.
+        connection
+            .execute_batch(
+                "CREATE TABLE download_jobs (
+                     id TEXT PRIMARY KEY,
+                     game_id TEXT NOT NULL,
+                     launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+                     title TEXT NOT NULL,
+                     platform TEXT NOT NULL,
+                     source_kind TEXT NOT NULL DEFAULT 'minerva' CHECK (
+                         source_kind IN ('minerva', 'manual_torrent')
+                     ),
+                     torrent_url TEXT NOT NULL,
+                     torrent_file_index INTEGER,
+                     torrent_file_path TEXT NOT NULL,
+                     info_hash TEXT NOT NULL,
+                     client_save_path TEXT NOT NULL,
+                     local_download_path TEXT NOT NULL,
+                     local_target_path TEXT NOT NULL,
+                     state TEXT NOT NULL,
+                     progress REAL NOT NULL CHECK (progress BETWEEN 0.0 AND 1.0),
+                     download_speed INTEGER NOT NULL,
+                     downloaded_bytes INTEGER NOT NULL,
+                     total_bytes INTEGER NOT NULL,
+                     message TEXT NOT NULL,
+                     updated_at INTEGER NOT NULL
+                 );
+                 CREATE TABLE retained_torrent_metadata (
+                     info_hash TEXT PRIMARY KEY CHECK (length(info_hash)=40),
+                     torrent_sha256 TEXT NOT NULL CHECK (length(torrent_sha256)=64),
+                     torrent_bytes BLOB NOT NULL CHECK (
+                         length(torrent_bytes) BETWEEN 1 AND 67108864
+                     ),
+                     source_kind TEXT NOT NULL CHECK (
+                         source_kind IN ('minerva', 'manual_torrent')
+                     ),
+                     source_locator TEXT NOT NULL CHECK (
+                         length(source_locator) BETWEEN 1 AND 8192
+                     ),
+                     retained_at INTEGER NOT NULL CHECK (retained_at >= 0)
+                 );
+                 INSERT INTO download_jobs VALUES
+                     ('keep', 'game', 0, 'Title', 'Pinball', 'minerva',
+                      'https://example.test/a.torrent', NULL, 'file.rom',
+                      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '', '', '',
+                      'queued', 0.0, 0, 0, 0, '', 1);
+                 INSERT INTO retained_torrent_metadata VALUES
+                     ('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                      'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                      X'01', 'manual_torrent', 'registered-torrent:x', 1);",
+            )
+            .unwrap();
+        drop(connection);
+
+        // Opening the store migrates both constraints.
+        let store = SettingsStore::at(&path).unwrap();
+        let connection = store.connection().unwrap();
+        // The existing rows survive with their values intact.
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM download_jobs", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT source_kind FROM download_jobs WHERE id='keep'",
+                    [],
+                    |row| { row.get::<_, String>(0) }
+                )
+                .unwrap(),
+            "minerva"
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM retained_torrent_metadata",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        // And the widened constraint now accepts the new kind.
+        connection
+            .execute(
+                "INSERT INTO download_jobs (
+                     id, game_id, launchbox_db_id, title, platform, source_kind,
+                     torrent_url, torrent_file_path, info_hash, client_save_path,
+                     local_download_path, local_target_path, state, progress,
+                     download_speed, downloaded_bytes, total_bytes, message, updated_at
+                 ) VALUES
+                     ('new', 'game', 0, 'Table', 'Pinball', 'pleasuredome',
+                      'https://example.test/b.torrent', 'table.vpx',
+                      'dddddddddddddddddddddddddddddddddddddddd', '', '', '',
+                      'queued', 0.0, 0, 0, 0, '', 1)",
+                [],
+            )
+            .expect("the migrated constraint accepts pleasuredome");
+        connection
+            .execute(
+                "INSERT INTO retained_torrent_metadata (
+                     info_hash, torrent_sha256, torrent_bytes, source_kind,
+                     source_locator, retained_at
+                 ) VALUES
+                     ('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+                      'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+                      X'02', 'pleasuredome', 'https://example.test/b.torrent', 1)",
+                [],
+            )
+            .expect("the migrated metadata constraint accepts pleasuredome");
+        // Re-opening is a no-op because the guard inspects the stored DDL.
+        drop(connection);
+        drop(store);
+        let reopened = SettingsStore::at(&path).unwrap();
+        assert_eq!(
+            reopened
+                .connection()
+                .unwrap()
+                .query_row("SELECT count(*) FROM download_jobs", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            2
         );
     }
 

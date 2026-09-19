@@ -1627,6 +1627,20 @@ fn fetch_emumovies(
     let Some((username, password)) = configured_emumovies_credentials()? else {
         return Ok(None);
     };
+    // A pinball platform maps to several EmuMovies folders and a folder can
+    // publish several archives, so a miss costs real FTP work. Remember the
+    // miss per (platform, kind) the same way the other providers do.
+    if !request.force
+        && provider_negative_cache_is_fresh(
+            root,
+            "emumovies",
+            request.database_id,
+            request.requested_kind,
+            request.exact_only,
+        )
+    {
+        return Ok(None);
+    }
     let client = crate::emumovies::EmuMoviesClient::new(
         crate::emumovies::EmuMoviesConfig { username, password },
         root.to_path_buf(),
@@ -1662,9 +1676,16 @@ fn fetch_emumovies(
             &game_directory,
             None,
         )? {
+            remove_provider_negative_cache(root, "emumovies", request);
             return Ok(Some((fetched_kind, path)));
         }
     }
+    write_provider_negative_cache(
+        root,
+        "emumovies",
+        request,
+        "no exact EmuMovies archive entry matched this title and platform",
+    )?;
     Ok(None)
 }
 

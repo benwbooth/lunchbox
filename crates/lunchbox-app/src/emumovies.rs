@@ -1173,15 +1173,19 @@ impl ArchiveIndex {
             }
         }
 
-        // Try fuzzy matching
-        for (key, entry) in &self.entries {
-            let key_no_region = remove_region_codes(key);
-            if key_no_region == no_region {
-                return Some(entry);
-            }
+        // Region-insensitive fallback. Only a single match is accepted: the
+        // entries are stored in a hash map, so returning the first of several
+        // would be arbitrary and could show another game's artwork. Ambiguity
+        // fails closed and the caller reports "no exact match".
+        let matches = self
+            .entries
+            .iter()
+            .filter(|(key, _)| remove_region_codes(key) == no_region)
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [(_, entry)] => Some(entry),
+            _ => None,
         }
-
-        None
     }
 }
 

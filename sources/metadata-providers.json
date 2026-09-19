@@ -133,6 +133,16 @@
       "decision": "Treat torrent and package records as acquisition offers, never canonical game identity."
     },
     {
+      "slug": "pleasuredome",
+      "name": "PleasureDome",
+      "homepage": "https://pleasuredome.github.io/pleasuredome/",
+      "terms_url": "https://pleasuredome.github.io/pleasuredome/",
+      "data_license": "Provider-specific; user-fetched torrent metadata, not redistributable",
+      "redistribution_policy": "runtime_only",
+      "role": "optional_torrent_source",
+      "decision": "User-supplied pinball and OpenBOR torrent catalogs only. The sets are user-fetched and their trackers need the user's own passkey, so no torrent, datfile, or ROM is committed and none may enter the public database artifact."
+    },
+    {
       "slug": "emulationwiki",
       "name": "Emulation General Wiki",
       "homepage": "https://emulation.gametechwiki.com/",

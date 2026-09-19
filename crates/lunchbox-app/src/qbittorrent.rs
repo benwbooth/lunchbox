@@ -1292,7 +1292,10 @@ pub fn enqueue(
     request: EnqueueRequest,
 ) -> Result<DownloadJob> {
     settings.validate()?;
-    if !matches!(request.source_kind.as_str(), "minerva" | "manual_torrent") {
+    if !matches!(
+        request.source_kind.as_str(),
+        "minerva" | "manual_torrent" | "pleasuredome"
+    ) {
         bail!("unsupported download source kind {}", request.source_kind);
     }
     validate_download_directories(settings)?;

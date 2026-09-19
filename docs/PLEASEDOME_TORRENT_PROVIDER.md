@@ -12,21 +12,23 @@ wired as **user-managed local providers**: the operator supplies the
 ## How coverage works
 
 A catalog game is marked downloadable when its platform is covered by a
-download source *and* the game is not installed. Coverage now comes from two
+download source *and* the game is not installed. Coverage now comes from three
 places:
 
 1. The pinned Minerva catalog (`minerva.db`).
-2. Local provider catalogs registered from a manifest
+2. The user's PleasureDome pinball catalog (`pleasuredome.db`), a first-class
+   source with its own `pleasuredome` download kind.
+3. Local provider catalogs registered from a manifest
    (`registered_torrent_catalogs.managed_by_provider_id`).
 
-Only platforms declared by a registered catalog count, and matching is an
-exact normalized platform key, so registration is always an explicit user
-action and no fuzzy title link is involved. Both bulk manifest imports and
-single manual torrent registrations are recognised.
+Matching is an exact normalized platform key in all three, so registration is
+always an explicit user action and no fuzzy title link is involved.
 
-`crates/lunchbox-app/src/catalog.rs` — `load_registered_torrent_platforms()`
-is unioned into `load_minerva_coverage()`'s platform set in the preview,
-discovery, and availability paths.
+`crates/lunchbox-app/src/catalog.rs` — `load_download_coverage()` unions
+`load_minerva_coverage()`, `load_pleasuredome_coverage()` and
+`load_registered_torrent_platforms()` for the preview, discovery and
+availability paths. `game_details.rs::resolve_pleasuredome_bundles()` resolves
+per game exactly like Minerva, emitting `source_kind: "pleasuredome"`.
 
 ## Pinball (PleasureDome)
 

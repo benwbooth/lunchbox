@@ -160,6 +160,21 @@ pub(crate) fn requested_minerva_database_path() -> Option<PathBuf> {
     })
 }
 
+/// The PleasureDome pinball catalog, modelled on the Minerva catalog: torrents
+/// whose platform rows point at the `Pinball` and `OpenBOR` shelves. Supplied by
+/// the user because the sets are not redistributable and their trackers need the
+/// user's own passkey.
+pub(crate) fn requested_pleasuredome_database_path() -> Option<PathBuf> {
+    requested_path("--pleasuredome-database", "LUNCHBOX_PLEASUREDOME_DATABASE").or_else(|| {
+        existing_path([
+            PathBuf::from("pleasuredome.db"),
+            PathBuf::from("db/pleasuredome.db"),
+            legacy_data_path("pleasuredome.db"),
+            project_data_path("pleasuredome.db"),
+        ])
+    })
+}
+
 fn requested_user_database_path() -> Option<PathBuf> {
     requested_path("--user-database", "LUNCHBOX_USER_DATABASE")
         .or_else(|| existing_path([legacy_data_path("user.db"), project_data_path("user.db")]))
@@ -267,10 +282,7 @@ fn load_preview_from_sources(
     let discovery = open_read_only(&discovery_path, "Lunchbox discovery database")?;
     validate_discovery_schema(&discovery)?;
     let installed = load_installed_games_with_native_state(user_path, native_state_path)?;
-    let mut minerva = load_minerva_coverage(minerva_path)?;
-    minerva
-        .platform_names
-        .extend(load_registered_torrent_platforms(native_state_path)?);
+    let minerva = load_download_coverage(minerva_path, native_state_path)?;
     let total_game_count =
         count(&discovery, "games", "1")?.saturating_add(installed.local_only_games.len());
     let order = if column_exists(&discovery, "games", "sort_title")? {
@@ -666,10 +678,7 @@ fn load_discovery_catalog_with_native_state(
     let discovery = open_read_only(discovery_path, "Lunchbox discovery database")?;
     validate_discovery_schema(&discovery)?;
     let installed = load_installed_games_with_native_state(user_path, native_state_path)?;
-    let mut minerva = load_minerva_coverage(minerva_path)?;
-    minerva
-        .platform_names
-        .extend(load_registered_torrent_platforms(native_state_path)?);
+    let minerva = load_download_coverage(minerva_path, native_state_path)?;
 
     let game_capacity = count(&discovery, "games", "1")?;
     let mut games = Vec::with_capacity(game_capacity);
@@ -1482,13 +1491,12 @@ pub(crate) fn game_availability_flags(
     identities: &[(String, i64, String)],
 ) -> Result<Vec<(bool, bool)>> {
     let installed = load_installed_games(requested_user_database_path().as_deref())?;
-    let mut minerva = load_minerva_coverage(requested_minerva_database_path().as_deref())?;
     let state_path = crate::settings::state_database_path().ok();
-    minerva
-        .platform_names
-        .extend(load_registered_torrent_platforms(
-            state_path.as_deref().filter(|path| path.is_file()),
-        )?);
+    let state_path = state_path.filter(|path| path.is_file());
+    let minerva = load_download_coverage(
+        requested_minerva_database_path().as_deref(),
+        state_path.as_deref(),
+    )?;
     Ok(identities
         .iter()
         .map(|(game_uid, launchbox_db_id, platform)| {
@@ -1627,26 +1635,74 @@ fn add_installed_identity(
 }
 
 fn load_minerva_coverage(path: Option<&Path>) -> Result<MinervaCoverage> {
+    load_torrent_catalog_coverage(
+        path,
+        "Minerva catalog",
+        "minerva_torrents",
+        "minerva_torrent_platforms",
+        "minerva_platform",
+    )
+}
+
+/// Every platform a download source can provide, from the pinned Minerva
+/// catalog, the user's PleasureDome catalog, and any registered local torrent
+/// catalog. Platform identity is an exact normalized key in all three.
+fn load_download_coverage(
+    minerva_path: Option<&Path>,
+    native_state_path: Option<&Path>,
+) -> Result<MinervaCoverage> {
+    let mut coverage = load_minerva_coverage(minerva_path)?;
+    let pleasuredome =
+        load_pleasuredome_coverage(requested_pleasuredome_database_path().as_deref())?;
+    coverage.offer_count = coverage
+        .offer_count
+        .saturating_add(pleasuredome.offer_count);
+    coverage.platform_names.extend(pleasuredome.platform_names);
+    coverage
+        .platform_names
+        .extend(load_registered_torrent_platforms(native_state_path)?);
+    Ok(coverage)
+}
+
+/// Platform coverage from the PleasureDome pinball catalog, if the user supplied
+/// one. Same table shape as Minerva, so the reader is shared.
+fn load_pleasuredome_coverage(path: Option<&Path>) -> Result<MinervaCoverage> {
+    load_torrent_catalog_coverage(
+        path,
+        "PleasureDome catalog",
+        "pleasuredome_torrents",
+        "pleasuredome_torrent_platforms",
+        "pleasuredome_platform",
+    )
+}
+
+fn load_torrent_catalog_coverage(
+    path: Option<&Path>,
+    label: &str,
+    torrents_table: &str,
+    platforms_table: &str,
+    provider_platform_column: &str,
+) -> Result<MinervaCoverage> {
     let Some(path) = path else {
         return Ok(MinervaCoverage::default());
     };
-    let connection = open_read_only(path, "Minerva catalog")?;
-    for table in ["minerva_torrents", "minerva_torrent_platforms"] {
+    let connection = open_read_only(path, label)?;
+    for table in [torrents_table, platforms_table] {
         if !table_exists(&connection, table)? {
-            bail!("Minerva catalog is missing required table {table}");
+            bail!("{label} is missing required table {table}");
         }
     }
 
     let mut coverage = MinervaCoverage {
-        offer_count: count(&connection, "minerva_torrents", "1")?,
+        offer_count: count(&connection, torrents_table, "1")?,
         ..MinervaCoverage::default()
     };
-    let mut statement = connection.prepare(
-        "SELECT tp.lunchbox_platform_name, tp.minerva_platform,
+    let mut statement = connection.prepare(&format!(
+        "SELECT tp.lunchbox_platform_name, tp.{provider_platform_column},
                 coalesce(t.collection, '')
-         FROM minerva_torrent_platforms tp
-         JOIN minerva_torrents t ON t.id=tp.torrent_id",
-    )?;
+         FROM {platforms_table} tp
+         JOIN {torrents_table} t ON t.id=tp.torrent_id"
+    ))?;
     let rows = statement.query_map([], |row| {
         Ok((
             row.get::<_, Option<String>>(0)?,

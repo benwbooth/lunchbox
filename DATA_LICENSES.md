@@ -72,6 +72,12 @@ under terms compatible with CC BY-SA 4.0.
   <https://api-docs.retroachievements.org/>.
 - **Minerva** — acquisition records remain subject to provider-specific terms and are fetched at
   runtime.
+- **PleasureDome** — pinball and OpenBOR `.torrent` catalogs are user-fetched and their trackers
+  require the user's own account passkey, so Lunchbox never bundles them and never places them in
+  the public `lunchbox.db.7z` artifact. A user may import a local catalog
+  (`lunchbox-db import-pleasuredome`) that records torrent URLs, file names, collection labels,
+  counts and sizes only — the same shape as the Minerva catalog. No torrent bytes, datfile, table,
+  ROM or artwork is committed. Upstream: <https://pleasuredome.github.io/pleasuredome/>.
 
 Local collection paths, hashes, and user-created provisional records are private user data. They
 are stored only in a writable user database and are never included in the public artifact.

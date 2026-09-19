@@ -9,6 +9,7 @@ mod inspect;
 mod libretro;
 mod local_collection;
 mod minerva;
+mod pleasuredome;
 mod source;
 mod wiki;
 
@@ -74,6 +75,15 @@ enum Command {
     },
     /// Import Minerva torrent bundles as local acquisition offers.
     ImportMinerva {
+        #[arg(long)]
+        database: PathBuf,
+        #[arg(long)]
+        catalog: PathBuf,
+        #[arg(long, default_value = "1970-01-01T00:00:00Z")]
+        import_timestamp: String,
+    },
+    /// Import a user-supplied PleasureDome pinball catalog (torrents only; no payloads).
+    ImportPleasureDome {
         #[arg(long)]
         database: PathBuf,
         #[arg(long)]
@@ -215,6 +225,16 @@ fn main() -> Result<()> {
             let mut connection = database::open_existing(&database)?;
             database::seed_providers(&connection)?;
             let stats = minerva::import(&mut connection, &catalog, &import_timestamp)?;
+            println!("{}", serde_json::to_string_pretty(&stats)?);
+        }
+        Command::ImportPleasureDome {
+            database,
+            catalog,
+            import_timestamp,
+        } => {
+            let mut connection = database::open_existing(&database)?;
+            database::seed_providers(&connection)?;
+            let stats = pleasuredome::import(&mut connection, &catalog, &import_timestamp)?;
             println!("{}", serde_json::to_string_pretty(&stats)?);
         }
         Command::ImportWikiRanks {

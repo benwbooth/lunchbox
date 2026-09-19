@@ -299,6 +299,9 @@ pub fn load(
     details.bundles = resolve_minerva_bundles(&details)?;
     details
         .bundles
+        .extend(resolve_pleasuredome_bundles(&details)?);
+    details
+        .bundles
         .extend(resolve_registered_torrent_bundles_for_game(
             &settings_store,
             &details.platform,
@@ -1412,22 +1415,50 @@ pub fn resolve_minerva_bundles(details: &GameDetails) -> Result<Vec<MinervaBundl
     let Some(path) = catalog::requested_minerva_database_path() else {
         return Ok(Vec::new());
     };
-    resolve_minerva_bundles_from_path(details, &path)
+    resolve_torrent_catalog_bundles(details, &path, "Minerva catalog", "minerva", "minerva")
+}
+
+/// PleasureDome pinball sets, supplied by the user, resolve exactly like Minerva
+/// but carry their own source kind so downloads and recovery stay separable.
+pub fn resolve_pleasuredome_bundles(details: &GameDetails) -> Result<Vec<MinervaBundle>> {
+    let Some(path) = catalog::requested_pleasuredome_database_path() else {
+        return Ok(Vec::new());
+    };
+    resolve_torrent_catalog_bundles(
+        details,
+        &path,
+        "PleasureDome catalog",
+        "pleasuredome",
+        "pleasuredome",
+    )
 }
 
 fn resolve_minerva_bundles_from_path(
     details: &GameDetails,
     path: &Path,
 ) -> Result<Vec<MinervaBundle>> {
-    let connection = catalog::open_read_only(path, "Minerva catalog")?;
+    resolve_torrent_catalog_bundles(details, path, "Minerva catalog", "minerva", "minerva")
+}
+
+/// Resolve bundles from a Minerva-shaped catalog (`<kind>_torrents` /
+/// `<kind>_torrent_platforms`). Platform matching stays exact on the normalized
+/// key, with the same explicit fallbacks Minerva uses.
+fn resolve_torrent_catalog_bundles(
+    details: &GameDetails,
+    path: &Path,
+    label: &str,
+    source_kind: &str,
+    platforms_table_prefix: &str,
+) -> Result<Vec<MinervaBundle>> {
+    let connection = catalog::open_read_only(path, label)?;
     let platform_key = catalog::normalize_platform_key(&details.platform);
-    let mut statement = connection.prepare(
+    let mut statement = connection.prepare(&format!(
         "SELECT t.id, t.torrent_url, coalesce(t.collection, ''),
-                tp.minerva_platform, tp.rom_count, coalesce(t.total_size, 0),
-                tp.lunchbox_platform_name
-         FROM minerva_torrent_platforms tp
-         JOIN minerva_torrents t ON t.id=tp.torrent_id",
-    )?;
+                tp.{platforms_table_prefix}_platform, tp.rom_count,
+                coalesce(t.total_size, 0), tp.lunchbox_platform_name
+         FROM {platforms_table_prefix}_torrent_platforms tp
+         JOIN {platforms_table_prefix}_torrents t ON t.id=tp.torrent_id"
+    ))?;
     let rows = statement.query_map([], |row| {
         Ok((
             row.get::<_, i64>(0)?,
@@ -1475,7 +1506,7 @@ fn resolve_minerva_bundles_from_path(
         bundles.push(MinervaBundle {
             torrent_id,
             torrent_url,
-            source_kind: "minerva".to_owned(),
+            source_kind: source_kind.to_owned(),
             torrent_sha256: String::new(),
             collection,
             provider_platform,
@@ -3724,6 +3755,57 @@ mod tests {
         assert_eq!(atari.len(), 1);
         assert_eq!(atari[0].torrent_id, 2);
         assert_eq!(atari[0].match_kind, BundleMatchKind::ExplicitFallback);
+    }
+
+    #[test]
+    fn pleasuredome_resolution_matches_pinball_exactly_with_its_own_source_kind() {
+        let database = tempfile::NamedTempFile::new().unwrap();
+        let connection = rusqlite::Connection::open(database.path()).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE pleasuredome_torrents (
+                    id INTEGER PRIMARY KEY,
+                    torrent_file TEXT NOT NULL UNIQUE,
+                    torrent_url TEXT NOT NULL,
+                    collection TEXT,
+                    rom_count INTEGER DEFAULT 0,
+                    total_size INTEGER DEFAULT 0
+                );
+                CREATE TABLE pleasuredome_torrent_platforms (
+                    torrent_id INTEGER NOT NULL REFERENCES pleasuredome_torrents(id),
+                    pleasuredome_platform TEXT NOT NULL,
+                    lunchbox_platform_id INTEGER,
+                    lunchbox_platform_name TEXT,
+                    rom_count INTEGER DEFAULT 0,
+                    PRIMARY KEY (torrent_id, pleasuredome_platform)
+                );
+                INSERT INTO pleasuredome_torrents VALUES
+                    (1, 'visual.torrent', 'https://example.test/visual.torrent', 'Pinball', 1, 10),
+                    (2, 'unrelated.torrent', 'https://example.test/unrelated.torrent', 'No-Intro', 1, 20);
+                INSERT INTO pleasuredome_torrent_platforms VALUES
+                    (1, 'Visual Pinball', NULL, 'Pinball', 100),
+                    (2, 'Nintendo Game Boy', 42, 'Nintendo Game Boy', 200);",
+            )
+            .unwrap();
+        drop(connection);
+
+        let bundles = resolve_torrent_catalog_bundles(
+            &GameDetails {
+                platform: "Pinball".into(),
+                ..GameDetails::default()
+            },
+            database.path(),
+            "PleasureDome catalog",
+            "pleasuredome",
+            "pleasuredome",
+        )
+        .unwrap();
+        assert_eq!(bundles.len(), 1, "only the Pinball row may match");
+        assert_eq!(bundles[0].torrent_id, 1);
+        assert_eq!(bundles[0].match_kind, BundleMatchKind::MappedName);
+        // The distinct kind is what keeps recovery and retention separable from
+        // Minerva's.
+        assert_eq!(bundles[0].source_kind, "pleasuredome");
     }
 
     #[test]
