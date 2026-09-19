@@ -38,6 +38,15 @@ pub struct MagnetMetadataReview {
     pub created_for_review: bool,
 }
 
+/// What a metadata review did to qBittorrent state, so the caller can undo
+/// exactly that: `created` torrents are deleted, `started` torrents are
+/// paused again once the metadata has been exported.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct MagnetReviewLease {
+    created: bool,
+    started: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DownloadPreflight {
     pub can_queue: bool,
@@ -322,35 +331,56 @@ impl QbittorrentClient {
         })
     }
 
+    /// Adds a magnet for metadata review and returns what the review did to
+    /// qBittorrent state: `created` marks a torrent the caller must delete,
+    /// and `started` marks one the caller must pause again after the export,
+    /// because qBittorrent only fetches magnet metadata while a torrent runs.
     fn add_magnet_for_review(
         &self,
         magnet_uri: &str,
         info_hash: &str,
         save_path: &str,
-    ) -> Result<bool> {
-        if let Some(existing) = self.torrent_info(info_hash)? {
+    ) -> Result<MagnetReviewLease> {
+        let mut lease = if let Some(existing) = self.torrent_info(info_hash)? {
             ensure_owned(&existing)?;
-            return Ok(false);
+            // Only a stopped torrent that is still waiting for metadata has to
+            // be started; a paused completed torrent exports fine and must not
+            // be woken into seeding.
+            let state = existing.state.to_ascii_lowercase();
+            let stopped = state.contains("pause") || state.contains("stop");
+            let metadata_missing = state.contains("meta") || state.ends_with("dl");
+            MagnetReviewLease {
+                created: false,
+                started: stopped && metadata_missing,
+            }
+        } else {
+            self.ensure_category()?;
+            let response = self
+                .agent
+                .post(self.endpoint("torrents/add"))
+                .header("Referer", &self.base_url)
+                .send_form([
+                    ("urls", magnet_uri),
+                    ("savepath", save_path),
+                    ("category", LUNCHBOX_CATEGORY),
+                    ("autoTMM", "false"),
+                    ("stopped", "true"),
+                    ("paused", "true"),
+                    ("contentLayout", "Original"),
+                    ("root_folder", "true"),
+                ])
+                .context("adding the magnet for metadata review")?;
+            let (status, body) = response_text(response)?;
+            require_success(status, &body, "qBittorrent magnet review request")?;
+            MagnetReviewLease {
+                created: true,
+                started: true,
+            }
+        };
+        if lease.started {
+            self.resume_owned(info_hash)?;
         }
-        self.ensure_category()?;
-        let response = self
-            .agent
-            .post(self.endpoint("torrents/add"))
-            .header("Referer", &self.base_url)
-            .send_form([
-                ("urls", magnet_uri),
-                ("savepath", save_path),
-                ("category", LUNCHBOX_CATEGORY),
-                ("autoTMM", "false"),
-                ("stopped", "true"),
-                ("paused", "true"),
-                ("contentLayout", "Original"),
-                ("root_folder", "true"),
-            ])
-            .context("adding the magnet for metadata review")?;
-        let (status, body) = response_text(response)?;
-        require_success(status, &body, "qBittorrent magnet review request")?;
-        Ok(true)
+        Ok(lease)
     }
 
     fn export_torrent(&self, info_hash: &str, maximum_bytes: u64) -> Result<Option<Vec<u8>>> {
@@ -827,19 +857,20 @@ pub fn inspect_magnet_metadata(
         bail!("magnet review requires a bounded managed destination");
     }
     let client = QbittorrentClient::authenticated(settings, password)?;
-    let created_for_review = client.add_magnet_for_review(
+    let lease = client.add_magnet_for_review(
         magnet_uri,
         &info_hash.to_ascii_lowercase(),
         client_save_path,
     )?;
-    let deadline = Instant::now() + Duration::from_secs(15);
+    let created_for_review = lease.created;
+    let deadline = Instant::now() + Duration::from_secs(90);
     let result = loop {
         match client.export_torrent(info_hash, maximum_bytes) {
             Ok(Some(torrent_bytes)) => break Ok(torrent_bytes),
             Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(200)),
             Ok(None) => {
                 break Err(anyhow::anyhow!(
-                    "qBittorrent did not receive magnet metadata within 15 seconds; leave qBittorrent running and try again"
+                    "qBittorrent did not receive magnet metadata within 90 seconds; leave qBittorrent running and try again"
                 ));
             }
             Err(error) => break Err(error),
@@ -855,7 +886,7 @@ pub fn inspect_magnet_metadata(
         }
     };
     let validation = (|| -> Result<()> {
-        if created_for_review {
+        if lease.started {
             client.pause_owned(info_hash)?;
         }
         let torrent = Torrent::read_from_bytes(&torrent_bytes).map_err(|error| {
@@ -1972,6 +2003,8 @@ mod tests {
                 false,
             ),
             (Vec::new(), false),
+            (owned_info.clone().into_bytes(), false),
+            (Vec::new(), false),
             (torrent_bytes.clone(), false),
             (owned_info.into_bytes(), false),
             (Vec::new(), false),
@@ -1991,10 +2024,84 @@ mod tests {
         assert!(review.created_for_review);
         assert_eq!(review.info_hash, info_hash);
         assert_eq!(review.torrent_bytes, torrent_bytes);
-        let captured = (0..7).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        let captured = (0..9).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
         assert!(captured[3].starts_with("POST /api/v2/torrents/add HTTP/1.1"));
+        // A newly added magnet is started so qBittorrent fetches the metadata.
+        assert!(captured[5].starts_with("POST /api/v2/torrents/start HTTP/1.1"));
+        assert!(captured[6].starts_with("GET /api/v2/torrents/export?hash="));
+        assert!(captured[8].starts_with("POST /api/v2/torrents/stop HTTP/1.1"));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn magnet_review_resumes_a_metadata_less_leftover_and_pauses_it_again() {
+        let torrent_bytes = crate::external_torrent::probe_fixture_torrent_bytes();
+        let torrent = Torrent::read_from_bytes(&torrent_bytes).unwrap();
+        let info_hash = torrent.info_hash();
+        let owned_info =
+            format!(r#"[{{"hash":"{info_hash}","category":"lunchbox","state":"stoppedDL"}}]"#);
+        let (address, requests, worker) = mock_server_bytes(vec![
+            (b"Ok.".to_vec(), true),
+            (owned_info.clone().into_bytes(), false),
+            (owned_info.clone().into_bytes(), false),
+            (Vec::new(), false),
+            (torrent_bytes.clone(), false),
+            (owned_info.into_bytes(), false),
+            (Vec::new(), false),
+        ]);
+        let magnet = format!("magnet:?xt=urn:btih:{info_hash}&dn=Reviewed+Collection");
+
+        let review = inspect_magnet_metadata(
+            &settings_for(address),
+            "secret",
+            &magnet,
+            &info_hash,
+            "/downloads/lunchbox/imports/Test",
+            16 * 1024 * 1024,
+        )
+        .unwrap();
+
+        assert!(!review.created_for_review);
+        let captured = (0..7).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        // The first torrent_info found the stopped leftover; the second is the
+        // ownership check inside the resume, then the start itself.
+        assert!(captured[1].starts_with("GET /api/v2/torrents/info?"));
+        assert!(captured[2].starts_with("GET /api/v2/torrents/info?"));
+        assert!(captured[3].starts_with("POST /api/v2/torrents/start HTTP/1.1"));
         assert!(captured[4].starts_with("GET /api/v2/torrents/export?hash="));
+        // It is paused again after the export instead of left running.
         assert!(captured[6].starts_with("POST /api/v2/torrents/stop HTTP/1.1"));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn magnet_review_leaves_a_running_torrent_running() {
+        let torrent_bytes = crate::external_torrent::probe_fixture_torrent_bytes();
+        let torrent = Torrent::read_from_bytes(&torrent_bytes).unwrap();
+        let info_hash = torrent.info_hash();
+        let owned_info =
+            format!(r#"[{{"hash":"{info_hash}","category":"lunchbox","state":"metaDL"}}]"#);
+        let (address, requests, worker) = mock_server_bytes(vec![
+            (b"Ok.".to_vec(), true),
+            (owned_info.into_bytes(), false),
+            (torrent_bytes, false),
+        ]);
+        let magnet = format!("magnet:?xt=urn:btih:{info_hash}&dn=Reviewed+Collection");
+
+        let review = inspect_magnet_metadata(
+            &settings_for(address),
+            "secret",
+            &magnet,
+            &info_hash,
+            "/downloads/lunchbox/imports/Test",
+            16 * 1024 * 1024,
+        )
+        .unwrap();
+
+        assert!(!review.created_for_review);
+        let captured = (0..3).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured[1].starts_with("GET /api/v2/torrents/info?"));
+        assert!(captured[2].starts_with("GET /api/v2/torrents/export?hash="));
         worker.join().unwrap();
     }
 
