@@ -228,6 +228,18 @@ fn emumovies_platform_search_candidates(platform: &str) -> Vec<String> {
             candidates.push("NEC TurboGrafx CD".to_string());
         }
         "pcenginesupergrafx" => candidates.push("NEC PC-Engine SuperGrafx".to_string()),
+        // EmuMovies splits pinball into the table simulators and the commercial
+        // digital tables, so search all of them; the exact-title match picks the
+        // folder that actually holds the game.
+        "pinball" => {
+            candidates.push("Visual Pinball".to_string());
+            candidates.push("Future Pinball".to_string());
+            candidates.push("Pinball Arcade, The".to_string());
+            candidates.push("Pinball FX2".to_string());
+            candidates.push("Pinball FX".to_string());
+            candidates.push("Zen Pinball FX2".to_string());
+        }
+        "openbor" => candidates.push("OpenBOR".to_string()),
         "3dointeractivemultiplayer" => candidates.push("Panasonic 3DO".to_string()),
         _ => {}
     }
@@ -279,6 +291,12 @@ pub fn get_emumovies_system_folder(platform: &str) -> Option<&'static str> {
             Some("NEC PC Engine CD - Turbografx CD")
         }
         "pcenginesupergrafx" => Some("NEC PC-Engine SuperGrafx"),
+        // The catalog's single Pinball platform spans every EmuMovies pinball
+        // folder. The primary is the table simulator, and
+        // `emumovies_platform_search_candidates` lists the rest so an exact
+        // title match resolves to whichever folder holds the game.
+        "pinball" => Some("Visual Pinball"),
+        "openbor" => Some("OpenBOR"),
         key if key.starts_with("arcade")
             || platform_tokens.iter().any(|token| token == "arcade") =>
         {
@@ -401,7 +419,7 @@ static SOUNDTRACK_DOWNLOAD_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>
     OnceLock::new();
 static ARTWORK_FOLDER_CACHE: OnceLock<Mutex<Option<Vec<String>>>> = OnceLock::new();
 static ARTWORK_ARCHIVE_CACHE: OnceLock<
-    Mutex<HashMap<(String, EmuMoviesMediaType), Option<String>>>,
+    Mutex<HashMap<(String, EmuMoviesMediaType, String), Option<String>>>,
 > = OnceLock::new();
 // Cache discovered video folders per normalized EmuMovies platform folder.
 static VIDEO_FOLDER_CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
@@ -887,6 +905,23 @@ fn select_artwork_folder_from_list<'a>(folders: &'a [String], platform: &str) ->
         }
     }
     None
+}
+
+/// Every artwork folder matching the platform, in candidate preference order.
+fn select_artwork_folders_from_list<'a>(folders: &'a [String], platform: &str) -> Vec<&'a str> {
+    let mut matched = Vec::new();
+    for candidate in emumovies_platform_search_candidates(platform) {
+        for folder in folders
+            .iter()
+            .filter(|folder| exact_platform_key_match(artwork_folder_name(folder), &candidate))
+        {
+            let folder = folder.as_str();
+            if !matched.contains(&folder) {
+                matched.push(folder);
+            }
+        }
+    }
+    matched
 }
 
 #[derive(Debug, Clone)]
@@ -1409,13 +1444,51 @@ impl EmuMoviesClient {
         Ok(select_artwork_folder_from_list(&folders, platform).map(str::to_string))
     }
 
-    /// Find the archive file for a platform and media type on the FTP server
+    /// Every artwork folder the platform maps to, in preference order. EmuMovies
+    /// splits some platforms across folders — pinball tables live under Visual
+    /// Pinball, Future Pinball, Pinball Arcade, Pinball FX and Zen Pinball FX2 —
+    /// so resolution tries each in turn instead of committing to the first.
+    fn find_artwork_folders(&self, platform: &str) -> Result<Vec<String>> {
+        let folders = self.get_artwork_folders()?;
+        Ok(select_artwork_folders_from_list(&folders, platform)
+            .into_iter()
+            .map(str::to_string)
+            .collect())
+    }
+
+    /// Find the archive file for a platform and media type on the FTP server.
+    ///
+    /// When a platform maps to several folders, each is tried in preference
+    /// order. `game_name` additionally prefers the archive that actually lists
+    /// the game, which matters where a folder publishes several archives for
+    /// the same media type.
     pub fn find_archive(
         &self,
         platform: &str,
         media_type: EmuMoviesMediaType,
     ) -> Result<Option<String>> {
-        let cache_key = (normalize_emumovies_platform_key(platform), media_type);
+        self.find_archive_for_game(platform, media_type, None)
+    }
+
+    fn find_archive_for_game(
+        &self,
+        platform: &str,
+        media_type: EmuMoviesMediaType,
+        game_name: Option<&str>,
+    ) -> Result<Option<String>> {
+        let pattern = media_type.archive_pattern();
+        let folders = self.find_artwork_folders(platform)?;
+        // A multi-folder platform resolves per game, so its result cannot be
+        // cached under the platform alone.
+        let cache_key = (
+            normalize_emumovies_platform_key(platform),
+            media_type,
+            if folders.len() > 1 {
+                game_name.unwrap_or_default().to_owned()
+            } else {
+                String::new()
+            },
+        );
         if let Some(cached) = ARTWORK_ARCHIVE_CACHE
             .get_or_init(|| Mutex::new(HashMap::new()))
             .lock()
@@ -1425,7 +1498,7 @@ impl EmuMoviesClient {
         {
             return Ok(cached);
         }
-        let Some(system_folder) = self.find_artwork_folder(platform)? else {
+        if folders.is_empty() {
             tracing::info!("No EmuMovies artwork folder found for {}", platform);
             ARTWORK_ARCHIVE_CACHE
                 .get_or_init(|| Mutex::new(HashMap::new()))
@@ -1433,36 +1506,80 @@ impl EmuMoviesClient {
                 .expect("artwork archive cache lock poisoned")
                 .insert(cache_key, None);
             return Ok(None);
-        };
+        }
 
-        let artwork_path = artwork_folder_path(&system_folder);
-        let pattern = media_type.archive_pattern();
-
-        tracing::info!("Searching for {} archives in {}", pattern, artwork_path);
-
-        let files = self.list_files(&artwork_path)?;
-
-        // Find an archive containing the pattern
-        for file in &files {
-            let filename = file.rsplit('/').next().unwrap_or(file);
-            if filename.contains(pattern) && filename.ends_with(".zip") {
-                tracing::info!("Found archive: {}", file);
-                ARTWORK_ARCHIVE_CACHE
-                    .get_or_init(|| Mutex::new(HashMap::new()))
-                    .lock()
-                    .expect("artwork archive cache lock poisoned")
-                    .insert(cache_key, Some(file.clone()));
-                return Ok(Some(file.clone()));
+        let mut selected: Option<String> = None;
+        for system_folder in &folders {
+            let artwork_path = artwork_folder_path(system_folder);
+            tracing::info!("Searching for {} archives in {}", pattern, artwork_path);
+            let Ok(files) = self.list_files(&artwork_path) else {
+                continue;
+            };
+            let candidates: Vec<&String> = files
+                .iter()
+                .filter(|file| {
+                    let filename = file.rsplit('/').next().unwrap_or(file);
+                    filename.contains(pattern) && filename.ends_with(".zip")
+                })
+                .collect();
+            let Some(first) = candidates.first().copied() else {
+                continue;
+            };
+            if game_name.is_none() || candidates.len() == 1 {
+                selected = Some(first.clone());
+                break;
+            }
+            // A folder can publish several archives for one media type (32-bit
+            // and 8-bit variations, for example). Probe only then, because each
+            // probe downloads its candidate; a miss moves on to the next folder,
+            // which is how one Pinball platform serves the table simulators and
+            // the commercial digital tables.
+            match candidates
+                .iter()
+                .find(|file| self.archive_lists_game(file, media_type, game_name.unwrap()))
+            {
+                Some(found) => {
+                    selected = Some((*found).clone());
+                    break;
+                }
+                None => continue,
             }
         }
 
-        tracing::info!("No archive found matching pattern {}", pattern);
+        tracing::info!("Selected artwork archive: {:?}", selected);
         ARTWORK_ARCHIVE_CACHE
             .get_or_init(|| Mutex::new(HashMap::new()))
             .lock()
             .expect("artwork archive cache lock poisoned")
-            .insert(cache_key, None);
-        Ok(None)
+            .insert(cache_key, selected.clone());
+        Ok(selected)
+    }
+
+    /// Whether an archive publishes an entry for this game, using the archive's
+    /// own cached index so a probe downloads each archive at most once.
+    fn archive_lists_game(
+        &self,
+        remote_path: &str,
+        media_type: EmuMoviesMediaType,
+        game_name: &str,
+    ) -> bool {
+        let local_path = self
+            .get_archive_path("__probe__", media_type)
+            .with_file_name(
+                remote_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("archive.zip")
+                    .to_owned(),
+            );
+        if self
+            .download_archive(remote_path, &local_path, None)
+            .is_err()
+        {
+            return false;
+        }
+        self.get_or_build_index(&local_path)
+            .is_ok_and(|index| index.find_entry(game_name).is_some())
     }
 
     /// Download an archive from FTP with progress callback
@@ -1631,8 +1748,11 @@ impl EmuMoviesClient {
 
             // Check if we need to download the archive
             if !archive_path.exists() {
-                // Find the archive on FTP
-                let Some(remote_path) = self.find_archive(platform, media_type)? else {
+                // Find the archive on FTP, preferring the one that lists this
+                // game when the platform spans several folders.
+                let Some(remote_path) =
+                    self.find_archive_for_game(platform, media_type, Some(game_name))?
+                else {
                     return Ok(None);
                 };
 
@@ -3082,6 +3202,54 @@ mod tests {
 
         let three_do = emumovies_platform_search_candidates("3DO Interactive Multiplayer");
         assert!(three_do.contains(&"Panasonic 3DO".to_string()));
+    }
+
+    #[test]
+    fn pinball_and_openbor_map_to_their_split_emumovies_folders() {
+        let pinball = emumovies_platform_search_candidates("Pinball");
+        for folder in [
+            "Visual Pinball",
+            "Future Pinball",
+            "Pinball Arcade, The",
+            "Pinball FX",
+            "Pinball FX2",
+            "Zen Pinball FX2",
+        ] {
+            assert!(
+                pinball.contains(&folder.to_string()),
+                "Pinball must search {folder}"
+            );
+        }
+        assert_eq!(
+            get_emumovies_system_folder("Pinball"),
+            Some("Visual Pinball")
+        );
+
+        let openbor = emumovies_platform_search_candidates("OpenBOR");
+        assert!(openbor.contains(&"OpenBOR".to_string()));
+        assert_eq!(get_emumovies_system_folder("OpenBOR"), Some("OpenBOR"));
+
+        // Resolution walks every matching folder rather than stopping at the
+        // first, which is what lets a single Pinball platform serve the table
+        // simulators and the commercial digital tables.
+        let folders = vec![
+            "/Official/Artwork/Visual Pinball".to_string(),
+            "/Official/Artwork/Future Pinball".to_string(),
+            "/Official/Artwork/Pinball FX2".to_string(),
+            "/Official/Artwork/OpenBOR".to_string(),
+        ];
+        assert_eq!(
+            select_artwork_folders_from_list(&folders, "Pinball"),
+            vec![
+                "/Official/Artwork/Visual Pinball",
+                "/Official/Artwork/Future Pinball",
+                "/Official/Artwork/Pinball FX2",
+            ]
+        );
+        assert_eq!(
+            select_artwork_folders_from_list(&folders, "OpenBOR"),
+            vec!["/Official/Artwork/OpenBOR"]
+        );
     }
 
     #[test]

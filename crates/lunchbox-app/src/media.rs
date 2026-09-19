@@ -340,11 +340,16 @@ impl ArtworkKind {
 
     fn fallbacks(self) -> &'static [Self] {
         match self {
+            // A pinball machine, arcade board or console may have no box art at
+            // all (only a flyer or a gameplay capture), so the card image keeps
+            // looking past the box kinds before giving up.
             Self::BoxFront => &[
                 Self::BoxFront,
                 Self::Box3d,
+                Self::Flyer,
                 Self::Screenshot,
                 Self::TitleScreen,
+                Self::ClearLogo,
             ],
             Self::BoxBack => &[Self::BoxBack, Self::BoxFront, Self::Box3d],
             Self::Box3d => &[Self::Box3d, Self::BoxFront, Self::Screenshot],
