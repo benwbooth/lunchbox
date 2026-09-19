@@ -7539,6 +7539,25 @@ fn migrate(connection: &Connection) -> Result<()> {
     if !download_source_kinds_are_current(connection)? {
         migrate_download_source_kinds(connection)?;
     }
+    if !column_exists(connection, "download_jobs", "created_at")? {
+        repair_download_jobs_created_at(connection)?;
+    }
+    Ok(())
+}
+
+/// The first PleasureDome source-kind rebuild omitted `created_at`, so
+/// databases migrated by that build lost a column every job query selects.
+/// The column is restored in place and backfilled from `updated_at`, the
+/// closest surviving approximation of each job's creation time, because the
+/// rebuild already dropped the original values.
+fn repair_download_jobs_created_at(connection: &Connection) -> Result<()> {
+    let transaction = connection.unchecked_transaction()?;
+    transaction.execute(
+        "ALTER TABLE download_jobs ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0",
+        [],
+    )?;
+    transaction.execute("UPDATE download_jobs SET created_at = updated_at", [])?;
+    transaction.commit()?;
     Ok(())
 }
 
@@ -7561,7 +7580,9 @@ fn download_source_kinds_are_current(connection: &Connection) -> Result<bool> {
 
 /// Rebuild the two tables that constrain the download source kind so they accept
 /// `pleasuredome` alongside `minerva` and `manual_torrent`. Column lists are
-/// written out explicitly so an added column cannot silently shift values.
+/// written out explicitly so an added column cannot silently shift values, and
+/// they must mirror the base `download_jobs` schema exactly — an omitted column
+/// here would be silently dropped from every migrated database.
 fn migrate_download_source_kinds(connection: &Connection) -> Result<()> {
     let transaction = connection.unchecked_transaction()?;
     transaction.execute_batch(
@@ -7588,10 +7609,11 @@ fn migrate_download_source_kinds(connection: &Connection) -> Result<()> {
              downloaded_bytes INTEGER NOT NULL,
              total_bytes INTEGER NOT NULL,
              message TEXT NOT NULL,
-             updated_at INTEGER NOT NULL,
              post_import_action TEXT NOT NULL DEFAULT 'none' CHECK (
                  post_import_action IN ('none', 'pause_pending', 'pause_applied')
              ),
+             created_at INTEGER NOT NULL,
+             updated_at INTEGER NOT NULL,
              download_plan TEXT NOT NULL DEFAULT ''
          );
          INSERT INTO download_jobs_v2 (
@@ -7599,13 +7621,13 @@ fn migrate_download_source_kinds(connection: &Connection) -> Result<()> {
              torrent_url, torrent_file_index, torrent_file_path, info_hash,
              client_save_path, local_download_path, local_target_path, state,
              progress, download_speed, downloaded_bytes, total_bytes, message,
-             updated_at, post_import_action, download_plan
+             post_import_action, created_at, updated_at, download_plan
          )
          SELECT id, game_id, launchbox_db_id, title, platform, source_kind,
                 torrent_url, torrent_file_index, torrent_file_path, info_hash,
                 client_save_path, local_download_path, local_target_path, state,
                 progress, download_speed, downloaded_bytes, total_bytes, message,
-                updated_at, post_import_action, download_plan
+                post_import_action, created_at, updated_at, download_plan
          FROM download_jobs;
          DROP TABLE download_jobs;
          ALTER TABLE download_jobs_v2 RENAME TO download_jobs;
@@ -11653,6 +11675,10 @@ identity"
                      downloaded_bytes INTEGER NOT NULL,
                      total_bytes INTEGER NOT NULL,
                      message TEXT NOT NULL,
+                     post_import_action TEXT NOT NULL DEFAULT 'none' CHECK (
+                         post_import_action IN ('none', 'pause_pending', 'pause_applied')
+                     ),
+                     created_at INTEGER NOT NULL,
                      updated_at INTEGER NOT NULL
                  );
                  CREATE TABLE retained_torrent_metadata (
@@ -11673,7 +11699,7 @@ identity"
                      ('keep', 'game', 0, 'Title', 'Pinball', 'minerva',
                       'https://example.test/a.torrent', NULL, 'file.rom',
                       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '', '', '',
-                      'queued', 0.0, 0, 0, 0, '', 1);
+                      'queued', 0.0, 0, 0, 0, '', 'none', 5, 1);
                  INSERT INTO retained_torrent_metadata VALUES
                      ('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
                       'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
@@ -11714,6 +11740,18 @@ identity"
                 .unwrap(),
             1
         );
+        // The rebuild must not drop columns: the original creation timestamp
+        // survives the source-kind migration unchanged.
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT created_at FROM download_jobs WHERE id='keep'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            5
+        );
         // And the widened constraint now accepts the new kind.
         connection
             .execute(
@@ -11721,12 +11759,13 @@ identity"
                      id, game_id, launchbox_db_id, title, platform, source_kind,
                      torrent_url, torrent_file_path, info_hash, client_save_path,
                      local_download_path, local_target_path, state, progress,
-                     download_speed, downloaded_bytes, total_bytes, message, updated_at
+                     download_speed, downloaded_bytes, total_bytes, message,
+                     created_at, updated_at
                  ) VALUES
                      ('new', 'game', 0, 'Table', 'Pinball', 'pleasuredome',
                       'https://example.test/b.torrent', 'table.vpx',
                       'dddddddddddddddddddddddddddddddddddddddd', '', '', '',
-                      'queued', 0.0, 0, 0, 0, '', 1)",
+                      'queued', 0.0, 0, 0, 0, '', 6, 1)",
                 [],
             )
             .expect("the migrated constraint accepts pleasuredome");
@@ -11756,6 +11795,95 @@ identity"
                 .unwrap(),
             2
         );
+    }
+
+    #[test]
+    fn download_jobs_missing_created_at_is_repaired_and_backfilled() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("broken-state.db");
+        let connection = Connection::open(&path).unwrap();
+        // The shape left behind by the first PleasureDome rebuild: the widened
+        // constraints are already in place, but `created_at` was dropped, so
+        // the source-kind guard skips the rebuild and every job query fails.
+        connection
+            .execute_batch(
+                "CREATE TABLE download_jobs (
+                     id TEXT PRIMARY KEY,
+                     game_id TEXT NOT NULL,
+                     launchbox_db_id INTEGER NOT NULL DEFAULT 0,
+                     title TEXT NOT NULL,
+                     platform TEXT NOT NULL,
+                     source_kind TEXT NOT NULL DEFAULT 'minerva' CHECK (
+                         source_kind IN ('minerva', 'manual_torrent', 'pleasuredome')
+                     ),
+                     torrent_url TEXT NOT NULL,
+                     torrent_file_index INTEGER,
+                     torrent_file_path TEXT NOT NULL,
+                     info_hash TEXT NOT NULL,
+                     client_save_path TEXT NOT NULL,
+                     local_download_path TEXT NOT NULL,
+                     local_target_path TEXT NOT NULL,
+                     state TEXT NOT NULL,
+                     progress REAL NOT NULL CHECK (progress BETWEEN 0.0 AND 1.0),
+                     download_speed INTEGER NOT NULL,
+                     downloaded_bytes INTEGER NOT NULL,
+                     total_bytes INTEGER NOT NULL,
+                     message TEXT NOT NULL,
+                     updated_at INTEGER NOT NULL,
+                     post_import_action TEXT NOT NULL DEFAULT 'none' CHECK (
+                         post_import_action IN ('none', 'pause_pending', 'pause_applied')
+                     ),
+                     download_plan TEXT NOT NULL DEFAULT ''
+                 );
+                 INSERT INTO download_jobs (
+                     id, game_id, title, platform, source_kind, torrent_url,
+                     torrent_file_path, info_hash, client_save_path,
+                     local_download_path, local_target_path, state, progress,
+                     download_speed, downloaded_bytes, total_bytes, message,
+                     updated_at
+                 ) VALUES
+                     ('kept', 'game', 'Table', 'Pinball', 'pleasuredome',
+                      'magnet:?xt=urn:btih:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                      'table.vpx',
+                      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '', '', '',
+                      'queued', 0.0, 0, 0, 0, '', 42);",
+            )
+            .unwrap();
+        drop(connection);
+
+        let store = SettingsStore::at(&path).unwrap();
+        let connection = store.connection().unwrap();
+        // The repair restores the column and approximates each original
+        // creation time with the job's surviving update time.
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT created_at, updated_at FROM download_jobs WHERE id='kept'",
+                    [],
+                    |row| { Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)) }
+                )
+                .unwrap(),
+            (42, 42)
+        );
+        // The healed table still accepts every source kind.
+        connection
+            .execute(
+                "INSERT INTO download_jobs (
+                     id, game_id, title, platform, source_kind, torrent_url,
+                     torrent_file_path, info_hash, client_save_path,
+                     local_download_path, local_target_path, state, progress,
+                     download_speed, downloaded_bytes, total_bytes, message,
+                     created_at, updated_at
+                 ) VALUES
+                     ('fresh', 'game', 'Table', 'Pinball', 'minerva',
+                      'https://example.test/a.torrent', 'file.rom',
+                      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '', '', '',
+                      'queued', 0.0, 0, 0, 0, '', 7, 9)",
+                [],
+            )
+            .expect("the healed table accepts every source kind");
+        // And the store's own job reader works against the healed schema.
+        assert_eq!(store.jobs().unwrap().len(), 2);
     }
 
     #[test]
