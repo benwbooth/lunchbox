@@ -2021,6 +2021,7 @@ fn executable_names(name: &str, host: HostPlatform) -> Vec<String> {
         "vice" => &["x64sc", "x64", "x128", "xplus4", "vice"],
         "vice (xpet)" => &["xpet"],
         "vice (xvic)" => &["xvic"],
+        "visual pinball" => &["VPinballX", "VPinballX_GL", "vpinballx"],
         "86box" => &["86Box", "86box"],
         "pcbox" => &["PCBox", "pcbox"],
         _ => &[],
