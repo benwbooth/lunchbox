@@ -126,6 +126,7 @@ ApplicationWindow {
                 ? downloadQueue.job_index_for_game(selectedGameId) : -1
     }
     property int selectedDatabaseId: 0
+    property string detailsRefreshedJobId: ""
     readonly property bool selectedDownloadImported: {
         downloadQueue.revision
         return selectedDownloadJobIndex >= 0
@@ -1468,6 +1469,28 @@ ApplicationWindow {
             refreshSelectedArtwork()
         }
         gameDetails.select_game(gameId, identityTitle, platform, local, downloadable)
+    }
+
+    // A download that just finished must refresh the open details pane even
+    // when no job row is selected anywhere: re-derive the job index from the
+    // queue at call time (bindings over invokables can be stale) and reload
+    // the pane once per finished job.
+    function refreshDetailsForImportedJob() {
+        if (root.selectedGameId.length === 0
+                || gameDetails.game_id !== root.selectedGameId)
+            return
+        const jobIndex = downloadQueue.job_index_for_game(root.selectedGameId)
+        if (jobIndex < 0
+                || downloadQueue.job_state_at(jobIndex) !== "IMPORTED")
+            return
+        const jobId = downloadQueue.job_id_at(jobIndex)
+        if (jobId.length === 0 || jobId === root.detailsRefreshedJobId)
+            return
+        root.detailsRefreshedJobId = jobId
+        gameDetails.select_game(root.selectedGameId,
+                                gameDetails.title,
+                                gameDetails.platform,
+                                true, false)
     }
 
     function requestCardLaunch(gameId, databaseId, title, platform, local) {
@@ -6316,20 +6339,13 @@ ApplicationWindow {
         function onCollection_revisionChanged() {
             if (downloadQueue.collection_revision > 0) {
                 library.reload()
-                if (root.selectedDownloadJobIndex >= 0
-                        && downloadQueue.job_state_at(
-                            root.selectedDownloadJobIndex) === "IMPORTED"
-                        && gameDetails.game_id === root.selectedGameId) {
-                    gameDetails.select_game(root.selectedGameId,
-                                            gameDetails.title,
-                                            gameDetails.platform,
-                                            true, false)
-                }
+                root.refreshDetailsForImportedJob()
             }
         }
         function onRevisionChanged() {
             if (downloadQueue.busy)
                 return
+            root.refreshDetailsForImportedJob()
             if (root.downloadStatusUiProbe
                     && !root.downloadStatusProbeCaptured
                     && downloadQueue.job_count > 0) {
