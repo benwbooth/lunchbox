@@ -372,6 +372,10 @@ fn reviewed_torrent_catalog(
     })
 }
 
+pub(crate) fn parse_v1_magnet_uri(value: &str) -> Result<(String, Option<String>)> {
+    parse_v1_magnet(value)
+}
+
 fn parse_v1_magnet(value: &str) -> Result<(String, Option<String>)> {
     let value = value.trim();
     if value.is_empty() || value.chars().count() > 8192 || value.chars().any(char::is_control) {

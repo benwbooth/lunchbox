@@ -98,6 +98,16 @@ pub struct ExistingTorrentSummary {
     pub save_path: String,
 }
 
+/// qBittorrent reports `-1` for size and delay fields while a magnet has no
+/// metadata yet, so those fields cannot be plain unsigned integers.
+fn signed_size<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = i64::deserialize(deserializer)?;
+    Ok(u64::try_from(value).unwrap_or(0))
+}
+
 #[derive(Debug, Deserialize)]
 struct TorrentInfo {
     hash: String,
@@ -109,13 +119,13 @@ struct TorrentInfo {
     state: String,
     #[serde(default)]
     progress: f64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "signed_size")]
     dlspeed: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "signed_size")]
     downloaded: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "signed_size")]
     size: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "signed_size")]
     total_size: u64,
     #[serde(default)]
     save_path: String,
@@ -1801,6 +1811,23 @@ mod tests {
     use super::*;
     use crate::arcade_download::build_mame_laserdisc_plans;
     use crate::download_plan::{DownloadPlan, DownloadPlanMember, TorrentPlanFile};
+
+    #[test]
+    fn torrent_state_decodes_a_metadata_less_magnet() {
+        // qBittorrent reports -1 for size, total_size and speed fields while a
+        // magnet has no metadata yet. Rejecting that made magnet review fail
+        // before the torrent could even be inspected.
+        let body = r#"[{"hash":"ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+            "name":"Visual Pinball (2026-07-15)","category":"lunchbox",
+            "state":"metaDL","progress":0.0,"dlspeed":-1,"downloaded":-1,
+            "size":-1,"total_size":-1,"save_path":"/tmp",
+            "completion_on":-1,"amount_left":0,"availability":0.0}]"#;
+        let torrents: Vec<TorrentInfo> = serde_json::from_str(body).unwrap();
+        assert_eq!(torrents.len(), 1);
+        assert_eq!(torrents[0].size, 0);
+        assert_eq!(torrents[0].total_size, 0);
+        assert_eq!(torrents[0].state, "metaDL");
+    }
 
     struct MockResponse {
         body: &'static str,

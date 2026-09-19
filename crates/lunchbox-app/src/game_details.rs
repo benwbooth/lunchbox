@@ -2072,6 +2072,17 @@ fn fetch_torrent(url: &str) -> Result<Arc<Vec<u8>>> {
         return Ok(bytes);
     }
 
+    // PleasureDome publishes magnet links rather than .torrent files, so a
+    // magnet's metadata comes from qBittorrent instead of an HTTP GET.
+    if url.trim_start().starts_with("magnet:") {
+        let bytes = Arc::new(magnet_torrent_bytes(url)?);
+        write_cached_torrent(url, &bytes);
+        if let Ok(mut guard) = cache.lock() {
+            *guard = Some((url.to_owned(), Arc::clone(&bytes)));
+        }
+        return Ok(bytes);
+    }
+
     let encoded_url = url.replace(' ', "%20");
     let http = HTTP.get_or_init(|| {
         ureq::Agent::config_builder()
@@ -2147,6 +2158,41 @@ fn torrent_cache_path_in(cache_root: &Path, url: &str) -> PathBuf {
 
 fn read_cached_torrent(url: &str) -> Option<Vec<u8>> {
     read_torrent_cache_file(&torrent_cache_path(url)?)
+}
+
+fn write_cached_torrent(url: &str, bytes: &[u8]) {
+    if let Some(path) = torrent_cache_path(url) {
+        // A cache write must never fail the lookup; the bytes are already in hand.
+        let _ = write_torrent_cache_file(&path, bytes);
+    }
+}
+
+/// Resolve a magnet link's torrent metadata through the managed qBittorrent
+/// client. PleasureDome distributes magnets, so this is the only way to list a
+/// set's files before queueing it. The review session is disposed of once the
+/// bytes are exported, leaving no job behind.
+fn magnet_torrent_bytes(url: &str) -> Result<Vec<u8>> {
+    let (info_hash, _) = crate::external_torrent::parse_v1_magnet_uri(url)?;
+    let store = crate::settings::SettingsStore::open_default()?;
+    let settings = store.load()?;
+    let password = crate::settings::load_password()?.unwrap_or_default();
+    // A metadata-only review needs a bounded, managed destination, exactly like
+    // the manual magnet flow.
+    let client_save_path = crate::qbittorrent::managed_client_save_path(
+        &settings.qbittorrent_container_torrent_library_directory,
+    );
+    let review = crate::qbittorrent::inspect_magnet_metadata(
+        &settings,
+        &password,
+        url,
+        &info_hash,
+        &client_save_path,
+        MAX_TORRENT_BYTES,
+    )?;
+    if review.created_for_review {
+        let _ = crate::qbittorrent::discard_magnet_review(&settings, &password, &review.info_hash);
+    }
+    Ok(review.torrent_bytes)
 }
 
 fn read_torrent_cache_file(path: &Path) -> Option<Vec<u8>> {
