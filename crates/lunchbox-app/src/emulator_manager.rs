@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::env;
+use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -1059,6 +1060,31 @@ fn validate_row_for_action(row: &ManagedEmulator, action: ManagedAction) -> Resu
         }
         _ => Ok(()),
     }
+}
+
+/// Official wrapped releases stage exactly one inner payload archive next to
+/// the outer archive; anything else means the reviewed source drifted from
+/// what the release actually ships.
+fn single_payload_archive(payload_root: &Path) -> Result<PathBuf> {
+    let mut inner = fs::read_dir(payload_root)
+        .with_context(|| format!("reading the extracted payload {}", payload_root.display()))?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .file_name()
+                    .and_then(OsStr::to_str)
+                    .is_some_and(|name| name.to_ascii_lowercase().ends_with(".tar.gz"))
+        })
+        .collect::<Vec<_>>();
+    if inner.len() != 1 {
+        bail!(
+            "the wrapped release payload must contain exactly one tar.gz archive, found {}",
+            inner.len()
+        );
+    }
+    Ok(inner.remove(0))
 }
 
 fn validate_source(source: &InstallSource) -> Result<()> {
@@ -2133,6 +2159,14 @@ fn install_github_program(row: &ManagedEmulator) -> Result<String> {
         || metadata.archive_format.eq_ignore_ascii_case("zip")
     {
         extract_zip(&archive, &payload_root)?;
+        // Official releases sometimes wrap the real payload archive in an
+        // outer zip; extract the declared inner archive so the payload root
+        // ends up holding the executable.
+        if metadata.archive_payload.eq_ignore_ascii_case("tar.gz") {
+            let inner = single_payload_archive(&payload_root)?;
+            extract_tar_gz(&inner, &payload_root)?;
+            fs::remove_file(&inner)?;
+        }
     } else if asset.name.to_ascii_lowercase().ends_with(".tar.gz") {
         extract_tar_gz(&archive, &payload_root)?;
     } else if asset.name.to_ascii_lowercase().ends_with(".dmg")

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-09-04",
+  "reviewed_at": "2026-09-19",
   "sources": [
     {
       "emulator": "Ares",
@@ -498,6 +498,38 @@
         ],
         "executable_candidates": [
           "Nuance"
+        ],
+        "update_strategy": "replace_from_github_release"
+      }
+    },
+    {
+      "emulator": "Visual Pinball",
+      "host": "linux",
+      "manager": "github",
+      "package_id": "vpinball/vpinball",
+      "metadata": {
+        "release_api": "https://api.github.com/repos/vpinball/vpinball/releases/latest",
+        "archive_format": "zip",
+        "archive_payload": "tar.gz",
+        "asset_terms": [
+          "vpinballx_gl",
+          "release",
+          "linux"
+        ],
+        "asset_terms_by_arch": {
+          "x86_64": [
+            "x64"
+          ],
+          "aarch64": [
+            "aarch64"
+          ]
+        },
+        "supported_arches": [
+          "x86_64",
+          "aarch64"
+        ],
+        "executable_candidates": [
+          "VPinballX_GL"
         ],
         "update_strategy": "replace_from_github_release"
       }
