@@ -241,6 +241,7 @@ pub fn load(path: &Path) -> Result<Catalog> {
             &connection,
             &discovery_path,
             requested_minerva_database_path().as_deref(),
+            requested_pleasuredome_database_path().as_deref(),
             requested_user_database_path().as_deref(),
         );
     }
@@ -262,6 +263,7 @@ pub fn load_preview(path: &Path, focus: &CatalogPreviewFocus) -> Result<Option<C
         &canonical,
         &discovery_path,
         requested_minerva_database_path().as_deref(),
+        requested_pleasuredome_database_path().as_deref(),
         requested_user_database_path().as_deref(),
         native_state_path
             .is_file()
@@ -275,6 +277,7 @@ fn load_preview_from_sources(
     canonical: &Connection,
     discovery_path: &Path,
     minerva_path: Option<&Path>,
+    pleasuredome_path: Option<&Path>,
     user_path: Option<&Path>,
     native_state_path: Option<&Path>,
     focus: &CatalogPreviewFocus,
@@ -282,7 +285,7 @@ fn load_preview_from_sources(
     let discovery = open_read_only(&discovery_path, "Lunchbox discovery database")?;
     validate_discovery_schema(&discovery)?;
     let installed = load_installed_games_with_native_state(user_path, native_state_path)?;
-    let minerva = load_download_coverage(minerva_path, native_state_path)?;
+    let minerva = load_download_coverage(minerva_path, pleasuredome_path, native_state_path)?;
     let total_game_count =
         count(&discovery, "games", "1")?.saturating_add(installed.local_only_games.len());
     let order = if column_exists(&discovery, "games", "sort_title")? {
@@ -645,6 +648,7 @@ fn load_discovery_catalog(
     canonical: &Connection,
     discovery_path: &Path,
     minerva_path: Option<&Path>,
+    pleasuredome_path: Option<&Path>,
     user_path: Option<&Path>,
 ) -> Result<Catalog> {
     let native_state_path = crate::settings::state_database_path()?;
@@ -652,6 +656,7 @@ fn load_discovery_catalog(
         canonical,
         discovery_path,
         minerva_path,
+        pleasuredome_path,
         user_path,
         native_state_path
             .is_file()
@@ -672,13 +677,14 @@ fn load_discovery_catalog_with_native_state(
     canonical: &Connection,
     discovery_path: &Path,
     minerva_path: Option<&Path>,
+    pleasuredome_path: Option<&Path>,
     user_path: Option<&Path>,
     native_state_path: Option<&Path>,
 ) -> Result<Catalog> {
     let discovery = open_read_only(discovery_path, "Lunchbox discovery database")?;
     validate_discovery_schema(&discovery)?;
     let installed = load_installed_games_with_native_state(user_path, native_state_path)?;
-    let minerva = load_download_coverage(minerva_path, native_state_path)?;
+    let minerva = load_download_coverage(minerva_path, pleasuredome_path, native_state_path)?;
 
     let game_capacity = count(&discovery, "games", "1")?;
     let mut games = Vec::with_capacity(game_capacity);
@@ -1495,6 +1501,7 @@ pub(crate) fn game_availability_flags(
     let state_path = state_path.filter(|path| path.is_file());
     let minerva = load_download_coverage(
         requested_minerva_database_path().as_deref(),
+        requested_pleasuredome_database_path().as_deref(),
         state_path.as_deref(),
     )?;
     Ok(identities
@@ -1649,11 +1656,11 @@ fn load_minerva_coverage(path: Option<&Path>) -> Result<MinervaCoverage> {
 /// catalog. Platform identity is an exact normalized key in all three.
 fn load_download_coverage(
     minerva_path: Option<&Path>,
+    pleasuredome_path: Option<&Path>,
     native_state_path: Option<&Path>,
 ) -> Result<MinervaCoverage> {
     let mut coverage = load_minerva_coverage(minerva_path)?;
-    let pleasuredome =
-        load_pleasuredome_coverage(requested_pleasuredome_database_path().as_deref())?;
+    let pleasuredome = load_pleasuredome_coverage(pleasuredome_path)?;
     coverage.offer_count = coverage
         .offer_count
         .saturating_add(pleasuredome.offer_count);
@@ -2807,6 +2814,7 @@ mod tests {
             &canonical,
             &discovery_path,
             Some(&minerva_path),
+            None,
             Some(&user_path),
             None,
         )
@@ -2853,6 +2861,86 @@ mod tests {
         // Every other platform keeps its own name.
         assert_eq!(canonical_platform_name("Atari 2600"), "Atari 2600");
         assert_eq!(canonical_platform_name("Atari XEGS"), "Atari XEGS");
+    }
+
+    #[test]
+    fn pleasuredome_catalog_lights_pinball_without_a_manifest() {
+        let directory = tempfile::tempdir().unwrap();
+        let canonical_path = directory.path().join("canonical.db");
+        let discovery_path = directory.path().join("games.db");
+        let pleasuredome_path = directory.path().join("pleasuredome.db");
+
+        let canonical = Connection::open(&canonical_path).unwrap();
+        canonical
+            .execute_batch(
+                "CREATE TABLE emulators (id TEXT PRIMARY KEY);
+                 INSERT INTO emulators VALUES ('emu-1');",
+            )
+            .unwrap();
+
+        let discovery = Connection::open(&discovery_path).unwrap();
+        discovery
+            .execute_batch(
+                "CREATE TABLE platforms (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE games (
+                   id TEXT PRIMARY KEY, title TEXT NOT NULL, sort_title TEXT,
+                   status TEXT, launchbox_db_id INTEGER, platform_id INTEGER NOT NULL
+                 );
+                 INSERT INTO platforms VALUES (1, 'Pinball');
+                 INSERT INTO platforms VALUES (2, 'Nintendo Game Boy');
+                 INSERT INTO games VALUES
+                   ('pinball-id', 'Medieval Madness', NULL, 'Released', 1, 1),
+                   ('gb-id', 'Tetris', NULL, 'Released', 2, 2);",
+            )
+            .unwrap();
+        drop(discovery);
+
+        // A PleasureDome catalog the user imported, with no local provider
+        // manifest and no state database at all.
+        let pleasuredome = Connection::open(&pleasuredome_path).unwrap();
+        pleasuredome
+            .execute_batch(
+                "CREATE TABLE pleasuredome_torrents (
+                   id INTEGER PRIMARY KEY, torrent_file TEXT NOT NULL UNIQUE,
+                   torrent_url TEXT NOT NULL, collection TEXT,
+                   rom_count INTEGER DEFAULT 0, total_size INTEGER DEFAULT 0
+                 );
+                 CREATE TABLE pleasuredome_torrent_platforms (
+                   torrent_id INTEGER NOT NULL, pleasuredome_platform TEXT NOT NULL,
+                   lunchbox_platform_id INTEGER, lunchbox_platform_name TEXT,
+                   rom_count INTEGER DEFAULT 0,
+                   PRIMARY KEY (torrent_id, pleasuredome_platform)
+                 );
+                 INSERT INTO pleasuredome_torrents VALUES
+                   (1, 'Pinball/Visual Pinball (2026-07-15).torrent',
+                    'https://example.test/visual.torrent', 'Pinball', 0, 10);
+                 INSERT INTO pleasuredome_torrent_platforms VALUES
+                   (1, 'Visual Pinball', NULL, 'Pinball', 0);",
+            )
+            .unwrap();
+        drop(pleasuredome);
+
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            Some(&pleasuredome_path),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let downloadable = filter_indices(
+            &catalog,
+            &Filter {
+                availability: "downloadable".into(),
+                ..Filter::default()
+            },
+        )
+        .into_iter()
+        .map(|index| catalog.games[index].title.as_str())
+        .collect::<Vec<_>>();
+        assert_eq!(downloadable, ["Medieval Madness"]);
     }
 
     #[test]
@@ -2913,6 +3001,7 @@ mod tests {
         let catalog = load_discovery_catalog_with_native_state(
             &canonical,
             &discovery_path,
+            None,
             None,
             None,
             Some(&state_path),
@@ -3021,6 +3110,7 @@ mod tests {
             &discovery_path,
             None,
             None,
+            None,
             Some(&state_path),
         )
         .unwrap();
@@ -3083,6 +3173,7 @@ mod tests {
             &discovery_path,
             None,
             None,
+            None,
             Some(&state_path),
         )
         .unwrap();
@@ -3138,6 +3229,7 @@ mod tests {
             &discovery_path,
             None,
             None,
+            None,
             Some(&state_path),
         )
         .unwrap();
@@ -3176,9 +3268,15 @@ mod tests {
             .unwrap();
         drop(discovery);
 
-        let catalog =
-            load_discovery_catalog_with_native_state(&canonical, &discovery_path, None, None, None)
-                .unwrap();
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(catalog.games.len(), 2);
     }
 
@@ -3204,9 +3302,15 @@ mod tests {
             .unwrap();
         drop(discovery);
 
-        let catalog =
-            load_discovery_catalog_with_native_state(&canonical, &discovery_path, None, None, None)
-                .unwrap();
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(catalog.games.len(), 1);
         assert_eq!(catalog.games[0].title, "Super Mario 64");
     }
@@ -3226,9 +3330,15 @@ mod tests {
             .unwrap();
         drop(discovery);
 
-        let catalog =
-            load_discovery_catalog_with_native_state(&canonical, &discovery_path, None, None, None)
-                .unwrap();
+        let catalog = load_discovery_catalog_with_native_state(
+            &canonical,
+            &discovery_path,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(catalog.games.len(), 2);
         let mut titles = catalog
             .games
@@ -3286,6 +3396,7 @@ mod tests {
         let preview = load_preview_from_sources(
             &canonical,
             &discovery_path,
+            None,
             None,
             None,
             None,
