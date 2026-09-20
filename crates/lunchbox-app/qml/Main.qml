@@ -2160,7 +2160,7 @@ ApplicationWindow {
     RetryingMediaPlayer {
         id: gameVideoPlayer
         property bool resumeApplied: false
-        property real restartPosition: -1
+        property real unmuteResumePosition: -1
         source: !root.couchModeActive && !root.downloadPlanUiProbe
                 && gameDetails.video_available
                 ? gameDetails.video_url : ""
@@ -2175,29 +2175,32 @@ ApplicationWindow {
         function toggleMuted() {
             const unmuting = gameVideoAudio.muted
             gameVideoAudio.muted = !gameVideoAudio.muted
-            if (unmuting && playbackState !== MediaPlayer.StoppedState) {
-                // The pipeline was built with the audio track detached, so a
-                // late-attached output is not wired into the running decoder.
-                // Restarting playback rebuilds it with sound, at the same
-                // position.
-                restartPosition = position
-                stop()
-                play()
+            if (unmuting && source.toString().length > 0
+                    && playbackState !== MediaPlayer.StoppedState) {
+                // The pipeline was built with the audio track detached, and a
+                // late-attached output is not wired into a running decoder.
+                // Tearing the source down and restoring it rebuilds the whole
+                // pipeline with sound, resuming at the same position.
+                unmuteResumePosition = position
+                const url = source
+                source = ""
+                source = url
             }
         }
         onSourceChanged: {
             resumeApplied = false
-            restartPosition = -1
+            unmuteResumePosition = -1
             root.mediaPlaybackMessage = ""
-            gameVideoAudio.muted = true
-            if (source.toString().length === 0)
+            if (source.toString().length === 0) {
+                gameVideoAudio.muted = true
                 stop()
+            }
         }
         onMediaStatusChanged: {
             if (mediaStatus === MediaPlayer.LoadedMedia) {
-                if (restartPosition >= 0) {
-                    position = restartPosition
-                    restartPosition = -1
+                if (unmuteResumePosition >= 0) {
+                    position = unmuteResumePosition
+                    unmuteResumePosition = -1
                 } else if (!resumeApplied && seekable
                         && gameDetails.video_resume_position > 0)
                     position = Math.min(gameDetails.video_resume_position, duration)
