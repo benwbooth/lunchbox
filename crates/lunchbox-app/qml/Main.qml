@@ -2160,6 +2160,7 @@ ApplicationWindow {
     RetryingMediaPlayer {
         id: gameVideoPlayer
         property bool resumeApplied: false
+        property real restartPosition: -1
         source: !root.couchModeActive && !root.downloadPlanUiProbe
                 && gameDetails.video_available
                 ? gameDetails.video_url : ""
@@ -2171,8 +2172,22 @@ ApplicationWindow {
         audioOutput: gameVideoAudio.muted ? null : gameVideoAudio
         videoOutput: mediaFullscreen.opened ? fullscreenVideoOutput : detailVideoOutput
         loops: MediaPlayer.Infinite
+        function toggleMuted() {
+            const unmuting = gameVideoAudio.muted
+            gameVideoAudio.muted = !gameVideoAudio.muted
+            if (unmuting && playbackState !== MediaPlayer.StoppedState) {
+                // The pipeline was built with the audio track detached, so a
+                // late-attached output is not wired into the running decoder.
+                // Restarting playback rebuilds it with sound, at the same
+                // position.
+                restartPosition = position
+                stop()
+                play()
+            }
+        }
         onSourceChanged: {
             resumeApplied = false
+            restartPosition = -1
             root.mediaPlaybackMessage = ""
             gameVideoAudio.muted = true
             if (source.toString().length === 0)
@@ -2180,7 +2195,10 @@ ApplicationWindow {
         }
         onMediaStatusChanged: {
             if (mediaStatus === MediaPlayer.LoadedMedia) {
-                if (!resumeApplied && seekable
+                if (restartPosition >= 0) {
+                    position = restartPosition
+                    restartPosition = -1
+                } else if (!resumeApplied && seekable
                         && gameDetails.video_resume_position > 0)
                     position = Math.min(gameDetails.video_resume_position, duration)
                 resumeApplied = true
@@ -8512,7 +8530,7 @@ ApplicationWindow {
                 Layout.preferredWidth: 72
                 Layout.preferredHeight: 38
                 text: gameVideoAudio.muted ? "UNMUTE" : "MUTE"
-                onClicked: gameVideoAudio.muted = !gameVideoAudio.muted
+                onClicked: gameVideoPlayer.toggleMuted()
             }
             Button {
                 Layout.preferredWidth: 72
@@ -12810,7 +12828,7 @@ ApplicationWindow {
                                         Layout.preferredWidth: 34
                                         Layout.preferredHeight: 30
                                         text: gameVideoAudio.muted ? "MUTE" : "SOUND"
-                                        onClicked: gameVideoAudio.muted = !gameVideoAudio.muted
+                                        onClicked: gameVideoPlayer.toggleMuted()
                                         ToolTip.visible: hovered
                                         ToolTip.text: gameVideoAudio.muted ? "Turn sound on" : "Mute video"
                                         background: Rectangle {
