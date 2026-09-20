@@ -2963,6 +2963,27 @@ fn move_article_to_end(name: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// Scratch diagnostic: report what the details model loads for Zelda LttP.
+    #[test]
+    #[ignore = "scratch diagnostic; needs the local catalog and state db"]
+    fn scratch_zelda_details() {
+        let details = crate::game_details::load(
+            "746a372a-916d-4369-9f27-2c5a8ddb6959",
+            "The Legend of Zelda: A Link to the Past",
+            "Super Nintendo Entertainment System",
+            false,
+            true,
+        )
+        .unwrap();
+        println!(
+            "local={} downloadable={}",
+            details.local, details.downloadable
+        );
+        println!("local_file_path={:?}", details.local_file_path);
+        println!("paths={:?}", details.local_file_paths);
+        println!("bundles={}", details.bundles.len());
+    }
+
     #[test]
     fn switch_artwork_uses_an_existing_exact_emumovies_archive_without_ftp() {
         use std::io::Write as _;

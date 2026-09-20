@@ -805,6 +805,7 @@ pub struct GameDetailsModelRust {
     download_preflight_generation: u64,
     preparation_generation: u64,
     launch_generation: u64,
+    discovery_cache: std::collections::HashMap<String, EmulatorDiscoveryResult>,
     activity_load_generation: u64,
     preparation_cancel: Option<Arc<AtomicBool>>,
     launch_cancel: Option<Arc<AtomicBool>>,
@@ -1030,6 +1031,7 @@ impl Default for GameDetailsModelRust {
             download_preflight_generation: 0,
             preparation_generation: 0,
             launch_generation: 0,
+            discovery_cache: std::collections::HashMap::new(),
             activity_load_generation: 0,
             preparation_cancel: None,
             launch_cancel: None,
@@ -1414,6 +1416,7 @@ fn is_emulator_launch_probe() -> bool {
     has_cli_flag("--exo-launch-probe") || is_local_launch_probe()
 }
 
+#[derive(Clone)]
 enum EmulatorDiscoveryResult {
     Prepared {
         availability: crate::emulator::LaunchAvailability,
@@ -1563,6 +1566,10 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_loading(true);
         self.as_mut().set_torrent_loading(false);
         self.as_mut().set_game_id(game_id);
+        // Present the game's final emulator layout immediately on re-select;
+        // the async discovery below only runs when nothing is cached yet.
+        self.as_mut()
+            .apply_cached_emulator_discovery(&game_id_string);
         self.as_mut().set_title(title);
         self.as_mut().set_platform(platform);
         self.as_mut().set_local(local);
@@ -2560,7 +2567,9 @@ impl qobject::GameDetailsModel {
                     self.as_mut().load_all_bundle_files();
                 }
                 if prepared || (local_file_count > 0 && !preparable) {
-                    self.as_mut().refresh_emulators();
+                    if !self.as_mut().apply_cached_emulator_discovery(&details.id) {
+                        self.as_mut().refresh_emulators();
+                    }
                 }
             }
             Err(error) => {
@@ -4012,6 +4021,12 @@ impl qobject::GameDetailsModel {
         {
             return;
         }
+        if let Ok(result) = &availability {
+            self.as_mut()
+                .rust_mut()
+                .discovery_cache
+                .insert(completed_game_id.clone(), result.clone());
+        }
         self.as_mut().set_launch_discovery_busy(false);
         match availability {
             Ok(EmulatorDiscoveryResult::Prepared {
@@ -4090,6 +4105,23 @@ impl qobject::GameDetailsModel {
         }
         if let Some(message) = self.as_mut().rust_mut().pending_firmware_message.take() {
             self.as_mut().set_launch_status(qstring(message));
+        }
+    }
+
+    /// Re-applies a game's most recent emulator discovery synchronously, so
+    /// re-selecting a game presents its final emulator layout immediately
+    /// instead of flashing the detecting state. Returns false when nothing
+    /// has been discovered for the game yet.
+    fn apply_cached_emulator_discovery(mut self: Pin<&mut Self>, game_id: &str) -> bool {
+        let generation = self.as_ref().rust().launch_generation.wrapping_add(1);
+        self.as_mut().rust_mut().launch_generation = generation;
+        let cached = self.as_ref().rust().discovery_cache.get(game_id).cloned();
+        match cached {
+            Some(result) => {
+                self.finish_emulator_discovery(generation, game_id.to_owned(), Ok(result));
+                true
+            }
+            None => false,
         }
     }
 
