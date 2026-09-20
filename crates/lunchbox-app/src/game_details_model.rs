@@ -5723,15 +5723,38 @@ impl qobject::GameDetailsModel {
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
                         anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
+                    // Calibrated mappings are an enhancement, never a launch
+                    // requirement: any failure here is reported as a warning
+                    // and the game starts on the emulator's own input setup
+                    // with the plan restored to its pre-mapping state.
                     let controller_settings = crate::settings::SettingsStore::open_default()
-                        .and_then(|store| store.load())
-                        .context("loading controller mapping settings")?;
-                    let mut calibrated_session = match &launch_input {
-                        LaunchInput::Rom { platform, option, .. } => crate::controller_launch::prepare_with_cancellation(
-                            &controller_settings, platform, option, &mut plan, &launch_cancel,
-                        ).context("applying calibrated controller mappings")?,
-                        _ => None,
-                    };
+                        .and_then(|store| store.load());
+                    let mut calibration_warning: Option<String> = None;
+                    let mut calibrated_session = None;
+                    if let LaunchInput::Rom { platform, option, .. } = &launch_input {
+                        let plan_snapshot = plan.clone();
+                        let outcome = match &controller_settings {
+                            Ok(settings) => {
+                                crate::controller_launch::prepare_with_cancellation(
+                                    settings, platform, option, &mut plan, &launch_cancel,
+                                )
+                                .context("applying calibrated controller mappings")
+                            }
+                            Err(error) => Err(anyhow::anyhow!("{error:#}"))
+                                .context("loading controller mapping settings"),
+                        };
+                        match outcome {
+                            Ok(session) => calibrated_session = session,
+                            Err(error) => {
+                                plan = plan_snapshot;
+                                let detail = format!(
+                                    "Calibrated controller mappings were skipped: {error:#}"
+                                );
+                                eprintln!("LUNCHBOX_CALIBRATED_MAPPINGS_SKIPPED: {error:#}");
+                                calibration_warning = Some(detail);
+                            }
+                        }
+                    }
                     let command_summary = plan.command_summary();
                     // Only one mapping layer may own this launch.
                     let controller_activation = if let Some(session) = &calibrated_session {
@@ -5739,13 +5762,28 @@ impl qobject::GameDetailsModel {
                             warning: Some(session.description.clone()),
                             ..Default::default()
                         }
-                    } else { crate::controllers::activate_for_launch(
-                        &controller_settings,
-                        Some(&activity_platform),
-                        Some(activity_database_id),
-                    )
-                    .map_err(anyhow::Error::msg)
-                    .context("preparing controller mapping")? };
+                    } else {
+                        let activation = match &controller_settings {
+                            Ok(settings) => crate::controllers::activate_for_launch(
+                                settings,
+                                Some(&activity_platform),
+                                Some(activity_database_id),
+                            ),
+                            Err(error) => Err(error.to_string()),
+                        };
+                        let activation = activation.map_err(|error| anyhow::anyhow!(error));
+                        match activation {
+                            Ok(activation) => activation,
+                            Err(error) => {
+                                calibration_warning.get_or_insert_with(|| {
+                                    format!(
+                                        "Controller mapping was skipped for this launch: {error:#}"
+                                    )
+                                });
+                                Default::default()
+                            }
+                        }
+                    };
                     let crate::controllers::ControllerActivation {
                         session: controller_session,
                         warning: controller_warning,
@@ -5835,7 +5873,8 @@ impl qobject::GameDetailsModel {
                         .as_ref()
                         .err()
                         .map(|error| format!("Play activity could not be recorded: {error}"));
-                    let tracking_warning = [controller_warning, activity_warning]
+                    let tracking_warning =
+                        [controller_warning, calibration_warning, activity_warning]
                         .into_iter()
                         .flatten()
                         .collect::<Vec<_>>();
