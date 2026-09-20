@@ -10320,7 +10320,7 @@ pub fn prepare_with_cancellation(
             if let Some(device) = stand_in {
                 claimed.insert(device.stable_id.as_str());
                 resolved.push(device);
-            } else {
+            } else if option.runtime_kind != EmulatorRuntimeKind::Standalone {
                 bail!(
                     "A selected player's controller is disconnected. Reconnect it or change the players in Controller setup."
                 );
