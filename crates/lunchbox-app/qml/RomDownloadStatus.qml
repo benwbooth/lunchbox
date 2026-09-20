@@ -64,6 +64,14 @@ Item {
 
     Component.onCompleted: previousActiveCount = activeCount
 
+    // Swallow clicks that land on the panel itself so the outside-click
+    // scrim behind it only ever collapses the panel for genuine outside
+    // presses, never while the user is working inside it.
+    MouseArea {
+        anchors.fill: parent
+        onClicked: {}
+    }
+
     Connections {
         target: status.queue
         ignoreUnknownSignals: true

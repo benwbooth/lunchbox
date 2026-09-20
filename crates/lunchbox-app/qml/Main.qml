@@ -23803,6 +23803,14 @@ ApplicationWindow {
         }
     }
 
+    // Clicking anywhere outside an expanded ROM download panel minimizes it.
+    MouseArea {
+        anchors.fill: parent
+        z: 899
+        enabled: romDownloadStatus.expanded
+        onClicked: romDownloadStatus.expanded = false
+    }
+
     RomDownloadStatus {
         id: romDownloadStatus
         anchors.right: parent.right
