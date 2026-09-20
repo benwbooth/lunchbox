@@ -32,7 +32,7 @@ const ROM_EXTENSIONS: &[&str] = &[
     "a26", "a52", "a78", "atr", "atx", "car", "cas", "cia", "col", "dsi", "fds", "fig", "gba",
     "gbc", "gen", "gg", "int", "j64", "jag", "lnx", "md", "n64", "nds", "nes", "ngc", "ngp", "nro",
     "nso", "pce", "sfc", "sgb", "sgx", "smc", "smd", "sms", "swc", "unf", "unh", "unif", "v64",
-    "vec", "wad", "ws", "wsc", "xex", "xfd", "z64", "32x", "3ds",
+    "vec", "vpt", "vpx", "wad", "ws", "wsc", "xex", "xfd", "z64", "32x", "3ds",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]

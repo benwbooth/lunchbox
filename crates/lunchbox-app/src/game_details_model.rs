@@ -5557,6 +5557,10 @@ impl qobject::GameDetailsModel {
         let started_thread = qt_thread.clone();
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-emulator-launch".into())
+            // The launch planner's controller preparation carries very large
+            // stack frames in debug builds; the default 2 MiB thread stack
+            // overflows before the plan builder runs its first statement.
+            .stack_size(64 * 1024 * 1024)
             .spawn(move || {
                 let launch = (|| -> anyhow::Result<(Result<(), String>, Option<String>, bool)> {
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
