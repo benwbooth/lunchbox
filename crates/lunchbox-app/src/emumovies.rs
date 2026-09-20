@@ -24,8 +24,9 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::hash::{Hash, Hasher};
-use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use suppaftp::FtpStream;
@@ -437,6 +438,11 @@ const VIDEO_MATCH_CACHE_VERSION: &str = "5";
 const VIDEO_INDEX_CACHE_VERSION: &str = "1";
 const FTP_CONTROL_STALL_TIMEOUT: Duration = Duration::from_secs(45);
 const FTP_DATA_STALL_TIMEOUT: Duration = Duration::from_secs(45);
+/// EmuMovies throttles each FTP connection, so large transfers are split into
+/// chunks fetched over parallel connections. Small files stay single-stream.
+const PARALLEL_DOWNLOAD_THRESHOLD: u64 = 24 * 1024 * 1024;
+const PARALLEL_DOWNLOAD_CONNECTIONS: usize = 8;
+const PARALLEL_DOWNLOAD_CHUNK_MINIMUM: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1874,6 +1880,119 @@ impl EmuMoviesClient {
             .collect())
     }
 
+    /// Download one large remote file over multiple FTP connections.
+    ///
+    /// EmuMovies throttles each FTP connection, so the file is preallocated at
+    /// its full size and disjoint chunks are fetched in parallel through REST
+    /// offsets, each written straight into its own region of the temp file.
+    /// Cancelling the progress callback stops every chunk and drops the
+    /// partial file.
+    fn download_file_parallel(
+        &self,
+        remote_path: &str,
+        output_path: &Path,
+        total_bytes: u64,
+        progress: Option<&ProgressCallback>,
+        label: &str,
+    ) -> Result<()> {
+        let connections = (PARALLEL_DOWNLOAD_CONNECTIONS)
+            .min((total_bytes / PARALLEL_DOWNLOAD_CHUNK_MINIMUM).max(1) as usize)
+            .max(2);
+        let chunk_size = total_bytes.div_ceil(connections as u64);
+
+        let temp_path = output_path.with_extension("tmp");
+        let mut partial_download = PartialDownload::new(temp_path.clone());
+        let file = File::create(&temp_path)
+            .with_context(|| format!("creating {} for chunked download", temp_path.display()))?;
+        file.set_len(total_bytes)
+            .with_context(|| format!("preallocating {}", temp_path.display()))?;
+
+        let downloaded = Arc::new(AtomicU64::new(0));
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let mut handles = Vec::new();
+        for index in 0..connections {
+            let remote_path = remote_path.to_owned();
+            let temp_path = temp_path.clone();
+            let downloaded = Arc::clone(&downloaded);
+            let cancelled = Arc::clone(&cancelled);
+            let config = self.config.clone();
+            handles.push(std::thread::spawn(move || -> Result<()> {
+                let mut ftp = connect_stream(&config)?;
+                ftp.transfer_type(suppaftp::types::FileType::Binary)?;
+                let offset = index as u64 * chunk_size;
+                let length = chunk_size.min(total_bytes - offset);
+                ftp.resume_transfer(offset as usize)
+                    .with_context(|| format!("seeking chunk {index} of {remote_path}"))?;
+                let mut stream = ftp
+                    .retr_as_stream(&remote_path)
+                    .with_context(|| format!("downloading chunk {index} of {remote_path}"))?;
+                stream
+                    .get_ref()
+                    .set_read_timeout(Some(FTP_DATA_STALL_TIMEOUT))
+                    .context("Failed to configure EmuMovies chunk read timeout")?;
+                let mut region = File::options().write(true).open(&temp_path)?;
+                region.seek(SeekFrom::Start(offset))?;
+
+                let mut buffer = vec![0u8; 256 * 1024];
+                let mut remaining = length;
+                while remaining > 0 {
+                    if cancelled.load(AtomicOrdering::Relaxed) {
+                        anyhow::bail!(TRANSFER_CANCELLED_MESSAGE);
+                    }
+                    let read_length = remaining.min(buffer.len() as u64) as usize;
+                    let read = stream
+                        .read(&mut buffer[..read_length])
+                        .with_context(|| format!("reading chunk {index} of {remote_path}"))?;
+                    if read == 0 {
+                        anyhow::bail!(
+                            "connection closed {remaining} bytes early in chunk {index} of {remote_path}"
+                        );
+                    }
+                    region.write_all(&buffer[..read])?;
+                    remaining -= read as u64;
+                    downloaded.fetch_add(read as u64, AtomicOrdering::Relaxed);
+                }
+                Ok(())
+            }));
+        }
+
+        while handles.iter().any(|handle| !handle.is_finished()) {
+            let value = (downloaded.load(AtomicOrdering::Relaxed) as f32
+                / total_bytes.max(1) as f32)
+                .clamp(0.0, 1.0);
+            if let Some(callback) = progress {
+                if !callback(value) {
+                    cancelled.store(true, AtomicOrdering::Relaxed);
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let mut first_error = None;
+        for handle in handles {
+            let chunk_result = handle
+                .join()
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("chunk worker panicked")));
+            if first_error.is_none() {
+                first_error = chunk_result.err();
+            }
+        }
+        if cancelled.load(AtomicOrdering::Relaxed) {
+            return Err(anyhow::anyhow!(TRANSFER_CANCELLED_MESSAGE));
+        }
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+        report_progress(progress, 1.0)?;
+        tracing::info!(
+            "Downloaded {} bytes of {} over {connections} connections",
+            total_bytes,
+            label
+        );
+        partial_download.publish(output_path)?;
+        Ok(())
+    }
+
     fn download_direct_file(
         &self,
         remote_path: &str,
@@ -1892,6 +2011,16 @@ impl EmuMoviesClient {
 
             let file_size = ftp.size(remote_path).ok().map(|size| size as u64);
             tracing::info!("{} size: {:?} bytes", label, file_size);
+
+            if let Some(size) = file_size.filter(|size| *size >= PARALLEL_DOWNLOAD_THRESHOLD) {
+                return self.download_file_parallel(
+                    remote_path,
+                    output_path,
+                    size,
+                    progress,
+                    label,
+                );
+            }
 
             let temp_path = output_path.with_extension("tmp");
             let mut partial_download = PartialDownload::new(temp_path.clone());
@@ -2596,6 +2725,18 @@ impl EmuMoviesClient {
 
             let file_size = ftp.size(&video_path).ok().map(|size| size as u64);
             tracing::info!("Video size: {:?} bytes", file_size);
+
+            if let Some(size) = file_size.filter(|size| *size >= PARALLEL_DOWNLOAD_THRESHOLD) {
+                return self
+                    .download_file_parallel(
+                        &video_path,
+                        &output_path,
+                        size,
+                        progress,
+                        "gameplay video",
+                    )
+                    .map(|()| output_path.clone());
+            }
 
             // Write to file
             let temp_path = output_path.with_extension("tmp");
