@@ -5408,8 +5408,8 @@ fn selected_devices<'a>(
 ) -> Vec<&'a ControllerDevice> {
     let mapping = &settings.controller_mapping;
     if mapping.explicit_player_selection {
-        // Preserve the chosen order exactly. Missing players are rejected by the
-        // launch guard below, rather than silently promoting P2 to P1.
+        // Preserve the chosen order exactly. Missing players are stood in for
+        // by the launch guard below, rather than silently promoting P2 to P1.
         return mapping
             .player_mappings
             .iter()
@@ -10280,11 +10280,57 @@ pub fn prepare_with_cancellation(
     }
     let mut devices = selected_devices(settings, &inventory, platform);
     if settings.controller_mapping.explicit_player_selection {
-        ensure!(
-            devices.len() == settings.controller_mapping.player_mappings.len(),
-            "A selected player's controller is disconnected. Reconnect it or change the players in Controller setup."
-        );
+        // Each hand-picked player keeps their controller when it is connected.
+        // A disconnected pick is stood in for, in its exact player slot, by
+        // another connected calibrated pad so swapping controllers never
+        // blocks a launch; only a genuinely empty inventory fails.
+        let mapping = &settings.controller_mapping;
+        let mut resolved: Vec<&ControllerDevice> = Vec::new();
+        let mut claimed: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for player in &mapping.player_mappings {
+            if let Some(device) = inventory
+                .iter()
+                .find(|device| Some(device.stable_id.as_str()) == player.controller_id.as_deref())
+            {
+                claimed.insert(device.stable_id.as_str());
+                resolved.push(device);
+            }
+        }
+        for player in &mapping.player_mappings {
+            let connected = player
+                .controller_id
+                .as_deref()
+                .is_some_and(|picked| claimed.contains(picked));
+            if connected {
+                continue;
+            }
+            // Standalone runtimes consume no Lunchbox calibration, so any
+            // connected pad may stand in; RetroArch launches still require a
+            // calibrated pad because the generic layer reads it directly.
+            let stand_in = inventory.iter().find(|device| {
+                !claimed.contains(device.stable_id.as_str())
+                    && !mapping.hidden_controller_ids.contains(&device.stable_id)
+                    && (option.runtime_kind == EmulatorRuntimeKind::Standalone
+                        || mapping.calibrations.contains_key(&device.stable_id))
+                    && !mapping
+                        .player_mappings
+                        .iter()
+                        .any(|picked| picked.controller_id.as_deref() == Some(&device.stable_id))
+            });
+            if let Some(device) = stand_in {
+                claimed.insert(device.stable_id.as_str());
+                resolved.push(device);
+            } else {
+                bail!(
+                    "A selected player's controller is disconnected. Reconnect it or change the players in Controller setup."
+                );
+            }
+        }
+        devices = resolved;
         for (index, device) in devices.iter().enumerate() {
+            if option.runtime_kind == EmulatorRuntimeKind::Standalone {
+                continue;
+            }
             ensure!(
                 settings
                     .controller_mapping
@@ -10426,6 +10472,12 @@ pub fn prepare_with_cancellation(
                 ..Default::default()
             }));
         }
+    }
+    // Standalone runtimes without a Lunchbox controller adapter own their
+    // input entirely: the launch proceeds on the emulator's native setup
+    // instead of failing on a mapping Lunchbox cannot produce.
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone {
+        return Ok(None);
     }
     ensure!(
         option.runtime_kind == EmulatorRuntimeKind::RetroArch,
