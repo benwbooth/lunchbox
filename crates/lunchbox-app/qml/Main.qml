@@ -11999,18 +11999,22 @@ ApplicationWindow {
             }
         }
 
-        ScrollView {
+        Flickable {
             id: detailScroll
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: detailHeader.bottom
             anchors.bottom: parent.bottom
             clip: true
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            contentWidth: width
+            contentHeight: detailContent.height
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            AcceleratedWheelHandler { scroller: detailScroll }
 
             Column {
-                width: detailScroll.availableWidth
+                id: detailContent
+                width: detailScroll.width
                 spacing: 0
 
                 Rectangle {
