@@ -579,7 +579,7 @@ pub mod qobject {
     impl cxx_qt::Threading for GameDetailsModel {}
 }
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
@@ -1416,6 +1416,54 @@ fn is_emulator_launch_probe() -> bool {
     has_cli_flag("--exo-launch-probe") || is_local_launch_probe()
 }
 
+/// Runs the emulator discovery for one game. Executed on whichever thread
+/// needs the result: the discovery worker for explicit refreshes, and the
+/// details loader so a game's first open applies its final layout atomically.
+fn build_emulator_discovery(
+    prepared: Option<&crate::exo_install::PreparedInstall>,
+    catalog_database: &Path,
+    game_id: &str,
+    platform: &str,
+    selected_local_file: Option<&Path>,
+) -> anyhow::Result<EmulatorDiscoveryResult> {
+    if let Some(prepared) = prepared {
+        let store = crate::settings::SettingsStore::open_default()?;
+        let game_preference = store.game_emulator_preference(game_id)?;
+        let platform_preference = store.platform_emulator_preference(platform)?;
+        let preference = game_preference.as_ref().or(platform_preference.as_ref());
+        let availability =
+            crate::emulator::inspect_launch_availability(prepared, catalog_database, preference)?;
+        return Ok(EmulatorDiscoveryResult::Prepared {
+            availability,
+            game_preference,
+            platform_preference,
+        });
+    }
+    let store = crate::settings::SettingsStore::open_default()?;
+    let game_preference = store.game_emulator_preference(game_id)?;
+    let platform_preference = store.platform_emulator_preference(platform)?;
+    let preference = game_preference.as_ref().or(platform_preference.as_ref());
+    let rom_path = selected_local_file.context("selected local game file disappeared")?;
+    let availability = crate::emulator::inspect_rom_launch_availability(
+        platform,
+        rom_path,
+        catalog_database,
+        preference,
+    )?;
+    let firmware_statuses = crate::firmware::statuses_for_options(
+        catalog_database,
+        platform,
+        rom_path,
+        &availability.options,
+    )?;
+    Ok(EmulatorDiscoveryResult::Rom {
+        availability,
+        firmware_statuses,
+        game_preference,
+        platform_preference,
+    })
+}
+
 #[derive(Clone)]
 enum EmulatorDiscoveryResult {
     Prepared {
@@ -1603,8 +1651,33 @@ impl qobject::GameDetailsModel {
                         ),
                     }
                 }
+                // Discover emulators on this loader thread so the pane's
+                // first render already carries the final emulator layout.
+                let pending_discovery = loaded.as_ref().ok().and_then(|details| {
+                    let preparable = crate::exo_install::is_preparable_archive(
+                        &details.platform,
+                        &details.local_file_path,
+                    );
+                    if !(details.prepared_install.is_some()
+                        || (!details.local_file_paths.is_empty() && !preparable))
+                    {
+                        return None;
+                    }
+                    let catalog_database = crate::catalog::requested_database_path()?;
+                    build_emulator_discovery(
+                        details.prepared_install.as_ref(),
+                        &catalog_database,
+                        &game_id_string,
+                        &details.platform,
+                        Some(details.local_file_path.as_path()),
+                    )
+                    .map(|result| (game_id_string.clone(), result))
+                    .ok()
+                });
                 let queued = qt_thread.queue(move |mut model| {
-                    model.as_mut().finish_game_details(generation, loaded);
+                    model
+                        .as_mut()
+                        .finish_game_details(generation, loaded, pending_discovery);
                 });
                 if download_review_probe {
                     match queued {
@@ -2334,6 +2407,7 @@ impl qobject::GameDetailsModel {
         mut self: Pin<&mut Self>,
         generation: u64,
         loaded: Result<GameDetails, String>,
+        pending_discovery: Option<(String, EmulatorDiscoveryResult)>,
     ) {
         if generation != self.as_ref().rust().details_generation {
             return;
@@ -2567,7 +2641,11 @@ impl qobject::GameDetailsModel {
                     self.as_mut().load_all_bundle_files();
                 }
                 if prepared || (local_file_count > 0 && !preparable) {
-                    if !self.as_mut().apply_cached_emulator_discovery(&details.id) {
+                    if let Some((completed_id, result)) = pending_discovery {
+                        let generation = self.as_ref().rust().launch_generation.wrapping_add(1);
+                        self.as_mut().rust_mut().launch_generation = generation;
+                        self.finish_emulator_discovery(generation, completed_id, Ok(result));
+                    } else if !self.as_mut().apply_cached_emulator_discovery(&details.id) {
                         self.as_mut().refresh_emulators();
                     }
                 }
@@ -3949,49 +4027,13 @@ impl qobject::GameDetailsModel {
         let spawn_result = std::thread::Builder::new()
             .name("lunchbox-emulator-discovery".into())
             .spawn(move || {
-                let availability = (|| -> anyhow::Result<EmulatorDiscoveryResult> {
-                    if let Some(prepared) = prepared {
-                        let store = crate::settings::SettingsStore::open_default()?;
-                        let game_preference = store.game_emulator_preference(&game_id)?;
-                        let platform_preference = store.platform_emulator_preference(&platform)?;
-                        let preference = game_preference.as_ref().or(platform_preference.as_ref());
-                        let availability = crate::emulator::inspect_launch_availability(
-                            &prepared,
-                            &catalog_database,
-                            preference,
-                        )?;
-                        return Ok(EmulatorDiscoveryResult::Prepared {
-                            availability,
-                            game_preference,
-                            platform_preference,
-                        });
-                    }
-                    let store = crate::settings::SettingsStore::open_default()?;
-                    let game_preference = store.game_emulator_preference(&game_id)?;
-                    let platform_preference = store.platform_emulator_preference(&platform)?;
-                    let preference = game_preference.as_ref().or(platform_preference.as_ref());
-                    let rom_path = selected_local_file
-                        .as_deref()
-                        .context("selected local game file disappeared")?;
-                    let availability = crate::emulator::inspect_rom_launch_availability(
-                        &platform,
-                        rom_path,
-                        &catalog_database,
-                        preference,
-                    )?;
-                    let firmware_statuses = crate::firmware::statuses_for_options(
-                        &catalog_database,
-                        &platform,
-                        rom_path,
-                        &availability.options,
-                    )?;
-                    Ok(EmulatorDiscoveryResult::Rom {
-                        availability,
-                        firmware_statuses,
-                        game_preference,
-                        platform_preference,
-                    })
-                })()
+                let availability = build_emulator_discovery(
+                    prepared.as_ref(),
+                    &catalog_database,
+                    &game_id,
+                    &platform,
+                    selected_local_file.as_deref(),
+                )
                 .map_err(|error| error.to_string());
                 let completed_game_id = game_id.clone();
                 let _ = qt_thread.queue(move |mut model| {

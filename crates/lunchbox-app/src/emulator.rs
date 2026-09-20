@@ -2077,8 +2077,21 @@ fn discover_macos_application(
 }
 
 fn installed_flatpak_apps(host: HostPlatform) -> BTreeSet<String> {
+    // The flatpak subprocess dominates emulator discovery; memoize it briefly
+    // so opening a game's details does not re-run it on every attempt. Fresh
+    // installs surface within the TTL or on an explicit refresh.
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<Option<(std::time::Instant, BTreeSet<String>)>>,
+    > = std::sync::OnceLock::new();
     if host != HostPlatform::Linux {
         return BTreeSet::new();
+    }
+    if let Ok(guard) = CACHE.get_or_init(|| std::sync::Mutex::new(None)).lock() {
+        if let Some((at, apps)) = guard.as_ref() {
+            if at.elapsed() < std::time::Duration::from_secs(30) {
+                return apps.clone();
+            }
+        }
     }
     let paths = executable_search_directories();
     let flatpak = find_executable_in_paths("flatpak", &paths)
@@ -2086,7 +2099,7 @@ fn installed_flatpak_apps(host: HostPlatform) -> BTreeSet<String> {
     let Some(flatpak) = flatpak else {
         return BTreeSet::new();
     };
-    host_command(flatpak)
+    let apps = host_command(flatpak)
         .args(["list", "--app", "--columns=application"])
         .output()
         .ok()
@@ -2097,9 +2110,13 @@ fn installed_flatpak_apps(host: HostPlatform) -> BTreeSet<String> {
                 .map(str::trim)
                 .filter(|line| !line.is_empty())
                 .map(ToOwned::to_owned)
-                .collect()
+                .collect::<BTreeSet<String>>()
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if let Ok(mut guard) = CACHE.get_or_init(|| std::sync::Mutex::new(None)).lock() {
+        *guard = Some((std::time::Instant::now(), apps.clone()));
+    }
+    apps
 }
 
 fn build_plan_for_choice(
