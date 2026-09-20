@@ -17,7 +17,9 @@ Rectangle {
     Keys.onSpacePressed: clicked()
 
     width: ListView.view ? ListView.view.width : parent ? parent.width : 228
-    height: 43
+    // Two-line platform names ("Super Nintendo Entertainment System") get a
+    // taller row instead of being elided; single-line rows keep 43px.
+    height: Math.max(43, labelText.implicitHeight + 21)
     radius: 9
     color: active ? "#272c34" : hover.hovered ? "#1b2330" : "transparent"
     border.color: activeFocus ? "#ffb454" : active ? "#443b31" : "transparent"
@@ -82,8 +84,8 @@ Rectangle {
         anchors.rightMargin: 8
         anchors.verticalCenter: parent.verticalCenter
         elide: Text.ElideRight
-        maximumLineCount: 1
-        wrapMode: Text.NoWrap
+        maximumLineCount: 2
+        wrapMode: Text.WordWrap
         color: nav.active ? "#f4f7fb" : "#c0c8d4"
         font.pixelSize: 14
         font.weight: nav.active ? Font.DemiBold : Font.Medium
