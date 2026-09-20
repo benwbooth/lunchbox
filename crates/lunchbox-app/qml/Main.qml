@@ -11404,7 +11404,8 @@ ApplicationWindow {
                         color: root.ink
                         font.pixelSize: 27
                         font.weight: Font.Bold
-                        elide: Text.ElideRight
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
                     }
                     Text {
                         text: library.filtering ? "Updating results…"
