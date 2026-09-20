@@ -806,6 +806,7 @@ pub struct GameDetailsModelRust {
     preparation_generation: u64,
     launch_generation: u64,
     discovery_cache: std::collections::HashMap<String, EmulatorDiscoveryResult>,
+    details_cache: std::collections::HashMap<String, GameDetails>,
     activity_load_generation: u64,
     preparation_cancel: Option<Arc<AtomicBool>>,
     launch_cancel: Option<Arc<AtomicBool>>,
@@ -1032,6 +1033,7 @@ impl Default for GameDetailsModelRust {
             preparation_generation: 0,
             launch_generation: 0,
             discovery_cache: std::collections::HashMap::new(),
+            details_cache: std::collections::HashMap::new(),
             activity_load_generation: 0,
             preparation_cancel: None,
             launch_cancel: None,
@@ -1611,7 +1613,23 @@ impl qobject::GameDetailsModel {
         let generation = self.as_ref().rust().details_generation;
 
         self.as_mut().set_panel_open(true);
-        self.as_mut().set_loading(true);
+        let cached_details = self
+            .as_ref()
+            .rust()
+            .details_cache
+            .get(&game_id_string)
+            .cloned();
+        let cached_pending = cached_details.as_ref().and_then(|details| {
+            self.as_ref()
+                .rust()
+                .discovery_cache
+                .get(&details.id)
+                .cloned()
+                .map(|result| (details.id.clone(), result))
+        });
+        if cached_details.is_none() {
+            self.as_mut().set_loading(true);
+        }
         self.as_mut().set_torrent_loading(false);
         self.as_mut().set_game_id(game_id);
         // Present the game's final emulator layout immediately on re-select;
@@ -1624,9 +1642,18 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_downloadable(downloadable);
         self.as_mut().set_metadata_open(false);
         self.as_mut().set_metadata_busy(false);
-        self.as_mut().clear_details();
-        self.as_mut()
-            .set_message(qstring("Loading game details and Minerva sources…"));
+        if cached_details.is_none() {
+            self.as_mut().clear_details();
+            self.as_mut()
+                .set_message(qstring("Loading game details and Minerva sources…"));
+        }
+
+        if let Some(cached) = cached_details {
+            self.as_mut()
+                .finish_game_details(generation, Ok(cached), cached_pending);
+            self.as_mut().rust_mut().details_generation = generation.wrapping_add(1);
+        }
+        let generation = self.as_ref().rust().details_generation;
 
         let qt_thread = self.as_ref().qt_thread();
         let spawn_result = std::thread::Builder::new()
@@ -2411,6 +2438,13 @@ impl qobject::GameDetailsModel {
     ) {
         if generation != self.as_ref().rust().details_generation {
             return;
+        }
+        if let Ok(details) = &loaded {
+            let cache = &mut self.as_mut().rust_mut().details_cache;
+            if cache.len() > 16 {
+                cache.clear();
+            }
+            cache.insert(details.id.clone(), details.clone());
         }
         match loaded {
             Ok(details) => {
