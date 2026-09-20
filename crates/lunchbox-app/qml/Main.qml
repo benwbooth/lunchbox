@@ -14203,6 +14203,8 @@ ApplicationWindow {
                         width: parent.width
                         queue: downloadQueue
                         gameId: gameDetails.game_id
+                        gameLocal: gameDetails.local && !gameDetails.loading
+                        gameLoading: gameDetails.loading
                         ink: root.ink
                         muted: root.muted
                         panel: root.panelRaised

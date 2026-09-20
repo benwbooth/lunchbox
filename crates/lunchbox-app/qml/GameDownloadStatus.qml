@@ -7,6 +7,8 @@ Rectangle {
 
     required property var queue
     required property string gameId
+    required property bool gameLocal
+    required property bool gameLoading
     required property color ink
     required property color muted
     required property color panel
@@ -30,7 +32,12 @@ Rectangle {
     readonly property string badge: jobIndex >= 0
                                             ? queue.job_badge_at(jobIndex) : ""
 
+    // An installed game's final state is the hero's Play button; the download
+    // card only exists while something is actually in flight or failed. It
+    // stays hidden while the details load so no intermediate state flashes.
     visible: jobIndex >= 0
+             && !gameLoading
+             && !(gameLocal && jobState === "IMPORTED")
     height: visible ? contents.implicitHeight + 24 : 0
     radius: 11
     color: panel
