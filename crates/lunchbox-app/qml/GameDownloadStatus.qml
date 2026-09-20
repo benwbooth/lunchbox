@@ -18,6 +18,7 @@ Rectangle {
 
     signal manageRequested()
     signal alternativesRequested()
+    signal playRequested()
 
     readonly property int queueRevision: queue.revision
     readonly property int jobIndex: {
@@ -49,7 +50,7 @@ Rectangle {
             spacing: 8
             Text {
                 width: parent.width - statePill.width - 8
-                text: card.jobState === "IMPORTED" ? "DOWNLOAD COMPLETE"
+                text: card.jobState === "IMPORTED" ? "READY TO PLAY"
                       : card.jobState === "COMPLETE" ? "FINISHING INSTALL"
                       : "ROM DOWNLOAD"
                 color: card.ink
@@ -100,6 +101,12 @@ Rectangle {
         Row {
             width: parent.width
             spacing: 8
+            HeaderButton {
+                visible: card.jobState === "IMPORTED"
+                text: "PLAY"
+                implicitHeight: 34
+                onClicked: card.playRequested()
+            }
             HeaderButton {
                 text: "VIEW DOWNLOAD"
                 implicitHeight: 34

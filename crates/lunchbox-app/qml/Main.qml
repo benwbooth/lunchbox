@@ -14213,6 +14213,7 @@ ApplicationWindow {
                                                || minervaSourceState.count > 0
                         alternativesExpanded: root.downloadAlternativesExpanded
                         onManageRequested: downloadsDrawer.open()
+                        onPlayRequested: root.requestGameLaunch()
                         onAlternativesRequested:
                             root.downloadAlternativesExpanded = !root.downloadAlternativesExpanded
                     }
