@@ -1290,10 +1290,11 @@ fn build_prepared_rom_launch_plan(
             &option.emulator_name,
             &customization.save_states,
         ) {
+            // Spliced as one run so multi-flag adapters keep their order
+            // (DuckStation's `-settings <file>` must precede the value it
+            // consumes); a per-item front insert would reverse them.
             Ok(save_state_arguments) => {
-                for argument in save_state_arguments {
-                    arguments.insert(0, argument);
-                }
+                arguments.splice(0..0, save_state_arguments);
             }
             Err(error) => eprintln!("LUNCHBOX_SAVE_STATE_ARGS_SKIPPED: {error:#}"),
         }

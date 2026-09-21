@@ -238,7 +238,6 @@ Rectangle {
                         font.pixelSize: 9
                         textRole: "label"
                         valueRole: "value"
-                        property bool syncing: false
                         model: {
                             const revision = hero.displayRevision
                             const items = [{ value: "", label: "Inherit" }]
@@ -253,11 +252,9 @@ Rectangle {
                         onModelChanged: displayShaderCombo.syncValue()
                         Component.onCompleted: displayShaderCombo.syncValue()
                         function syncValue() {
-                            syncing = true
                             currentIndex = indexOfValue(hero.displayShader)
                             if (currentIndex < 0)
                                 currentIndex = 0
-                            syncing = false
                         }
                         onActivated: function(index) {
                             hero.displaySettingSaved("shader", currentValue)

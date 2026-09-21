@@ -36,6 +36,19 @@ TestCase {
             emulatorOptionStarredAt: function(index) {
                 return index === 1
             }
+            displayScope: "game"
+            displayShader: ""
+            displayBezel: ""
+            displaySaveStates: ""
+            displayRevision: 0
+            displayShaderSupported: true
+            displayBezelSupported: true
+            displaySaveStatesSupported: false
+            displayShaderPresetCount: function() { return 0 }
+            displayShaderPresetIdAt: function(index) { return "" }
+            displayShaderPresetLabelAt: function(index) { return "" }
+            displayScopeSelected: function(scope) {}
+            displaySettingSaved: function(field, value) {}
             ink: "#f4f7fb"
             muted: "#94a0b3"
             line: "#2b384b"
