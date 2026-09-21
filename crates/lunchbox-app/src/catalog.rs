@@ -393,7 +393,7 @@ fn load_preview_from_sources(
             .cmp(&right.name.to_lowercase())
             .then_with(|| left.name.cmp(&right.name))
     });
-    apply_grouped_platform_counts(&games, &mut platforms);
+    apply_grouped_platform_counts_from_sql(&mut platforms);
     validate_unique_media_ids(&games)?;
 
     Ok(CatalogPreview {
@@ -1402,10 +1402,28 @@ fn representative_rank(game: &Game) -> (u8, u8, u8, String, String) {
 /// the Libretro database names the same hardware `Atari - 8-bit Family`; both
 /// cover the same machines (and the same `.atr`/`.xex`/`.xfd` software), so
 /// games declared under a variant must group and count under the canonical
-/// name instead of creating a second platform entry. Only source-declared
-/// equivalences belong here, and the canonical name must be the base system
-/// users see in the platform list.
-const PLATFORM_EQUIVALENTS: &[(&str, &str)] = &[("Atari - 8-bit Family", "Atari 800")];
+/// name instead of creating a second platform entry. The remaining entries
+/// are the same Libretro `Manufacturer - Model` convention duplicating a
+/// shelf the launch database already provides under its common name. Only
+/// source-declared equivalences belong here, and the canonical name must be
+/// the base system users see in the platform list.
+const PLATFORM_EQUIVALENTS: &[(&str, &str)] = &[
+    ("Atari - 8-bit Family", "Atari 800"),
+    ("Commodore - CD32", "Commodore Amiga CD32"),
+    ("Commodore - CDTV", "Commodore CDTV"),
+    ("Commodore - Plus-4", "Commodore Plus 4"),
+    ("Magnavox - Odyssey2", "Magnavox Odyssey 2"),
+    ("NEC - PC Engine SuperGrafx", "PC Engine SuperGrafx"),
+    (
+        "Nintendo - Family Computer Disk System",
+        "Nintendo Famicom Disk System",
+    ),
+    ("Philips - Videopac+", "Philips Videopac+"),
+    ("Sega - Mega-CD - Sega CD", "Sega CD"),
+    ("Sega - Naomi", "Sega Naomi"),
+    ("Sega - Naomi 2", "Sega Naomi 2"),
+    ("The 3DO Company - 3DO", "3DO Interactive Multiplayer"),
+];
 
 fn canonical_platform_name(name: &str) -> &str {
     PLATFORM_EQUIVALENTS
@@ -1429,6 +1447,30 @@ fn apply_grouped_platform_counts(games: &[Game], platforms: &mut Vec<Platform>) 
     });
     for platform in platforms {
         platform.game_count = counts
+            .get(&platform.name.to_lowercase())
+            .copied()
+            .unwrap_or_default();
+    }
+}
+
+/// The preview's grouping pass: the same alias folding as
+/// `apply_grouped_platform_counts`, but the counts stay the database's own
+/// per-platform totals (summed across folded rows). The preview loads only a
+/// row-limited game slice, so recounting from those games would zero every
+/// platform outside the slice; the full load corrects the authoritative
+/// recount when it replaces the preview.
+fn apply_grouped_platform_counts_from_sql(platforms: &mut Vec<Platform>) {
+    let mut totals = HashMap::<String, usize>::new();
+    for platform in platforms.iter() {
+        *totals
+            .entry(canonical_platform_name(&platform.name).to_lowercase())
+            .or_default() += platform.game_count;
+    }
+    platforms.retain(|platform| {
+        canonical_platform_name(&platform.name).eq_ignore_ascii_case(&platform.name)
+    });
+    for platform in platforms.iter_mut() {
+        platform.game_count = totals
             .get(&platform.name.to_lowercase())
             .copied()
             .unwrap_or_default();
@@ -2090,7 +2132,8 @@ fn game_matches_filter(
                     .iter()
                     .any(|field| field.to_lowercase().contains(&search))
             }))
-        && (filter.platform.is_empty() || game.platform == filter.platform)
+        && (filter.platform.is_empty()
+            || canonical_platform_name(&game.platform) == filter.platform)
         && (selected_tag.is_empty()
             || filter
                 .game_tags

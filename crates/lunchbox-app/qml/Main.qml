@@ -11390,7 +11390,10 @@ ApplicationWindow {
                 }
                 glyph: "·"
                 iconSource: root.platformIconUrl(label)
-                count: library.filtered_platform_game_count_at(index).toString()
+                count: {
+                    revision
+                    return library.filtered_platform_game_count_at(index).toString()
+                }
                 active: root.selectedPlatform === label
                 onClicked: {
                     root.selectedPlatform = label
