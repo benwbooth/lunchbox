@@ -4745,6 +4745,9 @@ impl qobject::GameDetailsModel {
                     core_name: target.core_name.clone(),
                     extra_arguments: extra_arguments.to_string(),
                     command_template: command_template.to_string(),
+                    display_fullscreen: String::new(),
+                    display_shader: String::new(),
+                    display_bezel: String::new(),
                     updated_at: 0,
                 },
             )
@@ -5755,6 +5758,46 @@ impl qobject::GameDetailsModel {
                             }
                         }
                     }
+                    // Display settings attach last so their private config
+                    // wins RetroArch's appendconfig merge order against the
+                    // calibrated session config. Any failure degrades into a
+                    // warning; the game still launches.
+                    let mut display_warning: Option<String> = None;
+                    if let LaunchInput::Rom {
+                        path,
+                        platform,
+                        option,
+                    } = &launch_input
+                    {
+                        let display_customization =
+                            crate::settings::SettingsStore::open_default().and_then(|store| {
+                                store.resolve_launch_customization(
+                                    &game_id,
+                                    platform,
+                                    &option.emulator_id,
+                                    option.runtime_kind.key(),
+                                    &option.core_name,
+                                )
+                            });
+                        if let Ok(customization) = display_customization {
+                            let rom_stem = path
+                                .file_stem()
+                                .map(|stem| stem.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            if let Some(warning) =
+                                crate::display_setup::attach_launch_display_configuration(
+                                    &mut plan,
+                                    &option.executable,
+                                    platform,
+                                    &rom_stem,
+                                    &customization,
+                                )
+                            {
+                                eprintln!("LUNCHBOX_DISPLAY_SETTING_DEGRADED: {warning}");
+                                display_warning = Some(warning);
+                            }
+                        }
+                    }
                     let command_summary = plan.command_summary();
                     // Only one mapping layer may own this launch.
                     let controller_activation = if let Some(session) = &calibrated_session {
@@ -5874,7 +5917,7 @@ impl qobject::GameDetailsModel {
                         .err()
                         .map(|error| format!("Play activity could not be recorded: {error}"));
                     let tracking_warning =
-                        [controller_warning, calibration_warning, activity_warning]
+                        [controller_warning, calibration_warning, activity_warning, display_warning]
                         .into_iter()
                         .flatten()
                         .collect::<Vec<_>>();

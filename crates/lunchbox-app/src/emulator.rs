@@ -1246,10 +1246,18 @@ fn build_prepared_rom_launch_plan(
                     0,
                 )
             } else {
-                (
-                    vec![path_argument_for_executable(rom_path, &option.executable)],
-                    0,
-                )
+                let mut arguments =
+                    vec![path_argument_for_executable(rom_path, &option.executable)];
+                // A chosen fullscreen setting rides the same launch flags the
+                // emulator itself documents; emulators without a trustworthy
+                // switch keep their own window state.
+                if customization.display_fullscreen == "true"
+                    && let Some(flag) =
+                        crate::display_setup::fullscreen_flag_for(&option.emulator_name)
+                {
+                    arguments.insert(0, OsString::from(flag));
+                }
+                (arguments, 0)
             }
         }
         EmulatorRuntimeKind::RetroArch => {

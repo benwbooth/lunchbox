@@ -11643,7 +11643,7 @@ fn assign_players<'a>(
     Ok(players)
 }
 
-fn attach_config(
+pub(crate) fn attach_config(
     plan: &mut LaunchPlan,
     executable: &EmulatorExecutable,
     path: &Path,

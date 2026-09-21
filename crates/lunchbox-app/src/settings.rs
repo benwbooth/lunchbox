@@ -1101,6 +1101,9 @@ pub struct EmulatorLaunchProfile {
     pub core_name: String,
     pub extra_arguments: String,
     pub command_template: String,
+    pub display_fullscreen: String,
+    pub display_shader: String,
+    pub display_bezel: String,
     pub updated_at: i64,
 }
 
@@ -1110,6 +1113,10 @@ pub struct ResolvedLaunchCustomization {
     pub command_template: String,
     pub argument_scope: String,
     pub template_scope: String,
+    pub display_fullscreen: String,
+    pub display_shader: String,
+    pub display_bezel: String,
+    pub display_scope: String,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -4616,7 +4623,8 @@ impl SettingsStore {
         connection
             .query_row(
                 "SELECT scope_kind, scope_key, emulator_id, runtime_kind, core_name,
-                        extra_arguments, command_template, updated_at
+                        extra_arguments, command_template, display_fullscreen,
+                        display_shader, display_bezel, updated_at
                  FROM emulator_launch_profiles
                  WHERE scope_kind=?1 AND scope_key=?2 AND emulator_id=?3
                    AND runtime_kind=?4 AND core_name IN (?5, ?6, ?7)
@@ -4647,7 +4655,10 @@ impl SettingsStore {
                         core_name: row.get(4)?,
                         extra_arguments: row.get(5)?,
                         command_template: row.get(6)?,
-                        updated_at: row.get(7)?,
+                        display_fullscreen: row.get(7)?,
+                        display_shader: row.get(8)?,
+                        display_bezel: row.get(9)?,
+                        updated_at: row.get(10)?,
                     })
                 },
             )
@@ -4659,7 +4670,8 @@ impl SettingsStore {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
             "SELECT scope_kind, scope_key, emulator_id, runtime_kind, core_name,
-                    extra_arguments, command_template, updated_at
+                    extra_arguments, command_template, display_fullscreen,
+                    display_shader, display_bezel, updated_at
              FROM emulator_launch_profiles
              ORDER BY scope_kind, scope_key, emulator_id, runtime_kind, core_name",
         )?;
@@ -4673,7 +4685,10 @@ impl SettingsStore {
                     core_name: row.get(4)?,
                     extra_arguments: row.get(5)?,
                     command_template: row.get(6)?,
-                    updated_at: row.get(7)?,
+                    display_fullscreen: row.get(7)?,
+                    display_shader: row.get(8)?,
+                    display_bezel: row.get(9)?,
+                    updated_at: row.get(10)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()
@@ -4727,9 +4742,33 @@ impl SettingsStore {
             }
             if resolved.command_template.is_empty() && !profile.command_template.is_empty() {
                 resolved.command_template = profile.command_template;
-                resolved.template_scope = profile.scope_kind;
+                resolved.template_scope = profile.scope_kind.clone();
             }
-            if !resolved.extra_arguments.is_empty() && !resolved.command_template.is_empty() {
+            let display_unset = resolved.display_fullscreen.is_empty()
+                && resolved.display_shader.is_empty()
+                && resolved.display_bezel.is_empty();
+            let mut display_hit = false;
+            if resolved.display_fullscreen.is_empty() && !profile.display_fullscreen.is_empty() {
+                resolved.display_fullscreen = profile.display_fullscreen;
+                display_hit = true;
+            }
+            if resolved.display_shader.is_empty() && !profile.display_shader.is_empty() {
+                resolved.display_shader = profile.display_shader;
+                display_hit = true;
+            }
+            if resolved.display_bezel.is_empty() && !profile.display_bezel.is_empty() {
+                resolved.display_bezel = profile.display_bezel;
+                display_hit = true;
+            }
+            if display_unset && display_hit {
+                resolved.display_scope = profile.scope_kind.clone();
+            }
+            if !resolved.extra_arguments.is_empty()
+                && !resolved.command_template.is_empty()
+                && !resolved.display_fullscreen.is_empty()
+                && !resolved.display_shader.is_empty()
+                && !resolved.display_bezel.is_empty()
+            {
                 break;
             }
         }
@@ -4746,9 +4785,18 @@ impl SettingsStore {
         )?;
         let extra_arguments = profile.extra_arguments.trim();
         let command_template = profile.command_template.trim();
+        let display_fullscreen = profile.display_fullscreen.trim();
+        let display_shader = profile.display_shader.trim();
+        let display_bezel = profile.display_bezel.trim();
+        validate_display_profile_values(display_fullscreen, display_shader, display_bezel)?;
         crate::emulator::validate_launch_extra_arguments(extra_arguments)?;
         crate::emulator::validate_launch_template(command_template)?;
-        if extra_arguments.is_empty() && command_template.is_empty() {
+        if extra_arguments.is_empty()
+            && command_template.is_empty()
+            && display_fullscreen.is_empty()
+            && display_shader.is_empty()
+            && display_bezel.is_empty()
+        {
             return self.clear_emulator_launch_profile(
                 &profile.scope_kind,
                 &scope_key,
@@ -4761,12 +4809,16 @@ impl SettingsStore {
         connection.execute(
             "INSERT INTO emulator_launch_profiles (
                  scope_kind, scope_key, emulator_id, runtime_kind, core_name,
-                 extra_arguments, command_template, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 extra_arguments, command_template, display_fullscreen,
+                 display_shader, display_bezel, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(scope_kind, scope_key, emulator_id, runtime_kind, core_name)
              DO UPDATE SET
                  extra_arguments=excluded.extra_arguments,
                  command_template=excluded.command_template,
+                 display_fullscreen=excluded.display_fullscreen,
+                 display_shader=excluded.display_shader,
+                 display_bezel=excluded.display_bezel,
                  updated_at=excluded.updated_at",
             params![
                 profile.scope_kind,
@@ -4776,6 +4828,9 @@ impl SettingsStore {
                 profile.core_name,
                 extra_arguments,
                 command_template,
+                display_fullscreen,
+                display_shader,
+                display_bezel,
                 unix_timestamp()
             ],
         )?;
@@ -7137,6 +7192,11 @@ fn migrate(connection: &Connection) -> Result<()> {
              core_name TEXT NOT NULL DEFAULT '',
              extra_arguments TEXT NOT NULL DEFAULT '',
              command_template TEXT NOT NULL DEFAULT '',
+             display_fullscreen TEXT NOT NULL DEFAULT ''
+                 CHECK (display_fullscreen IN ('', 'true', 'false')),
+             display_shader TEXT NOT NULL DEFAULT '',
+             display_bezel TEXT NOT NULL DEFAULT ''
+                 CHECK (display_bezel IN ('', 'off', 'system')),
              updated_at INTEGER NOT NULL,
              PRIMARY KEY (
                  scope_kind, scope_key, emulator_id, runtime_kind, core_name
@@ -7145,7 +7205,11 @@ fn migrate(connection: &Connection) -> Result<()> {
                  (scope_kind='global' AND scope_key='')
                  OR (scope_kind<>'global' AND length(scope_key)>0)
              ),
-             CHECK (length(extra_arguments)>0 OR length(command_template)>0),
+             CHECK (
+                 length(extra_arguments)>0 OR length(command_template)>0
+                 OR length(display_fullscreen)>0 OR length(display_shader)>0
+                 OR length(display_bezel)>0
+             ),
              CHECK (
                  (runtime_kind='standalone' AND core_name='')
                  OR (runtime_kind='retroarch' AND length(core_name)>0)
@@ -7324,6 +7388,9 @@ fn migrate(connection: &Connection) -> Result<()> {
             "ALTER TABLE download_jobs ADD COLUMN launchbox_db_id INTEGER NOT NULL DEFAULT 0",
             [],
         )?;
+    }
+    if !emulator_launch_profiles_have_display_columns(connection)? {
+        rebuild_emulator_launch_profiles_display_columns(connection)?;
     }
     if !column_exists(connection, "sidebar_preferences", "details_width")? {
         connection.execute(
@@ -7550,6 +7617,70 @@ fn migrate(connection: &Connection) -> Result<()> {
 /// The column is restored in place and backfilled from `updated_at`, the
 /// closest surviving approximation of each job's creation time, because the
 /// rebuild already dropped the original values.
+fn emulator_launch_profiles_have_display_columns(connection: &Connection) -> Result<bool> {
+    Ok(
+        column_exists(connection, "emulator_launch_profiles", "display_fullscreen")?
+            && column_exists(connection, "emulator_launch_profiles", "display_shader")?
+            && column_exists(connection, "emulator_launch_profiles", "display_bezel")?,
+    )
+}
+
+// Existing databases carry a CHECK that demands a non-empty argument or
+// template, so display-only profiles cannot simply be added as columns: the
+// table is rebuilt to relax that CHECK while preserving every saved profile.
+fn rebuild_emulator_launch_profiles_display_columns(connection: &Connection) -> Result<()> {
+    connection.execute_batch(
+        "CREATE TABLE emulator_launch_profiles_rebuilt (
+             scope_kind TEXT NOT NULL CHECK (
+                 scope_kind IN ('global', 'platform', 'game')
+             ),
+             scope_key TEXT NOT NULL,
+             emulator_id TEXT NOT NULL,
+             runtime_kind TEXT NOT NULL CHECK (
+                 runtime_kind IN ('standalone', 'retroarch')
+             ),
+             core_name TEXT NOT NULL DEFAULT '',
+             extra_arguments TEXT NOT NULL DEFAULT '',
+             command_template TEXT NOT NULL DEFAULT '',
+             display_fullscreen TEXT NOT NULL DEFAULT ''
+                 CHECK (display_fullscreen IN ('', 'true', 'false')),
+             display_shader TEXT NOT NULL DEFAULT '',
+             display_bezel TEXT NOT NULL DEFAULT ''
+                 CHECK (display_bezel IN ('', 'off', 'system')),
+             updated_at INTEGER NOT NULL,
+             PRIMARY KEY (
+                 scope_kind, scope_key, emulator_id, runtime_kind, core_name
+             ),
+             CHECK (
+                 (scope_kind='global' AND scope_key='')
+                 OR (scope_kind<>'global' AND length(scope_key)>0)
+             ),
+             CHECK (
+                 length(extra_arguments)>0 OR length(command_template)>0
+                 OR length(display_fullscreen)>0 OR length(display_shader)>0
+                 OR length(display_bezel)>0
+             ),
+             CHECK (
+                 (runtime_kind='standalone' AND core_name='')
+                 OR (runtime_kind='retroarch' AND length(core_name)>0)
+             )
+         );
+         INSERT INTO emulator_launch_profiles_rebuilt (
+             scope_kind, scope_key, emulator_id, runtime_kind, core_name,
+             extra_arguments, command_template, display_fullscreen,
+             display_shader, display_bezel, updated_at
+         )
+         SELECT scope_kind, scope_key, emulator_id, runtime_kind, core_name,
+                extra_arguments, command_template, '', '', '', updated_at
+         FROM emulator_launch_profiles;
+         DROP TABLE emulator_launch_profiles;
+         ALTER TABLE emulator_launch_profiles_rebuilt RENAME TO emulator_launch_profiles;
+         CREATE INDEX IF NOT EXISTS emulator_launch_profiles_emulator
+             ON emulator_launch_profiles(emulator_id, runtime_kind, core_name, scope_kind);",
+    )?;
+    Ok(())
+}
+
 fn repair_download_jobs_created_at(connection: &Connection) -> Result<()> {
     let transaction = connection.unchecked_transaction()?;
     transaction.execute(
@@ -8344,6 +8475,30 @@ fn validate_collection_description(description: &str) -> Result<String> {
         bail!("collection description must be at most 1000 characters");
     }
     Ok(description.to_owned())
+}
+
+fn validate_display_profile_values(
+    display_fullscreen: &str,
+    display_shader: &str,
+    display_bezel: &str,
+) -> Result<()> {
+    match display_fullscreen {
+        "" | "true" | "false" => {}
+        other => bail!("unknown fullscreen display setting: {other}"),
+    }
+    match display_bezel {
+        "" | "off" | "system" => {}
+        other => bail!("unknown bezel display setting: {other}"),
+    }
+    if !display_shader.is_empty()
+        && (display_shader.len() > 128
+            || !display_shader.chars().all(|character| {
+                character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+            }))
+    {
+        bail!("unknown shader preset display setting: {display_shader}");
+    }
+    Ok(())
 }
 
 fn normalized_launch_scope_key(scope_kind: &str, scope_key: &str) -> Result<String> {
@@ -10960,6 +11115,145 @@ identity"
     }
 
     #[test]
+    fn legacy_launch_profile_tables_are_rebuilt_for_display_columns() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.db");
+        {
+            let connection = rusqlite::Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE emulator_launch_profiles (
+                         scope_kind TEXT NOT NULL CHECK (
+                             scope_kind IN ('global', 'platform', 'game')
+                         ),
+                         scope_key TEXT NOT NULL,
+                         emulator_id TEXT NOT NULL,
+                         runtime_kind TEXT NOT NULL CHECK (
+                             runtime_kind IN ('standalone', 'retroarch')
+                         ),
+                         core_name TEXT NOT NULL DEFAULT '',
+                         extra_arguments TEXT NOT NULL DEFAULT '',
+                         command_template TEXT NOT NULL DEFAULT '',
+                         updated_at INTEGER NOT NULL,
+                         PRIMARY KEY (
+                             scope_kind, scope_key, emulator_id, runtime_kind, core_name
+                         ),
+                         CHECK (
+                             (scope_kind='global' AND scope_key='')
+                             OR (scope_kind<>'global' AND length(scope_key)>0)
+                         ),
+                         CHECK (length(extra_arguments)>0 OR length(command_template)>0),
+                         CHECK (
+                             (runtime_kind='standalone' AND core_name='')
+                             OR (runtime_kind='retroarch' AND length(core_name)>0)
+                         )
+                     );
+                     INSERT INTO emulator_launch_profiles (
+                         scope_kind, scope_key, emulator_id, runtime_kind, core_name,
+                         extra_arguments, command_template, updated_at
+                     ) VALUES ('global', '', 'psx', 'retroarch', 'beetle_psx', '--verbose', '', 5);",
+                )
+                .unwrap();
+        }
+        let store = SettingsStore::at(&path).unwrap();
+        let profile = store
+            .emulator_launch_profile("global", "", "psx", "retroarch", "beetle_psx")
+            .unwrap()
+            .unwrap();
+        assert_eq!(profile.extra_arguments, "--verbose");
+        assert_eq!(profile.display_bezel, "");
+        // The rebuilt table accepts display-only profiles, and saving a
+        // profile with the same exact key replaces it wholesale.
+        store
+            .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                scope_kind: "global".into(),
+                emulator_id: "psx".into(),
+                runtime_kind: "retroarch".into(),
+                core_name: "beetle_psx".into(),
+                display_bezel: "system".into(),
+                ..EmulatorLaunchProfile::default()
+            })
+            .unwrap();
+        let profiles = store.emulator_launch_profiles().unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].display_bezel, "system");
+        assert!(profiles[0].extra_arguments.is_empty());
+    }
+
+    #[test]
+    fn launch_profiles_resolve_display_settings_with_scope_precedence() {
+        let (_directory, store) = store();
+        store
+            .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                scope_kind: "global".into(),
+                emulator_id: "mesen-id".into(),
+                runtime_kind: "retroarch".into(),
+                core_name: "mesen".into(),
+                display_fullscreen: "true".into(),
+                display_shader: "crt-easymode".into(),
+                ..EmulatorLaunchProfile::default()
+            })
+            .unwrap();
+        store
+            .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                scope_kind: "platform".into(),
+                scope_key: "Nintendo Entertainment System".into(),
+                emulator_id: "mesen-id".into(),
+                runtime_kind: "retroarch".into(),
+                core_name: "mesen".into(),
+                display_shader: "retrotube-tv".into(),
+                display_bezel: "system".into(),
+                ..EmulatorLaunchProfile::default()
+            })
+            .unwrap();
+        let resolved = store
+            .resolve_launch_customization(
+                "game-one",
+                "Nintendo Entertainment System",
+                "mesen-id",
+                "retroarch",
+                "mesen",
+            )
+            .unwrap();
+        assert_eq!(resolved.display_fullscreen, "true");
+        // Platform scope wins per field; the scope records the first scope
+        // that contributed any display value.
+        assert_eq!(resolved.display_shader, "retrotube-tv");
+        assert_eq!(resolved.display_bezel, "system");
+        assert_eq!(resolved.display_scope, "platform");
+
+        // A display-only profile is a valid row and clears back cleanly.
+        assert_eq!(store.emulator_launch_profiles().unwrap().len(), 2);
+        store
+            .clear_emulator_launch_profile("global", "", "mesen-id", "retroarch", "mesen")
+            .unwrap();
+        let resolved = store
+            .resolve_launch_customization(
+                "game-one",
+                "Nintendo Entertainment System",
+                "mesen-id",
+                "retroarch",
+                "mesen",
+            )
+            .unwrap();
+        assert_eq!(resolved.display_fullscreen, "");
+        assert_eq!(resolved.display_shader, "retrotube-tv");
+
+        assert!(
+            store
+                .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                    scope_kind: "global".into(),
+                    emulator_id: "mesen-id".into(),
+                    runtime_kind: "retroarch".into(),
+                    core_name: "mesen".into(),
+                    display_fullscreen: "maybe".into(),
+                    ..EmulatorLaunchProfile::default()
+                })
+                .is_err()
+        );
+    }
+
+    #[test]
     fn launch_profiles_resolve_each_field_by_exact_scope_precedence() {
         let (_directory, store) = store();
         store
@@ -11011,6 +11305,7 @@ identity"
                 command_template: "--game %{core} %f".into(),
                 argument_scope: "platform".into(),
                 template_scope: "game".into(),
+                ..ResolvedLaunchCustomization::default()
             }
         );
         let profiles = store.emulator_launch_profiles().unwrap();

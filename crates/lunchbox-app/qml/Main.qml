@@ -2959,6 +2959,18 @@ ApplicationWindow {
                     launchProfileManager.editor_extra_arguments
             launchProfileManagerCommandTemplate.text =
                     launchProfileManager.editor_command_template
+            launchProfileDisplayFullscreen.currentIndex =
+                    ["", "false", "true"].indexOf(
+                        launchProfileManager.editor_display_fullscreen) >= 0
+                    ? ["", "false", "true"].indexOf(
+                          launchProfileManager.editor_display_fullscreen) : 0
+            launchProfileDisplayShader.storedValue =
+                    launchProfileManager.editor_display_shader
+            launchProfileDisplayBezel.currentIndex =
+                    ["", "off", "system"].indexOf(
+                        launchProfileManager.editor_display_bezel) >= 0
+                    ? ["", "off", "system"].indexOf(
+                          launchProfileManager.editor_display_bezel) : 0
         }
     }
 
@@ -23630,6 +23642,87 @@ ApplicationWindow {
                                                 text)
                             }
                         }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: launchProfileManager.display_fullscreen_supported()
+                            Text {
+                                text: "FULLSCREEN"
+                                color: root.muted
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                                Layout.fillWidth: true
+                            }
+                            ComboBox {
+                                id: launchProfileDisplayFullscreen
+                                Layout.preferredWidth: 168
+                                model: [
+                                    { value: "", label: "Inherit" },
+                                    { value: "false", label: "Windowed" },
+                                    { value: "true", label: "Fullscreen" }
+                                ]
+                                textRole: "label"
+                                valueRole: "value"
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: launchProfileManager.display_shader_preset_supported()
+                            Text {
+                                text: "CRT SHADER"
+                                color: root.muted
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                                Layout.fillWidth: true
+                            }
+                            ComboBox {
+                                id: launchProfileDisplayShader
+                                Layout.preferredWidth: 296
+                                property string storedValue: ""
+                                textRole: "label"
+                                valueRole: "value"
+                                model: {
+                                    const revision = launchProfileManager.editor_revision
+                                    const items = [{ value: "", label: "Inherit" }]
+                                    if (launchProfileManager.display_shader_preset_supported()) {
+                                        const count =
+                                            launchProfileManager.display_shader_preset_count()
+                                        for (let i = 0; i < count; ++i)
+                                            items.push({
+                                                value: launchProfileManager.display_shader_preset_id_at(i),
+                                                label: launchProfileManager.display_shader_preset_label_at(i)
+                                            })
+                                    }
+                                    return items
+                                }
+                                onModelChanged: {
+                                    currentIndex = indexOfValue(storedValue)
+                                    if (currentIndex < 0)
+                                        currentIndex = 0
+                                }
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: launchProfileManager.display_bezel_supported()
+                            Text {
+                                text: "SYSTEM BEZEL"
+                                color: root.muted
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                                Layout.fillWidth: true
+                            }
+                            ComboBox {
+                                id: launchProfileDisplayBezel
+                                Layout.preferredWidth: 168
+                                model: [
+                                    { value: "", label: "Inherit" },
+                                    { value: "off", label: "Off" },
+                                    { value: "system", label: "Bezel Project pack" }
+                                ]
+                                textRole: "label"
+                                valueRole: "value"
+                            }
+                        }
                         LaunchCommandPreview {
                             id: launchProfileManagerPreview
                             Layout.fillWidth: true
@@ -23687,7 +23780,13 @@ ApplicationWindow {
                                 enabled: launchProfileManager.launch_profile_preview_valid
                                 onClicked: launchProfileManager.save_editor(
                                                launchProfileManagerExtraArguments.text,
-                                               launchProfileManagerCommandTemplate.text)
+                                               launchProfileManagerCommandTemplate.text,
+                                               launchProfileDisplayFullscreen.currentValue
+                                                   ? launchProfileDisplayFullscreen.currentValue : "",
+                                               launchProfileDisplayShader.currentValue
+                                                   ? launchProfileDisplayShader.currentValue : "",
+                                               launchProfileDisplayBezel.currentValue
+                                                   ? launchProfileDisplayBezel.currentValue : "")
                             }
                         }
                     }

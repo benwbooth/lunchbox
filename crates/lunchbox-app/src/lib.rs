@@ -1,5 +1,6 @@
 mod arcade;
 mod arcade_download;
+mod bezel_project;
 mod build_info;
 mod catalog;
 mod collection_identity;
@@ -213,6 +214,7 @@ mod controller_ymir_native;
 mod controller_zesarux_native;
 mod controllers;
 mod couch_theme;
+pub mod display_setup;
 mod download_plan;
 pub mod download_queue_model;
 mod emulator;

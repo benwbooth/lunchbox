@@ -23,6 +23,9 @@ pub mod qobject {
         #[qproperty(QString, editor_default_template)]
         #[qproperty(QString, editor_extra_arguments)]
         #[qproperty(QString, editor_command_template)]
+        #[qproperty(QString, editor_display_fullscreen)]
+        #[qproperty(QString, editor_display_shader)]
+        #[qproperty(QString, editor_display_bezel)]
         #[qproperty(QString, editor_effective_summary)]
         #[qproperty(QString, editor_status)]
         #[qproperty(i32, editor_revision)]
@@ -76,10 +79,31 @@ pub mod qobject {
             self: Pin<&mut LaunchProfileManagerModel>,
             extra_arguments: QString,
             command_template: QString,
+            display_fullscreen: QString,
+            display_shader: QString,
+            display_bezel: QString,
         );
 
         #[qinvokable]
         fn clear_editor(self: Pin<&mut LaunchProfileManagerModel>);
+
+        #[qinvokable]
+        fn display_fullscreen_supported(self: &LaunchProfileManagerModel) -> bool;
+
+        #[qinvokable]
+        fn display_shader_preset_supported(self: &LaunchProfileManagerModel) -> bool;
+
+        #[qinvokable]
+        fn display_shader_preset_count(self: &LaunchProfileManagerModel) -> i32;
+
+        #[qinvokable]
+        fn display_shader_preset_id_at(self: &LaunchProfileManagerModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn display_shader_preset_label_at(self: &LaunchProfileManagerModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn display_bezel_supported(self: &LaunchProfileManagerModel) -> bool;
 
         #[qinvokable]
         fn update_launch_profile_preview(
@@ -147,7 +171,11 @@ struct LaunchProfileRow {
 impl LaunchProfileRow {
     fn customized(&self) -> bool {
         self.profile.as_ref().is_some_and(|profile| {
-            !profile.extra_arguments.is_empty() || !profile.command_template.is_empty()
+            !profile.extra_arguments.is_empty()
+                || !profile.command_template.is_empty()
+                || !profile.display_fullscreen.is_empty()
+                || !profile.display_shader.is_empty()
+                || !profile.display_bezel.is_empty()
         })
     }
 
@@ -159,25 +187,58 @@ impl LaunchProfileRow {
         }
     }
 
+    fn display_summary(&self) -> Option<String> {
+        let profile = self.profile.as_ref()?;
+        let mut parts = Vec::new();
+        match profile.display_fullscreen.as_str() {
+            "true" => parts.push("Fullscreen"),
+            "false" => parts.push("Windowed"),
+            _ => {}
+        }
+        if !profile.display_shader.is_empty() {
+            if let Some(choice) = crate::display_setup::shader_preset_choices()
+                .iter()
+                .find(|choice| choice.id == profile.display_shader)
+            {
+                parts.push(choice.label.split(" ·").next().unwrap_or(choice.label));
+            } else {
+                parts.push("Custom CRT");
+            }
+        }
+        if profile.display_bezel == "system" {
+            parts.push("System bezel");
+        }
+        (!parts.is_empty()).then(|| parts.join(" · "))
+    }
+
     fn customization_summary(&self) -> String {
         let Some(profile) = &self.profile else {
             return "Built-in".to_owned();
         };
+        let mut parts = Vec::new();
         match (
             profile.extra_arguments.is_empty(),
             profile.command_template.is_empty(),
         ) {
-            (false, false) => "Arguments + template".to_owned(),
-            (false, true) => "Extra arguments".to_owned(),
-            (true, false) => "Command template".to_owned(),
-            (true, true) => "Built-in".to_owned(),
+            (false, false) => parts.push("Arguments + template".to_owned()),
+            (false, true) => parts.push("Extra arguments".to_owned()),
+            (true, false) => parts.push("Command template".to_owned()),
+            (true, true) => {}
+        }
+        if let Some(display) = self.display_summary() {
+            parts.push(display);
+        }
+        if parts.is_empty() {
+            "Built-in".to_owned()
+        } else {
+            parts.join(" · ")
         }
     }
 
     fn search_text(&self) -> String {
         let profile = self.profile.as_ref();
         format!(
-            "{} {} {} {} {} {} {}",
+            "{} {} {} {} {} {} {} {} {} {}",
             self.scope_label,
             self.platform_name,
             self.emulator_name,
@@ -188,7 +249,16 @@ impl LaunchProfileRow {
                 .unwrap_or(""),
             profile
                 .map(|value| value.command_template.as_str())
-                .unwrap_or("")
+                .unwrap_or(""),
+            profile
+                .map(|value| value.display_fullscreen.as_str())
+                .unwrap_or(""),
+            profile
+                .map(|value| value.display_shader.as_str())
+                .unwrap_or(""),
+            profile
+                .map(|value| value.display_bezel.as_str())
+                .unwrap_or(""),
         )
         .to_ascii_lowercase()
     }
@@ -210,6 +280,9 @@ pub struct LaunchProfileManagerModelRust {
     editor_default_template: QString,
     editor_extra_arguments: QString,
     editor_command_template: QString,
+    editor_display_fullscreen: QString,
+    editor_display_shader: QString,
+    editor_display_bezel: QString,
     editor_effective_summary: QString,
     editor_status: QString,
     editor_revision: i32,
@@ -244,6 +317,9 @@ impl Default for LaunchProfileManagerModelRust {
             editor_default_template: QString::default(),
             editor_extra_arguments: QString::default(),
             editor_command_template: QString::default(),
+            editor_display_fullscreen: QString::default(),
+            editor_display_shader: QString::default(),
+            editor_display_bezel: QString::default(),
             editor_effective_summary: QString::default(),
             editor_status: QString::default(),
             editor_revision: 0,
@@ -443,6 +519,24 @@ impl qobject::LaunchProfileManagerModel {
                 .map(|profile| profile.command_template.as_str())
                 .unwrap_or(""),
         ));
+        self.as_mut().set_editor_display_fullscreen(qstring(
+            row.profile
+                .as_ref()
+                .map(|profile| profile.display_fullscreen.as_str())
+                .unwrap_or(""),
+        ));
+        self.as_mut().set_editor_display_shader(qstring(
+            row.profile
+                .as_ref()
+                .map(|profile| profile.display_shader.as_str())
+                .unwrap_or(""),
+        ));
+        self.as_mut().set_editor_display_bezel(qstring(
+            row.profile
+                .as_ref()
+                .map(|profile| profile.display_bezel.as_str())
+                .unwrap_or(""),
+        ));
         match resolved_for_row(&row) {
             Ok(resolved) => self
                 .as_mut()
@@ -505,6 +599,9 @@ impl qobject::LaunchProfileManagerModel {
         mut self: Pin<&mut Self>,
         extra_arguments: QString,
         command_template: QString,
+        display_fullscreen: QString,
+        display_shader: QString,
+        display_bezel: QString,
     ) {
         let Some(row) = self.selected_row().cloned() else {
             self.as_mut()
@@ -513,6 +610,9 @@ impl qobject::LaunchProfileManagerModel {
         };
         let extra_arguments = extra_arguments.to_string();
         let command_template = command_template.to_string();
+        let display_fullscreen = display_fullscreen.to_string();
+        let display_shader = display_shader.to_string();
+        let display_bezel = display_bezel.to_string();
         if let Err(error) = validate_template_for_row(&row, &command_template) {
             self.as_mut().set_editor_status(qstring(format!(
                 "Could not save the launch profile: {error}"
@@ -527,22 +627,31 @@ impl qobject::LaunchProfileManagerModel {
             core_name: row.key.core_name.clone(),
             extra_arguments,
             command_template,
+            display_fullscreen,
+            display_shader,
+            display_bezel,
             updated_at: 0,
         };
+        let profile_is_empty = profile.extra_arguments.trim().is_empty()
+            && profile.command_template.trim().is_empty()
+            && profile.display_fullscreen.trim().is_empty()
+            && profile.display_shader.trim().is_empty()
+            && profile.display_bezel.trim().is_empty();
         match SettingsStore::open_default()
             .and_then(|store| store.set_emulator_launch_profile(&profile))
         {
             Ok(()) => {
                 self.as_mut().update_profile_row(
                     &row.key,
-                    if profile.extra_arguments.trim().is_empty()
-                        && profile.command_template.trim().is_empty()
-                    {
+                    if profile_is_empty {
                         None
                     } else {
                         Some(EmulatorLaunchProfile {
                             extra_arguments: profile.extra_arguments.trim().to_owned(),
                             command_template: profile.command_template.trim().to_owned(),
+                            display_fullscreen: profile.display_fullscreen.trim().to_owned(),
+                            display_shader: profile.display_shader.trim().to_owned(),
+                            display_bezel: profile.display_bezel.trim().to_owned(),
                             ..profile
                         })
                     },
@@ -589,6 +698,57 @@ impl qobject::LaunchProfileManagerModel {
                 "Could not clear the launch profile: {error:#}"
             ))),
         }
+    }
+
+    pub fn display_fullscreen_supported(&self) -> bool {
+        self.selected_row().is_some_and(|row| {
+            crate::display_setup::fullscreen_supported(&row.emulator_name, &row.key.runtime_kind)
+        })
+    }
+
+    pub fn display_shader_preset_supported(&self) -> bool {
+        self.selected_row().is_some_and(|row| {
+            crate::display_setup::shader_presets_supported(&row.key.runtime_kind)
+        })
+    }
+
+    pub fn display_shader_preset_count(&self) -> i32 {
+        if !self.display_shader_preset_supported() {
+            return 0;
+        }
+        saturating_i32(crate::display_setup::shader_preset_choices().len())
+    }
+
+    pub fn display_shader_preset_id_at(&self, index: i32) -> QString {
+        qstring(
+            self.shader_preset_choice(index)
+                .map(|choice| choice.id)
+                .unwrap_or(""),
+        )
+    }
+
+    pub fn display_shader_preset_label_at(&self, index: i32) -> QString {
+        qstring(
+            self.shader_preset_choice(index)
+                .map(|choice| choice.label)
+                .unwrap_or(""),
+        )
+    }
+
+    pub fn display_bezel_supported(&self) -> bool {
+        self.selected_row().is_some_and(|row| {
+            row.key.runtime_kind == "retroarch"
+                && (row.key.scope_kind != "platform"
+                    || crate::bezel_project::theme_for_platform(&row.platform_name).is_some())
+        })
+    }
+
+    fn shader_preset_choice(
+        &self,
+        index: i32,
+    ) -> Option<&'static crate::display_setup::ShaderPresetChoice> {
+        let index = usize::try_from(index).ok()?;
+        crate::display_setup::shader_preset_choices().get(index)
     }
 
     pub fn update_launch_profile_preview(
@@ -967,6 +1127,7 @@ fn preview_fallback_for_row(
         template_scope: (!profile.command_template.is_empty())
             .then_some("global".to_owned())
             .unwrap_or_default(),
+        ..ResolvedLaunchCustomization::default()
     }
 }
 
@@ -1094,6 +1255,9 @@ mod tests {
                 core_name: key.core_name,
                 extra_arguments: "-video bgfx".into(),
                 command_template: String::new(),
+                display_fullscreen: String::new(),
+                display_shader: String::new(),
+                display_bezel: String::new(),
                 updated_at: 1,
             }),
         }
