@@ -26,6 +26,7 @@ pub mod qobject {
         #[qproperty(QString, editor_display_fullscreen)]
         #[qproperty(QString, editor_display_shader)]
         #[qproperty(QString, editor_display_bezel)]
+        #[qproperty(QString, editor_save_states)]
         #[qproperty(QString, editor_effective_summary)]
         #[qproperty(QString, editor_status)]
         #[qproperty(i32, editor_revision)]
@@ -82,6 +83,7 @@ pub mod qobject {
             display_fullscreen: QString,
             display_shader: QString,
             display_bezel: QString,
+            display_save_states: QString,
         );
 
         #[qinvokable]
@@ -104,6 +106,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn display_bezel_supported(self: &LaunchProfileManagerModel) -> bool;
+
+        #[qinvokable]
+        fn display_save_states_supported(self: &LaunchProfileManagerModel) -> bool;
 
         #[qinvokable]
         fn update_launch_profile_preview(
@@ -208,6 +213,9 @@ impl LaunchProfileRow {
         if profile.display_bezel == "system" {
             parts.push("System bezel");
         }
+        if profile.save_states == "on" {
+            parts.push("Save states");
+        }
         (!parts.is_empty()).then(|| parts.join(" · "))
     }
 
@@ -238,7 +246,7 @@ impl LaunchProfileRow {
     fn search_text(&self) -> String {
         let profile = self.profile.as_ref();
         format!(
-            "{} {} {} {} {} {} {} {} {} {}",
+            "{} {} {} {} {} {} {} {} {} {} {}",
             self.scope_label,
             self.platform_name,
             self.emulator_name,
@@ -258,6 +266,9 @@ impl LaunchProfileRow {
                 .unwrap_or(""),
             profile
                 .map(|value| value.display_bezel.as_str())
+                .unwrap_or(""),
+            profile
+                .map(|value| value.save_states.as_str())
                 .unwrap_or(""),
         )
         .to_ascii_lowercase()
@@ -283,6 +294,7 @@ pub struct LaunchProfileManagerModelRust {
     editor_display_fullscreen: QString,
     editor_display_shader: QString,
     editor_display_bezel: QString,
+    editor_save_states: QString,
     editor_effective_summary: QString,
     editor_status: QString,
     editor_revision: i32,
@@ -320,6 +332,7 @@ impl Default for LaunchProfileManagerModelRust {
             editor_display_fullscreen: QString::default(),
             editor_display_shader: QString::default(),
             editor_display_bezel: QString::default(),
+            editor_save_states: QString::default(),
             editor_effective_summary: QString::default(),
             editor_status: QString::default(),
             editor_revision: 0,
@@ -537,6 +550,12 @@ impl qobject::LaunchProfileManagerModel {
                 .map(|profile| profile.display_bezel.as_str())
                 .unwrap_or(""),
         ));
+        self.as_mut().set_editor_save_states(qstring(
+            row.profile
+                .as_ref()
+                .map(|profile| profile.save_states.as_str())
+                .unwrap_or(""),
+        ));
         match resolved_for_row(&row) {
             Ok(resolved) => self
                 .as_mut()
@@ -602,6 +621,7 @@ impl qobject::LaunchProfileManagerModel {
         display_fullscreen: QString,
         display_shader: QString,
         display_bezel: QString,
+        display_save_states: QString,
     ) {
         let Some(row) = self.selected_row().cloned() else {
             self.as_mut()
@@ -613,6 +633,7 @@ impl qobject::LaunchProfileManagerModel {
         let display_fullscreen = display_fullscreen.to_string();
         let display_shader = display_shader.to_string();
         let display_bezel = display_bezel.to_string();
+        let save_states = display_save_states.to_string();
         if let Err(error) = validate_template_for_row(&row, &command_template) {
             self.as_mut().set_editor_status(qstring(format!(
                 "Could not save the launch profile: {error}"
@@ -630,13 +651,15 @@ impl qobject::LaunchProfileManagerModel {
             display_fullscreen,
             display_shader,
             display_bezel,
+            save_states,
             updated_at: 0,
         };
         let profile_is_empty = profile.extra_arguments.trim().is_empty()
             && profile.command_template.trim().is_empty()
             && profile.display_fullscreen.trim().is_empty()
             && profile.display_shader.trim().is_empty()
-            && profile.display_bezel.trim().is_empty();
+            && profile.display_bezel.trim().is_empty()
+            && profile.save_states.trim().is_empty();
         match SettingsStore::open_default()
             .and_then(|store| store.set_emulator_launch_profile(&profile))
         {
@@ -652,6 +675,7 @@ impl qobject::LaunchProfileManagerModel {
                             display_fullscreen: profile.display_fullscreen.trim().to_owned(),
                             display_shader: profile.display_shader.trim().to_owned(),
                             display_bezel: profile.display_bezel.trim().to_owned(),
+                            save_states: profile.save_states.trim().to_owned(),
                             ..profile
                         })
                     },
@@ -740,6 +764,12 @@ impl qobject::LaunchProfileManagerModel {
             row.key.runtime_kind == "retroarch"
                 && (row.key.scope_kind != "platform"
                     || crate::bezel_project::theme_for_platform(&row.platform_name).is_some())
+        })
+    }
+
+    pub fn display_save_states_supported(&self) -> bool {
+        self.selected_row().is_some_and(|row| {
+            crate::display_setup::save_states_supported(&row.emulator_name, &row.key.runtime_kind)
         })
     }
 
@@ -1258,6 +1288,7 @@ mod tests {
                 display_fullscreen: String::new(),
                 display_shader: String::new(),
                 display_bezel: String::new(),
+                save_states: String::new(),
                 updated_at: 1,
             }),
         }

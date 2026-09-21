@@ -1104,6 +1104,7 @@ pub struct EmulatorLaunchProfile {
     pub display_fullscreen: String,
     pub display_shader: String,
     pub display_bezel: String,
+    pub save_states: String,
     pub updated_at: i64,
 }
 
@@ -1116,6 +1117,7 @@ pub struct ResolvedLaunchCustomization {
     pub display_fullscreen: String,
     pub display_shader: String,
     pub display_bezel: String,
+    pub save_states: String,
     pub display_scope: String,
 }
 
@@ -4624,7 +4626,7 @@ impl SettingsStore {
             .query_row(
                 "SELECT scope_kind, scope_key, emulator_id, runtime_kind, core_name,
                         extra_arguments, command_template, display_fullscreen,
-                        display_shader, display_bezel, updated_at
+                        display_shader, display_bezel, save_states, updated_at
                  FROM emulator_launch_profiles
                  WHERE scope_kind=?1 AND scope_key=?2 AND emulator_id=?3
                    AND runtime_kind=?4 AND core_name IN (?5, ?6, ?7)
@@ -4658,7 +4660,8 @@ impl SettingsStore {
                         display_fullscreen: row.get(7)?,
                         display_shader: row.get(8)?,
                         display_bezel: row.get(9)?,
-                        updated_at: row.get(10)?,
+                        save_states: row.get(10)?,
+                        updated_at: row.get(11)?,
                     })
                 },
             )
@@ -4671,7 +4674,7 @@ impl SettingsStore {
         let mut statement = connection.prepare(
             "SELECT scope_kind, scope_key, emulator_id, runtime_kind, core_name,
                     extra_arguments, command_template, display_fullscreen,
-                    display_shader, display_bezel, updated_at
+                    display_shader, display_bezel, save_states, updated_at
              FROM emulator_launch_profiles
              ORDER BY scope_kind, scope_key, emulator_id, runtime_kind, core_name",
         )?;
@@ -4688,7 +4691,8 @@ impl SettingsStore {
                     display_fullscreen: row.get(7)?,
                     display_shader: row.get(8)?,
                     display_bezel: row.get(9)?,
-                    updated_at: row.get(10)?,
+                    save_states: row.get(10)?,
+                    updated_at: row.get(11)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()
@@ -4746,7 +4750,8 @@ impl SettingsStore {
             }
             let display_unset = resolved.display_fullscreen.is_empty()
                 && resolved.display_shader.is_empty()
-                && resolved.display_bezel.is_empty();
+                && resolved.display_bezel.is_empty()
+                && resolved.save_states.is_empty();
             let mut display_hit = false;
             if resolved.display_fullscreen.is_empty() && !profile.display_fullscreen.is_empty() {
                 resolved.display_fullscreen = profile.display_fullscreen;
@@ -4760,6 +4765,10 @@ impl SettingsStore {
                 resolved.display_bezel = profile.display_bezel;
                 display_hit = true;
             }
+            if resolved.save_states.is_empty() && !profile.save_states.is_empty() {
+                resolved.save_states = profile.save_states;
+                display_hit = true;
+            }
             if display_unset && display_hit {
                 resolved.display_scope = profile.scope_kind.clone();
             }
@@ -4768,6 +4777,7 @@ impl SettingsStore {
                 && !resolved.display_fullscreen.is_empty()
                 && !resolved.display_shader.is_empty()
                 && !resolved.display_bezel.is_empty()
+                && !resolved.save_states.is_empty()
             {
                 break;
             }
@@ -4788,7 +4798,13 @@ impl SettingsStore {
         let display_fullscreen = profile.display_fullscreen.trim();
         let display_shader = profile.display_shader.trim();
         let display_bezel = profile.display_bezel.trim();
-        validate_display_profile_values(display_fullscreen, display_shader, display_bezel)?;
+        let save_states = profile.save_states.trim();
+        validate_display_profile_values(
+            display_fullscreen,
+            display_shader,
+            display_bezel,
+            save_states,
+        )?;
         crate::emulator::validate_launch_extra_arguments(extra_arguments)?;
         crate::emulator::validate_launch_template(command_template)?;
         if extra_arguments.is_empty()
@@ -4796,6 +4812,7 @@ impl SettingsStore {
             && display_fullscreen.is_empty()
             && display_shader.is_empty()
             && display_bezel.is_empty()
+            && save_states.is_empty()
         {
             return self.clear_emulator_launch_profile(
                 &profile.scope_kind,
@@ -4810,8 +4827,8 @@ impl SettingsStore {
             "INSERT INTO emulator_launch_profiles (
                  scope_kind, scope_key, emulator_id, runtime_kind, core_name,
                  extra_arguments, command_template, display_fullscreen,
-                 display_shader, display_bezel, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                 display_shader, display_bezel, save_states, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
              ON CONFLICT(scope_kind, scope_key, emulator_id, runtime_kind, core_name)
              DO UPDATE SET
                  extra_arguments=excluded.extra_arguments,
@@ -4819,6 +4836,7 @@ impl SettingsStore {
                  display_fullscreen=excluded.display_fullscreen,
                  display_shader=excluded.display_shader,
                  display_bezel=excluded.display_bezel,
+                 save_states=excluded.save_states,
                  updated_at=excluded.updated_at",
             params![
                 profile.scope_kind,
@@ -4831,6 +4849,7 @@ impl SettingsStore {
                 display_fullscreen,
                 display_shader,
                 display_bezel,
+                save_states,
                 unix_timestamp()
             ],
         )?;
@@ -7197,6 +7216,8 @@ fn migrate(connection: &Connection) -> Result<()> {
              display_shader TEXT NOT NULL DEFAULT '',
              display_bezel TEXT NOT NULL DEFAULT ''
                  CHECK (display_bezel IN ('', 'off', 'system')),
+             save_states TEXT NOT NULL DEFAULT ''
+                 CHECK (save_states IN ('', 'off', 'on')),
              updated_at INTEGER NOT NULL,
              PRIMARY KEY (
                  scope_kind, scope_key, emulator_id, runtime_kind, core_name
@@ -7208,7 +7229,7 @@ fn migrate(connection: &Connection) -> Result<()> {
              CHECK (
                  length(extra_arguments)>0 OR length(command_template)>0
                  OR length(display_fullscreen)>0 OR length(display_shader)>0
-                 OR length(display_bezel)>0
+                 OR length(display_bezel)>0 OR length(save_states)>0
              ),
              CHECK (
                  (runtime_kind='standalone' AND core_name='')
@@ -7621,15 +7642,24 @@ fn emulator_launch_profiles_have_display_columns(connection: &Connection) -> Res
     Ok(
         column_exists(connection, "emulator_launch_profiles", "display_fullscreen")?
             && column_exists(connection, "emulator_launch_profiles", "display_shader")?
-            && column_exists(connection, "emulator_launch_profiles", "display_bezel")?,
+            && column_exists(connection, "emulator_launch_profiles", "display_bezel")?
+            && column_exists(connection, "emulator_launch_profiles", "save_states")?,
     )
 }
 
 // Existing databases carry a CHECK that demands a non-empty argument or
-// template, so display-only profiles cannot simply be added as columns: the
-// table is rebuilt to relax that CHECK while preserving every saved profile.
+// template, so session settings cannot simply be added as columns: the table
+// is rebuilt to relax that CHECK while preserving every saved profile,
+// including display values copied from an earlier rebuild generation.
 fn rebuild_emulator_launch_profiles_display_columns(connection: &Connection) -> Result<()> {
-    connection.execute_batch(
+    let had_display_columns =
+        column_exists(connection, "emulator_launch_profiles", "display_fullscreen")?;
+    let copied_display_columns = if had_display_columns {
+        "display_fullscreen, display_shader, display_bezel,"
+    } else {
+        "'', '', '',"
+    };
+    connection.execute_batch(&format!(
         "CREATE TABLE emulator_launch_profiles_rebuilt (
              scope_kind TEXT NOT NULL CHECK (
                  scope_kind IN ('global', 'platform', 'game')
@@ -7647,6 +7677,8 @@ fn rebuild_emulator_launch_profiles_display_columns(connection: &Connection) -> 
              display_shader TEXT NOT NULL DEFAULT '',
              display_bezel TEXT NOT NULL DEFAULT ''
                  CHECK (display_bezel IN ('', 'off', 'system')),
+             save_states TEXT NOT NULL DEFAULT ''
+                 CHECK (save_states IN ('', 'off', 'on')),
              updated_at INTEGER NOT NULL,
              PRIMARY KEY (
                  scope_kind, scope_key, emulator_id, runtime_kind, core_name
@@ -7658,7 +7690,7 @@ fn rebuild_emulator_launch_profiles_display_columns(connection: &Connection) -> 
              CHECK (
                  length(extra_arguments)>0 OR length(command_template)>0
                  OR length(display_fullscreen)>0 OR length(display_shader)>0
-                 OR length(display_bezel)>0
+                 OR length(display_bezel)>0 OR length(save_states)>0
              ),
              CHECK (
                  (runtime_kind='standalone' AND core_name='')
@@ -7668,16 +7700,17 @@ fn rebuild_emulator_launch_profiles_display_columns(connection: &Connection) -> 
          INSERT INTO emulator_launch_profiles_rebuilt (
              scope_kind, scope_key, emulator_id, runtime_kind, core_name,
              extra_arguments, command_template, display_fullscreen,
-             display_shader, display_bezel, updated_at
+             display_shader, display_bezel, save_states, updated_at
          )
          SELECT scope_kind, scope_key, emulator_id, runtime_kind, core_name,
-                extra_arguments, command_template, '', '', '', updated_at
+                extra_arguments, command_template, {copied_display_columns}
+                '', updated_at
          FROM emulator_launch_profiles;
          DROP TABLE emulator_launch_profiles;
          ALTER TABLE emulator_launch_profiles_rebuilt RENAME TO emulator_launch_profiles;
          CREATE INDEX IF NOT EXISTS emulator_launch_profiles_emulator
-             ON emulator_launch_profiles(emulator_id, runtime_kind, core_name, scope_kind);",
-    )?;
+             ON emulator_launch_profiles(emulator_id, runtime_kind, core_name, scope_kind);"
+    ))?;
     Ok(())
 }
 
@@ -8481,6 +8514,7 @@ fn validate_display_profile_values(
     display_fullscreen: &str,
     display_shader: &str,
     display_bezel: &str,
+    save_states: &str,
 ) -> Result<()> {
     match display_fullscreen {
         "" | "true" | "false" => {}
@@ -8489,6 +8523,10 @@ fn validate_display_profile_values(
     match display_bezel {
         "" | "off" | "system" => {}
         other => bail!("unknown bezel display setting: {other}"),
+    }
+    match save_states {
+        "" | "off" | "on" => {}
+        other => bail!("unknown save state display setting: {other}"),
     }
     if !display_shader.is_empty()
         && (display_shader.len() > 128
@@ -11181,6 +11219,56 @@ identity"
     }
 
     #[test]
+    fn first_generation_display_profiles_survive_the_save_states_rebuild() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.db");
+        {
+            let connection = rusqlite::Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE emulator_launch_profiles (
+                         scope_kind TEXT NOT NULL CHECK (
+                             scope_kind IN ('global', 'platform', 'game')
+                         ),
+                         scope_key TEXT NOT NULL,
+                         emulator_id TEXT NOT NULL,
+                         runtime_kind TEXT NOT NULL CHECK (
+                             runtime_kind IN ('standalone', 'retroarch')
+                         ),
+                         core_name TEXT NOT NULL DEFAULT '',
+                         extra_arguments TEXT NOT NULL DEFAULT '',
+                         command_template TEXT NOT NULL DEFAULT '',
+                         display_fullscreen TEXT NOT NULL DEFAULT ''
+                             CHECK (display_fullscreen IN ('', 'true', 'false')),
+                         display_shader TEXT NOT NULL DEFAULT '',
+                         display_bezel TEXT NOT NULL DEFAULT ''
+                             CHECK (display_bezel IN ('', 'off', 'system')),
+                         updated_at INTEGER NOT NULL,
+                         PRIMARY KEY (
+                             scope_kind, scope_key, emulator_id, runtime_kind, core_name
+                         )
+                     );
+                     INSERT INTO emulator_launch_profiles (
+                         scope_kind, scope_key, emulator_id, runtime_kind, core_name,
+                         extra_arguments, command_template, display_fullscreen,
+                         display_shader, display_bezel, updated_at
+                     ) VALUES ('platform', 'snes', 'snes-id', 'retroarch', 'snes9x',
+                               '', '', 'true', 'retrotube-tv', 'system', 7);",
+                )
+                .unwrap();
+        }
+        let store = SettingsStore::at(&path).unwrap();
+        let profile = store
+            .emulator_launch_profile("platform", "snes", "snes-id", "retroarch", "snes9x")
+            .unwrap()
+            .unwrap();
+        assert_eq!(profile.display_fullscreen, "true");
+        assert_eq!(profile.display_shader, "retrotube-tv");
+        assert_eq!(profile.display_bezel, "system");
+        assert_eq!(profile.save_states, "");
+    }
+
+    #[test]
     fn launch_profiles_resolve_display_settings_with_scope_precedence() {
         let (_directory, store) = store();
         store
@@ -11191,6 +11279,7 @@ identity"
                 core_name: "mesen".into(),
                 display_fullscreen: "true".into(),
                 display_shader: "crt-easymode".into(),
+                save_states: "on".into(),
                 ..EmulatorLaunchProfile::default()
             })
             .unwrap();
@@ -11220,6 +11309,7 @@ identity"
         // that contributed any display value.
         assert_eq!(resolved.display_shader, "retrotube-tv");
         assert_eq!(resolved.display_bezel, "system");
+        assert_eq!(resolved.save_states, "on");
         assert_eq!(resolved.display_scope, "platform");
 
         // A display-only profile is a valid row and clears back cleanly.

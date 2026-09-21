@@ -4748,6 +4748,7 @@ impl qobject::GameDetailsModel {
                     display_fullscreen: String::new(),
                     display_shader: String::new(),
                     display_bezel: String::new(),
+                    save_states: String::new(),
                     updated_at: 0,
                 },
             )

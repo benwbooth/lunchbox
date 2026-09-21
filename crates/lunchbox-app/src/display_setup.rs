@@ -102,6 +102,58 @@ pub fn bezels_supported(platform: &str, runtime_kind: &str) -> bool {
     runtime_kind == "retroarch" && crate::bezel_project::theme_for_platform(platform).is_some()
 }
 
+/// Adapters with a trustworthy automatic save-state mechanism. RetroArch
+/// covers every core through config; MAME documents `-autosave` (save at
+/// exit, restore at start); DuckStation pairs `-resume` with a settings
+/// override that enables Save State on Shutdown.
+pub fn save_states_supported(emulator_name: &str, runtime_kind: &str) -> bool {
+    runtime_kind == "retroarch"
+        || ["MAME", "DuckStation"]
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(emulator_name))
+}
+
+/// Launch arguments that turn automatic save states on (or explicitly off,
+/// where the emulator supports a counter-signal) for standalone emulators.
+pub fn save_state_arguments(
+    emulator_name: &str,
+    save_states: &str,
+) -> Result<Vec<std::ffi::OsString>> {
+    let mut arguments = Vec::new();
+    if emulator_name.eq_ignore_ascii_case("MAME") {
+        if save_states == "on" {
+            arguments.push(std::ffi::OsString::from("-autosave"));
+        }
+        return Ok(arguments);
+    }
+    if emulator_name.eq_ignore_ascii_case("DuckStation") && !save_states.is_empty() {
+        let settings_path = write_duckstation_session_settings(save_states == "on")?;
+        if save_states == "on" {
+            arguments.push(std::ffi::OsString::from("-resume"));
+        }
+        arguments.push(std::ffi::OsString::from("-settings"));
+        arguments.push(std::ffi::OsString::from(settings_path.as_os_str()));
+    }
+    Ok(arguments)
+}
+
+const DUCKSTATION_SESSION_SETTINGS: &str = "[Main]\nSaveStateOnShutdown = {value}\n";
+
+fn write_duckstation_session_settings(save_on_shutdown: bool) -> Result<PathBuf> {
+    let directory = directories::ProjectDirs::from("com", "Lunchbox", "Lunchbox")
+        .map(|dirs| dirs.data_local_dir().join("launch-display"))
+        .context("could not determine the Lunchbox data directory")?;
+    fs::create_dir_all(&directory)?;
+    let path = directory.join("duckstation-session.ini");
+    fs::write(
+        &path,
+        DUCKSTATION_SESSION_SETTINGS
+            .replace("{value}", if save_on_shutdown { "true" } else { "false" }),
+    )
+    .with_context(|| format!("writing {}", path.display()))?;
+    Ok(path)
+}
+
 /// The RetroArch configuration directory for this executable, mirroring the
 /// calibrated-launch resolution (flatpak sandboxes keep their config under
 /// ~/.var/app).
@@ -233,6 +285,20 @@ pub fn attach_launch_display_configuration(
                 "The system bezel could not be prepared: {error:#}"
             )),
         }
+    }
+    match customization.save_states.as_str() {
+        "on" | "off" => {
+            let value = if customization.save_states == "on" {
+                "true"
+            } else {
+                "false"
+            };
+            // Save on exit, resume on launch. Explicit false keeps a
+            // platform-level "on" from leaking into a game-level opt-out.
+            lines.push_str(&format!("savestate_auto_save = \"{value}\"\n"));
+            lines.push_str(&format!("savestate_auto_load = \"{value}\"\n"));
+        }
+        _ => {}
     }
     if lines.is_empty() {
         return if warnings.is_empty() {

@@ -306,7 +306,11 @@ fn png_reference(config: &str) -> Option<String> {
     for line in config.lines() {
         let trimmed = line.trim();
         if let Some(value) = trimmed.strip_prefix("overlay0_overlay") {
-            let value = value.trim().trim_start_matches('=').trim().trim_matches('"');
+            let value = value
+                .trim()
+                .trim_start_matches('=')
+                .trim()
+                .trim_matches('"');
             if !value.is_empty() {
                 return Some(value.to_owned());
             }

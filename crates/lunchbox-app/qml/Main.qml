@@ -2971,6 +2971,11 @@ ApplicationWindow {
                         launchProfileManager.editor_display_bezel) >= 0
                     ? ["", "off", "system"].indexOf(
                           launchProfileManager.editor_display_bezel) : 0
+            launchProfileDisplaySaveStates.currentIndex =
+                    ["", "off", "on"].indexOf(
+                        launchProfileManager.editor_save_states) >= 0
+                    ? ["", "off", "on"].indexOf(
+                          launchProfileManager.editor_save_states) : 0
         }
     }
 
@@ -23723,6 +23728,28 @@ ApplicationWindow {
                                 valueRole: "value"
                             }
                         }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: launchProfileManager.display_save_states_supported()
+                            Text {
+                                text: "SAVE STATES"
+                                color: root.muted
+                                font.pixelSize: 8
+                                font.weight: Font.Bold
+                                Layout.fillWidth: true
+                            }
+                            ComboBox {
+                                id: launchProfileDisplaySaveStates
+                                Layout.preferredWidth: 168
+                                model: [
+                                    { value: "", label: "Inherit" },
+                                    { value: "off", label: "Off" },
+                                    { value: "on", label: "Save + resume" }
+                                ]
+                                textRole: "label"
+                                valueRole: "value"
+                            }
+                        }
                         LaunchCommandPreview {
                             id: launchProfileManagerPreview
                             Layout.fillWidth: true
@@ -23786,7 +23813,9 @@ ApplicationWindow {
                                                launchProfileDisplayShader.currentValue
                                                    ? launchProfileDisplayShader.currentValue : "",
                                                launchProfileDisplayBezel.currentValue
-                                                   ? launchProfileDisplayBezel.currentValue : "")
+                                                   ? launchProfileDisplayBezel.currentValue : "",
+                                               launchProfileDisplaySaveStates.currentValue
+                                                   ? launchProfileDisplaySaveStates.currentValue : "")
                             }
                         }
                     }

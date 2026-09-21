@@ -1281,6 +1281,24 @@ fn build_prepared_rom_launch_plan(
         }
     };
 
+    if option.runtime_kind == EmulatorRuntimeKind::Standalone
+        && !customization.save_states.is_empty()
+    {
+        // Automatic save states ride documented launch flags; adapters
+        // without one keep their own behavior and never block the launch.
+        match crate::display_setup::save_state_arguments(
+            &option.emulator_name,
+            &customization.save_states,
+        ) {
+            Ok(save_state_arguments) => {
+                for argument in save_state_arguments {
+                    arguments.insert(0, argument);
+                }
+            }
+            Err(error) => eprintln!("LUNCHBOX_SAVE_STATE_ARGS_SKIPPED: {error:#}"),
+        }
+    }
+
     if customization.command_template.trim().is_empty() {
         let extra_arguments = parse_portable_arguments(&customization.extra_arguments)?
             .into_iter()
