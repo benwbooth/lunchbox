@@ -189,6 +189,11 @@ pub mod qobject {
         #[qproperty(i32, emulator_option_count)]
         #[qproperty(i32, selected_emulator_option)]
         #[qproperty(i32, detail_revision)]
+        #[qproperty(QString, display_scope)]
+        #[qproperty(QString, display_shader)]
+        #[qproperty(QString, display_bezel)]
+        #[qproperty(QString, display_save_states)]
+        #[qproperty(i32, display_revision)]
         type GameDetailsModel = super::GameDetailsModelRust;
 
         #[qinvokable]
@@ -428,6 +433,30 @@ pub mod qobject {
 
         #[qinvokable]
         fn launch_profile_preview_argument_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn select_display_scope(self: Pin<&mut GameDetailsModel>, scope: QString);
+
+        #[qinvokable]
+        fn set_display_setting(self: Pin<&mut GameDetailsModel>, field: QString, value: QString);
+
+        #[qinvokable]
+        fn display_shader_preset_count(self: &GameDetailsModel) -> i32;
+
+        #[qinvokable]
+        fn display_shader_preset_id_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn display_shader_preset_label_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn display_shader_supported(self: &GameDetailsModel) -> bool;
+
+        #[qinvokable]
+        fn display_bezel_supported(self: &GameDetailsModel) -> bool;
+
+        #[qinvokable]
+        fn display_save_states_supported(self: &GameDetailsModel) -> bool;
 
         #[qinvokable]
         fn open_firmware_directory(self: Pin<&mut GameDetailsModel>);
@@ -818,6 +847,11 @@ pub struct GameDetailsModelRust {
     rom_firmware_statuses: Vec<Vec<crate::firmware::FirmwareStatus>>,
     game_emulator_preference: Option<crate::settings::EmulatorPreference>,
     platform_emulator_preference: Option<crate::settings::EmulatorPreference>,
+    display_scope: QString,
+    display_shader: QString,
+    display_bezel: QString,
+    display_save_states: QString,
+    display_revision: i32,
     launch_profile_preview_arguments: Vec<String>,
     launch_profile_preview_fallback_extra_arguments: String,
     launch_profile_preview_fallback_command_template: String,
@@ -1045,6 +1079,11 @@ impl Default for GameDetailsModelRust {
             rom_firmware_statuses: Vec::new(),
             game_emulator_preference: None,
             platform_emulator_preference: None,
+            display_scope: QString::from("game"),
+            display_shader: QString::default(),
+            display_bezel: QString::default(),
+            display_save_states: QString::default(),
+            display_revision: 0,
             launch_profile_preview_arguments: Vec::new(),
             launch_profile_preview_fallback_extra_arguments: String::new(),
             launch_profile_preview_fallback_command_template: String::new(),
@@ -4154,6 +4193,7 @@ impl qobject::GameDetailsModel {
                     .set_emulator_preference_scope(qstring(&availability.preference_scope));
                 self.as_mut()
                     .set_launch_status(qstring(&availability.detail));
+                self.as_mut().refresh_display_controls();
                 if let Some(option) = selected {
                     self.as_mut().set_can_launch(true);
                     self.as_mut().set_emulator_name(qstring(option.label()));
@@ -4508,6 +4548,7 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_launch_status(qstring(
             "Emulator selected for this launch. Save it as a game or platform default if desired.",
         ));
+        self.as_mut().refresh_display_controls();
     }
 
     pub fn manager_emulator_target_available(
@@ -5013,6 +5054,130 @@ impl qobject::GameDetailsModel {
                 "Could not load the launch profile: {error}"
             ))),
         }
+    }
+
+    pub fn select_display_scope(mut self: Pin<&mut Self>, scope: QString) {
+        let scope = scope.to_string();
+        if !matches!(scope.as_str(), "game" | "platform") {
+            return;
+        }
+        self.as_mut().set_display_scope(qstring(scope));
+        self.as_mut().refresh_display_controls();
+    }
+
+    /// Persist one display field (shader, bezel, save_states) at the active
+    /// scope by load-modify-saving that scope's launch profile. An "inherit"
+    /// (empty) value with an otherwise empty profile removes the row.
+    pub fn set_display_setting(mut self: Pin<&mut Self>, field: QString, value: QString) {
+        let field = field.to_string();
+        let value = value.to_string();
+        if !matches!(field.as_str(), "shader" | "bezel" | "save_states") {
+            return;
+        }
+        let scope = self.as_ref().display_scope().to_string();
+        let Some(scope_key) = self.launch_profile_scope_key(&scope).ok() else {
+            return;
+        };
+        let Ok(target) = self.launch_profile_target() else {
+            return;
+        };
+        let result = (|| -> anyhow::Result<()> {
+            let store = crate::settings::SettingsStore::open_default()?;
+            let mut profile = store
+                .emulator_launch_profile(
+                    &scope,
+                    &scope_key,
+                    &target.emulator_id,
+                    target.runtime_kind,
+                    &target.core_name,
+                )?
+                .unwrap_or_default();
+            match field.as_str() {
+                "shader" => profile.display_shader = value,
+                "bezel" => profile.display_bezel = value,
+                "save_states" => profile.save_states = value,
+                _ => {}
+            }
+            store.set_emulator_launch_profile(&profile)
+        })();
+        match result {
+            Ok(()) => self.as_mut().refresh_display_controls(),
+            Err(error) => eprintln!(
+                "LUNCHBOX_DISPLAY_SETTING_SAVE_FAILED scope={scope} field={field} error={error:#}"
+            ),
+        }
+    }
+
+    pub fn display_shader_preset_count(&self) -> i32 {
+        count_i32(crate::display_setup::shader_preset_choices().len())
+    }
+
+    pub fn display_shader_preset_id_at(&self, index: i32) -> QString {
+        qstring(
+            usize::try_from(index)
+                .ok()
+                .and_then(|index| crate::display_setup::shader_preset_choices().get(index))
+                .map(|choice| choice.id)
+                .unwrap_or(""),
+        )
+    }
+
+    pub fn display_shader_preset_label_at(&self, index: i32) -> QString {
+        qstring(
+            usize::try_from(index)
+                .ok()
+                .and_then(|index| crate::display_setup::shader_preset_choices().get(index))
+                .map(|choice| choice.label)
+                .unwrap_or(""),
+        )
+    }
+
+    pub fn display_shader_supported(&self) -> bool {
+        self.selected_rom_emulator_option().is_some_and(|option| {
+            option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
+        })
+    }
+
+    pub fn display_bezel_supported(&self) -> bool {
+        self.selected_rom_emulator_option().is_some_and(|option| {
+            option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
+                && crate::bezel_project::theme_for_platform(&self.platform().to_string()).is_some()
+        })
+    }
+
+    pub fn display_save_states_supported(&self) -> bool {
+        self.selected_rom_emulator_option().is_some_and(|option| {
+            crate::display_setup::save_states_supported(
+                &option.emulator_name,
+                option.runtime_kind.key(),
+            )
+        })
+    }
+
+    fn refresh_display_controls(mut self: Pin<&mut Self>) {
+        let scope = self.as_ref().display_scope().to_string();
+        let loaded = (|| -> anyhow::Result<crate::settings::EmulatorLaunchProfile> {
+            let scope_key = self.launch_profile_scope_key(&scope)?;
+            let target = self.launch_profile_target()?;
+            let store = crate::settings::SettingsStore::open_default()?;
+            let profile = store.emulator_launch_profile(
+                &scope,
+                &scope_key,
+                &target.emulator_id,
+                target.runtime_kind,
+                &target.core_name,
+            )?;
+            Ok(profile.unwrap_or_default())
+        })()
+        .unwrap_or_default();
+        self.as_mut()
+            .set_display_shader(qstring(&loaded.display_shader));
+        self.as_mut()
+            .set_display_bezel(qstring(&loaded.display_bezel));
+        self.as_mut()
+            .set_display_save_states(qstring(&loaded.save_states));
+        let revision = self.as_ref().display_revision().wrapping_add(1);
+        self.as_mut().set_display_revision(revision);
     }
 
     fn launch_profile_scope_key(&self, scope: &str) -> anyhow::Result<String> {

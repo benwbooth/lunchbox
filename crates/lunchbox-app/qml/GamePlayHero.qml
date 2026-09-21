@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
 Rectangle {
     id: hero
@@ -46,6 +47,19 @@ Rectangle {
     required property color muted
     required property color line
     required property color accentCool
+    required property string displayScope
+    required property string displayShader
+    required property string displayBezel
+    required property string displaySaveStates
+    required property int displayRevision
+    required property bool displayShaderSupported
+    required property bool displayBezelSupported
+    required property bool displaySaveStatesSupported
+    required property var displayShaderPresetCount
+    required property var displayShaderPresetIdAt
+    required property var displayShaderPresetLabelAt
+    required property var displayScopeSelected
+    required property var displaySettingSaved
 
     signal playRequested()
     signal controllerMappingRequested()
@@ -142,7 +156,204 @@ Rectangle {
         Column {
             width: parent.width
             visible: hero.emulatorOptionCount > 0
+                     && (hero.displayShaderSupported
+                         || hero.displayBezelSupported
+                         || hero.displaySaveStatesSupported)
             spacing: 5
+            RowLayout {
+                width: parent.width
+                spacing: 6
+                Text {
+                    text: "DISPLAY"
+                    color: "#83e3ad"
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.8
+                    Layout.fillWidth: true
+                }
+                Button {
+                    text: "GAME"
+                    font.pixelSize: 8
+                    font.weight: Font.Bold
+                    flat: true
+                    leftPadding: 8
+                    rightPadding: 8
+                    topPadding: 3
+                    bottomPadding: 3
+                    onClicked: hero.displayScopeSelected("game")
+                    background: Rectangle {
+                        radius: 6
+                        color: hero.displayScope === "game" ? "#245b45" : "#12241c"
+                        border.color: hero.displayScope === "game" ? "#75e2a5" : "#347259"
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: hero.displayScope === "game" ? "#83e3ad" : hero.muted
+                        font: parent.font
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Button {
+                    text: "PLATFORM"
+                    font.pixelSize: 8
+                    font.weight: Font.Bold
+                    flat: true
+                    leftPadding: 8
+                    rightPadding: 8
+                    topPadding: 3
+                    bottomPadding: 3
+                    onClicked: hero.displayScopeSelected("platform")
+                    background: Rectangle {
+                        radius: 6
+                        color: hero.displayScope === "platform" ? "#245b45" : "#12241c"
+                        border.color: hero.displayScope === "platform" ? "#75e2a5" : "#347259"
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: hero.displayScope === "platform" ? "#83e3ad" : hero.muted
+                        font: parent.font
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+            }
+            Row {
+                width: parent.width
+                spacing: 6
+                Column {
+                    width: (parent.width - 12) / 3
+                    spacing: 2
+                    visible: hero.displayShaderSupported
+                    Text {
+                        text: "CRT"
+                        color: hero.muted
+                        font.pixelSize: 8
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
+                    }
+                    ComboBox {
+                        id: displayShaderCombo
+                        width: parent.width
+                        font.pixelSize: 9
+                        textRole: "label"
+                        valueRole: "value"
+                        property bool syncing: false
+                        model: {
+                            const revision = hero.displayRevision
+                            const items = [{ value: "", label: "Inherit" }]
+                            const count = hero.displayShaderPresetCount()
+                            for (let i = 0; i < count; ++i)
+                                items.push({
+                                    value: hero.displayShaderPresetIdAt(i),
+                                    label: hero.displayShaderPresetLabelAt(i)
+                                })
+                            return items
+                        }
+                        onModelChanged: displayShaderCombo.syncValue()
+                        Component.onCompleted: displayShaderCombo.syncValue()
+                        function syncValue() {
+                            syncing = true
+                            currentIndex = indexOfValue(hero.displayShader)
+                            if (currentIndex < 0)
+                                currentIndex = 0
+                            syncing = false
+                        }
+                        onActivated: function(index) {
+                            hero.displaySettingSaved("shader", currentValue)
+                        }
+                        Connections {
+                            target: hero
+                            function onDisplayRevisionChanged() { displayShaderCombo.syncValue() }
+                        }
+                    }
+                }
+                Column {
+                    width: (parent.width - 12) / 3
+                    spacing: 2
+                    visible: hero.displayBezelSupported
+                    Text {
+                        text: "BEZEL"
+                        color: hero.muted
+                        font.pixelSize: 8
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
+                    }
+                    ComboBox {
+                        id: displayBezelCombo
+                        width: parent.width
+                        font.pixelSize: 9
+                        textRole: "label"
+                        valueRole: "value"
+                        model: [
+                            { value: "", label: "Inherit" },
+                            { value: "off", label: "Off" },
+                            { value: "system", label: "System pack" }
+                        ]
+                        onModelChanged: displayBezelCombo.syncValue()
+                        Component.onCompleted: displayBezelCombo.syncValue()
+                        function syncValue() {
+                            currentIndex = ["", "off", "system"].indexOf(hero.displayBezel)
+                            if (currentIndex < 0)
+                                currentIndex = 0
+                        }
+                        onActivated: function(index) {
+                            hero.displaySettingSaved("bezel", currentValue)
+                        }
+                        Connections {
+                            target: hero
+                            function onDisplayRevisionChanged() { displayBezelCombo.syncValue() }
+                        }
+                    }
+                }
+                Column {
+                    width: (parent.width - 12) / 3
+                    spacing: 2
+                    visible: hero.displaySaveStatesSupported
+                    Text {
+                        text: "SAVE STATES"
+                        color: hero.muted
+                        font.pixelSize: 8
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.7
+                    }
+                    ComboBox {
+                        id: displaySaveStatesCombo
+                        width: parent.width
+                        font.pixelSize: 9
+                        textRole: "label"
+                        valueRole: "value"
+                        model: [
+                            { value: "", label: "Inherit" },
+                            { value: "off", label: "Off" },
+                            { value: "on", label: "Save + resume" }
+                        ]
+                        onModelChanged: displaySaveStatesCombo.syncValue()
+                        Component.onCompleted: displaySaveStatesCombo.syncValue()
+                        function syncValue() {
+                            currentIndex = ["", "off", "on"].indexOf(hero.displaySaveStates)
+                            if (currentIndex < 0)
+                                currentIndex = 0
+                        }
+                        onActivated: function(index) {
+                            hero.displaySettingSaved("save_states", currentValue)
+                        }
+                        Connections {
+                            target: hero
+                            function onDisplayRevisionChanged() { displaySaveStatesCombo.syncValue() }
+                        }
+                    }
+                }
+            }
+            Text {
+                width: parent.width
+                text: hero.displayScope === "game"
+                      ? "Display choices saved for this game; empty values inherit the platform profile."
+                      : "Display choices saved for " + hero.platform + "; empty values inherit the global profile."
+                color: hero.muted
+                font.pixelSize: 8
+                wrapMode: Text.WordWrap
+            }
             Text {
                 text: "PLAY WITH"
                 color: "#83e3ad"

@@ -12390,6 +12390,29 @@ ApplicationWindow {
                         muted: root.muted
                         line: root.line
                         accentCool: root.accentCool
+                        displayScope: gameDetails.display_scope
+                        displayShader: gameDetails.display_shader
+                        displayBezel: gameDetails.display_bezel
+                        displaySaveStates: gameDetails.display_save_states
+                        displayRevision: gameDetails.display_revision
+                        displayShaderSupported: gameDetails.display_shader_supported()
+                        displayBezelSupported: gameDetails.display_bezel_supported()
+                        displaySaveStatesSupported: gameDetails.display_save_states_supported()
+                        displayShaderPresetCount: function() {
+                            return gameDetails.display_shader_preset_count()
+                        }
+                        displayShaderPresetIdAt: function(index) {
+                            return gameDetails.display_shader_preset_id_at(index)
+                        }
+                        displayShaderPresetLabelAt: function(index) {
+                            return gameDetails.display_shader_preset_label_at(index)
+                        }
+                        displayScopeSelected: function(scope) {
+                            gameDetails.select_display_scope(scope)
+                        }
+                        displaySettingSaved: function(field, value) {
+                            gameDetails.set_display_setting(field, value === undefined ? "" : value)
+                        }
                         onPlayRequested: root.requestGameLaunch()
                         onControllerMappingRequested: gameControllerMapping.openForGame(gameDetails.title, gameDetails.platform, gameDetails.emulator_name)
                         onCancelLaunchRequested: gameDetails.cancel_launch()
