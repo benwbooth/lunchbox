@@ -767,11 +767,10 @@ ApplicationWindow {
     function positionSettingsItem(item) {
         if (!item || !settingsDialog.visible)
             return
-        const flickable = settingsScroll.contentItem
-        const point = item.mapToItem(flickable.contentItem, 0, 0)
-        const maximum = Math.max(0, flickable.contentHeight
+        const point = item.mapToItem(settingsScroll.contentItem, 0, 0)
+        const maximum = Math.max(0, settingsScroll.contentHeight
                                     - settingsScroll.availableHeight)
-        flickable.contentY = Math.max(
+        settingsScroll.contentY = Math.max(
                     0, Math.min(maximum, point.y - 18))
     }
 
@@ -3035,7 +3034,7 @@ ApplicationWindow {
                 watchedTorrents.refresh()
                 if (root.settingsMediaPriorityUiProbe
                         && root.settingsMediaPriorityTriggered) {
-                    settingsScroll.contentItem.contentY = Math.max(
+                    settingsScroll.contentY = Math.max(
                         0, mediaProviderPrioritySection.mapToItem(
                             settingsScroll.contentItem, 0, 0).y - 18)
                     settingsMediaPriorityScreenshotTimer.restart()
@@ -3068,7 +3067,7 @@ ApplicationWindow {
                     return
                 }
                 root.retroarchShaderProbeStage = 2
-                settingsScroll.contentItem.contentY = Math.max(
+                settingsScroll.contentY = Math.max(
                     0, retroarchShaderSection.mapToItem(
                         settingsScroll.contentItem, 0, 0).y - 18)
                 retroarchShaderScreenshotTimer.restart()
@@ -7334,7 +7333,7 @@ ApplicationWindow {
         interval: 500
         running: root.settingsRegionUiProbe
         repeat: false
-        onTriggered: settingsScroll.contentItem.contentY = Math.max(
+        onTriggered: settingsScroll.contentY = Math.max(
                          0, regionPrioritySection.mapToItem(
                              settingsScroll.contentItem, 0, 0).y - 18)
     }
@@ -7345,7 +7344,7 @@ ApplicationWindow {
                  && library.ready && appSettings.initialized
         repeat: false
         onTriggered: {
-            settingsScroll.contentItem.contentY = Math.max(
+            settingsScroll.contentY = Math.max(
                 0, couchAttractSettingsSection.mapToItem(
                     settingsScroll.contentItem, 0, 0).y - 18)
             couchAttractSettingsScreenshotTimer.restart()
@@ -7430,7 +7429,7 @@ ApplicationWindow {
                  && appSettings.initialized
         repeat: false
         onTriggered: {
-            settingsScroll.contentItem.contentY = Math.max(
+            settingsScroll.contentY = Math.max(
                 0, profileBackupSection.mapToItem(
                     settingsScroll.contentItem, 0, 0).y - 18)
             profileBackupScreenshotTimer.restart()
@@ -7534,7 +7533,7 @@ ApplicationWindow {
         running: root.controllerUiProbe && !appSettings.controller_busy
         repeat: false
         onTriggered: {
-            settingsScroll.contentItem.contentY = Math.max(
+            settingsScroll.contentY = Math.max(
                          0, controllerSection.mapToItem(
                              settingsScroll.contentItem, 0, 0).y - 18)
             if (root.controllerCalibrationUiProbe) {
@@ -7596,7 +7595,7 @@ ApplicationWindow {
         onTriggered: {
             appSettings.create_controller_profile()
             appSettings.apply_two_button_controller_preset()
-            settingsScroll.contentItem.contentY = Math.max(
+            settingsScroll.contentY = Math.max(
                 0, controllerProfileEditor.mapToItem(
                     settingsScroll.contentItem, 0, 0).y - 18)
         }
@@ -19485,13 +19484,23 @@ ApplicationWindow {
                 }
             }
 
-            ScrollView {
+            // A plain Flickable (not ScrollView) so the wheel handler can
+            // drive momentum scrolling directly.
+            Flickable {
                 id: settingsScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                readonly property real availableWidth: width
+                readonly property real availableHeight: height
+                contentWidth: width
+                contentHeight: settingsContentColumn.height + 64
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                AcceleratedWheelHandler { scroller: settingsScroll }
+
                 ColumnLayout {
+                    id: settingsContentColumn
                     x: Math.max(32, (settingsScroll.availableWidth - width) / 2)
                     width: Math.min(1120, settingsScroll.availableWidth - 64)
                     spacing: 11
