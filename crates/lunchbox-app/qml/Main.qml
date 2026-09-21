@@ -10268,6 +10268,7 @@ ApplicationWindow {
                         }
                     }
                     RoundButton {
+                        id: cardPlayButton
                         anchors.left: parent.left
                         anchors.bottom: parent.bottom
                         anchors.margins: 8 * card.expansion
@@ -10278,7 +10279,6 @@ ApplicationWindow {
                                  || tile.downloadJobState === "IMPORTED"
                         enabled: root.pendingCardLaunchGameId !== tile.gameId
                                  && !gameDetails.launch_busy
-                        text: root.pendingCardLaunchGameId === tile.gameId ? "…" : "▶"
                         font.pixelSize: 17 * card.expansion
                         Accessible.name: "Play " + tile.gameTitle
                         onClicked: root.requestCardLaunch(
@@ -10292,12 +10292,27 @@ ApplicationWindow {
                             border.width: 2
                             border.color: parent.enabled ? "#8de8b5" : root.line
                         }
-                        contentItem: Text {
-                            text: parent.text
-                            color: parent.enabled ? "white" : root.muted
-                            font: parent.font
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
+                        contentItem: Item {
+                            implicitWidth: 26 * card.expansion
+                            implicitHeight: 26 * card.expansion
+                            SemanticIcon {
+                                id: cardPlayGlyph
+                                anchors.centerIn: parent
+                                width: parent.width
+                                height: parent.height
+                                name: "play"
+                                filled: true
+                                color: cardPlayButton.enabled ? "white" : root.muted
+                                visible: !cardPendingText.visible
+                            }
+                            Text {
+                                id: cardPendingText
+                                anchors.centerIn: parent
+                                visible: root.pendingCardLaunchGameId === tile.gameId
+                                text: "…"
+                                color: cardPlayButton.enabled ? "white" : root.muted
+                                font: cardPlayButton.font
+                            }
                         }
                         ToolTip.visible: hovered
                         ToolTip.text: "Play " + tile.gameTitle

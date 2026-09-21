@@ -2,10 +2,13 @@ import QtQuick
 import QtQuick.Shapes
 
 // Named, consistent vector symbols; no platform-dependent font glyphs.
+// Paths live on a 24x24 grid and scale to whatever width/height the caller
+// gives, so the same symbol renders identically at every size.
 Item {
     id: root
     required property string name
     property color color: "#8d99aa"
+    property bool filled: false
     implicitWidth: 24
     implicitHeight: 24
     readonly property var paths: ({
@@ -20,14 +23,20 @@ Item {
         audit: "M8 4 H5 V22 H19 V4 H16 M8 2 H16 V6 H8 Z M8 14 L11 17 L16 11",
         edit: "M4 4 H11 M4 4 V20 H20 V13 M10 14 L11 10 L19 2 L22 5 L14 13 Z M17 4 L20 7",
         firmware: "M6 6 H18 V18 H6 Z M9 9 H15 V15 H9 Z M9 2 V6 M15 2 V6 M9 18 V22 M15 18 V22 M2 9 H6 M2 15 H6 M18 9 H22 M18 15 H22",
-        media: "M3 3 H21 V21 H3 Z M3 17 L9 11 L14 16 L17 13 L21 17 M16 7 H17 V8 H16 Z"
+        media: "M3 3 H21 V21 H3 Z M3 17 L9 11 L14 16 L17 13 L21 17 M16 7 H17 V8 H16 Z",
+        // Centroid sits at (12, 12), so the triangle reads optically centered.
+        play: "M8 4.5 L20 12 L8 19.5 Z"
     })
     Shape {
         anchors.fill: parent
+        transform: Scale {
+            xScale: root.width / 24
+            yScale: root.height / 24
+        }
         ShapePath {
-            strokeColor: root.color
+            strokeColor: root.filled ? "transparent" : root.color
             strokeWidth: 1.7
-            fillColor: "transparent"
+            fillColor: root.filled ? root.color : "transparent"
             capStyle: ShapePath.RoundCap
             joinStyle: ShapePath.RoundJoin
             PathSvg { path: root.paths[root.name] || "" }

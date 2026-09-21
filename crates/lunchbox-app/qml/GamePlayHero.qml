@@ -90,12 +90,13 @@ Rectangle {
                 height: 30
                 radius: 15
                 color: hero.canLaunch ? "#2cad6d" : "#255d47"
-                Text {
+                SemanticIcon {
                     anchors.centerIn: parent
-                    text: "▶"
+                    width: 19
+                    height: 19
+                    name: "play"
+                    filled: true
                     color: "white"
-                    font.pixelSize: 13
-                    font.weight: Font.Bold
                 }
             }
             Column {
