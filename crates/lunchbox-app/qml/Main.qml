@@ -785,6 +785,63 @@ ApplicationWindow {
         })
     }
 
+    // Settings save themselves: edits mark the pane dirty and a short
+    // debounce persists them, so there is no save button to press. The
+    // watcher listens only to user-editable properties; model-written
+    // status fields (message, busy, stored-password bookkeeping) are
+    // excluded so a save never re-triggers itself.
+    property bool settingsDirty: false
+    function markSettingsDirty() {
+        if (!settingsDialog.visible || !appSettings.initialized || appSettings.busy)
+            return
+        root.settingsDirty = true
+        settingsAutosaveTimer.restart()
+    }
+    function flushSettingsSave() {
+        settingsAutosaveTimer.stop()
+        if (root.settingsDirty && appSettings.initialized && !appSettings.busy) {
+            root.settingsDirty = false
+            appSettings.save()
+        }
+    }
+    Timer {
+        id: settingsAutosaveTimer
+        interval: 900
+        onTriggered: {
+            if (root.settingsDirty && appSettings.initialized && !appSettings.busy) {
+                root.settingsDirty = false
+                appSettings.save()
+            }
+        }
+    }
+    Connections {
+        target: appSettings
+        function onOnboarding_completeChanged() { root.markSettingsDirty() }
+        function onMinimize_during_gameChanged() { root.markSettingsDirty() }
+        function onQbittorrent_hostChanged() { root.markSettingsDirty() }
+        function onQbittorrent_portChanged() { root.markSettingsDirty() }
+        function onQbittorrent_use_httpsChanged() { root.markSettingsDirty() }
+        function onQbittorrent_usernameChanged() { root.markSettingsDirty() }
+        function onRom_directoryChanged() { root.markSettingsDirty() }
+        function onQbittorrent_container_rom_directoryChanged() { root.markSettingsDirty() }
+        function onTorrent_library_directoryChanged() { root.markSettingsDirty() }
+        function onQbittorrent_container_torrent_library_directoryChanged() { root.markSettingsDirty() }
+        function onWatched_torrent_directoryChanged() { root.markSettingsDirty() }
+        function onWatched_torrent_archive_directoryChanged() { root.markSettingsDirty() }
+        function onDownload_entire_torrentChanged() { root.markSettingsDirty() }
+        function onFile_link_modeChanged() { root.markSettingsDirty() }
+        function onSeeding_policyChanged() { root.markSettingsDirty() }
+        function onPreferred_regionChanged() { root.markSettingsDirty() }
+        function onRegion_revisionChanged() { root.markSettingsDirty() }
+        function onVersion_preferenceChanged() { root.markSettingsDirty() }
+        function onMedia_provider_revisionChanged() { root.markSettingsDirty() }
+        function onController_enabledChanged() { root.markSettingsDirty() }
+        function onController_automaticChanged() { root.markSettingsDirty() }
+        function onController_calibrated_launchChanged() { root.markSettingsDirty() }
+        function onController_output_targetChanged() { root.markSettingsDirty() }
+        function onController_revisionChanged() { root.markSettingsDirty() }
+    }
+
     function openCatalogLink(label, destination) {
         if (destination.toString().length === 0)
             return
@@ -19322,6 +19379,7 @@ ApplicationWindow {
         padding: 0
         closePolicy: Popup.CloseOnEscape
         onClosed: {
+            root.flushSettingsSave()
             if (downloadReviewDialog.visible
                     && downloadReviewDialog.reviewIndex >= 0)
                 gameDetails.inspect_download(downloadReviewDialog.reviewIndex)
@@ -19379,11 +19437,16 @@ ApplicationWindow {
                     font.weight: Font.Bold
                     onClicked: onboardingPage.open()
                 }
-                HeaderButton {
-                    text: appSettings.busy ? "SAVING…" : "SAVE SETTINGS"
-                    active: true
-                    enabled: !appSettings.busy
-                    onClicked: appSettings.save()
+                Text {
+                    Layout.alignment: Qt.AlignVCenter
+                    text: appSettings.busy ? "SAVING…"
+                          : root.settingsDirty ? "UNSAVED CHANGES · SAVING SOON…"
+                          : "CHANGES SAVE AUTOMATICALLY"
+                    color: appSettings.busy || root.settingsDirty ? root.accentCool : root.muted
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.8
+                    visible: settingsDialog.visible
                 }
                 RoundButton {
                     text: "×"
