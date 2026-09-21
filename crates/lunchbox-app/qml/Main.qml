@@ -1466,10 +1466,8 @@ ApplicationWindow {
         root.hoverPreviewPlaybackError = ""
         // Artwork for the card under the pointer is foreground work immediately.
         // Only video keeps the half-second intent gate below.
-        library.request_priority_artwork(tile.gameMediaId,
-                                         tile.gameCanonicalTitle,
-                                         tile.gamePlatform,
-                                         library.artwork_type)
+        library.request_priority_artwork_for_game(tile.gameId,
+                                                  library.artwork_type)
         // A half-second intent gate prevents a fast pass over the grid from
         // downloading gameplay videos that the user never stopped to inspect.
         hoverPreviewDelay.restart()
@@ -1517,10 +1515,9 @@ ApplicationWindow {
         selectedBox3d = false
         selectedHeroArtworkIndex = 0
         if (!root.downloadPlanUiProbe) {
-            library.request_priority_artwork(selectedMediaId, identityTitle, platform,
-                                             library.artwork_type)
-            library.request_priority_artwork(selectedMediaId, identityTitle, platform, "fanart")
-            library.request_priority_artwork(selectedMediaId, identityTitle, platform, "box-front")
+            library.request_priority_artwork_for_game(gameId, library.artwork_type)
+            library.request_priority_artwork_for_game(gameId, "fanart")
+            library.request_priority_artwork_for_game(gameId, "box-front")
             library.request_game_video(gameId)
             refreshSelectedArtwork()
         }
@@ -2377,10 +2374,8 @@ ApplicationWindow {
                     || root.hoverPreviewTile.gameId
                        !== root.hoverPreviewPendingGameId)
                 return
-            library.request_priority_artwork(root.hoverPreviewTile.gameMediaId,
-                                             root.hoverPreviewTile.gameCanonicalTitle,
-                                             root.hoverPreviewTile.gamePlatform,
-                                             library.artwork_type)
+            library.request_priority_artwork_for_game(
+                            root.hoverPreviewPendingGameId, library.artwork_type)
             library.request_game_video(root.hoverPreviewPendingGameId)
             library.request_hover_preview(root.hoverPreviewPendingGameId)
         }
@@ -9983,8 +9978,7 @@ ApplicationWindow {
                 return library.artwork_source(gameMediaId, library.artwork_type)
             }
             function requestVisibleArtwork() {
-                library.request_artwork(gameMediaId, gameCanonicalTitle,
-                                        gamePlatform, requestedArtworkType)
+                library.request_artwork_for_game(gameId, requestedArtworkType)
             }
             function updatePreviewInterest() {
                 // The runtime probe arms one exact tile itself. Ignore the
@@ -10750,8 +10744,7 @@ ApplicationWindow {
                 return library.artwork_url(gameMediaId, library.artwork_type)
             }
             function requestVisibleArtwork() {
-                library.request_artwork(gameMediaId, gameCanonicalTitle,
-                                        gamePlatform, requestedArtworkType)
+                library.request_artwork_for_game(gameId, requestedArtworkType)
             }
             function columnValue(key) {
                 switch (key) {
@@ -10810,10 +10803,8 @@ ApplicationWindow {
                 id: rowHover
                 onHoveredChanged: {
                     if (hovered)
-                        library.request_priority_artwork(row.gameMediaId,
-                                                         row.gameCanonicalTitle,
-                                                         row.gamePlatform,
-                                                         row.requestedArtworkType)
+                        library.request_priority_artwork_for_game(
+                                    row.gameId, row.requestedArtworkType)
                 }
             }
             TapHandler {
@@ -13904,10 +13895,8 @@ ApplicationWindow {
                                                  + relatedPlatform + ". " + relationship
 
                                 function requestArtwork() {
-                                    library.request_artwork(relatedCard.mediaId,
-                                                            relatedCard.relatedTitle,
-                                                            relatedCard.relatedPlatform,
-                                                            library.artwork_type)
+                                    library.request_artwork_for_game(
+                                        relatedCard.relatedId, library.artwork_type)
                                 }
 
                                 Rectangle {

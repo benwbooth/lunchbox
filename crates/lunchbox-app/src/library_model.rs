@@ -383,6 +383,26 @@ pub mod qobject {
             artwork_type: QString,
         );
 
+        // Identity-safe artwork requests: callers pass only the stable game
+        // id and the model resolves the media id, title, and platform from
+        // one catalog row. Delegate property changes arrive one at a time
+        // during reuse, so callers passing the parts separately could pair a
+        // new title with the previous game's media id and cache another
+        // game's artwork under it.
+        #[qinvokable]
+        fn request_artwork_for_game(
+            self: Pin<&mut LibraryModel>,
+            game_uid: QString,
+            artwork_type: QString,
+        );
+
+        #[qinvokable]
+        fn request_priority_artwork_for_game(
+            self: Pin<&mut LibraryModel>,
+            game_uid: QString,
+            artwork_type: QString,
+        );
+
         #[qinvokable]
         fn request_game_video(self: Pin<&mut LibraryModel>, game_uid: QString);
 
@@ -3879,6 +3899,47 @@ impl qobject::LibraryModel {
     ) {
         self.as_mut()
             .queue_artwork_request(media_id, title, platform, artwork_type, false, true);
+    }
+
+    pub fn request_artwork_for_game(
+        mut self: Pin<&mut Self>,
+        game_uid: QString,
+        artwork_type: QString,
+    ) {
+        let Some((media_id, title, platform)) = self.artwork_identity_for_game(&game_uid) else {
+            return;
+        };
+        self.as_mut().queue_artwork_request(
+            media_id,
+            qstring(title),
+            qstring(platform),
+            artwork_type,
+            false,
+            false,
+        );
+    }
+
+    pub fn request_priority_artwork_for_game(
+        mut self: Pin<&mut Self>,
+        game_uid: QString,
+        artwork_type: QString,
+    ) {
+        let Some((media_id, title, platform)) = self.artwork_identity_for_game(&game_uid) else {
+            return;
+        };
+        self.as_mut().queue_artwork_request(
+            media_id,
+            qstring(title),
+            qstring(platform),
+            artwork_type,
+            false,
+            true,
+        );
+    }
+
+    fn artwork_identity_for_game(&self, game_uid: &QString) -> Option<(i64, String, String)> {
+        let game = game_for_uid(self, &game_uid.to_string())?;
+        Some((game.media_id, game.title.clone(), game.platform.clone()))
     }
 
     pub fn set_emumovies_configured(mut self: Pin<&mut Self>, configured: bool) {
