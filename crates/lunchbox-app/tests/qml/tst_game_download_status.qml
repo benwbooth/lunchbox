@@ -13,6 +13,7 @@ TestCase {
         Item {
             width: 520
             height: 360
+            property bool installed: false
 
             QtObject {
                 id: queueState
@@ -39,6 +40,8 @@ TestCase {
                 width: 440
                 queue: queueState
                 gameId: "faxanadu"
+                gameLocal: installed
+                gameLoading: false
                 ink: "#f4f7fb"
                 muted: "#94a0b3"
                 panel: "#182233"
@@ -73,5 +76,19 @@ TestCase {
         host.status.gameId = "other"
         compare(host.status.jobIndex, -1)
         compare(host.status.badge, "")
+    }
+
+    function test_installed_game_hides_the_imported_download_card() {
+        const host = createTemporaryObject(hostComponent, testCase)
+        verify(host)
+        host.queueState.state = "IMPORTED"
+        ++host.queueState.revision
+        verify(host.status.cardVisible)
+
+        // Once the game itself is installed, the hero's Play state is the
+        // interface; the download card must not linger behind it.
+        host.installed = true
+        compare(host.status.gameLocal, true)
+        verify(!host.status.cardVisible)
     }
 }

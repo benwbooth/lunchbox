@@ -35,9 +35,10 @@ Rectangle {
     // An installed game's final state is the hero's Play button; the download
     // card only exists while something is actually in flight or failed. It
     // stays hidden while the details load so no intermediate state flashes.
-    visible: jobIndex >= 0
+    readonly property bool cardVisible: jobIndex >= 0
              && !gameLoading
              && !(gameLocal && jobState === "IMPORTED")
+    visible: cardVisible
     height: visible ? contents.implicitHeight + 24 : 0
     radius: 11
     color: panel
