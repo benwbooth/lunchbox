@@ -195,7 +195,7 @@ Rectangle {
             onClicked: row.installRequested(row.rowIndex)
         }
 
-        Button {
+        PaneButton {
             objectName: "emulatorUninstallButton"
             visible: row.uninstallActionVisible
             text: "Uninstall"
@@ -226,7 +226,7 @@ Rectangle {
             elide: Text.ElideRight
         }
 
-        Button {
+        PaneButton {
             id: emulatorGameDefaultButton
             objectName: "emulatorGameDefaultButton"
             visible: row.gameDefaultActionVisible
@@ -241,7 +241,7 @@ Rectangle {
             ToolTip.text: "Use " + row.emulatorName + " by default for this game"
         }
 
-        Button {
+        PaneButton {
             id: emulatorPlatformDefaultButton
             objectName: "emulatorPlatformDefaultButton"
             visible: row.platformDefaultActionVisible

@@ -19762,7 +19762,7 @@ ApplicationWindow {
                                 anchors.bottom: parent.bottom
                                 anchors.bottomMargin: 9
                                 spacing: 7
-                                Button {
+                                PaneButton {
                                     width: library.couch_theme_installed_at(
                                                couchThemeCard.index) ? 137 : 203
                                     height: 30
@@ -19776,10 +19776,10 @@ ApplicationWindow {
                                     Accessible.name: "Use " + library.couch_theme_name_at(
                                                          couchThemeCard.index)
                                 }
-                                Button {
+                                PaneButton {
                                     visible: library.couch_theme_installed_at(
                                                  couchThemeCard.index)
-                                    width: visible ? 58 : 0
+                                    width: visible ? 76 : 0
                                     height: 30
                                     text: "REMOVE"
                                     enabled: !library.couch_theme_busy
@@ -19797,13 +19797,13 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 9
-                        Button {
+                        PaneButton {
                             text: library.couch_theme_busy ? "WORKING…" : "INSTALL THEME PACKAGE"
                             enabled: !library.couch_theme_busy
                             onClicked: root.chooseCouchThemeFile()
                             Accessible.name: "Install a declarative Couch Mode theme package"
                         }
-                        Button {
+                        PaneButton {
                             text: "REFRESH"
                             enabled: !library.couch_theme_busy
                             onClicked: library.refresh_couch_themes()
@@ -20014,7 +20014,7 @@ ApplicationWindow {
                             appSettings.invalidate_qbittorrent_test()
                         }
                     }
-                    Button {
+                    PaneButton {
                         visible: appSettings.password_saved
                         text: "Clear saved"
                         enabled: !appSettings.busy
@@ -20070,7 +20070,7 @@ ApplicationWindow {
                         text: appSettings.rom_directory
                         readOnly: true
                     }
-                    Button {
+                    PaneButton {
                         text: "Choose…"
                         onClicked: appSettings.choose_native_directory("rom")
                     }
@@ -20089,7 +20089,7 @@ ApplicationWindow {
                         text: appSettings.torrent_library_directory
                         readOnly: true
                     }
-                    Button {
+                    PaneButton {
                         text: "Choose…"
                         onClicked: appSettings.choose_native_directory("torrent")
                     }
@@ -20278,7 +20278,7 @@ ApplicationWindow {
                             font.pixelSize: 12
                             font.weight: Font.DemiBold
                         }
-                        Button {
+                        PaneButton {
                             text: "Reset defaults"
                             enabled: !appSettings.busy
                             onClicked: appSettings.reset_region_priority()
@@ -20423,7 +20423,7 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                             }
                         }
-                        Button {
+                        PaneButton {
                             text: "Reset defaults"
                             enabled: !appSettings.busy
                             onClicked: appSettings.reset_media_provider_priority()
@@ -20569,7 +20569,7 @@ ApplicationWindow {
                             line: root.line
                             accent: root.accent
                         }
-                        Button {
+                        PaneButton {
                             text: "Test"
                             enabled: !steamGridDb.busy
                                      && (steamGridDbApiKey.text.length > 0
@@ -20585,7 +20585,7 @@ ApplicationWindow {
                             onClicked: steamGridDb.save_and_test_api_key(
                                            steamGridDbApiKey.text)
                         }
-                        Button {
+                        PaneButton {
                             visible: steamGridDb.api_key_saved
                             text: "Clear saved"
                             enabled: !steamGridDb.busy
@@ -20611,7 +20611,7 @@ ApplicationWindow {
                             font.pixelSize: 10
                             wrapMode: Text.WordWrap
                         }
-                        Button {
+                        PaneButton {
                             text: "Get API key ↗"
                             flat: true
                             onClicked: Qt.openUrlExternally(
@@ -20674,7 +20674,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         spacing: 8
                         Item { Layout.fillWidth: true }
-                        Button {
+                        PaneButton {
                             text: "Test connection"
                             enabled: !igdb.busy
                                      && (igdb.credentials_saved
@@ -20691,7 +20691,7 @@ ApplicationWindow {
                             onClicked: igdb.save_and_test_credentials(
                                            igdbClientId.text, igdbClientSecret.text)
                         }
-                        Button {
+                        PaneButton {
                             visible: igdb.credentials_saved
                             text: "Clear saved"
                             enabled: !igdb.busy
@@ -20723,13 +20723,13 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         spacing: 8
                         Item { Layout.fillWidth: true }
-                        Button {
+                        PaneButton {
                             text: "Register confidential Twitch app ↗"
                             flat: true
                             onClicked: Qt.openUrlExternally(
                                            "https://dev.twitch.tv/console/apps")
                         }
-                        Button {
+                        PaneButton {
                             text: "IGDB API terms ↗"
                             flat: true
                             onClicked: Qt.openUrlExternally("https://api-docs.igdb.com/")
@@ -20791,7 +20791,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         spacing: 8
                         Item { Layout.fillWidth: true }
-                        Button {
+                        PaneButton {
                             text: "Test connection"
                             enabled: !emuMovies.busy
                                      && (emuMovies.credentials_saved
@@ -20811,7 +20811,7 @@ ApplicationWindow {
                                            emuMoviesUsername.text,
                                            emuMoviesPassword.text)
                         }
-                        Button {
+                        PaneButton {
                             visible: emuMovies.credentials_saved
                             text: "Clear saved"
                             enabled: !emuMovies.busy
@@ -20833,7 +20833,7 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         Item { Layout.fillWidth: true }
-                        Button {
+                        PaneButton {
                             text: "EmuMovies account ↗"
                             flat: true
                             onClicked: Qt.openUrlExternally("https://emumovies.com/register/")
@@ -20921,7 +20921,7 @@ ApplicationWindow {
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
                             }
-                            Button {
+                            PaneButton {
                                 text: "Scan again"
                                 enabled: !appSettings.controller_busy
                                 onClicked: appSettings.refresh_controllers()
@@ -21240,7 +21240,7 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                             }
                         }
-                        Button {
+                        PaneButton {
                             text: "New profile"
                             enabled: !appSettings.controller_profile_editor_open
                             onClicked: appSettings.create_controller_profile()
@@ -21361,13 +21361,13 @@ ApplicationWindow {
                                             elide: Text.ElideRight
                                         }
                                     }
-                                    Button {
+                                    PaneButton {
                                         text: "Edit"
                                         onClicked: appSettings.edit_controller_profile(
                                                        customProfileRow.index)
                                         Accessible.name: "Edit custom controller profile"
                                     }
-                                    Button {
+                                    PaneButton {
                                         text: "Delete"
                                         onClicked: {
                                             root.pendingControllerProfileDeleteIndex =
@@ -21420,7 +21420,7 @@ ApplicationWindow {
                                         font.pixelSize: 9
                                     }
                                 }
-                                Button {
+                                PaneButton {
                                     text: "Cancel"
                                     onClicked: appSettings.cancel_controller_profile_edit()
                                     Accessible.name: "Cancel controller profile editing"
@@ -21655,7 +21655,7 @@ ApplicationWindow {
                                                                  currentIndex))
                                             Accessible.name: "Physical source button"
                                         }
-                                        Button {
+                                        PaneButton {
                                             Layout.fillWidth: true
                                             text: root.controllerLearnActive ? "Listening… press the physical control" : "Record a physical button / C-button"
                                             onClicked: root.controllerLearnActive = !root.controllerLearnActive
@@ -21666,12 +21666,12 @@ ApplicationWindow {
                                             color: root.accentCool
                                             wrapMode: Text.WordWrap
                                         }
-                                        Button {
+                                        PaneButton {
                                             Layout.fillWidth: true
                                             text: "Apply 2-button X/A preset"
                                             onClicked: appSettings.apply_two_button_controller_preset()
                                         }
-                                        Button {
+                                        PaneButton {
                                             Layout.fillWidth: true
                                             text: "Clear all remaps"
                                             onClicked: appSettings.clear_controller_profile_mappings()
@@ -21736,7 +21736,7 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Item { Layout.fillWidth: true }
-                                Button {
+                                PaneButton {
                                     text: "Cancel"
                                     onClicked: appSettings.cancel_controller_profile_edit()
                                 }
@@ -21914,7 +21914,7 @@ ApplicationWindow {
                                                     font.pixelSize: 9
                                                 }
                                             }
-                                            Button {
+                                            PaneButton {
                                                 text: "Open folder"
                                                 flat: true
                                                 enabled: !appSettings.shader_busy
@@ -21936,7 +21936,7 @@ ApplicationWindow {
                                     font.pixelSize: 9
                                     wrapMode: Text.WordWrap
                                 }
-                                Button {
+                                PaneButton {
                                     visible: appSettings.shader_busy
                                     text: "Cancel"
                                     onClicked: appSettings.cancel_retroarch_shaders()
@@ -22077,7 +22077,7 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
-                                Button {
+                                PaneButton {
                                     id: profileBackupButton
                                     text: "BACK UP NOW…"
                                     enabled: appSettings.initialized
@@ -22086,7 +22086,7 @@ ApplicationWindow {
                                     onClicked: root.chooseProfileBackupFile()
                                     Accessible.name: "Create a portable Lunchbox profile backup"
                                 }
-                                Button {
+                                PaneButton {
                                     id: profileRestoreButton
                                     text: "RESTORE PROFILE…"
                                     enabled: appSettings.initialized
@@ -22159,7 +22159,7 @@ ApplicationWindow {
                                 root.openEmulatorManager()
                             }
                         }
-                        Button {
+                        PaneButton {
                             Layout.fillWidth: true
                             text: "Launch commands"
                             onClicked: {
@@ -22205,7 +22205,7 @@ ApplicationWindow {
                         onActivated: emulatorUpdates.choose_check_policy(currentValue)
                         Accessible.name: "Emulator update check frequency"
                     }
-                    Button {
+                    PaneButton {
                         text: "Check now"
                         enabled: !emulatorUpdates.busy
                         onClicked: {
