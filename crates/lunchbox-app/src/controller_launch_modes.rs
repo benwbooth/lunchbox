@@ -57,6 +57,10 @@ pub fn validate_arguments(
                 );
                 core = true;
             }
+            Some(text) if text.starts_with("--set-shader=") => {
+                // The chosen preset is a known display-only option. It does
+                // not change the verified core, content, or controller mode.
+            }
             Some(text)
                 if [
                     "--device=",
@@ -218,6 +222,7 @@ fn resolve_arguments(
             "--config=",
             "--appendconfig=",
             "--sram-mode=",
+            "--set-shader=",
         ]
         .iter()
         .any(|prefix| argument.starts_with(prefix))
@@ -400,5 +405,32 @@ mod tests {
             let arguments = [OsString::from_vec(b"-d1:5\xff".to_vec())];
             assert!(configured_modes("", &arguments, 1).is_err());
         }
+    }
+
+    #[test]
+    fn shader_option_keeps_display_append_config_attachable() {
+        let arguments = args(&[
+            "--set-shader=/tmp/koko-aio-ng.slangp",
+            "--appendconfig",
+            "/tmp/saves.cfg|/tmp/display.cfg",
+            "--verbose",
+            "-L",
+            "/tmp/mesen_libretro.so",
+            "/tmp/game.sfc",
+        ]);
+        assert_eq!(append_config_index(&arguments).unwrap(), Some(1));
+        assert_eq!(configured_modes("", &arguments, 1).unwrap(), [1]);
+        let prepared = crate::emulator::PreparedRetroarchContent {
+            core: "/tmp/mesen_libretro.so".into(),
+            content: "/tmp/game.sfc".into(),
+        };
+        let before_config = args(&[
+            "--set-shader=/tmp/koko-aio-ng.slangp",
+            "--verbose",
+            "-L",
+            "/tmp/mesen_libretro.so",
+            "/tmp/game.sfc",
+        ]);
+        validate_arguments(&before_config, &prepared).unwrap();
     }
 }

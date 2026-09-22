@@ -291,6 +291,7 @@ pub fn attach_launch_display_configuration(
     }
     let mut warnings = Vec::new();
     let mut lines = String::new();
+    let mut shader_preset_path = None;
     match customization.display_fullscreen.as_str() {
         "true" | "false" => {
             lines.push_str(&format!(
@@ -305,9 +306,7 @@ pub fn attach_launch_display_configuration(
             Some(preset_path) => {
                 lines.push_str("video_shader_enable = \"true\"\n");
                 lines.push_str(&format!("video_shader = \"{}\"\n", preset_path.display()));
-                // RetroArch's CLI applies this when content loads and takes
-                // precedence over any automatic core/game shader preset.
-                attach_shader_argument(plan, executable, &preset_path);
+                shader_preset_path = Some(preset_path);
                 if let Some(driver) = slang_driver_override(executable) {
                     lines.push_str(&format!("video_driver = \"{driver}\"\n"));
                 }
@@ -361,10 +360,18 @@ pub fn attach_launch_display_configuration(
     let config_path = write_launch_display_config(&lines);
     match config_path {
         Ok(path) => {
-            if let Err(error) = crate::controller_launch::attach_config(plan, executable, &path) {
-                warnings.push(format!(
+            match crate::controller_launch::attach_config(plan, executable, &path) {
+                Ok(()) => {
+                    // Apply the chosen preset when content loads. Never add
+                    // this override unless the matching session config also
+                    // attached (it selects a slang-capable video driver).
+                    if let Some(preset_path) = shader_preset_path {
+                        attach_shader_argument(plan, executable, &preset_path);
+                    }
+                }
+                Err(error) => warnings.push(format!(
                     "The display settings could not be attached to the launch: {error:#}"
-                ));
+                )),
             }
         }
         Err(error) => warnings.push(format!(
