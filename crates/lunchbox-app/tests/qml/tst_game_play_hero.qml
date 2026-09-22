@@ -96,6 +96,28 @@ TestCase {
         compare(hero.displaySectionAvailable, false)
     }
 
+    function test_emulator_picker_stays_visible_without_display_features() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            displayShaderSupported: false,
+            displayBezelSupported: false,
+            displaySaveStatesSupported: false
+        })
+        verify(hero)
+        compare(hero.displaySectionAvailable, false)
+        // The picker must not live inside displaySection: that column hides
+        // when the auto-picked emulator has no display features (e.g. a
+        // standalone SNES pick), which would leave no way to choose another.
+        const display = findChild(hero, "displaySection")
+        verify(display)
+        compare(findChild(display, "emulatorPicker"), null)
+        const section = findChild(hero, "emulatorSection")
+        verify(section)
+        compare(findChild(section, "emulatorPicker") === null, false)
+        const picker = findChild(hero, "emulatorPicker")
+        verify(picker)
+        compare(picker.model.length, 2)
+    }
+
     function test_merged_picker_lists_standalone_section_then_cores() {
         const hero = createTemporaryObject(heroComponent, testCase)
         verify(hero)
@@ -115,9 +137,57 @@ TestCase {
         verify(hero)
         const picker = findChild(hero, "emulatorPicker")
         verify(picker)
+        // Option 0 is the RetroArch core, which sorts second in the merged
+        // standalone-first model, so the picker row follows the selection.
+        compare(picker.currentIndex, 1)
+        compare(picker.displayText, "RetroArch · Mesen")
+        hero.selectedEmulatorOption = 1
         compare(picker.currentIndex, 0)
-        hero.selectEmulatorOptionForTest ? hero.selectEmulatorOptionForTest(1)
-                                         : null
+        compare(picker.displayText, "Mesen")
+    }
+
+    function test_merged_picker_rebuilds_when_options_arrive() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            emulatorOptionCount: 0
+        })
+        verify(hero)
+        const picker = findChild(hero, "emulatorPicker")
+        verify(picker)
+        compare(picker.model.length, 0)
+        hero.emulatorOptionCount = 2
+        compare(picker.model.length, 2)
+        compare(picker.model[0].label, "Mesen")
+        compare(picker.model[1].label, "RetroArch · Mesen")
+    }
+
+    function test_merged_picker_popup_shows_all_labels() {
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        const picker = findChild(hero, "emulatorPicker")
+        verify(picker)
+        picker.popup.open()
+        verify(picker.popup.visible)
+        // The popup ListView instantiates rows asynchronously; poll until
+        // both option labels (in any child order) have rendered text.
+        let rows = ""
+        for (let attempt = 0; attempt < 50; ++attempt) {
+            const found = []
+            const kids = picker.popup.contentItem.contentItem.children
+            for (let i = 0; i < kids.length; ++i) {
+                const label = kids[i].text
+                if (label !== undefined && label.length > 0
+                        && label !== "Standalone" && label !== "RetroArch cores"
+                        && !found.includes(label))
+                    found.push(label)
+            }
+            found.sort()
+            if (found.join("|") === "Mesen|RetroArch · Mesen") {
+                rows = found.join("|")
+                break
+            }
+            wait(20)
+        }
+        compare(rows, "Mesen|RetroArch · Mesen")
     }
 
     function test_non_local_game_hides_play_section() {

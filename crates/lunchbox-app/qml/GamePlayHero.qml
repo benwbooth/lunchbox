@@ -419,6 +419,17 @@ background: Rectangle {
                 font.pixelSize: 8
                 wrapMode: Text.WordWrap
             }
+        }
+
+        Column {
+            objectName: "emulatorSection"
+            width: parent.width
+            // The emulator choice must stay reachable even when the selected
+            // emulator has no display features: displaySection above hides in
+            // that case, and nesting the picker inside it left no way to pick
+            // a different emulator (e.g. a standalone auto-pick on SNES).
+            visible: hero.emulatorOptionCount > 0
+            spacing: 5
             Text {
                 text: "PLAY WITH"
                 color: "#83e3ad"
@@ -427,6 +438,7 @@ background: Rectangle {
                 font.letterSpacing: 0.8
             }
             ComboBox {
+                id: emulatorPicker
                 objectName: "emulatorPicker"
                 width: parent.width
                 height: 40
