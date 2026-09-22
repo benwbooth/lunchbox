@@ -41,6 +41,10 @@ TestCase {
             displayShader: ""
             displayBezel: ""
             displaySaveStates: ""
+            displayInheritedFullscreenLabel: "Inherit → Off (RetroArch default)"
+            displayInheritedShaderLabel: "Inherit → Off (RetroArch default)"
+            displayInheritedBezelLabel: "Inherit → System pack"
+            displayInheritedSaveStatesLabel: "Inherit → Save + resume"
             displayEffectiveSummary: ""
             displayRevision: 0
             displayFullscreenSupported: true
@@ -91,6 +95,21 @@ TestCase {
         hero.displayFullscreen = "true"
         hero.displayRevision++
         compare(fullscreen.currentValue, "true")
+    }
+
+    function test_inherit_options_name_the_parent_value() {
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        const fullscreen = findChild(hero, "displayFullscreenCombo")
+        const shader = findChild(hero, "displayShaderCombo")
+        const bezel = findChild(hero, "displayBezelCombo")
+        const states = findChild(hero, "displaySaveStatesCombo")
+        compare(fullscreen.model[0].label, "Inherit → Off (RetroArch default)")
+        compare(shader.model[0].label, "Inherit → Off (RetroArch default)")
+        compare(bezel.model[0].label, "Inherit → System pack")
+        compare(states.model[0].label, "Inherit → Save + resume")
+        hero.displayInheritedShaderLabel = "Inherit → RetroTube TV"
+        compare(shader.model[0].label, "Inherit → RetroTube TV")
     }
 
     function test_display_section_hides_for_unsupported_adapters() {

@@ -194,6 +194,10 @@ pub mod qobject {
         #[qproperty(QString, display_shader)]
         #[qproperty(QString, display_bezel)]
         #[qproperty(QString, display_save_states)]
+        #[qproperty(QString, display_inherited_fullscreen_label)]
+        #[qproperty(QString, display_inherited_shader_label)]
+        #[qproperty(QString, display_inherited_bezel_label)]
+        #[qproperty(QString, display_inherited_save_states_label)]
         #[qproperty(bool, display_fullscreen_supported)]
         #[qproperty(bool, display_shader_supported)]
         #[qproperty(bool, display_bezel_supported)]
@@ -849,6 +853,10 @@ pub struct GameDetailsModelRust {
     display_shader: QString,
     display_bezel: QString,
     display_save_states: QString,
+    display_inherited_fullscreen_label: QString,
+    display_inherited_shader_label: QString,
+    display_inherited_bezel_label: QString,
+    display_inherited_save_states_label: QString,
     display_fullscreen_supported: bool,
     display_shader_supported: bool,
     display_bezel_supported: bool,
@@ -1087,6 +1095,10 @@ impl Default for GameDetailsModelRust {
             display_shader: QString::default(),
             display_bezel: QString::default(),
             display_save_states: QString::default(),
+            display_inherited_fullscreen_label: QString::from("Inherit"),
+            display_inherited_shader_label: QString::from("Inherit"),
+            display_inherited_bezel_label: QString::from("Inherit"),
+            display_inherited_save_states_label: QString::from("Inherit"),
             display_fullscreen_supported: false,
             display_shader_supported: false,
             display_bezel_supported: false,
@@ -1580,6 +1592,95 @@ struct LaunchStarted {
     tracking_warning: Option<String>,
     save_notice: Option<String>,
     activity_recorded: bool,
+}
+
+struct DisplayValueLabels {
+    fullscreen: String,
+    shader: String,
+    bezel: String,
+    states: String,
+}
+
+fn display_value_labels(
+    option: &crate::emulator::RomEmulatorOption,
+    resolved: &crate::settings::ResolvedLaunchCustomization,
+) -> DisplayValueLabels {
+    let retroarch = option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch;
+    let base_value = |key: &str| {
+        retroarch
+            .then(|| crate::display_setup::retroarch_config_value(&option.executable, key))
+            .flatten()
+    };
+    let shader = if resolved.display_shader.is_empty() {
+        if !retroarch {
+            "Emulator default".to_owned()
+        } else {
+            match (
+                base_value("video_shader_enable").as_deref(),
+                base_value("video_shader"),
+            ) {
+                (Some("true"), Some(path)) if !path.is_empty() => format!(
+                    "RetroArch preset {}",
+                    Path::new(&path)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                ),
+                (Some("false"), _) | (_, None) => "Off (RetroArch default)".to_owned(),
+                _ => "RetroArch default".to_owned(),
+            }
+        }
+    } else {
+        crate::display_setup::shader_preset_choices()
+            .iter()
+            .find(|choice| choice.id == resolved.display_shader)
+            .map(|choice| choice.label.to_owned())
+            .unwrap_or_else(|| resolved.display_shader.clone())
+    };
+    let bezel = match resolved.display_bezel.as_str() {
+        "" if !retroarch => "Emulator default".to_owned(),
+        "" => {
+            if base_value("input_overlay_enable").as_deref() == Some("true")
+                && base_value("input_overlay").is_some_and(|path| !path.is_empty())
+            {
+                "RetroArch overlay".to_owned()
+            } else {
+                "Off (RetroArch default)".to_owned()
+            }
+        }
+        "system" => "System pack".to_owned(),
+        "off" => "Off".to_owned(),
+        other => other.to_owned(),
+    };
+    let states = match resolved.save_states.as_str() {
+        "" if !retroarch => "Emulator default".to_owned(),
+        "" => match (
+            base_value("savestate_auto_save").as_deref(),
+            base_value("savestate_auto_load").as_deref(),
+        ) {
+            (Some("true"), Some("true")) => "Save + resume (RetroArch default)".to_owned(),
+            (Some("false"), Some("false")) => "Off (RetroArch default)".to_owned(),
+            _ => "RetroArch default".to_owned(),
+        },
+        "on" => "Save + resume".to_owned(),
+        "off" => "Off".to_owned(),
+        other => other.to_owned(),
+    };
+    let fullscreen = match resolved.display_fullscreen.as_str() {
+        "true" => "On".to_owned(),
+        "false" => "Off".to_owned(),
+        _ => match base_value("video_fullscreen").as_deref() {
+            Some("true") => "On (RetroArch default)".to_owned(),
+            Some("false") => "Off (RetroArch default)".to_owned(),
+            _ => "Emulator default".to_owned(),
+        },
+    };
+    DisplayValueLabels {
+        fullscreen,
+        shader,
+        bezel,
+        states,
+    }
 }
 
 struct LaunchCleanupGuard(Vec<PathBuf>);
@@ -2478,6 +2579,14 @@ impl qobject::GameDetailsModel {
         self.as_mut().set_selected_emulator_option(-1);
         self.as_mut().set_display_shader_supported(false);
         self.as_mut().set_display_fullscreen_supported(false);
+        self.as_mut()
+            .set_display_inherited_fullscreen_label(qstring("Inherit"));
+        self.as_mut()
+            .set_display_inherited_shader_label(qstring("Inherit"));
+        self.as_mut()
+            .set_display_inherited_bezel_label(qstring("Inherit"));
+        self.as_mut()
+            .set_display_inherited_save_states_label(qstring("Inherit"));
         self.as_mut().set_display_bezel_supported(false);
         self.as_mut().set_display_save_states_supported(false);
         self.as_mut()
@@ -5209,18 +5318,65 @@ impl qobject::GameDetailsModel {
             )
         });
         let summary = self.as_ref().display_effective_summary_for(&selected);
+        let inherited = self
+            .as_ref()
+            .display_inherited_labels_for(&selected, &scope);
         self.as_mut().set_display_fullscreen_supported(fullscreen);
         self.as_mut().set_display_shader_supported(retroarch);
         self.as_mut().set_display_bezel_supported(bezel);
         self.as_mut().set_display_save_states_supported(save_states);
         self.as_mut()
             .set_display_effective_summary(qstring(&summary));
+        self.as_mut()
+            .set_display_inherited_fullscreen_label(qstring(&inherited[0]));
+        self.as_mut()
+            .set_display_inherited_shader_label(qstring(&inherited[1]));
+        self.as_mut()
+            .set_display_inherited_bezel_label(qstring(&inherited[2]));
+        self.as_mut()
+            .set_display_inherited_save_states_label(qstring(&inherited[3]));
         let revision = self.as_ref().display_revision().wrapping_add(1);
         self.as_mut().set_display_revision(revision);
     }
 
+    /// Exclude the editing scope so every "Inherit" entry previews the value
+    /// that would win if its own override were cleared.
+    fn display_inherited_labels_for(
+        &self,
+        selected: &Option<crate::emulator::RomEmulatorOption>,
+        scope: &str,
+    ) -> [String; 4] {
+        let Some(option) = selected else {
+            return std::array::from_fn(|_| "Inherit".to_owned());
+        };
+        let platform = if scope == "game" {
+            self.platform().to_string()
+        } else {
+            String::new()
+        };
+        let resolved = crate::settings::SettingsStore::open_default().and_then(|store| {
+            store.resolve_launch_customization(
+                "",
+                &platform,
+                &option.emulator_id,
+                option.runtime_kind.key(),
+                &option.core_name,
+            )
+        });
+        let Ok(resolved) = resolved else {
+            return std::array::from_fn(|_| "Inherit (value unavailable)".to_owned());
+        };
+        let labels = display_value_labels(option, &resolved);
+        [
+            format!("Inherit → {}", labels.fullscreen),
+            format!("Inherit → {}", labels.shader),
+            format!("Inherit → {}", labels.bezel),
+            format!("Inherit → {}", labels.states),
+        ]
+    }
+
     /// What a launch would actually use after game → platform → global
-    /// inheritance, so `Inherit` never hides the effective value.
+    /// inheritance, including values supplied by the emulator itself.
     fn display_effective_summary_for(
         &self,
         selected: &Option<crate::emulator::RomEmulatorOption>,
@@ -5239,70 +5395,11 @@ impl qobject::GameDetailsModel {
             )
         })()
         .unwrap_or_default();
-        let base_value = |key: &str| {
-            (option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch)
-                .then(|| crate::display_setup::retroarch_config_value(&option.executable, key))
-                .flatten()
-        };
-        let shader = if resolved.display_shader.is_empty() {
-            match (
-                base_value("video_shader_enable").as_deref(),
-                base_value("video_shader"),
-            ) {
-                (Some("true"), Some(path)) if !path.is_empty() => format!(
-                    "RetroArch preset {}",
-                    Path::new(&path)
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                ),
-                (Some("false"), _) | (_, None) => "Off (RetroArch default)".to_owned(),
-                _ => "RetroArch default".to_owned(),
-            }
-        } else {
-            crate::display_setup::shader_preset_choices()
-                .iter()
-                .find(|choice| choice.id == resolved.display_shader)
-                .map(|choice| choice.label.to_owned())
-                .unwrap_or_else(|| resolved.display_shader.clone())
-        };
-        let bezel = match resolved.display_bezel.as_str() {
-            "" => {
-                if base_value("input_overlay_enable").as_deref() == Some("true") {
-                    "RetroArch overlay".to_owned()
-                } else {
-                    "Off (RetroArch default)".to_owned()
-                }
-            }
-            "system" => "System pack".to_owned(),
-            "off" => "Off".to_owned(),
-            other => other.to_owned(),
-        };
-        let states = match resolved.save_states.as_str() {
-            "" => match (
-                base_value("savestate_auto_save").as_deref(),
-                base_value("savestate_auto_load").as_deref(),
-            ) {
-                (Some("true"), Some("true")) => "Save + resume (RetroArch default)".to_owned(),
-                (Some("false"), Some("false")) => "Off (RetroArch default)".to_owned(),
-                _ => "RetroArch default".to_owned(),
-            },
-            "on" => "Save + resume".to_owned(),
-            "off" => "Off".to_owned(),
-            other => other.to_owned(),
-        };
-        let mut summary = format!("Effective: CRT {shader} · Bezel {bezel} · States {states}");
-        let fullscreen = match resolved.display_fullscreen.as_str() {
-            "true" => "On",
-            "false" => "Off",
-            _ => match base_value("video_fullscreen").as_deref() {
-                Some("true") => "On (RetroArch default)",
-                Some("false") => "Off (RetroArch default)",
-                _ => "Emulator default",
-            },
-        };
-        summary.push_str(&format!(" · Fullscreen {fullscreen}"));
-        summary
+        let labels = display_value_labels(option, &resolved);
+        format!(
+            "Effective: CRT {} · Bezel {} · States {} · Fullscreen {}",
+            labels.shader, labels.bezel, labels.states, labels.fullscreen
+        )
     }
 
     fn launch_profile_scope_key(&self, scope: &str) -> anyhow::Result<String> {

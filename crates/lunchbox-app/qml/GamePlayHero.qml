@@ -52,6 +52,10 @@ Rectangle {
     required property string displayShader
     required property string displayBezel
     required property string displaySaveStates
+    required property string displayInheritedFullscreenLabel
+    required property string displayInheritedShaderLabel
+    required property string displayInheritedBezelLabel
+    required property string displayInheritedSaveStatesLabel
     required property string displayEffectiveSummary
     required property int displayRevision
     required property bool displayFullscreenSupported
@@ -242,10 +246,11 @@ Rectangle {
                     textRole: "label"
                     valueRole: "value"
                     model: [
-                        { value: "", label: "Inherit" },
+                        { value: "", label: hero.displayInheritedFullscreenLabel },
                         { value: "true", label: "On" },
                         { value: "false", label: "Off" }
                     ]
+                    onModelChanged: syncValue()
                     Component.onCompleted: syncValue()
                     function syncValue() {
                         currentIndex = ["", "true", "false"].indexOf(hero.displayFullscreen)
@@ -274,6 +279,14 @@ Rectangle {
                         elide: Text.ElideRight
                     }
                 }
+                Text {
+                    width: parent.width
+                    visible: hero.displayFullscreen === ""
+                    text: hero.displayInheritedFullscreenLabel
+                    color: hero.muted
+                    font.pixelSize: 8
+                    wrapMode: Text.WordWrap
+                }
             }
             Row {
                 width: parent.width
@@ -291,12 +304,13 @@ Rectangle {
                     }
                     ComboBox {
                         id: displayShaderCombo
+                        objectName: "displayShaderCombo"
                         width: parent.width
                         textRole: "label"
                         valueRole: "value"
                         model: {
                             const revision = hero.displayRevision
-                            const items = [{ value: "", label: "Inherit" }]
+                            const items = [{ value: "", label: hero.displayInheritedShaderLabel }]
                             const count = hero.displayShaderPresetCount()
                             for (let i = 0; i < count; ++i)
                                 items.push({
@@ -343,6 +357,14 @@ background: Rectangle {
                             highlighted: displayShaderCombo.highlightedIndex === index
                         }
                     }
+                    Text {
+                        width: parent.width
+                        visible: hero.displayShader === ""
+                        text: hero.displayInheritedShaderLabel
+                        color: hero.muted
+                        font.pixelSize: 8
+                        wrapMode: Text.WordWrap
+                    }
                 }
                 Column {
                     width: (parent.width - 12) / 3
@@ -357,11 +379,12 @@ background: Rectangle {
                     }
                     ComboBox {
                         id: displayBezelCombo
+                        objectName: "displayBezelCombo"
                         width: parent.width
                         textRole: "label"
                         valueRole: "value"
                         model: [
-                            { value: "", label: "Inherit" },
+                            { value: "", label: hero.displayInheritedBezelLabel },
                             { value: "off", label: "Off" },
                             { value: "system", label: "System pack" }
                         ]
@@ -403,6 +426,14 @@ background: Rectangle {
                             highlighted: displayBezelCombo.highlightedIndex === index
                         }
                     }
+                    Text {
+                        width: parent.width
+                        visible: hero.displayBezel === ""
+                        text: hero.displayInheritedBezelLabel
+                        color: hero.muted
+                        font.pixelSize: 8
+                        wrapMode: Text.WordWrap
+                    }
                 }
                 Column {
                     width: (parent.width - 12) / 3
@@ -417,11 +448,12 @@ background: Rectangle {
                     }
                     ComboBox {
                         id: displaySaveStatesCombo
+                        objectName: "displaySaveStatesCombo"
                         width: parent.width
                         textRole: "label"
                         valueRole: "value"
                         model: [
-                            { value: "", label: "Inherit" },
+                            { value: "", label: hero.displayInheritedSaveStatesLabel },
                             { value: "off", label: "Off" },
                             { value: "on", label: "Save + resume" }
                         ]
@@ -462,6 +494,14 @@ background: Rectangle {
                             font.pixelSize: 10
                             highlighted: displaySaveStatesCombo.highlightedIndex === index
                         }
+                    }
+                    Text {
+                        width: parent.width
+                        visible: hero.displaySaveStates === ""
+                        text: hero.displayInheritedSaveStatesLabel
+                        color: hero.muted
+                        font.pixelSize: 8
+                        wrapMode: Text.WordWrap
                     }
                 }
             }

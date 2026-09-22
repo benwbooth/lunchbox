@@ -12467,6 +12467,10 @@ ApplicationWindow {
                         displayShader: gameDetails.display_shader
                         displayBezel: gameDetails.display_bezel
                         displaySaveStates: gameDetails.display_save_states
+                        displayInheritedFullscreenLabel: gameDetails.display_inherited_fullscreen_label
+                        displayInheritedShaderLabel: gameDetails.display_inherited_shader_label
+                        displayInheritedBezelLabel: gameDetails.display_inherited_bezel_label
+                        displayInheritedSaveStatesLabel: gameDetails.display_inherited_save_states_label
                         displayEffectiveSummary: gameDetails.display_effective_summary
                         displayRevision: gameDetails.display_revision
                         displayFullscreenSupported: gameDetails.display_fullscreen_supported

@@ -11344,6 +11344,52 @@ identity"
     }
 
     #[test]
+    fn inherit_preview_skips_the_scope_being_edited() {
+        let (_directory, store) = store();
+        for (scope_kind, scope_key, shader) in [
+            ("global", "", "crt-easymode"),
+            ("platform", "Nintendo Entertainment System", "retrotube-tv"),
+            ("game", "game-one", "zfast-crt"),
+        ] {
+            store
+                .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                    scope_kind: scope_kind.into(),
+                    scope_key: scope_key.into(),
+                    emulator_id: "mesen-id".into(),
+                    runtime_kind: "retroarch".into(),
+                    core_name: "mesen".into(),
+                    display_shader: shader.into(),
+                    ..EmulatorLaunchProfile::default()
+                })
+                .unwrap();
+        }
+        let effective = store
+            .resolve_launch_customization(
+                "game-one",
+                "Nintendo Entertainment System",
+                "mesen-id",
+                "retroarch",
+                "mesen",
+            )
+            .unwrap();
+        let inherited_by_game = store
+            .resolve_launch_customization(
+                "",
+                "Nintendo Entertainment System",
+                "mesen-id",
+                "retroarch",
+                "mesen",
+            )
+            .unwrap();
+        let inherited_by_platform = store
+            .resolve_launch_customization("", "", "mesen-id", "retroarch", "mesen")
+            .unwrap();
+        assert_eq!(effective.display_shader, "zfast-crt");
+        assert_eq!(inherited_by_game.display_shader, "retrotube-tv");
+        assert_eq!(inherited_by_platform.display_shader, "crt-easymode");
+    }
+
+    #[test]
     fn launch_profiles_resolve_each_field_by_exact_scope_precedence() {
         let (_directory, store) = store();
         store
