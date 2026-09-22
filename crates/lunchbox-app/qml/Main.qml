@@ -2850,6 +2850,7 @@ ApplicationWindow {
 
     Connections {
         target: gameDetails
+
         function onExo_media_importedChanged() {
             if (gameDetails.exo_media_imported)
                 library.refresh_media()
@@ -12430,6 +12431,7 @@ ApplicationWindow {
                     }
 
                     GamePlayHero {
+                        id: detailsHero
                         width: parent.width
                         local: gameDetails.local || root.selectedDownloadImported
                         loading: gameDetails.loading
@@ -12465,21 +12467,9 @@ ApplicationWindow {
                         displayBezel: gameDetails.display_bezel
                         displaySaveStates: gameDetails.display_save_states
                         displayRevision: gameDetails.display_revision
-                        // Invokables are not tracked properties; reference the
-                        // revision the model bumps whenever the selection
-                        // changes so these re-evaluate.
-                        displayShaderSupported: {
-                            gameDetails.display_revision
-                            return gameDetails.display_shader_supported()
-                        }
-                        displayBezelSupported: {
-                            gameDetails.display_revision
-                            return gameDetails.display_bezel_supported()
-                        }
-                        displaySaveStatesSupported: {
-                            gameDetails.display_revision
-                            return gameDetails.display_save_states_supported()
-                        }
+                        displayShaderSupported: gameDetails.display_shader_supported
+                        displayBezelSupported: gameDetails.display_bezel_supported
+                        displaySaveStatesSupported: gameDetails.display_save_states_supported
                         displayShaderPresetCount: function() {
                             return gameDetails.display_shader_preset_count()
                         }
@@ -23824,7 +23814,12 @@ ApplicationWindow {
                         }
                         RowLayout {
                             Layout.fillWidth: true
-                            visible: launchProfileManager.display_fullscreen_supported()
+                            // Invokables are not tracked; re-evaluate on the
+                            // revision the model bumps when a row is opened.
+                            visible: {
+                                launchProfileManager.editor_revision
+                                return launchProfileManager.display_fullscreen_supported()
+                            }
                             Text {
                                 text: "FULLSCREEN"
                                 color: root.muted
@@ -23842,11 +23837,29 @@ ApplicationWindow {
                                 ]
                                 textRole: "label"
                                 valueRole: "value"
+                            background: Rectangle {
+                                radius: 7
+                                color: "#0b121b"
+                                border.color: launchProfileDisplayFullscreen.activeFocus
+                                              ? root.accent : root.line
                             }
+                            contentItem: Text {
+                                leftPadding: 10
+                                rightPadding: 28
+                                text: launchProfileDisplayFullscreen.displayText
+                                color: root.ink
+                                font.pixelSize: 10
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+}
                         }
                         RowLayout {
                             Layout.fillWidth: true
-                            visible: launchProfileManager.display_shader_preset_supported()
+                            visible: {
+                                launchProfileManager.editor_revision
+                                return launchProfileManager.display_shader_preset_supported()
+                            }
                             Text {
                                 text: "CRT SHADER"
                                 color: root.muted
@@ -23879,11 +23892,29 @@ ApplicationWindow {
                                     if (currentIndex < 0)
                                         currentIndex = 0
                                 }
+                            background: Rectangle {
+                                radius: 7
+                                color: "#0b121b"
+                                border.color: launchProfileDisplayShader.activeFocus
+                                              ? root.accent : root.line
                             }
+                            contentItem: Text {
+                                leftPadding: 10
+                                rightPadding: 28
+                                text: launchProfileDisplayShader.displayText
+                                color: root.ink
+                                font.pixelSize: 10
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+}
                         }
                         RowLayout {
                             Layout.fillWidth: true
-                            visible: launchProfileManager.display_bezel_supported()
+                            visible: {
+                                launchProfileManager.editor_revision
+                                return launchProfileManager.display_bezel_supported()
+                            }
                             Text {
                                 text: "SYSTEM BEZEL"
                                 color: root.muted
@@ -23901,11 +23932,29 @@ ApplicationWindow {
                                 ]
                                 textRole: "label"
                                 valueRole: "value"
+                            background: Rectangle {
+                                radius: 7
+                                color: "#0b121b"
+                                border.color: launchProfileDisplayBezel.activeFocus
+                                              ? root.accent : root.line
                             }
+                            contentItem: Text {
+                                leftPadding: 10
+                                rightPadding: 28
+                                text: launchProfileDisplayBezel.displayText
+                                color: root.ink
+                                font.pixelSize: 10
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+}
                         }
                         RowLayout {
                             Layout.fillWidth: true
-                            visible: launchProfileManager.display_save_states_supported()
+                            visible: {
+                                launchProfileManager.editor_revision
+                                return launchProfileManager.display_save_states_supported()
+                            }
                             Text {
                                 text: "SAVE STATES"
                                 color: root.muted
@@ -23923,7 +23972,22 @@ ApplicationWindow {
                                 ]
                                 textRole: "label"
                                 valueRole: "value"
+                            background: Rectangle {
+                                radius: 7
+                                color: "#0b121b"
+                                border.color: launchProfileDisplaySaveStates.activeFocus
+                                              ? root.accent : root.line
                             }
+                            contentItem: Text {
+                                leftPadding: 10
+                                rightPadding: 28
+                                text: launchProfileDisplaySaveStates.displayText
+                                color: root.ink
+                                font.pixelSize: 10
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+}
                         }
                         LaunchCommandPreview {
                             id: launchProfileManagerPreview
