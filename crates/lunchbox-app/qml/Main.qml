@@ -11372,6 +11372,16 @@ ApplicationWindow {
                 maximumPageDistance: 150
                 frictionPerSecond: 6.0
             }
+            header: SidebarNavButton {
+                label: "All Games"
+                iconName: "games"
+                count: {
+                    library.platform_revision
+                    return library.game_count.toString()
+                }
+                active: root.selectedPlatform === "" && root.availability === ""
+                onClicked: root.selectLibrary("")
+            }
             delegate: SidebarNavButton {
                 required property int index
                 property int revision: library.platform_revision
