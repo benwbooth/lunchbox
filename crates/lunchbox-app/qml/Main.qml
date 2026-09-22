@@ -230,6 +230,8 @@ ApplicationWindow {
     property bool launchProfileProbeTriggered: false
     property bool cloudLaunchPending: false
     property bool cloudObservedGameRunning: false
+    property string saveSyncToast: ""
+    property bool saveSyncToastGood: false
     property var cloudActiveTarget: null
     property string cloudSyncError: ""
     property int mediaBundleProbeStage: 0
@@ -3427,9 +3429,65 @@ ApplicationWindow {
         id: saveSync
     }
 
+    Timer {
+        id: saveSyncToastHideTimer
+        interval: 4200
+        onTriggered: root.saveSyncToast = ""
+    }
+
+    // Floating confirmation that cloud save sync ran around a play session.
+    Rectangle {
+        id: saveSyncToastPill
+        visible: root.saveSyncToast.length > 0
+        z: 1500
+        y: 16
+        x: Math.round((root.width - width) / 2)
+        width: saveSyncToastText.implicitWidth + 30
+        height: 34
+        radius: 17
+        color: root.saveSyncToastGood ? "#1d3d35" : "#26303f"
+        border.color: root.saveSyncToastGood ? root.accentCool : root.accent
+        Rectangle {
+            width: 8
+            height: 8
+            radius: 4
+            anchors.left: parent.left
+            anchors.leftMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            color: root.saveSyncToastGood ? root.accentCool : root.accent
+        }
+        Text {
+            id: saveSyncToastText
+            anchors.centerIn: parent
+            text: root.saveSyncToast
+            color: root.ink
+            font.pixelSize: 11
+            font.weight: Font.DemiBold
+        }
+    }
+
     Connections {
         target: saveSync
         function onRevisionChanged() {
+            // Visible confirmation that save data really synced before and
+            // after play; failures keep their existing dialogs.
+            if (saveSync.busy) {
+                root.saveSyncToast = saveSync.operation === "pre_launch"
+                        ? "Syncing cloud saves before launch…"
+                        : saveSync.operation === "post_exit"
+                          ? "Uploading save data to the cloud…"
+                          : "Syncing save data with the cloud…"
+                root.saveSyncToastGood = false
+                saveSyncToastHideTimer.stop()
+            } else if (saveSync.status === "complete"
+                       || saveSync.status === "skipped") {
+                root.saveSyncToast = saveSync.status === "complete"
+                        ? "Save data synced ✓ "
+                          + Qt.formatDateTime(new Date(), "h:mm ap")
+                        : "Save data checked — no changes"
+                root.saveSyncToastGood = true
+                saveSyncToastHideTimer.restart()
+            }
             if (saveSync.status === "conflicts") {
                 saveSyncConflictDialog.open()
                 return
