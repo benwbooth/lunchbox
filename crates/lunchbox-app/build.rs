@@ -50,6 +50,14 @@ fn main() {
     if let Ok(path) = std::env::var("LUNCHBOX_SDL3_LIBRARY") {
         println!("cargo:rustc-env=LUNCHBOX_SDL3_LIBRARY={path}");
     }
+    // Printing any rerun-if-changed disables Cargo's default whole-package
+    // invalidation, so the QML tree must be declared explicitly: without
+    // this, QML-only edits never rerun the build script and the binary
+    // keeps embedding the stale staged copies.
+    rerun_on_source_changes(
+        &PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"))
+            .join("qml"),
+    );
     generate_arcade_lookup();
     generate_platform_record_index();
     generate_retroarch_core_index();

@@ -79,6 +79,10 @@ Rectangle {
                                             && emulatorOptionCount === 0
     readonly property bool firmwareSetupNeeded: !discoveryBusy
                                                 && firmwareMissingCount > 0
+    readonly property bool displaySectionAvailable: emulatorOptionCount > 0
+                                                     && (displayShaderSupported
+                                                         || displayBezelSupported
+                                                         || displaySaveStatesSupported)
 
     visible: local && !loading
     implicitHeight: contents.implicitHeight + 28
@@ -154,11 +158,9 @@ Rectangle {
         }
 
         Column {
+            objectName: "displaySection"
             width: parent.width
-            visible: hero.emulatorOptionCount > 0
-                     && (hero.displayShaderSupported
-                         || hero.displayBezelSupported
-                         || hero.displaySaveStatesSupported)
+            visible: hero.displaySectionAvailable
             spacing: 5
             RowLayout {
                 width: parent.width

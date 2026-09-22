@@ -76,6 +76,26 @@ TestCase {
         verify(hero.hasStarredOption)
     }
 
+    function test_display_section_appears_for_supported_adapters() {
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        const section = findChild(hero, "displaySection")
+        verify(section)
+        compare(hero.displaySectionAvailable, true)
+    }
+
+    function test_display_section_hides_for_unsupported_adapters() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            displayShaderSupported: false,
+            displayBezelSupported: false,
+            displaySaveStatesSupported: false
+        })
+        verify(hero)
+        const section = findChild(hero, "displaySection")
+        verify(section)
+        compare(hero.displaySectionAvailable, false)
+    }
+
     function test_non_local_game_hides_play_section() {
         const hero = createTemporaryObject(heroComponent, testCase, { local: false })
         verify(hero)
