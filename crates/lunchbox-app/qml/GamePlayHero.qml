@@ -162,17 +162,6 @@ Rectangle {
             width: parent.width
             visible: hero.displaySectionAvailable
             spacing: 5
-            Component.onCompleted: logDisplayState()
-            onVisibleChanged: logDisplayState()
-            function logDisplayState() {
-                console.log("LUNCHBOX_DISPLAY_SECTION state available=",
-                            hero.displaySectionAvailable, "count=",
-                            hero.emulatorOptionCount, "shader=",
-                            hero.displayShaderSupported, "bezel=",
-                            hero.displayBezelSupported, "states=",
-                            hero.displaySaveStatesSupported, "revision=",
-                            hero.displayRevision, "visible=", visible)
-            }
             RowLayout {
                 width: parent.width
                 spacing: 6
