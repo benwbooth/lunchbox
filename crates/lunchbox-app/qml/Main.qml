@@ -12181,7 +12181,15 @@ ApplicationWindow {
             contentHeight: detailContent.height
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-            AcceleratedWheelHandler { scroller: detailScroll }
+            AcceleratedWheelHandler {
+                scroller: detailScroll
+                // The tall details pane only needs to travel its own height,
+                // so halve the per-notch travel and shorten the glide tail.
+                wheelPageFactor: 1.8
+                minimumPageDistance: 600
+                maximumPageDistance: 1400
+                frictionPerSecond: 5.5
+            }
 
             Column {
                 id: detailContent
