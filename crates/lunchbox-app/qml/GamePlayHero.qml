@@ -166,7 +166,7 @@ Rectangle {
                 width: parent.width
                 spacing: 6
                 Text {
-                    text: "DISPLAY"
+                    text: "DISPLAY SETTINGS"
                     color: "#83e3ad"
                     font.pixelSize: 9
                     font.weight: Font.Bold
@@ -174,7 +174,7 @@ Rectangle {
                     Layout.fillWidth: true
                 }
                 Button {
-                    text: "GAME"
+                    text: "THIS GAME"
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     flat: true
@@ -197,7 +197,7 @@ Rectangle {
                     }
                 }
                 Button {
-                    text: "PLATFORM"
+                    text: "THIS PLATFORM"
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     flat: true
@@ -560,13 +560,20 @@ background: Rectangle {
                 font.pixelSize: 9
                 wrapMode: Text.WordWrap
             }
+            Text {
+                text: "EMULATOR DEFAULT"
+                color: "#83e3ad"
+                font.pixelSize: 9
+                font.weight: Font.Bold
+                font.letterSpacing: 0.8
+            }
             Row {
                 width: parent.width
                 spacing: 6
                 Button {
                     width: (parent.width - 12) / 3
                     height: 32
-                    text: "GAME DEFAULT"
+                    text: "THIS GAME"
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     onClicked: hero.saveGameDefaultRequested()
@@ -580,7 +587,7 @@ background: Rectangle {
                 Button {
                     width: (parent.width - 12) / 3
                     height: 32
-                    text: "PLATFORM DEFAULT"
+                    text: "THIS PLATFORM"
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     onClicked: hero.savePlatformDefaultRequested()
@@ -595,7 +602,7 @@ background: Rectangle {
                     width: (parent.width - 12) / 3
                     height: 32
                     visible: hero.preferenceScope.length > 0
-                    text: "RESET DEFAULT"
+                    text: "RESET"
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     onClicked: hero.clearDefaultRequested()
