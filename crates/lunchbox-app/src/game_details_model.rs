@@ -5942,6 +5942,20 @@ impl qobject::GameDetailsModel {
                         option,
                     } = &launch_input
                     {
+                        // Pin this core's saves/states to Lunchbox-owned
+                        // directories so cloud sync has an exact route and
+                        // cores never share a frontend tree.
+                        if option.runtime_kind
+                            == crate::emulator::EmulatorRuntimeKind::RetroArch
+                        {
+                            for warning in crate::retroarch_saves::attach_launch_save_override(
+                                &mut plan,
+                                &option.executable,
+                                &option.core_name,
+                            ) {
+                                eprintln!("LUNCHBOX_RETROARCH_SAVE_OVERRIDE_DEGRADED: {warning}");
+                            }
+                        }
                         let display_customization =
                             crate::settings::SettingsStore::open_default().and_then(|store| {
                                 store.resolve_launch_customization(

@@ -307,9 +307,36 @@ pub fn save_route_roots_for_platform(
     bases: &LocationBases,
 ) -> Result<Vec<RouteRoot>> {
     if emulator_slug.starts_with("retroarch-core-") {
-        bail!(
-            "{emulator_slug} has no safe core-specific physical save/state route on {platform}; RetroArch's shared frontend directories are intentionally refused until Lunchbox owns matching per-core launch-time directory overrides"
+        // Lunchbox owns per-core save/state directories for every RetroArch
+        // launch (pinned through the launch-time private config and
+        // pre-migrated from the frontend tree), so the exact core route is
+        // safe to synchronize.
+        let core_name = emulator_slug
+            .strip_prefix("retroarch-core-")
+            .context("malformed RetroArch core slug")?;
+        let roots = crate::retroarch_saves::lunchbox_route_roots(core_name);
+        ensure!(
+            roots.len() == 2,
+            "{emulator_slug} has no Lunchbox-owned save/state directories"
         );
+        return Ok(vec![
+            RouteRoot {
+                route: SaveRoute {
+                    purpose: SavePurpose::Saves,
+                    root_index: 0,
+                },
+                path: roots[0].clone(),
+                create_if_missing: true,
+            },
+            RouteRoot {
+                route: SaveRoute {
+                    purpose: SavePurpose::States,
+                    root_index: 0,
+                },
+                path: roots[1].clone(),
+                create_if_missing: true,
+            },
+        ]);
     }
     let locations = save_locations_for_platform(records, emulator_slug, platform, bases)?;
     if sync_model(emulator_slug).0 == SaveSyncModel::WholeImage {
@@ -933,17 +960,31 @@ mod tests {
     }
 
     #[test]
-    fn retroarch_core_scopes_refuse_shared_frontend_routes() {
-        let error = save_route_roots_for_platform(
+    fn retroarch_core_scopes_resolve_lunchbox_owned_per_core_routes() {
+        // Lunchbox pins per-core save/state directories at launch and
+        // pre-migrates the frontend tree, so the exact core route is safe to
+        // synchronize; the shared frontend directories stay refused.
+        let roots = save_route_roots_for_platform(
             &load_records().unwrap(),
             "retroarch-core-fceumm",
             "linux",
             &bases(),
         )
-        .unwrap_err()
-        .to_string();
-        assert!(error.contains("no safe core-specific physical save/state route"));
-        assert!(error.contains("shared frontend directories are intentionally refused"));
+        .unwrap();
+        assert_eq!(roots.len(), 2);
+        assert!(
+            roots[0]
+                .path
+                .to_string_lossy()
+                .contains("retroarch-launch/fceumm/saves")
+        );
+        assert!(
+            roots[1]
+                .path
+                .to_string_lossy()
+                .contains("retroarch-launch/fceumm/states")
+        );
+        assert!(roots.iter().all(|root| root.create_if_missing));
     }
 
     #[test]
