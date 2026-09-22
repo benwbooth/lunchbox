@@ -426,29 +426,56 @@ background: Rectangle {
                 font.weight: Font.Bold
                 font.letterSpacing: 0.8
             }
-            Text {
-                visible: standaloneIndices.length > 0 && retroarchIndices.length > 0
-                text: "STANDALONE"
-                color: hero.muted
-                font.pixelSize: 8
-                font.weight: Font.Bold
-                font.letterSpacing: 0.8
-            }
             ComboBox {
-                id: emulatorPicker
+                objectName: "emulatorPicker"
                 width: parent.width
                 height: 40
-                visible: standaloneIndices.length > 0
-                model: standaloneIndices.length
-                currentIndex: standaloneIndices.indexOf(hero.selectedEmulatorOption)
-                displayText: currentIndex >= 0
-                             ? hero.emulatorLabelAt(standaloneIndices[currentIndex])
-                             : "Choose an emulator"
-                onActivated: function(index) { hero.emulatorSelected(standaloneIndices[index]) }
+                textRole: "label"
+                valueRole: "index"
+                model: {
+                    // Two explicit passes keep each section contiguous for
+                    // the popup's section headers: standalone, then cores.
+                    const items = []
+                    for (let pass = 0; pass < 2; ++pass) {
+                        const wanted = pass === 0 ? "standalone" : "retroarch"
+                        for (let i = 0; i < hero.emulatorOptionCount; ++i) {
+                            if (hero.emulatorOptionKindAt(i) !== wanted)
+                                continue
+                            items.push({
+                                index: i,
+                                kind: wanted === "retroarch"
+                                      ? "RetroArch cores" : "Standalone",
+                                label: hero.emulatorLabelAt(i)
+                            })
+                        }
+                    }
+                    return items
+                }
+                displayText: currentIndex >= 0 && currentIndex < model.length
+                             ? model[currentIndex].label : "Choose an emulator"
+                onActivated: function(activatedIndex) {
+                    hero.emulatorSelected(model[activatedIndex].index)
+                }
+                function syncSelection() {
+                    for (let i = 0; i < model.length; ++i) {
+                        if (model[i].index === hero.selectedEmulatorOption) {
+                            currentIndex = i
+                            return
+                        }
+                    }
+                    currentIndex = -1
+                }
+                onModelChanged: emulatorPicker.syncSelection()
+                Component.onCompleted: emulatorPicker.syncSelection()
+                Connections {
+                    target: hero
+                    function onSelectedEmulatorOptionChanged() { emulatorPicker.syncSelection() }
+                }
                 delegate: ItemDelegate {
                     required property int index
-                    width: emulatorPicker.width
-                    text: hero.emulatorLabelAt(standaloneIndices[index])
+                    width: ListView.view ? ListView.view.width : emulatorPicker.width
+                    height: 34
+                    text: emulatorPicker.model[index].label
                     font.pixelSize: 10
                     highlighted: emulatorPicker.highlightedIndex === index
                 }
@@ -468,51 +495,51 @@ background: Rectangle {
                     border.width: 2
                     border.color: "#43a876"
                 }
-                Accessible.name: "Select standalone emulator"
-            }
-            Text {
-                visible: retroarchIndices.length > 0
-                text: "RETROARCH CORES"
-                color: hero.muted
-                font.pixelSize: 8
-                font.weight: Font.Bold
-                font.letterSpacing: 0.8
-            }
-            ComboBox {
-                id: corePicker
-                width: parent.width
-                height: 40
-                visible: retroarchIndices.length > 0
-                model: retroarchIndices.length
-                currentIndex: retroarchIndices.indexOf(hero.selectedEmulatorOption)
-                displayText: currentIndex >= 0
-                             ? hero.emulatorLabelAt(retroarchIndices[currentIndex])
-                             : "Choose a RetroArch core"
-                onActivated: function(index) { hero.emulatorSelected(retroarchIndices[index]) }
-                delegate: ItemDelegate {
-                    required property int index
-                    width: corePicker.width
-                    text: hero.emulatorLabelAt(retroarchIndices[index])
-                    font.pixelSize: 10
-                    highlighted: corePicker.highlightedIndex === index
+                popup: Popup {
+                    y: emulatorPicker.height - 1
+                    width: emulatorPicker.width
+                    height: Math.min(contentItem.implicitHeight + 2, 480)
+                    padding: 1
+                    contentItem: ListView {
+                        clip: true
+                        implicitHeight: contentHeight
+                        model: emulatorPicker.popup.visible
+                               ? emulatorPicker.model : null
+                        currentIndex: emulatorPicker.highlightedIndex
+                        section.property: "kind"
+                        section.delegate: Text {
+                            required property string section
+                            text: section
+                            topPadding: 6
+                            leftPadding: 10
+                            bottomPadding: 2
+                            color: "#83e3ad"
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.8
+                        }
+                        delegate: ItemDelegate {
+                            required property int index
+                            width: ListView.view ? ListView.view.width : 0
+                            height: 32
+                            text: emulatorPicker.model[index].label
+                            font.pixelSize: 10
+                            highlighted: emulatorPicker.highlightedIndex === index
+                                             || emulatorPicker.currentIndex === index
+                            onClicked: {
+                                emulatorPicker.currentIndex = index
+                                emulatorPicker.popup.close()
+                                emulatorPicker.activated(index)
+                            }
+                        }
+                    }
+                    background: Rectangle {
+                        color: "#0d211a"
+                        border.color: "#43a876"
+                        radius: 8
+                    }
                 }
-                contentItem: Text {
-                    leftPadding: 11
-                    rightPadding: 30
-                    text: corePicker.displayText
-                    color: hero.ink
-                    font.pixelSize: 10
-                    font.weight: Font.DemiBold
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
-                background: Rectangle {
-                    radius: 8
-                    color: "#0d211a"
-                    border.width: 2
-                    border.color: "#43a876"
-                }
-                Accessible.name: "Select RetroArch core"
+                Accessible.name: "Select emulator"
             }
             Text {
                 visible: hero.hasStarredOption

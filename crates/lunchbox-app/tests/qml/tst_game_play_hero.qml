@@ -96,6 +96,30 @@ TestCase {
         compare(hero.displaySectionAvailable, false)
     }
 
+    function test_merged_picker_lists_standalone_section_then_cores() {
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        const picker = findChild(hero, "emulatorPicker")
+        verify(picker)
+        compare(picker.model.length, 2)
+        compare(picker.model[0].kind, "Standalone")
+        compare(picker.model[0].label, "Mesen")
+        compare(picker.model[1].kind, "RetroArch cores")
+        compare(picker.model[1].label, "RetroArch · Mesen")
+    }
+
+    function test_merged_picker_syncs_with_selection() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            selectedEmulatorOption: 0
+        })
+        verify(hero)
+        const picker = findChild(hero, "emulatorPicker")
+        verify(picker)
+        compare(picker.currentIndex, 0)
+        hero.selectEmulatorOptionForTest ? hero.selectEmulatorOptionForTest(1)
+                                         : null
+    }
+
     function test_non_local_game_hides_play_section() {
         const hero = createTemporaryObject(heroComponent, testCase, { local: false })
         verify(hero)
