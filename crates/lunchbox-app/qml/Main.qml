@@ -480,6 +480,8 @@ ApplicationWindow {
     palette.highlightedText: "#10141c"
 
     onClosing: close => {
+        if (!root.automatedProbeRun)
+            root.rememberPlatformSearch(true)
         if (!root.automatedProbeRun && root.librarySessionFullRestored && root.startupPresented)
             root.saveLibrarySession()
         if (root.couchLaunchUiProbe) {
@@ -503,11 +505,11 @@ ApplicationWindow {
     }
 
     function saveLibrarySession() {
+        root.rememberPlatformSearch(true)
         const view = gameViewLoader.item
         if (!view || library.filtering)
             return
         const position = view ? Math.max(0, Math.round(view.contentY)) : 0
-        navigationSettings.setValue("searchText", searchField.text)
         navigationSettings.setValue("availability", root.availability)
         navigationSettings.sync()
         library.save_library_session(root.selectedPlatform,
@@ -669,13 +671,46 @@ ApplicationWindow {
         category: "LibraryNavigation"
     }
 
+    PlatformSearchState { id: platformSearch }
+    Timer {
+        id: platformSearchSyncTimer
+        interval: 300
+        repeat: false
+        onTriggered: navigationSettings.sync()
+    }
+
+    function rememberPlatformSearch(sync) {
+        if (!platformSearch.initialized || root.automatedProbeRun)
+            return
+        platformSearch.update(searchField.text)
+        navigationSettings.setValue("searchTextByPlatform", platformSearch.serialized())
+        if (sync) {
+            platformSearchSyncTimer.stop()
+            navigationSettings.sync()
+        } else {
+            platformSearchSyncTimer.restart()
+        }
+    }
+
+    function restorePlatformSearch(platform) {
+        if (!platformSearch.initialized)
+            return
+        searchField.text = platformSearch.switchTo(platform, searchField.text)
+        navigationSettings.setValue("searchTextByPlatform", platformSearch.serialized())
+        platformSearchSyncTimer.stop()
+        navigationSettings.sync()
+    }
+
     function scheduleSessionSave() {
         if (root.librarySessionFullRestored && root.startupPresented && !root.automatedProbeRun
                 && !library.filtering)
             librarySessionSaveTimer.restart()
     }
     onSelectedGameIdChanged: scheduleSessionSave()
-    onSelectedPlatformChanged: scheduleSessionSave()
+    onSelectedPlatformChanged: {
+        root.restorePlatformSearch(root.selectedPlatform)
+        root.scheduleSessionSave()
+    }
     Connections {
         target: gameViewLoader.item
         function onContentYChanged() { root.scheduleSessionSave() }
@@ -1055,7 +1090,6 @@ ApplicationWindow {
         selectedCollectionId = ""
         selectedCollectionName = ""
         availability = ""
-        searchField.text = ""
         scheduleFilter()
     }
 
@@ -8168,10 +8202,13 @@ ApplicationWindow {
         onTriggered: {
             contentLayout.ensurePolished()
             if (!root.librarySessionFilterApplied) {
+                searchField.text = platformSearch.initialize(
+                            navigationSettings.value("searchTextByPlatform", ""),
+                            library.session_platform,
+                            navigationSettings.value("searchText", ""))
                 root.selectedPlatform = library.session_platform
                 root.selectedCollectionId = ""
                 root.selectedCollectionName = ""
-                searchField.text = navigationSettings.value("searchText", "")
                 root.availability = navigationSettings.value("availability", "")
                 library.apply_filter(searchField.text,
                                      root.selectedPlatform,
@@ -11087,8 +11124,14 @@ ApplicationWindow {
             selectionColor: root.accent
             selectedTextColor: "#15100a"
             font.pixelSize: 14
-            onTextEdited: root.scheduleFilter()
-            onClearRequested: root.scheduleFilter()
+            onTextEdited: {
+                root.rememberPlatformSearch(false)
+                root.scheduleFilter()
+            }
+            onClearRequested: {
+                root.rememberPlatformSearch(false)
+                root.scheduleFilter()
+            }
             background: Rectangle {
                 radius: 11
                 color: "#0a0f16"
