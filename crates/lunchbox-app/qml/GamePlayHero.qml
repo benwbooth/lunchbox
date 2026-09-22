@@ -65,6 +65,9 @@ Rectangle {
     required property var displayShaderPresetCount
     required property var displayShaderPresetIdAt
     required property var displayShaderPresetLabelAt
+    required property var displayBezelChoiceCount
+    required property var displayBezelChoiceIdAt
+    required property var displayBezelChoiceLabelAt
     required property var displayScopeSelected
     required property var displaySettingSaved
 
@@ -383,15 +386,23 @@ background: Rectangle {
                         width: parent.width
                         textRole: "label"
                         valueRole: "value"
-                        model: [
-                            { value: "", label: hero.displayInheritedBezelLabel },
-                            { value: "off", label: "Off" },
-                            { value: "system", label: "System pack" }
-                        ]
+                        model: {
+                            hero.displayRevision
+                            const items = [
+                                { value: "", label: hero.displayInheritedBezelLabel },
+                                { value: "off", label: "Off" }
+                            ]
+                            for (let i = 0; i < hero.displayBezelChoiceCount(); ++i)
+                                items.push({
+                                    value: hero.displayBezelChoiceIdAt(i),
+                                    label: hero.displayBezelChoiceLabelAt(i)
+                                })
+                            return items
+                        }
                         onModelChanged: displayBezelCombo.syncValue()
                         Component.onCompleted: displayBezelCombo.syncValue()
                         function syncValue() {
-                            currentIndex = ["", "off", "system"].indexOf(hero.displayBezel)
+                            currentIndex = indexOfValue(hero.displayBezel)
                             if (currentIndex < 0)
                                 currentIndex = 0
                         }

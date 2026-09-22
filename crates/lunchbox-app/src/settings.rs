@@ -7215,7 +7215,7 @@ fn migrate(connection: &Connection) -> Result<()> {
                  CHECK (display_fullscreen IN ('', 'true', 'false')),
              display_shader TEXT NOT NULL DEFAULT '',
              display_bezel TEXT NOT NULL DEFAULT ''
-                 CHECK (display_bezel IN ('', 'off', 'system')),
+                 CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain')),
              save_states TEXT NOT NULL DEFAULT ''
                  CHECK (save_states IN ('', 'off', 'on')),
              updated_at INTEGER NOT NULL,
@@ -7411,6 +7411,9 @@ fn migrate(connection: &Connection) -> Result<()> {
         )?;
     }
     if !emulator_launch_profiles_have_display_columns(connection)? {
+        rebuild_emulator_launch_profiles_display_columns(connection)?;
+    }
+    if !emulator_launch_profiles_supports_bezel_choices(connection)? {
         rebuild_emulator_launch_profiles_display_columns(connection)?;
     }
     if !column_exists(connection, "sidebar_preferences", "details_width")? {
@@ -7647,6 +7650,15 @@ fn emulator_launch_profiles_have_display_columns(connection: &Connection) -> Res
     )
 }
 
+fn emulator_launch_profiles_supports_bezel_choices(connection: &Connection) -> Result<bool> {
+    let definition: String = connection.query_row(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='emulator_launch_profiles'",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(definition.contains("'orionsangel-plain'"))
+}
+
 // Existing databases carry a CHECK that demands a non-empty argument or
 // template, so session settings cannot simply be added as columns: the table
 // is rebuilt to relax that CHECK while preserving every saved profile,
@@ -7659,6 +7671,12 @@ fn rebuild_emulator_launch_profiles_display_columns(connection: &Connection) -> 
     } else {
         "'', '', '',"
     };
+    let copied_save_states =
+        if column_exists(connection, "emulator_launch_profiles", "save_states")? {
+            "save_states"
+        } else {
+            "''"
+        };
     connection.execute_batch(&format!(
         "CREATE TABLE emulator_launch_profiles_rebuilt (
              scope_kind TEXT NOT NULL CHECK (
@@ -7676,7 +7694,7 @@ fn rebuild_emulator_launch_profiles_display_columns(connection: &Connection) -> 
                  CHECK (display_fullscreen IN ('', 'true', 'false')),
              display_shader TEXT NOT NULL DEFAULT '',
              display_bezel TEXT NOT NULL DEFAULT ''
-                 CHECK (display_bezel IN ('', 'off', 'system')),
+                 CHECK (display_bezel IN ('', 'off', 'system', 'themed', 'orionsangel', 'orionsangel-plain')),
              save_states TEXT NOT NULL DEFAULT ''
                  CHECK (save_states IN ('', 'off', 'on')),
              updated_at INTEGER NOT NULL,
@@ -7704,7 +7722,7 @@ fn rebuild_emulator_launch_profiles_display_columns(connection: &Connection) -> 
          )
          SELECT scope_kind, scope_key, emulator_id, runtime_kind, core_name,
                 extra_arguments, command_template, {copied_display_columns}
-                '', updated_at
+                {copied_save_states}, updated_at
          FROM emulator_launch_profiles;
          DROP TABLE emulator_launch_profiles;
          ALTER TABLE emulator_launch_profiles_rebuilt RENAME TO emulator_launch_profiles;
@@ -8521,7 +8539,7 @@ fn validate_display_profile_values(
         other => bail!("unknown fullscreen display setting: {other}"),
     }
     match display_bezel {
-        "" | "off" | "system" => {}
+        "" | "off" | "system" | "themed" | "orionsangel" | "orionsangel-plain" => {}
         other => bail!("unknown bezel display setting: {other}"),
     }
     match save_states {
@@ -11266,6 +11284,62 @@ identity"
         assert_eq!(profile.display_shader, "retrotube-tv");
         assert_eq!(profile.display_bezel, "system");
         assert_eq!(profile.save_states, "");
+    }
+
+    #[test]
+    fn existing_save_states_survive_the_new_bezel_choices_migration() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.db");
+        {
+            let connection = rusqlite::Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE emulator_launch_profiles (
+                         scope_kind TEXT NOT NULL,
+                         scope_key TEXT NOT NULL,
+                         emulator_id TEXT NOT NULL,
+                         runtime_kind TEXT NOT NULL,
+                         core_name TEXT NOT NULL DEFAULT '',
+                         extra_arguments TEXT NOT NULL DEFAULT '',
+                         command_template TEXT NOT NULL DEFAULT '',
+                         display_fullscreen TEXT NOT NULL DEFAULT '',
+                         display_shader TEXT NOT NULL DEFAULT '',
+                         display_bezel TEXT NOT NULL DEFAULT ''
+                             CHECK (display_bezel IN ('', 'off', 'system')),
+                         save_states TEXT NOT NULL DEFAULT ''
+                             CHECK (save_states IN ('', 'off', 'on')),
+                         updated_at INTEGER NOT NULL,
+                         PRIMARY KEY (
+                             scope_kind, scope_key, emulator_id, runtime_kind, core_name
+                         )
+                     );
+                     INSERT INTO emulator_launch_profiles (
+                         scope_kind, scope_key, emulator_id, runtime_kind, core_name,
+                         display_bezel, save_states, updated_at
+                     ) VALUES ('game', 'game-id', 'snes-id', 'retroarch', 'snes9x',
+                               'system', 'on', 7);",
+                )
+                .unwrap();
+        }
+        let store = SettingsStore::at(&path).unwrap();
+        let profile = store
+            .emulator_launch_profile("game", "game-id", "snes-id", "retroarch", "snes9x")
+            .unwrap()
+            .unwrap();
+        assert_eq!(profile.display_bezel, "system");
+        assert_eq!(profile.save_states, "on");
+        store
+            .set_emulator_launch_profile(&EmulatorLaunchProfile {
+                scope_kind: "game".into(),
+                scope_key: "game-id".into(),
+                emulator_id: "snes-id".into(),
+                runtime_kind: "retroarch".into(),
+                core_name: "snes9x".into(),
+                display_bezel: "orionsangel".into(),
+                save_states: "on".into(),
+                ..EmulatorLaunchProfile::default()
+            })
+            .unwrap();
     }
 
     #[test]

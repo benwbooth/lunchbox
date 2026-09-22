@@ -14,8 +14,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 
-const PACK_RAW_BASE: &str = "https://raw.githubusercontent.com/thebezelproject/bezelprojectsa-";
-const PACK_API_BASE: &str = "https://api.github.com/repos/thebezelproject/bezelprojectsa-";
+const PACK_RAW_BASE: &str = "https://raw.githubusercontent.com/thebezelproject/";
+const PACK_API_BASE: &str = "https://api.github.com/repos/thebezelproject/";
 const PACK_BRANCH: &str = "master";
 const OVERLAY_ROOT_IN_PACK: &str = "retroarch/overlay/GameBezels";
 const INDEX_FILE: &str = ".index.json";
@@ -142,17 +142,40 @@ struct BezelConfig {
     system: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PackStyle {
+    SystemArt,
+    GameArt,
+}
+
+impl PackStyle {
+    fn repository(self, theme: &str) -> String {
+        let prefix = match self {
+            Self::SystemArt => "bezelprojectsa-",
+            Self::GameArt => "bezelproject-",
+        };
+        format!("{prefix}{theme}")
+    }
+}
+
 /// Resolve (downloading on first use) the overlay config for one ROM stem.
 /// A miss is a normal outcome - unnamed revisions and obscure regions have
 /// no bezel - so `Ok(None)` simply means "no bezel for this game".
 pub fn system_bezel_overlay(platform: &str, rom_stem: &str) -> Result<Option<PathBuf>> {
+    bezel_overlay(platform, rom_stem, PackStyle::SystemArt)
+}
+
+pub fn bezel_overlay(platform: &str, rom_stem: &str, style: PackStyle) -> Result<Option<PathBuf>> {
     let Some(theme) = theme_for_platform(platform) else {
         return Ok(None);
     };
     if rom_stem.trim().is_empty() {
         return Ok(None);
     }
-    let storage = bezel_storage_directory()?.join(theme);
+    let storage = match style {
+        PackStyle::SystemArt => bezel_storage_directory()?.join(theme),
+        PackStyle::GameArt => bezel_storage_directory()?.join("game-art").join(theme),
+    };
     fs::create_dir_all(&storage).with_context(|| {
         format!(
             "creating the {} system bezel directory {}",
@@ -163,16 +186,16 @@ pub fn system_bezel_overlay(platform: &str, rom_stem: &str) -> Result<Option<Pat
 
     let selection = match cached_config(&storage, rom_stem) {
         Some(selection) => selection,
-        None => match resolve_pack_config_name(theme, &storage, rom_stem)? {
+        None => match resolve_pack_config_name(theme, &storage, rom_stem, style)? {
             Some(selection) => {
-                fetch_config(theme, &storage, &selection)?;
+                fetch_config(theme, &storage, &selection, style)?;
                 selection
             }
             None => return Ok(None),
         },
     };
     let config_path = storage.join(&selection.name);
-    let png_name = ensure_local_png(theme, &storage, &config_path, selection.system)?;
+    let png_name = ensure_local_png(theme, &storage, &config_path, selection.system, style)?;
     rewrite_overlay_path(&config_path, &png_name)?;
     Ok(Some(config_path))
 }
@@ -208,10 +231,11 @@ fn resolve_pack_config_name(
     theme: &str,
     storage: &Path,
     rom_stem: &str,
+    style: PackStyle,
 ) -> Result<Option<BezelConfig>> {
     let index = match read_index(storage) {
         Some(index) if !index_expired(&index) && index.system_config_scanned => index,
-        _ => fetch_index(theme).map_err(|error| {
+        _ => fetch_index(theme, style).map_err(|error| {
             anyhow::anyhow!("listing The Bezel Project {} pack: {error:#}", theme)
         })?,
     };
@@ -232,12 +256,15 @@ fn resolve_pack_config_name(
         }))
 }
 
-fn fetch_index(theme: &str) -> Result<PackIndex> {
-    let directory = pack_overlay_directory(theme)?;
+fn fetch_index(theme: &str, style: PackStyle) -> Result<PackIndex> {
+    let directory = pack_overlay_directory(theme, style)?;
     // The contents API caps directory listings at 1000 entries, which would
     // silently drop every game past the cutoff, so walk the recursive git
     // tree instead.
-    let url = format!("{PACK_API_BASE}{theme}/git/trees/{PACK_BRANCH}?recursive=1");
+    let url = format!(
+        "{PACK_API_BASE}{}/git/trees/{PACK_BRANCH}?recursive=1",
+        style.repository(theme)
+    );
     let text = fetch_text(&url, 32 * 1024 * 1024)?;
     let value: serde_json::Value =
         serde_json::from_str(&text).context("parsing the Bezel Project pack tree")?;
@@ -303,8 +330,11 @@ fn tree_configs(value: &serde_json::Value, prefix: &str) -> Vec<String> {
 
 /// The directory inside the pack is usually the theme name, but the exact
 /// casing lives in the repo, so it is resolved through the pack listing.
-fn pack_overlay_directory(theme: &str) -> Result<String> {
-    let url = format!("{PACK_API_BASE}{theme}/contents/{OVERLAY_ROOT_IN_PACK}?ref={PACK_BRANCH}");
+fn pack_overlay_directory(theme: &str, style: PackStyle) -> Result<String> {
+    let url = format!(
+        "{PACK_API_BASE}{}/contents/{OVERLAY_ROOT_IN_PACK}?ref={PACK_BRANCH}",
+        style.repository(theme)
+    );
     let text = fetch_text(&url, 1024 * 1024)?;
     let entries: Vec<serde_json::Value> =
         serde_json::from_str(&text).context("parsing the Bezel Project pack directories")?;
@@ -325,7 +355,12 @@ fn pack_overlay_directory(theme: &str) -> Result<String> {
     bail!("the {theme} pack has no {} directory", OVERLAY_ROOT_IN_PACK)
 }
 
-fn fetch_config(theme: &str, storage: &Path, selection: &BezelConfig) -> Result<()> {
+fn fetch_config(
+    theme: &str,
+    storage: &Path,
+    selection: &BezelConfig,
+    style: PackStyle,
+) -> Result<()> {
     let directory = read_index(storage)
         .map(|index| index.directory)
         .unwrap_or_else(|| theme.to_owned());
@@ -335,7 +370,8 @@ fn fetch_config(theme: &str, storage: &Path, selection: &BezelConfig) -> Result<
         format!("{OVERLAY_ROOT_IN_PACK}/{directory}")
     };
     let url = format!(
-        "{PACK_RAW_BASE}{theme}/{PACK_BRANCH}/{prefix}/{}",
+        "{PACK_RAW_BASE}{}/{PACK_BRANCH}/{prefix}/{}",
+        style.repository(theme),
         percent_encode(&selection.name)
     );
     let text = fetch_text(&url, MAX_CONFIG_BYTES as u64)?;
@@ -357,6 +393,7 @@ fn ensure_local_png(
     storage: &Path,
     config_path: &Path,
     system: bool,
+    style: PackStyle,
 ) -> Result<String> {
     let config = fs::read_to_string(config_path)
         .with_context(|| format!("reading {}", config_path.display()))?;
@@ -384,7 +421,8 @@ fn ensure_local_png(
             format!("{OVERLAY_ROOT_IN_PACK}/{directory}")
         };
         let url = format!(
-            "{PACK_RAW_BASE}{theme}/{PACK_BRANCH}/{prefix}/{}",
+            "{PACK_RAW_BASE}{}/{PACK_BRANCH}/{prefix}/{}",
+            style.repository(theme),
             percent_encode(&remote)
         );
         let bytes = fetch_bytes(&url, MAX_IMAGE_BYTES)?;
@@ -580,9 +618,14 @@ mod tests {
             system_config_scanned: true,
         };
         write_index(directory.path(), &index).unwrap();
-        let selected = resolve_pack_config_name("SNES", directory.path(), "Super Metroid (USA)")
-            .unwrap()
-            .unwrap();
+        let selected = resolve_pack_config_name(
+            "SNES",
+            directory.path(),
+            "Super Metroid (USA)",
+            PackStyle::SystemArt,
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(selected.name, "Super-Nintendo-Entertainment-System.cfg");
         assert!(selected.system);
     }

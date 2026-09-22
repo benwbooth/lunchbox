@@ -193,6 +193,8 @@ pub mod qobject {
         #[qproperty(QString, display_fullscreen)]
         #[qproperty(QString, display_shader)]
         #[qproperty(QString, display_bezel)]
+        #[qproperty(i32, display_output_width)]
+        #[qproperty(i32, display_output_height)]
         #[qproperty(QString, display_save_states)]
         #[qproperty(QString, display_inherited_fullscreen_label)]
         #[qproperty(QString, display_inherited_shader_label)]
@@ -458,6 +460,15 @@ pub mod qobject {
 
         #[qinvokable]
         fn display_shader_preset_label_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn display_bezel_choice_count(self: &GameDetailsModel) -> i32;
+
+        #[qinvokable]
+        fn display_bezel_choice_id_at(self: &GameDetailsModel, index: i32) -> QString;
+
+        #[qinvokable]
+        fn display_bezel_choice_label_at(self: &GameDetailsModel, index: i32) -> QString;
 
         #[qinvokable]
         fn open_firmware_directory(self: Pin<&mut GameDetailsModel>);
@@ -852,6 +863,8 @@ pub struct GameDetailsModelRust {
     display_fullscreen: QString,
     display_shader: QString,
     display_bezel: QString,
+    display_output_width: i32,
+    display_output_height: i32,
     display_save_states: QString,
     display_inherited_fullscreen_label: QString,
     display_inherited_shader_label: QString,
@@ -1094,6 +1107,8 @@ impl Default for GameDetailsModelRust {
             display_fullscreen: QString::default(),
             display_shader: QString::default(),
             display_bezel: QString::default(),
+            display_output_width: 0,
+            display_output_height: 0,
             display_save_states: QString::default(),
             display_inherited_fullscreen_label: QString::from("Inherit"),
             display_inherited_shader_label: QString::from("Inherit"),
@@ -1648,7 +1663,10 @@ fn display_value_labels(
                 "Off (RetroArch default)".to_owned()
             }
         }
-        "system" => "System pack".to_owned(),
+        "system" => "Bezel Project · system art".to_owned(),
+        "themed" => "Bezel Project · game art".to_owned(),
+        "orionsangel" => "Orionsangel · console".to_owned(),
+        "orionsangel-plain" => "Orionsangel · plain console".to_owned(),
         "off" => "Off".to_owned(),
         other => other.to_owned(),
     };
@@ -5274,6 +5292,36 @@ impl qobject::GameDetailsModel {
         )
     }
 
+    pub fn display_bezel_choice_count(&self) -> i32 {
+        count_i32(crate::display_setup::bezel_choices(&self.platform().to_string()).len())
+    }
+
+    pub fn display_bezel_choice_id_at(&self, index: i32) -> QString {
+        qstring(
+            usize::try_from(index)
+                .ok()
+                .and_then(|index| {
+                    crate::display_setup::bezel_choices(&self.platform().to_string())
+                        .get(index)
+                        .map(|choice| choice.id)
+                })
+                .unwrap_or(""),
+        )
+    }
+
+    pub fn display_bezel_choice_label_at(&self, index: i32) -> QString {
+        qstring(
+            usize::try_from(index)
+                .ok()
+                .and_then(|index| {
+                    crate::display_setup::bezel_choices(&self.platform().to_string())
+                        .get(index)
+                        .map(|choice| choice.label)
+                })
+                .unwrap_or(""),
+        )
+    }
+
     fn refresh_display_controls(mut self: Pin<&mut Self>) {
         let scope = self.as_ref().display_scope().to_string();
         let loaded = (|| -> anyhow::Result<crate::settings::EmulatorLaunchProfile> {
@@ -5303,8 +5351,10 @@ impl qobject::GameDetailsModel {
             option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
         });
         let bezel = retroarch
-            && crate::bezel_project::theme_for_platform(&self.as_ref().platform().to_string())
-                .is_some();
+            && crate::display_setup::bezels_supported(
+                &self.as_ref().platform().to_string(),
+                "retroarch",
+            );
         let save_states = selected.as_ref().is_some_and(|option| {
             crate::display_setup::save_states_supported(
                 &option.emulator_name,
@@ -6035,6 +6085,10 @@ impl qobject::GameDetailsModel {
         let activity_title = self.as_ref().rust().canonical_title.clone();
         let activity_platform = self.as_ref().platform().to_string();
         let activity_database_id = self.as_ref().rust().database_id;
+        let output_width = *self.as_ref().display_output_width();
+        let output_height = *self.as_ref().display_output_height();
+        let output_aspect = (output_width > 0 && output_height > 0)
+            .then(|| f64::from(output_width) / f64::from(output_height));
         let rom_probe = is_local_launch_probe();
         let preparing_archived_playlist = matches!(
             &launch_input,
@@ -6213,6 +6267,7 @@ impl qobject::GameDetailsModel {
                                     platform,
                                     &rom_stem,
                                     &customization,
+                                    output_aspect,
                                 )
                             {
                                 eprintln!("LUNCHBOX_DISPLAY_SETTING_DEGRADED: {warning}");

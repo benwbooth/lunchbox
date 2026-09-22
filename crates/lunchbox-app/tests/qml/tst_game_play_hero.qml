@@ -54,6 +54,14 @@ TestCase {
             displayShaderPresetCount: function() { return 0 }
             displayShaderPresetIdAt: function(index) { return "" }
             displayShaderPresetLabelAt: function(index) { return "" }
+            displayBezelChoiceCount: function() { return 4 }
+            displayBezelChoiceIdAt: function(index) {
+                return ["system", "themed", "orionsangel", "orionsangel-plain"][index]
+            }
+            displayBezelChoiceLabelAt: function(index) {
+                return ["Bezel Project · system art", "Bezel Project · game art",
+                        "Orionsangel · console", "Orionsangel · plain console"][index]
+            }
             displayScopeSelected: function(scope) {}
             displaySettingSaved: function(field, value) {}
             ink: "#f4f7fb"
@@ -110,6 +118,21 @@ TestCase {
         compare(states.model[0].label, "Inherit → Save + resume")
         hero.displayInheritedShaderLabel = "Inherit → RetroTube TV"
         compare(shader.model[0].label, "Inherit → RetroTube TV")
+    }
+
+    function test_bezel_picker_lists_both_packs_and_console_variants() {
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        const bezel = findChild(hero, "displayBezelCombo")
+        verify(bezel)
+        compare(bezel.model.length, 6)
+        compare(bezel.model[2].label, "Bezel Project · system art")
+        compare(bezel.model[3].label, "Bezel Project · game art")
+        compare(bezel.model[4].label, "Orionsangel · console")
+        compare(bezel.model[5].label, "Orionsangel · plain console")
+        hero.displayBezel = "orionsangel"
+        hero.displayRevision++
+        compare(bezel.currentValue, "orionsangel")
     }
 
     function test_display_section_hides_for_unsupported_adapters() {

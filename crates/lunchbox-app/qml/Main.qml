@@ -2175,6 +2175,8 @@ ApplicationWindow {
 
     GameDetailsModel {
         id: gameDetails
+        display_output_width: root.screen ? root.screen.width : 0
+        display_output_height: root.screen ? root.screen.height : 0
     }
 
     GamepadInput {
@@ -3055,9 +3057,9 @@ ApplicationWindow {
             launchProfileDisplayShader.storedValue =
                     launchProfileManager.editor_display_shader
             launchProfileDisplayBezel.currentIndex =
-                    ["", "off", "system"].indexOf(
+                    ["", "off", "system", "themed", "orionsangel", "orionsangel-plain"].indexOf(
                         launchProfileManager.editor_display_bezel) >= 0
-                    ? ["", "off", "system"].indexOf(
+                    ? ["", "off", "system", "themed", "orionsangel", "orionsangel-plain"].indexOf(
                           launchProfileManager.editor_display_bezel) : 0
             launchProfileDisplaySaveStates.currentIndex =
                     ["", "off", "on"].indexOf(
@@ -12528,6 +12530,15 @@ ApplicationWindow {
                         }
                         displayShaderPresetLabelAt: function(index) {
                             return gameDetails.display_shader_preset_label_at(index)
+                        }
+                        displayBezelChoiceCount: function() {
+                            return gameDetails.display_bezel_choice_count()
+                        }
+                        displayBezelChoiceIdAt: function(index) {
+                            return gameDetails.display_bezel_choice_id_at(index)
+                        }
+                        displayBezelChoiceLabelAt: function(index) {
+                            return gameDetails.display_bezel_choice_label_at(index)
                         }
                         displayScopeSelected: function(scope) {
                             gameDetails.select_display_scope(scope)
@@ -23966,7 +23977,7 @@ ApplicationWindow {
                                 return launchProfileManager.display_bezel_supported()
                             }
                             Text {
-                                text: "SYSTEM BEZEL"
+                                text: "BEZEL"
                                 color: root.muted
                                 font.pixelSize: 8
                                 font.weight: Font.Bold
@@ -23978,7 +23989,10 @@ ApplicationWindow {
                                 model: [
                                     { value: "", label: "Inherit" },
                                     { value: "off", label: "Off" },
-                                    { value: "system", label: "Bezel Project pack" }
+                                    { value: "system", label: "Bezel Project · system art" },
+                                    { value: "themed", label: "Bezel Project · game art" },
+                                    { value: "orionsangel", label: "Orionsangel · console" },
+                                    { value: "orionsangel-plain", label: "Orionsangel · plain console" }
                                 ]
                                 textRole: "label"
                                 valueRole: "value"

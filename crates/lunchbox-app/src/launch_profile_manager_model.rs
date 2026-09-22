@@ -210,8 +210,13 @@ impl LaunchProfileRow {
                 parts.push("Custom CRT");
             }
         }
-        if profile.display_bezel == "system" {
-            parts.push("System bezel");
+        if !profile.display_bezel.is_empty() && profile.display_bezel != "off" {
+            parts.push(match profile.display_bezel.as_str() {
+                "system" => "Bezel Project system art",
+                "themed" => "Bezel Project game art",
+                "orionsangel" | "orionsangel-plain" => "Orionsangel console art",
+                _ => "Custom bezel",
+            });
         }
         if profile.save_states == "on" {
             parts.push("Save states");
@@ -763,7 +768,7 @@ impl qobject::LaunchProfileManagerModel {
         self.selected_row().is_some_and(|row| {
             row.key.runtime_kind == "retroarch"
                 && (row.key.scope_kind != "platform"
-                    || crate::bezel_project::theme_for_platform(&row.platform_name).is_some())
+                    || crate::display_setup::bezels_supported(&row.platform_name, "retroarch"))
         })
     }
 

@@ -98,7 +98,39 @@ pub fn shader_presets_supported(runtime_kind: &str) -> bool {
 }
 
 pub fn bezels_supported(platform: &str, runtime_kind: &str) -> bool {
-    runtime_kind == "retroarch" && crate::bezel_project::theme_for_platform(platform).is_some()
+    runtime_kind == "retroarch" && !bezel_choices(platform).is_empty()
+}
+
+pub struct BezelChoice {
+    pub id: &'static str,
+    pub label: &'static str,
+}
+
+/// Artwork choices are explicit sources, rather than an opaque "pack" whose
+/// per-game fallback can silently change its appearance.
+pub fn bezel_choices(platform: &str) -> Vec<BezelChoice> {
+    let mut choices = Vec::new();
+    if crate::bezel_project::theme_for_platform(platform).is_some() {
+        choices.push(BezelChoice {
+            id: "system",
+            label: "Bezel Project · system art",
+        });
+        choices.push(BezelChoice {
+            id: "themed",
+            label: "Bezel Project · game art",
+        });
+    }
+    if crate::bezel_orionsangel::supported(platform) {
+        choices.push(BezelChoice {
+            id: "orionsangel",
+            label: "Orionsangel · console",
+        });
+        choices.push(BezelChoice {
+            id: "orionsangel-plain",
+            label: "Orionsangel · plain console",
+        });
+    }
+    choices
 }
 
 /// Adapters with a trustworthy automatic save-state mechanism. RetroArch
@@ -306,6 +338,7 @@ pub fn attach_launch_display_configuration(
     platform: &str,
     rom_stem: &str,
     customization: &ResolvedLaunchCustomization,
+    output_aspect: Option<f64>,
 ) -> Option<String> {
     if plan.retroarch_content.is_none() {
         return None;
@@ -323,24 +356,44 @@ pub fn attach_launch_display_configuration(
         }
         _ => {}
     }
-    if customization.display_bezel == "system" {
-        match crate::bezel_project::system_bezel_overlay(platform, rom_stem) {
+    if customization.display_bezel == "off" {
+        lines.push_str("input_overlay_enable = \"false\"\n");
+    } else if !customization.display_bezel.is_empty() {
+        let selected = match customization.display_bezel.as_str() {
+            "system" => crate::bezel_project::system_bezel_overlay(platform, rom_stem),
+            "themed" => crate::bezel_project::bezel_overlay(
+                platform,
+                rom_stem,
+                crate::bezel_project::PackStyle::GameArt,
+            ),
+            "orionsangel" => crate::bezel_orionsangel::overlay(platform, false),
+            "orionsangel-plain" => crate::bezel_orionsangel::overlay(platform, true),
+            other => Err(anyhow::anyhow!("Unknown bezel choice {other}")),
+        };
+        match selected.and_then(|overlay| {
+            overlay
+                .map(|path| aspect_fitted_overlay(&path, output_aspect))
+                .transpose()
+        }) {
             Ok(Some(overlay_path)) => {
                 external_bezel_active = true;
                 lines.push_str("input_overlay_enable = \"true\"\n");
-                lines.push_str(&format!(
-                    "input_overlay = \"{}\"\n",
-                    overlay_path.display()
-                ));
+                lines.push_str(&format!("input_overlay = \"{}\"\n", overlay_path.display()));
                 lines.push_str("input_overlay_opacity = \"1.000000\"\n");
+                lines.push_str("input_overlay_auto_scale = \"false\"\n");
+                lines.push_str("input_overlay_scale_landscape = \"1.000000\"\n");
+                lines.push_str("input_overlay_aspect_adjust_landscape = \"0.000000\"\n");
             }
-            Ok(None) => warnings.push(
-                "The Bezel Project pack has no matching per-game or system bezel, so the game started without one"
-                    .to_owned(),
-            ),
-            Err(error) => warnings.push(format!(
-                "The system bezel could not be prepared: {error:#}"
-            )),
+            Ok(None) => {
+                lines.push_str("input_overlay_enable = \"false\"\n");
+                warnings.push("The selected bezel source has no artwork for this game or system, so the game started without one".to_owned());
+            }
+            Err(error) => {
+                lines.push_str("input_overlay_enable = \"false\"\n");
+                warnings.push(format!(
+                    "The selected bezel could not be prepared: {error:#}"
+                ));
+            }
         }
     }
     if !customization.display_shader.is_empty() {
@@ -419,6 +472,71 @@ pub fn attach_launch_display_configuration(
     }
 }
 
+/// Place fixed-aspect artwork inside a wider (or taller) output without
+/// stretching the console artwork. The overlay itself remains full-screen;
+/// its rectangle is centered within that screen. RetroArch's documented
+/// overlay0_rect coordinates are normalized to the full-screen rectangle.
+fn aspect_fitted_overlay(path: &Path, output_aspect: Option<f64>) -> Result<PathBuf> {
+    let Some(output_aspect) = output_aspect.filter(|value| value.is_finite() && *value > 0.0)
+    else {
+        return Ok(path.to_path_buf());
+    };
+    let contents = fs::read_to_string(path)
+        .with_context(|| format!("reading selected bezel {}", path.display()))?;
+    let image_name = contents
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("overlay0_overlay"))
+        .and_then(|value| value.trim().strip_prefix('='))
+        .map(|value| value.trim().trim_matches('"'))
+        .filter(|value| !value.is_empty())
+        .context("selected bezel has no image")?;
+    let image = path
+        .parent()
+        .context("selected bezel has no directory")?
+        .join(image_name);
+    let bytes = fs::read(&image)
+        .with_context(|| format!("reading selected bezel image {}", image.display()))?;
+    let (width, height) = crate::bezel_orionsangel::png_dimensions(&bytes)
+        .context("selected bezel image has no valid PNG dimensions")?;
+    let Some((x, y, w, h)) = fitted_overlay_rect(width, height, output_aspect) else {
+        return Ok(path.to_path_buf());
+    };
+    let mut fitted = String::new();
+    for line in contents.lines() {
+        if line.trim_start().starts_with("overlay0_overlay") {
+            fitted.push_str(&format!("overlay0_overlay = \"{}\"\n", image.display()));
+        } else if !line.trim_start().starts_with("overlay0_rect") {
+            fitted.push_str(line);
+            fitted.push('\n');
+        }
+    }
+    fitted.push_str(&format!(
+        "overlay0_rect = \"{x:.6},{y:.6},{w:.6},{h:.6}\"\n"
+    ));
+    write_launch_display_config(&fitted)
+}
+
+fn fitted_overlay_rect(
+    image_width: u32,
+    image_height: u32,
+    output_aspect: f64,
+) -> Option<(f64, f64, f64, f64)> {
+    if image_width == 0 || image_height == 0 || !output_aspect.is_finite() || output_aspect <= 0.0 {
+        return None;
+    }
+    let source_aspect = f64::from(image_width) / f64::from(image_height);
+    if (output_aspect - source_aspect).abs() < 0.001 {
+        return None;
+    }
+    Some(if output_aspect > source_aspect {
+        let w = source_aspect / output_aspect;
+        ((1.0 - w) / 2.0, 0.0, w, 1.0)
+    } else {
+        let h = output_aspect / source_aspect;
+        (0.0, (1.0 - h) / 2.0, 1.0, h)
+    })
+}
+
 fn attach_shader_argument(
     plan: &mut LaunchPlan,
     executable: &EmulatorExecutable,
@@ -479,6 +597,25 @@ fn prune_stale_launch_display_configs(directory: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sixteen_nine_art_is_centered_without_stretching_on_ultrawide() {
+        let (x, y, width, height) = fitted_overlay_rect(1920, 1080, 5120.0 / 2160.0).unwrap();
+        assert!((x - 0.125).abs() < 0.000001);
+        assert_eq!(y, 0.0);
+        assert!((width - 0.75).abs() < 0.000001);
+        assert_eq!(height, 1.0);
+        assert!(fitted_overlay_rect(1920, 1080, 16.0 / 9.0).is_none());
+    }
+
+    #[test]
+    fn bezel_choices_include_both_sources_for_snes() {
+        let choices = bezel_choices("Super Nintendo Entertainment System");
+        assert_eq!(
+            choices.iter().map(|choice| choice.id).collect::<Vec<_>>(),
+            ["system", "themed", "orionsangel", "orionsangel-plain"]
+        );
+    }
 
     #[test]
     fn retrotube_uses_configured_crt_and_keeps_external_bezel_separate() {
