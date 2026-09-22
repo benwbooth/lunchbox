@@ -5092,6 +5092,13 @@ impl qobject::GameDetailsModel {
                     &target.core_name,
                 )?
                 .unwrap_or_default();
+            // A default profile carries empty identity fields; the row's
+            // primary key must be the exact scope and emulator being set.
+            profile.scope_kind = scope.clone();
+            profile.scope_key = scope_key.clone();
+            profile.emulator_id = target.emulator_id.clone();
+            profile.runtime_kind = target.runtime_kind.to_owned();
+            profile.core_name = target.core_name.clone();
             match field.as_str() {
                 "shader" => profile.display_shader = value,
                 "bezel" => profile.display_bezel = value,
