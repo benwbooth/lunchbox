@@ -34,14 +34,13 @@ pub struct ShaderPresetChoice {
     pub generated: bool,
 }
 
-/// The curated CRT list, best first. Koko-AIO doubles as the "RetroTube TV"
-/// look: bezel artwork, ambient screen lighting, and aperture curvature in
-/// one preset (GPL-3.0, installed alongside the libretro slang pack).
+/// The curated CRT list, best first. Koko-AIO's configured Base preset is the
+/// "RetroTube TV" look; its raw engine preset leaves the CRT effects disabled.
 pub const RETROARCH_SHADER_PRESETS: &[ShaderPresetChoice] = &[
     ShaderPresetChoice {
         id: "retrotube-tv",
         label: "RetroTube TV · bezel + ambient light (Koko-AIO)",
-        relative_paths: &["bezel/koko-aio/koko-aio-ng.slangp"],
+        relative_paths: &["bezel/koko-aio/Presets-ng/Base.slangp"],
         generated: false,
     },
     ShaderPresetChoice {
@@ -230,6 +229,28 @@ fn install_generated_preset(root: &Path, choice: &ShaderPresetChoice) -> Option<
     Some(preset_path)
 }
 
+/// Koko-AIO's configured Base preset includes its own bezel. When a separate
+/// Bezel Project overlay is active, reference that preset with only its built-in
+/// bezel disabled; scanlines, phosphor mask, curvature, and ambient light stay on.
+fn install_retrotube_system_bezel_variant(root: &Path, base: &Path) -> Result<PathBuf> {
+    let relative = base
+        .strip_prefix(root)
+        .context("RetroTube TV preset is outside the shader directory")?;
+    let directory = root.join("lunchbox");
+    fs::create_dir_all(&directory)?;
+    let path = directory.join("retrotube-tv-system-bezel.slangp");
+    let reference = Path::new("..")
+        .join(relative)
+        .to_string_lossy()
+        .replace('\\', "/");
+    fs::write(
+        &path,
+        format!("#reference \"{reference}\"\nDO_BEZEL = \"0.0\"\n"),
+    )
+    .with_context(|| format!("writing {}", path.display()))?;
+    Ok(path)
+}
+
 /// Slang (`.slangp`) presets need a slang-capable video driver. When the
 /// user's saved driver cannot run them, the session switches to `glcore`
 /// so the chosen shader actually loads instead of silently falling back
@@ -292,6 +313,7 @@ pub fn attach_launch_display_configuration(
     let mut warnings = Vec::new();
     let mut lines = String::new();
     let mut shader_preset_path = None;
+    let mut external_bezel_active = false;
     match customization.display_fullscreen.as_str() {
         "true" | "false" => {
             lines.push_str(&format!(
@@ -301,25 +323,10 @@ pub fn attach_launch_display_configuration(
         }
         _ => {}
     }
-    if !customization.display_shader.is_empty() {
-        match resolve_shader_preset(executable, &customization.display_shader) {
-            Some(preset_path) => {
-                lines.push_str("video_shader_enable = \"true\"\n");
-                lines.push_str(&format!("video_shader = \"{}\"\n", preset_path.display()));
-                shader_preset_path = Some(preset_path);
-                if let Some(driver) = slang_driver_override(executable) {
-                    lines.push_str(&format!("video_driver = \"{driver}\"\n"));
-                }
-            }
-            None => warnings.push(format!(
-                "The {} shader preset is not installed, so the game started without it",
-                customization.display_shader
-            )),
-        }
-    }
     if customization.display_bezel == "system" {
         match crate::bezel_project::system_bezel_overlay(platform, rom_stem) {
             Ok(Some(overlay_path)) => {
+                external_bezel_active = true;
                 lines.push_str("input_overlay_enable = \"true\"\n");
                 lines.push_str(&format!(
                     "input_overlay = \"{}\"\n",
@@ -333,6 +340,33 @@ pub fn attach_launch_display_configuration(
             ),
             Err(error) => warnings.push(format!(
                 "The system bezel could not be prepared: {error:#}"
+            )),
+        }
+    }
+    if !customization.display_shader.is_empty() {
+        match resolve_shader_preset(executable, &customization.display_shader) {
+            Some(mut preset_path) => {
+                if customization.display_shader == "retrotube-tv"
+                    && external_bezel_active
+                    && let Some(root) = shader_root(executable)
+                {
+                    match install_retrotube_system_bezel_variant(&root, &preset_path) {
+                        Ok(path) => preset_path = path,
+                        Err(error) => warnings.push(format!(
+                            "RetroTube TV could not disable its built-in bezel: {error:#}"
+                        )),
+                    }
+                }
+                lines.push_str("video_shader_enable = \"true\"\n");
+                lines.push_str(&format!("video_shader = \"{}\"\n", preset_path.display()));
+                shader_preset_path = Some(preset_path);
+                if let Some(driver) = slang_driver_override(executable) {
+                    lines.push_str(&format!("video_driver = \"{driver}\"\n"));
+                }
+            }
+            None => warnings.push(format!(
+                "The {} shader preset is not installed, so the game started without it",
+                customization.display_shader
             )),
         }
     }
@@ -445,6 +479,54 @@ fn prune_stale_launch_display_configs(directory: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retrotube_uses_configured_crt_and_keeps_external_bezel_separate() {
+        let choice = RETROARCH_SHADER_PRESETS
+            .iter()
+            .find(|choice| choice.id == "retrotube-tv")
+            .unwrap();
+        assert_eq!(
+            choice.relative_paths,
+            &["bezel/koko-aio/Presets-ng/Base.slangp"]
+        );
+
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path();
+        for relative in [
+            "bezel/koko-aio/Presets-ng/Base.slangp",
+            "shaders_slang/bezel/koko-aio/Presets-ng/Base.slangp",
+        ] {
+            let base = root.join(relative);
+            fs::create_dir_all(base.parent().unwrap()).unwrap();
+            fs::write(
+                &base,
+                "#reference \"../koko-aio-ng.slangp\"\nDO_PIXELGRID = \"1.0\"\n",
+            )
+            .unwrap();
+            let variant = install_retrotube_system_bezel_variant(root, &base).unwrap();
+            let contents = fs::read_to_string(&variant).unwrap();
+            assert!(contents.contains("DO_BEZEL = \"0.0\""));
+            assert!(!contents.contains("DO_PIXELGRID = \"0.0\""));
+            let reference = contents
+                .lines()
+                .next()
+                .unwrap()
+                .strip_prefix("#reference \"")
+                .unwrap()
+                .strip_suffix('"')
+                .unwrap();
+            assert_eq!(
+                variant
+                    .parent()
+                    .unwrap()
+                    .join(reference)
+                    .canonicalize()
+                    .unwrap(),
+                base.canonicalize().unwrap()
+            );
+        }
+    }
 
     #[test]
     fn slang_shaders_switch_legacy_drivers_to_glcore() {
