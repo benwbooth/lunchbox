@@ -190,9 +190,15 @@ pub mod qobject {
         #[qproperty(i32, selected_emulator_option)]
         #[qproperty(i32, detail_revision)]
         #[qproperty(QString, display_scope)]
+        #[qproperty(QString, display_fullscreen)]
         #[qproperty(QString, display_shader)]
         #[qproperty(QString, display_bezel)]
         #[qproperty(QString, display_save_states)]
+        #[qproperty(bool, display_fullscreen_supported)]
+        #[qproperty(bool, display_shader_supported)]
+        #[qproperty(bool, display_bezel_supported)]
+        #[qproperty(bool, display_save_states_supported)]
+        #[qproperty(QString, display_effective_summary)]
         #[qproperty(i32, display_revision)]
         type GameDetailsModel = super::GameDetailsModelRust;
 
@@ -448,15 +454,6 @@ pub mod qobject {
 
         #[qinvokable]
         fn display_shader_preset_label_at(self: &GameDetailsModel, index: i32) -> QString;
-
-        #[qinvokable]
-        fn display_shader_supported(self: &GameDetailsModel) -> bool;
-
-        #[qinvokable]
-        fn display_bezel_supported(self: &GameDetailsModel) -> bool;
-
-        #[qinvokable]
-        fn display_save_states_supported(self: &GameDetailsModel) -> bool;
 
         #[qinvokable]
         fn open_firmware_directory(self: Pin<&mut GameDetailsModel>);
@@ -848,9 +845,15 @@ pub struct GameDetailsModelRust {
     game_emulator_preference: Option<crate::settings::EmulatorPreference>,
     platform_emulator_preference: Option<crate::settings::EmulatorPreference>,
     display_scope: QString,
+    display_fullscreen: QString,
     display_shader: QString,
     display_bezel: QString,
     display_save_states: QString,
+    display_fullscreen_supported: bool,
+    display_shader_supported: bool,
+    display_bezel_supported: bool,
+    display_save_states_supported: bool,
+    display_effective_summary: QString,
     display_revision: i32,
     launch_profile_preview_arguments: Vec<String>,
     launch_profile_preview_fallback_extra_arguments: String,
@@ -1080,9 +1083,15 @@ impl Default for GameDetailsModelRust {
             game_emulator_preference: None,
             platform_emulator_preference: None,
             display_scope: QString::from("game"),
+            display_fullscreen: QString::default(),
             display_shader: QString::default(),
             display_bezel: QString::default(),
             display_save_states: QString::default(),
+            display_fullscreen_supported: false,
+            display_shader_supported: false,
+            display_bezel_supported: false,
+            display_save_states_supported: false,
+            display_effective_summary: QString::default(),
             display_revision: 0,
             launch_profile_preview_arguments: Vec::new(),
             launch_profile_preview_fallback_extra_arguments: String::new(),
@@ -1569,6 +1578,7 @@ struct LaunchStarted {
     process_id: u32,
     command_summary: String,
     tracking_warning: Option<String>,
+    save_notice: Option<String>,
     activity_recorded: bool,
 }
 
@@ -2466,6 +2476,12 @@ impl qobject::GameDetailsModel {
             .set_install_management_message(QString::default());
         self.as_mut().set_emulator_option_count(0);
         self.as_mut().set_selected_emulator_option(-1);
+        self.as_mut().set_display_shader_supported(false);
+        self.as_mut().set_display_fullscreen_supported(false);
+        self.as_mut().set_display_bezel_supported(false);
+        self.as_mut().set_display_save_states_supported(false);
+        self.as_mut()
+            .set_display_effective_summary(QString::default());
         self.as_mut().bump_revision();
     }
 
@@ -5065,13 +5081,16 @@ impl qobject::GameDetailsModel {
         self.as_mut().refresh_display_controls();
     }
 
-    /// Persist one display field (shader, bezel, save_states) at the active
+    /// Persist one display field at the active
     /// scope by load-modify-saving that scope's launch profile. An "inherit"
     /// (empty) value with an otherwise empty profile removes the row.
     pub fn set_display_setting(mut self: Pin<&mut Self>, field: QString, value: QString) {
         let field = field.to_string();
         let value = value.to_string();
-        if !matches!(field.as_str(), "shader" | "bezel" | "save_states") {
+        if !matches!(
+            field.as_str(),
+            "fullscreen" | "shader" | "bezel" | "save_states"
+        ) {
             return;
         }
         let scope = self.as_ref().display_scope().to_string();
@@ -5100,6 +5119,7 @@ impl qobject::GameDetailsModel {
             profile.runtime_kind = target.runtime_kind.to_owned();
             profile.core_name = target.core_name.clone();
             match field.as_str() {
+                "fullscreen" => profile.display_fullscreen = value,
                 "shader" => profile.display_shader = value,
                 "bezel" => profile.display_bezel = value,
                 "save_states" => profile.save_states = value,
@@ -5109,9 +5129,15 @@ impl qobject::GameDetailsModel {
         })();
         match result {
             Ok(()) => self.as_mut().refresh_display_controls(),
-            Err(error) => eprintln!(
-                "LUNCHBOX_DISPLAY_SETTING_SAVE_FAILED scope={scope} field={field} error={error:#}"
-            ),
+            Err(error) => {
+                eprintln!(
+                    "LUNCHBOX_DISPLAY_SETTING_SAVE_FAILED scope={scope} field={field} error={error:#}"
+                );
+                self.as_mut().set_launch_status(qstring(format!(
+                    "Could not save the {field} display setting: {error}"
+                )));
+                self.as_mut().refresh_display_controls();
+            }
         }
     }
 
@@ -5139,28 +5165,6 @@ impl qobject::GameDetailsModel {
         )
     }
 
-    pub fn display_shader_supported(&self) -> bool {
-        self.selected_rom_emulator_option().is_some_and(|option| {
-            option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
-        })
-    }
-
-    pub fn display_bezel_supported(&self) -> bool {
-        self.selected_rom_emulator_option().is_some_and(|option| {
-            option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
-                && crate::bezel_project::theme_for_platform(&self.platform().to_string()).is_some()
-        })
-    }
-
-    pub fn display_save_states_supported(&self) -> bool {
-        self.selected_rom_emulator_option().is_some_and(|option| {
-            crate::display_setup::save_states_supported(
-                &option.emulator_name,
-                option.runtime_kind.key(),
-            )
-        })
-    }
-
     fn refresh_display_controls(mut self: Pin<&mut Self>) {
         let scope = self.as_ref().display_scope().to_string();
         let loaded = (|| -> anyhow::Result<crate::settings::EmulatorLaunchProfile> {
@@ -5178,13 +5182,127 @@ impl qobject::GameDetailsModel {
         })()
         .unwrap_or_default();
         self.as_mut()
+            .set_display_fullscreen(qstring(&loaded.display_fullscreen));
+        self.as_mut()
             .set_display_shader(qstring(&loaded.display_shader));
         self.as_mut()
             .set_display_bezel(qstring(&loaded.display_bezel));
         self.as_mut()
             .set_display_save_states(qstring(&loaded.save_states));
+        let selected = self.as_ref().selected_rom_emulator_option();
+        let retroarch = selected.as_ref().is_some_and(|option| {
+            option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch
+        });
+        let bezel = retroarch
+            && crate::bezel_project::theme_for_platform(&self.as_ref().platform().to_string())
+                .is_some();
+        let save_states = selected.as_ref().is_some_and(|option| {
+            crate::display_setup::save_states_supported(
+                &option.emulator_name,
+                option.runtime_kind.key(),
+            )
+        });
+        let fullscreen = selected.as_ref().is_some_and(|option| {
+            crate::display_setup::fullscreen_supported(
+                &option.emulator_name,
+                option.runtime_kind.key(),
+            )
+        });
+        let summary = self.as_ref().display_effective_summary_for(&selected);
+        self.as_mut().set_display_fullscreen_supported(fullscreen);
+        self.as_mut().set_display_shader_supported(retroarch);
+        self.as_mut().set_display_bezel_supported(bezel);
+        self.as_mut().set_display_save_states_supported(save_states);
+        self.as_mut()
+            .set_display_effective_summary(qstring(&summary));
         let revision = self.as_ref().display_revision().wrapping_add(1);
         self.as_mut().set_display_revision(revision);
+    }
+
+    /// What a launch would actually use after game → platform → global
+    /// inheritance, so `Inherit` never hides the effective value.
+    fn display_effective_summary_for(
+        &self,
+        selected: &Option<crate::emulator::RomEmulatorOption>,
+    ) -> String {
+        let Some(option) = selected else {
+            return String::new();
+        };
+        let resolved = (|| -> anyhow::Result<crate::settings::ResolvedLaunchCustomization> {
+            let store = crate::settings::SettingsStore::open_default()?;
+            store.resolve_launch_customization(
+                &self.game_id().to_string(),
+                &self.platform().to_string(),
+                &option.emulator_id,
+                option.runtime_kind.key(),
+                &option.core_name,
+            )
+        })()
+        .unwrap_or_default();
+        let base_value = |key: &str| {
+            (option.runtime_kind == crate::emulator::EmulatorRuntimeKind::RetroArch)
+                .then(|| crate::display_setup::retroarch_config_value(&option.executable, key))
+                .flatten()
+        };
+        let shader = if resolved.display_shader.is_empty() {
+            match (
+                base_value("video_shader_enable").as_deref(),
+                base_value("video_shader"),
+            ) {
+                (Some("true"), Some(path)) if !path.is_empty() => format!(
+                    "RetroArch preset {}",
+                    Path::new(&path)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                ),
+                (Some("false"), _) | (_, None) => "Off (RetroArch default)".to_owned(),
+                _ => "RetroArch default".to_owned(),
+            }
+        } else {
+            crate::display_setup::shader_preset_choices()
+                .iter()
+                .find(|choice| choice.id == resolved.display_shader)
+                .map(|choice| choice.label.to_owned())
+                .unwrap_or_else(|| resolved.display_shader.clone())
+        };
+        let bezel = match resolved.display_bezel.as_str() {
+            "" => {
+                if base_value("input_overlay_enable").as_deref() == Some("true") {
+                    "RetroArch overlay".to_owned()
+                } else {
+                    "Off (RetroArch default)".to_owned()
+                }
+            }
+            "system" => "System pack".to_owned(),
+            "off" => "Off".to_owned(),
+            other => other.to_owned(),
+        };
+        let states = match resolved.save_states.as_str() {
+            "" => match (
+                base_value("savestate_auto_save").as_deref(),
+                base_value("savestate_auto_load").as_deref(),
+            ) {
+                (Some("true"), Some("true")) => "Save + resume (RetroArch default)".to_owned(),
+                (Some("false"), Some("false")) => "Off (RetroArch default)".to_owned(),
+                _ => "RetroArch default".to_owned(),
+            },
+            "on" => "Save + resume".to_owned(),
+            "off" => "Off".to_owned(),
+            other => other.to_owned(),
+        };
+        let mut summary = format!("Effective: CRT {shader} · Bezel {bezel} · States {states}");
+        let fullscreen = match resolved.display_fullscreen.as_str() {
+            "true" => "On",
+            "false" => "Off",
+            _ => match base_value("video_fullscreen").as_deref() {
+                Some("true") => "On (RetroArch default)",
+                Some("false") => "Off (RetroArch default)",
+                _ => "Emulator default",
+            },
+        };
+        summary.push_str(&format!(" · Fullscreen {fullscreen}"));
+        summary
     }
 
     fn launch_profile_scope_key(&self, scope: &str) -> anyhow::Result<String> {
@@ -5846,7 +5964,7 @@ impl qobject::GameDetailsModel {
             // overflows before the plan builder runs its first statement.
             .stack_size(64 * 1024 * 1024)
             .spawn(move || {
-                let launch = (|| -> anyhow::Result<(Result<(), String>, Option<String>, bool)> {
+                let launch = (|| -> anyhow::Result<(Result<(), String>, Option<String>, bool, Option<String>)> {
                     if launch_cancel.load(AtomicOrdering::Relaxed) {
                         anyhow::bail!(crate::rom_launch_preparation::LAUNCH_CANCELLED_ERROR);
                     }
@@ -5936,6 +6054,7 @@ impl qobject::GameDetailsModel {
                     // calibrated session config. Any failure degrades into a
                     // warning; the game still launches.
                     let mut display_warning: Option<String> = None;
+                    let mut auto_save_observation = None;
                     if let LaunchInput::Rom {
                         path,
                         platform,
@@ -5967,7 +6086,26 @@ impl qobject::GameDetailsModel {
                                 )
                             });
                         if let Ok(customization) = display_customization {
-                            let rom_stem = path
+                            if customization.save_states == "on"
+                                && option.runtime_kind
+                                    == crate::emulator::EmulatorRuntimeKind::RetroArch
+                                && let Some(content) = plan.retroarch_content.as_ref()
+                            {
+                                auto_save_observation =
+                                    crate::retroarch_saves::AutoSaveObservation::for_content(
+                                        &option.core_name,
+                                        &content.content,
+                                    );
+                            }
+                            // A compressed ROM's launchable member may have
+                            // a different name from the archive. The pack's
+                            // per-game configs follow the content filename.
+                            let bezel_content = plan
+                                .retroarch_content
+                                .as_ref()
+                                .map(|content| content.content.as_path())
+                                .unwrap_or(path);
+                            let rom_stem = bezel_content
                                 .file_stem()
                                 .map(|stem| stem.to_string_lossy().to_string())
                                 .unwrap_or_default();
@@ -6112,6 +6250,9 @@ impl qobject::GameDetailsModel {
                         (!tracking_warning.is_empty()).then(|| tracking_warning.join(" · "));
                     let started_game_id = game_id.clone();
                     let started_warning = tracking_warning.clone();
+                    let save_notice = auto_save_observation
+                        .as_ref()
+                        .map(|observation| observation.launch_notice().to_owned());
                     let _ = started_thread.queue(move |mut model| {
                         model.as_mut().finish_launch_started(
                             generation,
@@ -6121,6 +6262,7 @@ impl qobject::GameDetailsModel {
                                 process_id,
                                 command_summary,
                                 tracking_warning: started_warning,
+                                save_notice,
                                 activity_recorded,
                             },
                         );
@@ -6205,10 +6347,13 @@ impl qobject::GameDetailsModel {
                     } else {
                         Err(format!("emulator exited with {status}"))
                     };
-                    Ok((exit, tracking_warning, activity_recorded))
+                    let save_notice = auto_save_observation
+                        .as_ref()
+                        .map(|observation| observation.exit_notice());
+                    Ok((exit, tracking_warning, activity_recorded, save_notice))
                 })();
                 match launch {
-                    Ok((exit, tracking_warning, activity_recorded)) => {
+                    Ok((exit, tracking_warning, activity_recorded, save_notice)) => {
                         let _ = qt_thread.queue(move |mut model| {
                             model.as_mut().finish_launch_exit(
                                 generation,
@@ -6216,6 +6361,7 @@ impl qobject::GameDetailsModel {
                                 exit,
                                 tracking_warning,
                                 activity_recorded,
+                                save_notice,
                             );
                         });
                     }
@@ -6268,6 +6414,9 @@ impl qobject::GameDetailsModel {
         if let Some(warning) = started.tracking_warning {
             status.push_str(&format!(" · {warning}"));
         }
+        if let Some(notice) = started.save_notice {
+            status.push_str(&format!(" · {notice}"));
+        }
         self.as_mut().set_launch_status(qstring(status));
         self.as_mut().set_message(qstring(format!(
             "Launched with {}. {}",
@@ -6294,6 +6443,7 @@ impl qobject::GameDetailsModel {
         exit: Result<(), String>,
         tracking_warning: Option<String>,
         activity_recorded: bool,
+        save_notice: Option<String>,
     ) {
         if generation != self.as_ref().rust().launch_generation
             || self.as_ref().game_id().to_string() != completed_game_id
@@ -6317,11 +6467,14 @@ impl qobject::GameDetailsModel {
                 format!("The emulator session ended: {error}")
             }
         };
-        self.as_mut()
-            .set_launch_status(qstring(match tracking_warning {
-                Some(warning) => format!("{base_status} {warning}"),
-                None => base_status,
-            }));
+        let mut status = match tracking_warning {
+            Some(warning) => format!("{base_status} {warning}"),
+            None => base_status,
+        };
+        if let Some(notice) = save_notice {
+            status.push_str(&format!(" · {notice}"));
+        }
+        self.as_mut().set_launch_status(qstring(status));
         if activity_recorded {
             self.as_mut().reload_play_activity(true);
         }

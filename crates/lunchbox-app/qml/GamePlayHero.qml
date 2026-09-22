@@ -48,10 +48,13 @@ Rectangle {
     required property color line
     required property color accentCool
     required property string displayScope
+    required property string displayFullscreen
     required property string displayShader
     required property string displayBezel
     required property string displaySaveStates
+    required property string displayEffectiveSummary
     required property int displayRevision
+    required property bool displayFullscreenSupported
     required property bool displayShaderSupported
     required property bool displayBezelSupported
     required property bool displaySaveStatesSupported
@@ -80,7 +83,8 @@ Rectangle {
     readonly property bool firmwareSetupNeeded: !discoveryBusy
                                                 && firmwareMissingCount > 0
     readonly property bool displaySectionAvailable: emulatorOptionCount > 0
-                                                     && (displayShaderSupported
+                                                     && (displayFullscreenSupported
+                                                         || displayShaderSupported
                                                          || displayBezelSupported
                                                          || displaySaveStatesSupported)
 
@@ -153,7 +157,7 @@ Rectangle {
             font.pixelSize: 9
             lineHeight: 1.2
             wrapMode: Text.WordWrap
-            maximumLineCount: 3
+            maximumLineCount: 6
             elide: Text.ElideRight
         }
 
@@ -217,6 +221,57 @@ Rectangle {
                         font: parent.font
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                    }
+                }
+            }
+            Column {
+                width: (parent.width - 12) / 3
+                spacing: 2
+                visible: hero.displayFullscreenSupported
+                Text {
+                    text: "FULLSCREEN"
+                    color: hero.muted
+                    font.pixelSize: 8
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.7
+                }
+                ComboBox {
+                    id: displayFullscreenCombo
+                    objectName: "displayFullscreenCombo"
+                    width: parent.width
+                    textRole: "label"
+                    valueRole: "value"
+                    model: [
+                        { value: "", label: "Inherit" },
+                        { value: "true", label: "On" },
+                        { value: "false", label: "Off" }
+                    ]
+                    Component.onCompleted: syncValue()
+                    function syncValue() {
+                        currentIndex = ["", "true", "false"].indexOf(hero.displayFullscreen)
+                        if (currentIndex < 0)
+                            currentIndex = 0
+                    }
+                    onActivated: hero.displaySettingSaved("fullscreen", currentValue)
+                    Connections {
+                        target: hero
+                        function onDisplayRevisionChanged() { displayFullscreenCombo.syncValue() }
+                    }
+                    background: Rectangle {
+                        radius: 8
+                        color: "#0d211a"
+                        border.width: 2
+                        border.color: "#43a876"
+                    }
+                    contentItem: Text {
+                        leftPadding: 11
+                        rightPadding: 30
+                        text: displayFullscreenCombo.displayText
+                        color: hero.ink
+                        font.pixelSize: 10
+                        font.weight: Font.DemiBold
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
                     }
                 }
             }
@@ -417,6 +472,24 @@ background: Rectangle {
                       : "Display choices saved for " + hero.platform + "; empty values inherit the global profile."
                 color: hero.muted
                 font.pixelSize: 8
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                visible: hero.displayBezelSupported
+                text: "System pack uses matching per-game artwork when available, otherwise a system bezel."
+                color: hero.muted
+                font.pixelSize: 8
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                objectName: "displayEffectiveSummary"
+                width: parent.width
+                visible: hero.displayEffectiveSummary.length > 0
+                text: hero.displayEffectiveSummary
+                color: hero.muted
+                font.pixelSize: 8
+                font.italic: true
                 wrapMode: Text.WordWrap
             }
         }

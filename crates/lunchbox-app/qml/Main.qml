@@ -12463,25 +12463,16 @@ ApplicationWindow {
                         line: root.line
                         accentCool: root.accentCool
                         displayScope: gameDetails.display_scope
+                        displayFullscreen: gameDetails.display_fullscreen
                         displayShader: gameDetails.display_shader
                         displayBezel: gameDetails.display_bezel
                         displaySaveStates: gameDetails.display_save_states
+                        displayEffectiveSummary: gameDetails.display_effective_summary
                         displayRevision: gameDetails.display_revision
-                        // Invokables are not tracked properties; reference the
-                        // revision the model bumps whenever the selection
-                        // changes so these re-evaluate.
-                        displayShaderSupported: {
-                            gameDetails.display_revision
-                            return gameDetails.display_shader_supported()
-                        }
-                        displayBezelSupported: {
-                            gameDetails.display_revision
-                            return gameDetails.display_bezel_supported()
-                        }
-                        displaySaveStatesSupported: {
-                            gameDetails.display_revision
-                            return gameDetails.display_save_states_supported()
-                        }
+                        displayFullscreenSupported: gameDetails.display_fullscreen_supported
+                        displayShaderSupported: gameDetails.display_shader_supported
+                        displayBezelSupported: gameDetails.display_bezel_supported
+                        displaySaveStatesSupported: gameDetails.display_save_states_supported
                         displayShaderPresetCount: function() {
                             return gameDetails.display_shader_preset_count()
                         }

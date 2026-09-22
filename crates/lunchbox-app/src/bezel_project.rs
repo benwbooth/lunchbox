@@ -130,6 +130,16 @@ struct PackIndex {
     fetched_at: u64,
     directory: String,
     configs: Vec<String>,
+    #[serde(default)]
+    system_config: Option<String>,
+    #[serde(default)]
+    system_config_scanned: bool,
+}
+
+#[derive(Clone)]
+struct BezelConfig {
+    name: String,
+    system: bool,
 }
 
 /// Resolve (downloading on first use) the overlay config for one ROM stem.
@@ -151,39 +161,56 @@ pub fn system_bezel_overlay(platform: &str, rom_stem: &str) -> Result<Option<Pat
         )
     })?;
 
-    let config_name = match cached_config(&storage, rom_stem) {
-        Some(name) => name,
+    let selection = match cached_config(&storage, rom_stem) {
+        Some(selection) => selection,
         None => match resolve_pack_config_name(theme, &storage, rom_stem)? {
-            Some(name) => {
-                fetch_config(theme, &storage, &name)?;
-                name
+            Some(selection) => {
+                fetch_config(theme, &storage, &selection)?;
+                selection
             }
             None => return Ok(None),
         },
     };
-    let config_path = storage.join(&config_name);
-    let png_name = ensure_local_png(theme, &storage, &config_path)?;
+    let config_path = storage.join(&selection.name);
+    let png_name = ensure_local_png(theme, &storage, &config_path, selection.system)?;
     rewrite_overlay_path(&config_path, &png_name)?;
     Ok(Some(config_path))
 }
 
-fn cached_config(storage: &Path, rom_stem: &str) -> Option<String> {
+fn cached_config(storage: &Path, rom_stem: &str) -> Option<BezelConfig> {
     let exact = format!("{rom_stem}.cfg");
     if storage.join(&exact).is_file() {
-        return Some(exact);
+        return Some(BezelConfig {
+            name: exact,
+            system: false,
+        });
     }
     let normalized = normalize_name(rom_stem);
     let index = read_index(storage)?;
-    index
+    let game = index
         .configs
         .iter()
         .find(|config| normalize_name(config.strip_suffix(".cfg").unwrap_or(config)) == normalized)
-        .cloned()
+        .cloned();
+    if let Some(name) = game {
+        return storage.join(&name).is_file().then_some(BezelConfig {
+            name,
+            system: false,
+        });
+    }
+    index
+        .system_config
+        .filter(|name| storage.join(name).is_file())
+        .map(|name| BezelConfig { name, system: true })
 }
 
-fn resolve_pack_config_name(theme: &str, storage: &Path, rom_stem: &str) -> Result<Option<String>> {
+fn resolve_pack_config_name(
+    theme: &str,
+    storage: &Path,
+    rom_stem: &str,
+) -> Result<Option<BezelConfig>> {
     let index = match read_index(storage) {
-        Some(index) if !index_expired(&index) => index,
+        Some(index) if !index_expired(&index) && index.system_config_scanned => index,
         _ => fetch_index(theme).map_err(|error| {
             anyhow::anyhow!("listing The Bezel Project {} pack: {error:#}", theme)
         })?,
@@ -193,27 +220,36 @@ fn resolve_pack_config_name(theme: &str, storage: &Path, rom_stem: &str) -> Resu
     Ok(index
         .configs
         .into_iter()
-        .find(|config| normalize_name(config.strip_suffix(".cfg").unwrap_or(config)) == normalized))
+        .find(|config| normalize_name(config.strip_suffix(".cfg").unwrap_or(config)) == normalized)
+        .map(|name| BezelConfig {
+            name,
+            system: false,
+        })
+        .or_else(|| {
+            index
+                .system_config
+                .map(|name| BezelConfig { name, system: true })
+        }))
 }
 
 fn fetch_index(theme: &str) -> Result<PackIndex> {
     let directory = pack_overlay_directory(theme)?;
-    let url = format!(
-        "{PACK_API_BASE}{theme}/contents/{OVERLAY_ROOT_IN_PACK}/{directory}?ref={PACK_BRANCH}"
-    );
-    let text = fetch_text(&url, 4 * 1024 * 1024)?;
-    let entries: Vec<serde_json::Value> =
-        serde_json::from_str(&text).context("parsing the Bezel Project pack listing")?;
-    let mut configs = Vec::new();
-    for entry in entries {
-        let name = entry
-            .get("name")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
-        if name.ends_with(".cfg") && !name.contains('/') && !name.starts_with('.') {
-            configs.push(name.to_owned());
-        }
+    // The contents API caps directory listings at 1000 entries, which would
+    // silently drop every game past the cutoff, so walk the recursive git
+    // tree instead.
+    let url = format!("{PACK_API_BASE}{theme}/git/trees/{PACK_BRANCH}?recursive=1");
+    let text = fetch_text(&url, 32 * 1024 * 1024)?;
+    let value: serde_json::Value =
+        serde_json::from_str(&text).context("parsing the Bezel Project pack tree")?;
+    if value
+        .get("truncated")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+    {
+        bail!("the {theme} pack tree listing was truncated");
     }
+    let prefix = format!("{OVERLAY_ROOT_IN_PACK}/{directory}/");
+    let configs = tree_configs(&value, &prefix);
     if configs.is_empty() {
         bail!("the {} pack lists no per-game bezel configs", theme);
     }
@@ -221,7 +257,48 @@ fn fetch_index(theme: &str) -> Result<PackIndex> {
         fetched_at: unix_timestamp(),
         directory,
         configs,
+        system_config: tree_system_config(&value),
+        system_config_scanned: true,
     })
+}
+
+fn tree_system_config(value: &serde_json::Value) -> Option<String> {
+    let mut configs = tree_configs(value, "retroarch/overlay/");
+    if configs.len() == 1 {
+        configs.pop()
+    } else {
+        None
+    }
+}
+
+/// Config file names under one overlay directory in a recursive git-tree
+/// listing. Kept separate from the fetch so the cutoff-prone filtering is
+/// directly testable.
+fn tree_configs(value: &serde_json::Value, prefix: &str) -> Vec<String> {
+    let mut configs = Vec::new();
+    for entry in value
+        .get("tree")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let kind = entry
+            .get("type")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let path = entry
+            .get("path")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let Some(name) = path.strip_prefix(prefix) else {
+            continue;
+        };
+        if kind == "blob" && name.ends_with(".cfg") && !name.contains('/') && !name.starts_with('.')
+        {
+            configs.push(name.to_owned());
+        }
+    }
+    configs
 }
 
 /// The directory inside the pack is usually the theme name, but the exact
@@ -248,26 +325,39 @@ fn pack_overlay_directory(theme: &str) -> Result<String> {
     bail!("the {theme} pack has no {} directory", OVERLAY_ROOT_IN_PACK)
 }
 
-fn fetch_config(theme: &str, storage: &Path, config_name: &str) -> Result<()> {
+fn fetch_config(theme: &str, storage: &Path, selection: &BezelConfig) -> Result<()> {
     let directory = read_index(storage)
         .map(|index| index.directory)
         .unwrap_or_else(|| theme.to_owned());
+    let prefix = if selection.system {
+        "retroarch/overlay".to_owned()
+    } else {
+        format!("{OVERLAY_ROOT_IN_PACK}/{directory}")
+    };
     let url = format!(
-        "{PACK_RAW_BASE}{theme}/{PACK_BRANCH}/{OVERLAY_ROOT_IN_PACK}/{directory}/{}",
-        percent_encode(config_name)
+        "{PACK_RAW_BASE}{theme}/{PACK_BRANCH}/{prefix}/{}",
+        percent_encode(&selection.name)
     );
     let text = fetch_text(&url, MAX_CONFIG_BYTES as u64)?;
     if !text.contains("overlay0_overlay") {
-        bail!("the {config_name} bezel config has no overlay image reference");
+        bail!(
+            "the {} bezel config has no overlay image reference",
+            selection.name
+        );
     }
-    fs::write(storage.join(config_name), text)
-        .with_context(|| format!("saving the {config_name} bezel config"))?;
+    fs::write(storage.join(&selection.name), text)
+        .with_context(|| format!("saving the {} bezel config", selection.name))?;
     Ok(())
 }
 
 /// Download the PNG the config references (if it is not cached yet) and
 /// return its plain file name for the rewritten config.
-fn ensure_local_png(theme: &str, storage: &Path, config_path: &Path) -> Result<String> {
+fn ensure_local_png(
+    theme: &str,
+    storage: &Path,
+    config_path: &Path,
+    system: bool,
+) -> Result<String> {
     let config = fs::read_to_string(config_path)
         .with_context(|| format!("reading {}", config_path.display()))?;
     let remote = png_reference(&config).context("the bezel config references no overlay image")?;
@@ -288,8 +378,13 @@ fn ensure_local_png(theme: &str, storage: &Path, config_path: &Path) -> Result<S
         let directory = read_index(storage)
             .map(|index| index.directory)
             .unwrap_or_else(|| theme.to_owned());
+        let prefix = if system {
+            "retroarch/overlay".to_owned()
+        } else {
+            format!("{OVERLAY_ROOT_IN_PACK}/{directory}")
+        };
         let url = format!(
-            "{PACK_RAW_BASE}{theme}/{PACK_BRANCH}/{OVERLAY_ROOT_IN_PACK}/{directory}/{}",
+            "{PACK_RAW_BASE}{theme}/{PACK_BRANCH}/{prefix}/{}",
             percent_encode(&remote)
         );
         let bytes = fetch_bytes(&url, MAX_IMAGE_BYTES)?;
@@ -452,6 +547,55 @@ mod tests {
         assert_eq!(
             percent_encode("Zelda, The (USA).cfg"),
             "Zelda%2C%20The%20%28USA%29.cfg"
+        );
+    }
+
+    #[test]
+    fn tree_configs_keeps_late_alphabet_games_past_the_contents_cutoff() {
+        let value = serde_json::json!({
+            "truncated": false,
+            "tree": [
+                {"path": "retroarch/overlay/GameBezels/SNES/ActRaiser (USA).cfg", "type": "blob"},
+                {"path": "retroarch/overlay/GameBezels/SNES/Super Metroid (USA).cfg", "type": "blob"},
+                {"path": "retroarch/overlay/GameBezels/SNES/Super Metroid (USA).png", "type": "blob"},
+                {"path": "retroarch/overlay/GameBezels/SNES/nested/Extra.cfg", "type": "blob"},
+                {"path": "retroarch/overlay/GameBezels/SNES", "type": "tree"},
+                {"path": "retroarch/overlay/GameBezels/NES/Zelda.cfg", "type": "blob"},
+            ],
+        });
+        assert_eq!(
+            tree_configs(&value, "retroarch/overlay/GameBezels/SNES/"),
+            vec!["ActRaiser (USA).cfg", "Super Metroid (USA).cfg"],
+        );
+    }
+
+    #[test]
+    fn pack_without_a_game_bezel_uses_its_system_overlay() {
+        let directory = tempfile::tempdir().unwrap();
+        let index = PackIndex {
+            fetched_at: unix_timestamp(),
+            directory: "SNES".to_owned(),
+            configs: vec!["ActRaiser (USA).cfg".to_owned()],
+            system_config: Some("Super-Nintendo-Entertainment-System.cfg".to_owned()),
+            system_config_scanned: true,
+        };
+        write_index(directory.path(), &index).unwrap();
+        let selected = resolve_pack_config_name("SNES", directory.path(), "Super Metroid (USA)")
+            .unwrap()
+            .unwrap();
+        assert_eq!(selected.name, "Super-Nintendo-Entertainment-System.cfg");
+        assert!(selected.system);
+    }
+
+    #[test]
+    fn tree_system_config_uses_only_a_unique_overlay_root_config() {
+        let value = serde_json::json!({"tree": [
+            {"path": "retroarch/overlay/Super-Nintendo-Entertainment-System.cfg", "type": "blob"},
+            {"path": "retroarch/overlay/GameBezels/SNES/ActRaiser (USA).cfg", "type": "blob"}
+        ]});
+        assert_eq!(
+            tree_system_config(&value).as_deref(),
+            Some("Super-Nintendo-Entertainment-System.cfg")
         );
     }
 }

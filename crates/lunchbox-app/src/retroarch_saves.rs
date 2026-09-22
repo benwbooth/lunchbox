@@ -9,6 +9,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 
@@ -26,6 +27,58 @@ pub fn lunchbox_route_roots(core_name: &str) -> Vec<PathBuf> {
         Some(base) => vec![base.join("saves"), base.join("states")],
         None => Vec::new(),
     }
+}
+
+/// Observe the actual files used by RetroArch without claiming that merely
+/// enabling auto-load proves the core consumed a previous state.
+pub struct AutoSaveObservation {
+    state: PathBuf,
+    sram: PathBuf,
+    state_before: Option<SystemTime>,
+    sram_before: Option<SystemTime>,
+}
+
+impl AutoSaveObservation {
+    pub fn for_content(core_name: &str, content: &Path) -> Option<Self> {
+        let stem = content.file_stem()?.to_str()?;
+        let roots = lunchbox_route_roots(core_name);
+        let state = roots.get(1)?.join(format!("{stem}.state.auto"));
+        let sram = roots.first()?.join(format!("{stem}.srm"));
+        Some(Self {
+            state_before: modified(&state),
+            sram_before: modified(&sram),
+            state,
+            sram,
+        })
+    }
+
+    pub fn launch_notice(&self) -> &'static str {
+        if self.state_before.is_some() {
+            "Auto-resume enabled; a previous state file is available"
+        } else {
+            "Auto-save enabled; no previous state file exists yet"
+        }
+    }
+
+    pub fn exit_notice(&self) -> String {
+        let state_saved = modified(&self.state)
+            .is_some_and(|after| self.state_before.is_none_or(|before| after > before));
+        let sram_saved = modified(&self.sram)
+            .is_some_and(|after| self.sram_before.is_none_or(|before| after > before));
+        let mut notice = if state_saved {
+            "Auto-state file saved".to_owned()
+        } else {
+            "No auto-state file update detected".to_owned()
+        };
+        if sram_saved {
+            notice.push_str("; SRAM file saved");
+        }
+        notice
+    }
+}
+
+fn modified(path: &Path) -> Option<SystemTime> {
+    fs::metadata(path).ok()?.modified().ok()
 }
 
 fn retroarch_config_base(executable: &EmulatorExecutable) -> Result<PathBuf> {

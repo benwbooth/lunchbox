@@ -230,6 +230,51 @@ fn install_generated_preset(root: &Path, choice: &ShaderPresetChoice) -> Option<
     Some(preset_path)
 }
 
+/// Slang (`.slangp`) presets need a slang-capable video driver. When the
+/// user's saved driver cannot run them, the session switches to `glcore`
+/// so the chosen shader actually loads instead of silently falling back
+/// to stock.
+const SLANG_VIDEO_DRIVERS: &[&str] = &["vulkan", "glcore", "d3d11", "d3d12", "metal"];
+
+fn user_video_driver(executable: &EmulatorExecutable) -> Option<String> {
+    retroarch_config_value(executable, "video_driver")
+}
+
+fn video_driver_from_config(text: &str) -> Option<String> {
+    config_value_from_text(text, "video_driver")
+}
+
+pub fn retroarch_config_value(executable: &EmulatorExecutable, key: &str) -> Option<String> {
+    let path = retroarch_config_base(executable)?.join("retroarch.cfg");
+    let text = fs::read_to_string(path).ok()?;
+    config_value_from_text(&text, key)
+}
+
+fn config_value_from_text(text: &str, wanted_key: &str) -> Option<String> {
+    let mut result = None;
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() == wanted_key {
+            result = Some(value.trim().trim_matches('"').to_owned());
+        }
+    }
+    result
+}
+
+fn slang_driver_override(executable: &EmulatorExecutable) -> Option<&'static str> {
+    slang_driver_override_for(user_video_driver(executable).as_deref())
+}
+
+fn slang_driver_override_for(configured: Option<&str>) -> Option<&'static str> {
+    let configured = configured?;
+    (!SLANG_VIDEO_DRIVERS
+        .iter()
+        .any(|capable| configured.eq_ignore_ascii_case(capable)))
+    .then_some("glcore")
+}
+
 /// Apply the resolved display customization to a ready launch plan. Must be
 /// called after calibrated-controller attachment so the display values win
 /// RetroArch's appendconfig merge order. Returns a warning when the launch
@@ -260,6 +305,12 @@ pub fn attach_launch_display_configuration(
             Some(preset_path) => {
                 lines.push_str("video_shader_enable = \"true\"\n");
                 lines.push_str(&format!("video_shader = \"{}\"\n", preset_path.display()));
+                // RetroArch's CLI applies this when content loads and takes
+                // precedence over any automatic core/game shader preset.
+                attach_shader_argument(plan, executable, &preset_path);
+                if let Some(driver) = slang_driver_override(executable) {
+                    lines.push_str(&format!("video_driver = \"{driver}\"\n"));
+                }
             }
             None => warnings.push(format!(
                 "The {} shader preset is not installed, so the game started without it",
@@ -278,7 +329,7 @@ pub fn attach_launch_display_configuration(
                 lines.push_str("input_overlay_opacity = \"1.000000\"\n");
             }
             Ok(None) => warnings.push(
-                "No system bezel matched this game in The Bezel Project pack, so the game started without one"
+                "The Bezel Project pack has no matching per-game or system bezel, so the game started without one"
                     .to_owned(),
             ),
             Err(error) => warnings.push(format!(
@@ -327,6 +378,28 @@ pub fn attach_launch_display_configuration(
     }
 }
 
+fn attach_shader_argument(
+    plan: &mut LaunchPlan,
+    executable: &EmulatorExecutable,
+    preset_path: &Path,
+) {
+    let insertion = match executable {
+        EmulatorExecutable::Flatpak { app_id, .. } => plan
+            .arguments
+            .iter()
+            .position(|argument| argument.to_str() == Some(app_id))
+            .map(|index| index + 1),
+        EmulatorExecutable::Native(_) => Some(0),
+        _ => None,
+    };
+    if let Some(index) = insertion {
+        plan.arguments.insert(
+            index,
+            format!("--set-shader={}", preset_path.display()).into(),
+        );
+    }
+}
+
 fn write_launch_display_config(contents: &str) -> Result<PathBuf> {
     let directory = directories::ProjectDirs::from("com", "Lunchbox", "Lunchbox")
         .map(|dirs| dirs.data_local_dir().join("launch-display"))
@@ -359,5 +432,31 @@ fn prune_stale_launch_display_configs(directory: &Path) {
         if modified < cutoff {
             let _ = fs::remove_file(entry.path());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slang_shaders_switch_legacy_drivers_to_glcore() {
+        assert_eq!(slang_driver_override_for(Some("gl")), Some("glcore"));
+        assert_eq!(slang_driver_override_for(Some("GL")), Some("glcore"));
+        assert_eq!(slang_driver_override_for(Some("gl1")), Some("glcore"));
+        assert_eq!(slang_driver_override_for(Some("sdl2")), Some("glcore"));
+        assert_eq!(slang_driver_override_for(Some("vulkan")), None);
+        assert_eq!(slang_driver_override_for(Some("glcore")), None);
+        assert_eq!(slang_driver_override_for(Some("d3d11")), None);
+        assert_eq!(slang_driver_override_for(Some("metal")), None);
+        assert_eq!(slang_driver_override_for(None), None);
+    }
+
+    #[test]
+    fn video_driver_parser_skips_comments_and_blank_lines() {
+        assert_eq!(
+            video_driver_from_config("# RetroArch\n\nvideo_driver = \"gl\"\n"),
+            Some("gl".to_owned())
+        );
     }
 }

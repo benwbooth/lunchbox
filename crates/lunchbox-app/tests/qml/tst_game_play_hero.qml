@@ -37,10 +37,13 @@ TestCase {
                 return index === 1
             }
             displayScope: "game"
+            displayFullscreen: ""
             displayShader: ""
             displayBezel: ""
             displaySaveStates: ""
+            displayEffectiveSummary: ""
             displayRevision: 0
+            displayFullscreenSupported: true
             displayShaderSupported: true
             displayBezelSupported: true
             displaySaveStatesSupported: false
@@ -82,10 +85,17 @@ TestCase {
         const section = findChild(hero, "displaySection")
         verify(section)
         compare(hero.displaySectionAvailable, true)
+        const fullscreen = findChild(hero, "displayFullscreenCombo")
+        verify(fullscreen)
+        compare(fullscreen.currentValue, "")
+        hero.displayFullscreen = "true"
+        hero.displayRevision++
+        compare(fullscreen.currentValue, "true")
     }
 
     function test_display_section_hides_for_unsupported_adapters() {
         const hero = createTemporaryObject(heroComponent, testCase, {
+            displayFullscreenSupported: false,
             displayShaderSupported: false,
             displayBezelSupported: false,
             displaySaveStatesSupported: false
@@ -96,8 +106,27 @@ TestCase {
         compare(hero.displaySectionAvailable, false)
     }
 
+    function test_display_effective_summary_names_what_inherit_resolves() {
+        const hero = createTemporaryObject(heroComponent, testCase, {
+            displayEffectiveSummary: "Effective: CRT RetroTube TV · Bezel System pack · States Save + resume"
+        })
+        verify(hero)
+        const summary = findChild(hero, "displayEffectiveSummary")
+        verify(summary)
+        compare(summary.text, "Effective: CRT RetroTube TV · Bezel System pack · States Save + resume")
+    }
+
+    function test_display_effective_summary_empty_when_nothing_set() {
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        const summary = findChild(hero, "displayEffectiveSummary")
+        verify(summary)
+        compare(summary.text, "")
+    }
+
     function test_emulator_picker_stays_visible_without_display_features() {
         const hero = createTemporaryObject(heroComponent, testCase, {
+            displayFullscreenSupported: false,
             displayShaderSupported: false,
             displayBezelSupported: false,
             displaySaveStatesSupported: false
