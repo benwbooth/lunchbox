@@ -279,7 +279,42 @@ pub fn add_layout(catalog: &mut crate::controller_catalog::Catalog) {
     layout.id = "steam-controller-2026".into();
     layout.name = "Steam Controller 2 (2026) — SDL3 native controls".into();
     layout.source = "https://github.com/libsdl-org/SDL/blob/release-3.4.12/src/joystick/hidapi/SDL_hidapi_steam_triton.c".into();
-    layout.notes = "Standard gamepad axes/buttons and additional grip/pad clicks. Touch coordinates, gyro, haptics and pressure sensing are not represented by this mapping.".into();
+    layout.notes = "Standard gamepad axes/buttons and additional grip/pad clicks. The physical arrangement differs from Xbox: the d-pad sits above the left stick, and the right stick sits below the face buttons. Touch coordinates, gyro, haptics and pressure sensing are not represented by this mapping.".into();
+    // The SC2's left cluster is d-pad above stick (the Xbox reference is the
+    // reverse), so the diagram must swap those two quartets' geometry while
+    // keeping the direction-to-control pairing intact.
+    let swapped_left_cluster = |layout: &mut crate::controller_catalog::Layout| {
+        const DIRECTIONS: [&str; 4] = ["up", "down", "left", "right"];
+        let position = |layout: &crate::controller_catalog::Layout, id: &str| {
+            layout
+                .controls
+                .iter()
+                .find(|control| control.id == id)
+                .map(|control| (control.x, control.y))
+                .expect("standard gamepad control geometry")
+        };
+        let mut moves = Vec::new();
+        for direction in DIRECTIONS {
+            let dpad = position(layout, direction);
+            let stick = position(layout, &format!("stick_{direction}"));
+            moves.push((direction, dpad, stick));
+        }
+        for (direction, dpad, stick) in moves {
+            for (id, (x, y)) in [
+                (direction.to_owned(), stick),
+                (format!("stick_{direction}"), dpad),
+            ] {
+                let control = layout
+                    .controls
+                    .iter_mut()
+                    .find(|control| control.id == id)
+                    .expect("standard gamepad control geometry");
+                control.x = x;
+                control.y = y;
+            }
+        }
+    };
+    swapped_left_cluster(&mut layout);
     for (i, (id, label)) in [
         ("guide", "Steam"),
         ("quick_access", "Quick access"),
@@ -538,5 +573,41 @@ mod tests {
         let mut wrong = preset.clone();
         wrong.backend = "gilrs-0.11".into();
         assert!(wrong.validate().is_err());
+    }
+
+    #[test]
+    fn diagram_places_the_dpad_above_the_left_stick_like_the_hardware() {
+        let catalog = crate::controller_catalog::catalog();
+        let layout = catalog
+            .layouts
+            .iter()
+            .find(|layout| layout.id == "steam-controller-2026")
+            .expect("steam controller 2 layout");
+        let position = |id: &str| {
+            layout
+                .controls
+                .iter()
+                .find(|control| control.id == id)
+                .map(|control| (control.x, control.y))
+                .unwrap_or_else(|| panic!("missing control {id}"))
+        };
+        // The physical SC2 is d-pad above stick (reversed from Xbox), so the
+        // swapped diagram must place the d-pad cluster higher than the stick.
+        let (_, dpad_y) = position("up");
+        let (_, stick_y) = position("stick_up");
+        assert!(
+            dpad_y < stick_y,
+            "dpad {dpad_y:?} should sit above stick {stick_y:?}"
+        );
+        // The right side matches Xbox already: face buttons above the stick.
+        let (_, face_y) = position("a");
+        let (_, right_stick_y) = position("right_stick_up");
+        assert!(face_y < right_stick_y);
+        // Directions keep their relative cross arrangement after the swap.
+        let (_, up_y) = position("up");
+        let (_, down_y) = position("down");
+        let (left_x, _) = position("left");
+        let (right_x, _) = position("right");
+        assert!(up_y < down_y && left_x < right_x);
     }
 }
