@@ -237,7 +237,6 @@ Rectangle {
                     ComboBox {
                         id: displayShaderCombo
                         width: parent.width
-                        font.pixelSize: 9
                         textRole: "label"
                         valueRole: "value"
                         model: {
@@ -265,6 +264,29 @@ Rectangle {
                             target: hero
                             function onDisplayRevisionChanged() { displayShaderCombo.syncValue() }
                         }
+background: Rectangle {
+                            radius: 8
+                            color: "#0d211a"
+                            border.width: 2
+                            border.color: "#43a876"
+                        }
+                        contentItem: Text {
+                            leftPadding: 11
+                            rightPadding: 30
+                            text: displayShaderCombo.displayText
+                            color: hero.ink
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        delegate: ItemDelegate {
+                            required property int index
+                            width: displayShaderCombo.width
+                            text: displayShaderCombo.model[index].label
+                            font.pixelSize: 10
+                            highlighted: displayShaderCombo.highlightedIndex === index
+                        }
                     }
                 }
                 Column {
@@ -281,7 +303,6 @@ Rectangle {
                     ComboBox {
                         id: displayBezelCombo
                         width: parent.width
-                        font.pixelSize: 9
                         textRole: "label"
                         valueRole: "value"
                         model: [
@@ -303,6 +324,29 @@ Rectangle {
                             target: hero
                             function onDisplayRevisionChanged() { displayBezelCombo.syncValue() }
                         }
+background: Rectangle {
+                            radius: 8
+                            color: "#0d211a"
+                            border.width: 2
+                            border.color: "#43a876"
+                        }
+                        contentItem: Text {
+                            leftPadding: 11
+                            rightPadding: 30
+                            text: displayBezelCombo.displayText
+                            color: hero.ink
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        delegate: ItemDelegate {
+                            required property int index
+                            width: displayBezelCombo.width
+                            text: displayBezelCombo.model[index].label
+                            font.pixelSize: 10
+                            highlighted: displayBezelCombo.highlightedIndex === index
+                        }
                     }
                 }
                 Column {
@@ -319,7 +363,6 @@ Rectangle {
                     ComboBox {
                         id: displaySaveStatesCombo
                         width: parent.width
-                        font.pixelSize: 9
                         textRole: "label"
                         valueRole: "value"
                         model: [
@@ -340,6 +383,29 @@ Rectangle {
                         Connections {
                             target: hero
                             function onDisplayRevisionChanged() { displaySaveStatesCombo.syncValue() }
+                        }
+background: Rectangle {
+                            radius: 8
+                            color: "#0d211a"
+                            border.width: 2
+                            border.color: "#43a876"
+                        }
+                        contentItem: Text {
+                            leftPadding: 11
+                            rightPadding: 30
+                            text: displaySaveStatesCombo.displayText
+                            color: hero.ink
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        delegate: ItemDelegate {
+                            required property int index
+                            width: displaySaveStatesCombo.width
+                            text: displaySaveStatesCombo.model[index].label
+                            font.pixelSize: 10
+                            highlighted: displaySaveStatesCombo.highlightedIndex === index
                         }
                     }
                 }
