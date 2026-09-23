@@ -38,6 +38,7 @@ TestCase {
         verify(searchIcon !== null)
         verify(searchIcon.visible)
         verify(clearButton.visible)
+        verify(!clearButton.background.visible)
         mouseClick(clearButton, clearButton.width / 2, clearButton.height / 2)
         compare(search.text, "")
         compare(clearCount, 1)

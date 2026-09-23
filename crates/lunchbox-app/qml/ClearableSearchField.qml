@@ -57,18 +57,11 @@ TextField {
         }
         ToolTip.visible: hovered
         ToolTip.text: "Clear search"
-        background: Rectangle {
-            radius: 8
-            color: !parent.enabled ? "#151d29"
-                   : parent.down ? "#344156"
-                   : parent.hovered ? "#273346" : "#1b2534"
-            border.color: parent.enabled
-                          ? (parent.hovered ? "#718097" : "#46546a")
-                          : "#303b4d"
-        }
+        // Keep a comfortable click target without drawing a button around the ×.
+        background: Item { visible: false }
         contentItem: Text {
             text: parent.text
-            color: parent.enabled ? "#f4f7fb" : "#718097"
+            color: parent.enabled ? (parent.hovered ? "#f4f7fb" : "#aeb9c8") : "#718097"
             font.pixelSize: 20
             font.weight: Font.DemiBold
             horizontalAlignment: Text.AlignHCenter
