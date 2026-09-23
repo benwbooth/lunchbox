@@ -133,6 +133,20 @@ TestCase {
         compare(settings.automaticCalls,1)
         verify(workflow.playersReady)
     }
+    function test_mapping_scope_is_system_and_core_not_opening_game() {
+        workflow.startForGame("Metroid", "Nintendo Entertainment System", "RetroArch (fceumm)")
+        workflow.stage=1
+        const scope=findChild(workflow,"controllerMappingScope")
+        verify(scope.visible)
+        compare(workflow.mappingScope,
+            "all games on Nintendo Entertainment System using RetroArch (fceumm)")
+        verify(workflow.saveTarget("nes-target"))
+        compare(settings.targetProfiles["RetroArch (fceumm)/Nintendo Entertainment System"],"nes-target")
+        workflow.startForGame("Castlevania", "Nintendo Entertainment System", "RetroArch (fceumm)")
+        compare(workflow.selectedProfile,"nes-target")
+        compare(workflow.mappingScope,
+            "all games on Nintendo Entertainment System using RetroArch (fceumm)")
+    }
     function test_duplicate_assignment_and_save_failure_do_not_change_players() {
         workflow.assignPlayer(0,"brawler"); workflow.addPlayer()
         workflow.assignPlayer(1,"brawler")

@@ -32,6 +32,8 @@ ColumnLayout {
     readonly property var calibrationContentItem: wizard.contentItem
     readonly property var catalog: JSON.parse(settingsModel.controller_catalog_json())
     readonly property var profile: catalog.emulator_profiles.find(item => item.id === selectedProfile) || null
+    readonly property string mappingScope: gamePlatform && gameEmulator
+        ? "all games on " + gamePlatform + " using " + gameEmulator : ""
     readonly property var sourceLayout: catalog.layouts.find(item => item.id === calibration.layout) || null
     readonly property var targetLayout: profile ? catalog.layouts.find(item => item.id === profile.target_layout) || null : null
     readonly property int playerLimit: profile ? targetFilter.playerLimit(profile) : 16
@@ -163,7 +165,7 @@ ColumnLayout {
         if (error) { status = error; return false }
         selectedProfile = id
         loadMapping()
-        status = "Target controller saved for this emulator and system."
+        status = "Target controller saved for " + mappingScope + "."
         return true
     }
     function startForGame(title, platform, emulator) {
@@ -250,6 +252,24 @@ ColumnLayout {
         text: ["Choose a controller for each player. Lunchbox will restore its saved buttons or try automatic setup.",
             "Choose the emulator and system. Lunchbox matches each player’s buttons to the target controller.",
             "The left side is your controller; the right side is the system’s controller. Select a target button to inspect or change its assignment."][setup.stage]
+    }
+    Frame {
+        objectName: "controllerMappingScope"
+        visible: setup.stage > 0 && !!setup.mappingScope
+        Layout.fillWidth: true
+        background: Rectangle { radius: 8; color: "#173a2d"; border.color: "#347259" }
+        contentItem: ColumnLayout {
+            Label { text: "MAPPING SCOPE"; font.pixelSize: 10; font.bold: true; color: "#8ad4b7" }
+            Label {
+                Layout.fillWidth: true; wrapMode: Text.WordWrap; font.bold: true
+                text: "A" + setup.mappingScope.slice(1)
+            }
+            Label {
+                Layout.fillWidth: true; wrapMode: Text.WordWrap
+                text: "Target and button choices are shared across those games when this controller is assigned to a player."
+                    + (setup.gameTitle ? " Opening setup from " + setup.gameTitle + " does not make this game-only." : "")
+            }
+        }
     }
     ColumnLayout {
         visible: setup.stage === 0; Layout.fillWidth: true; spacing: 12
@@ -438,7 +458,7 @@ ColumnLayout {
         Label {
             text: setup.profile && setup.profile.transport === "ares-settings"
                 ? "Saved mappings are applied when you press Play. Lunchbox checks the emulator’s input support before starting the game."
-                : "Your target choice and button mappings are saved together. Applying them at launch depends on this emulator’s runtime setup and input backend."
+                : "Your target choice and button mappings are saved for " + setup.mappingScope + ". Applying them at launch depends on this emulator’s runtime setup and input backend."
             Layout.fillWidth: true; wrapMode: Text.WordWrap
         }
         RowLayout {
@@ -446,12 +466,13 @@ ColumnLayout {
             Button { text: "Reset to automatic"; onClicked: { setup.choices = ({}); setup.generate(); setup.dirty = true } }
             Button { text: "Discard changes"; visible: setup.dirty; onClicked: setup.loadMapping() }
             Button {
-                text: "Save Player " + (setup.selectedPlayer + 1) + " mapping"; highlighted: true
+                text: "Save Player " + (setup.selectedPlayer + 1) + " for system"; highlighted: true
+                Accessible.description: "Save this controller mapping for " + setup.mappingScope
                 enabled: !setup.settingsModel.busy && !setup.preview.error && setup.preview.rows.length > 0 && setup.missing === 0
                 onClicked: {
                     const error = setup.settingsModel.save_guided_controller_mapping(setup.selectedDevice, setup.selectedProfile, JSON.stringify(setup.choices), setup.calibrationBaseline)
                     if (error) setup.status = error
-                    else { setup.selectDevice(setup.selectedDevice); setup.status = "Player " + (setup.selectedPlayer + 1) + " mapping saved for this target." }
+                    else { setup.selectDevice(setup.selectedDevice); setup.status = "Player " + (setup.selectedPlayer + 1) + " mapping saved for " + setup.mappingScope + "." }
                 }
             }
         }
