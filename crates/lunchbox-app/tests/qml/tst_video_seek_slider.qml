@@ -80,6 +80,13 @@ TestCase {
         verify(!seek.enabled)
     }
 
+    function test_keyboard_seek_remains_available() {
+        verify(seek.activeFocusOnTab)
+        seek.forceActiveFocus()
+        keyClick(Qt.Key_Right)
+        verify(player.position > 0)
+    }
+
     function test_styled_slider_has_usable_pointer_height() {
         verify(styledSeek.height >= 32,
                "The styled detail timeline must retain a usable hit area; height="

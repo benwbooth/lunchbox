@@ -13177,32 +13177,8 @@ ApplicationWindow {
                                         id: videoPosition
                                         mediaPlayer: gameVideoPlayer
                                         Layout.fillWidth: true
-                                        background: Rectangle {
-                                            x: videoPosition.leftPadding
-                                            y: videoPosition.topPadding
-                                               + videoPosition.availableHeight / 2 - height / 2
-                                            width: videoPosition.availableWidth
-                                            height: 4
-                                            radius: 2
-                                            color: "#465166"
-                                            Rectangle {
-                                                width: videoPosition.visualPosition * parent.width
-                                                height: parent.height
-                                                radius: 2
-                                                color: root.accent
-                                            }
-                                        }
-                                        handle: Rectangle {
-                                            x: videoPosition.leftPadding
-                                               + videoPosition.visualPosition
-                                                 * (videoPosition.availableWidth - width)
-                                            y: videoPosition.topPadding
-                                               + videoPosition.availableHeight / 2 - height / 2
-                                            width: 12
-                                            height: 12
-                                            radius: 6
-                                            color: root.ink
-                                        }
+                                        progressColor: root.accent
+                                        handleColor: root.ink
                                     }
 
                                     Text {
