@@ -358,6 +358,24 @@ fn slang_driver_override_for(configured: Option<&str>) -> Option<&'static str> {
     .then_some("glcore")
 }
 
+/// Keep RetroArch's optional Qt desktop companion out of content launches.
+/// Qt 6 builds initialize it whenever the user's desktop menu is enabled,
+/// even when ui_companion_enable is false. A crash in that initialization
+/// prevents the game and its display settings from starting. This private
+/// appendconfig does not change the user's RetroArch configuration.
+pub fn attach_launch_desktop_menu_override(
+    plan: &mut LaunchPlan,
+    executable: &EmulatorExecutable,
+) -> Result<()> {
+    if plan.retroarch_content.is_none() {
+        return Ok(());
+    }
+    let path = write_launch_display_config(
+        "desktop_menu_enable = \"false\"\nconfig_save_on_exit = \"false\"\n",
+    )?;
+    crate::controller_launch::attach_config(plan, executable, &path)
+}
+
 /// Apply the resolved display customization to a ready launch plan. Must be
 /// called after calibrated-controller attachment so the display values win
 /// RetroArch's appendconfig merge order. Returns a warning when the launch
@@ -807,6 +825,37 @@ fn prune_stale_launch_display_configs(directory: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retroarch_content_launch_disables_only_the_optional_desktop_menu() {
+        let temporary = tempfile::tempdir().unwrap();
+        let content = temporary.path().join("game.sfc");
+        let executable = EmulatorExecutable::Native(PathBuf::from("retroarch"));
+        let mut plan = LaunchPlan {
+            emulator_name: "RetroArch".into(),
+            program: PathBuf::from("retroarch"),
+            arguments: vec![content.as_os_str().to_owned()],
+            current_directory: temporary.path().to_path_buf(),
+            environment: Vec::new(),
+            cleanup_paths: Vec::new(),
+            retroarch_content: Some(crate::emulator::PreparedRetroarchContent {
+                core: PathBuf::from("snes9x_libretro.so"),
+                content,
+            }),
+        };
+
+        attach_launch_desktop_menu_override(&mut plan, &executable).unwrap();
+        assert_eq!(plan.arguments[0], "--appendconfig");
+        let config = fs::read_to_string(PathBuf::from(&plan.arguments[1])).unwrap();
+        assert_eq!(
+            config,
+            "desktop_menu_enable = \"false\"\nconfig_save_on_exit = \"false\"\n"
+        );
+        assert_eq!(
+            plan.arguments[2].as_os_str(),
+            plan.retroarch_content.as_ref().unwrap().content.as_os_str()
+        );
+    }
 
     #[test]
     fn retroarch_probe_uses_display_mode_not_scaled_gl_backing_surface() {

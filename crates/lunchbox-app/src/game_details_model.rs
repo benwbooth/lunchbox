@@ -6271,6 +6271,18 @@ impl qobject::GameDetailsModel {
                             ) {
                                 eprintln!("LUNCHBOX_RETROARCH_SAVE_OVERRIDE_DEGRADED: {warning}");
                             }
+                            if let Err(error) =
+                                crate::display_setup::attach_launch_desktop_menu_override(
+                                    &mut plan,
+                                    &option.executable,
+                                )
+                            {
+                                let warning = format!(
+                                    "RetroArch's desktop-menu crash workaround could not be applied: {error:#}"
+                                );
+                                eprintln!("LUNCHBOX_RETROARCH_UI_OVERRIDE_DEGRADED: {warning}");
+                                display_warning = Some(warning);
+                            }
                         }
                         let display_customization =
                             crate::settings::SettingsStore::open_default().and_then(|store| {
@@ -6317,7 +6329,12 @@ impl qobject::GameDetailsModel {
                                 )
                             {
                                 eprintln!("LUNCHBOX_DISPLAY_SETTING_DEGRADED: {warning}");
-                                display_warning = Some(warning);
+                                if let Some(existing) = &mut display_warning {
+                                    existing.push_str("; ");
+                                    existing.push_str(&warning);
+                                } else {
+                                    display_warning = Some(warning);
+                                }
                             }
                         }
                     }
