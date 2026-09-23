@@ -41279,6 +41279,7 @@
     },
     {
       "id": "retroarch:fceumm:nes",
+      "retroarch_library": "FCEUmm",
       "retroarch_launch": {
         "platforms": [
           "NES",

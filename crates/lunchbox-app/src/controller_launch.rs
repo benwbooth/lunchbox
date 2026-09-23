@@ -11951,6 +11951,17 @@ mod tests {
                         game_uid: "",
                     },
                     Case {
+                        name: "retroarch-fceumm-metroid",
+                        platform: "Nintendo Entertainment System",
+                        emulator_name: "RetroArch",
+                        emulator_id: "retroarch-id",
+                        app_id: "org.libretro.RetroArch",
+                        core: "fceumm",
+                        core_file: "fceumm_libretro.so",
+                        rom: "/mnt/roms/Nintendo Entertainment System/Metroid (USA) (Virtual Console).zip",
+                        game_uid: "0a32d44f-609f-4225-b3c1-9dceed7c7c94",
+                    },
+                    Case {
                         name: "retroarch-snes9x-snes",
                         platform: "Super Nintendo Entertainment System",
                         emulator_name: "RetroArch",
@@ -11965,7 +11976,14 @@ mod tests {
                 let store = crate::settings::SettingsStore::open_default().unwrap();
                 let settings = store.load().unwrap();
                 let mut failures = Vec::new();
+                let selected_case = std::env::var("LUNCHBOX_LIVE_PREPARE_CASE").ok();
                 for case in cases {
+                    if selected_case
+                        .as_deref()
+                        .is_some_and(|selected| selected != case.name)
+                    {
+                        continue;
+                    }
                     if !std::path::Path::new(case.rom).is_file() {
                         println!("SKIP {}: missing {}", case.name, case.rom);
                         continue;
@@ -13409,6 +13427,9 @@ mod tests {
                 .core_options["fceumm_turbo_enable"],
             "Both"
         );
+        let fceumm = contract("fceumm", "Nintendo Entertainment System").unwrap();
+        assert_eq!(fceumm.retroarch_library.as_deref(), Some("FCEUmm"));
+        assert!(!repeats_spare_face_pair(&calibration, fceumm).unwrap());
         assert_eq!(
             catalog()
                 .emulator_profiles
