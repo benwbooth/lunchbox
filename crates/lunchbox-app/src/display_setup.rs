@@ -272,13 +272,14 @@ fn install_generated_preset(root: &Path, choice: &ShaderPresetChoice) -> Option<
     Some(preset_path)
 }
 
-/// Koko-AIO's configured Base preset includes its own bezel. When a separate
-/// artwork overlay is active, disable the shader's built-in bezel. Keep its
-/// ambient light except when it would illuminate the blank sidebars beside
-/// aspect-fitted artwork.
-fn install_retrotube_system_bezel_variant(
+/// Keep RetroTube's CRT color and pixel treatment without its luminance-driven
+/// zoom or curved-edge crop. The small inset preserves edge text, especially
+/// when the game is fitted into a separate artwork overlay. Koko's own bezel
+/// is disabled only when that external overlay is active.
+fn install_retrotube_variant(
     root: &Path,
     base: &Path,
+    external_bezel: bool,
     black_sidebars: bool,
 ) -> Result<PathBuf> {
     let relative = base
@@ -288,8 +289,10 @@ fn install_retrotube_system_bezel_variant(
     fs::create_dir_all(&directory)?;
     let name = if black_sidebars {
         "retrotube-tv-black-sidebars.slangp"
-    } else {
+    } else if external_bezel {
         "retrotube-tv-system-bezel.slangp"
+    } else {
+        "retrotube-tv-standalone.slangp"
     };
     let path = directory.join(name);
     let reference = Path::new("..")
@@ -303,9 +306,16 @@ fn install_retrotube_system_bezel_variant(
     } else {
         ""
     };
+    let bezel = if external_bezel {
+        "DO_BEZEL = \"0.0\"\n"
+    } else {
+        ""
+    };
     fs::write(
         &path,
-        format!("#reference \"{reference}\"\nDO_BEZEL = \"0.0\"\n{ambient}"),
+        format!(
+            "#reference \"{reference}\"\nDO_DYNZOOM = \"0.0\"\nDO_CURVATURE = \"0.0\"\nGLOBAL_ZOOM = \"0.96\"\n{bezel}{ambient}"
+        ),
     )
     .with_context(|| format!("writing {}", path.display()))?;
     Ok(path)
@@ -537,19 +547,20 @@ pub fn attach_launch_display_configuration(
     if !customization.display_shader.is_empty() {
         match resolve_shader_preset(executable, &customization.display_shader) {
             Some(mut preset_path) => {
-                if customization.display_shader == "retrotube-tv"
-                    && external_bezel_active
-                    && let Some(root) = shader_root(executable)
-                {
-                    match install_retrotube_system_bezel_variant(
-                        &root,
-                        &preset_path,
-                        black_sidebars,
-                    ) {
-                        Ok(path) => preset_path = path,
-                        Err(error) => warnings.push(format!(
-                            "RetroTube TV could not disable its built-in bezel: {error:#}"
-                        )),
+                if customization.display_shader == "retrotube-tv" {
+                    lines.push_str("video_crop_overscan = \"false\"\n");
+                    if let Some(root) = shader_root(executable) {
+                        match install_retrotube_variant(
+                            &root,
+                            &preset_path,
+                            external_bezel_active,
+                            black_sidebars,
+                        ) {
+                            Ok(path) => preset_path = path,
+                            Err(error) => warnings.push(format!(
+                                "RetroTube TV could not install its stable viewport preset: {error:#}"
+                            )),
+                        }
                     }
                 }
                 lines.push_str("video_shader_enable = \"true\"\n");
@@ -1024,16 +1035,22 @@ mod tests {
                 "#reference \"../koko-aio-ng.slangp\"\nDO_PIXELGRID = \"1.0\"\n",
             )
             .unwrap();
-            let variant = install_retrotube_system_bezel_variant(root, &base, false).unwrap();
+            let variant = install_retrotube_variant(root, &base, true, false).unwrap();
             let contents = fs::read_to_string(&variant).unwrap();
             assert!(contents.contains("DO_BEZEL = \"0.0\""));
+            assert!(contents.contains("DO_DYNZOOM = \"0.0\""));
+            assert!(contents.contains("DO_CURVATURE = \"0.0\""));
+            assert!(contents.contains("GLOBAL_ZOOM = \"0.96\""));
             assert!(!contents.contains("DO_AMBILIGHT"));
             assert!(!contents.contains("DO_PIXELGRID = \"0.0\""));
-            let pillarbox_variant =
-                install_retrotube_system_bezel_variant(root, &base, true).unwrap();
+            let pillarbox_variant = install_retrotube_variant(root, &base, true, true).unwrap();
             assert_ne!(variant, pillarbox_variant);
             let pillarbox_contents = fs::read_to_string(pillarbox_variant).unwrap();
             assert!(pillarbox_contents.contains("DO_AMBILIGHT = \"0.0\""));
+            let standalone_variant = install_retrotube_variant(root, &base, false, false).unwrap();
+            let standalone_contents = fs::read_to_string(standalone_variant).unwrap();
+            assert!(!standalone_contents.contains("DO_BEZEL = \"0.0\""));
+            assert!(standalone_contents.contains("DO_DYNZOOM = \"0.0\""));
             let reference = contents
                 .lines()
                 .next()
