@@ -170,7 +170,7 @@ TestCase {
         workflow.modelDevice="unknown"
         workflow.applyModel("brawler-model")
         verify(workflow.calibrationActive)
-        compare(findChild(workflow.calibrationContentItem,"physicalLayoutDisplay").text,"Brawler64")
+        compare(findChild(workflow.calibrationContentItem,"physicalLayout").displayText,"Brawler64")
         verify(!settings.calibrations.unknown)
         verify(!workflow.playersReady)
         buttonNamed(workflow.calibrationContentItem.parent,"Cancel").clicked()

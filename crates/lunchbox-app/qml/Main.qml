@@ -12880,22 +12880,6 @@ ApplicationWindow {
                                         gameDetails.save_completion_state(
                                                     root.completionChoices[index].key)
                                     }
-                                    contentItem: Text {
-                                        leftPadding: 10
-                                        rightPadding: 28
-                                        text: completionPicker.displayText
-                                        color: completionPicker.enabled ? root.ink : root.muted
-                                        font.pixelSize: 10
-                                        font.weight: Font.Medium
-                                        verticalAlignment: Text.AlignVCenter
-                                        elide: Text.ElideRight
-                                    }
-                                    background: Rectangle {
-                                        radius: 7
-                                        color: "#101721"
-                                        border.color: completionPicker.activeFocus
-                                                      ? root.accent : root.line
-                                    }
                                 }
                             }
 
@@ -23379,7 +23363,8 @@ ApplicationWindow {
                                     : "Update selected ("
                                       + emulatorUpdates.selected_count + ")"
                             active: true
-                            accent: emulatorUpdates.batch_running ? "#ff8c82" : root.accent
+                            palette.buttonText: emulatorUpdates.batch_running
+                                                ? "#ff8c82" : root.palette.buttonText
                             enabled: emulatorUpdates.batch_running
                                      ? !emulatorUpdates.cancel_requested
                                      : !emulatorUpdates.busy
@@ -23566,21 +23551,6 @@ ApplicationWindow {
                             { label: "All platforms", value: "global" },
                             { label: "Per platform", value: "platform" }
                         ]
-                        contentItem: Text {
-                            leftPadding: 10
-                            rightPadding: 28
-                            text: launchProfileScopeFilter.displayText
-                            color: root.ink
-                            font.pixelSize: 10
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
-                        }
-                        background: Rectangle {
-                            radius: 7
-                            color: "#0b121b"
-                            border.color: launchProfileScopeFilter.activeFocus
-                                          ? root.accent : root.line
-                        }
                         onActivated: launchProfileManager.apply_filter(
                                          launchProfileSearch.text, currentValue,
                                          launchProfileCustomizationFilter.currentValue)
@@ -23595,21 +23565,6 @@ ApplicationWindow {
                             { label: "Customized", value: "customized" },
                             { label: "Built-in", value: "built-in" }
                         ]
-                        contentItem: Text {
-                            leftPadding: 10
-                            rightPadding: 28
-                            text: launchProfileCustomizationFilter.displayText
-                            color: root.ink
-                            font.pixelSize: 10
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
-                        }
-                        background: Rectangle {
-                            radius: 7
-                            color: "#0b121b"
-                            border.color: launchProfileCustomizationFilter.activeFocus
-                                          ? root.accent : root.line
-                        }
                         onActivated: launchProfileManager.apply_filter(
                                          launchProfileSearch.text,
                                          launchProfileScopeFilter.currentValue,
@@ -23943,7 +23898,7 @@ ApplicationWindow {
                             }
                             ComboBox {
                                 id: launchProfileDisplayFullscreen
-                                Layout.preferredWidth: 168
+                                Layout.preferredWidth: 220
                                 model: [
                                     { value: "", label: "Inherit" },
                                     { value: "false", label: "Windowed" },
@@ -23951,22 +23906,7 @@ ApplicationWindow {
                                 ]
                                 textRole: "label"
                                 valueRole: "value"
-                            background: Rectangle {
-                                radius: 7
-                                color: "#0b121b"
-                                border.color: launchProfileDisplayFullscreen.activeFocus
-                                              ? root.accent : root.line
                             }
-                            contentItem: Text {
-                                leftPadding: 10
-                                rightPadding: 28
-                                text: launchProfileDisplayFullscreen.displayText
-                                color: root.ink
-                                font.pixelSize: 10
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                            }
-}
                         }
                         RowLayout {
                             Layout.fillWidth: true
@@ -24006,22 +23946,7 @@ ApplicationWindow {
                                     if (currentIndex < 0)
                                         currentIndex = 0
                                 }
-                            background: Rectangle {
-                                radius: 7
-                                color: "#0b121b"
-                                border.color: launchProfileDisplayShader.activeFocus
-                                              ? root.accent : root.line
                             }
-                            contentItem: Text {
-                                leftPadding: 10
-                                rightPadding: 28
-                                text: launchProfileDisplayShader.displayText
-                                color: root.ink
-                                font.pixelSize: 10
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                            }
-}
                         }
                         RowLayout {
                             Layout.fillWidth: true
@@ -24038,7 +23963,7 @@ ApplicationWindow {
                             }
                             ComboBox {
                                 id: launchProfileDisplayBezel
-                                Layout.preferredWidth: 168
+                                Layout.preferredWidth: 296
                                 model: [
                                     { value: "", label: "Inherit" },
                                     { value: "off", label: "Off" },
@@ -24051,22 +23976,7 @@ ApplicationWindow {
                                 ]
                                 textRole: "label"
                                 valueRole: "value"
-                            background: Rectangle {
-                                radius: 7
-                                color: "#0b121b"
-                                border.color: launchProfileDisplayBezel.activeFocus
-                                              ? root.accent : root.line
                             }
-                            contentItem: Text {
-                                leftPadding: 10
-                                rightPadding: 28
-                                text: launchProfileDisplayBezel.displayText
-                                color: root.ink
-                                font.pixelSize: 10
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                            }
-}
                         }
                         RowLayout {
                             Layout.fillWidth: true
@@ -24083,7 +23993,7 @@ ApplicationWindow {
                             }
                             ComboBox {
                                 id: launchProfileDisplaySaveStates
-                                Layout.preferredWidth: 168
+                                Layout.preferredWidth: 220
                                 model: [
                                     { value: "", label: "Inherit" },
                                     { value: "off", label: "Off" },
@@ -24091,22 +24001,7 @@ ApplicationWindow {
                                 ]
                                 textRole: "label"
                                 valueRole: "value"
-                            background: Rectangle {
-                                radius: 7
-                                color: "#0b121b"
-                                border.color: launchProfileDisplaySaveStates.activeFocus
-                                              ? root.accent : root.line
                             }
-                            contentItem: Text {
-                                leftPadding: 10
-                                rightPadding: 28
-                                text: launchProfileDisplaySaveStates.displayText
-                                color: root.ink
-                                font.pixelSize: 10
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                            }
-}
                         }
                         LaunchCommandPreview {
                             id: launchProfileManagerPreview

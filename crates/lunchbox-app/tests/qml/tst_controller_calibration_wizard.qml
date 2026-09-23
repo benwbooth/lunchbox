@@ -91,19 +91,14 @@ TestCase {
         verify(!wizard.targetedComplete)
         compare(wizard.bindings.a.code, 2)
     }
-    function test_layout_display_uses_native_label_for_placeholder_and_selection() {
+    function test_layout_picker_shows_placeholder_and_selection() {
         wizard.guided = true
         wizard.layoutIndex = -1
-        const label = findChild(wizard.contentItem, "physicalLayoutDisplay")
-        verify(label !== null)
-        compare(label.text, "Select a physical layout")
-        const glyphs = findChild(label, "pixelAlignedGlyphs")
-        verify(glyphs !== null)
-        compare(glyphs.renderType, Text.NativeRendering)
-        compare(glyphs.textFormat, Text.PlainText)
-        compare(label.elide, Text.ElideRight)
+        const picker = findChild(wizard.contentItem, "physicalLayout")
+        verify(picker !== null)
+        compare(picker.displayText, "Select a physical layout")
         wizard.resetLayout(0)
-        compare(label.text, "NES")
+        compare(picker.displayText, "NES")
         wizard.guided = false
     }
     function test_wrong_controller_cannot_calibrate_selected_pad() {

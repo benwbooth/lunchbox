@@ -367,23 +367,13 @@ Dialog {
                 TextField { id: layoutSearch; Layout.fillWidth: true; placeholderText: "Find a layout (Xbox, PlayStation, arcade…)" }
                 ComboBox {
                     id: physicalLayout
+                    objectName: "physicalLayout"
                     Layout.fillWidth: true
                     readonly property var layouts: wizard.catalog.layouts.filter(item => !layoutSearch.text || item.name.toLowerCase().includes(layoutSearch.text.toLowerCase()))
                     model: layouts
                     textRole: "name"
                     currentIndex: wizard.layout ? layouts.findIndex(item => item.id === wizard.layout.id) : -1
                     displayText: currentIndex < 0 ? "Select a physical layout" : currentText
-                    // This picker is not editable. Use a label instead of the
-                    // desktop theme's disabled TextInput for its display text.
-                    contentItem: PixelAlignedText {
-                        objectName: "physicalLayoutDisplay"
-                        text: physicalLayout.displayText
-                        font: physicalLayout.font
-                        color: physicalLayout.palette.buttonText
-                        leftPadding: physicalLayout.mirrored ? 0 : 8
-                        rightPadding: physicalLayout.mirrored ? 8 : 0
-                        elide: Text.ElideRight
-                    }
                     enabled: !wizard.waitingForRelease
                     onActivated: wizard.resetLayout(wizard.catalog.layouts.findIndex(item => item.id === layouts[currentIndex].id))
                 }

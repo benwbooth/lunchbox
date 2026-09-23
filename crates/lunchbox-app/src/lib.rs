@@ -263,6 +263,7 @@ mod provider_image;
 mod qbittorrent;
 mod region_priority;
 use lunchbox_controller_probe::retroarch_frontend_autoconfig;
+mod desktop_application;
 mod retroarch_saves;
 mod retroarch_shaders;
 mod rom_launch_preparation;
@@ -287,7 +288,7 @@ mod window_icon;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
+use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QQuickStyle, QString, QUrl};
 
 static PROCESS_STARTED: OnceLock<Instant> = OnceLock::new();
 static WEB_ARTWORK_PROBE_FIXTURE: OnceLock<std::path::PathBuf> = OnceLock::new();
@@ -331,6 +332,50 @@ pub fn initialize_qt() {
     cxx_qt::init_crate!(cxx_qt_lib);
     cxx_qt::init_crate!(lunchbox_app);
     cxx_qt::init_qml_module!("Lunchbox");
+}
+
+fn preferred_controls_style(
+    desktop: Option<&str>,
+    requested_style: Option<&str>,
+    command_line_style: bool,
+) -> Option<&'static str> {
+    if requested_style.is_some() || command_line_style {
+        return None;
+    }
+    desktop
+        .unwrap_or_default()
+        .split([':', ';'])
+        .any(|part| part.eq_ignore_ascii_case("kde"))
+        .then_some("org.kde.desktop")
+}
+
+fn configure_controls_style(style: Option<&str>) {
+    if let Some(style) = style {
+        QQuickStyle::set_style(&QString::from(style));
+        eprintln!("LUNCHBOX_QT_CONTROLS_STYLE style={style}");
+    }
+}
+
+fn startup_controls_style() -> Option<&'static str> {
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").ok();
+    let requested_style = std::env::var("QT_QUICK_CONTROLS_STYLE").ok();
+    let command_line_style = std::env::args().any(|arg| arg == "-style");
+    preferred_controls_style(
+        desktop.as_deref(),
+        requested_style.as_deref(),
+        command_line_style,
+    )
+}
+
+fn needs_widget_application(
+    selected_style: Option<&str>,
+    environment_style: Option<&str>,
+    command_line_style: Option<&str>,
+) -> bool {
+    [selected_style, environment_style, command_line_style]
+        .into_iter()
+        .flatten()
+        .any(|style| style.eq_ignore_ascii_case("org.kde.desktop"))
 }
 
 pub fn run() -> i32 {
@@ -732,9 +777,25 @@ pub fn run() -> i32 {
         }
     };
 
+    let controls_style = startup_controls_style();
+    let environment_style = std::env::var("QT_QUICK_CONTROLS_STYLE").ok();
+    let arguments = std::env::args().collect::<Vec<_>>();
+    let command_line_style = arguments
+        .windows(2)
+        .find(|pair| pair[0] == "-style")
+        .map(|pair| pair[1].as_str());
     initialize_qt();
 
-    let mut application = QGuiApplication::new();
+    let mut application = if needs_widget_application(
+        controls_style,
+        environment_style.as_deref(),
+        command_line_style,
+    ) {
+        desktop_application::new()
+    } else {
+        QGuiApplication::new()
+    };
+    configure_controls_style(controls_style);
     QGuiApplication::set_desktop_file_name(&QString::from("io.github.benwbooth.Lunchbox"));
     window_icon::install();
     let mut application_ref = application
@@ -756,4 +817,51 @@ pub fn run() -> i32 {
     engine.load(&QUrl::from("qrc:/qt/qml/Lunchbox/qml/Main.qml"));
 
     application_ref.exec()
+}
+
+#[cfg(test)]
+mod controls_style_tests {
+    use super::preferred_controls_style;
+
+    #[test]
+    fn kde_desktop_uses_desktop_controls() {
+        assert_eq!(
+            preferred_controls_style(Some("KDE"), None, false),
+            Some("org.kde.desktop")
+        );
+        assert_eq!(
+            preferred_controls_style(Some("GNOME:KDE"), None, false),
+            Some("org.kde.desktop")
+        );
+    }
+
+    #[test]
+    fn other_desktops_keep_their_platform_style() {
+        assert_eq!(preferred_controls_style(Some("GNOME"), None, false), None);
+        assert_eq!(preferred_controls_style(None, None, false), None);
+    }
+
+    #[test]
+    fn explicit_style_wins_over_desktop_detection() {
+        assert_eq!(
+            preferred_controls_style(Some("KDE"), Some("Material"), false),
+            None
+        );
+        assert_eq!(preferred_controls_style(Some("KDE"), None, true), None);
+    }
+
+    #[test]
+    fn explicit_kde_style_still_uses_widget_application() {
+        assert!(super::needs_widget_application(
+            None,
+            Some("org.kde.desktop"),
+            None
+        ));
+        assert!(super::needs_widget_application(
+            None,
+            None,
+            Some("org.kde.desktop")
+        ));
+        assert!(!super::needs_widget_application(None, Some("Fusion"), None));
+    }
 }

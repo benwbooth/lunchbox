@@ -193,19 +193,8 @@ Rectangle {
                     rightPadding: 8
                     topPadding: 3
                     bottomPadding: 3
+                    highlighted: hero.displayScope === "game"
                     onClicked: hero.displayScopeSelected("game")
-                    background: Rectangle {
-                        radius: 6
-                        color: hero.displayScope === "game" ? "#245b45" : "#12241c"
-                        border.color: hero.displayScope === "game" ? "#75e2a5" : "#347259"
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: hero.displayScope === "game" ? "#83e3ad" : hero.muted
-                        font: parent.font
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
                 }
                 Button {
                     text: "THIS PLATFORM"
@@ -216,19 +205,8 @@ Rectangle {
                     rightPadding: 8
                     topPadding: 3
                     bottomPadding: 3
+                    highlighted: hero.displayScope === "platform"
                     onClicked: hero.displayScopeSelected("platform")
-                    background: Rectangle {
-                        radius: 6
-                        color: hero.displayScope === "platform" ? "#245b45" : "#12241c"
-                        border.color: hero.displayScope === "platform" ? "#75e2a5" : "#347259"
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: hero.displayScope === "platform" ? "#83e3ad" : hero.muted
-                        font: parent.font
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
                 }
             }
             Column {
@@ -265,27 +243,11 @@ Rectangle {
                         target: hero
                         function onDisplayRevisionChanged() { displayFullscreenCombo.syncValue() }
                     }
-                    background: Rectangle {
-                        radius: 8
-                        color: "#0d211a"
-                        border.width: 2
-                        border.color: "#43a876"
-                    }
-                    contentItem: Text {
-                        leftPadding: 11
-                        rightPadding: 30
-                        text: displayFullscreenCombo.displayText
-                        color: hero.ink
-                        font.pixelSize: 10
-                        font.weight: Font.DemiBold
-                        verticalAlignment: Text.AlignVCenter
-                        wrapMode: Text.WordWrap
-                    }
                 }
                 Text {
                     width: parent.width
-                    visible: hero.displayFullscreen === ""
-                    text: hero.displayInheritedFullscreenLabel
+                    visible: hero.displayFullscreen === "" || text.length > 28
+                    text: displayFullscreenCombo.displayText
                     color: hero.muted
                     font.pixelSize: 8
                     wrapMode: Text.WordWrap
@@ -336,22 +298,6 @@ Rectangle {
                             target: hero
                             function onDisplayRevisionChanged() { displayShaderCombo.syncValue() }
                         }
-                        background: Rectangle {
-                            radius: 8
-                            color: "#0d211a"
-                            border.width: 2
-                            border.color: "#43a876"
-                        }
-                        contentItem: Text {
-                            leftPadding: 11
-                            rightPadding: 30
-                            text: displayShaderCombo.displayText
-                            color: hero.ink
-                            font.pixelSize: 10
-                            font.weight: Font.DemiBold
-                            verticalAlignment: Text.AlignVCenter
-                            wrapMode: Text.WordWrap
-                        }
                         delegate: ItemDelegate {
                             required property int index
                             width: displayShaderCombo.width
@@ -360,7 +306,7 @@ Rectangle {
                             contentItem: Text {
                                 id: shaderChoiceText
                                 text: displayShaderCombo.model[index].label
-                                color: hero.ink
+                                color: parent.palette.text
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
                                 verticalAlignment: Text.AlignVCenter
@@ -368,9 +314,10 @@ Rectangle {
                         }
                     }
                     Text {
+                        objectName: "displayShaderFullValue"
                         width: parent.width
-                        visible: hero.displayShader === ""
-                        text: hero.displayInheritedShaderLabel
+                        visible: hero.displayShader === "" || text.length > 28
+                        text: displayShaderCombo.displayText
                         color: hero.muted
                         font.pixelSize: 8
                         wrapMode: Text.WordWrap
@@ -420,22 +367,6 @@ Rectangle {
                             target: hero
                             function onDisplayRevisionChanged() { displayBezelCombo.syncValue() }
                         }
-                        background: Rectangle {
-                            radius: 8
-                            color: "#0d211a"
-                            border.width: 2
-                            border.color: "#43a876"
-                        }
-                        contentItem: Text {
-                            leftPadding: 11
-                            rightPadding: 30
-                            text: displayBezelCombo.displayText
-                            color: hero.ink
-                            font.pixelSize: 10
-                            font.weight: Font.DemiBold
-                            verticalAlignment: Text.AlignVCenter
-                            wrapMode: Text.WordWrap
-                        }
                         delegate: ItemDelegate {
                             required property int index
                             width: displayBezelCombo.width
@@ -444,7 +375,7 @@ Rectangle {
                             contentItem: Text {
                                 id: bezelChoiceText
                                 text: displayBezelCombo.model[index].label
-                                color: hero.ink
+                                color: parent.palette.text
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
                                 verticalAlignment: Text.AlignVCenter
@@ -453,8 +384,8 @@ Rectangle {
                     }
                     Text {
                         width: parent.width
-                        visible: hero.displayBezel === ""
-                        text: hero.displayInheritedBezelLabel
+                        visible: hero.displayBezel === "" || text.length > 28
+                        text: displayBezelCombo.displayText
                         color: hero.muted
                         font.pixelSize: 8
                         wrapMode: Text.WordWrap
@@ -506,22 +437,6 @@ Rectangle {
                             target: hero
                             function onDisplayRevisionChanged() { displaySaveStatesCombo.syncValue() }
                         }
-                        background: Rectangle {
-                            radius: 8
-                            color: "#0d211a"
-                            border.width: 2
-                            border.color: "#43a876"
-                        }
-                        contentItem: Text {
-                            leftPadding: 11
-                            rightPadding: 30
-                            text: displaySaveStatesCombo.displayText
-                            color: hero.ink
-                            font.pixelSize: 10
-                            font.weight: Font.DemiBold
-                            verticalAlignment: Text.AlignVCenter
-                            wrapMode: Text.WordWrap
-                        }
                         delegate: ItemDelegate {
                             required property int index
                             width: displaySaveStatesCombo.width
@@ -532,8 +447,8 @@ Rectangle {
                     }
                     Text {
                         width: parent.width
-                        visible: hero.displaySaveStates === ""
-                        text: hero.displayInheritedSaveStatesLabel
+                        visible: hero.displaySaveStates === "" || text.length > 28
+                        text: displaySaveStatesCombo.displayText
                         color: hero.muted
                         font.pixelSize: 8
                         wrapMode: Text.WordWrap
@@ -639,22 +554,6 @@ Rectangle {
                     font.pixelSize: 10
                     highlighted: emulatorPicker.highlightedIndex === index
                 }
-                contentItem: Text {
-                    leftPadding: 11
-                    rightPadding: 30
-                    text: emulatorPicker.displayText
-                    color: hero.ink
-                    font.pixelSize: 10
-                    font.weight: Font.DemiBold
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
-                background: Rectangle {
-                    radius: 8
-                    color: "#0d211a"
-                    border.width: 2
-                    border.color: "#43a876"
-                }
                 popup: Popup {
                     y: emulatorPicker.height - 1
                     width: emulatorPicker.width
@@ -694,8 +593,8 @@ Rectangle {
                         }
                     }
                     background: Rectangle {
-                        color: "#0d211a"
-                        border.color: "#43a876"
+                        color: emulatorPicker.palette.base
+                        border.color: emulatorPicker.palette.mid
                         radius: 8
                     }
                 }
@@ -736,13 +635,8 @@ Rectangle {
                     text: "THIS GAME"
                     font.pixelSize: 8
                     font.weight: Font.Bold
+                    highlighted: hero.preferenceScope === "game"
                     onClicked: hero.saveGameDefaultRequested()
-                    background: Rectangle {
-                        radius: 7
-                        color: hero.preferenceScope === "game" ? "#245b45" : "#173a2d"
-                        border.color: hero.preferenceScope === "game" ? "#75e2a5" : "#347259"
-                    }
-                    contentItem: Text { text: parent.text; color: hero.ink; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 }
                 Button {
                     width: (parent.width - 12) / 3
@@ -750,13 +644,8 @@ Rectangle {
                     text: "THIS PLATFORM"
                     font.pixelSize: 8
                     font.weight: Font.Bold
+                    highlighted: hero.preferenceScope === "platform"
                     onClicked: hero.savePlatformDefaultRequested()
-                    background: Rectangle {
-                        radius: 7
-                        color: hero.preferenceScope === "platform" ? "#245b45" : "#173a2d"
-                        border.color: hero.preferenceScope === "platform" ? "#75e2a5" : "#347259"
-                    }
-                    contentItem: Text { text: parent.text; color: hero.ink; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 }
                 Button {
                     width: (parent.width - 12) / 3
@@ -766,8 +655,6 @@ Rectangle {
                     font.pixelSize: 8
                     font.weight: Font.Bold
                     onClicked: hero.clearDefaultRequested()
-                    background: Rectangle { radius: 7; color: "#173a2d"; border.color: "#347259" }
-                    contentItem: Text { text: parent.text; color: hero.muted; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 }
             }
         }
@@ -794,6 +681,7 @@ Rectangle {
                      || (!hero.gameRunning && !hero.discoveryBusy && !hero.prepareBusy)
             font.pixelSize: 12
             font.weight: Font.Bold
+            highlighted: hero.canLaunch && !hero.launchBusy
             onClicked: {
                 if (hero.launchBusy)
                     hero.cancelLaunchRequested()
@@ -805,24 +693,6 @@ Rectangle {
                     hero.firmwareSetupRequested()
                 else
                     hero.setupRequested()
-            }
-            background: Rectangle {
-                radius: 9
-                color: parent.enabled
-                       ? (hero.launchBusy
-                          ? (parent.down ? "#8f5228" : "#ba6c32")
-                          : (parent.down ? "#238153" : "#2cad6d"))
-                       : "#244337"
-                border.color: parent.enabled
-                              ? (hero.launchBusy ? "#f0ac65" : "#75e2a5")
-                              : hero.line
-            }
-            contentItem: Text {
-                text: parent.text
-                color: parent.enabled ? "white" : hero.muted
-                font: parent.font
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
             }
         }
 
@@ -836,18 +706,6 @@ Rectangle {
             font.pixelSize: 9
             font.weight: Font.Bold
             onClicked: hero.manageEmulatorsRequested()
-            background: Rectangle {
-                radius: 8
-                color: parent.down ? "#214636" : "#173a2d"
-                border.color: "#347259"
-            }
-            contentItem: Text {
-                text: parent.text
-                color: hero.accentCool
-                font: parent.font
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
         }
     }
 }

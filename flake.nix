@@ -44,7 +44,12 @@
           qtmultimedia
           qtquick3d
           qtsvg
-        ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ qtwayland ];
+        ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+          qtwayland
+          # The desktop Quick Controls style follows KDE's active widget
+          # theme and color scheme instead of Qt's generic Linux Fusion style.
+          pkgs.kdePackages.qqc2-desktop-style
+        ];
         qtEnv = pkgs.qt6.env "lunchbox-qt-env" qtModules;
         databaseTool = pkgs.rustPlatform.buildRustPackage {
           pname = "lunchbox-db";

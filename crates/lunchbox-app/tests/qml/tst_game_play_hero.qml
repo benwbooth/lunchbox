@@ -118,7 +118,7 @@ TestCase {
         }
     }
 
-    function test_narrow_display_choice_wraps_instead_of_eliding() {
+    function test_narrow_display_choice_shows_full_value_below_native_combo() {
         const hero = createTemporaryObject(heroComponent, testCase, {
             width: 260,
             displayInheritedShaderLabel: "Inherit → RetroTube TV · bezel + ambient light (Koko-AIO)"
@@ -126,9 +126,11 @@ TestCase {
         verify(hero)
         const shader = findChild(hero, "displayShaderCombo")
         verify(shader)
-        compare(shader.contentItem.elide, Text.ElideNone)
-        compare(shader.contentItem.wrapMode, Text.WordWrap)
-        verify(shader.contentItem.implicitHeight > 14)
+        const fullValue = findChild(hero, "displayShaderFullValue")
+        verify(fullValue)
+        compare(fullValue.text, shader.displayText)
+        compare(fullValue.wrapMode, Text.WordWrap)
+        verify(fullValue.text.length > 28)
     }
 
     function test_inherit_options_name_the_parent_value() {
