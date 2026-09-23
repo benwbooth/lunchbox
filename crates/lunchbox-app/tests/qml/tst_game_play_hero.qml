@@ -6,6 +6,7 @@ TestCase {
     id: testCase
     name: "GamePlayHero"
     when: windowShown
+    visible: true
 
     Component {
         id: heroComponent
@@ -107,6 +108,41 @@ TestCase {
         compare(fullscreen.currentValue, "true")
     }
 
+    function test_display_accordion_hides_controls_without_losing_choices() {
+        const hero = createTemporaryObject(heroComponent, testCase)
+        verify(hero)
+        const section = findChild(hero, "displaySection")
+        const toggle = findChild(hero, "displayAccordionButton")
+        const options = findChild(hero, "displayOptions")
+        const fullscreen = findChild(hero, "displayFullscreenCombo")
+        const emulator = findChild(hero, "emulatorSection")
+        verify(section)
+        verify(toggle)
+        verify(options)
+        verify(fullscreen)
+        compare(toggle.width, section.width)
+        compare(hero.displayExpanded, false)
+        compare(options.visible, false)
+        verify(findChild(emulator, "emulatorPicker"))
+        wait(50)
+        const collapsedHeight = hero.implicitHeight
+
+        toggle.clicked()
+        compare(hero.displayExpanded, true)
+        compare(options.visible, true)
+        tryVerify(function() { return hero.implicitHeight > collapsedHeight + 80 })
+        hero.displayFullscreen = "true"
+        hero.displayRevision++
+        compare(fullscreen.currentValue, "true")
+
+        toggle.clicked()
+        compare(options.visible, false)
+        compare(fullscreen.currentValue, "true")
+        tryCompare(hero, "implicitHeight", collapsedHeight)
+        toggle.clicked()
+        compare(fullscreen.currentValue, "true")
+    }
+
     function test_display_choices_use_the_available_pane_width() {
         const hero = createTemporaryObject(heroComponent, testCase)
         verify(hero)
@@ -168,6 +204,7 @@ TestCase {
     function test_bezel_popup_renders_long_choices_without_elision() {
         const hero = createTemporaryObject(heroComponent, testCase)
         verify(hero)
+        findChild(hero, "displayAccordionButton").clicked()
         const bezel = findChild(hero, "displayBezelCombo")
         bezel.popup.open()
         verify(bezel.popup.visible)

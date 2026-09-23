@@ -94,6 +94,7 @@ Rectangle {
                                                          || displayShaderSupported
                                                          || displayBezelSupported
                                                          || displaySaveStatesSupported)
+    property bool displayExpanded: false
 
     visible: local && !loading
     implicitHeight: contents.implicitHeight + 28
@@ -173,18 +174,23 @@ Rectangle {
             width: parent.width
             visible: hero.displaySectionAvailable
             spacing: 5
+            Button {
+                objectName: "displayAccordionButton"
+                width: parent.width
+                text: (hero.displayExpanded ? "▾  " : "▸  ") + "DISPLAY SETTINGS"
+                flat: true
+                font.pixelSize: 11
+                font.weight: Font.Bold
+                onClicked: hero.displayExpanded = !hero.displayExpanded
+                Accessible.name: "Display settings"
+                Accessible.description: hero.displayExpanded ? "Collapse display settings" : "Expand display settings"
+            }
             RowLayout {
                 width: parent.width
                 spacing: 6
-                Text {
-                    text: "DISPLAY SETTINGS"
-                    color: "#83e3ad"
-                    font.pixelSize: 9
-                    font.weight: Font.Bold
-                    font.letterSpacing: 0.8
-                    Layout.fillWidth: true
-                }
+                visible: hero.displayExpanded
                 Button {
+                    Layout.fillWidth: true
                     text: "THIS GAME"
                     font.pixelSize: 8
                     font.weight: Font.Bold
@@ -197,6 +203,7 @@ Rectangle {
                     onClicked: hero.displayScopeSelected("game")
                 }
                 Button {
+                    Layout.fillWidth: true
                     text: "THIS PLATFORM"
                     font.pixelSize: 8
                     font.weight: Font.Bold
@@ -212,7 +219,7 @@ Rectangle {
             Column {
                 width: parent.width
                 spacing: 2
-                visible: hero.displayFullscreenSupported
+                visible: hero.displayExpanded && hero.displayFullscreenSupported
                 Text {
                     text: "FULLSCREEN"
                     color: hero.muted
@@ -254,8 +261,10 @@ Rectangle {
                 }
             }
             Column {
+                objectName: "displayOptions"
                 width: parent.width
                 spacing: 6
+                visible: hero.displayExpanded
                 Column {
                     width: parent.width
                     spacing: 2
@@ -457,6 +466,7 @@ Rectangle {
             }
             Text {
                 width: parent.width
+                visible: hero.displayExpanded
                 text: hero.displayScope === "game"
                       ? "Display choices saved for this game; empty values inherit the platform profile."
                       : "Display choices saved for " + hero.platform + "; empty values inherit the global profile."
@@ -466,7 +476,7 @@ Rectangle {
             }
             Text {
                 width: parent.width
-                visible: hero.displayBezelSupported
+                visible: hero.displayExpanded && hero.displayBezelSupported
                 text: "System pack uses matching per-game artwork when available, otherwise a system bezel."
                 color: hero.muted
                 font.pixelSize: 8
@@ -475,7 +485,7 @@ Rectangle {
             Text {
                 objectName: "displayEffectiveSummary"
                 width: parent.width
-                visible: hero.displayEffectiveSummary.length > 0
+                visible: hero.displayExpanded && hero.displayEffectiveSummary.length > 0
                 text: hero.displayEffectiveSummary
                 color: hero.muted
                 font.pixelSize: 8
